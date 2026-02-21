@@ -8,13 +8,38 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**38 source files, ~11,000 lines of TypeScript.**
+**38 source files, ~12,000+ lines of TypeScript.**
 Builds cleanly with zero type errors.
 Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
-rendering to a 240x160 HTML5 Canvas.
+rendering to a dynamically-scaled HTML5 Canvas (240x160 logical, DPR-
+aware physical resolution for crisp text and nearest-neighbor sprites).
 Phase 1.2 core gameplay implemented: death handling, EXP/level-up with
 growth rolls, win/loss conditions, item use, trading, rescue/drop,
 status effects, canto, weapon uses, and 16 game states.
+
+### Recent Changes (Latest Session)
+- **Fixed AI combat animations.** AI combat was running synchronously in
+  a `while` loop with zero visual frames. Now pushes `CombatState` via
+  `game.state.change('combat')` — same animated path as player combat.
+  AI move-only also waits for movement animation before advancing.
+- **Fixed unit stats double-counting.** Constructor was adding class bases
+  to prefab bases (Eirika HP: 16+16=32). Now uses prefab bases directly.
+- **Fixed weapon triangle sign bug.** Disadvantage data already stored
+  negative values; code was double-negating.
+- **Expanded event system to ~100+ commands** with alias resolution.
+- **Fixed EventState** to use `EventCommand.args[]` array format.
+- **Fixed symlink** for `default.ltproj` game data.
+- **Added null guards** for `game.board` throughout game states.
+- **Fixed turn state flow** — units could still act after finishing.
+  Added cascade guards in MoveState/MenuState/TargetingState.
+- **Dynamic render resolution.** Surface class supports a scale factor.
+  Physical canvas is `width*scale x height*scale`. All drawing ops auto-
+  scale. Text renders at native resolution. Sprites use nearest-neighbor.
+- **Full mouse controls.** LMB click on tile moves cursor + fires action.
+  RMB = context-dependent back. Mouse hover tracks cursor in real-time.
+  Click-on-menu-option support. All map states (Free, Move, Targeting,
+  Drop) and menu states (Menu, OptionMenu) support mouse. Mouse events
+  decoupled from keyboard button system to prevent double-processing.
 
 ---
 
@@ -211,18 +236,64 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   sheets (16x16, 32x32).
   - Original: `app/engine/icons.py`
 
-### 2.2 Combat Animations
+### 2.2 Combat Animations (IN PROGRESS)
 
-- [ ] **Full battle animations.** The GBA-style full-screen combat animation
-  system. This is one of LT's flagship features.
-  - Requires: animation spritesheet loading, palette system, pose/timeline
-    scripting, platform backgrounds, hit/crit/miss effects.
-  - Original: `app/engine/battle_animation.py`, `app/engine/combat/animation_combat.py`
-  - This is a large sub-project on its own (~2000 lines in the original).
-- [ ] **Combat screen backgrounds.** Terrain-specific battle backgrounds
-  (forest, castle, etc.).
-- [ ] **Spell/magic effects.** Animated spell effects during combat.
-  - Original: `app/data/resources/combat_effects/`
+Full GBA-style battle animation system — LT's flagship feature.
+~3500 lines across the original Python (`battle_animation.py` 998 lines,
+`animation_combat.py` 1359 lines, `mock_combat.py` 500 lines).
+
+**Implementation plan:**
+
+- [ ] **Battle animation data loading.** Load `combat_anims.json` and
+  `combat_effects.json` with frame rects, pose timelines, and palette
+  mappings. Load spritesheet PNGs via ResourceManager with colorkey and
+  palette conversion (`(0,x,y)` -> target RGB via palette coordinate map).
+  - Data: `resources/combat_anims/combat_anims.json`, `*.png` spritesheets
+  - Palette system: `combat_palettes.json` maps `(x,y)` grid coords to RGB
+  - Colorkey: `(128,160,128)` for characters, `(0,0,0)` for effects
+
+- [ ] **BattleAnimation controller.** Frame-by-frame pose playback engine:
+  - Script commands: `frame`, `dual_frame`, `over_frame`, `under_frame`,
+    `wait`, `sound`, `start_hit`, `wait_for_hit`, `miss`, `spell`,
+    `spell_hit`, `enemy_tint`, `self_tint`, `screen_blend`, `hit_spark`,
+    `screen_shake`, `pan`, `start_loop`/`end_loop`, `effect`, `opacity`
+  - States: `inert`, `run`, `wait`, `dying`, `leaving`
+  - Entrance scaling (map sprite -> battle position over 14 frames)
+  - Death animation (87-frame opacity flicker sequence + white flash)
+  - Pose fallback chain (RangedStand->Stand, Critical->Attack, etc.)
+  - Looping for idle poses (Stand, RangedStand)
+
+- [ ] **AnimationCombat state machine.** The full battle scene coordinator:
+  - States: init -> red_cursor -> fade_in (viewbox iris) -> entrance ->
+    init_pause -> begin_phase -> anim -> combat_hit -> hp_change ->
+    end_phase (loop) -> exp -> fade_out (viewbox iris) -> done
+  - Left/right assignment (player on right, enemy on left)
+  - Camera panning between combatants (offset-based, range-dependent)
+  - Screen shake patterns (4 intensity levels)
+  - Damage numbers, proc icons, miss text
+
+- [ ] **Combat scene rendering.** Full draw pipeline:
+  - Terrain-specific battle backgrounds (panorama images, fade in/out)
+  - Platforms (54 terrain variants, melee vs ranged, horizontally flipped)
+  - Under-frames, main frames, over-frames, effect frames (layered draw)
+  - HP bars with name tags, weapon info, hit/mt/crit stats
+  - Hit sparks and crit sparks
+
+- [ ] **Viewbox iris transition.** 250ms shrinking/expanding rectangle
+  centered on the defender's tile for entering/exiting battle scene.
+
+- [ ] **Combat effect system.** Same script engine as battle anims but
+  for spell/weapon effects. `end_parent_loop` interaction with parent.
+  100+ effects in default.ltproj (projectiles, magic, healing, procs).
+
+- [ ] **Weapon animation resolution.** Map item type to weapon anim NID:
+  Sword, MagicSword, Lance, RangedLance, Axe, MagicAxe, Bow, MagicAnima,
+  MagicLight, MagicDark, MagicStaff, Transform, Unarmed. Ranged/Magic
+  prefix logic with fallbacks.
+
+- [ ] **Wire into CombatState.** `has_animation()` check: if both units
+  have battle anims loaded, use AnimationCombat; otherwise fall back to
+  existing MapCombat. User setting: Always/Your Turn/Never.
 
 ---
 
@@ -351,16 +422,16 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 | File | Lines | Status |
 |------|------:|--------|
 | `engine/constants.ts` | 37 | Done |
-| `engine/surface.ts` | 219 | Done |
-| `engine/input.ts` | 308 | Done, needs touch UI overlay |
+| `engine/surface.ts` | 300+ | Done — scale-aware Surface with DPR support, nearest-neighbor sprites, crisp text |
+| `engine/input.ts` | 340+ | Done — mouse decoupled from keyboard, tile conversion, display scale. Needs touch UI overlay |
 | `engine/state.ts` | 52 | Done |
 | `engine/state-machine.ts` | 202 | Done |
 | `engine/camera.ts` | 133 | Done, needs shake effect |
 | `engine/cursor.ts` | 135 | Done, needs actual cursor sprite |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 480+ | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
-| `engine/game-state.ts` | 540+ | Done — win/loss conditions, skill loading, droppable items |
-| `engine/states/game-states.ts` | 1900+ | 16 states: +ItemUse, Trade, Rescue, Drop. CombatState with death/EXP/levelup phases |
+| `engine/game-state.ts` | 560+ | Done — win/loss conditions, skill loading, droppable items, input ref |
+| `engine/states/game-states.ts` | 2100+ | 16 states: +ItemUse, Trade, Rescue, Drop. CombatState with death/EXP/levelup. AI uses CombatState. Full mouse support. |
 | `data/types.ts` | 307 | Done |
 | `data/database.ts` | 387 | Done |
 | `data/resource-manager.ts` | 297 | Done |
@@ -382,12 +453,12 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 | `ai/ai-controller.ts` | 413 | Done, needs group AI / retreat |
 | `events/event-manager.ts` | 385+ | Partial — +getEventsForTrigger(), +unit_talk/region_event triggers. Needs ~50 more commands |
 | `audio/audio-manager.ts` | 261 | Done |
-| `ui/menu.ts` | 144 | Done, needs 9-slice backgrounds |
+| `ui/menu.ts` | 200+ | Done — click + hover mouse support. Needs 9-slice backgrounds |
 | `ui/hud.ts` | 143 | Done, needs icons |
 | `ui/health-bar.ts` | 97 | Done |
 | `ui/dialog.ts` | 207 | Done, needs portraits |
 | `ui/banner.ts` | 108 | Done |
-| `main.ts` | 308 | Done |
+| `main.ts` | 340+ | Done — dynamic render resolution, DPR-aware display, input wiring |
 
 ---
 

@@ -134,6 +134,40 @@ export class Surface {
     this._ctx.globalAlpha = 1;
   }
 
+  /**
+   * Draw any CanvasImageSource (HTMLCanvasElement, ImageBitmap, OffscreenCanvas,
+   * HTMLImageElement, etc.) at a logical position with proper scaling.
+   * Draws the full source image at (dx, dy) in logical coords.
+   * Optionally specify alpha (0–1) and horizontal flip.
+   */
+  drawImageFull(
+    image: CanvasImageSource,
+    dx: number, dy: number,
+    srcW: number, srcH: number,
+    alpha: number = 1,
+    flipH: boolean = false,
+  ): void {
+    const s = this.scale;
+    this._ctx.imageSmoothingEnabled = false;
+    const prevAlpha = this._ctx.globalAlpha;
+    this._ctx.globalAlpha = alpha;
+    if (flipH) {
+      this._ctx.save();
+      this._ctx.translate(Math.round((dx + srcW) * s), Math.round(dy * s));
+      this._ctx.scale(-1, 1);
+      this._ctx.drawImage(image, 0, 0, Math.round(srcW * s), Math.round(srcH * s));
+      this._ctx.restore();
+    } else {
+      this._ctx.drawImage(
+        image,
+        0, 0, srcW, srcH,
+        Math.round(dx * s), Math.round(dy * s),
+        Math.round(srcW * s), Math.round(srcH * s),
+      );
+    }
+    this._ctx.globalAlpha = prevAlpha;
+  }
+
   /** Create a subsurface view (copies the region). Result is unscaled (scale=1). */
   subsurface(x: number, y: number, w: number, h: number): Surface {
     const sub = new Surface(w, h);
