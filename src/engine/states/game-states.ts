@@ -11,12 +11,11 @@ import { State, MapState, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import {
-  WINWIDTH,
-  WINHEIGHT,
   TILEWIDTH,
   TILEHEIGHT,
   FRAMETIME,
 } from '../constants';
+import { viewport } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
@@ -340,8 +339,8 @@ export class TitleState extends State {
     const titleW = title.length * 7;
     surf.drawText(
       title,
-      Math.floor((WINWIDTH - titleW) / 2),
-      Math.floor(WINHEIGHT / 3),
+      Math.floor((viewport.width - titleW) / 2),
+      Math.floor(viewport.height / 3),
       'white',
       '12px monospace',
     );
@@ -351,8 +350,8 @@ export class TitleState extends State {
     const promptW = prompt.length * 5;
     surf.drawText(
       prompt,
-      Math.floor((WINWIDTH - promptW) / 2),
-      Math.floor(WINHEIGHT / 2),
+      Math.floor((viewport.width - promptW) / 2),
+      Math.floor(viewport.height / 2),
       'rgba(200,200,220,1)',
       '8px monospace',
     );
@@ -390,8 +389,8 @@ export class OptionMenuState extends State {
       { label: 'End Turn', value: 'end_turn', enabled: true },
     ];
     // Centre the menu on screen
-    const menuX = Math.floor(WINWIDTH / 2) - 30;
-    const menuY = Math.floor(WINHEIGHT / 2) - 12;
+    const menuX = Math.floor(viewport.width / 2) - 30;
+    const menuY = Math.floor(viewport.height / 2) - 12;
     this.menu = new ChoiceMenu(options, menuX, menuY);
   }
 
@@ -869,8 +868,8 @@ export class MenuState extends State {
     const menuY = uy * TILEHEIGHT - cameraOffset[1];
 
     // Clamp menu to screen
-    const clampedX = Math.min(menuX, WINWIDTH - 60);
-    const clampedY = Math.min(menuY, WINHEIGHT - options.length * 16 - 8);
+    const clampedX = Math.min(menuX, viewport.width - 60);
+    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
 
     this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
   }
@@ -1034,13 +1033,13 @@ export class ItemUseState extends State {
     const cameraOffset = game.camera.getOffset();
     const menuX = unit.position
       ? unit.position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4
-      : WINWIDTH / 2;
+      : viewport.width / 2;
     const menuY = unit.position
       ? unit.position[1] * TILEHEIGHT - cameraOffset[1]
-      : WINHEIGHT / 2;
+      : viewport.height / 2;
 
-    const clampedX = Math.min(menuX, WINWIDTH - 70);
-    const clampedY = Math.min(menuY, WINHEIGHT - options.length * 16 - 8);
+    const clampedX = Math.min(menuX, viewport.width - 70);
+    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
 
     this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
   }
@@ -1146,7 +1145,7 @@ export class TradeState extends State {
         enabled: true,
       }));
 
-      this.targetMenu = new ChoiceMenu(options, WINWIDTH / 2 - 30, WINHEIGHT / 2 - 16);
+      this.targetMenu = new ChoiceMenu(options, viewport.width / 2 - 30, viewport.height / 2 - 16);
       this.phase = 'select_partner';
     }
   }
@@ -1173,7 +1172,7 @@ export class TradeState extends State {
     }));
     optionsB.push({ label: '---', value: 'b_empty', enabled: false });
 
-    this.itemMenuB = new ChoiceMenu(optionsB, WINWIDTH / 2 + 4, 20);
+    this.itemMenuB = new ChoiceMenu(optionsB, viewport.width / 2 + 4, 20);
     this.selectedIndexA = -1;
   }
 
@@ -1242,7 +1241,7 @@ export class TradeState extends State {
 
     if (this.phase === 'select_items') {
       // Draw a simplified trade UI
-      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, 'rgba(0,0,32,0.7)');
+      surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(0,0,32,0.7)');
 
       const game = getGame();
       const unit: UnitObject = game.selectedUnit;
@@ -1257,7 +1256,7 @@ export class TradeState extends State {
       }
 
       // Unit B items
-      const bx = WINWIDTH / 2 + 4;
+      const bx = viewport.width / 2 + 4;
       surf.drawText(partner?.name ?? '', bx, 4, 'white', '8px monospace');
       if (partner) {
         partner.items.forEach((item, i) => {
@@ -1265,7 +1264,7 @@ export class TradeState extends State {
         });
       }
 
-      surf.drawText('SELECT to swap, BACK to finish', 4, WINHEIGHT - 12, 'rgba(160,160,200,1)', '7px monospace');
+      surf.drawText('SELECT to swap, BACK to finish', 4, viewport.height - 12, 'rgba(160,160,200,1)', '7px monospace');
     }
 
     return surf;
@@ -1305,7 +1304,7 @@ export class RescueState extends State {
       enabled: true,
     }));
 
-    this.menu = new ChoiceMenu(options, WINWIDTH / 2 - 30, WINHEIGHT / 2 - 16);
+    this.menu = new ChoiceMenu(options, viewport.width / 2 - 30, viewport.height / 2 - 16);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -1604,7 +1603,7 @@ export class TargetingState extends MapState {
         surf.fillRect(tx, ty, TILEWIDTH, TILEHEIGHT, 'rgba(255,0,0,0.3)');
 
         // Show target name/HP at top of screen
-        surf.fillRect(0, 0, WINWIDTH, 16, 'rgba(0,0,0,0.7)');
+        surf.fillRect(0, 0, viewport.width, 16, 'rgba(0,0,0,0.7)');
         surf.drawText(
           `${target.name}  HP: ${target.currentHp}/${target.maxHp}`,
           4,
@@ -1992,8 +1991,8 @@ export class CombatState extends State {
 
   private drawExpBar(surf: Surface): void {
     const barX = 4;
-    const barY = WINHEIGHT - 14;
-    const barW = WINWIDTH - 8;
+    const barY = viewport.height - 14;
+    const barW = viewport.width - 8;
     const barH = 10;
 
     // Background
@@ -2019,8 +2018,8 @@ export class CombatState extends State {
 
     const boxW = 80;
     const boxH = 10 + Object.keys(this.levelUpGains).length * 10;
-    const boxX = Math.floor((WINWIDTH - boxW) / 2);
-    const boxY = Math.floor((WINHEIGHT - boxH) / 2) - 20;
+    const boxX = Math.floor((viewport.width - boxW) / 2);
+    const boxY = Math.floor((viewport.height - boxH) / 2) - 20;
 
     // Background
     surf.fillRect(boxX, boxY, boxW, boxH, 'rgba(16,16,48,0.95)');

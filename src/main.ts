@@ -1,12 +1,13 @@
 /**
  * main.ts — Bootstrap and main loop for the Lex Talionis web engine.
  *
- * Initialises the canvas, loads game data, registers states, and runs
- * the 60fps game loop.  The game renders to a 240x160 OffscreenCanvas
- * (Surface) and is then scaled up to the visible <canvas> element.
+ * The canvas fills the entire screen. The viewport (in game pixels) is
+ * dynamic based on screen aspect ratio and zoom level. Touch controls
+ * are tap-to-select, drag-to-pan, pinch-to-zoom.
  */
 
-import { WINWIDTH, WINHEIGHT, FRAMETIME, updateAnimationCounters } from './engine/constants';
+import { FRAMETIME, updateAnimationCounters } from './engine/constants';
+import { viewport } from './engine/viewport';
 import { Surface } from './engine/surface';
 import { InputManager } from './engine/input';
 import { ResourceManager } from './data/resource-manager';
@@ -34,80 +35,41 @@ import {
 } from './engine/states/game-states';
 
 // ---------------------------------------------------------------------------
-// Display scaling
+// Display helpers
 // ---------------------------------------------------------------------------
 
 interface DisplayInfo {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
-  /** CSS pixels scale (how many CSS px per game pixel). */
-  scale: number;
-  /** The Surface render scale (game pixels -> physical canvas pixels). */
-  renderScale: number;
-  offsetX: number;
-  offsetY: number;
 }
-
-/** Height in CSS px reserved for the touch-control overlay in portrait. */
-const TOUCH_CONTROLS_HEIGHT = 150;
 
 /**
- * Compute the render scale that maps WINWIDTH x WINHEIGHT to the window,
- * accounting for devicePixelRatio for crisp physical pixels.
- *
- * When `reserveBottom` > 0 (portrait-mode mobile), the available height
- * is reduced so the game canvas doesn't overlap the virtual controls.
+ * Resize the display canvas to match the screen and recalculate viewport.
  */
-function computeRenderScale(reserveBottom: number = 0): { renderScale: number; cssScale: number; offsetX: number; offsetY: number } {
-  const dpr = window.devicePixelRatio || 1;
-  const viewW = window.innerWidth;
-  const viewH = window.innerHeight - reserveBottom;
+function applySize(display: DisplayInfo): void {
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
 
-  // CSS scale: how many CSS pixels per game pixel (maintain aspect ratio)
-  const cssScale = Math.min(viewW / WINWIDTH, viewH / WINHEIGHT);
+  viewport.recalculate(screenW, screenH);
 
-  // Render scale: CSS scale * DPR gives us 1:1 physical pixel mapping
-  const renderScale = cssScale * dpr;
-
-  const scaledW = WINWIDTH * cssScale;
-  const scaledH = WINHEIGHT * cssScale;
-  const offsetX = Math.floor((viewW - scaledW) / 2);
-  // When reserving bottom space, push the canvas to the top (offsetY = 0
-  // or a small margin). When not reserving, centre vertically.
-  const totalH = window.innerHeight;
-  const offsetY = reserveBottom > 0
-    ? Math.max(0, Math.floor((viewH - scaledH) / 2))
-    : Math.floor((totalH - scaledH) / 2);
-
-  return { renderScale, cssScale, offsetX, offsetY };
-}
-
-function applyScale(display: DisplayInfo, reserveBottom: number = 0): void {
-  const { renderScale, cssScale, offsetX, offsetY } = computeRenderScale(reserveBottom);
-  display.scale = cssScale;
-  display.renderScale = renderScale;
-  display.offsetX = offsetX;
-  display.offsetY = offsetY;
-
-  // The display canvas matches the physical pixel dimensions of the game area
-  display.canvas.width = Math.round(WINWIDTH * renderScale);
-  display.canvas.height = Math.round(WINHEIGHT * renderScale);
-  display.canvas.style.width = `${Math.round(WINWIDTH * cssScale)}px`;
-  display.canvas.style.height = `${Math.round(WINHEIGHT * cssScale)}px`;
-  display.canvas.style.marginLeft = `${offsetX}px`;
-  display.canvas.style.marginTop = `${offsetY}px`;
-
+  // Physical canvas = viewport game pixels * renderScale
+  display.canvas.width = Math.round(viewport.width * viewport.renderScale);
+  display.canvas.height = Math.round(viewport.height * viewport.renderScale);
+  display.canvas.style.width = `${screenW}px`;
+  display.canvas.style.height = `${screenH}px`;
   display.ctx.imageSmoothingEnabled = false;
 }
 
 // ---------------------------------------------------------------------------
-// Loading screen helper
+// Loading / error screens
 // ---------------------------------------------------------------------------
 
-function drawLoadingScreen(ctx: CanvasRenderingContext2D, message: string, renderScale: number = 1): void {
-  const s = renderScale;
+function drawLoadingScreen(ctx: CanvasRenderingContext2D, message: string): void {
+  const s = viewport.renderScale;
+  const w = viewport.width;
+  const h = viewport.height;
   ctx.fillStyle = '#101020';
-  ctx.fillRect(0, 0, Math.round(WINWIDTH * s), Math.round(WINHEIGHT * s));
+  ctx.fillRect(0, 0, Math.round(w * s), Math.round(h * s));
 
   ctx.font = `${Math.round(12 * s)}px monospace`;
   ctx.fillStyle = '#aaaacc';
@@ -116,15 +78,17 @@ function drawLoadingScreen(ctx: CanvasRenderingContext2D, message: string, rende
   const textWidth = ctx.measureText(message).width;
   ctx.fillText(
     message,
-    Math.floor((WINWIDTH * s - textWidth) / 2),
-    Math.floor(WINHEIGHT * s / 2) - Math.round(4 * s),
+    Math.floor((w * s - textWidth) / 2),
+    Math.floor(h * s / 2) - Math.round(4 * s),
   );
 }
 
-function drawErrorScreen(ctx: CanvasRenderingContext2D, error: string, renderScale: number = 1): void {
-  const s = renderScale;
+function drawErrorScreen(ctx: CanvasRenderingContext2D, error: string): void {
+  const s = viewport.renderScale;
+  const w = viewport.width;
+  const h = viewport.height;
   ctx.fillStyle = '#200808';
-  ctx.fillRect(0, 0, Math.round(WINWIDTH * s), Math.round(WINHEIGHT * s));
+  ctx.fillRect(0, 0, Math.round(w * s), Math.round(h * s));
 
   ctx.font = `${Math.round(12 * s)}px monospace`;
   ctx.textBaseline = 'top';
@@ -134,7 +98,7 @@ function drawErrorScreen(ctx: CanvasRenderingContext2D, error: string, renderSca
 
   ctx.fillStyle = '#ccaaaa';
   const charW = ctx.measureText('M').width;
-  const maxChars = Math.floor((WINWIDTH * s - 16 * s) / charW);
+  const maxChars = Math.floor((w * s - 16 * s) / charW);
   const lines: string[] = [];
   let remaining = error;
   while (remaining.length > 0) {
@@ -167,7 +131,6 @@ function setupAudioInit(audioManager: AudioManager): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  // --- 1. Get canvas and set up display ---
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   if (!canvas) {
     throw new Error('Could not find #game-canvas element');
@@ -178,51 +141,41 @@ async function main(): Promise<void> {
     throw new Error('Could not get 2D rendering context');
   }
 
-  const display: DisplayInfo = {
-    canvas,
-    ctx,
-    scale: 1,
-    renderScale: 1,
-    offsetX: 0,
-    offsetY: 0,
-  };
+  const display: DisplayInfo = { canvas, ctx };
 
-  applyScale(display);
+  // Initial viewport calculation
+  applySize(display);
+  drawLoadingScreen(ctx, 'Loading...');
 
-  // --- 2. Show loading screen ---
-  drawLoadingScreen(ctx, 'Loading...', display.renderScale);
-
-  // --- 3. Determine project URL from query params ---
+  // --- Determine project URL ---
   const params = new URLSearchParams(window.location.search);
   const projectPath = params.get('project') ?? 'default.ltproj';
   const baseUrl = `/game-data/${projectPath}`;
 
-  // --- 4. Load game data ---
+  // --- Load game data ---
   const resources = new ResourceManager(baseUrl);
   const db = new Database();
 
   try {
-    drawLoadingScreen(ctx, 'Loading database...', display.renderScale);
+    drawLoadingScreen(ctx, 'Loading database...');
     await db.load(resources);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Failed to load database:', msg);
-    drawErrorScreen(ctx, `DB load failed: ${msg}`, display.renderScale);
+    drawErrorScreen(ctx, `DB load failed: ${msg}`);
     return;
   }
 
-  // --- 5. Create AudioManager ---
+  // --- Audio ---
   const audioManager = new AudioManager(baseUrl);
   setupAudioInit(audioManager);
 
-  // --- 6. Create GameState ---
-  drawLoadingScreen(ctx, 'Initializing...', display.renderScale);
+  // --- GameState ---
+  drawLoadingScreen(ctx, 'Initializing...');
   const gameState = initGameState(db, resources, audioManager);
-
-  // Wire up the lazy game reference used by all state classes
   setGameRef(gameState);
 
-  // --- 7. Register all game states ---
+  // --- Register states ---
   const states = [
     new TitleState(),
     new OptionMenuState(),
@@ -241,65 +194,57 @@ async function main(): Promise<void> {
     new MovementState(),
     new EventState(),
   ];
-
   for (const state of states) {
     gameState.state.register(state);
   }
 
-  // --- 8. Load the first level ---
+  // --- Load first level ---
   const firstLevelNid = db.levels.keys().next().value;
   if (firstLevelNid) {
     try {
-      drawLoadingScreen(ctx, 'Loading level...', display.renderScale);
+      drawLoadingScreen(ctx, 'Loading level...');
       await gameState.loadLevel(firstLevelNid);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Failed to load level:', msg);
-      drawErrorScreen(ctx, `Level load failed: ${msg}`, display.renderScale);
+      drawErrorScreen(ctx, `Level load failed: ${msg}`);
       return;
     }
   }
 
-  // --- 9. Push initial state ---
+  // --- Push initial state ---
   gameState.state.change('title');
 
-  // --- 10. Create InputManager (needs the visible canvas for listeners) ---
+  // --- Input ---
   const inputManager = new InputManager(canvas);
-  inputManager.setDisplayScale(display.scale);
+  inputManager.setDisplayScale(viewport.cssScale);
   gameState.input = inputManager;
 
-  // --- 10b. Mobile touch controls ---
-  // Determine how much bottom space to reserve for the virtual controls.
-  const isPortrait = (): boolean => window.innerHeight > window.innerWidth;
-  const getReserveBottom = (): number =>
-    inputManager.isTouchDevice && isPortrait() ? TOUCH_CONTROLS_HEIGHT : 0;
+  // --- Game surface (dynamic size) ---
+  let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);
+  let lastViewW = viewport.width;
+  let lastViewH = viewport.height;
 
-  if (inputManager.isTouchDevice) {
-    const touchControls = document.getElementById('touch-controls');
-    if (touchControls) {
-      touchControls.classList.add('visible');
+  /** Recreate surface if viewport changed. */
+  function refreshSurface(): void {
+    if (viewport.width !== lastViewW || viewport.height !== lastViewH) {
+      gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);
+      lastViewW = viewport.width;
+      lastViewH = viewport.height;
     }
-    // Re-apply scale now that we know we need to reserve bottom space
-    applyScale(display, getReserveBottom());
   }
 
-  // --- 11. Create the game rendering surface ---
-  // The surface is logically 240x160 but physically scaled to match the
-  // window so sprites get nearest-neighbor scaling and text is crisp.
-  let gameSurface = new Surface(WINWIDTH, WINHEIGHT, display.renderScale);
-
-  // Recreate game surface on resize (scale changes)
+  // Handle window resize
   window.addEventListener('resize', () => {
-    applyScale(display, getReserveBottom());
-    gameSurface = new Surface(WINWIDTH, WINHEIGHT, display.renderScale);
-    inputManager.setDisplayScale(display.scale);
+    applySize(display);
+    inputManager.setDisplayScale(viewport.cssScale);
+    refreshSurface();
   });
 
-  // --- 12. Main game loop ---
+  // --- Game loop ---
   let lastTimestamp = 0;
 
   function gameLoop(timestamp: number): void {
-    // Delta time capped to avoid spiral of death on tab-away
     const rawDelta = lastTimestamp === 0 ? FRAMETIME : timestamp - lastTimestamp;
     const deltaMs = Math.min(rawDelta, FRAMETIME * 3);
     lastTimestamp = timestamp;
@@ -307,50 +252,51 @@ async function main(): Promise<void> {
     // --- Process input ---
     const event = inputManager.processInput(deltaMs);
 
+    // --- Apply pinch-to-zoom ---
+    if (inputManager.zoomDelta !== 0) {
+      viewport.zoom(inputManager.zoomDelta);
+      applySize(display);
+      inputManager.setDisplayScale(viewport.cssScale);
+      refreshSurface();
+    }
+
     // --- Apply touch-drag camera panning ---
     if (inputManager.cameraPanDeltaX !== 0 || inputManager.cameraPanDeltaY !== 0) {
-      // Convert CSS-pixel deltas to game-pixel deltas
-      const panScale = display.scale || 1;
+      const panScale = viewport.cssScale || 1;
       game.camera.pan(
         inputManager.cameraPanDeltaX / panScale,
         inputManager.cameraPanDeltaY / panScale,
       );
     }
 
-    // --- Clear game surface ---
+    // --- Clear ---
     gameSurface.clear();
 
-    // --- State machine update (may repeat) ---
+    // --- State machine update ---
     let repeat = true;
     let iterations = 0;
-    const maxIterations = 10; // safety limit to prevent infinite loops
+    const maxIterations = 10;
 
     while (repeat && iterations < maxIterations) {
-      // Only pass real input on the first iteration; repeat iterations
-      // get null so the same key press isn't consumed multiple times.
       const inputForThisIteration = iterations === 0 ? event : null;
       const [, shouldRepeat] = game.state.update(inputForThisIteration, gameSurface);
       repeat = shouldRepeat;
       iterations++;
     }
 
-    // --- Update animation counters ---
+    // --- Animations ---
     updateAnimationCounters();
 
-    // --- Update movement system ---
+    // --- Movement ---
     game.movementSystem.update(deltaMs);
 
-    // --- Blit game surface onto the visible canvas ---
-    // The game surface's physical canvas matches the display canvas size,
-    // so this is a 1:1 copy with no additional scaling.
+    // --- Blit to display ---
     display.ctx.imageSmoothingEnabled = false;
     display.ctx.clearRect(0, 0, display.canvas.width, display.canvas.height);
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
-    // --- End-of-frame input cleanup ---
+    // --- End of frame ---
     inputManager.endFrame();
-
-    // --- Resume audio context if it was suspended (tab switch, etc.) ---
     audioManager.resume();
 
     requestAnimationFrame(gameLoop);
@@ -365,14 +311,17 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error('Fatal error during startup:', err);
-
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   if (canvas) {
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      canvas.width = WINWIDTH;
-      canvas.height = WINHEIGHT;
-      drawErrorScreen(ctx, err instanceof Error ? err.message : String(err));
+      canvas.width = 240;
+      canvas.height = 160;
+      ctx.fillStyle = '#200808';
+      ctx.fillRect(0, 0, 240, 160);
+      ctx.font = '12px monospace';
+      ctx.fillStyle = '#ff6666';
+      ctx.fillText('Fatal error — see console', 8, 80);
     }
   }
 });

@@ -1,15 +1,15 @@
 /**
- * InputManager - Unified input handling for keyboard, mouse, touch buttons,
- * and gamepad.  Maps raw browser events to 9 abstract game buttons matching
- * LT's input system.
+ * InputManager - Unified input handling for keyboard, mouse, touch, and gamepad.
+ * Maps raw browser events to 9 abstract game buttons matching LT's input system.
  *
- * Mobile touch handling:
- *  - Virtual overlay buttons (#touch-controls [data-btn] elements) are wired
- *    to the same buttonJustPressed / buttonsDown / buttonJustReleased sets as
- *    keyboard keys, so they work identically from the game-state perspective.
- *  - Canvas touch:  tap = move cursor to tile AND select (mouseClick),
- *    drag = pan camera (exposes cameraPanDeltaX/Y each frame).
+ * Mobile touch controls (no on-screen buttons):
+ *  - Tap on canvas = move cursor to tapped tile + select
+ *  - Drag on canvas = pan camera
+ *  - Two-finger pinch = zoom in/out
+ *  - Two-finger tap = BACK
  */
+
+import { viewport } from './viewport';
 
 export type GameButton =
   | 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
@@ -60,7 +60,6 @@ export class InputManager {
   mouseX: number = 0;
   mouseY: number = 0;
   mouseClick: GameButton | null = null;
-  /** True if the mouse moved this frame (set in mousemove, cleared in endFrame). */
   mouseMoved: boolean = false;
   private mouseButtons: Set<number> = new Set();
 
@@ -70,30 +69,41 @@ export class InputManager {
   private displayOffsetX: number = 0;
   private displayOffsetY: number = 0;
 
-  // Canvas-touch state (drag-to-pan / tap-to-select)
+  // Canvas-touch state (drag-to-pan / tap-to-select / pinch-to-zoom)
   private touchStartX: number = 0;
   private touchStartY: number = 0;
   private touchLastX: number = 0;
   private touchLastY: number = 0;
   touchActive: boolean = false;
   private touchIsDrag: boolean = false;
+  private touchStartTime: number = 0;
+
+  // Pinch-to-zoom state
+  private pinchActive: boolean = false;
+  private pinchStartDist: number = 0;
+  private pinchLastDist: number = 0;
 
   /**
    * Camera pan delta accumulated from touch-dragging the canvas this frame.
-   * Measured in *CSS pixels* — the consumer (Camera) should divide by the
-   * current CSS-per-game-pixel scale to convert to game pixels.
-   * Reset to 0 each frame in endFrame().
+   * Measured in CSS pixels. Consumer divides by cssScale to get game pixels.
    */
   cameraPanDeltaX: number = 0;
   cameraPanDeltaY: number = 0;
+
+  /**
+   * Zoom delta from pinch gesture this frame.
+   * Positive = zoom in (fingers spread apart), negative = zoom out.
+   * In "tiles" units — represents how much to change tilesAcross.
+   */
+  zoomDelta: number = 0;
 
   /** True if the device appears to support touch input. */
   isTouchDevice: boolean = false;
 
   // Fluid scroll for held directions
   private scrollStates: Map<GameButton, FluidScrollState> = new Map();
-  private readonly INITIAL_DELAY = 350; // ms before repeat starts
-  private readonly REPEAT_DELAY = 60; // ms between repeats
+  private readonly INITIAL_DELAY = 350;
+  private readonly REPEAT_DELAY = 60;
 
   // Gamepad support
   private gamepadIndex: number = -1;
@@ -112,50 +122,6 @@ export class InputManager {
         triggered: false,
       });
     }
-
-    // Wire virtual touch overlay buttons (if present in the DOM)
-    this._setupTouchButtons();
-  }
-
-  // -----------------------------------------------------------------------
-  // Virtual touch-overlay buttons
-  // -----------------------------------------------------------------------
-
-  /**
-   * Attach touchstart/touchend/touchcancel listeners on every element with
-   * a `data-btn` attribute inside `#touch-controls`.  The attribute value
-   * must be a valid GameButton name (e.g. "UP", "SELECT").
-   */
-  private _setupTouchButtons(): void {
-    const container = document.getElementById('touch-controls');
-    if (!container) return;
-
-    const buttons = container.querySelectorAll<HTMLElement>('[data-btn]');
-    buttons.forEach((el) => {
-      const btnName = el.dataset['btn'] as GameButton | undefined;
-      if (!btnName) return;
-
-      el.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        e.stopPropagation(); // don't let this bubble to canvas touch handler
-        this.buttonsDown.add(btnName);
-        this.buttonJustPressed.add(btnName);
-        el.classList.add('pressed');
-      }, { passive: false });
-
-      const release = (e: Event) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.buttonsDown.has(btnName)) {
-          this.buttonsDown.delete(btnName);
-          this.buttonJustReleased.add(btnName);
-        }
-        el.classList.remove('pressed');
-      };
-
-      el.addEventListener('touchend', release, { passive: false });
-      el.addEventListener('touchcancel', release, { passive: false });
-    });
   }
 
   // -----------------------------------------------------------------------
@@ -187,13 +153,8 @@ export class InputManager {
       this.mouseButtons.add(e.button);
       const btn = this._mouseButtonToGame(e.button);
       if (btn) {
-        // Only set mouseClick — don't inject into buttonJustPressed.
-        // Game states handle mouse clicks separately via mouseClick,
-        // so injecting into the keyboard button system would cause
-        // double-processing (once as keyboard SELECT, once as mouse click).
         this.mouseClick = btn;
       }
-      // Update mouse position on click
       const rect = canvas.getBoundingClientRect();
       this.mouseX = e.clientX - rect.left;
       this.mouseY = e.clientY - rect.top;
@@ -212,25 +173,56 @@ export class InputManager {
 
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // ----- Canvas touch: tap-to-select + drag-to-pan -----
+    // ----- Touch: tap-to-select, drag-to-pan, pinch-to-zoom, 2-finger-tap = BACK -----
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      const touch = e.touches[0];
-      const rect = canvas.getBoundingClientRect();
-      const cx = touch.clientX - rect.left;
-      const cy = touch.clientY - rect.top;
-      this.touchStartX = cx;
-      this.touchStartY = cy;
-      this.touchLastX = cx;
-      this.touchLastY = cy;
-      this.mouseX = cx;
-      this.mouseY = cy;
-      this.touchActive = true;
-      this.touchIsDrag = false;
+
+      if (e.touches.length === 2) {
+        // Start pinch
+        this.pinchActive = true;
+        this.touchIsDrag = false;
+        this.touchActive = false;
+        const d = this._touchDist(e.touches[0], e.touches[1]);
+        this.pinchStartDist = d;
+        this.pinchLastDist = d;
+        return;
+      }
+
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const cx = touch.clientX - rect.left;
+        const cy = touch.clientY - rect.top;
+        this.touchStartX = cx;
+        this.touchStartY = cy;
+        this.touchLastX = cx;
+        this.touchLastY = cy;
+        this.mouseX = cx;
+        this.mouseY = cy;
+        this.touchActive = true;
+        this.touchIsDrag = false;
+        this.touchStartTime = performance.now();
+      }
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
+
+      if (this.pinchActive && e.touches.length >= 2) {
+        const d = this._touchDist(e.touches[0], e.touches[1]);
+        // Convert pinch distance change to zoom delta.
+        // Spreading fingers apart (d increasing) = zoom in = positive delta.
+        // We scale by a sensitivity factor: 100 CSS-px of pinch = ~1 tile change.
+        const pinchDelta = (d - this.pinchLastDist) / 100;
+        this.zoomDelta += pinchDelta;
+        this.pinchLastDist = d;
+
+        // Also pan based on the midpoint movement
+        const mid = this._touchMidpoint(e.touches[0], e.touches[1]);
+        // (We'd need previous midpoint — skip pan during pinch for simplicity)
+        return;
+      }
+
       if (!this.touchActive) return;
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
@@ -246,9 +238,7 @@ export class InputManager {
       }
 
       if (this.touchIsDrag) {
-        // Accumulate frame delta for camera panning.
-        // Negate because dragging right should move the camera left (scene
-        // slides right), which means the camera x *decreases*.
+        // Negate: dragging right moves camera left (scene slides right)
         this.cameraPanDeltaX += -(cx - this.touchLastX);
         this.cameraPanDeltaY += -(cy - this.touchLastY);
       }
@@ -261,15 +251,24 @@ export class InputManager {
 
     const onTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
+
+      // Two-finger tap = BACK (if pinch was active but barely moved)
+      if (this.pinchActive && e.touches.length < 2) {
+        const pinchDist = Math.abs(this.pinchLastDist - this.pinchStartDist);
+        if (pinchDist < 20) {
+          // Barely moved fingers = two-finger tap
+          this.buttonJustPressed.add('BACK');
+        }
+        this.pinchActive = false;
+        return;
+      }
+
       if (!this.touchActive) return;
 
       if (!this.touchIsDrag) {
-        // Short tap on canvas → move cursor to tapped tile AND select.
-        // Set mouseX/Y so getMouseTile() returns the tapped tile,
-        // then fire mouseClick so game states treat it like a click.
+        // Tap on canvas -> select at tapped position
         this.mouseClick = 'SELECT';
       }
-      // If it was a drag, cameraPanDelta has already been accumulated.
 
       this.touchActive = false;
       this.touchIsDrag = false;
@@ -287,21 +286,29 @@ export class InputManager {
     });
   }
 
+  private _touchDist(a: Touch, b: Touch): number {
+    const dx = a.clientX - b.clientX;
+    const dy = a.clientY - b.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  private _touchMidpoint(a: Touch, b: Touch): { x: number; y: number } {
+    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  }
+
   private _mouseButtonToGame(button: number): GameButton | null {
     switch (button) {
-      case 0: return 'SELECT'; // LMB
-      case 2: return 'BACK';   // RMB
-      case 1: return 'INFO';   // MMB
+      case 0: return 'SELECT';
+      case 2: return 'BACK';
+      case 1: return 'INFO';
       default: return null;
     }
   }
 
   /** Called once per frame to poll gamepad and process fluid scrolling */
   processInput(deltaMs: number): InputEvent {
-    // Poll gamepad
     this._pollGamepad();
 
-    // Update fluid scroll for held directions
     let directionEvent: InputEvent = null;
     for (const dir of ['UP', 'DOWN', 'LEFT', 'RIGHT'] as GameButton[]) {
       const state = this.scrollStates.get(dir)!;
@@ -313,10 +320,8 @@ export class InputManager {
         }
         state.holdTime += deltaMs;
         if (!state.triggered) {
-          // First press already in buttonJustPressed
           state.triggered = true;
         } else if (state.holdTime > state.initialDelay) {
-          // Repeat
           const repeatTime = state.holdTime - state.initialDelay;
           if (repeatTime % state.repeatDelay < deltaMs) {
             directionEvent = dir;
@@ -329,8 +334,6 @@ export class InputManager {
       }
     }
 
-    // Priority: just-pressed buttons > held direction repeats
-    // Return the highest-priority just-pressed button
     const priorityOrder: GameButton[] = ['SELECT', 'BACK', 'INFO', 'AUX', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT'];
     for (const btn of priorityOrder) {
       if (this.buttonJustPressed.has(btn)) {
@@ -338,28 +341,23 @@ export class InputManager {
       }
     }
 
-    // Then held direction repeats
     if (directionEvent) return directionEvent;
 
     return null;
   }
 
-  /** Check if a button is currently held down */
   isPressed(button: GameButton): boolean {
     return this.buttonsDown.has(button);
   }
 
-  /** Check if a button was just pressed this frame */
   justPressed(button: GameButton): boolean {
     return this.buttonJustPressed.has(button);
   }
 
-  /** Check if a button was just released this frame */
   justReleased(button: GameButton): boolean {
     return this.buttonJustReleased.has(button);
   }
 
-  /** Clear per-frame state. Call at end of frame. */
   endFrame(): void {
     this.buttonJustPressed.clear();
     this.buttonJustReleased.clear();
@@ -367,22 +365,17 @@ export class InputManager {
     this.mouseMoved = false;
     this.cameraPanDeltaX = 0;
     this.cameraPanDeltaY = 0;
+    this.zoomDelta = 0;
   }
 
-  /**
-   * Update the display scale info so mouse-to-game coordinate conversion
-   * works. Called from main.ts on resize and at startup.
-   * @param cssScale  CSS pixels per game pixel (uniform X and Y).
-   */
   setDisplayScale(cssScale: number): void {
     this.displayScaleX = cssScale;
     this.displayScaleY = cssScale;
-    // Offset is not needed because mouseX/Y are already relative to canvas
     this.displayOffsetX = 0;
     this.displayOffsetY = 0;
   }
 
-  /** Get mouse position in game-pixel coordinates (0..WINWIDTH, 0..WINHEIGHT). */
+  /** Get mouse position in game-pixel coordinates. */
   getGameMousePos(scaleX?: number, scaleY?: number, offsetX?: number, offsetY?: number): [number, number] {
     const sx = scaleX ?? this.displayScaleX;
     const sy = scaleY ?? this.displayScaleY;
@@ -395,16 +388,12 @@ export class InputManager {
   }
 
   /**
-   * Get the tile coordinates under the mouse cursor.
-   * @param cameraOffsetX  Camera pixel offset (from Camera.getOffset()[0]).
-   * @param cameraOffsetY  Camera pixel offset (from Camera.getOffset()[1]).
-   * @returns [tileX, tileY] or null if the mouse is outside the game area.
+   * Get the tile coordinates under the mouse/touch cursor.
+   * Uses dynamic viewport dimensions.
    */
   getMouseTile(cameraOffsetX: number, cameraOffsetY: number): [number, number] | null {
     const [gx, gy] = this.getGameMousePos();
-    // Check if the mouse is within the game viewport
-    if (gx < 0 || gy < 0 || gx >= 240 || gy >= 160) return null;
-    // Convert game-pixel position + camera offset to tile coordinates
+    if (gx < 0 || gy < 0 || gx >= viewport.width || gy >= viewport.height) return null;
     const tileX = Math.floor((gx + cameraOffsetX) / 16);
     const tileY = Math.floor((gy + cameraOffsetY) / 16);
     return [tileX, tileY];
@@ -416,7 +405,6 @@ export class InputManager {
     const gp = gamepads[this.gamepadIndex];
     if (!gp) return;
 
-    // D-pad or left stick
     const threshold = 0.5;
     const lx = gp.axes[0] ?? 0;
     const ly = gp.axes[1] ?? 0;
@@ -430,10 +418,9 @@ export class InputManager {
     if (ly > threshold) this.buttonsDown.add('DOWN');
     else this.buttonsDown.delete('DOWN');
 
-    // Buttons: A=SELECT, B=BACK, X=INFO, Y=AUX, Start=START
     const buttonMap: [number, GameButton][] = [
       [0, 'SELECT'], [1, 'BACK'], [2, 'INFO'], [3, 'AUX'],
-      [9, 'START'], [4, 'AUX'], // LB also AUX
+      [9, 'START'], [4, 'AUX'],
     ];
     for (const [idx, btn] of buttonMap) {
       if (gp.buttons[idx]?.pressed) {

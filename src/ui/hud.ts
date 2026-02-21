@@ -1,5 +1,5 @@
 import { Surface } from '../engine/surface';
-import { WINWIDTH, WINHEIGHT } from '../engine/constants';
+import { viewport } from '../engine/viewport';
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 
@@ -51,7 +51,7 @@ export class HUD {
   /** Draw unit info panel (name, HP bar, level, class) */
   private drawUnitInfo(surf: Surface, unit: UnitObject): void {
     const px = PANEL_MARGIN;
-    const py = WINHEIGHT - UNIT_PANEL_H - PANEL_MARGIN;
+    const py = viewport.height - UNIT_PANEL_H - PANEL_MARGIN;
 
     // Background
     surf.fillRect(px, py, UNIT_PANEL_W, UNIT_PANEL_H, BG_COLOR);
@@ -85,8 +85,8 @@ export class HUD {
 
   /** Draw terrain info panel */
   private drawTerrainInfo(surf: Surface): void {
-    const px = WINWIDTH - TERRAIN_PANEL_W - PANEL_MARGIN;
-    const py = WINHEIGHT - TERRAIN_PANEL_H - PANEL_MARGIN;
+    const px = viewport.width - TERRAIN_PANEL_W - PANEL_MARGIN;
+    const py = viewport.height - TERRAIN_PANEL_H - PANEL_MARGIN;
 
     // Background
     surf.fillRect(px, py, TERRAIN_PANEL_W, TERRAIN_PANEL_H, BG_COLOR);
