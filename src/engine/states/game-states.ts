@@ -526,6 +526,16 @@ export class MoveState extends MapState {
       return;
     }
 
+    // If the unit already finished (e.g. returned from menu after Wait/Attack),
+    // pop back to FreeState by clearing the selection and returning.
+    if (unit.finished || !unit.canStillAct()) {
+      game.selectedUnit = null;
+      game._moveOrigin = null;
+      game.highlight.clear();
+      game.state.back();
+      return 'repeat';
+    }
+
     this.previousPosition = [unit.position[0], unit.position[1]];
     // Save origin so MenuState can undo the move
     game._moveOrigin = [unit.position[0], unit.position[1]];
@@ -667,6 +677,14 @@ export class MenuState extends State {
     if (!unit || !unit.position) {
       game.state.back();
       return;
+    }
+
+    // If the unit already finished (returned from a sub-state like ItemUse/Trade),
+    // pop back so MoveState can clean up and return to FreeState.
+    if (unit.finished || !unit.canStillAct()) {
+      this.menu = null;
+      game.state.back();
+      return 'repeat';
     }
 
     this.previousPosition = game._moveOrigin ?? null;
@@ -1328,6 +1346,13 @@ export class TargetingState extends MapState {
     if (!unit || !unit.position) {
       game.state.back();
       return;
+    }
+
+    // If the unit already finished (returned from combat), pop back.
+    if (unit.finished || !unit.canStillAct()) {
+      game.highlight.clear();
+      game.state.back();
+      return 'repeat';
     }
 
     // Get valid targets
