@@ -31,8 +31,9 @@ export interface StatusEffect {
  * Runtime representation of a unit on the map.
  *
  * Constructed from a `UnitPrefab` (the serialised template) and the unit's
- * `KlassDef`.  Initial stat values are computed as `unit.bases + klass.bases`
- * for every stat key present in either record.
+ * `KlassDef`.  Initial stat values are taken directly from the prefab's
+ * bases (unique units have full stats; generic units' synthetic prefabs
+ * already contain class bases).
  */
 export class UnitObject {
   readonly nid: NID;
@@ -44,7 +45,7 @@ export class UnitObject {
   level: number;
   exp: number;
 
-  /** Current effective stats (unit bases + class bases at construction). */
+  /** Current effective stats (from prefab bases at construction). */
   stats: Record<string, number>;
   currentHp: number;
   growths: Record<string, number>;
@@ -92,27 +93,27 @@ export class UnitObject {
     this.level = prefab.level;
     this.exp = 0;
 
-    // --- Stats: merge unit bases + class bases ---
+    // --- Stats: use prefab bases directly ---
+    // In LT, unique units store their full base stats in the prefab.
+    // Class bases are only added if the `unit_stats_as_bonus` constant is true
+    // (default: false). For generic units, the caller (spawnGenericUnit) already
+    // sets the synthetic prefab's bases to the class bases, so this works for
+    // both cases without double-counting.
     this.stats = {};
-    const allStatKeys = Array.from(new Set([
-      ...Object.keys(prefab.bases),
-      ...Object.keys(klass.bases),
-    ]));
-    for (const key of allStatKeys) {
-      this.stats[key] = (prefab.bases[key] ?? 0) + (klass.bases[key] ?? 0);
+    for (const key of Object.keys(prefab.bases)) {
+      this.stats[key] = prefab.bases[key] ?? 0;
     }
 
     // --- HP initialisation ---
     this.currentHp = this.stats['HP'] ?? 0;
 
-    // --- Growths: merge unit growths + class growths ---
+    // --- Growths: use prefab growths directly ---
+    // Same logic as stats: unique units have full growths in the prefab.
+    // The class has a separate `growth_bonus` field used during leveling,
+    // NOT added at construction time (unless `unit_stats_as_bonus` is true).
     this.growths = {};
-    const allGrowthKeys = Array.from(new Set([
-      ...Object.keys(prefab.growths),
-      ...Object.keys(klass.growths),
-    ]));
-    for (const key of allGrowthKeys) {
-      this.growths[key] = (prefab.growths[key] ?? 0) + (klass.growths[key] ?? 0);
+    for (const key of Object.keys(prefab.growths)) {
+      this.growths[key] = prefab.growths[key] ?? 0;
     }
 
     // --- Max stat caps from class ---
@@ -126,11 +127,15 @@ export class UnitObject {
     this.ai = 'None';
 
     // --- Weapon experience ---
+    // wexp_gain format: { "Sword": [usable, starting_wexp, cap], ... }
+    // We store the starting wexp value for each weapon type the unit can use.
+    // The `usable` flag indicates whether the class allows this weapon type.
+    // The `cap` limits maximum wexp gain (not enforced at construction).
     this.wexp = {};
     for (const [wtype, entry] of Object.entries(prefab.wexp_gain)) {
-      const [usable, gain] = entry;
+      const [usable, startingWexp, _cap] = entry;
       if (usable) {
-        this.wexp[wtype] = gain;
+        this.wexp[wtype] = startingWexp;
       }
     }
 

@@ -43,7 +43,14 @@ function getGame(): any {
   return _game;
 }
 
-
+/** Get the board, throwing a clear error if no level is loaded. */
+function getBoard(): any {
+  const game = getGame();
+  if (!game.board) {
+    throw new Error('No level loaded — game.board is null. Ensure loadLevel() completes before entering gameplay states.');
+  }
+  return game.board;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,6 +85,7 @@ function collectVisibleUnits(): {
   finished: boolean;
 }[] {
   const game = getGame();
+  if (!game.board) return [];
   const allUnits: UnitObject[] = game.board.getAllUnits();
   const result: {
     x: number;
@@ -133,6 +141,7 @@ function collectVisibleUnits(): {
 /** Render the map through MapView and blit onto `surf`. */
 function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   const game = getGame();
+  if (!game.board || !game.tilemap) return surf; // No level loaded
   game.camera.update();
   game.cursor.update();
 
@@ -176,7 +185,7 @@ function moveCursor(dx: number, dy: number): void {
 function getUnitUnderCursor(): UnitObject | null {
   const game = getGame();
   const pos = game.cursor.getHover();
-  return game.board.getUnit(pos.x, pos.y);
+  return getBoard().getUnit(pos.x, pos.y);
 }
 
 /** Get all enemies of a unit within weapon range from a specific position. */
@@ -190,7 +199,7 @@ function getTargetsInRange(
   if (!weapon) return [];
   const minRange = weapon.getMinRange();
   const maxRange = weapon.getMaxRange();
-  const allUnits: UnitObject[] = game.board.getAllUnits();
+  const allUnits: UnitObject[] = getBoard().getAllUnits();
   const targets: UnitObject[] = [];
 
   for (const other of allUnits) {
@@ -210,10 +219,11 @@ function getTargetsInRange(
 /** Get all adjacent allied units to a unit at a specific position. */
 function getAdjacentAllies(unit: UnitObject, x: number, y: number): UnitObject[] {
   const game = getGame();
+  const board = getBoard();
   const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
   const allies: UnitObject[] = [];
   for (const [dx, dy] of dirs) {
-    const other = game.board.getUnit(x + dx, y + dy);
+    const other = board.getUnit(x + dx, y + dy);
     if (other && other !== unit && !other.isDead() && game.db.areAllied(unit.team, other.team)) {
       allies.push(other);
     }
@@ -223,11 +233,11 @@ function getAdjacentAllies(unit: UnitObject, x: number, y: number): UnitObject[]
 
 /** Get all adjacent units (any team) at a specific position. */
 function getAdjacentUnits(x: number, y: number): UnitObject[] {
-  const game = getGame();
+  const board = getBoard();
   const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
   const units: UnitObject[] = [];
   for (const [dx, dy] of dirs) {
-    const other = game.board.getUnit(x + dx, y + dy);
+    const other = board.getUnit(x + dx, y + dy);
     if (other && !other.isDead()) {
       units.push(other);
     }
@@ -237,13 +247,13 @@ function getAdjacentUnits(x: number, y: number): UnitObject[] {
 
 /** Get all adjacent empty tiles that are in bounds. */
 function getAdjacentEmptyTiles(x: number, y: number): [number, number][] {
-  const game = getGame();
+  const board = getBoard();
   const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
   const tiles: [number, number][] = [];
   for (const [dx, dy] of dirs) {
     const nx = x + dx;
     const ny = y + dy;
-    if (game.board.inBounds(nx, ny) && !game.board.isOccupied(nx, ny)) {
+    if (board.inBounds(nx, ny) && !board.isOccupied(nx, ny)) {
       tiles.push([nx, ny]);
     }
   }
@@ -290,6 +300,10 @@ export class TitleState extends State {
   override takeInput(event: InputEvent): StateResult {
     if (event === 'START' || event === 'SELECT') {
       const game = getGame();
+      if (!game.board) {
+        console.error('Cannot start: no level loaded (game.board is null). Check that game data is accessible.');
+        return;
+      }
       game.state.change('free');
       return;
     }
@@ -364,10 +378,11 @@ export class FreeState extends MapState {
 
   override begin(): StateResult {
     const game = getGame();
+    const board = getBoard();
     game.cursor.visible = true;
 
     // Auto-cursor to first available player unit
-    const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
+    const playerUnits: UnitObject[] = board.getTeamUnits('player');
     const available = playerUnits.find((u) => u.canStillAct() && u.position);
     if (available && available.position) {
       game.cursor.setPos(available.position[0], available.position[1]);
@@ -2300,40 +2315,62 @@ export class EventState extends State {
       return;
     }
 
-    switch (cmd.type) {
-      case 'speak':
-        this.dialog = new Dialog(
-          cmd.text ?? '',
-          cmd.speaker ?? undefined,
-        );
-        break;
+    // EventCommand format: { type: string, args: string[] }
+    // args are semicolon-delimited from the source line after the command name.
+    const args = cmd.args ?? [];
 
-      case 'wait':
-        this.waiting = true;
-        this.waitTimer = cmd.duration ?? 1000;
+    switch (cmd.type) {
+      case 'speak': {
+        // speak;SpeakerName;Dialog text here
+        const speaker = args[0] ?? '';
+        const text = args[1] ?? '';
+        this.dialog = new Dialog(text, speaker || undefined);
         break;
+      }
+
+      case 'wait': {
+        // wait;duration_ms
+        this.waiting = true;
+        this.waitTimer = parseInt(args[0], 10) || 1000;
+        break;
+      }
+
+      case 'transition': {
+        // transition;type (e.g. "close", "open", "fade_in", "fade_out")
+        // For now, just wait a short time to simulate the transition
+        this.waiting = true;
+        this.waitTimer = 500;
+        break;
+      }
 
       case 'move_unit': {
+        // move_unit;unit_nid;x,y
+        const unitNid = args[0] ?? '';
+        const posStr = args[1] ?? '';
+        const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
         const unit: UnitObject | undefined = game.board
           .getAllUnits()
-          .find((u: UnitObject) => u.nid === cmd.unit);
-        if (unit && cmd.position) {
-          game.board.moveUnit(unit, cmd.position[0], cmd.position[1]);
+          .find((u: UnitObject) => u.nid === unitNid);
+        if (unit && posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
+          game.board.moveUnit(unit, posParts[0], posParts[1]);
         }
         this.commandIndex++;
         break;
       }
 
       case 'add_unit': {
-        // Placeholder for spawning units during events
+        // add_unit;unit_nid;x,y  (or add_unit;unit_nid;starting)
+        // Placeholder — full implementation needs spawn logic
         this.commandIndex++;
         break;
       }
 
       case 'remove_unit': {
+        // remove_unit;unit_nid
+        const unitNid = args[0] ?? '';
         const unit: UnitObject | undefined = game.board
           .getAllUnits()
-          .find((u: UnitObject) => u.nid === cmd.unit);
+          .find((u: UnitObject) => u.nid === unitNid);
         if (unit) {
           game.board.removeUnit(unit);
         }
@@ -2341,8 +2378,173 @@ export class EventState extends State {
         break;
       }
 
+      case 'add_group': {
+        // add_group;group_nid  — spawn all units in a group at their positions
+        // Placeholder — needs group spawn logic
+        this.commandIndex++;
+        break;
+      }
+
+      case 'remove_group': {
+        // remove_group;group_nid  — remove all units in a group from the map
+        // Placeholder — needs group removal logic
+        this.commandIndex++;
+        break;
+      }
+
+      case 'move_group': {
+        // move_group;group_nid  — move group units to their new positions
+        // Placeholder — needs group movement logic
+        this.commandIndex++;
+        break;
+      }
+
+      case 'give_item': {
+        // give_item;unit_nid;item_nid
+        // Placeholder — needs item creation from DB
+        this.commandIndex++;
+        break;
+      }
+
+      case 'remove_item': {
+        // remove_item;unit_nid;item_nid
+        const unitNid = args[0] ?? '';
+        const itemNid = args[1] ?? '';
+        const unit: UnitObject | undefined = game.board
+          .getAllUnits()
+          .find((u: UnitObject) => u.nid === unitNid);
+        if (unit) {
+          const idx = unit.items.findIndex(i => i.nid === itemNid);
+          if (idx !== -1) {
+            unit.items.splice(idx, 1);
+          }
+        }
+        this.commandIndex++;
+        break;
+      }
+
+      case 'set_current_hp': {
+        // set_current_hp;unit_nid;value
+        const unitNid = args[0] ?? '';
+        const hpValue = parseInt(args[1], 10);
+        const unit: UnitObject | undefined = game.board
+          .getAllUnits()
+          .find((u: UnitObject) => u.nid === unitNid);
+        if (unit && !isNaN(hpValue)) {
+          unit.currentHp = Math.min(hpValue, unit.maxHp);
+        }
+        this.commandIndex++;
+        break;
+      }
+
+      case 'change_ai': {
+        // change_ai;unit_nid;ai_nid
+        const unitNid = args[0] ?? '';
+        const aiNid = args[1] ?? 'None';
+        const unit: UnitObject | undefined = game.board
+          .getAllUnits()
+          .find((u: UnitObject) => u.nid === unitNid);
+        if (unit) {
+          unit.ai = aiNid;
+        }
+        this.commandIndex++;
+        break;
+      }
+
+      case 'change_team': {
+        // change_team;unit_nid;team
+        const unitNid = args[0] ?? '';
+        const team = args[1] ?? 'player';
+        const unit: UnitObject | undefined = game.board
+          .getAllUnits()
+          .find((u: UnitObject) => u.nid === unitNid);
+        if (unit) {
+          unit.team = team;
+        }
+        this.commandIndex++;
+        break;
+      }
+
+      case 'game_var':
+      case 'set_game_var': {
+        // game_var;var_name;value
+        const varName = args[0] ?? '';
+        const value = args[1] ?? 'true';
+        if (varName && game.gameVars) {
+          game.gameVars.set(varName, value);
+        }
+        this.commandIndex++;
+        break;
+      }
+
+      case 'music':
+      case 'change_music': {
+        // music;music_nid  — change background music
+        // Placeholder — needs audio manager integration
+        this.commandIndex++;
+        break;
+      }
+
+      case 'sound': {
+        // sound;sound_nid  — play a sound effect
+        // Placeholder — needs audio manager integration
+        this.commandIndex++;
+        break;
+      }
+
+      case 'win_game': {
+        // win_game — trigger victory
+        game.state.clear();
+        game.state.change('title');
+        break;
+      }
+
+      case 'lose_game': {
+        // lose_game — trigger defeat
+        game.state.clear();
+        game.state.change('title');
+        break;
+      }
+
+      // Portrait commands — advance immediately (visual-only, no game state change)
+      case 'add_portrait':
+      case 'multi_add_portrait':
+      case 'remove_portrait':
+      case 'multi_remove_portrait':
+      case 'remove_all_portraits':
+      case 'move_portrait':
+      case 'bop_portrait':
+      case 'mirror_portrait':
+      case 'expression':
+      case 'hide_combat_ui':
+      case 'show_combat_ui':
+      case 'change_background':
+      case 'disp_cursor':
+      case 'move_cursor':
+      case 'center_cursor':
+      case 'flicker_cursor':
+      case 'screen_shake':
+      case 'screen_shake_end':
+        // These are visual/UI commands that need proper rendering support.
+        // For now, skip them to allow the event to progress.
+        this.commandIndex++;
+        break;
+
+      // Flow control — skip for now (would need conditional evaluation)
+      case 'if':
+      case 'elif':
+      case 'else':
+      case 'end':
+      case 'for':
+      case 'endf':
+      case 'finish':
+      case 'end_skip':
+      case 'comment':
+        this.commandIndex++;
+        break;
+
       default:
-        // Unknown command — skip
+        // Unknown/unimplemented command — skip
         this.commandIndex++;
         break;
     }

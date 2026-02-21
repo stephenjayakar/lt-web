@@ -16,27 +16,158 @@ export interface EventTrigger {
 }
 
 export type EventCommandType =
-  | 'speak' | 'add_portrait' | 'remove_portrait'
-  | 'transition' | 'set_current_hp' | 'add_unit' | 'remove_unit'
-  | 'move_unit' | 'give_item' | 'give_money' | 'change_team'
-  | 'set_game_var' | 'music' | 'sound' | 'wait' | 'end_skip'
-  | 'win_game' | 'lose_game' | 'map_anim' | 'set_tile'
-  | 'change_objective' | 'add_region' | 'remove_region';
+  // Flow control
+  | 'comment' | 'if' | 'elif' | 'else' | 'end' | 'for' | 'endf' | 'finish' | 'wait' | 'end_skip'
+  // Music/sound
+  | 'music' | 'music_fade_back' | 'music_clear' | 'sound' | 'stop_sound' | 'change_music' | 'change_special_music'
+  // Portraits
+  | 'add_portrait' | 'multi_add_portrait' | 'remove_portrait' | 'multi_remove_portrait'
+  | 'remove_all_portraits' | 'move_portrait' | 'bop_portrait' | 'mirror_portrait' | 'expression'
+  // Dialogue
+  | 'speak_style' | 'speak' | 'say' | 'unhold' | 'unpause' | 'narrate' | 'alert' | 'location_card'
+  | 'credits' | 'ending' | 'paired_ending' | 'pop_dialog' | 'toggle_narration_mode'
+  | 'hide_combat_ui' | 'show_combat_ui'
+  // Background/foreground
+  | 'transition' | 'change_background' | 'pause_background' | 'unpause_background'
+  // Cursor/camera
+  | 'disp_cursor' | 'move_cursor' | 'center_cursor' | 'flicker_cursor' | 'screen_shake' | 'screen_shake_end'
+  // Game-wide variables
+  | 'game_var' | 'inc_game_var' | 'modify_game_var' | 'set_next_chapter'
+  | 'enable_convoy' | 'enable_supports' | 'enable_turnwheel'
+  | 'give_money' | 'give_bexp' | 'add_market_item' | 'remove_market_item'
+  // Level-wide variables
+  | 'level_var' | 'inc_level_var' | 'modify_level_var'
+  | 'end_turn' | 'win_game' | 'lose_game' | 'main_menu' | 'skip_save'
+  | 'add_talk' | 'remove_talk' | 'hide_talk' | 'unhide_talk'
+  | 'change_objective_simple' | 'change_objective_win' | 'change_objective_loss'
+  // Tilemap
+  | 'change_tilemap' | 'show_layer' | 'hide_layer'
+  | 'add_weather' | 'remove_weather' | 'map_anim' | 'remove_map_anim'
+  // Regions
+  | 'add_region' | 'region_condition' | 'remove_region'
+  // Add/remove/interact units
+  | 'load_unit' | 'make_generic' | 'create_unit'
+  | 'add_unit' | 'move_unit' | 'remove_unit' | 'kill_unit' | 'remove_all_units' | 'remove_all_enemies'
+  | 'interact_unit' | 'resurrect'
+  // Modify unit properties
+  | 'set_name' | 'set_current_hp' | 'set_current_mana'
+  | 'reset' | 'has_attacked' | 'has_traded' | 'has_finished'
+  | 'give_item' | 'equip_item' | 'remove_item' | 'move_item'
+  | 'give_exp' | 'set_exp' | 'give_wexp' | 'set_wexp'
+  | 'give_skill' | 'remove_skill'
+  | 'change_ai' | 'change_party' | 'change_faction' | 'change_team'
+  | 'change_portrait' | 'change_stats' | 'set_stats' | 'change_growths' | 'set_growths'
+  | 'set_unit_level' | 'autolevel_to' | 'promote' | 'change_class'
+  | 'add_tag' | 'remove_tag'
+  // Unit groups
+  | 'add_group' | 'spawn_group' | 'move_group' | 'remove_group'
+  // Misc
+  | 'battle_save' | 'prep' | 'base' | 'shop' | 'choice' | 'unchoice'
+  | 'chapter_title' | 'set_tile'
+  // Legacy aliases (resolved to canonical form)
+  | 'set_game_var' | 'change_objective';
 
 export interface EventCommand {
   type: EventCommandType;
   args: string[];
 }
 
-// Set of all valid command types for parsing validation
+// Canonical command set — all commands we recognize
 const VALID_COMMANDS: Set<string> = new Set<string>([
-  'speak', 'add_portrait', 'remove_portrait',
-  'transition', 'set_current_hp', 'add_unit', 'remove_unit',
-  'move_unit', 'give_item', 'give_money', 'change_team',
-  'set_game_var', 'music', 'sound', 'wait', 'end_skip',
-  'win_game', 'lose_game', 'map_anim', 'set_tile',
-  'change_objective', 'add_region', 'remove_region',
+  // Flow control
+  'comment', 'if', 'elif', 'else', 'end', 'for', 'endf', 'finish', 'wait', 'end_skip',
+  // Music/sound
+  'music', 'music_fade_back', 'music_clear', 'sound', 'stop_sound', 'change_music', 'change_special_music',
+  // Portraits
+  'add_portrait', 'multi_add_portrait', 'remove_portrait', 'multi_remove_portrait',
+  'remove_all_portraits', 'move_portrait', 'bop_portrait', 'mirror_portrait', 'expression',
+  // Dialogue
+  'speak_style', 'speak', 'say', 'unhold', 'unpause', 'narrate', 'alert', 'location_card',
+  'credits', 'ending', 'paired_ending', 'pop_dialog', 'toggle_narration_mode',
+  'hide_combat_ui', 'show_combat_ui',
+  // Background/foreground
+  'transition', 'change_background', 'pause_background', 'unpause_background',
+  // Cursor/camera
+  'disp_cursor', 'move_cursor', 'center_cursor', 'flicker_cursor', 'screen_shake', 'screen_shake_end',
+  // Game-wide variables
+  'game_var', 'inc_game_var', 'modify_game_var', 'set_next_chapter',
+  'enable_convoy', 'enable_supports', 'enable_turnwheel',
+  'give_money', 'give_bexp', 'add_market_item', 'remove_market_item',
+  // Level-wide variables
+  'level_var', 'inc_level_var', 'modify_level_var',
+  'end_turn', 'win_game', 'lose_game', 'main_menu', 'skip_save',
+  'add_talk', 'remove_talk', 'hide_talk', 'unhide_talk',
+  'change_objective_simple', 'change_objective_win', 'change_objective_loss',
+  // Tilemap
+  'change_tilemap', 'show_layer', 'hide_layer',
+  'add_weather', 'remove_weather', 'map_anim', 'remove_map_anim',
+  // Regions
+  'add_region', 'region_condition', 'remove_region',
+  // Add/remove/interact units
+  'load_unit', 'make_generic', 'create_unit',
+  'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
+  'interact_unit', 'resurrect',
+  // Modify unit properties
+  'set_name', 'set_current_hp', 'set_current_mana',
+  'reset', 'has_attacked', 'has_traded', 'has_finished',
+  'give_item', 'equip_item', 'remove_item', 'move_item',
+  'give_exp', 'set_exp', 'give_wexp', 'set_wexp',
+  'give_skill', 'remove_skill',
+  'change_ai', 'change_party', 'change_faction', 'change_team',
+  'change_portrait', 'change_stats', 'set_stats', 'change_growths', 'set_growths',
+  'set_unit_level', 'autolevel_to', 'promote', 'change_class',
+  'add_tag', 'remove_tag',
+  // Unit groups
+  'add_group', 'spawn_group', 'move_group', 'remove_group',
+  // Misc
+  'battle_save', 'prep', 'base', 'shop', 'choice', 'unchoice',
+  'chapter_title', 'set_tile',
+  // Legacy/aliases from our old code
+  'set_game_var', 'change_objective',
 ]);
+
+/** Map of command aliases to their canonical names. */
+const COMMAND_ALIASES: Record<string, string> = {
+  // Common aliases from LT
+  's': 'speak',
+  'u': 'add_portrait',
+  'uu': 'multi_add_portrait',
+  'r': 'remove_portrait',
+  'rr': 'multi_remove_portrait',
+  'rrr': 'remove_all_portraits',
+  'e': 'expression',
+  'bop': 'bop_portrait',
+  'mirror': 'mirror_portrait',
+  't': 'transition',
+  'b': 'change_background',
+  'm': 'music',
+  'mf': 'music_fade_back',
+  'highlight': 'flicker_cursor',
+  'set_cursor': 'move_cursor',
+  'gvar': 'game_var',
+  'ginc': 'inc_game_var',
+  'mgvar': 'modify_game_var',
+  'lvar': 'level_var',
+  'linc': 'inc_level_var',
+  'mlvar': 'modify_level_var',
+  'add': 'add_unit',
+  'move': 'move_unit',
+  'remove': 'remove_unit',
+  'kill': 'kill_unit',
+  'interact': 'interact_unit',
+  'reset_unit': 'reset',
+  'add_skill': 'give_skill',
+  'set_ai': 'change_ai',
+  'set_roam_ai': 'change_roam_ai',
+  'set_ai_group': 'change_ai_group',
+  'morph_group': 'move_group',
+  'break': 'finish',
+  'resurrect_unit': 'resurrect',
+  'unlock_lore': 'add_lore',
+  // Legacy names from our old code
+  'set_game_var': 'game_var',
+  'change_objective': 'change_objective_simple',
+};
 
 /**
  * GameEvent - A single event instance being executed.
@@ -88,7 +219,12 @@ export class GameEvent {
     }
 
     const parts = trimmed.split(';');
-    const rawType = parts[0].trim().toLowerCase();
+    let rawType = parts[0].trim().toLowerCase();
+
+    // Resolve aliases to canonical command names
+    if (COMMAND_ALIASES[rawType]) {
+      rawType = COMMAND_ALIASES[rawType];
+    }
 
     if (!VALID_COMMANDS.has(rawType)) {
       return null;

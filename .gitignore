@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Lex Talionis maker source (reference only, not part of this project)
+lt-maker/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

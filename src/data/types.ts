@@ -30,17 +30,23 @@ export interface WeaponRankDef {
 
 export interface WeaponAdvantage {
   weapon_type: NID;
+  weapon_rank: string;        // e.g. "All", "S", "A" — which ranks this applies to
   damage: string;
+  resist: string;             // defense bonus vs this type
   accuracy: string;
+  avoid: string;              // evasion bonus
   crit: string;
+  dodge: string;              // crit-avoid bonus
   attack_speed: string;
-  defense?: string;
-  resist?: string;
+  defense_speed: string;      // defensive AS bonus
 }
 
 export interface WeaponDef {
   nid: NID;
   name: string;
+  force_melee_anim: boolean;
+  hide_from_display: boolean;
+  rank_bonus: any[];          // rank-based bonus entries
   advantage: WeaponAdvantage[];
   disadvantage: WeaponAdvantage[];
   icon_nid: NID;
@@ -103,15 +109,22 @@ export interface KlassDef {
   tags: string[];
   max_level: number;
   bases: Record<string, number>;
+  /** Growths used for generic units (and added to unique unit growths when unit_stats_as_bonus is true). */
   growths: Record<string, number>;
+  /** Bonus added to unique unit growths during leveling (separate from `growths`). */
+  growth_bonus: Record<string, number>;
   promotion: Record<string, number>;
   max_stats: Record<string, number>;
   /** [level, skill_nid] */
   learned_skills: [number, NID][];
   /** [usable, wexp_gain, cap] per weapon type */
   wexp_gain: Record<string, [boolean, number, number]>;
+  icon_nid: NID;
+  icon_index: [number, number];
   map_sprite_nid: NID;
-  combat_anim_nid: NID;
+  combat_anim_nid: NID | null;
+  /** Custom user-defined fields (empty in default project). */
+  fields: any[];
 }
 
 // ------------------------------------------------------------------
@@ -256,6 +269,11 @@ export interface AiBehavior {
   target: string;
   target_spec: string | string[] | null;
   view_range: number;
+  invert_targeting: boolean;
+  roam_speed: number;
+  desired_proximity: number;
+  /** Condition expression; empty string = no condition. */
+  condition: string;
 }
 
 export interface AiDef {
@@ -263,6 +281,7 @@ export interface AiDef {
   behaviours: AiBehavior[];
   priority: number;
   offense_bias: number;
+  roam_ai: boolean;
 }
 
 // ------------------------------------------------------------------
@@ -279,9 +298,21 @@ export type McostData = [number[][], string[], string[]];
 export interface DifficultyMode {
   nid: NID;
   name: string;
+  color: string;
   permadeath_choice: string;
   growths_choice: string;
   rng_choice: string;
+  player_bases: Record<string, number>;
+  enemy_bases: Record<string, number>;
+  boss_bases: Record<string, number>;
+  player_growths: Record<string, number>;
+  enemy_growths: Record<string, number>;
+  boss_growths: Record<string, number>;
+  player_autolevels: number;
+  enemy_autolevels: number;
+  boss_autolevels: number;
+  promoted_autolevels_fraction: number;
+  start_locked: boolean;
 }
 
 /** [constant_nid, value] */

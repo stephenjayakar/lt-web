@@ -288,11 +288,13 @@ export function weaponTriangle(
   }
 
   // Check disadvantages
+  // Note: disadvantage entries already store negative values in the data
+  // (e.g. damage: "-1", accuracy: "-15"), so we use them directly.
   for (const dis of atkWeaponDef.disadvantage) {
     if (dis.weapon_type === defType) {
       return {
-        hitBonus: -parseNumericValue(dis.accuracy),
-        damageBonus: -parseNumericValue(dis.damage),
+        hitBonus: parseNumericValue(dis.accuracy),
+        damageBonus: parseNumericValue(dis.damage),
       };
     }
   }
