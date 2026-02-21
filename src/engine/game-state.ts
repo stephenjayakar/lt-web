@@ -555,11 +555,16 @@ export class GameState {
       const spriteNid = klassDef.map_sprite_nid;
       if (!spriteNid) continue;
 
+      // Look up team palette for coloring (enemy=red, other=green, etc.)
+      const teamDef = this.db.teams.defs.find(t => t.nid === unit.team);
+      const teamPalette = teamDef?.palette ?? undefined;
+
       loadPromises.push(
         this.resources.tryLoadMapSprite(spriteNid).then((sprites) => {
           // Construct a proper MapSprite from the loaded images.
           // MapSprite.fromImages handles null move images gracefully.
-          const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move);
+          // Pass teamPalette to recolor from blue to the unit's team color.
+          const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move, teamPalette);
           unit.sprite = mapSprite;
         }),
       );
