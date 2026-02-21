@@ -1,5 +1,5 @@
 import { Surface } from '../engine/surface';
-import { WINWIDTH, WINHEIGHT } from '../engine/constants';
+import { viewport } from '../engine/viewport';
 
 const FONT_MAIN = '10px monospace';
 const FONT_SUB = '8px monospace';
@@ -60,7 +60,7 @@ export class Banner {
     alpha = Math.max(0, Math.min(1, alpha));
 
     // Banner position: centered horizontally, 1/3 from top
-    const stripY = Math.floor(WINHEIGHT / 3) - Math.floor(STRIP_HEIGHT / 2);
+    const stripY = Math.floor(viewport.height / 3) - Math.floor(STRIP_HEIGHT / 2);
     const totalHeight = this.subText ? STRIP_HEIGHT + 12 : STRIP_HEIGHT;
 
     // Semi-transparent black background strip (full width)
@@ -68,19 +68,19 @@ export class Banner {
     surf.fillRect(
       0,
       stripY,
-      WINWIDTH,
+      viewport.width,
       totalHeight,
       `rgba(${BG_COLOR_BASE[0]}, ${BG_COLOR_BASE[1]}, ${BG_COLOR_BASE[2]}, ${bgAlpha})`,
     );
 
     // Subtle border lines
     const borderAlpha = 0.4 * alpha;
-    surf.fillRect(0, stripY, WINWIDTH, 1, `rgba(160, 160, 200, ${borderAlpha})`);
-    surf.fillRect(0, stripY + totalHeight - 1, WINWIDTH, 1, `rgba(160, 160, 200, ${borderAlpha})`);
+    surf.fillRect(0, stripY, viewport.width, 1, `rgba(160, 160, 200, ${borderAlpha})`);
+    surf.fillRect(0, stripY + totalHeight - 1, viewport.width, 1, `rgba(160, 160, 200, ${borderAlpha})`);
 
     // Main text — centered
     const mainTextWidth = this.text.length * CHAR_WIDTH_MAIN;
-    const mainTextX = Math.floor((WINWIDTH - mainTextWidth) / 2);
+    const mainTextX = Math.floor((viewport.width - mainTextWidth) / 2);
     const mainTextY = stripY + Math.floor((STRIP_HEIGHT - 10) / 2);
     const textAlpha = alpha;
     surf.drawText(
@@ -94,7 +94,7 @@ export class Banner {
     // Sub-text — centered below main text
     if (this.subText) {
       const subTextWidth = this.subText.length * CHAR_WIDTH_SUB;
-      const subTextX = Math.floor((WINWIDTH - subTextWidth) / 2);
+      const subTextX = Math.floor((viewport.width - subTextWidth) / 2);
       const subTextY = stripY + STRIP_HEIGHT + 1;
       surf.drawText(
         this.subText,

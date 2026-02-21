@@ -1,6 +1,7 @@
 import { Surface } from '../engine/surface';
 import type { TileMapObject } from './tilemap';
-import { TILEWIDTH, TILEHEIGHT, WINWIDTH, WINHEIGHT } from '../engine/constants';
+import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
+import { viewport } from '../engine/viewport';
 
 /**
  * MapView - The core rendering pipeline for the game map.
@@ -20,14 +21,14 @@ export class MapView {
 
   constructor() {
     this.currentScale = 1;
-    this.mapSurface = new Surface(WINWIDTH, WINHEIGHT, 1);
+    this.mapSurface = new Surface(viewport.width, viewport.height, 1);
   }
 
   /** Ensure the internal surface matches the target scale. */
   private ensureSurface(targetScale: number): void {
     if (this.currentScale !== targetScale) {
       this.currentScale = targetScale;
-      this.mapSurface = new Surface(WINWIDTH, WINHEIGHT, targetScale);
+      this.mapSurface = new Surface(viewport.width, viewport.height, targetScale);
     }
   }
 
@@ -122,7 +123,7 @@ export class MapView {
       // Quick viewport cull
       if (
         px + TILEWIDTH <= 0 || py + TILEHEIGHT <= 0 ||
-        px >= WINWIDTH || py >= WINHEIGHT
+        px >= viewport.width || py >= viewport.height
       ) {
         continue;
       }
@@ -160,7 +161,7 @@ export class MapView {
       const margin = TILEWIDTH * 2;
       if (
         px + TILEWIDTH + margin <= 0 || py + TILEHEIGHT + margin <= 0 ||
-        px - margin >= WINWIDTH || py - margin >= WINHEIGHT
+        px - margin >= viewport.width || py - margin >= viewport.height
       ) {
         continue;
       }
@@ -200,20 +201,20 @@ export class MapView {
 
     // Compute the range of grid lines visible in the viewport
     const startCol = Math.max(0, Math.floor(offsetX / TILEWIDTH));
-    const endCol = Math.min(mapW, Math.ceil((offsetX + WINWIDTH) / TILEWIDTH));
+    const endCol = Math.min(mapW, Math.ceil((offsetX + viewport.width) / TILEWIDTH));
     const startRow = Math.max(0, Math.floor(offsetY / TILEHEIGHT));
-    const endRow = Math.min(mapH, Math.ceil((offsetY + WINHEIGHT) / TILEHEIGHT));
+    const endRow = Math.min(mapH, Math.ceil((offsetY + viewport.height) / TILEHEIGHT));
 
     // Vertical lines
     for (let col = startCol; col <= endCol; col++) {
       const x = col * TILEWIDTH - offsetX;
-      surf.drawLine(x, 0, x, WINHEIGHT, color, 1);
+      surf.drawLine(x, 0, x, viewport.height, color, 1);
     }
 
     // Horizontal lines
     for (let row = startRow; row <= endRow; row++) {
       const y = row * TILEHEIGHT - offsetY;
-      surf.drawLine(0, y, WINWIDTH, y, color, 1);
+      surf.drawLine(0, y, viewport.width, y, color, 1);
     }
   }
 }

@@ -17,6 +17,7 @@ import {
   TILEHEIGHT,
   FRAMETIME,
 } from '../constants';
+import { viewport, isSmallScreen } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
@@ -325,9 +326,11 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
   // Handle mouse click: move cursor to tile, then return the action
   if (input.mouseClick) {
     if (input.mouseClick === 'SELECT' && tile) {
-      // Move cursor to clicked tile
       game.cursor.setPos(tile[0], tile[1]);
-      game.camera.focusTile(tile[0], tile[1]);
+      // Only auto-center camera on tap for small/mobile screens
+      if (isSmallScreen()) {
+        game.camera.focusTile(tile[0], tile[1]);
+      }
       return 'SELECT';
     }
     if (input.mouseClick === 'BACK') {
@@ -335,7 +338,9 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
     }
     if (input.mouseClick === 'INFO' && tile) {
       game.cursor.setPos(tile[0], tile[1]);
-      game.camera.focusTile(tile[0], tile[1]);
+      if (isSmallScreen()) {
+        game.camera.focusTile(tile[0], tile[1]);
+      }
       return 'INFO';
     }
   }
@@ -370,8 +375,8 @@ export class TitleState extends State {
     const titleW = title.length * 7;
     surf.drawText(
       title,
-      Math.floor((WINWIDTH - titleW) / 2),
-      Math.floor(WINHEIGHT / 3),
+      Math.floor((viewport.width - titleW) / 2),
+      Math.floor(viewport.height / 3),
       'white',
       '12px monospace',
     );
@@ -381,8 +386,8 @@ export class TitleState extends State {
     const promptW = prompt.length * 5;
     surf.drawText(
       prompt,
-      Math.floor((WINWIDTH - promptW) / 2),
-      Math.floor(WINHEIGHT / 2),
+      Math.floor((viewport.width - promptW) / 2),
+      Math.floor(viewport.height / 2),
       'rgba(200,200,220,1)',
       '8px monospace',
     );
@@ -438,11 +443,13 @@ export class LevelSelectState extends State {
     surf.fill(16, 16, 32);
 
     // Title
+    const vw = viewport.width;
+    const vh = viewport.height;
     const title = 'Select Chapter';
     const titleW = title.length * 7;
     surf.drawText(
       title,
-      Math.floor((WINWIDTH - titleW) / 2),
+      Math.floor((vw - titleW) / 2),
       10,
       'white',
       '12px monospace',
@@ -459,7 +466,7 @@ export class LevelSelectState extends State {
 
       // Selection highlight
       if (isSelected) {
-        surf.fillRect(this.LIST_X - 4, y - 1, WINWIDTH - (this.LIST_X - 4) * 2, this.ROW_HEIGHT, 'rgba(60,80,160,0.6)');
+        surf.fillRect(this.LIST_X - 4, y - 1, vw - (this.LIST_X - 4) * 2, this.ROW_HEIGHT, 'rgba(60,80,160,0.6)');
       }
 
       // Cursor arrow
@@ -474,22 +481,22 @@ export class LevelSelectState extends State {
 
     // Scroll indicators
     if (this.scrollOffset > 0) {
-      surf.drawText('^', Math.floor(WINWIDTH / 2), this.LIST_Y - 10, 'rgba(200,200,220,0.6)', '8px monospace');
+      surf.drawText('^', Math.floor(vw / 2), this.LIST_Y - 10, 'rgba(200,200,220,0.6)', '8px monospace');
     }
     if (visibleEnd < this.levels.length) {
       const bottomY = this.LIST_Y + this.VISIBLE_ROWS * this.ROW_HEIGHT;
-      surf.drawText('v', Math.floor(WINWIDTH / 2), bottomY, 'rgba(200,200,220,0.6)', '8px monospace');
+      surf.drawText('v', Math.floor(vw / 2), bottomY, 'rgba(200,200,220,0.6)', '8px monospace');
     }
 
     // Loading indicator
     if (this.loading) {
-      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, 'rgba(0,0,0,0.5)');
+      surf.fillRect(0, 0, vw, vh, 'rgba(0,0,0,0.5)');
       const loadText = 'Loading...';
       const loadW = loadText.length * 5;
       surf.drawText(
         loadText,
-        Math.floor((WINWIDTH - loadW) / 2),
-        Math.floor(WINHEIGHT / 2),
+        Math.floor((vw - loadW) / 2),
+        Math.floor(vh / 2),
         'white',
         '10px monospace',
       );
@@ -598,8 +605,8 @@ export class OptionMenuState extends State {
       { label: 'End Turn', value: 'end_turn', enabled: true },
     ];
     // Centre the menu on screen
-    const menuX = Math.floor(WINWIDTH / 2) - 30;
-    const menuY = Math.floor(WINHEIGHT / 2) - 12;
+    const menuX = Math.floor(viewport.width / 2) - 30;
+    const menuY = Math.floor(viewport.height / 2) - 12;
     this.menu = new ChoiceMenu(options, menuX, menuY);
   }
 
@@ -794,10 +801,8 @@ export class FreeState extends MapState {
   }
 
   override draw(surf: Surface): Surface {
-    const game = getGame();
     surf = drawMap(surf);
-    // Draw HUD overlay
-    game.hud.draw(surf, game.db);
+    // HUD is drawn in screen-space by main.ts after the game surface blit.
     return surf;
   }
 }
@@ -1074,8 +1079,8 @@ export class MenuState extends State {
     const menuY = uy * TILEHEIGHT - cameraOffset[1];
 
     // Clamp menu to screen
-    const clampedX = Math.min(menuX, WINWIDTH - 60);
-    const clampedY = Math.min(menuY, WINHEIGHT - options.length * 16 - 8);
+    const clampedX = Math.min(menuX, viewport.width - 60);
+    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
 
     this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
   }
@@ -1239,13 +1244,13 @@ export class ItemUseState extends State {
     const cameraOffset = game.camera.getOffset();
     const menuX = unit.position
       ? unit.position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4
-      : WINWIDTH / 2;
+      : viewport.width / 2;
     const menuY = unit.position
       ? unit.position[1] * TILEHEIGHT - cameraOffset[1]
-      : WINHEIGHT / 2;
+      : viewport.height / 2;
 
-    const clampedX = Math.min(menuX, WINWIDTH - 70);
-    const clampedY = Math.min(menuY, WINHEIGHT - options.length * 16 - 8);
+    const clampedX = Math.min(menuX, viewport.width - 70);
+    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
 
     this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
   }
@@ -1351,7 +1356,7 @@ export class TradeState extends State {
         enabled: true,
       }));
 
-      this.targetMenu = new ChoiceMenu(options, WINWIDTH / 2 - 30, WINHEIGHT / 2 - 16);
+      this.targetMenu = new ChoiceMenu(options, viewport.width / 2 - 30, viewport.height / 2 - 16);
       this.phase = 'select_partner';
     }
   }
@@ -1378,7 +1383,7 @@ export class TradeState extends State {
     }));
     optionsB.push({ label: '---', value: 'b_empty', enabled: false });
 
-    this.itemMenuB = new ChoiceMenu(optionsB, WINWIDTH / 2 + 4, 20);
+    this.itemMenuB = new ChoiceMenu(optionsB, viewport.width / 2 + 4, 20);
     this.selectedIndexA = -1;
   }
 
@@ -1447,7 +1452,7 @@ export class TradeState extends State {
 
     if (this.phase === 'select_items') {
       // Draw a simplified trade UI
-      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, 'rgba(0,0,32,0.7)');
+      surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(0,0,32,0.7)');
 
       const game = getGame();
       const unit: UnitObject = game.selectedUnit;
@@ -1462,7 +1467,7 @@ export class TradeState extends State {
       }
 
       // Unit B items
-      const bx = WINWIDTH / 2 + 4;
+      const bx = viewport.width / 2 + 4;
       surf.drawText(partner?.name ?? '', bx, 4, 'white', '8px monospace');
       if (partner) {
         partner.items.forEach((item, i) => {
@@ -1470,7 +1475,7 @@ export class TradeState extends State {
         });
       }
 
-      surf.drawText('SELECT to swap, BACK to finish', 4, WINHEIGHT - 12, 'rgba(160,160,200,1)', '7px monospace');
+      surf.drawText('SELECT to swap, BACK to finish', 4, viewport.height - 12, 'rgba(160,160,200,1)', '7px monospace');
     }
 
     return surf;
@@ -1510,7 +1515,7 @@ export class RescueState extends State {
       enabled: true,
     }));
 
-    this.menu = new ChoiceMenu(options, WINWIDTH / 2 - 30, WINHEIGHT / 2 - 16);
+    this.menu = new ChoiceMenu(options, viewport.width / 2 - 30, viewport.height / 2 - 16);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -1720,7 +1725,10 @@ export class TargetingState extends MapState {
     const target = this.targets[this.targetIndex];
     if (target && target.position) {
       game.cursor.setPos(target.position[0], target.position[1]);
-      game.camera.focusTile(target.position[0], target.position[1]);
+      // Only pan camera to target on mobile; desktop users can pan manually
+      if (isSmallScreen()) {
+        game.camera.focusTile(target.position[0], target.position[1]);
+      }
     }
   }
 
@@ -1809,7 +1817,7 @@ export class TargetingState extends MapState {
         surf.fillRect(tx, ty, TILEWIDTH, TILEHEIGHT, 'rgba(255,0,0,0.3)');
 
         // Show target name/HP at top of screen
-        surf.fillRect(0, 0, WINWIDTH, 16, 'rgba(0,0,0,0.7)');
+        surf.fillRect(0, 0, viewport.width, 16, 'rgba(0,0,0,0.7)');
         surf.drawText(
           `${target.name}  HP: ${target.currentHp}/${target.maxHp}`,
           4,
@@ -2753,8 +2761,8 @@ export class CombatState extends State {
 
   private drawExpBar(surf: Surface): void {
     const barX = 4;
-    const barY = WINHEIGHT - 14;
-    const barW = WINWIDTH - 8;
+    const barY = viewport.height - 14;
+    const barW = viewport.width - 8;
     const barH = 10;
 
     // Background
@@ -2780,8 +2788,8 @@ export class CombatState extends State {
 
     const boxW = 80;
     const boxH = 10 + Object.keys(this.levelUpGains).length * 10;
-    const boxX = Math.floor((WINWIDTH - boxW) / 2);
-    const boxY = Math.floor((WINHEIGHT - boxH) / 2) - 20;
+    const boxX = Math.floor((viewport.width - boxW) / 2);
+    const boxY = Math.floor((viewport.height - boxH) / 2) - 20;
 
     // Background
     surf.fillRect(boxX, boxY, boxW, boxH, 'rgba(16,16,48,0.95)');
