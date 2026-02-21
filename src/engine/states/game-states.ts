@@ -25,7 +25,10 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { Banner } from '../../ui/banner';
 import { Dialog } from '../../ui/dialog';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
+import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
+import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { getEquippedWeapon } from '../../combat/combat-calcs';
+import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — set once at bootstrap to break circular deps.
@@ -1642,6 +1645,8 @@ export class CombatState extends State {
   override readonly transparent = true;
 
   private combat: MapCombat | null = null;
+  private animCombat: AnimationCombat | null = null;
+  private isAnimationCombat: boolean = false;
   private results: CombatResults | null = null;
   private phase: CombatPhase = 'combat';
   private phaseTimer: number = 0;
@@ -1656,6 +1661,18 @@ export class CombatState extends State {
 
   // Death fade
   private deathFadeProgress: number = 0;
+
+  // Platform images for animation combat
+  private leftPlatformImg: HTMLImageElement | null = null;
+  private rightPlatformImg: HTMLImageElement | null = null;
+
+  // Battle background panorama image
+  private battleBackgroundImg: HTMLImageElement | null = null;
+
+  /** Get whichever combat controller is active (AnimationCombat or MapCombat). */
+  private getActiveCombat(): MapCombat | AnimationCombat | null {
+    return this.isAnimationCombat ? this.animCombat : this.combat;
+  }
 
   override begin(): StateResult {
     const game = getGame();
@@ -1676,14 +1693,29 @@ export class CombatState extends State {
     const defenseItem = getEquippedWeapon(defender);
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
-    this.combat = new MapCombat(
-      attacker,
-      attackItem,
-      defender,
-      defenseItem,
-      game.db,
-      rngMode,
+    // Check if both units have battle animations available
+    const canAnimate = this.tryCreateAnimationCombat(
+      attacker, attackItem, defender, defenseItem, rngMode, game,
     );
+
+    if (canAnimate) {
+      this.isAnimationCombat = true;
+      this.combat = null;
+      console.log(`CombatState: using AnimationCombat (${attacker.name} vs ${defender.name})`);
+    } else {
+      // Fallback to map combat
+      this.isAnimationCombat = false;
+      this.animCombat = null;
+      this.combat = new MapCombat(
+        attacker,
+        attackItem,
+        defender,
+        defenseItem,
+        game.db,
+        rngMode,
+      );
+      console.log(`CombatState: using MapCombat (${attacker.name} vs ${defender.name})`);
+    }
 
     this.results = null;
     this.phase = 'combat';
@@ -1692,20 +1724,198 @@ export class CombatState extends State {
     this.levelUpGains = null;
   }
 
+  /**
+   * Try to create an AnimationCombat. Returns true if successful.
+   * Requires both units to have combat animations defined in their classes,
+   * and those animations must be loaded in the database.
+   */
+  private tryCreateAnimationCombat(
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    defender: UnitObject,
+    defenseItem: ItemObject | null,
+    rngMode: string,
+    game: any,
+  ): boolean {
+    try {
+      const db = game.db;
+      if (!db.combatAnims || db.combatAnims.size === 0) return false;
+
+      // Look up combat anim NIDs from unit classes
+      const atkKlass = db.classes.get(attacker.klass);
+      const defKlass = db.classes.get(defender.klass);
+      if (!atkKlass?.combat_anim_nid || !defKlass?.combat_anim_nid) return false;
+
+      const atkAnimData = db.combatAnims.get(atkKlass.combat_anim_nid);
+      const defAnimData = db.combatAnims.get(defKlass.combat_anim_nid);
+      if (!atkAnimData || !defAnimData) return false;
+
+      // Determine weapon type for selecting the weapon animation
+      const atkWeaponType = attackItem.getWeaponType() ?? null;
+      const defWeaponType = defenseItem?.getWeaponType() ?? null;
+
+      // Select weapon animations
+      const atkWeaponAnim = selectWeaponAnim(atkAnimData, atkWeaponType ?? null);
+      const defWeaponAnim = selectWeaponAnim(defAnimData, defWeaponType ?? null);
+      if (!atkWeaponAnim || !defWeaponAnim) return false;
+
+      // Create BattleAnimation instances with real pose data but empty frames
+      // (sprites will hot-swap in once async loading completes)
+      const atkAnim = new RealBattleAnimation(atkWeaponAnim, new Map());
+      const defAnim = new RealBattleAnimation(defWeaponAnim, new Map());
+
+      // Determine left/right assignment (player on right)
+      let leftIsAttacker = true;
+      if (defender.team === 'player' && attacker.team !== 'player') {
+        leftIsAttacker = true; // attacker (enemy) on left, defender (player) on right
+      } else if (attacker.team === 'player') {
+        leftIsAttacker = false; // attacker (player) on right, defender on left
+      }
+
+      const leftAnim = leftIsAttacker ? atkAnim : defAnim;
+      const rightAnim = leftIsAttacker ? defAnim : atkAnim;
+
+      this.animCombat = new AnimationCombat(
+        attacker,
+        attackItem,
+        defender,
+        defenseItem,
+        db,
+        rngMode,
+        leftAnim,
+        rightAnim,
+        leftIsAttacker,
+      );
+
+      // Load platform images asynchronously (they'll appear once loaded)
+      const isMelee = this.animCombat.combatRange <= 1;
+      const leftUnit = leftIsAttacker ? attacker : defender;
+      const rightUnit = leftIsAttacker ? defender : attacker;
+      const leftPlatformType = this.getUnitPlatformType(leftUnit, db) ?? 'Plains';
+      const rightPlatformType = this.getUnitPlatformType(rightUnit, db) ?? 'Plains';
+      loadBattlePlatforms(leftPlatformType, rightPlatformType, isMelee).then(([left, right]) => {
+        this.leftPlatformImg = left;
+        this.rightPlatformImg = right;
+      });
+
+      // Load battle background panorama based on attacker's terrain
+      const bgNid = this.getUnitBackgroundNid(attacker, db);
+      if (bgNid) {
+        const resources = getGame().resources;
+        resources.loadPanorama(bgNid).then((img: HTMLImageElement) => {
+          this.battleBackgroundImg = img;
+        }).catch(() => {
+          // Panorama not found — fall back to solid color background
+        });
+      }
+
+      // Load and apply spritesheets asynchronously (sprites hot-swap in once ready)
+      this.loadCombatSprites(
+        atkAnimData.nid, atkWeaponAnim, attacker, atkAnimData, atkAnim,
+        defAnimData.nid, defWeaponAnim, defender, defAnimData, defAnim,
+        db,
+      );
+
+      return true;
+    } catch (e) {
+      console.warn('Failed to create AnimationCombat, falling back to MapCombat:', e);
+      return false;
+    }
+  }
+
+  /** Look up the terrain definition for a unit's map position. */
+  private getUnitTerrain(unit: UnitObject, db: any): any | null {
+    if (!unit.position) return null;
+    const game = getGame();
+    if (!game.tilemap) return null;
+
+    // TileMapObject.getTerrain walks layers top-to-bottom
+    const terrainNid = game.tilemap.getTerrain(unit.position[0], unit.position[1]);
+    if (!terrainNid) return null;
+
+    return db.terrain?.get(terrainNid) ?? null;
+  }
+
+  /** Look up the platform type for a unit's terrain tile. */
+  private getUnitPlatformType(unit: UnitObject, db: any): string | null {
+    const terrain = this.getUnitTerrain(unit, db);
+    if (!terrain?.platform) return 'Plains';
+    return terrain.platform;
+  }
+
+  /** Look up the panorama background NID for a unit's terrain tile. */
+  private getUnitBackgroundNid(unit: UnitObject, db: any): string | null {
+    const terrain = this.getUnitTerrain(unit, db);
+    return terrain?.background ?? null;
+  }
+
+  /**
+   * Asynchronously load and palette-convert combat animation spritesheets.
+   * Once loaded, the frame images are hot-swapped into the BattleAnimation
+   * instances so sprites appear mid-scene if loading takes time.
+   */
+  private async loadCombatSprites(
+    atkAnimNid: string,
+    atkWeaponAnim: import('../../combat/battle-anim-types').WeaponAnimData,
+    attacker: UnitObject,
+    atkCombatAnimData: import('../../combat/battle-anim-types').CombatAnimData,
+    atkBattleAnim: RealBattleAnimation,
+    defAnimNid: string,
+    defWeaponAnim: import('../../combat/battle-anim-types').WeaponAnimData,
+    defender: UnitObject,
+    defCombatAnimData: import('../../combat/battle-anim-types').CombatAnimData,
+    defBattleAnim: RealBattleAnimation,
+    db: any,
+  ): Promise<void> {
+    try {
+      const resources = getGame().resources;
+      const palettes = db.combatPalettes as Map<string, import('../../combat/battle-anim-types').PaletteData>;
+
+      // Select palettes for each unit
+      const atkPalette = selectPalette(atkCombatAnimData, attacker, palettes);
+      const defPalette = selectPalette(defCombatAnimData, defender, palettes);
+
+      // Load both spritesheets in parallel
+      const [atkFrames, defFrames] = await Promise.all([
+        atkPalette
+          ? loadAndConvertWeaponAnim(resources, atkAnimNid, atkWeaponAnim, atkPalette)
+          : null,
+        defPalette
+          ? loadAndConvertWeaponAnim(resources, defAnimNid, defWeaponAnim, defPalette)
+          : null,
+      ]);
+
+      // Hot-swap frame images into the running BattleAnimation instances
+      if (atkFrames && atkFrames.size > 0) {
+        for (const [nid, canvas] of atkFrames) {
+          atkBattleAnim.frameImages.set(nid, canvas);
+        }
+      }
+      if (defFrames && defFrames.size > 0) {
+        for (const [nid, canvas] of defFrames) {
+          defBattleAnim.frameImages.set(nid, canvas);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load combat animation sprites:', e);
+    }
+  }
+
   override update(): StateResult {
-    if (!this.combat) return;
+    const activeCombat = this.isAnimationCombat ? this.animCombat : this.combat;
+    if (!activeCombat) return;
     const game = getGame();
 
     switch (this.phase) {
       case 'combat': {
-        const done = this.combat.update(FRAMETIME);
+        const done = activeCombat.update(FRAMETIME);
         if (done) {
-          this.results = this.combat.applyResults();
+          this.results = activeCombat.applyResults();
           if (this.results.attackerDead || this.results.defenderDead) {
             this.phase = 'death';
             this.phaseTimer = 0;
             this.deathFadeProgress = 0;
-          } else if (this.results.expGained > 0 && this.combat.attacker.team === 'player') {
+          } else if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
             this.startExpPhase();
           } else {
             this.phase = 'cleanup';
@@ -1722,17 +1932,17 @@ export class CombatState extends State {
         if (this.phaseTimer >= 500) {
           // Remove dead units from board
           if (this.results!.defenderDead) {
-            game.board.removeUnit(this.combat.defender);
+            game.board.removeUnit(activeCombat!.defender);
           }
           if (this.results!.attackerDead) {
-            game.board.removeUnit(this.combat.attacker);
+            game.board.removeUnit(activeCombat!.attacker);
           }
 
           // Check if attacker earned EXP
           if (
             !this.results!.attackerDead &&
             this.results!.expGained > 0 &&
-            this.combat.attacker.team === 'player'
+            activeCombat!.attacker.team === 'player'
           ) {
             this.startExpPhase();
           } else {
@@ -1774,7 +1984,7 @@ export class CombatState extends State {
       }
 
       case 'cleanup': {
-        const attacker = this.combat.attacker;
+        const attacker = activeCombat!.attacker;
         const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
 
         if (!attacker.isDead()) {
@@ -1801,7 +2011,12 @@ export class CombatState extends State {
         setActiveCombatOffsets(null);
 
         this.combat = null;
+        this.animCombat = null;
+        this.isAnimationCombat = false;
         this.results = null;
+        this.leftPlatformImg = null;
+        this.rightPlatformImg = null;
+        this.battleBackgroundImg = null;
 
         // Pop combat state
         game.state.back();
@@ -1820,7 +2035,8 @@ export class CombatState extends State {
     // EXP bar starts at the attacker's current EXP before gain
     // (applyResults already applied it, so we calculate backwards)
     const totalExp = this.results!.expGained;
-    const currentExp = this.combat!.attacker.exp;
+    const activeCombat = this.getActiveCombat();
+    const currentExp = activeCombat!.attacker.exp;
     // If level-ups happened, the bar wraps around 100
     if (this.results!.levelUps.length > 0) {
       this.expDisplayStart = 0;
@@ -1840,14 +2056,22 @@ export class CombatState extends State {
   }
 
   override draw(surf: Surface): Surface {
+    // Route to the appropriate renderer
+    if (this.isAnimationCombat && this.animCombat) {
+      return this.drawAnimationCombat(surf);
+    }
     if (!this.combat) return surf;
+    return this.drawMapCombat(surf);
+  }
 
-    const rs = this.combat.getRenderState();
+  /** Render map combat: overlays on top of the map (lunge, flash, HP bars, etc.) */
+  private drawMapCombat(surf: Surface): Surface {
+    const rs = this.combat!.getRenderState();
     const game = getGame();
     const cameraOffset = game.camera.getOffset();
 
-    const atkPos = this.combat.attacker.position;
-    const defPos = this.combat.defender.position;
+    const atkPos = this.combat!.attacker.position;
+    const defPos = this.combat!.defender.position;
 
     // Push combat animation offsets so collectVisibleUnits applies them
     // to the underlying map render (lunge + shake on the actual sprites)
@@ -1856,19 +2080,11 @@ export class CombatState extends State {
     const defLunge = rs.defenderAnim.lungeOffset;
     const defShake = rs.defenderAnim.shakeOffset;
     setActiveCombatOffsets({
-      attacker: this.combat.attacker,
-      defender: this.combat.defender,
+      attacker: this.combat!.attacker,
+      defender: this.combat!.defender,
       attackerOffset: [atkLunge[0] + atkShake[0], atkLunge[1] + atkShake[1]],
       defenderOffset: [defLunge[0] + defShake[0], defLunge[1] + defShake[1]],
     });
-
-    // --- Sprite-aware combat effects ---
-
-    // Draw lunge + shake offsets by re-drawing attacker/defender sprites
-    // with the animation offsets applied. The underlying map already drew
-    // them at their base position, so we overlay a shifted copy and mask
-    // the original position. For simplicity, we just draw the offset
-    // effects on top (the sprites are small enough that the overlap is fine).
 
     // White flash overlay on hit targets
     if (rs.attackerAnim.flashAlpha > 0 && atkPos) {
@@ -1905,31 +2121,7 @@ export class CombatState extends State {
     }
 
     // Floating damage numbers
-    for (const popup of rs.damagePopups) {
-      const t = popup.elapsed / popup.duration;
-      const floatY = -12 * t; // float upward over time
-      const alpha = Math.max(0, 1 - t * 1.2); // fade out
-      const px = popup.x * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
-      const py = popup.y * TILEHEIGHT - cameraOffset[1] + floatY - 4;
-
-      if (popup.value === 0) {
-        // Miss
-        surf.drawText(
-          'Miss',
-          px - 8, py,
-          `rgba(200,200,255,${alpha.toFixed(2)})`,
-          '7px monospace',
-        );
-      } else {
-        // Damage number
-        const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
-        const color = popup.isCrit
-          ? `rgba(255,255,64,${alpha.toFixed(2)})`
-          : `rgba(255,255,255,${alpha.toFixed(2)})`;
-        const font = popup.isCrit ? '9px monospace' : '8px monospace';
-        surf.drawText(text, px - 4, py, color, font);
-      }
-    }
+    this.drawDamagePopupsMap(surf, rs.damagePopups, cameraOffset);
 
     // Death fade-out: dim the dying unit's tile with white overlay
     if (this.phase === 'death') {
@@ -1937,7 +2129,6 @@ export class CombatState extends State {
       if (this.results?.defenderDead && defPos) {
         const dx = defPos[0] * TILEWIDTH - cameraOffset[0];
         const dy = defPos[1] * TILEHEIGHT - cameraOffset[1];
-        // Larger rect to cover the sprite (which extends above the tile)
         surf.fillRect(dx - 24, dy - 32, 64, 48, `rgba(255,255,255,${alpha.toFixed(2)})`);
       }
       if (this.results?.attackerDead && atkPos) {
@@ -1947,17 +2138,385 @@ export class CombatState extends State {
       }
     }
 
-    // EXP bar display
+    // EXP / Level-up overlays (shared with animation combat)
+    this.drawExpAndLevelUp(surf);
+
+    return surf;
+  }
+
+  // ================================================================
+  // Animation Combat Renderer — GBA-style full-screen battle scene
+  // ================================================================
+
+  /** Render the GBA-style animation combat scene. */
+  private drawAnimationCombat(surf: Surface): Surface {
+    const rs = this.animCombat!.getRenderState();
+
+    // Apply screen shake to the entire scene
+    const shakeX = rs.screenShake[0];
+    const shakeY = rs.screenShake[1];
+
+    // --- Viewbox iris during fade_in/fade_out ---
+    // During transitions, the map is visible and we darken around a shrinking/growing iris.
+    if (rs.viewbox) {
+      const vb = rs.viewbox;
+      // Darken everything outside the viewbox iris
+      // Top bar
+      if (vb.y > 0) {
+        surf.fillRect(0, 0, WINWIDTH, Math.max(0, vb.y), 'rgba(0,0,0,0.85)');
+      }
+      // Bottom bar
+      const botY = vb.y + vb.height;
+      if (botY < WINHEIGHT) {
+        surf.fillRect(0, botY, WINWIDTH, WINHEIGHT - botY, 'rgba(0,0,0,0.85)');
+      }
+      // Left bar (between top and bottom bars)
+      if (vb.x > 0) {
+        surf.fillRect(0, Math.max(0, vb.y), vb.x, Math.max(0, vb.height), 'rgba(0,0,0,0.85)');
+      }
+      // Right bar
+      const rightX = vb.x + vb.width;
+      if (rightX < WINWIDTH) {
+        surf.fillRect(rightX, Math.max(0, vb.y), WINWIDTH - rightX, Math.max(0, vb.height), 'rgba(0,0,0,0.85)');
+      }
+
+      // If still fading in, don't draw the battle scene yet
+      if (rs.state === 'fade_in') {
+        return surf;
+      }
+    }
+
+    // --- Full battle scene background ---
+    // Once past fade_in, fill the screen with the battle background
+    if (rs.state !== 'fade_in') {
+      // Dark fallback fill (in case panorama hasn't loaded or is missing)
+      surf.fillRect(shakeX, shakeY, WINWIDTH, WINHEIGHT, 'rgb(16,20,32)');
+      // Draw the panorama background image if available
+      if (this.battleBackgroundImg) {
+        const bgW = this.battleBackgroundImg.naturalWidth || WINWIDTH;
+        const bgH = this.battleBackgroundImg.naturalHeight || WINHEIGHT;
+        surf.drawImageFull(this.battleBackgroundImg, shakeX, shakeY, bgW, bgH);
+      }
+    }
+
+    // --- Platforms ---
+    // GBA-style: left platform on the left, right platform on the right.
+    // Melee platforms: 87x40, Ranged: 100x40. Positioned at WINHEIGHT - 72 = 88.
+    const isMelee = this.animCombat!.combatRange <= 1;
+    const PLAT_W = isMelee ? 87 : 100;
+    const PLAT_H = 40;
+    const SCENE_FLOOR_Y = WINHEIGHT - 72; // 88
+
+    // Melee: platforms touch at center. Ranged: gap with pan offset.
+    let leftPlatX: number;
+    let rightPlatX: number;
+    if (isMelee) {
+      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W + shakeX;
+      rightPlatX = Math.floor(WINWIDTH / 2) + shakeX;
+    } else {
+      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W - 11 + shakeX - rs.panOffset;
+      rightPlatX = Math.floor(WINWIDTH / 2) + 11 + shakeX + rs.panOffset;
+    }
+    const leftPlatY = SCENE_FLOOR_Y + rs.leftPlatformY + rs.platformShakeY + shakeY;
+    const rightPlatY = SCENE_FLOOR_Y + rs.rightPlatformY + rs.platformShakeY + shakeY;
+
+    // Draw platforms (real images or fallback rectangles)
+    if (this.leftPlatformImg) {
+      const pw = this.leftPlatformImg.naturalWidth || PLAT_W;
+      const ph = this.leftPlatformImg.naturalHeight || PLAT_H;
+      surf.drawImageFull(this.leftPlatformImg, leftPlatX, leftPlatY, pw, ph);
+    } else {
+      surf.fillRect(leftPlatX, leftPlatY, PLAT_W, PLAT_H, 'rgb(60,80,50)');
+      surf.fillRect(leftPlatX, leftPlatY, PLAT_W, 2, 'rgb(90,120,70)');
+    }
+    if (this.rightPlatformImg) {
+      // Right platform is drawn horizontally flipped
+      const pw = this.rightPlatformImg.naturalWidth || PLAT_W;
+      const ph = this.rightPlatformImg.naturalHeight || PLAT_H;
+      surf.drawImageFull(this.rightPlatformImg, rightPlatX, rightPlatY, pw, ph, 1, true);
+    } else {
+      surf.fillRect(rightPlatX, rightPlatY, PLAT_W, PLAT_H, 'rgb(60,80,50)');
+      surf.fillRect(rightPlatX, rightPlatY, PLAT_W, 2, 'rgb(90,120,70)');
+    }
+
+    // --- Battle sprites ---
+    // Draw under-frames, then main frames, then over-frames.
+    // Each frame has an offset in 240x160 screen coords + recoil.
+    const leftDraw = rs.leftDraw;
+    const rightDraw = rs.rightDraw;
+
+    // Helper to draw a single BattleAnimDrawData
+    const drawBattleSprite = (
+      draw: BattleAnimDrawData,
+      fallbackColor: string,
+      platformX: number,
+      platformY: number,
+    ) => {
+      const alpha = Math.max(0, Math.min(1, draw.opacity / 255));
+      if (alpha <= 0) return;
+
+      // Determine canvas composite mode
+      const prevComposite = surf.ctx.globalCompositeOperation;
+      if (draw.blendMode === 'add') {
+        surf.ctx.globalCompositeOperation = 'lighter';
+      }
+
+       // Left-side sprites (right=false) need horizontal flip since
+      // animation frames are authored facing left (for right-side position).
+      const flipSprite = !draw.right;
+
+      // Draw under-frame first (behind platform)
+      this.drawAnimFrame(surf, draw.underFrame, alpha, shakeX, shakeY, draw.recoilX, flipSprite);
+
+      // Draw main frame
+      if (draw.mainFrame) {
+        this.drawAnimFrame(surf, draw.mainFrame, alpha, shakeX, shakeY, draw.recoilX, flipSprite);
+      } else {
+        // Stub placeholder: colored rectangle on the platform
+        const STUB_W = 32;
+        const STUB_H = 40;
+        const stubX = platformX + (PLAT_W - STUB_W) / 2;
+        const stubY = platformY - STUB_H;
+        surf.fillRect(stubX, stubY, STUB_W, STUB_H, `rgba(${fallbackColor},${alpha.toFixed(2)})`);
+        surf.fillRect(stubX + STUB_W / 2 - 4, stubY + 2, 8, 8, `rgba(200,180,150,${alpha.toFixed(2)})`);
+      }
+
+      // Draw over-frame on top
+      this.drawAnimFrame(surf, draw.overFrame, alpha, shakeX, shakeY, draw.recoilX, flipSprite);
+
+      // Death flash: white overlay
+      if (draw.deathFlash && draw.mainFrame) {
+        const f = draw.mainFrame;
+        surf.fillRect(
+          f.offset[0] + shakeX + draw.recoilX,
+          f.offset[1] + shakeY,
+          (f.image as HTMLCanvasElement).width ?? 32,
+          (f.image as HTMLCanvasElement).height ?? 40,
+          'rgba(255,255,255,0.9)',
+        );
+      }
+
+      // Tints
+      for (const tint of draw.tints) {
+        if (tint.alpha > 0 && draw.mainFrame) {
+          const f = draw.mainFrame;
+          const [tr, tg, tb] = tint.color;
+          surf.fillRect(
+            f.offset[0] + shakeX + draw.recoilX,
+            f.offset[1] + shakeY,
+            (f.image as HTMLCanvasElement).width ?? 32,
+            (f.image as HTMLCanvasElement).height ?? 40,
+            `rgba(${tr},${tg},${tb},${(tint.alpha * 0.5).toFixed(2)})`,
+          );
+        }
+      }
+
+      // Draw child effects (under first, then over)
+      for (const ue of draw.underEffects) {
+        drawBattleSprite(ue, fallbackColor, platformX, platformY);
+      }
+      for (const e of draw.effects) {
+        drawBattleSprite(e, fallbackColor, platformX, platformY);
+      }
+
+      // Restore composite mode
+      surf.ctx.globalCompositeOperation = prevComposite;
+    };
+
+    // Draw left combatant
+    drawBattleSprite(leftDraw, '80,120,200', leftPlatX, leftPlatY);
+    // Draw right combatant
+    drawBattleSprite(rightDraw, '200,80,80', rightPlatX, rightPlatY);
+
+    // --- Name tags ---
+    // Slide in from left/right edges based on nameTagProgress
+    const nameSlide = rs.nameTagProgress;
+    if (nameSlide > 0) {
+      const NAME_TAG_W = 80;
+      const NAME_TAG_H = 12;
+      const leftNameX = -NAME_TAG_W + nameSlide * (NAME_TAG_W + 4) + shakeX;
+      const rightNameX = WINWIDTH - nameSlide * (NAME_TAG_W + 4) + shakeX;
+      const nameY = 4 + shakeY;
+
+      // Left name tag background
+      surf.fillRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(32,32,64,0.9)');
+      surf.drawText(rs.leftHp.name, leftNameX + 3, nameY + 2, 'white', '8px monospace');
+
+      // Right name tag background
+      surf.fillRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(64,32,32,0.9)');
+      surf.drawText(rs.rightHp.name, rightNameX + 3, nameY + 2, 'white', '8px monospace');
+    }
+
+    // --- HP bars ---
+    // Slide in from left/right edges based on hpBarProgress
+    const hpSlide = rs.hpBarProgress;
+    if (hpSlide > 0) {
+      const HP_BAR_W = 72;
+      const HP_BAR_SECTION_H = 20;
+      const leftHpX = -HP_BAR_W + hpSlide * (HP_BAR_W + 4) + shakeX;
+      const rightHpX = WINWIDTH - hpSlide * (HP_BAR_W + 4) + shakeX;
+      const hpY = 18 + shakeY;
+
+      // Left HP bar
+      this.drawBattleHpBar(surf, leftHpX, hpY, HP_BAR_W, HP_BAR_SECTION_H, rs.leftHp);
+      // Right HP bar
+      this.drawBattleHpBar(surf, rightHpX, hpY, HP_BAR_W, HP_BAR_SECTION_H, rs.rightHp);
+    }
+
+    // --- Damage popups (in battle scene space) ---
+    for (const popup of rs.damagePopups) {
+      const t = popup.elapsed / popup.duration;
+      const floatY = -16 * t;
+      const alpha = Math.max(0, 1 - t * 1.2);
+
+      // Position popups centered above the platform the hit landed on
+      const isLeftSide = popup.x < WINWIDTH / (2 * TILEWIDTH);
+      const popupBaseX = isLeftSide ? leftPlatX + PLAT_W / 2 : rightPlatX + PLAT_W / 2;
+      const popupBaseY = isLeftSide ? leftPlatY - 24 : rightPlatY - 24;
+
+      if (popup.value === 0) {
+        surf.drawText(
+          'Miss', popupBaseX - 8, popupBaseY + floatY,
+          `rgba(200,200,255,${alpha.toFixed(2)})`, '7px monospace',
+        );
+      } else {
+        const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
+        const color = popup.isCrit
+          ? `rgba(255,255,64,${alpha.toFixed(2)})`
+          : `rgba(255,255,255,${alpha.toFixed(2)})`;
+        const font = popup.isCrit ? '9px monospace' : '8px monospace';
+        surf.drawText(text, popupBaseX - 4, popupBaseY + floatY, color, font);
+      }
+    }
+
+    // --- Screen blend overlay ---
+    if (rs.screenBlend) {
+      const [r, g, b] = rs.screenBlend.color;
+      surf.fillRect(
+        0, 0, WINWIDTH, WINHEIGHT,
+        `rgba(${r},${g},${b},${rs.screenBlend.alpha.toFixed(2)})`,
+      );
+    }
+
+    // --- Fade-out iris ---
+    if (rs.state === 'fade_out' && rs.viewbox) {
+      const vb = rs.viewbox;
+      // Draw black bars closing in
+      if (vb.y > 0) surf.fillRect(0, 0, WINWIDTH, vb.y, 'rgb(0,0,0)');
+      const botY = vb.y + vb.height;
+      if (botY < WINHEIGHT) surf.fillRect(0, botY, WINWIDTH, WINHEIGHT - botY, 'rgb(0,0,0)');
+      if (vb.x > 0) surf.fillRect(0, vb.y, vb.x, vb.height, 'rgb(0,0,0)');
+      const rightX = vb.x + vb.width;
+      if (rightX < WINWIDTH) surf.fillRect(rightX, vb.y, WINWIDTH - rightX, vb.height, 'rgb(0,0,0)');
+    }
+
+    // EXP / Level-up overlays (shared)
+    this.drawExpAndLevelUp(surf);
+
+    return surf;
+  }
+
+  /** Draw a battle-scene HP bar (used in animation combat). */
+  private drawBattleHpBar(
+    surf: Surface,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    hp: { current: number; max: number; name: string; weapon: string },
+  ): void {
+    // Background
+    surf.fillRect(x, y, width, height, 'rgba(16,16,40,0.9)');
+    surf.drawRect(x, y, width, height, 'rgba(100,100,160,0.8)');
+
+    // Weapon name
+    surf.drawText(hp.weapon, x + 3, y + 2, 'rgba(180,180,220,1)', '7px monospace');
+
+    // HP bar
+    const barX = x + 3;
+    const barY = y + 10;
+    const barW = width - 6;
+    const barH = 5;
+    const ratio = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
+
+    surf.fillRect(barX, barY, barW, barH, 'rgba(32,32,32,1)');
+    let color: string;
+    if (ratio > 0.5) color = 'rgba(64,200,64,1)';
+    else if (ratio > 0.25) color = 'rgba(220,200,32,1)';
+    else color = 'rgba(220,48,48,1)';
+    const filled = Math.round(barW * ratio);
+    if (filled > 0) surf.fillRect(barX, barY, filled, barH, color);
+    surf.drawRect(barX, barY, barW, barH, 'rgba(120,120,140,0.8)');
+
+    // HP text
+    surf.drawText(
+      `${hp.current}/${hp.max}`,
+      barX + barW - 28, barY - 1,
+      'white', '6px monospace',
+    );
+  }
+
+  /** Draw damage popups for map combat (tile-space positions). */
+  private drawDamagePopupsMap(
+    surf: Surface,
+    popups: Array<{ x: number; y: number; value: number; isCrit: boolean; elapsed: number; duration: number }>,
+    cameraOffset: [number, number],
+  ): void {
+    for (const popup of popups) {
+      const t = popup.elapsed / popup.duration;
+      const floatY = -12 * t;
+      const alpha = Math.max(0, 1 - t * 1.2);
+      const px = popup.x * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
+      const py = popup.y * TILEHEIGHT - cameraOffset[1] + floatY - 4;
+
+      if (popup.value === 0) {
+        surf.drawText('Miss', px - 8, py, `rgba(200,200,255,${alpha.toFixed(2)})`, '7px monospace');
+      } else {
+        const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
+        const color = popup.isCrit
+          ? `rgba(255,255,64,${alpha.toFixed(2)})`
+          : `rgba(255,255,255,${alpha.toFixed(2)})`;
+        const font = popup.isCrit ? '9px monospace' : '8px monospace';
+        surf.drawText(text, px - 4, py, color, font);
+      }
+    }
+  }
+
+  /** Draw EXP bar and level-up stats (shared between map and animation combat). */
+  private drawExpAndLevelUp(surf: Surface): void {
     if (this.phase === 'exp' || this.phase === 'levelup') {
       this.drawExpBar(surf);
     }
-
-    // Level-up display
     if (this.phase === 'levelup' && this.levelUpGains) {
       this.drawLevelUpStats(surf);
     }
+  }
 
-    return surf;
+  /**
+   * Draw a single animation frame (mainFrame/underFrame/overFrame) from
+   * BattleAnimDrawData onto the battle scene surface.
+   *
+   * Frame offsets are in 240x160 screen space. The image is an
+   * HTMLCanvasElement (palette-converted frame) or ImageBitmap.
+   */
+  private drawAnimFrame(
+    surf: Surface,
+    frame: { image: ImageBitmap | HTMLCanvasElement; offset: [number, number] } | null,
+    alpha: number,
+    shakeX: number,
+    shakeY: number,
+    recoilX: number,
+    flipH: boolean = false,
+  ): void {
+    if (!frame) return;
+
+    const img = frame.image;
+    const ox = frame.offset[0] + shakeX + recoilX;
+    const oy = frame.offset[1] + shakeY;
+
+    const srcW = (img as HTMLCanvasElement).width ?? 32;
+    const srcH = (img as HTMLCanvasElement).height ?? 40;
+    surf.drawImageFull(img, ox, oy, srcW, srcH, alpha, flipH);
   }
 
   private drawHpBar(

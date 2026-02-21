@@ -30,6 +30,8 @@ import type {
   McostData,
   TeamsData,
 } from './types';
+import type { CombatAnimData, CombatEffectData, PaletteData } from '../combat/battle-anim-types';
+import { loadCombatAnims, loadCombatEffects, loadCombatPalettes } from './loaders/combat-anim-loader';
 
 export class Database {
   // Non-chunked data
@@ -63,6 +65,11 @@ export class Database {
   // Resources
   tilemaps: Map<NID, TilemapData> = new Map();
   tilesets: Map<NID, TilesetData> = new Map();
+
+  // Combat animation data
+  combatAnims: Map<string, CombatAnimData> = new Map();
+  combatEffects: Map<string, CombatEffectData> = new Map();
+  combatPalettes: Map<string, PaletteData> = new Map();
 
   /**
    * Load the entire database from the .ltproj served by the given ResourceManager.
@@ -107,11 +114,29 @@ export class Database {
       }
     }
 
-    // Phase 3: tilemap & tileset resources (depend on levels for NID references)
-    await Promise.allSettled([
+    // Phase 3: tilemap & tileset resources + combat animations (all independent)
+    const phase3Results = await Promise.allSettled([
       this.loadTilemaps(resources),
       this.loadTilesets(resources),
+      this.loadCombatAnimData(resources),
     ]);
+    for (const result of phase3Results) {
+      if (result.status === 'rejected') {
+        console.warn('Database: phase 3 loader failed:', result.reason);
+      }
+    }
+  }
+
+  /** Load all combat animation data (anims, effects, palettes) in parallel. */
+  private async loadCombatAnimData(resources: ResourceManager): Promise<void> {
+    const [anims, effects, palettes] = await Promise.all([
+      loadCombatAnims(resources),
+      loadCombatEffects(resources),
+      loadCombatPalettes(resources),
+    ]);
+    this.combatAnims = anims;
+    this.combatEffects = effects;
+    this.combatPalettes = palettes;
   }
 
   // -------------------------------------------------------------------
