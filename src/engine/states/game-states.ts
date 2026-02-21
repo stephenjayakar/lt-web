@@ -167,6 +167,7 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     highlights,
     cursorInfo,
     false, // showGrid
+    surf.scale,
   );
 
   surf.blit(mapSurf);

@@ -1,18 +1,31 @@
 /**
  * Surface - The core rendering primitive, replacing Pygame's Surface.
  * Wraps an OffscreenCanvas + context for compositing operations.
+ *
+ * Supports a `logicalScale` factor: when set, the backing canvas is
+ * larger than the logical (width x height) dimensions. All draw calls
+ * (fillRect, drawText, blit, etc.) accept coordinates in logical space
+ * and internally scale them. Sprite blits use nearest-neighbor filtering;
+ * text and vector ops render at native resolution for crispness.
  */
 export class Surface {
+  /** Logical dimensions (game-space, e.g. 240x160). */
   readonly width: number;
   readonly height: number;
+  /** Scale factor from logical to physical pixels. 1 = no scaling. */
+  readonly scale: number;
   private _canvas: OffscreenCanvas;
   private _ctx: OffscreenCanvasRenderingContext2D;
   private _alpha: number = 1.0;
 
-  constructor(width: number, height: number) {
+  constructor(width: number, height: number, scale: number = 1) {
     this.width = width;
     this.height = height;
-    this._canvas = new OffscreenCanvas(width, height);
+    this.scale = scale;
+    this._canvas = new OffscreenCanvas(
+      Math.round(width * scale),
+      Math.round(height * scale),
+    );
     const ctx = this._canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('Failed to get 2d context');
     this._ctx = ctx;
@@ -40,18 +53,26 @@ export class Surface {
   fill(r: number, g: number, b: number, a: number = 1): void {
     this._ctx.globalAlpha = 1;
     this._ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
-    this._ctx.fillRect(0, 0, this.width, this.height);
+    this._ctx.fillRect(0, 0, this._canvas.width, this._canvas.height);
   }
 
   /** Clear the surface to transparent */
   clear(): void {
-    this._ctx.clearRect(0, 0, this.width, this.height);
+    this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
   }
 
-  /** Blit another surface onto this one */
+  /** Blit another surface onto this one (nearest-neighbor for sprites). */
   blit(source: Surface, dx: number = 0, dy: number = 0): void {
+    const s = this.scale;
+    this._ctx.imageSmoothingEnabled = false;
     this._ctx.globalAlpha = source._alpha;
-    this._ctx.drawImage(source._canvas, dx, dy);
+    // Source canvas may have its own scale; draw it scaled into our space.
+    this._ctx.drawImage(
+      source._canvas,
+      0, 0, source._canvas.width, source._canvas.height,
+      Math.round(dx * s), Math.round(dy * s),
+      Math.round(source.width * s), Math.round(source.height * s),
+    );
     this._ctx.globalAlpha = 1;
   }
 
@@ -61,8 +82,17 @@ export class Surface {
     sx: number, sy: number, sw: number, sh: number,
     dx: number, dy: number
   ): void {
+    const s = this.scale;
+    const ss = source.scale;
+    this._ctx.imageSmoothingEnabled = false;
     this._ctx.globalAlpha = source._alpha;
-    this._ctx.drawImage(source._canvas, sx, sy, sw, sh, dx, dy, sw, sh);
+    this._ctx.drawImage(
+      source._canvas,
+      Math.round(sx * ss), Math.round(sy * ss),
+      Math.round(sw * ss), Math.round(sh * ss),
+      Math.round(dx * s), Math.round(dy * s),
+      Math.round(sw * s), Math.round(sh * s),
+    );
     this._ctx.globalAlpha = 1;
   }
 
@@ -72,8 +102,17 @@ export class Surface {
     sx: number, sy: number, sw: number, sh: number,
     dx: number, dy: number, dw: number, dh: number
   ): void {
+    const s = this.scale;
+    const ss = source.scale;
+    this._ctx.imageSmoothingEnabled = false;
     this._ctx.globalAlpha = source._alpha;
-    this._ctx.drawImage(source._canvas, sx, sy, sw, sh, dx, dy, dw, dh);
+    this._ctx.drawImage(
+      source._canvas,
+      Math.round(sx * ss), Math.round(sy * ss),
+      Math.round(sw * ss), Math.round(sh * ss),
+      Math.round(dx * s), Math.round(dy * s),
+      Math.round(dw * s), Math.round(dh * s),
+    );
     this._ctx.globalAlpha = 1;
   }
 
@@ -83,58 +122,80 @@ export class Surface {
     sx: number, sy: number, sw: number, sh: number,
     dx: number, dy: number
   ): void {
+    const s = this.scale;
+    this._ctx.imageSmoothingEnabled = false;
     this._ctx.globalAlpha = this._alpha;
-    this._ctx.drawImage(image, sx, sy, sw, sh, dx, dy, sw, sh);
+    this._ctx.drawImage(
+      image,
+      sx, sy, sw, sh,
+      Math.round(dx * s), Math.round(dy * s),
+      Math.round(sw * s), Math.round(sh * s),
+    );
     this._ctx.globalAlpha = 1;
   }
 
-  /** Create a subsurface view (copies the region) */
+  /** Create a subsurface view (copies the region). Result is unscaled (scale=1). */
   subsurface(x: number, y: number, w: number, h: number): Surface {
     const sub = new Surface(w, h);
-    sub.blitFrom(this, x, y, w, h, 0, 0);
+    // Read from physical pixels of this surface, write at 1:1 into sub
+    const ss = this.scale;
+    sub._ctx.imageSmoothingEnabled = false;
+    sub._ctx.drawImage(
+      this._canvas,
+      Math.round(x * ss), Math.round(y * ss),
+      Math.round(w * ss), Math.round(h * ss),
+      0, 0, w, h,
+    );
     return sub;
   }
 
-  /** Get pixel data at a position */
+  /** Get pixel data at a logical position */
   getPixel(x: number, y: number): [number, number, number, number] {
-    const data = this._ctx.getImageData(x, y, 1, 1).data;
+    const px = Math.round(x * this.scale);
+    const py = Math.round(y * this.scale);
+    const data = this._ctx.getImageData(px, py, 1, 1).data;
     return [data[0], data[1], data[2], data[3]];
   }
 
-  /** Get the full ImageData */
+  /** Get the full ImageData (physical pixels) */
   getImageData(): ImageData {
-    return this._ctx.getImageData(0, 0, this.width, this.height);
+    return this._ctx.getImageData(0, 0, this._canvas.width, this._canvas.height);
   }
 
-  /** Put ImageData back */
+  /** Put ImageData back (physical pixels) */
   putImageData(data: ImageData, x: number = 0, y: number = 0): void {
     this._ctx.putImageData(data, x, y);
   }
 
-  /** Create a copy of this surface */
+  /** Create a copy of this surface (preserves scale) */
   copy(): Surface {
-    const s = new Surface(this.width, this.height);
-    s.blit(this);
+    const s = new Surface(this.width, this.height, this.scale);
+    s._ctx.imageSmoothingEnabled = false;
+    s._ctx.drawImage(this._canvas, 0, 0);
     s._alpha = this._alpha;
     return s;
   }
 
   /** Create a horizontally flipped copy */
   flipH(): Surface {
-    const s = new Surface(this.width, this.height);
+    const s = new Surface(this.width, this.height, this.scale);
+    const pw = this._canvas.width;
+    s._ctx.imageSmoothingEnabled = false;
     s._ctx.save();
     s._ctx.scale(-1, 1);
-    s._ctx.drawImage(this._canvas, -this.width, 0);
+    s._ctx.drawImage(this._canvas, -pw, 0);
     s._ctx.restore();
     return s;
   }
 
   /** Create a vertically flipped copy */
   flipV(): Surface {
-    const s = new Surface(this.width, this.height);
+    const s = new Surface(this.width, this.height, this.scale);
+    const ph = this._canvas.height;
+    s._ctx.imageSmoothingEnabled = false;
     s._ctx.save();
     s._ctx.scale(1, -1);
-    s._ctx.drawImage(this._canvas, 0, -this.height);
+    s._ctx.drawImage(this._canvas, 0, -ph);
     s._ctx.restore();
     return s;
   }
@@ -163,33 +224,52 @@ export class Surface {
 
   /** Draw a rectangle outline */
   drawRect(x: number, y: number, w: number, h: number, color: string, lineWidth: number = 1): void {
+    const s = this.scale;
     this._ctx.strokeStyle = color;
-    this._ctx.lineWidth = lineWidth;
-    this._ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    this._ctx.lineWidth = lineWidth * s;
+    this._ctx.strokeRect(
+      Math.round(x * s) + 0.5,
+      Math.round(y * s) + 0.5,
+      Math.round(w * s) - 1,
+      Math.round(h * s) - 1,
+    );
   }
 
   /** Fill a rectangle */
   fillRect(x: number, y: number, w: number, h: number, color: string): void {
+    const s = this.scale;
     this._ctx.fillStyle = color;
-    this._ctx.fillRect(x, y, w, h);
+    this._ctx.fillRect(
+      Math.round(x * s),
+      Math.round(y * s),
+      Math.round(w * s),
+      Math.round(h * s),
+    );
   }
 
   /** Draw a line */
   drawLine(x1: number, y1: number, x2: number, y2: number, color: string, lineWidth: number = 1): void {
+    const s = this.scale;
     this._ctx.strokeStyle = color;
-    this._ctx.lineWidth = lineWidth;
+    this._ctx.lineWidth = lineWidth * s;
     this._ctx.beginPath();
-    this._ctx.moveTo(x1, y1);
-    this._ctx.lineTo(x2, y2);
+    this._ctx.moveTo(Math.round(x1 * s), Math.round(y1 * s));
+    this._ctx.lineTo(Math.round(x2 * s), Math.round(y2 * s));
     this._ctx.stroke();
   }
 
-  /** Draw text */
+  /**
+   * Draw text. The font size in the font string is scaled up by the
+   * surface scale so text renders crisply at native resolution.
+   */
   drawText(text: string, x: number, y: number, color: string = 'white', font: string = '8px monospace'): void {
-    this._ctx.font = font;
+    const s = this.scale;
+    // Scale the font size: extract the numeric px value and multiply by scale
+    const scaledFont = font.replace(/(\d+(?:\.\d+)?)px/, (_, size) => `${parseFloat(size) * s}px`);
+    this._ctx.font = scaledFont;
     this._ctx.fillStyle = color;
     this._ctx.textBaseline = 'top';
-    this._ctx.fillText(text, x, y);
+    this._ctx.fillText(text, Math.round(x * s), Math.round(y * s));
   }
 }
 

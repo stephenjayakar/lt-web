@@ -16,9 +16,19 @@ import { TILEWIDTH, TILEHEIGHT, WINWIDTH, WINHEIGHT } from '../engine/constants'
  */
 export class MapView {
   private mapSurface: Surface;
+  private currentScale: number;
 
   constructor() {
-    this.mapSurface = new Surface(WINWIDTH, WINHEIGHT);
+    this.currentScale = 1;
+    this.mapSurface = new Surface(WINWIDTH, WINHEIGHT, 1);
+  }
+
+  /** Ensure the internal surface matches the target scale. */
+  private ensureSurface(targetScale: number): void {
+    if (this.currentScale !== targetScale) {
+      this.currentScale = targetScale;
+      this.mapSurface = new Surface(WINWIDTH, WINHEIGHT, targetScale);
+    }
   }
 
   /**
@@ -44,7 +54,9 @@ export class MapView {
       draw: (surf: Surface, ox: number, oy: number) => void;
     } | null,
     showGrid: boolean,
+    renderScale: number = 1,
   ): Surface {
+    this.ensureSurface(renderScale);
     this.mapSurface.clear();
 
     // The cull rect includes a 1-tile margin around the viewport for

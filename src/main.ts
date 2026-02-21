@@ -40,45 +40,49 @@ import {
 interface DisplayInfo {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
+  /** CSS pixels scale (how many CSS px per game pixel). */
   scale: number;
+  /** The Surface render scale (game pixels -> physical canvas pixels). */
+  renderScale: number;
   offsetX: number;
   offsetY: number;
 }
 
 /**
- * Calculate the best integer (or fractional) scale to fit WINWIDTH x WINHEIGHT
- * into the available viewport while maintaining aspect ratio.
- * Prefers integer multiples for the crispest pixel art.
+ * Compute the render scale that maps WINWIDTH x WINHEIGHT to the window,
+ * accounting for devicePixelRatio for crisp physical pixels.
  */
-function calculateScale(viewW: number, viewH: number): { scale: number; offsetX: number; offsetY: number } {
-  const scaleX = viewW / WINWIDTH;
-  const scaleY = viewH / WINHEIGHT;
-  let scale = Math.min(scaleX, scaleY);
+function computeRenderScale(): { renderScale: number; cssScale: number; offsetX: number; offsetY: number } {
+  const dpr = window.devicePixelRatio || 1;
+  const viewW = window.innerWidth;
+  const viewH = window.innerHeight;
 
-  // Prefer integer multiples for pixel-perfect rendering
-  const intScale = Math.floor(scale);
-  if (intScale >= 1) {
-    scale = intScale;
-  }
+  // CSS scale: how many CSS pixels per game pixel (maintain aspect ratio)
+  const cssScale = Math.min(viewW / WINWIDTH, viewH / WINHEIGHT);
 
-  const scaledW = WINWIDTH * scale;
-  const scaledH = WINHEIGHT * scale;
+  // Render scale: CSS scale * DPR gives us 1:1 physical pixel mapping
+  const renderScale = cssScale * dpr;
+
+  const scaledW = WINWIDTH * cssScale;
+  const scaledH = WINHEIGHT * cssScale;
   const offsetX = Math.floor((viewW - scaledW) / 2);
   const offsetY = Math.floor((viewH - scaledH) / 2);
 
-  return { scale, offsetX, offsetY };
+  return { renderScale, cssScale, offsetX, offsetY };
 }
 
 function applyScale(display: DisplayInfo): void {
-  const { scale, offsetX, offsetY } = calculateScale(window.innerWidth, window.innerHeight);
-  display.scale = scale;
+  const { renderScale, cssScale, offsetX, offsetY } = computeRenderScale();
+  display.scale = cssScale;
+  display.renderScale = renderScale;
   display.offsetX = offsetX;
   display.offsetY = offsetY;
 
-  display.canvas.width = WINWIDTH;
-  display.canvas.height = WINHEIGHT;
-  display.canvas.style.width = `${WINWIDTH * scale}px`;
-  display.canvas.style.height = `${WINHEIGHT * scale}px`;
+  // The display canvas matches the physical pixel dimensions of the game area
+  display.canvas.width = Math.round(WINWIDTH * renderScale);
+  display.canvas.height = Math.round(WINHEIGHT * renderScale);
+  display.canvas.style.width = `${Math.round(WINWIDTH * cssScale)}px`;
+  display.canvas.style.height = `${Math.round(WINHEIGHT * cssScale)}px`;
   display.canvas.style.marginLeft = `${offsetX}px`;
   display.canvas.style.marginTop = `${offsetY}px`;
 
@@ -89,31 +93,37 @@ function applyScale(display: DisplayInfo): void {
 // Loading screen helper
 // ---------------------------------------------------------------------------
 
-function drawLoadingScreen(ctx: CanvasRenderingContext2D, message: string): void {
+function drawLoadingScreen(ctx: CanvasRenderingContext2D, message: string, renderScale: number = 1): void {
+  const s = renderScale;
   ctx.fillStyle = '#101020';
-  ctx.fillRect(0, 0, WINWIDTH, WINHEIGHT);
+  ctx.fillRect(0, 0, Math.round(WINWIDTH * s), Math.round(WINHEIGHT * s));
 
-  ctx.font = '8px monospace';
+  ctx.font = `${Math.round(12 * s)}px monospace`;
   ctx.fillStyle = '#aaaacc';
   ctx.textBaseline = 'top';
 
   const textWidth = ctx.measureText(message).width;
-  ctx.fillText(message, Math.floor((WINWIDTH - textWidth) / 2), Math.floor(WINHEIGHT / 2) - 4);
+  ctx.fillText(
+    message,
+    Math.floor((WINWIDTH * s - textWidth) / 2),
+    Math.floor(WINHEIGHT * s / 2) - Math.round(4 * s),
+  );
 }
 
-function drawErrorScreen(ctx: CanvasRenderingContext2D, error: string): void {
+function drawErrorScreen(ctx: CanvasRenderingContext2D, error: string, renderScale: number = 1): void {
+  const s = renderScale;
   ctx.fillStyle = '#200808';
-  ctx.fillRect(0, 0, WINWIDTH, WINHEIGHT);
+  ctx.fillRect(0, 0, Math.round(WINWIDTH * s), Math.round(WINHEIGHT * s));
 
-  ctx.font = '8px monospace';
+  ctx.font = `${Math.round(12 * s)}px monospace`;
   ctx.textBaseline = 'top';
 
   ctx.fillStyle = '#ff6666';
-  ctx.fillText('Error', 8, 8);
+  ctx.fillText('Error', Math.round(8 * s), Math.round(8 * s));
 
   ctx.fillStyle = '#ccaaaa';
-  // Word-wrap the error message across multiple lines
-  const maxChars = Math.floor((WINWIDTH - 16) / 5);
+  const charW = ctx.measureText('M').width;
+  const maxChars = Math.floor((WINWIDTH * s - 16 * s) / charW);
   const lines: string[] = [];
   let remaining = error;
   while (remaining.length > 0) {
@@ -121,7 +131,7 @@ function drawErrorScreen(ctx: CanvasRenderingContext2D, error: string): void {
     remaining = remaining.substring(maxChars);
   }
   for (let i = 0; i < lines.length && i < 14; i++) {
-    ctx.fillText(lines[i], 8, 24 + i * 10);
+    ctx.fillText(lines[i], Math.round(8 * s), Math.round((24 + i * 14) * s));
   }
 }
 
@@ -161,18 +171,15 @@ async function main(): Promise<void> {
     canvas,
     ctx,
     scale: 1,
+    renderScale: 1,
     offsetX: 0,
     offsetY: 0,
   };
 
   applyScale(display);
 
-  window.addEventListener('resize', () => {
-    applyScale(display);
-  });
-
   // --- 2. Show loading screen ---
-  drawLoadingScreen(ctx, 'Loading...');
+  drawLoadingScreen(ctx, 'Loading...', display.renderScale);
 
   // --- 3. Determine project URL from query params ---
   const params = new URLSearchParams(window.location.search);
@@ -184,12 +191,12 @@ async function main(): Promise<void> {
   const db = new Database();
 
   try {
-    drawLoadingScreen(ctx, 'Loading database...');
+    drawLoadingScreen(ctx, 'Loading database...', display.renderScale);
     await db.load(resources);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Failed to load database:', msg);
-    drawErrorScreen(ctx, `DB load failed: ${msg}`);
+    drawErrorScreen(ctx, `DB load failed: ${msg}`, display.renderScale);
     return;
   }
 
@@ -198,7 +205,7 @@ async function main(): Promise<void> {
   setupAudioInit(audioManager);
 
   // --- 6. Create GameState ---
-  drawLoadingScreen(ctx, 'Initializing...');
+  drawLoadingScreen(ctx, 'Initializing...', display.renderScale);
   const gameState = initGameState(db, resources, audioManager);
 
   // Wire up the lazy game reference used by all state classes
@@ -232,12 +239,12 @@ async function main(): Promise<void> {
   const firstLevelNid = db.levels.keys().next().value;
   if (firstLevelNid) {
     try {
-      drawLoadingScreen(ctx, 'Loading level...');
+      drawLoadingScreen(ctx, 'Loading level...', display.renderScale);
       await gameState.loadLevel(firstLevelNid);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Failed to load level:', msg);
-      drawErrorScreen(ctx, `Level load failed: ${msg}`);
+      drawErrorScreen(ctx, `Level load failed: ${msg}`, display.renderScale);
       return;
     }
   }
@@ -248,8 +255,16 @@ async function main(): Promise<void> {
   // --- 10. Create InputManager (needs the visible canvas for listeners) ---
   const inputManager = new InputManager(canvas);
 
-  // --- 11. Create the game rendering surface (240x160 OffscreenCanvas) ---
-  const gameSurface = new Surface(WINWIDTH, WINHEIGHT);
+  // --- 11. Create the game rendering surface ---
+  // The surface is logically 240x160 but physically scaled to match the
+  // window so sprites get nearest-neighbor scaling and text is crisp.
+  let gameSurface = new Surface(WINWIDTH, WINHEIGHT, display.renderScale);
+
+  // Recreate game surface on resize (scale changes)
+  window.addEventListener('resize', () => {
+    applyScale(display);
+    gameSurface = new Surface(WINWIDTH, WINHEIGHT, display.renderScale);
+  });
 
   // --- 12. Main game loop ---
   let lastTimestamp = 0;
@@ -286,8 +301,11 @@ async function main(): Promise<void> {
     // --- Update movement system ---
     game.movementSystem.update(deltaMs);
 
-    // --- Blit game surface (OffscreenCanvas) onto the visible canvas ---
-    display.ctx.clearRect(0, 0, WINWIDTH, WINHEIGHT);
+    // --- Blit game surface onto the visible canvas ---
+    // The game surface's physical canvas matches the display canvas size,
+    // so this is a 1:1 copy with no additional scaling.
+    display.ctx.imageSmoothingEnabled = false;
+    display.ctx.clearRect(0, 0, display.canvas.width, display.canvas.height);
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
     // --- End-of-frame input cleanup ---
