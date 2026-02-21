@@ -156,17 +156,20 @@ export class MapView {
       if (unit.sprite && typeof unit.sprite === 'object' && 'draw' in unit.sprite) {
         // MapSprite.draw(surf, worldX, worldY, cameraOffsetX, cameraOffsetY)
         // The sprite does its own anchor offset calculation internally.
+        // Finished units use the 'gray' sprite state (pre-rendered desaturated
+        // frames), so no additional overlay is needed.
         const sprite = unit.sprite as { draw: (s: Surface, wx: number, wy: number, ox: number, oy: number) => void };
         sprite.draw(surf, worldX, worldY, offsetX, offsetY);
       } else {
         // Fallback: draw a colored rectangle placeholder
         const color = unitPlaceholderColor(unit.team);
         surf.fillRect(px + 2, py + 2, TILEWIDTH - 4, TILEHEIGHT - 4, color);
-      }
 
-      // Dim finished units with a semi-transparent dark overlay
-      if (unit.finished) {
-        surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, 'rgba(0,0,0,0.35)');
+        // Dim finished units (only for placeholder rectangles; real sprites
+        // use their gray frame row instead).
+        if (unit.finished) {
+          surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, 'rgba(0,0,0,0.35)');
+        }
       }
     }
   }

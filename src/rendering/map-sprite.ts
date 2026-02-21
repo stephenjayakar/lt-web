@@ -1,5 +1,5 @@
 import { Surface, surfaceFromImage } from '../engine/surface';
-import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS } from '../engine/constants';
+import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS, COLORKEY } from '../engine/constants';
 
 export type SpriteState = 'standing' | 'moving' | 'gray';
 export type Direction = 'down' | 'left' | 'right' | 'up';
@@ -14,13 +14,17 @@ const DIRECTION_ROW: Record<Direction, number> = {
 /**
  * MapSprite - Handles map unit sprite animation and rendering.
  *
- * Stand image layout: 192x96 PNG, 3 columns x 2 rows of 64x48 frames.
- *   Row 0: active animation frames (0, 1, 2)
- *   Row 1: grayed/inactive frames for exhausted units
+ * Stand image layout: 192x144 PNG, 3 columns x 3 rows of 64x48 frames.
+ *   Row 0 (y=0):  passive/standing animation frames (0, 1, 2)
+ *   Row 1 (y=48): grayed/inactive frames for exhausted units
+ *   Row 2 (y=96): active/selected animation frames
  *
  * Move image layout: 192x160 PNG, 4 columns x 4 rows of 48x40 frames.
  *   Row 0: down, Row 1: left, Row 2: right, Row 3: up
  *   4 frames per direction.
+ *
+ * All sprite PNGs use RGB mode with colorkey (128, 160, 128) as the
+ * transparent background color.
  */
 export class MapSprite {
   private standFrames: Surface[];
@@ -60,8 +64,9 @@ export class MapSprite {
 
     const sprite = new MapSprite();
     const standSurf = surfaceFromImage(standImg);
+    applyColorkey(standSurf);
 
-    // Extract 3 active stand frames (row 0) and 3 gray frames (row 1)
+    // Extract 3 passive stand frames (row 0) and 3 gray frames (row 1)
     for (let col = 0; col < 3; col++) {
       sprite.standFrames.push(
         standSurf.subsurface(
@@ -84,6 +89,7 @@ export class MapSprite {
     // Extract 4 frames per direction from move image (if available)
     if (moveImg) {
       const moveSurf = surfaceFromImage(moveImg);
+      applyColorkey(moveSurf);
       const directions: Direction[] = ['down', 'left', 'right', 'up'];
       for (let row = 0; row < 4; row++) {
         const frames: Surface[] = [];
@@ -139,23 +145,21 @@ export class MapSprite {
   /**
    * Draw this sprite at a world position, applying camera offset.
    *
-   * The sprite is centered on the tile:
-   * - Stand (64x48): dx = -(64-16)/2 = -24, dy = -(48-16) = -32
-   * - Move  (48x40): dx = -(48-16)/2 = -16, dy = -(40-16) = -24
+   * Matches LT's unit_sprite.py positioning:
+   *   x: left - max(0, (image.width - 16) // 2)
+   *   y: top - 24
+   *
+   * The y offset is a fixed -24 for all sprite states. This positions
+   * the tile roughly vertically centered in the sprite frame.
+   *
+   * - Stand (64x48): dx = -(64-16)/2 = -24, dy = -24
+   * - Move  (48x40): dx = -(48-16)/2 = -16, dy = -24
    */
   draw(surf: Surface, worldX: number, worldY: number, offsetX: number, offsetY: number): void {
     const frame = this.getCurrentFrame();
 
-    let anchorDx: number;
-    let anchorDy: number;
-
-    if (this.state === 'moving') {
-      anchorDx = -(this.moveFrameWidth - TILEWIDTH) / 2;
-      anchorDy = -(this.moveFrameHeight - TILEHEIGHT);
-    } else {
-      anchorDx = -(this.standFrameWidth - TILEWIDTH) / 2;
-      anchorDy = -(this.standFrameHeight - TILEHEIGHT);
-    }
+    const anchorDx = -Math.max(0, Math.floor((frame.width - TILEWIDTH) / 2));
+    const anchorDy = -24;
 
     const px = worldX - offsetX + anchorDx;
     const py = worldY - offsetY + anchorDy;
@@ -171,4 +175,40 @@ export class MapSprite {
       this.direction = dy > 0 ? 'down' : 'up';
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace the LT colorkey background (128, 160, 128) with full transparency.
+ *
+ * LT sprite PNGs are RGB (no alpha channel) and use the colorkey as a
+ * chroma-key background. The browser's canvas renders them as opaque, so
+ * we need to convert matching pixels to alpha = 0.
+ *
+ * Uses a small tolerance (±2) to handle any JPEG-like compression artefacts,
+ * though in practice the PNGs are lossless.
+ */
+function applyColorkey(surf: Surface): void {
+  const imageData = surf.getImageData();
+  const data = imageData.data;
+  const [kr, kg, kb] = COLORKEY;
+  const tolerance = 2;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if (
+      Math.abs(r - kr) <= tolerance &&
+      Math.abs(g - kg) <= tolerance &&
+      Math.abs(b - kb) <= tolerance
+    ) {
+      data[i + 3] = 0; // Set alpha to 0 (transparent)
+    }
+  }
+
+  surf.putImageData(imageData);
 }
