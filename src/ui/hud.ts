@@ -10,7 +10,7 @@ const FONT_SMALL = '7px monospace';
 const UNIT_PANEL_W = 80;
 const UNIT_PANEL_H = 48;
 const TERRAIN_PANEL_W = 64;
-const TERRAIN_PANEL_H = 28;
+const TERRAIN_PANEL_H = 38;
 const PANEL_MARGIN = 2;
 const INNER_PAD = 4;
 
@@ -24,18 +24,21 @@ export class HUD {
   private hoveredUnit: UnitObject | null;
   private terrainName: string;
   private terrainDefense: number;
+  private terrainAvoid: number;
 
   constructor() {
     this.hoveredUnit = null;
     this.terrainName = '';
     this.terrainDefense = 0;
+    this.terrainAvoid = 0;
   }
 
   /** Set the currently hovered unit/terrain info */
-  setHover(unit: UnitObject | null, terrainName: string, terrainDef: number): void {
+  setHover(unit: UnitObject | null, terrainName: string, terrainDef: number, terrainAvo: number): void {
     this.hoveredUnit = unit;
     this.terrainName = terrainName;
     this.terrainDefense = terrainDef;
+    this.terrainAvoid = terrainAvo;
   }
 
   /** Draw the HUD overlay */
@@ -105,6 +108,11 @@ export class HUD {
     // Defense bonus
     const defText = `Def ${this.terrainDefense >= 0 ? '+' : ''}${this.terrainDefense}`;
     surf.drawText(defText, textX, textY, 'rgba(160, 220, 160, 1)', FONT_SMALL);
+    textY += 9;
+
+    // Avoid bonus
+    const avoText = `Avo ${this.terrainAvoid >= 0 ? '+' : ''}${this.terrainAvoid}`;
+    surf.drawText(avoText, textX, textY, 'rgba(160, 200, 240, 1)', FONT_SMALL);
   }
 
   /** Draw an HP bar */

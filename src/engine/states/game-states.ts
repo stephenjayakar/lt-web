@@ -60,6 +60,33 @@ function getBoard(): any {
 // ---------------------------------------------------------------------------
 
 /**
+ * Extract terrain defense and avoid bonuses from a terrain's status skill.
+ * The terrain's `status` field references a skill NID. That skill's
+ * components contain `stat_change` (for DEF) and `avoid` (for AVO).
+ */
+function getTerrainBonuses(terrainDef: any, db: any): [number, number] {
+  if (!terrainDef?.status) return [0, 0];
+  const skill = db.skills?.get(terrainDef.status);
+  if (!skill?.components) return [0, 0];
+
+  let def = 0;
+  let avo = 0;
+  for (const [name, value] of skill.components) {
+    if (name === 'avoid' && typeof value === 'number') {
+      avo += value;
+    } else if (name === 'stat_change' && Array.isArray(value)) {
+      // value is [[statNid, amount], ...]
+      for (const entry of value) {
+        if (Array.isArray(entry) && entry[0] === 'DEF' && typeof entry[1] === 'number') {
+          def += entry[1];
+        }
+      }
+    }
+  }
+  return [def, avo];
+}
+
+/**
  * Active combat animation offsets, set by CombatState so that
  * collectVisibleUnits can apply lunge/shake to the fighting sprites.
  */
@@ -752,11 +779,8 @@ export class FreeState extends MapState {
     const unit = game.board.getUnit(pos.x, pos.y);
     const terrainNid = game.board.getTerrain(pos.x, pos.y);
     const terrainDef = terrainNid ? game.db.terrain.get(terrainNid) : null;
-    game.hud.setHover(
-      unit,
-      terrainDef?.name ?? '',
-      0, // TODO: terrain defense bonus from constants/equations
-    );
+    const [tDef, tAvo] = getTerrainBonuses(terrainDef, game.db);
+    game.hud.setHover(unit, terrainDef?.name ?? '', tDef, tAvo);
 
     // Auto end-turn: if all player units are finished, advance
     const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
