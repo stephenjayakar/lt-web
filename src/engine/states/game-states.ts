@@ -588,10 +588,8 @@ export class FreeState extends MapState {
   }
 
   override draw(surf: Surface): Surface {
-    const game = getGame();
     surf = drawMap(surf);
-    // Draw HUD overlay
-    game.hud.draw(surf, game.db);
+    // HUD is drawn in screen-space by main.ts after the game surface blit.
     return surf;
   }
 }

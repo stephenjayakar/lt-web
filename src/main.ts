@@ -295,6 +295,9 @@ async function main(): Promise<void> {
     display.ctx.clearRect(0, 0, display.canvas.width, display.canvas.height);
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
+    // --- HUD overlay (fixed screen-space, not affected by zoom) ---
+    game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db);
+
     // --- End of frame ---
     inputManager.endFrame();
     audioManager.resume();
