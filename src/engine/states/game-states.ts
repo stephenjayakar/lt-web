@@ -1916,6 +1916,8 @@ export class AIState extends MapState {
   private processing: boolean = false;
   private waitingForCombat: boolean = false;
   private waitingForMovement: boolean = false;
+  private pendingCombatTarget: UnitObject | null = null;
+  private pendingCombatWeapon: ItemObject | null = null;
 
   override begin(): StateResult {
     const game = getGame();
@@ -1928,6 +1930,8 @@ export class AIState extends MapState {
     this.processing = false;
     this.waitingForCombat = false;
     this.waitingForMovement = false;
+    this.pendingCombatTarget = null;
+    this.pendingCombatWeapon = null;
 
     game.cursor.visible = false;
   }
@@ -1935,16 +1939,25 @@ export class AIState extends MapState {
   override update(): StateResult {
     const game = getGame();
 
-    // Wait for movement/combat animations to finish
+    // Wait for combat animation (CombatState) to finish.
+    // CombatState pops itself via back(), which returns control here.
+    if (this.waitingForCombat) {
+      // CombatState is transparent and sits on top of us. If it has
+      // popped, we are now the top state and can advance.
+      // We detect this by checking if we're still waiting — CombatState
+      // sets attacker.hasAttacked and attacker.finished in its cleanup.
+      const unit = this.aiUnits[this.currentAiIndex];
+      if (unit && (unit.finished || unit.isDead())) {
+        this.waitingForCombat = false;
+        this.advanceToNextUnit();
+      }
+      return;
+    }
+
+    // Wait for movement animations to finish
     if (this.waitingForMovement) {
       if (!game.movementSystem.isMoving()) {
         this.waitingForMovement = false;
-        // After movement, check if we need combat
-        if (this.waitingForCombat) {
-          // Combat will be handled next frame
-        } else {
-          this.advanceToNextUnit();
-        }
       }
       return;
     }
@@ -1996,13 +2009,15 @@ export class AIState extends MapState {
             );
 
             this.waitingForMovement = true;
+            this.pendingCombatTarget = action.targetUnit!;
+            this.pendingCombatWeapon = action.item!;
             game.movementSystem.beginMove(
               unit,
               action.movePath,
               undefined,
               () => {
-                // Movement done — initiate combat
-                this.initiateAICombat(unit, action.targetUnit!, action.item!);
+                // Movement done — now push CombatState for animated combat
+                this.beginAICombat(unit, this.pendingCombatTarget!, this.pendingCombatWeapon!);
               },
             );
           } else {
@@ -2014,9 +2029,9 @@ export class AIState extends MapState {
                 action.targetPosition[1],
               );
             }
-            this.initiateAICombat(
+            this.beginAICombat(
               unit,
-              action.targetUnit,
+              action.targetUnit!,
               action.item!,
             );
           }
@@ -2047,12 +2062,14 @@ export class AIState extends MapState {
             this.waitingForMovement = true;
             game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
               unit.finished = true;
+              this.waitingForMovement = false;
+              this.advanceToNextUnit();
             });
           } else {
             unit.hasMoved = true;
             unit.finished = true;
+            this.advanceToNextUnit();
           }
-          this.advanceToNextUnit();
         } else {
           unit.finished = true;
           this.advanceToNextUnit();
@@ -2068,52 +2085,30 @@ export class AIState extends MapState {
     }
   }
 
-  private initiateAICombat(
+  /**
+   * Push CombatState onto the state machine so the AI combat plays
+   * with the same animations (lunge, shake, HP drain, death fade, EXP)
+   * that the player sees. CombatState reads game.selectedUnit and
+   * game.combatTarget, then pops itself when done. AIState.update()
+   * detects the pop via waitingForCombat and advances to the next unit.
+   */
+  private beginAICombat(
     attacker: UnitObject,
     defender: UnitObject,
-    weapon: ItemObject,
+    _weapon: ItemObject,
   ): void {
     const game = getGame();
-    const defenseItem = getEquippedWeapon(defender);
-    const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
-    const combat = new MapCombat(
-      attacker,
-      weapon,
-      defender,
-      defenseItem,
-      game.db,
-      rngMode,
-    );
+    // CombatState.begin() reads these to set up the MapCombat instance
+    game.selectedUnit = attacker;
+    game.combatTarget = defender;
 
-    // Run combat to completion synchronously (simplified)
-    let done = false;
-    while (!done) {
-      done = combat.update(FRAMETIME);
-    }
+    this.waitingForCombat = true;
+    this.waitingForMovement = false;
 
-    const results = combat.applyResults();
-
-    if (results.defenderDead) {
-      game.board.removeUnit(defender);
-    }
-    if (results.attackerDead) {
-      game.board.removeUnit(attacker);
-    }
-
-    attacker.hasAttacked = true;
-    attacker.finished = true;
-
-    // Check win/loss conditions after AI combat
-    if (game.checkLossCondition()) {
-      console.warn('GAME OVER — loss condition met during AI phase');
-      // TODO: push GameOverState
-    } else if (game.checkWinCondition()) {
-      console.warn('VICTORY — win condition met during AI phase');
-      // TODO: push VictoryState
-    }
-
-    this.advanceToNextUnit();
+    // Push CombatState on top of AIState (CombatState is transparent,
+    // so AIState.draw() still runs underneath).
+    game.state.change('combat');
   }
 
   private advanceToNextUnit(): void {
