@@ -1,5 +1,5 @@
 import { Surface } from '../engine/surface';
-import { WINWIDTH, WINHEIGHT } from '../engine/constants';
+import { viewport } from '../engine/viewport';
 import type { InputEvent } from '../engine/input';
 
 export type DialogState = 'typing' | 'waiting' | 'done';
@@ -138,8 +138,8 @@ export class Dialog {
     if (this.state === 'done') return;
 
     const boxX = BOX_MARGIN;
-    const boxY = WINHEIGHT - BOX_HEIGHT - BOX_MARGIN;
-    const boxW = WINWIDTH - BOX_MARGIN * 2;
+    const boxY = viewport.height - BOX_HEIGHT - BOX_MARGIN;
+    const boxW = viewport.width - BOX_MARGIN * 2;
 
     // Background
     surf.fillRect(boxX, boxY, boxW, BOX_HEIGHT, BG_COLOR);
