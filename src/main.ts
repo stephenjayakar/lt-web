@@ -16,6 +16,7 @@ import { initGameState, game } from './engine/game-state';
 import {
   setGameRef,
   TitleState,
+  LevelSelectState,
   OptionMenuState,
   FreeState,
   MoveState,
@@ -214,6 +215,7 @@ async function main(): Promise<void> {
   // --- 7. Register all game states ---
   const states = [
     new TitleState(),
+    new LevelSelectState(),
     new OptionMenuState(),
     new FreeState(),
     new MoveState(),
@@ -235,21 +237,7 @@ async function main(): Promise<void> {
     gameState.state.register(state);
   }
 
-  // --- 8. Load the first level ---
-  const firstLevelNid = db.levels.keys().next().value;
-  if (firstLevelNid) {
-    try {
-      drawLoadingScreen(ctx, 'Loading level...', display.renderScale);
-      await gameState.loadLevel(firstLevelNid);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('Failed to load level:', msg);
-      drawErrorScreen(ctx, `Level load failed: ${msg}`, display.renderScale);
-      return;
-    }
-  }
-
-  // --- 9. Push initial state ---
+  // --- 8. Push initial state (level is loaded via LevelSelectState) ---
   gameState.state.change('title');
 
   // --- 10. Create InputManager (needs the visible canvas for listeners) ---

@@ -367,13 +367,191 @@ export class TitleState extends State {
     // Mouse click also starts the game
     const game = getGame();
     if (event === 'START' || event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
-      if (!game.board) {
-        console.error('Cannot start: no level loaded (game.board is null). Check that game data is accessible.');
-        return;
-      }
-      game.state.change('free');
+      game.state.change('level_select');
       return;
     }
+  }
+}
+
+// ============================================================================
+// 1a2. LevelSelectState (chapter / scenario picker)
+// ============================================================================
+
+export class LevelSelectState extends State {
+  readonly name = 'level_select';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private levels: { nid: string; name: string }[] = [];
+  private cursor: number = 0;
+  private scrollOffset: number = 0;
+  private loading: boolean = false;
+
+  // Layout constants
+  private readonly VISIBLE_ROWS = 7;
+  private readonly ROW_HEIGHT = 16;
+  private readonly LIST_Y = 30;
+  private readonly LIST_X = 20;
+
+  override begin(): StateResult {
+    const game = getGame();
+    this.levels = [];
+    this.cursor = 0;
+    this.scrollOffset = 0;
+    this.loading = false;
+
+    // Collect all levels from the database
+    for (const [nid, prefab] of game.db.levels) {
+      this.levels.push({ nid, name: prefab.name });
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    // Dark background
+    surf.fill(16, 16, 32);
+
+    // Title
+    const title = 'Select Chapter';
+    const titleW = title.length * 7;
+    surf.drawText(
+      title,
+      Math.floor((WINWIDTH - titleW) / 2),
+      10,
+      'white',
+      '12px monospace',
+    );
+
+    // Level list
+    const visibleStart = this.scrollOffset;
+    const visibleEnd = Math.min(this.levels.length, visibleStart + this.VISIBLE_ROWS);
+
+    for (let i = visibleStart; i < visibleEnd; i++) {
+      const level = this.levels[i];
+      const y = this.LIST_Y + (i - visibleStart) * this.ROW_HEIGHT;
+      const isSelected = i === this.cursor;
+
+      // Selection highlight
+      if (isSelected) {
+        surf.fillRect(this.LIST_X - 4, y - 1, WINWIDTH - (this.LIST_X - 4) * 2, this.ROW_HEIGHT, 'rgba(60,80,160,0.6)');
+      }
+
+      // Cursor arrow
+      if (isSelected) {
+        surf.drawText('>', this.LIST_X - 2, y, 'rgb(220,200,80)', '10px monospace');
+      }
+
+      // Level name
+      const color = isSelected ? 'rgb(255,255,220)' : 'rgb(180,180,200)';
+      surf.drawText(level.name, this.LIST_X + 8, y, color, '10px monospace');
+    }
+
+    // Scroll indicators
+    if (this.scrollOffset > 0) {
+      surf.drawText('^', Math.floor(WINWIDTH / 2), this.LIST_Y - 10, 'rgba(200,200,220,0.6)', '8px monospace');
+    }
+    if (visibleEnd < this.levels.length) {
+      const bottomY = this.LIST_Y + this.VISIBLE_ROWS * this.ROW_HEIGHT;
+      surf.drawText('v', Math.floor(WINWIDTH / 2), bottomY, 'rgba(200,200,220,0.6)', '8px monospace');
+    }
+
+    // Loading indicator
+    if (this.loading) {
+      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, 'rgba(0,0,0,0.5)');
+      const loadText = 'Loading...';
+      const loadW = loadText.length * 5;
+      surf.drawText(
+        loadText,
+        Math.floor((WINWIDTH - loadW) / 2),
+        Math.floor(WINHEIGHT / 2),
+        'white',
+        '10px monospace',
+      );
+    }
+
+    return surf;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (this.loading) return;
+    const game = getGame();
+
+    // Mouse hover to highlight
+    if (game.input?.mouseMoved) {
+      const [, gy] = game.input.getGameMousePos();
+      const hoverIndex = this.getIndexAtY(gy);
+      if (hoverIndex !== null) {
+        this.cursor = hoverIndex;
+      }
+    }
+
+    // Mouse click to select
+    if (game.input?.mouseClick === 'SELECT') {
+      const [, gy] = game.input.getGameMousePos();
+      const clickIndex = this.getIndexAtY(gy);
+      if (clickIndex !== null) {
+        this.cursor = clickIndex;
+        this.selectLevel();
+        return;
+      }
+    }
+
+    // Mouse right-click to go back
+    if (game.input?.mouseClick === 'BACK') {
+      game.state.back();
+      return;
+    }
+
+    if (event === 'UP') {
+      if (this.cursor > 0) {
+        this.cursor--;
+        // Scroll up if cursor is above visible area
+        if (this.cursor < this.scrollOffset) {
+          this.scrollOffset = this.cursor;
+        }
+      }
+    } else if (event === 'DOWN') {
+      if (this.cursor < this.levels.length - 1) {
+        this.cursor++;
+        // Scroll down if cursor is below visible area
+        if (this.cursor >= this.scrollOffset + this.VISIBLE_ROWS) {
+          this.scrollOffset = this.cursor - this.VISIBLE_ROWS + 1;
+        }
+      }
+    } else if (event === 'SELECT' || event === 'START') {
+      this.selectLevel();
+    } else if (event === 'BACK') {
+      game.state.back();
+    }
+  }
+
+  private getIndexAtY(gy: number): number | null {
+    const relY = gy - this.LIST_Y;
+    if (relY < 0) return null;
+    const row = Math.floor(relY / this.ROW_HEIGHT);
+    if (row >= this.VISIBLE_ROWS) return null;
+    const index = this.scrollOffset + row;
+    if (index >= this.levels.length) return null;
+    return index;
+  }
+
+  private selectLevel(): void {
+    if (this.levels.length === 0) return;
+    const selected = this.levels[this.cursor];
+    const game = getGame();
+
+    this.loading = true;
+
+    // Clear the state stack, load the level, then start gameplay
+    game.state.clear();
+    game.loadLevel(selected.nid).then(() => {
+      this.loading = false;
+      game.state.change('free');
+    }).catch((err: unknown) => {
+      this.loading = false;
+      console.error('Failed to load level:', err);
+      // Go back to title on failure
+      game.state.change('title');
+    });
   }
 }
 
