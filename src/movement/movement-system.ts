@@ -59,6 +59,17 @@ export class MovementSystem {
     // Place the unit at the start of the path immediately.
     unit.position = [path[0][0], path[0][1]];
 
+    // Set sprite to moving state with initial direction
+    if (unit.sprite && typeof unit.sprite === 'object' && 'state' in unit.sprite) {
+      const spr = unit.sprite as { state: string; setDirection?: (dx: number, dy: number) => void };
+      spr.state = 'moving';
+      if (path.length >= 2 && spr.setDirection) {
+        const dx = path[1][0] - path[0][0];
+        const dy = path[1][1] - path[0][1];
+        spr.setDirection(dx, dy);
+      }
+    }
+
     this.components.push({
       unit,
       path,
@@ -93,11 +104,25 @@ export class MovementSystem {
         const [tx, ty] = comp.path[comp.currentIndex];
         comp.unit.position = [tx, ty];
 
+        // Update sprite direction for the next leg of the path
+        if (comp.currentIndex < comp.path.length - 1) {
+          const [nx, ny] = comp.path[comp.currentIndex + 1];
+          const spr = comp.unit.sprite;
+          if (spr && typeof spr === 'object' && 'setDirection' in spr) {
+            (spr as { setDirection: (dx: number, dy: number) => void }).setDirection(nx - tx, ny - ty);
+          }
+        }
+
         // Check if we've reached the end
         if (comp.currentIndex >= comp.path.length - 1) {
           comp.progress = 0;
           comp.done = true;
           comp.unit.hasMoved = true;
+          // Reset sprite to standing state
+          const spr = comp.unit.sprite;
+          if (spr && typeof spr === 'object' && 'state' in spr) {
+            (spr as { state: string }).state = 'standing';
+          }
           comp.onComplete?.();
           break;
         }

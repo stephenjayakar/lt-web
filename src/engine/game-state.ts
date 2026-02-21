@@ -32,6 +32,7 @@ import { AudioManager } from '../audio/audio-manager';
 import { HUD } from '../ui/hud';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
+import { MapSprite } from '../rendering/map-sprite';
 import type { GameEvent } from '../events/event-manager';
 
 /**
@@ -551,10 +552,10 @@ export class GameState {
 
       loadPromises.push(
         this.resources.tryLoadMapSprite(spriteNid).then((sprites) => {
-          // Store the raw sprite images on the unit for the renderer to use.
-          // The UnitRenderer / MapSprite system will wrap these into proper
-          // animation objects; here we just make them available.
-          unit.sprite = sprites;
+          // Construct a proper MapSprite from the loaded images.
+          // MapSprite.fromImages handles null move images gracefully.
+          const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move);
+          unit.sprite = mapSprite;
         }),
       );
     }

@@ -29,10 +29,38 @@ export interface CombatResults {
 
 /** Duration constants (milliseconds) */
 const INIT_DURATION_MS = 250; // ~15 frames at 60 fps
-const STRIKE_DURATION_MS = 150; // Flash / strike animation
-const HP_DRAIN_DURATION_MS = 333; // ~20 frames at 60 fps
-const WAITING_DURATION_MS = 100; // Pause between strikes
-const CLEANUP_DURATION_MS = 250; // Pause before done
+const STRIKE_DURATION_MS = 200; // Lunge + strike animation
+const HP_DRAIN_DURATION_MS = 400; // ~24 frames at 60 fps
+const WAITING_DURATION_MS = 150; // Pause between strikes
+const CLEANUP_DURATION_MS = 300; // Pause before done
+
+/** Animation sub-timings within STRIKE phase (ms) */
+const LUNGE_DURATION_MS = 120; // Attacker moves toward defender
+const LUNGE_RETURN_MS = 80;    // Attacker snaps back (STRIKE_DURATION - LUNGE)
+
+/** Shake animation during HP drain */
+const SHAKE_FREQUENCY = 40;    // ms per oscillation
+const SHAKE_AMPLITUDE = 2;     // pixels
+
+/** Floating damage number */
+export interface DamagePopup {
+  x: number;         // tile x
+  y: number;         // tile y
+  value: number;     // damage amount (0 = miss)
+  isCrit: boolean;
+  elapsed: number;   // ms since spawn
+  duration: number;  // total lifetime ms
+}
+
+/** Per-unit animation offsets for rendering */
+export interface CombatAnimState {
+  /** Pixel offset for lunge animation [dx, dy] */
+  lungeOffset: [number, number];
+  /** Pixel offset for hit-shake [dx, dy] */
+  shakeOffset: [number, number];
+  /** Flash alpha (0 = no flash, 1 = full white overlay) */
+  flashAlpha: number;
+}
 
 export class MapCombat {
   attacker: UnitObject;
@@ -62,6 +90,11 @@ export class MapCombat {
 
   // Reference to DB for exp calculation
   private db: Database;
+
+  // Animation state for rendering
+  attackerAnim: CombatAnimState;
+  defenderAnim: CombatAnimState;
+  damagePopups: DamagePopup[];
 
   constructor(
     attacker: UnitObject,
@@ -96,6 +129,11 @@ export class MapCombat {
 
     this.attackerStartHp = attacker.currentHp;
     this.defenderStartHp = defender.currentHp;
+
+    // Animation state
+    this.attackerAnim = { lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0 };
+    this.defenderAnim = { lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0 };
+    this.damagePopups = [];
   }
 
   /**
@@ -127,6 +165,9 @@ export class MapCombat {
     defenderHp: number;
     attackerMaxHp: number;
     defenderMaxHp: number;
+    attackerAnim: CombatAnimState;
+    defenderAnim: CombatAnimState;
+    damagePopups: DamagePopup[];
   } {
     const strike =
       this.currentStrikeIndex < this.strikes.length
@@ -140,6 +181,9 @@ export class MapCombat {
       defenderHp: Math.max(0, Math.round(this.defenderDisplayHp)),
       attackerMaxHp: this.attacker.maxHp,
       defenderMaxHp: this.defender.maxHp,
+      attackerAnim: this.attackerAnim,
+      defenderAnim: this.defenderAnim,
+      damagePopups: this.damagePopups,
     };
   }
 
@@ -270,11 +314,56 @@ export class MapCombat {
 
   private updateStrike(deltaMs: number): boolean {
     this.frameTimer += deltaMs;
+
+    // Compute lunge animation: attacker moves toward defender
+    const strike = this.strikes[this.currentStrikeIndex];
+    if (strike) {
+      const isAttackerStriking = (strike.attacker === this.attacker);
+      const strikerAnim = isAttackerStriking ? this.attackerAnim : this.defenderAnim;
+      const targetAnim = isAttackerStriking ? this.defenderAnim : this.attackerAnim;
+
+      // Compute direction from striker to target (in tile coords)
+      const strikerUnit = strike.attacker;
+      const targetUnit = strike.defender;
+      if (strikerUnit.position && targetUnit.position) {
+        const dx = targetUnit.position[0] - strikerUnit.position[0];
+        const dy = targetUnit.position[1] - strikerUnit.position[1];
+        const dist = Math.abs(dx) + Math.abs(dy);
+        const ndx = dist > 0 ? dx / dist : 0;
+        const ndy = dist > 0 ? dy / dist : 0;
+
+        if (this.frameTimer <= LUNGE_DURATION_MS) {
+          // Lunge forward
+          const t = this.frameTimer / LUNGE_DURATION_MS;
+          const lungePixels = 6; // max pixels to lunge
+          strikerAnim.lungeOffset = [ndx * lungePixels * t, ndy * lungePixels * t];
+        } else {
+          // Snap back
+          const returnT = (this.frameTimer - LUNGE_DURATION_MS) / LUNGE_RETURN_MS;
+          const lungePixels = 6;
+          const eased = Math.min(1, returnT);
+          strikerAnim.lungeOffset = [ndx * lungePixels * (1 - eased), ndy * lungePixels * (1 - eased)];
+        }
+
+        // Flash on the target at the moment of impact (peak of lunge)
+        if (this.frameTimer >= LUNGE_DURATION_MS * 0.8 && this.frameTimer <= LUNGE_DURATION_MS * 1.2) {
+          if (strike.hit) {
+            targetAnim.flashAlpha = strike.crit ? 0.8 : 0.5;
+          }
+        } else {
+          targetAnim.flashAlpha = Math.max(0, targetAnim.flashAlpha - deltaMs * 0.005);
+        }
+      }
+    }
+
     if (this.frameTimer >= STRIKE_DURATION_MS) {
       this.frameTimer = 0;
 
+      // Reset lunge offsets
+      this.attackerAnim.lungeOffset = [0, 0];
+      this.defenderAnim.lungeOffset = [0, 0];
+
       // Apply this strike's damage to display HP targets
-      const strike = this.strikes[this.currentStrikeIndex];
       if (strike && strike.hit) {
         // Record drain animation start points
         this.hpDrainStartAttacker = this.attackerTargetHp;
@@ -285,8 +374,37 @@ export class MapCombat {
         } else {
           this.attackerTargetHp = Math.max(0, this.attackerTargetHp - strike.damage);
         }
-      } else {
+
+        // Spawn damage popup on the defender
+        const targetUnit = strike.defender;
+        if (targetUnit.position) {
+          this.damagePopups.push({
+            x: targetUnit.position[0],
+            y: targetUnit.position[1],
+            value: strike.damage,
+            isCrit: strike.crit,
+            elapsed: 0,
+            duration: 600,
+          });
+        }
+      } else if (strike && !strike.hit) {
         // Miss - still need drain start points for the (no-op) animation
+        this.hpDrainStartAttacker = this.attackerTargetHp;
+        this.hpDrainStartDefender = this.defenderTargetHp;
+
+        // Spawn "MISS" popup
+        const targetUnit = strike.defender;
+        if (targetUnit.position) {
+          this.damagePopups.push({
+            x: targetUnit.position[0],
+            y: targetUnit.position[1],
+            value: 0, // 0 = miss
+            isCrit: false,
+            elapsed: 0,
+            duration: 500,
+          });
+        }
+      } else {
         this.hpDrainStartAttacker = this.attackerTargetHp;
         this.hpDrainStartDefender = this.defenderTargetHp;
       }
@@ -305,10 +423,40 @@ export class MapCombat {
     this.attackerDisplayHp = lerp(this.hpDrainStartAttacker, this.attackerTargetHp, t);
     this.defenderDisplayHp = lerp(this.hpDrainStartDefender, this.defenderTargetHp, t);
 
+    // Hit-shake on the unit that took damage
+    const strike = this.currentStrikeIndex < this.strikes.length
+      ? this.strikes[this.currentStrikeIndex]
+      : null;
+    if (strike && strike.hit && t < 0.6) {
+      // Oscillating shake
+      const shakeT = this.hpDrainElapsed / SHAKE_FREQUENCY;
+      const decay = 1 - t / 0.6; // fade shake out over first 60% of drain
+      const shakeX = Math.round(Math.sin(shakeT * Math.PI * 2) * SHAKE_AMPLITUDE * decay);
+
+      const isAttackerStriking = (strike.attacker === this.attacker);
+      const targetAnim = isAttackerStriking ? this.defenderAnim : this.attackerAnim;
+      targetAnim.shakeOffset = [shakeX, 0];
+    } else {
+      // Reset shakes
+      this.attackerAnim.shakeOffset = [0, 0];
+      this.defenderAnim.shakeOffset = [0, 0];
+    }
+
+    // Decay flash alpha
+    this.attackerAnim.flashAlpha = Math.max(0, this.attackerAnim.flashAlpha - deltaMs * 0.004);
+    this.defenderAnim.flashAlpha = Math.max(0, this.defenderAnim.flashAlpha - deltaMs * 0.004);
+
+    // Update damage popups
+    this.updateDamagePopups(deltaMs);
+
     if (t >= 1) {
       // Snap to target
       this.attackerDisplayHp = this.attackerTargetHp;
       this.defenderDisplayHp = this.defenderTargetHp;
+
+      // Reset shakes
+      this.attackerAnim.shakeOffset = [0, 0];
+      this.defenderAnim.shakeOffset = [0, 0];
 
       // Move to next strike or cleanup
       this.currentStrikeIndex++;
@@ -329,6 +477,8 @@ export class MapCombat {
 
   private updateWaiting(deltaMs: number): boolean {
     this.frameTimer += deltaMs;
+    // Keep updating popups during pauses
+    this.updateDamagePopups(deltaMs);
     if (this.frameTimer >= WAITING_DURATION_MS) {
       this.frameTimer = 0;
       this.state = 'strike';
@@ -338,12 +488,28 @@ export class MapCombat {
 
   private updateCleanup(deltaMs: number): boolean {
     this.frameTimer += deltaMs;
+    this.updateDamagePopups(deltaMs);
+    // Reset all animation offsets during cleanup
+    this.attackerAnim.lungeOffset = [0, 0];
+    this.attackerAnim.shakeOffset = [0, 0];
+    this.defenderAnim.lungeOffset = [0, 0];
+    this.defenderAnim.shakeOffset = [0, 0];
+    this.attackerAnim.flashAlpha = 0;
+    this.defenderAnim.flashAlpha = 0;
     if (this.frameTimer >= CLEANUP_DURATION_MS) {
       this.frameTimer = 0;
       this.state = 'done';
       return true;
     }
     return false;
+  }
+
+  /** Advance all active damage popups, removing expired ones. */
+  private updateDamagePopups(deltaMs: number): void {
+    for (const popup of this.damagePopups) {
+      popup.elapsed += deltaMs;
+    }
+    this.damagePopups = this.damagePopups.filter(p => p.elapsed < p.duration);
   }
 
   // ------------------------------------------------------------------

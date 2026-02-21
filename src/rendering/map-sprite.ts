@@ -47,11 +47,19 @@ export class MapSprite {
     this.moveFrameHeight = 40;
   }
 
-  /** Load from stand and move images */
-  static fromImages(standImg: HTMLImageElement, moveImg: HTMLImageElement): MapSprite {
+  /**
+   * Load from stand and move images.
+   * Stand image is required; move image is optional (null if not found).
+   * When move image is missing, the standing frame is used for all directions.
+   */
+  static fromImages(
+    standImg: HTMLImageElement | null,
+    moveImg: HTMLImageElement | null,
+  ): MapSprite | null {
+    if (!standImg) return null;
+
     const sprite = new MapSprite();
     const standSurf = surfaceFromImage(standImg);
-    const moveSurf = surfaceFromImage(moveImg);
 
     // Extract 3 active stand frames (row 0) and 3 gray frames (row 1)
     for (let col = 0; col < 3; col++) {
@@ -73,21 +81,24 @@ export class MapSprite {
       );
     }
 
-    // Extract 4 frames per direction from move image
-    const directions: Direction[] = ['down', 'left', 'right', 'up'];
-    for (let row = 0; row < 4; row++) {
-      const frames: Surface[] = [];
-      for (let col = 0; col < 4; col++) {
-        frames.push(
-          moveSurf.subsurface(
-            col * sprite.moveFrameWidth,
-            row * sprite.moveFrameHeight,
-            sprite.moveFrameWidth,
-            sprite.moveFrameHeight,
-          ),
-        );
+    // Extract 4 frames per direction from move image (if available)
+    if (moveImg) {
+      const moveSurf = surfaceFromImage(moveImg);
+      const directions: Direction[] = ['down', 'left', 'right', 'up'];
+      for (let row = 0; row < 4; row++) {
+        const frames: Surface[] = [];
+        for (let col = 0; col < 4; col++) {
+          frames.push(
+            moveSurf.subsurface(
+              col * sprite.moveFrameWidth,
+              row * sprite.moveFrameHeight,
+              sprite.moveFrameWidth,
+              sprite.moveFrameHeight,
+            ),
+          );
+        }
+        sprite.moveFrames.set(directions[row], frames);
       }
-      sprite.moveFrames.set(directions[row], frames);
     }
 
     return sprite;

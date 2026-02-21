@@ -35,7 +35,7 @@ export class MapView {
   draw(
     tilemap: TileMapObject,
     cullRect: { x: number; y: number; w: number; h: number },
-    units: { x: number; y: number; sprite: any; team: string; finished: boolean }[],
+    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean }[],
     highlights: Map<string, string> | null,
     cursor: {
       x: number;
@@ -127,7 +127,7 @@ export class MapView {
    */
   private drawUnits(
     surf: Surface,
-    units: { x: number; y: number; sprite: any; team: string; finished: boolean }[],
+    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean }[],
     offsetX: number,
     offsetY: number,
   ): void {
@@ -135,11 +135,17 @@ export class MapView {
     const sorted = [...units].sort((a, b) => a.y - b.y);
 
     for (const unit of sorted) {
-      const px = unit.x * TILEWIDTH - offsetX;
-      const py = unit.y * TILEHEIGHT - offsetY;
+      // World-space position of the tile's top-left, including sub-tile visual offset
+      // for smooth movement interpolation. visualOffset is in tile units, convert to pixels.
+      const worldX = unit.x * TILEWIDTH + unit.visualOffsetX * TILEWIDTH;
+      const worldY = unit.y * TILEHEIGHT + unit.visualOffsetY * TILEHEIGHT;
+
+      // Screen-space position (for culling and placeholders)
+      const px = worldX - offsetX;
+      const py = worldY - offsetY;
 
       // Viewport cull (allow a margin for sprites larger than one tile)
-      const margin = TILEWIDTH;
+      const margin = TILEWIDTH * 2;
       if (
         px + TILEWIDTH + margin <= 0 || py + TILEHEIGHT + margin <= 0 ||
         px - margin >= WINWIDTH || py - margin >= WINHEIGHT
@@ -148,8 +154,10 @@ export class MapView {
       }
 
       if (unit.sprite && typeof unit.sprite === 'object' && 'draw' in unit.sprite) {
-        // Sprite object with a draw method - the standard path
-        (unit.sprite as { draw: (s: Surface, x: number, y: number) => void }).draw(surf, px, py);
+        // MapSprite.draw(surf, worldX, worldY, cameraOffsetX, cameraOffsetY)
+        // The sprite does its own anchor offset calculation internally.
+        const sprite = unit.sprite as { draw: (s: Surface, wx: number, wy: number, ox: number, oy: number) => void };
+        sprite.draw(surf, worldX, worldY, offsetX, offsetY);
       } else {
         // Fallback: draw a colored rectangle placeholder
         const color = unitPlaceholderColor(unit.team);

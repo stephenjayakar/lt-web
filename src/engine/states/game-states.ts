@@ -49,10 +49,30 @@ function getGame(): any {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Active combat animation offsets, set by CombatState so that
+ * collectVisibleUnits can apply lunge/shake to the fighting sprites.
+ */
+let _activeCombatOffsets: {
+  attacker: UnitObject;
+  defender: UnitObject;
+  attackerOffset: [number, number]; // pixel offsets
+  defenderOffset: [number, number];
+} | null = null;
+
+export function setActiveCombatOffsets(
+  offsets: typeof _activeCombatOffsets,
+): void {
+  _activeCombatOffsets = offsets;
+}
+
 /** Collect units for map-view rendering from the game board. */
 function collectVisibleUnits(): {
   x: number;
   y: number;
+  /** Sub-tile visual offset in tile units for movement interpolation. */
+  visualOffsetX: number;
+  visualOffsetY: number;
   sprite: any;
   team: string;
   finished: boolean;
@@ -62,6 +82,8 @@ function collectVisibleUnits(): {
   const result: {
     x: number;
     y: number;
+    visualOffsetX: number;
+    visualOffsetY: number;
     sprite: any;
     team: string;
     finished: boolean;
@@ -69,9 +91,37 @@ function collectVisibleUnits(): {
 
   for (const u of allUnits) {
     if (u.isDead() || !u.position) continue;
+
+    // Update sprite state: gray for finished, standing otherwise
+    // (moving state is set by the movement system)
+    if (u.sprite && typeof u.sprite === 'object' && 'state' in u.sprite) {
+      const spr = u.sprite as { state: string };
+      if (spr.state !== 'moving') {
+        spr.state = u.finished ? 'gray' : 'standing';
+      }
+    }
+
+    // Get smooth movement interpolation offset (in tile units)
+    const moveOffset = game.movementSystem.getVisualOffset(u);
+    let visualOffsetX = moveOffset ? moveOffset[0] : 0;
+    let visualOffsetY = moveOffset ? moveOffset[1] : 0;
+
+    // Apply combat lunge/shake offsets (in pixels, convert to tile units)
+    if (_activeCombatOffsets) {
+      if (u === _activeCombatOffsets.attacker) {
+        visualOffsetX += _activeCombatOffsets.attackerOffset[0] / TILEWIDTH;
+        visualOffsetY += _activeCombatOffsets.attackerOffset[1] / TILEHEIGHT;
+      } else if (u === _activeCombatOffsets.defender) {
+        visualOffsetX += _activeCombatOffsets.defenderOffset[0] / TILEWIDTH;
+        visualOffsetY += _activeCombatOffsets.defenderOffset[1] / TILEHEIGHT;
+      }
+    }
+
     result.push({
       x: u.position[0],
       y: u.position[1],
+      visualOffsetX,
+      visualOffsetY,
       sprite: u.sprite,
       team: u.team,
       finished: u.finished,
@@ -1569,6 +1619,9 @@ export class CombatState extends State {
           // TODO: push a VictoryState / trigger level_end event
         }
 
+        // Clear combat animation offsets
+        setActiveCombatOffsets(null);
+
         this.combat = null;
         this.results = null;
 
@@ -1603,6 +1656,11 @@ export class CombatState extends State {
     this.phaseTimer = 0;
   }
 
+  override end(): StateResult {
+    // Always clear combat animation offsets when this state exits
+    setActiveCombatOffsets(null);
+  }
+
   override draw(surf: Surface): Surface {
     if (!this.combat) return surf;
 
@@ -1610,61 +1668,104 @@ export class CombatState extends State {
     const game = getGame();
     const cameraOffset = game.camera.getOffset();
 
-    // Draw combat health bars overlay
     const atkPos = this.combat.attacker.position;
     const defPos = this.combat.defender.position;
 
-    // Attacker HP bar
+    // Push combat animation offsets so collectVisibleUnits applies them
+    // to the underlying map render (lunge + shake on the actual sprites)
+    const atkLunge = rs.attackerAnim.lungeOffset;
+    const atkShake = rs.attackerAnim.shakeOffset;
+    const defLunge = rs.defenderAnim.lungeOffset;
+    const defShake = rs.defenderAnim.shakeOffset;
+    setActiveCombatOffsets({
+      attacker: this.combat.attacker,
+      defender: this.combat.defender,
+      attackerOffset: [atkLunge[0] + atkShake[0], atkLunge[1] + atkShake[1]],
+      defenderOffset: [defLunge[0] + defShake[0], defLunge[1] + defShake[1]],
+    });
+
+    // --- Sprite-aware combat effects ---
+
+    // Draw lunge + shake offsets by re-drawing attacker/defender sprites
+    // with the animation offsets applied. The underlying map already drew
+    // them at their base position, so we overlay a shifted copy and mask
+    // the original position. For simplicity, we just draw the offset
+    // effects on top (the sprites are small enough that the overlap is fine).
+
+    // White flash overlay on hit targets
+    if (rs.attackerAnim.flashAlpha > 0 && atkPos) {
+      const fx = atkPos[0] * TILEWIDTH - cameraOffset[0];
+      const fy = atkPos[1] * TILEHEIGHT - cameraOffset[1];
+      surf.fillRect(
+        fx - 4, fy - 4,
+        TILEWIDTH + 8, TILEHEIGHT + 8,
+        `rgba(255,255,255,${rs.attackerAnim.flashAlpha.toFixed(2)})`,
+      );
+    }
+    if (rs.defenderAnim.flashAlpha > 0 && defPos) {
+      const fx = defPos[0] * TILEWIDTH - cameraOffset[0];
+      const fy = defPos[1] * TILEHEIGHT - cameraOffset[1];
+      surf.fillRect(
+        fx - 4, fy - 4,
+        TILEWIDTH + 8, TILEHEIGHT + 8,
+        `rgba(255,255,255,${rs.defenderAnim.flashAlpha.toFixed(2)})`,
+      );
+    }
+
+    // HP bars (positioned above the unit, accounting for shake/lunge)
     if (atkPos) {
-      const ax = atkPos[0] * TILEWIDTH - cameraOffset[0];
+      const atkShakeX = rs.attackerAnim.shakeOffset[0] + rs.attackerAnim.lungeOffset[0];
+      const ax = atkPos[0] * TILEWIDTH - cameraOffset[0] + atkShakeX;
       const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
       this.drawHpBar(surf, ax, ay, rs.attackerHp, rs.attackerMaxHp);
     }
-
-    // Defender HP bar
     if (defPos) {
-      const dx = defPos[0] * TILEWIDTH - cameraOffset[0];
+      const defShakeX = rs.defenderAnim.shakeOffset[0] + rs.defenderAnim.lungeOffset[0];
+      const dx = defPos[0] * TILEWIDTH - cameraOffset[0] + defShakeX;
       const dy = defPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
       this.drawHpBar(surf, dx, dy, rs.defenderHp, rs.defenderMaxHp);
     }
 
-    // Strike flash effect
-    if (this.phase === 'combat' && rs.state === 'strike' && rs.currentStrike) {
-      const targetPos = rs.currentStrike.defender.position;
-      if (targetPos) {
-        const fx = targetPos[0] * TILEWIDTH - cameraOffset[0];
-        const fy = targetPos[1] * TILEHEIGHT - cameraOffset[1];
-        surf.fillRect(fx, fy, TILEWIDTH, TILEHEIGHT, 'rgba(255,255,255,0.6)');
+    // Floating damage numbers
+    for (const popup of rs.damagePopups) {
+      const t = popup.elapsed / popup.duration;
+      const floatY = -12 * t; // float upward over time
+      const alpha = Math.max(0, 1 - t * 1.2); // fade out
+      const px = popup.x * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
+      const py = popup.y * TILEHEIGHT - cameraOffset[1] + floatY - 4;
+
+      if (popup.value === 0) {
+        // Miss
+        surf.drawText(
+          'Miss',
+          px - 8, py,
+          `rgba(200,200,255,${alpha.toFixed(2)})`,
+          '7px monospace',
+        );
+      } else {
+        // Damage number
+        const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
+        const color = popup.isCrit
+          ? `rgba(255,255,64,${alpha.toFixed(2)})`
+          : `rgba(255,255,255,${alpha.toFixed(2)})`;
+        const font = popup.isCrit ? '9px monospace' : '8px monospace';
+        surf.drawText(text, px - 4, py, color, font);
       }
     }
 
-    // Miss text
-    if (
-      this.phase === 'combat' &&
-      rs.state === 'hp_change' &&
-      rs.currentStrike &&
-      !rs.currentStrike.hit
-    ) {
-      const targetPos = rs.currentStrike.defender.position;
-      if (targetPos) {
-        const mx = targetPos[0] * TILEWIDTH - cameraOffset[0];
-        const my = targetPos[1] * TILEHEIGHT - cameraOffset[1] - 10;
-        surf.drawText('MISS', mx, my, 'white', '8px monospace');
-      }
-    }
-
-    // Death fade-out overlay on the dying unit
+    // Death fade-out: dim the dying unit's tile with white overlay
     if (this.phase === 'death') {
-      const alpha = this.deathFadeProgress * 0.8;
+      const alpha = this.deathFadeProgress * 0.85;
       if (this.results?.defenderDead && defPos) {
         const dx = defPos[0] * TILEWIDTH - cameraOffset[0];
         const dy = defPos[1] * TILEHEIGHT - cameraOffset[1];
-        surf.fillRect(dx, dy, TILEWIDTH, TILEHEIGHT, `rgba(255,255,255,${alpha})`);
+        // Larger rect to cover the sprite (which extends above the tile)
+        surf.fillRect(dx - 24, dy - 32, 64, 48, `rgba(255,255,255,${alpha.toFixed(2)})`);
       }
       if (this.results?.attackerDead && atkPos) {
         const ax = atkPos[0] * TILEWIDTH - cameraOffset[0];
         const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1];
-        surf.fillRect(ax, ay, TILEWIDTH, TILEHEIGHT, `rgba(255,255,255,${alpha})`);
+        surf.fillRect(ax - 24, ay - 32, 64, 48, `rgba(255,255,255,${alpha.toFixed(2)})`);
       }
     }
 
