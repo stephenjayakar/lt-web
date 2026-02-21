@@ -2,24 +2,219 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#000000" />
     <title>Lex Talionis Web</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+      html, body {
+        width: 100%; height: 100%;
+        overflow: hidden;
+        background: #000;
+        /* Prevent pull-to-refresh and overscroll bounce on mobile */
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        /* Use safe area for notch/home-indicator devices */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
       #game-container {
         width: 100%; height: 100%;
-        display: flex; align-items: center; justify-content: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        position: relative;
       }
-      canvas {
+      #game-canvas {
         image-rendering: pixelated;
         image-rendering: crisp-edges;
+        display: block;
+        touch-action: none;
+      }
+      /* Touch controls overlay — absolutely positioned over the screen.
+         In landscape the controls float over the edges of the game canvas.
+         In portrait the game canvas is shrunk by JS (reserveBottom) so the
+         controls sit in the gap below the canvas without overlapping. */
+      #touch-controls {
+        display: none; /* shown by JS when touch device detected */
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        height: 150px; /* matches TOUCH_CONTROLS_HEIGHT in main.ts */
+        pointer-events: none; /* children opt in */
+        z-index: 10;
+      }
+      #touch-controls.visible {
+        display: block;
+      }
+      /* In landscape, let controls float without a fixed height so they
+         overlay the game edges naturally. */
+      @media (orientation: landscape) {
+        #touch-controls {
+          height: auto;
+          top: 0;
+        }
+      }
+      /* D-Pad (left side) */
+      .touch-dpad {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        width: 120px;
+        height: 120px;
+        pointer-events: auto;
+        opacity: 0.55;
+      }
+      .touch-dpad button {
+        position: absolute;
+        background: rgba(255,255,255,0.25);
+        border: 1.5px solid rgba(255,255,255,0.45);
+        border-radius: 6px;
+        color: rgba(255,255,255,0.8);
+        font-size: 18px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .touch-dpad button:active, .touch-dpad button.pressed {
+        background: rgba(255,255,255,0.5);
+      }
+      .touch-dpad .dpad-up    { left: 40px; top: 0;    width: 40px; height: 40px; }
+      .touch-dpad .dpad-down  { left: 40px; bottom: 0; width: 40px; height: 40px; }
+      .touch-dpad .dpad-left  { left: 0;    top: 40px; width: 40px; height: 40px; }
+      .touch-dpad .dpad-right { right: 0;   top: 40px; width: 40px; height: 40px; }
+      /* Center of D-pad (dead zone / visual only) */
+      .touch-dpad .dpad-center {
+        left: 40px; top: 40px;
+        width: 40px; height: 40px;
+        background: rgba(255,255,255,0.1);
+        border: 1.5px solid rgba(255,255,255,0.2);
+        border-radius: 6px;
+        pointer-events: none;
+      }
+      /* Action buttons (right side) */
+      .touch-actions {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        width: 120px;
+        height: 120px;
+        pointer-events: auto;
+        opacity: 0.55;
+      }
+      .touch-actions button {
+        position: absolute;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.25);
+        border: 1.5px solid rgba(255,255,255,0.45);
+        color: rgba(255,255,255,0.8);
+        font-size: 11px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .touch-actions button:active, .touch-actions button.pressed {
+        background: rgba(255,255,255,0.5);
+      }
+      /* Diamond layout: A(select) right, B(back) bottom, X(info) top, Y(aux) left */
+      .touch-actions .btn-a { right: 0;   top: 38px; }
+      .touch-actions .btn-b { right: 38px; bottom: 0; }
+      .touch-actions .btn-x { right: 38px; top: 0; }
+      .touch-actions .btn-y { left: 0;    top: 38px; }
+      /* START button (top-right) */
+      .touch-start {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        pointer-events: auto;
+        opacity: 0.45;
+      }
+      .touch-start button {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 10px;
+        color: rgba(255,255,255,0.7);
+        font-size: 10px;
+        padding: 4px 14px;
+        pointer-events: auto;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .touch-start button:active, .touch-start button.pressed {
+        background: rgba(255,255,255,0.45);
+      }
+
+      /* Landscape adjustments: more horizontal space, push controls to edges */
+      @media (orientation: landscape) and (max-height: 500px) {
+        .touch-dpad { left: 8px; bottom: 8px; width: 100px; height: 100px; }
+        .touch-dpad .dpad-up    { left: 33px; top: 0;    width: 34px; height: 34px; }
+        .touch-dpad .dpad-down  { left: 33px; bottom: 0; width: 34px; height: 34px; }
+        .touch-dpad .dpad-left  { left: 0;    top: 33px; width: 34px; height: 34px; }
+        .touch-dpad .dpad-right { right: 0;   top: 33px; width: 34px; height: 34px; }
+        .touch-dpad .dpad-center { left: 33px; top: 33px; width: 34px; height: 34px; }
+        .touch-actions { right: 8px; bottom: 8px; width: 100px; height: 100px; }
+        .touch-actions button { width: 38px; height: 38px; font-size: 10px; }
+        .touch-actions .btn-a { right: 0;   top: 31px; }
+        .touch-actions .btn-b { right: 31px; bottom: 0; }
+        .touch-actions .btn-x { right: 31px; top: 0; }
+        .touch-actions .btn-y { left: 0;    top: 31px; }
+      }
+
+      /* Portrait phones: push game to top, controls in reserved bottom area */
+      @media (orientation: portrait) {
+        #game-container {
+          justify-content: flex-start;
+          padding-top: env(safe-area-inset-top);
+        }
+        #game-canvas {
+          margin-top: 4px !important;
+        }
+        #touch-controls {
+          /* Account for home-indicator safe area */
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+        /* Move D-pad and action buttons to the bottom of the reserved area */
+        .touch-dpad { bottom: calc(8px + env(safe-area-inset-bottom)); }
+        .touch-actions { bottom: calc(8px + env(safe-area-inset-bottom)); }
       }
     </style>
   </head>
   <body>
     <div id="game-container">
       <canvas id="game-canvas"></canvas>
+      <div id="touch-controls">
+        <div class="touch-dpad">
+          <button class="dpad-up" data-btn="UP">&#9650;</button>
+          <button class="dpad-down" data-btn="DOWN">&#9660;</button>
+          <button class="dpad-left" data-btn="LEFT">&#9664;</button>
+          <button class="dpad-right" data-btn="RIGHT">&#9654;</button>
+          <div class="dpad-center"></div>
+        </div>
+        <div class="touch-actions">
+          <button class="btn-a" data-btn="SELECT">A</button>
+          <button class="btn-b" data-btn="BACK">B</button>
+          <button class="btn-x" data-btn="INFO">X</button>
+          <button class="btn-y" data-btn="AUX">Y</button>
+        </div>
+        <div class="touch-start">
+          <button data-btn="START">START</button>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

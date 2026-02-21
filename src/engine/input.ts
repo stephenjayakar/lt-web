@@ -1,6 +1,14 @@
 /**
- * InputManager - Unified input handling for keyboard, mouse, and touch.
- * Maps raw browser events to 9 abstract game buttons matching LT's input system.
+ * InputManager - Unified input handling for keyboard, mouse, touch buttons,
+ * and gamepad.  Maps raw browser events to 9 abstract game buttons matching
+ * LT's input system.
+ *
+ * Mobile touch handling:
+ *  - Virtual overlay buttons (#touch-controls [data-btn] elements) are wired
+ *    to the same buttonJustPressed / buttonsDown / buttonJustReleased sets as
+ *    keyboard keys, so they work identically from the game-state perspective.
+ *  - Canvas touch:  tap = move cursor to tile AND select (mouseClick),
+ *    drag = pan camera (exposes cameraPanDeltaX/Y each frame).
  */
 
 export type GameButton =
@@ -38,6 +46,9 @@ const DEFAULT_KEY_MAP: Record<string, GameButton> = {
   'Space': 'START',
 };
 
+/** Minimum CSS-px distance before a canvas touch is treated as a drag. */
+const TOUCH_TAP_THRESHOLD = 12;
+
 export class InputManager {
   private keysDown: Set<string> = new Set();
   private buttonsDown: Set<GameButton> = new Set();
@@ -59,10 +70,25 @@ export class InputManager {
   private displayOffsetX: number = 0;
   private displayOffsetY: number = 0;
 
-  // Touch state
-  touchStartX: number = 0;
-  touchStartY: number = 0;
+  // Canvas-touch state (drag-to-pan / tap-to-select)
+  private touchStartX: number = 0;
+  private touchStartY: number = 0;
+  private touchLastX: number = 0;
+  private touchLastY: number = 0;
   touchActive: boolean = false;
+  private touchIsDrag: boolean = false;
+
+  /**
+   * Camera pan delta accumulated from touch-dragging the canvas this frame.
+   * Measured in *CSS pixels* — the consumer (Camera) should divide by the
+   * current CSS-per-game-pixel scale to convert to game pixels.
+   * Reset to 0 each frame in endFrame().
+   */
+  cameraPanDeltaX: number = 0;
+  cameraPanDeltaY: number = 0;
+
+  /** True if the device appears to support touch input. */
+  isTouchDevice: boolean = false;
 
   // Fluid scroll for held directions
   private scrollStates: Map<GameButton, FluidScrollState> = new Map();
@@ -74,6 +100,7 @@ export class InputManager {
 
   constructor(canvas: HTMLCanvasElement, keyMap?: Record<string, GameButton>) {
     this.keyMap = keyMap ?? DEFAULT_KEY_MAP;
+    this.isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     this._setupListeners(canvas);
 
     for (const dir of ['UP', 'DOWN', 'LEFT', 'RIGHT'] as GameButton[]) {
@@ -85,7 +112,55 @@ export class InputManager {
         triggered: false,
       });
     }
+
+    // Wire virtual touch overlay buttons (if present in the DOM)
+    this._setupTouchButtons();
   }
+
+  // -----------------------------------------------------------------------
+  // Virtual touch-overlay buttons
+  // -----------------------------------------------------------------------
+
+  /**
+   * Attach touchstart/touchend/touchcancel listeners on every element with
+   * a `data-btn` attribute inside `#touch-controls`.  The attribute value
+   * must be a valid GameButton name (e.g. "UP", "SELECT").
+   */
+  private _setupTouchButtons(): void {
+    const container = document.getElementById('touch-controls');
+    if (!container) return;
+
+    const buttons = container.querySelectorAll<HTMLElement>('[data-btn]');
+    buttons.forEach((el) => {
+      const btnName = el.dataset['btn'] as GameButton | undefined;
+      if (!btnName) return;
+
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation(); // don't let this bubble to canvas touch handler
+        this.buttonsDown.add(btnName);
+        this.buttonJustPressed.add(btnName);
+        el.classList.add('pressed');
+      }, { passive: false });
+
+      const release = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.buttonsDown.has(btnName)) {
+          this.buttonsDown.delete(btnName);
+          this.buttonJustReleased.add(btnName);
+        }
+        el.classList.remove('pressed');
+      };
+
+      el.addEventListener('touchend', release, { passive: false });
+      el.addEventListener('touchcancel', release, { passive: false });
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Core event listeners
+  // -----------------------------------------------------------------------
 
   private _setupListeners(canvas: HTMLCanvasElement): void {
     window.addEventListener('keydown', (e) => {
@@ -137,48 +212,71 @@ export class InputManager {
 
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Touch support for mobile
+    // ----- Canvas touch: tap-to-select + drag-to-pan -----
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
-      this.mouseX = touch.clientX - rect.left;
-      this.mouseY = touch.clientY - rect.top;
-      this.touchStartX = this.mouseX;
-      this.touchStartY = this.mouseY;
+      const cx = touch.clientX - rect.left;
+      const cy = touch.clientY - rect.top;
+      this.touchStartX = cx;
+      this.touchStartY = cy;
+      this.touchLastX = cx;
+      this.touchLastY = cy;
+      this.mouseX = cx;
+      this.mouseY = cy;
       this.touchActive = true;
-    });
+      this.touchIsDrag = false;
+    }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
+      if (!this.touchActive) return;
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
-      this.mouseX = touch.clientX - rect.left;
-      this.mouseY = touch.clientY - rect.top;
-    });
+      const cx = touch.clientX - rect.left;
+      const cy = touch.clientY - rect.top;
 
-    canvas.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      if (this.touchActive) {
-        const dx = this.mouseX - this.touchStartX;
-        const dy = this.mouseY - this.touchStartY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+      const totalDx = cx - this.touchStartX;
+      const totalDy = cy - this.touchStartY;
+      const totalDist = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
 
-        if (dist < 10) {
-          // Tap -> SELECT
-          this.buttonJustPressed.add('SELECT');
-          this.mouseClick = 'SELECT';
-        } else {
-          // Swipe -> direction
-          if (Math.abs(dx) > Math.abs(dy)) {
-            this.buttonJustPressed.add(dx > 0 ? 'RIGHT' : 'LEFT');
-          } else {
-            this.buttonJustPressed.add(dy > 0 ? 'DOWN' : 'UP');
-          }
-        }
-        this.touchActive = false;
+      if (!this.touchIsDrag && totalDist >= TOUCH_TAP_THRESHOLD) {
+        this.touchIsDrag = true;
       }
-    });
+
+      if (this.touchIsDrag) {
+        // Accumulate frame delta for camera panning.
+        // Negate because dragging right should move the camera left (scene
+        // slides right), which means the camera x *decreases*.
+        this.cameraPanDeltaX += -(cx - this.touchLastX);
+        this.cameraPanDeltaY += -(cy - this.touchLastY);
+      }
+
+      this.touchLastX = cx;
+      this.touchLastY = cy;
+      this.mouseX = cx;
+      this.mouseY = cy;
+    }, { passive: false });
+
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      if (!this.touchActive) return;
+
+      if (!this.touchIsDrag) {
+        // Short tap on canvas → move cursor to tapped tile AND select.
+        // Set mouseX/Y so getMouseTile() returns the tapped tile,
+        // then fire mouseClick so game states treat it like a click.
+        this.mouseClick = 'SELECT';
+      }
+      // If it was a drag, cameraPanDelta has already been accumulated.
+
+      this.touchActive = false;
+      this.touchIsDrag = false;
+    };
+
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     // Gamepad
     window.addEventListener('gamepadconnected', (e) => {
@@ -267,6 +365,8 @@ export class InputManager {
     this.buttonJustReleased.clear();
     this.mouseClick = null;
     this.mouseMoved = false;
+    this.cameraPanDeltaX = 0;
+    this.cameraPanDeltaY = 0;
   }
 
   /**

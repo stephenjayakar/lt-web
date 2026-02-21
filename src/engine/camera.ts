@@ -118,6 +118,19 @@ export class Camera {
     };
   }
 
+  /**
+   * Nudge the camera target by a pixel delta.
+   * Used for touch-drag panning — the delta is in game pixels.
+   */
+  pan(dx: number, dy: number): void {
+    this.targetX += dx;
+    this.targetY += dy;
+    this.clampTarget();
+    // Snap immediately so panning feels direct rather than springy.
+    this.x = this.targetX;
+    this.y = this.targetY;
+  }
+
   // ------------------------------------------------------------------
   // Internal
   // ------------------------------------------------------------------

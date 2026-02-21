@@ -48,14 +48,20 @@ interface DisplayInfo {
   offsetY: number;
 }
 
+/** Height in CSS px reserved for the touch-control overlay in portrait. */
+const TOUCH_CONTROLS_HEIGHT = 150;
+
 /**
  * Compute the render scale that maps WINWIDTH x WINHEIGHT to the window,
  * accounting for devicePixelRatio for crisp physical pixels.
+ *
+ * When `reserveBottom` > 0 (portrait-mode mobile), the available height
+ * is reduced so the game canvas doesn't overlap the virtual controls.
  */
-function computeRenderScale(): { renderScale: number; cssScale: number; offsetX: number; offsetY: number } {
+function computeRenderScale(reserveBottom: number = 0): { renderScale: number; cssScale: number; offsetX: number; offsetY: number } {
   const dpr = window.devicePixelRatio || 1;
   const viewW = window.innerWidth;
-  const viewH = window.innerHeight;
+  const viewH = window.innerHeight - reserveBottom;
 
   // CSS scale: how many CSS pixels per game pixel (maintain aspect ratio)
   const cssScale = Math.min(viewW / WINWIDTH, viewH / WINHEIGHT);
@@ -66,13 +72,18 @@ function computeRenderScale(): { renderScale: number; cssScale: number; offsetX:
   const scaledW = WINWIDTH * cssScale;
   const scaledH = WINHEIGHT * cssScale;
   const offsetX = Math.floor((viewW - scaledW) / 2);
-  const offsetY = Math.floor((viewH - scaledH) / 2);
+  // When reserving bottom space, push the canvas to the top (offsetY = 0
+  // or a small margin). When not reserving, centre vertically.
+  const totalH = window.innerHeight;
+  const offsetY = reserveBottom > 0
+    ? Math.max(0, Math.floor((viewH - scaledH) / 2))
+    : Math.floor((totalH - scaledH) / 2);
 
   return { renderScale, cssScale, offsetX, offsetY };
 }
 
-function applyScale(display: DisplayInfo): void {
-  const { renderScale, cssScale, offsetX, offsetY } = computeRenderScale();
+function applyScale(display: DisplayInfo, reserveBottom: number = 0): void {
+  const { renderScale, cssScale, offsetX, offsetY } = computeRenderScale(reserveBottom);
   display.scale = cssScale;
   display.renderScale = renderScale;
   display.offsetX = offsetX;
@@ -257,6 +268,21 @@ async function main(): Promise<void> {
   inputManager.setDisplayScale(display.scale);
   gameState.input = inputManager;
 
+  // --- 10b. Mobile touch controls ---
+  // Determine how much bottom space to reserve for the virtual controls.
+  const isPortrait = (): boolean => window.innerHeight > window.innerWidth;
+  const getReserveBottom = (): number =>
+    inputManager.isTouchDevice && isPortrait() ? TOUCH_CONTROLS_HEIGHT : 0;
+
+  if (inputManager.isTouchDevice) {
+    const touchControls = document.getElementById('touch-controls');
+    if (touchControls) {
+      touchControls.classList.add('visible');
+    }
+    // Re-apply scale now that we know we need to reserve bottom space
+    applyScale(display, getReserveBottom());
+  }
+
   // --- 11. Create the game rendering surface ---
   // The surface is logically 240x160 but physically scaled to match the
   // window so sprites get nearest-neighbor scaling and text is crisp.
@@ -264,7 +290,7 @@ async function main(): Promise<void> {
 
   // Recreate game surface on resize (scale changes)
   window.addEventListener('resize', () => {
-    applyScale(display);
+    applyScale(display, getReserveBottom());
     gameSurface = new Surface(WINWIDTH, WINHEIGHT, display.renderScale);
     inputManager.setDisplayScale(display.scale);
   });
@@ -280,6 +306,16 @@ async function main(): Promise<void> {
 
     // --- Process input ---
     const event = inputManager.processInput(deltaMs);
+
+    // --- Apply touch-drag camera panning ---
+    if (inputManager.cameraPanDeltaX !== 0 || inputManager.cameraPanDeltaY !== 0) {
+      // Convert CSS-pixel deltas to game-pixel deltas
+      const panScale = display.scale || 1;
+      game.camera.pan(
+        inputManager.cameraPanDeltaX / panScale,
+        inputManager.cameraPanDeltaY / panScale,
+      );
+    }
 
     // --- Clear game surface ---
     gameSurface.clear();
