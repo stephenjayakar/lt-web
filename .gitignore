@@ -15,6 +15,9 @@ dist-ssr
 # Lex Talionis maker source (reference only, not part of this project)
 lt-maker/
 
+# Game data served locally (symlink or copy -- not for version control)
+public/game-data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

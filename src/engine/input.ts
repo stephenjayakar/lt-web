@@ -49,7 +49,15 @@ export class InputManager {
   mouseX: number = 0;
   mouseY: number = 0;
   mouseClick: GameButton | null = null;
+  /** True if the mouse moved this frame (set in mousemove, cleared in endFrame). */
+  mouseMoved: boolean = false;
   private mouseButtons: Set<number> = new Set();
+
+  /** Display scale info — set by main.ts each frame or on resize. */
+  private displayScaleX: number = 1;
+  private displayScaleY: number = 1;
+  private displayOffsetX: number = 0;
+  private displayOffsetY: number = 0;
 
   // Touch state
   touchStartX: number = 0;
@@ -104,25 +112,27 @@ export class InputManager {
       this.mouseButtons.add(e.button);
       const btn = this._mouseButtonToGame(e.button);
       if (btn) {
-        this.buttonsDown.add(btn);
-        this.buttonJustPressed.add(btn);
+        // Only set mouseClick — don't inject into buttonJustPressed.
+        // Game states handle mouse clicks separately via mouseClick,
+        // so injecting into the keyboard button system would cause
+        // double-processing (once as keyboard SELECT, once as mouse click).
         this.mouseClick = btn;
       }
+      // Update mouse position on click
+      const rect = canvas.getBoundingClientRect();
+      this.mouseX = e.clientX - rect.left;
+      this.mouseY = e.clientY - rect.top;
     });
 
     canvas.addEventListener('mouseup', (e) => {
       this.mouseButtons.delete(e.button);
-      const btn = this._mouseButtonToGame(e.button);
-      if (btn) {
-        this.buttonsDown.delete(btn);
-        this.buttonJustReleased.add(btn);
-      }
     });
 
     canvas.addEventListener('mousemove', (e) => {
       const rect = canvas.getBoundingClientRect();
       this.mouseX = e.clientX - rect.left;
       this.mouseY = e.clientY - rect.top;
+      this.mouseMoved = true;
     });
 
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -256,14 +266,48 @@ export class InputManager {
     this.buttonJustPressed.clear();
     this.buttonJustReleased.clear();
     this.mouseClick = null;
+    this.mouseMoved = false;
   }
 
-  /** Get mouse position scaled to game coordinates */
-  getGameMousePos(scaleX: number, scaleY: number, offsetX: number, offsetY: number): [number, number] {
+  /**
+   * Update the display scale info so mouse-to-game coordinate conversion
+   * works. Called from main.ts on resize and at startup.
+   * @param cssScale  CSS pixels per game pixel (uniform X and Y).
+   */
+  setDisplayScale(cssScale: number): void {
+    this.displayScaleX = cssScale;
+    this.displayScaleY = cssScale;
+    // Offset is not needed because mouseX/Y are already relative to canvas
+    this.displayOffsetX = 0;
+    this.displayOffsetY = 0;
+  }
+
+  /** Get mouse position in game-pixel coordinates (0..WINWIDTH, 0..WINHEIGHT). */
+  getGameMousePos(scaleX?: number, scaleY?: number, offsetX?: number, offsetY?: number): [number, number] {
+    const sx = scaleX ?? this.displayScaleX;
+    const sy = scaleY ?? this.displayScaleY;
+    const ox = offsetX ?? this.displayOffsetX;
+    const oy = offsetY ?? this.displayOffsetY;
     return [
-      Math.floor((this.mouseX - offsetX) / scaleX),
-      Math.floor((this.mouseY - offsetY) / scaleY),
+      Math.floor((this.mouseX - ox) / sx),
+      Math.floor((this.mouseY - oy) / sy),
     ];
+  }
+
+  /**
+   * Get the tile coordinates under the mouse cursor.
+   * @param cameraOffsetX  Camera pixel offset (from Camera.getOffset()[0]).
+   * @param cameraOffsetY  Camera pixel offset (from Camera.getOffset()[1]).
+   * @returns [tileX, tileY] or null if the mouse is outside the game area.
+   */
+  getMouseTile(cameraOffsetX: number, cameraOffsetY: number): [number, number] | null {
+    const [gx, gy] = this.getGameMousePos();
+    // Check if the mouse is within the game viewport
+    if (gx < 0 || gy < 0 || gx >= 240 || gy >= 160) return null;
+    // Convert game-pixel position + camera offset to tile coordinates
+    const tileX = Math.floor((gx + cameraOffsetX) / 16);
+    const tileY = Math.floor((gy + cameraOffsetY) / 16);
+    return [tileX, tileY];
   }
 
   private _pollGamepad(): void {

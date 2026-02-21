@@ -131,6 +131,67 @@ export class ChoiceMenu {
     } while (!this.options[this.selectedIndex].enabled && this.selectedIndex !== start);
   }
 
+  /**
+   * Handle a mouse click at game-pixel coordinates.
+   * Returns the selected option, back, or null.
+   * @param gameX  Game-pixel X coordinate of the click.
+   * @param gameY  Game-pixel Y coordinate of the click.
+   * @param button 'SELECT' for LMB, 'BACK' for RMB.
+   */
+  handleClick(
+    gameX: number,
+    gameY: number,
+    button: 'SELECT' | 'BACK',
+  ): { selected: string } | { back: true } | null {
+    if (!this.visible) return null;
+
+    if (button === 'BACK') {
+      return { back: true };
+    }
+
+    // Check if click is within the menu bounds
+    const totalHeight = this.options.length * ROW_HEIGHT + PADDING_Y * 2;
+    if (
+      gameX < this.x || gameX > this.x + this.width ||
+      gameY < this.y || gameY > this.y + totalHeight
+    ) {
+      return null;
+    }
+
+    // Determine which row was clicked
+    const relY = gameY - this.y - PADDING_Y;
+    const rowIdx = Math.floor(relY / ROW_HEIGHT);
+    if (rowIdx < 0 || rowIdx >= this.options.length) return null;
+
+    const opt = this.options[rowIdx];
+    if (!opt.enabled) return null;
+
+    this.selectedIndex = rowIdx;
+    return { selected: opt.value };
+  }
+
+  /**
+   * Update hover highlight based on mouse position (game-pixel coords).
+   * Call each frame when mouse is over the menu area.
+   */
+  handleMouseHover(gameX: number, gameY: number): void {
+    if (!this.visible) return;
+
+    const totalHeight = this.options.length * ROW_HEIGHT + PADDING_Y * 2;
+    if (
+      gameX < this.x || gameX > this.x + this.width ||
+      gameY < this.y || gameY > this.y + totalHeight
+    ) {
+      return;
+    }
+
+    const relY = gameY - this.y - PADDING_Y;
+    const rowIdx = Math.floor(relY / ROW_HEIGHT);
+    if (rowIdx >= 0 && rowIdx < this.options.length && this.options[rowIdx].enabled) {
+      this.selectedIndex = rowIdx;
+    }
+  }
+
   /** Skip to the next enabled option in the given direction (1 or -1). */
   private _skipToNextEnabled(dir: 1 | -1): void {
     if (this.options.length === 0) return;

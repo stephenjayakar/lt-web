@@ -34,6 +34,7 @@ import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
 import { MapSprite } from '../rendering/map-sprite';
 import type { GameEvent } from '../events/event-manager';
+import type { InputManager } from './input';
 
 /**
  * GameState — The god object holding references to every major subsystem
@@ -67,6 +68,10 @@ export class GameState {
   turnCount: number;
   gameVars: Map<string, any>;
   levelVars: Map<string, any>;
+
+  // -- Input ----------------------------------------------------------------
+  /** Reference to the InputManager, set after construction from main.ts. */
+  input: InputManager | null = null;
 
   // -- Transient state (used by game states) --------------------------------
   selectedUnit: UnitObject | null;

@@ -254,6 +254,8 @@ async function main(): Promise<void> {
 
   // --- 10. Create InputManager (needs the visible canvas for listeners) ---
   const inputManager = new InputManager(canvas);
+  inputManager.setDisplayScale(display.scale);
+  gameState.input = inputManager;
 
   // --- 11. Create the game rendering surface ---
   // The surface is logically 240x160 but physically scaled to match the
@@ -264,6 +266,7 @@ async function main(): Promise<void> {
   window.addEventListener('resize', () => {
     applyScale(display);
     gameSurface = new Surface(WINWIDTH, WINHEIGHT, display.renderScale);
+    inputManager.setDisplayScale(display.scale);
   });
 
   // --- 12. Main game loop ---

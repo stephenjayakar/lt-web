@@ -261,6 +261,68 @@ function getAdjacentEmptyTiles(x: number, y: number): [number, number][] {
   return tiles;
 }
 
+// ---------------------------------------------------------------------------
+// Mouse helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the tile coordinates under the mouse cursor, or null if the mouse
+ * is outside the game area or no InputManager is available.
+ */
+function getMouseTile(): [number, number] | null {
+  const game = getGame();
+  if (!game.input) return null;
+  const cam = game.camera.getOffset();
+  return game.input.getMouseTile(cam[0], cam[1]);
+}
+
+/**
+ * If the mouse was clicked this frame (LMB), move the cursor to the
+ * clicked tile and return 'SELECT'. If RMB, return 'BACK'.
+ * If the mouse moved (no click), move the cursor to the hovered tile
+ * and return null (no action, just hover tracking).
+ *
+ * Returns the effective InputEvent to process, or undefined to indicate
+ * "mouse didn't do anything interesting — fall through to keyboard".
+ */
+function processMouseForMap(event: InputEvent): InputEvent | undefined {
+  const game = getGame();
+  if (!game.input) return undefined;
+
+  const input = game.input;
+  const tile = getMouseTile();
+
+  // Handle mouse click: move cursor to tile, then return the action
+  if (input.mouseClick) {
+    if (input.mouseClick === 'SELECT' && tile) {
+      // Move cursor to clicked tile
+      game.cursor.setPos(tile[0], tile[1]);
+      game.camera.focusTile(tile[0], tile[1]);
+      return 'SELECT';
+    }
+    if (input.mouseClick === 'BACK') {
+      return 'BACK';
+    }
+    if (input.mouseClick === 'INFO' && tile) {
+      game.cursor.setPos(tile[0], tile[1]);
+      game.camera.focusTile(tile[0], tile[1]);
+      return 'INFO';
+    }
+  }
+
+  // Handle mouse hover: move cursor to hovered tile (no action)
+  if (input.mouseMoved && tile) {
+    const curPos = game.cursor.getHover();
+    if (tile[0] !== curPos.x || tile[1] !== curPos.y) {
+      game.cursor.setPos(tile[0], tile[1]);
+      // Don't auto-pan camera on hover — only on click.
+      // This prevents disorienting camera movement while browsing.
+    }
+  }
+
+  return undefined; // No mouse action to process
+}
+
 // ============================================================================
 // 1. TitleState
 // ============================================================================
@@ -299,8 +361,9 @@ export class TitleState extends State {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (event === 'START' || event === 'SELECT') {
-      const game = getGame();
+    // Mouse click also starts the game
+    const game = getGame();
+    if (event === 'START' || event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
       if (!game.board) {
         console.error('Cannot start: no level loaded (game.board is null). Check that game data is accessible.');
         return;
@@ -333,10 +396,24 @@ export class OptionMenuState extends State {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (!this.menu || event === null) return;
+    if (!this.menu) return;
     const game = getGame();
 
-    const result = this.menu.handleInput(event);
+    // Handle mouse click on menu options
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    // Handle mouse hover to highlight menu options
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    // Fall through to keyboard input if mouse didn't produce a result
+    if (!result && event !== null) {
+      result = this.menu.handleInput(event);
+    }
     if (!result) return;
 
     if ('back' in result) {
@@ -392,10 +469,16 @@ export class FreeState extends MapState {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (event === null) return;
     const game = getGame();
 
-    switch (event) {
+    // Process mouse: click moves cursor to tile + fires action,
+    // hover tracks cursor position silently.
+    const mouseAction = processMouseForMap(event);
+    const effective = mouseAction ?? event;
+
+    if (effective === null) return;
+
+    switch (effective) {
       case 'UP':
         moveCursor(0, -1);
         break;
@@ -418,6 +501,12 @@ export class FreeState extends MapState {
           // No actionable unit — open option menu
           game.state.change('option_menu');
         }
+        break;
+      }
+
+      case 'BACK': {
+        // Right-click on map: open option menu (same as START)
+        game.state.change('option_menu');
         break;
       }
 
@@ -556,10 +645,15 @@ export class MoveState extends MapState {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (event === null) return;
     const game = getGame();
 
-    switch (event) {
+    // Process mouse input for map interaction
+    const mouseAction = processMouseForMap(event);
+    const effective = mouseAction ?? event;
+
+    if (effective === null) return;
+
+    switch (effective) {
       case 'UP':
         moveCursor(0, -1);
         break;
@@ -782,10 +876,24 @@ export class MenuState extends State {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (!this.menu || event === null) return;
+    if (!this.menu) return;
     const game = getGame();
 
-    const result = this.menu.handleInput(event);
+    // Handle mouse click on menu options
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    // Handle mouse hover to highlight menu options
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    // Fall through to keyboard input if mouse didn't produce a result
+    if (!result && event !== null) {
+      result = this.menu.handleInput(event);
+    }
     if (!result) return;
 
     if ('back' in result) {
@@ -1275,10 +1383,15 @@ export class DropState extends MapState {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (event === null) return;
     const game = getGame();
 
-    switch (event) {
+    // Process mouse input for map interaction
+    const mouseAction = processMouseForMap(event);
+    const effective = mouseAction ?? event;
+
+    if (effective === null) return;
+
+    switch (effective) {
       case 'UP':
         moveCursor(0, -1);
         break;
@@ -1407,8 +1520,32 @@ export class TargetingState extends MapState {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (event === null) return;
     const game = getGame();
+
+    // Mouse: clicking directly on a valid target selects it
+    if (game.input?.mouseClick === 'SELECT') {
+      const tile = getMouseTile();
+      if (tile) {
+        const clickedTargetIdx = this.targets.findIndex(
+          (t) => t.position && t.position[0] === tile[0] && t.position[1] === tile[1],
+        );
+        if (clickedTargetIdx >= 0) {
+          this.targetIndex = clickedTargetIdx;
+          const target = this.targets[this.targetIndex];
+          game.combatTarget = target;
+          game.highlight.clear();
+          game.state.change('combat');
+          return;
+        }
+      }
+    }
+    if (game.input?.mouseClick === 'BACK') {
+      game.highlight.clear();
+      game.state.back();
+      return;
+    }
+
+    if (event === null) return;
 
     switch (event) {
       case 'UP':
@@ -2293,9 +2430,18 @@ export class EventState extends State {
   }
 
   override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+
     // Forward input to dialog if active
     if (this.dialog) {
-      const done = this.dialog.handleInput(event);
+      // Mouse click advances dialog (LMB = SELECT, RMB = BACK/skip)
+      let effective = event;
+      if (game.input?.mouseClick === 'SELECT' && !effective) {
+        effective = 'SELECT';
+      } else if (game.input?.mouseClick === 'BACK' && !effective) {
+        effective = 'BACK';
+      }
+      const done = this.dialog.handleInput(effective);
       if (done) {
         this.dialog = null;
         this.commandIndex++;
