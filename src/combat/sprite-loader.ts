@@ -400,14 +400,22 @@ export function selectWeaponAnim(
 // Platform image loading
 // -----------------------------------------------------------------------
 
+/** Base URL for game data (set once at init). */
+let spriteLoaderBaseUrl: string = '/game-data/default.ltproj';
+
+/** Initialize the sprite-loader system with the project base URL. */
+export function initSpriteLoader(url: string): void {
+  spriteLoaderBaseUrl = url.replace(/\/$/, '');
+}
+
 /** Cached platform images: key is "{TerrainType}-{Melee|Ranged}" */
 const platformCache = new Map<string, HTMLImageElement>();
 
 /**
  * Load a platform image for the battle scene.
  *
- * Platforms are engine-level resources (not per-project), stored at:
- *   /game-data/resources/platforms/{terrainPlatform}-{Melee|Ranged}.png
+ * Platforms are per-project resources, stored at:
+ *   {baseUrl}/resources/platforms/{terrainPlatform}-{Melee|Ranged}.png
  *
  * The right-side platform should be drawn flipped horizontally by the renderer.
  *
@@ -425,7 +433,7 @@ export async function loadPlatformImage(
   const cached = platformCache.get(key);
   if (cached) return cached;
 
-  const url = `/game-data/resources/platforms/${key}.png`;
+  const url = `${spriteLoaderBaseUrl}/resources/platforms/${key}.png`;
 
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {

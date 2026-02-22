@@ -16,8 +16,10 @@ import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
 import { setActionGameRef } from './engine/action';
 import { initIcons } from './ui/icons';
+import { initBaseSurf } from './ui/base-surf';
 import { setMenuAudioManager } from './ui/menu';
 import { initFonts } from './rendering/bmp-font';
+import { initSpriteLoader } from './combat/sprite-loader';
 import {
   setGameRef,
   TitleState,
@@ -257,8 +259,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --- Icons & Fonts ---
+  // --- Icons, Fonts & UI resources ---
   initIcons(baseUrl);
+  initBaseSurf(baseUrl);
+  initSpriteLoader(baseUrl);
   // Load bitmap fonts (async, text rendering falls back to Canvas until ready)
   initFonts(baseUrl);
 
