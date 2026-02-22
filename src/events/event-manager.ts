@@ -508,6 +508,20 @@ export function evaluateCondition(
     return !!value;
   }
 
+  // Fallback: try JavaScript-based evaluation with Python-compatible scope.
+  // This handles complex expressions like:
+  //   game.level.regions.get('EnemyRein').contains(game.get_unit('Eirika').position)
+  //   any(game.level.regions.get('X').contains(u.position) for u in game.get_units_in_party())
+  //   len(game.get_enemy_units()) == 0
+  try {
+    const result = evaluateWithJsFallback(trimmed, context);
+    if (result !== undefined) {
+      return !!result;
+    }
+  } catch (e) {
+    // Fall through to default
+  }
+
   // Unknown condition — warn and default to true (safer than blocking events)
   console.warn(`EventCondition: cannot evaluate "${trimmed}", defaulting to true`);
   return true;
@@ -739,6 +753,242 @@ function findMatchingParen(str: string, start: number): number {
     }
   }
   return -1;
+}
+
+// ============================================================
+// JavaScript-based fallback evaluator for complex Python conditions
+// ============================================================
+
+/**
+ * Build a Python-compatible game object proxy for use in eval.
+ * This creates wrapper objects that mirror the Python API so expressions
+ * like `game.level.regions.get('X').contains(pos)` work in JavaScript.
+ */
+function buildEvalScope(ctx: ConditionContext): Record<string, any> {
+  const game = ctx.game;
+  if (!game) return {};
+
+  // Region wrapper: adds .contains() method and makes regions accessible via .get()
+  function wrapRegion(r: any) {
+    if (!r) return null;
+    return {
+      nid: r.nid,
+      region_type: r.region_type,
+      position: r.position,
+      size: r.size,
+      sub_nid: r.sub_nid,
+      condition: r.condition,
+      contains(pos: [number, number] | null): boolean {
+        if (!pos || !r.position) return false;
+        const [px, py] = pos;
+        const [rx, ry] = r.position;
+        const [rw, rh] = r.size ?? [1, 1];
+        return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
+      },
+    };
+  }
+
+  // Regions collection wrapper: adds .get(nid) method
+  function wrapRegions(regions: any[]) {
+    return {
+      get(nid: string) {
+        const r = regions.find((reg: any) => reg.nid === nid);
+        return wrapRegion(r);
+      },
+      values() { return regions.map(wrapRegion); },
+    };
+  }
+
+  // Unit wrapper: ensures consistent API
+  function wrapUnit(u: any) {
+    if (!u) return null;
+    return {
+      nid: u.nid,
+      name: u.name,
+      team: u.team,
+      position: u.position,
+      tags: u.tags ?? [],
+      klass: u.klass,
+      dead: u.isDead?.() ?? u.dead ?? false,
+      level: u.level,
+      current_hp: u.currentHp ?? u.current_hp,
+      max_hp: u.maxHp ?? u.max_hp,
+    };
+  }
+
+  // Helper: get all alive units of a team
+  function getTeamUnits(team: string) {
+    const units: any[] = [];
+    if (game.units) {
+      for (const [_, u] of game.units) {
+        if ((u as any).team === team && !(u as any).isDead?.()) {
+          units.push(wrapUnit(u));
+        }
+      }
+    }
+    return units;
+  }
+
+  // Build the game proxy object
+  const regions = game.currentLevel?.regions ?? [];
+  const gameProxy: any = {
+    turncount: game.turnCount ?? game.turncount ?? 0,
+    turn_count: game.turnCount ?? game.turncount ?? 0,
+    game_vars: game.gameVars ?? new Map(),
+    level_vars: game.levelVars ?? new Map(),
+    level: {
+      regions: wrapRegions(regions),
+      nid: game.currentLevel?.nid ?? '',
+    },
+    get_unit(nid: string) {
+      const u = game.units?.get(nid) ?? game.getUnit?.(nid);
+      return wrapUnit(u);
+    },
+    get_enemy_units() { return getTeamUnits('enemy'); },
+    get_player_units() { return getTeamUnits('player'); },
+    get_units_in_party() { return getTeamUnits('player'); },
+    get_all_units() {
+      const units: any[] = [];
+      if (game.units) {
+        for (const [_, u] of game.units) {
+          units.push(wrapUnit(u));
+        }
+      }
+      return units;
+    },
+    check_dead(nid: string) {
+      const u = game.units?.get(nid) ?? game.getUnit?.(nid);
+      if (!u) return true;
+      return u.isDead?.() ?? u.dead ?? false;
+    },
+    check_alive(nid: string) {
+      return !gameProxy.check_dead(nid);
+    },
+  };
+
+  return gameProxy;
+}
+
+/**
+ * Attempt to evaluate a Python condition using JavaScript Function().
+ * Translates common Python idioms to JS before eval.
+ * Returns the evaluation result, or undefined if it fails.
+ */
+function evaluateWithJsFallback(
+  condition: string,
+  ctx: ConditionContext,
+): any {
+  const game = ctx.game;
+  if (!game) return undefined;
+
+  // Translate Python idioms to JavaScript
+  let jsExpr = condition;
+
+  // Python `len(x)` -> `x.length`
+  jsExpr = jsExpr.replace(/\blen\s*\(/g, '__len__(');
+
+  // Python `True`/`False` -> `true`/`false`
+  jsExpr = jsExpr.replace(/\bTrue\b/g, 'true');
+  jsExpr = jsExpr.replace(/\bFalse\b/g, 'false');
+  jsExpr = jsExpr.replace(/\bNone\b/g, 'null');
+
+  // Python `and`/`or`/`not` -> `&&`/`||`/`!`
+  jsExpr = jsExpr.replace(/\band\b/g, '&&');
+  jsExpr = jsExpr.replace(/\bor\b/g, '||');
+  jsExpr = jsExpr.replace(/\bnot\b/g, '!');
+
+  // Python `'x' in list` -> `list.includes('x')` (simple cases)
+  // This is hard to do generically with regex, so we leave it for
+  // the pattern matcher above which handles these well.
+
+  // Python `any(expr for x in xs)` -> `xs.some(x => expr)`
+  jsExpr = jsExpr.replace(
+    /\bany\s*\(\s*(.+?)\s+for\s+(\w+)\s+in\s+(.+?)\s*\)/g,
+    '($3).some(($2) => ($1))',
+  );
+
+  // Build scope
+  const gameProxy = buildEvalScope(ctx);
+
+  // Build check_pair / check_default helpers
+  const unit1 = ctx.unit1;
+  const unit2 = ctx.unit2;
+  const check_pair = (a: string, b: string) => {
+    const u1 = unit1?.nid;
+    const u2 = unit2?.nid;
+    return (u1 === a && u2 === b) || (u1 === b && u2 === a);
+  };
+  const check_default = (targetNid: string, exceptions: string[]) => {
+    if (!unit1 || !unit2) return false;
+    if (unit1.nid === targetNid && unit2.team === 'player') {
+      return !exceptions.includes(unit2.nid);
+    }
+    if (unit2.nid === targetNid && unit1.team === 'player') {
+      return !exceptions.includes(unit1.nid);
+    }
+    return false;
+  };
+
+  // len() helper
+  const __len__ = (x: any) => {
+    if (Array.isArray(x)) return x.length;
+    if (x && typeof x === 'object' && 'size' in x) return x.size;
+    return 0;
+  };
+
+  // v() helper: level vars take priority over game vars
+  const v = (varName: string, fallback?: any) => {
+    if (ctx.levelVars?.has(varName)) return ctx.levelVars.get(varName);
+    if (ctx.gameVars?.has(varName)) return ctx.gameVars.get(varName);
+    return fallback ?? 0;
+  };
+
+  // cf proxy (just for cf.SETTINGS['debug'])
+  const cf = { SETTINGS: { debug: false } };
+
+  // Wrap unit/region from context
+  const unit = unit1 ? {
+    nid: unit1.nid, name: unit1.name, team: unit1.team,
+    position: unit1.position, tags: unit1.tags ?? [],
+    klass: unit1.klass, dead: unit1.isDead?.() ?? false,
+  } : null;
+  const target = unit2 ? {
+    nid: unit2.nid, name: unit2.name, team: unit2.team,
+    position: unit2.position, tags: unit2.tags ?? [],
+    klass: unit2.klass, dead: unit2.isDead?.() ?? false,
+  } : null;
+  const region = ctx.region ? {
+    nid: ctx.region.nid, position: ctx.region.position,
+    size: ctx.region.size, region_type: ctx.region.region_type,
+    sub_nid: ctx.region.sub_nid,
+    contains(pos: [number, number] | null) {
+      if (!pos || !ctx.region.position) return false;
+      const [px, py] = pos;
+      const [rx, ry] = ctx.region.position;
+      const [rw, rh] = ctx.region.size ?? [1, 1];
+      return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
+    },
+  } : null;
+  const position = ctx.position;
+
+  // Also inject support_rank_nid from localArgs
+  const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
+
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
+      'check_pair', 'check_default', '__len__', 'v', 'cf', 'support_rank_nid',
+      `"use strict"; return (${jsExpr});`,
+    );
+    return fn(
+      gameProxy, unit, unit, target, target, region, position,
+      check_pair, check_default, __len__, v, cf, support_rank_nid,
+    );
+  } catch (e) {
+    // Expression evaluation failed
+    return undefined;
+  }
 }
 
 // ============================================================
