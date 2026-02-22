@@ -248,6 +248,8 @@ function moveCursor(dx: number, dy: number): void {
   game.cursor.move(dx, dy);
   const pos = game.cursor.getHover();
   game.camera.focusTile(pos.x, pos.y);
+  // Cursor movement sound (matching Python's 'Select 5')
+  game.audioManager?.playSfx?.('Select 5');
 }
 
 /** Get the unit under the cursor, or null. */
@@ -1544,7 +1546,7 @@ export class MenuState extends State {
 
       if (value === 'attack') {
         this.menu = null;
-        game.state.change('targeting');
+        game.state.change('weapon_choice');
       } else if (value === 'item') {
         this.menu = null;
         game.state.change('item_use');
@@ -2104,7 +2106,176 @@ export class DropState extends MapState {
 }
 
 // ============================================================================
-// 5. TargetingState
+// 5a. WeaponChoiceState — Select which weapon to use before attacking
+// ============================================================================
+
+export class WeaponChoiceState extends State {
+  readonly name = 'weapon_choice';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private weapons: ItemObject[] = [];
+  private previousEquipped: ItemObject | null = null;
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject = game.selectedUnit;
+    if (!unit || !unit.position) {
+      game.state.back();
+      return;
+    }
+
+    // Gather all usable weapons (has uses remaining, is a weapon)
+    this.weapons = unit.items.filter(
+      (item) => item.isWeapon() && item.hasUsesRemaining(),
+    );
+
+    // Also include spells
+    const spells = unit.items.filter(
+      (item) => item.isSpell() && item.hasUsesRemaining() && !item.isWeapon(),
+    );
+    this.weapons.push(...spells);
+
+    if (this.weapons.length === 0) {
+      game.state.back();
+      return;
+    }
+
+    // If only one weapon, auto-select it
+    if (this.weapons.length === 1) {
+      this.equipWeapon(unit, this.weapons[0]);
+      game.state.change('targeting');
+      return;
+    }
+
+    // Remember current equipped weapon for undo
+    this.previousEquipped = getEquippedWeapon(unit);
+
+    // Build menu options
+    const options: MenuOption[] = this.weapons.map((w) => ({
+      label: w.name,
+      value: w.nid,
+      enabled: true,
+    }));
+
+    // Position menu near unit
+    const cameraOffset = game.camera.getOffset();
+    const menuX = unit.position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4;
+    const menuY = unit.position[1] * TILEHEIGHT - cameraOffset[1];
+    const clampedX = Math.min(menuX, viewport.width - 80);
+    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
+
+    this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
+
+    // Equip the first weapon and show its attack range
+    this.equipWeapon(unit, this.weapons[0]);
+    this.showWeaponRange(unit, this.weapons[0]);
+  }
+
+  private equipWeapon(unit: UnitObject, weapon: ItemObject): void {
+    // Move the weapon to the front of inventory (equip it)
+    const idx = unit.items.indexOf(weapon);
+    if (idx > 0) {
+      unit.items.splice(idx, 1);
+      unit.items.unshift(weapon);
+    }
+  }
+
+  private showWeaponRange(unit: UnitObject, weapon: ItemObject): void {
+    const game = getGame();
+    game.highlight.clear();
+    const minRange = weapon.getMinRange();
+    const maxRange = weapon.getMaxRange();
+    const ux = unit.position![0];
+    const uy = unit.position![1];
+    const attackTiles: [number, number][] = [];
+    for (let dx = -maxRange; dx <= maxRange; dx++) {
+      for (let dy = -maxRange; dy <= maxRange; dy++) {
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist >= minRange && dist <= maxRange) {
+          const tx = ux + dx;
+          const ty = uy + dy;
+          if (game.board.inBounds(tx, ty)) {
+            attackTiles.push([tx, ty]);
+          }
+        }
+      }
+    }
+    game.highlight.setAttackHighlights(attackTiles);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+
+    // Handle mouse
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) {
+      result = this.menu.handleInput(event);
+    }
+    if (!result) {
+      // On UP/DOWN, update weapon range display
+      if (event === 'UP' || event === 'DOWN') {
+        const idx = this.menu.selectedIndex;
+        if (idx >= 0 && idx < this.weapons.length) {
+          const unit: UnitObject = game.selectedUnit;
+          this.equipWeapon(unit, this.weapons[idx]);
+          this.showWeaponRange(unit, this.weapons[idx]);
+        }
+      }
+      return;
+    }
+
+    if ('back' in result) {
+      // Restore previous equipped weapon
+      const unit: UnitObject = game.selectedUnit;
+      if (this.previousEquipped) {
+        this.equipWeapon(unit, this.previousEquipped);
+      }
+      game.highlight.clear();
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+
+    if ('selected' in result) {
+      const weapon = this.weapons.find((w) => w.nid === result.selected);
+      if (weapon) {
+        const unit: UnitObject = game.selectedUnit;
+        this.equipWeapon(unit, weapon);
+      }
+      game.highlight.clear();
+      this.menu = null;
+      game.state.change('targeting');
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    game.highlight.update();
+    surf = drawMap(surf, true);
+    if (this.menu) {
+      this.menu.draw(surf);
+    }
+    return surf;
+  }
+
+  override end(): StateResult {
+    const game = getGame();
+    game.highlight.clear();
+  }
+}
+
+// ============================================================================
+// 5b. TargetingState
 // ============================================================================
 
 export class TargetingState extends MapState {
@@ -2379,6 +2550,10 @@ export class CombatState extends State {
         game.board,
         script,
       );
+      // Wire audio manager for combat sound effects
+      if (game.audioManager) {
+        this.combat.audioManager = game.audioManager;
+      }
       console.log(`CombatState: using MapCombat (${attacker.name} vs ${defender.name})`);
     }
 
@@ -2468,6 +2643,11 @@ export class CombatState extends State {
         game.board,
         script,
       );
+
+      // Wire audio manager for combat sound effects
+      if (game.audioManager) {
+        this.animCombat.audioManager = game.audioManager;
+      }
 
       // Load platform images asynchronously (they'll appear once loaded)
       const isMelee = this.animCombat.combatRange <= 1;
@@ -3085,7 +3265,7 @@ export class CombatState extends State {
     if (nameSlide > 0) {
       const NAME_TAG_W = 80;
       const NAME_TAG_H = 12;
-      const HP_BAR_SECTION_H = 20;
+      const HP_BAR_SECTION_H = 26;
       // Bottom anchor: name tag above HP bar, which is above EXP bar area
       const nameY = WINHEIGHT - 14 - HP_BAR_SECTION_H - 2 - NAME_TAG_H - 2 + shakeY;
       const leftNameX = -NAME_TAG_W + nameSlide * (NAME_TAG_W + 4) + shakeX;
@@ -3105,7 +3285,7 @@ export class CombatState extends State {
     const hpSlide = rs.hpBarProgress;
     if (hpSlide > 0) {
       const HP_BAR_W = 72;
-      const HP_BAR_SECTION_H = 20;
+      const HP_BAR_SECTION_H = 26;
       // Bottom anchor: HP bar just above the EXP bar (WINHEIGHT - 14)
       const hpY = WINHEIGHT - 14 - HP_BAR_SECTION_H - 2 + shakeY;
       const leftHpX = -HP_BAR_W + hpSlide * (HP_BAR_W + 4) + shakeX;
@@ -3254,14 +3434,14 @@ export class CombatState extends State {
     surf.fillRect(x, y, width, height, 'rgba(16,16,40,0.9)');
     surf.drawRect(x, y, width, height, 'rgba(100,100,160,0.8)');
 
-    // Weapon name
+    // Weapon name (top row)
     surf.drawText(hp.weapon, x + 3, y + 2, 'rgba(180,180,220,1)', '7px monospace');
 
-    // HP bar
+    // HP bar (middle row, below weapon text with clear gap)
     const barX = x + 3;
-    const barY = y + 10;
+    const barY = y + 12;
     const barW = width - 6;
-    const barH = 5;
+    const barH = 4;
     const ratio = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
 
     surf.fillRect(barX, barY, barW, barH, 'rgba(32,32,32,1)');
@@ -3273,10 +3453,10 @@ export class CombatState extends State {
     if (filled > 0) surf.fillRect(barX, barY, filled, barH, color);
     surf.drawRect(barX, barY, barW, barH, 'rgba(120,120,140,0.8)');
 
-    // HP text
+    // HP text (below the bar)
     surf.drawText(
       `${hp.current}/${hp.max}`,
-      barX + barW - 28, barY - 1,
+      barX + barW - 28, barY + barH + 1,
       'white', '6px monospace',
     );
   }

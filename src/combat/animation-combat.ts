@@ -217,6 +217,9 @@ export class AnimationCombat implements AnimationCombatOwner {
   effectFrameCache: Map<string, Map<string, ImageBitmap | HTMLCanvasElement>> = new Map();
   effectLoadingSet: Set<string> = new Set();
 
+  // -- Audio (optional, set after construction to enable combat SFX) --------
+  audioManager: { playSfx(name: string): void } | null = null;
+
   constructor(
     attacker: UnitObject,
     attackItem: ItemObject,
@@ -653,9 +656,10 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.cameraY = pixelY / 16;
   }
 
-  playSound(_name: string): void {
-    // Audio playback is handled externally. This is a hook point
-    // for the game state that owns us to intercept via subclass or wrapper.
+  playSound(name: string): void {
+    if (this.audioManager) {
+      this.audioManager.playSfx(name);
+    }
   }
 
   showHitSpark(anim: BattleAnimation): void {
@@ -727,11 +731,12 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.backgroundDim = Math.max(0, this.backgroundDim - 0.3);
   }
 
-  endParentLoop(anim: BattleAnimation): void {
-    // Break the animation's parent loop. Delegate directly to the anim.
-    // This is called by child effect animations to signal their parent
-    // should stop looping and proceed.
-    anim.resume();
+  endParentLoop(_childAnim: BattleAnimation): void {
+    // Called by child effect animations to break the parent's loop.
+    // The parent is the current strike's attacker animation.
+    if (this.currentStrikeAttackerAnim) {
+      this.currentStrikeAttackerAnim.breakLoop();
+    }
   }
 
   spawnEffect(anim: BattleAnimation, effectNid: string, under: boolean): void {

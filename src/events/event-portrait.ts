@@ -197,7 +197,7 @@ export class EventPortrait {
     this.talkOn = true;
     this.talkState = 0;
     this.talkTimer = 0;
-    this.talkDuration = this.randomTalkDuration(0);
+    this.talkDuration = 50 + Math.random() * 50; // 50-100ms (closed state initial)
   }
 
   /** Stop the talking animation. Mouth returns to closed. */
@@ -554,57 +554,45 @@ export class EventPortrait {
 
     this.talkTimer = 0;
 
-    // State transitions (matching Python's randomized mouth movement)
-    const rand = Math.random();
+    // State transitions matching Python's per-transition durations exactly.
+    // Python: event_portrait.py lines 141-177
+    // Durations are assigned per (source -> target) transition pair.
+    const chance = Math.floor(Math.random() * 10) + 1; // 1-10 inclusive
     switch (this.talkState) {
       case 0: // Closed
-        if (rand < 0.1) {
-          this.talkState = 2; // Skip to open
-          this.talkDuration = this.randomTalkDuration(2);
+        if (chance === 1) {
+          this.talkState = 2; // Skip to open (10%)
+          this.talkDuration = 70 + Math.random() * 90; // 70-160ms
         } else {
-          this.talkState = 1; // Half
-          this.talkDuration = this.randomTalkDuration(1);
+          this.talkState = 1; // Half (90%)
+          this.talkDuration = 30 + Math.random() * 20; // 30-50ms
         }
         break;
       case 1: // Half (opening)
-        if (rand < 0.1) {
-          this.talkState = 0; // Back to closed
-          this.talkDuration = this.randomTalkDuration(0);
+        if (chance === 1) {
+          this.talkState = 0; // Back to closed (10%)
+          this.talkDuration = 50 + Math.random() * 50; // 50-100ms
         } else {
-          this.talkState = 2; // Open
-          this.talkDuration = this.randomTalkDuration(2);
+          this.talkState = 2; // Open (90%)
+          this.talkDuration = 70 + Math.random() * 90; // 70-160ms
         }
         break;
       case 2: // Open
-        if (rand < 0.1) {
-          this.talkState = 0;
-          this.talkDuration = this.randomTalkDuration(0);
-        } else if (rand < 0.2) {
-          this.talkState = 1;
-          this.talkDuration = this.randomTalkDuration(1);
+        if (chance === 1) {
+          this.talkState = 0; // Closed (10%)
+          this.talkDuration = 50 + Math.random() * 50; // 50-100ms
+        } else if (chance === 2) {
+          this.talkState = 1; // Half (10%)
+          this.talkDuration = 30 + Math.random() * 20; // 30-50ms
         } else {
-          this.talkState = 3; // Half (closing)
-          this.talkDuration = this.randomTalkDuration(3);
+          this.talkState = 3; // Half closing (80%)
+          this.talkDuration = 30 + Math.random() * 20; // 30-50ms
         }
         break;
       case 3: // Half (closing)
         this.talkState = 0;
-        this.talkDuration = this.randomTalkDuration(0);
+        this.talkDuration = 50 + Math.random() * 50; // 50-100ms
         break;
-    }
-  }
-
-  /**
-   * Generate a random duration for a talk state.
-   * Different states have different timing ranges.
-   */
-  private randomTalkDuration(state: number): number {
-    switch (state) {
-      case 0: return 30 + Math.random() * 20; // closed: 30-50ms
-      case 1: return 70 + Math.random() * 90; // half open: 70-160ms
-      case 2: return 30 + Math.random() * 20; // open: 30-50ms
-      case 3: return 50 + Math.random() * 50; // half close: 50-100ms
-      default: return 50;
     }
   }
 

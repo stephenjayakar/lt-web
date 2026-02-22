@@ -24,7 +24,58 @@ Pulse (full undo/redo of game actions), initiative turn system
 (speed-based per-unit turn order), and overworld map system (FE8-style
 world map with nodes, roads, party movement).
 
+### Known Bugs
+
+- [x] ~~**Dialogue box positioned at bottom after turn transition.**~~ Fixed: dialog Y now uses Python's fixed formula (`viewport.height - boxH - 80 - 4`) instead of relative-to-portrait positioning. Dialog width expanded to full-width (matching Python).
+- [x] ~~**Mouth animations too fast and random.**~~ Fixed: per-transition durations now match Python exactly (was using per-destination-state durations, which scrambled the timing).
+- [x] ~~**Magic attacks freeze combat.**~~ Fixed 5 issues: (1) `spell_hit` now pauses animation + enters wait state, (2) `spell_hit_2` (crit variant) implemented, (3) `wait_for_hit` is now conditional on `waitForHit` flag, (4) `endParentLoop` now calls `breakLoop()` on the parent attacker animation, (5) loop mechanism supports proper break-out via `skipNextLoop` counter.
+- [x] ~~**No hit/crit/attack sound effects.**~~ Fixed: `AnimationCombat.playSound()` now wired to `AudioManager.playSfx()`. `MapCombat` plays hit/crit/miss sounds at strike impact.
+- [x] ~~**No sound effects on move or UI interaction.**~~ Fixed: cursor movement plays `Select 5`, menu up/down plays `Select 6`, confirm plays `Select 1`, back plays `Select 4`.
+- [x] ~~**Can't select Move option.**~~ Not a real bug — Move is not a menu option (matches Python). Unit movement works via FreeState → MoveState flow.
+- [x] ~~**Can't select weapon before attacking.**~~ Fixed: new `WeaponChoiceState` shows all usable weapons when attacking. Auto-selects if only one weapon. Shows attack range per weapon on hover. MenuState now goes to `weapon_choice` → `targeting` instead of directly to `targeting`.
+- [x] ~~**Combat UI overlap.**~~ Fixed: increased `HP_BAR_SECTION_H` from 20 to 26, moved HP bar down to `y+12`, HP text below bar at `barY+barH+1`. Weapon name, HP bar, and HP numbers no longer overlap.
+
 ### Recent Changes (Latest Session)
+- **8 bug fixes across combat, UI, portraits, and audio.**
+  - **Magic attack freeze fix.** Five root causes in `battle-animation.ts` and
+    `animation-combat.ts`: (1) `spell_hit` command now sets `state='wait'` and
+    `processing=false` before calling `spellHit()` (was fire-and-forget),
+    (2) `spell_hit_2` (crit spell variant) fully implemented (was unhandled →
+    `awaitingHit` stuck true forever), (3) `wait_for_hit` now checks a
+    `waitForHit` boolean flag set in `setPose()` and cleared in `resume()`
+    (was unconditionally entering wait → child effects stuck forever),
+    (4) `endParentLoop()` now calls `breakLoop()` on the parent attacker
+    animation instead of `resume()` on the child (was never breaking the
+    casting loop), (5) loop mechanism rewritten with `loopEndIndex` tracking,
+    `breakLoop()` method, and `skipNextLoop` counter for proper loop exit.
+    `resume()` also resumes child effects.
+  - **Weapon choice state.** New `WeaponChoiceState` (`game-states.ts`)
+    inserted between MenuState and TargetingState. Shows all equippable weapons
+    (with uses remaining) when the unit selects Attack. Highlights attack range
+    per weapon on hover. Auto-selects if only one weapon. Registered in
+    `main.ts`. MenuState now routes Attack → `weapon_choice` → `targeting`.
+  - **Portrait mouth animation timing.** `randomTalkDuration()` replaced with
+    per-transition inline durations matching Python's `update_talk()` exactly.
+    Each (source→target) state pair now has the correct duration range. Uses
+    `Math.floor(Math.random() * 10) + 1` for 1-10 integer matching Python.
+  - **Dialog positioning.** Dialog Y now uses Python's fixed formula
+    (`viewport.height - boxH - 80 - 4`) instead of portrait-relative Y.
+    Width expanded from 120px cap to full viewport width (matching Python's
+    wide dialog style). No longer appears at bottom after turn transitions.
+  - **Combat sound effects.** `AnimationCombat.playSound()` wired to
+    `AudioManager.playSfx()` via new `audioManager` property set in
+    `CombatState`. `MapCombat` plays `Attack Hit 1/2`, `Critical Hit 1`,
+    or `Attack Miss 2` at lunge impact via new `audioManager` property
+    and `hitSoundPlayed` guard.
+  - **UI/cursor sound effects.** `moveCursor()` plays `Select 5`. `ChoiceMenu`
+    plays `Select 6` (up/down), `Select 1` (confirm), `Select 4` (back),
+    `Error` (disabled option). Wired via `setMenuAudioManager()` in `main.ts`.
+  - **Combat UI layout.** `HP_BAR_SECTION_H` increased from 20 to 26.
+    HP bar moved from `y+10` to `y+12`, HP text moved from `barY-1` to
+    `barY+barH+1` (below bar). Weapon name, HP bar, and HP numbers no longer
+    overlap.
+
+### Previous Session
 - **Phase 4 Mobile/Distribution completed.** All four remaining Phase 4
   items (PWA, Asset Bundling, Performance Profiling, Capacitor/TWA) are now
   fully implemented and wired in.

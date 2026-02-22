@@ -97,6 +97,10 @@ export class MapCombat {
   defenderAnim: CombatAnimState;
   damagePopups: DamagePopup[];
 
+  // Audio (optional, set after construction to enable combat SFX)
+  audioManager: { playSfx(name: string): void } | null = null;
+  private hitSoundPlayed: boolean = false;
+
   constructor(
     attacker: UnitObject,
     attackItem: ItemObject,
@@ -353,6 +357,19 @@ export class MapCombat {
           if (strike.hit) {
             targetAnim.flashAlpha = strike.crit ? 0.8 : 0.5;
           }
+          // Play hit/miss sound at impact
+          if (!this.hitSoundPlayed && this.audioManager) {
+            this.hitSoundPlayed = true;
+            if (strike.hit) {
+              if (strike.crit) {
+                this.audioManager.playSfx('Critical Hit 1');
+              } else {
+                this.audioManager.playSfx('Attack Hit ' + (Math.random() < 0.5 ? '1' : '2'));
+              }
+            } else {
+              this.audioManager.playSfx('Attack Miss 2');
+            }
+          }
         } else {
           targetAnim.flashAlpha = Math.max(0, targetAnim.flashAlpha - deltaMs * 0.005);
         }
@@ -361,6 +378,7 @@ export class MapCombat {
 
     if (this.frameTimer >= STRIKE_DURATION_MS) {
       this.frameTimer = 0;
+      this.hitSoundPlayed = false;
 
       // Reset lunge offsets
       this.attackerAnim.lungeOffset = [0, 0];

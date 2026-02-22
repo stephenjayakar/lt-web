@@ -129,6 +129,11 @@ export class BattleAnimation {
 
   // --- Loop tracking ---
   private loopStartIndex: number = -1;
+  private loopEndIndex: number = -1;
+  private skipNextLoop: number = 0;
+
+  // --- Hit synchronization flag ---
+  waitForHit: boolean = false;
 
   // --- Frame lookup cache ---
   private frameDataMap: Map<string, BattleAnimFrame> = new Map();
@@ -200,6 +205,8 @@ export class BattleAnimation {
     this.overFrameNid = null;
     this.frameOffset = [0, 0];
     this.loopStartIndex = -1;
+    this.loopEndIndex = -1;
+    this.waitForHit = true;
 
     // Immediately start reading script commands
     this.readScript();
@@ -393,13 +400,16 @@ export class BattleAnimation {
       }
 
       case 'wait_for_hit': {
-        this.currentFrameNid = args[0] as string ?? null;
-        this.underFrameNid = args[1] as string ?? null;
-        this.overFrameNid = null;
-        this.frameOffset = [0, 0];
-        this.numFrames = 0;
-        this.state = 'wait';
-        this.processing = false;
+        if (this.waitForHit) {
+          this.currentFrameNid = args[0] as string ?? null;
+          this.underFrameNid = args[1] as string ?? null;
+          this.overFrameNid = null;
+          this.frameOffset = [0, 0];
+          this.numFrames = 0;
+          this.state = 'wait';
+          this.processing = false;
+        }
+        // If waitForHit is false, skip this command (already been hit/resumed)
         break;
       }
 
@@ -431,6 +441,18 @@ export class BattleAnimation {
       }
 
       case 'spell_hit': {
+        this.state = 'wait';
+        this.processing = false;
+        // spellHit -> startHit handles shake, damage, defender pose, and
+        // transitions AnimationCombat to combat_hit -> hp_change -> resume()
+        this.owner?.spellHit?.(this);
+        break;
+      }
+
+      case 'spell_hit_2': {
+        this.state = 'wait';
+        this.processing = false;
+        // Same as spell_hit but for crits (stronger shake is handled by spellHit)
         this.owner?.spellHit?.(this);
         break;
       }
@@ -522,7 +544,34 @@ export class BattleAnimation {
       // --- Loop control ---
 
       case 'start_loop': {
-        this.loopStartIndex = this.scriptIndex;
+        if (this.skipNextLoop > 0) {
+          // Skip past end_loop — find the matching end_loop
+          this.skipNextLoop--;
+          let depth = 1;
+          while (this.scriptIndex < this.currentPose!.timeline.length && depth > 0) {
+            const nextCmd = this.currentPose!.timeline[this.scriptIndex];
+            this.scriptIndex++;
+            if (nextCmd.nid === 'start_loop') depth++;
+            if (nextCmd.nid === 'end_loop') depth--;
+          }
+        } else {
+          this.loopStartIndex = this.scriptIndex;
+          // Pre-scan forward to find matching end_loop index
+          this.loopEndIndex = -1;
+          let depth = 1;
+          let scan = this.scriptIndex;
+          while (scan < this.currentPose!.timeline.length && depth > 0) {
+            const nextCmd = this.currentPose!.timeline[scan];
+            if (nextCmd.nid === 'start_loop') depth++;
+            if (nextCmd.nid === 'end_loop') {
+              depth--;
+              if (depth === 0) {
+                this.loopEndIndex = scan + 1; // index AFTER end_loop
+              }
+            }
+            scan++;
+          }
+        }
         break;
       }
 
@@ -592,10 +641,31 @@ export class BattleAnimation {
   // External triggers
   // -------------------------------------------------------------------
 
+  /** Break out of the current start_loop/end_loop cycle. Called by
+   *  child effects via end_parent_loop to stop the parent from looping. */
+  breakLoop(): void {
+    if (this.loopStartIndex >= 0 && this.loopEndIndex >= 0) {
+      this.scriptIndex = this.loopEndIndex;
+      this.loopStartIndex = -1;
+      this.loopEndIndex = -1;
+    } else {
+      // No active loop, queue a skip for the next loop encountered
+      this.skipNextLoop++;
+    }
+  }
+
   resume(): void {
     if (this.state === 'wait') {
       this.state = 'run';
+      this.waitForHit = false;
       this.readScript();
+    }
+    // Also resume any child effects that are waiting
+    for (const effect of this.effects) {
+      effect.resume();
+    }
+    for (const effect of this.underEffects) {
+      effect.resume();
     }
   }
 

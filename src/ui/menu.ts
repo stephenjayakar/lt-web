@@ -2,6 +2,12 @@ import { Surface } from '../engine/surface';
 import type { InputEvent } from '../engine/input';
 import { getMenuBackgroundSync } from './base-surf';
 
+/** Optional audio manager reference set by game state for menu sounds. */
+let _menuAudioManager: { playSfx(name: string): void } | null = null;
+export function setMenuAudioManager(am: { playSfx(name: string): void } | null): void {
+  _menuAudioManager = am;
+}
+
 export interface MenuOption {
   label: string;
   value: string;
@@ -56,18 +62,23 @@ export class ChoiceMenu {
     switch (event) {
       case 'UP':
         this.moveUp();
+        _menuAudioManager?.playSfx?.('Select 6');
         return null;
       case 'DOWN':
         this.moveDown();
+        _menuAudioManager?.playSfx?.('Select 6');
         return null;
       case 'SELECT': {
         const opt = this.getCurrentOption();
         if (opt.enabled) {
+          _menuAudioManager?.playSfx?.('Select 1');
           return { selected: opt.value };
         }
+        _menuAudioManager?.playSfx?.('Error');
         return null;
       }
       case 'BACK':
+        _menuAudioManager?.playSfx?.('Select 4');
         return { back: true };
       default:
         return null;
