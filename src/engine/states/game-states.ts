@@ -69,27 +69,8 @@ function getBoard(): any {
  * The terrain's `status` field references a skill NID. That skill's
  * components contain `stat_change` (for DEF) and `avoid` (for AVO).
  */
-function getTerrainBonuses(terrainDef: any, db: any): [number, number] {
-  if (!terrainDef?.status) return [0, 0];
-  const skill = db.skills?.get(terrainDef.status);
-  if (!skill?.components) return [0, 0];
-
-  let def = 0;
-  let avo = 0;
-  for (const [name, value] of skill.components) {
-    if (name === 'avoid' && typeof value === 'number') {
-      avo += value;
-    } else if (name === 'stat_change' && Array.isArray(value)) {
-      // value is [[statNid, amount], ...]
-      for (const entry of value) {
-        if (Array.isArray(entry) && entry[0] === 'DEF' && typeof entry[1] === 'number') {
-          def += entry[1];
-        }
-      }
-    }
-  }
-  return [def, avo];
-}
+// Terrain bonuses imported from shared utility
+import { getTerrainBonuses } from '../../combat/terrain-bonuses';
 
 /**
  * Active combat animation offsets, set by CombatState so that
@@ -1985,6 +1966,7 @@ export class CombatState extends State {
         defenseItem,
         game.db,
         rngMode,
+        game.board,
       );
       console.log(`CombatState: using MapCombat (${attacker.name} vs ${defender.name})`);
     }
@@ -2068,6 +2050,7 @@ export class CombatState extends State {
         leftAnim,
         rightAnim,
         leftIsAttacker,
+        game.board,
       );
 
       // Load platform images asynchronously (they'll appear once loaded)

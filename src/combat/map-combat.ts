@@ -1,6 +1,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
+import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
 
@@ -103,6 +104,7 @@ export class MapCombat {
     defenseItem: ItemObject | null,
     db: Database,
     rngMode: RngMode,
+    board?: GameBoard | null,
   ) {
     this.attacker = attacker;
     this.attackItem = attackItem;
@@ -112,7 +114,7 @@ export class MapCombat {
 
     // Solve the combat to get the strike sequence
     const solver = new CombatPhaseSolver();
-    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode);
+    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board);
 
     this.state = 'init';
     this.currentStrikeIndex = 0;
