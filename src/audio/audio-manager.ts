@@ -18,6 +18,7 @@ export class AudioManager {
   private sfxVolume: number;
   private audioBufferCache: Map<string, AudioBuffer>;
   private baseUrl: string;
+  private musicStack: string[];
 
   constructor(baseUrl: string) {
     this.audioContext = null;
@@ -29,6 +30,7 @@ export class AudioManager {
     this.sfxVolume = 1.0;
     this.audioBufferCache = new Map();
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    this.musicStack = [];
   }
 
   /**
@@ -120,6 +122,30 @@ export class AudioManager {
     this.musicGain = this.audioContext.createGain();
     this.musicGain.gain.value = this.musicVolume;
     this.musicGain.connect(this.audioContext.destination);
+  }
+
+  /**
+   * Push the current music onto a stack and play a new track.
+   * Use popMusic() to restore the previous track.
+   */
+  async pushMusic(nid: string): Promise<void> {
+    if (this.currentMusicNid) {
+      this.musicStack.push(this.currentMusicNid);
+    }
+    await this.playMusic(nid);
+  }
+
+  /**
+   * Pop the music stack and resume the previous track.
+   * If the stack is empty, stops music.
+   */
+  async popMusic(): Promise<void> {
+    const previousNid = this.musicStack.pop();
+    if (previousNid) {
+      await this.playMusic(previousNid);
+    } else {
+      this.stopMusic();
+    }
   }
 
   /**

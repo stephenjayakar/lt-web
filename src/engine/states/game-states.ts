@@ -122,6 +122,7 @@ function collectVisibleUnits(): {
   const game = getGame();
   if (!game.board) return [];
   const allUnits: UnitObject[] = game.board.getAllUnits();
+  const currentTeam = game.phase.getCurrent();
   const result: {
     x: number;
     y: number;
@@ -135,12 +136,13 @@ function collectVisibleUnits(): {
   for (const u of allUnits) {
     if (u.isDead() || !u.position) continue;
 
-    // Update sprite state: gray for finished, standing otherwise
+    // Update sprite state: gray for finished units on the active team only.
+    // Units from other teams should never appear greyed out.
     // (moving state is set by the movement system)
     if (u.sprite && typeof u.sprite === 'object' && 'state' in u.sprite) {
       const spr = u.sprite as { state: string };
       if (spr.state !== 'moving') {
-        spr.state = u.finished ? 'gray' : 'standing';
+        spr.state = (u.finished && u.team === currentTeam) ? 'gray' : 'standing';
       }
     }
 
@@ -160,6 +162,9 @@ function collectVisibleUnits(): {
       }
     }
 
+    // Only report finished=true for units on the active team so that
+    // downstream renderers (placeholder overlays, etc.) don't grey out
+    // units from other teams.
     result.push({
       x: u.position[0],
       y: u.position[1],
@@ -167,7 +172,7 @@ function collectVisibleUnits(): {
       visualOffsetY,
       sprite: u.sprite,
       team: u.team,
-      finished: u.finished,
+      finished: u.finished && u.team === currentTeam,
     });
   }
   return result;
@@ -1976,6 +1981,17 @@ export class CombatState extends State {
     this.phaseTimer = 0;
     this.deathFadeProgress = 0;
     this.levelUpGains = null;
+
+    // Play battle music (push current phase music onto the stack)
+    const levelMusic = game.currentLevel?.music;
+    if (levelMusic) {
+      const battleTrack = attacker.team === 'player'
+        ? levelMusic.player_battle
+        : levelMusic.enemy_battle;
+      if (battleTrack) {
+        void game.audioManager.pushMusic(battleTrack);
+      }
+    }
   }
 
   /**
@@ -2287,6 +2303,9 @@ export class CombatState extends State {
           console.warn('VICTORY — win condition met');
           // TODO: push a VictoryState / trigger level_end event
         }
+
+        // Restore phase music (pop battle music from the stack)
+        void game.audioManager.popMusic();
 
         // Clear combat animation offsets
         setActiveCombatOffsets(null);
