@@ -4568,6 +4568,7 @@ export class EventState extends State {
 
       // ----- Blocking commands -----
 
+      case 's':           // short alias used in support conversations
       case 'speak':
       case 'narrate': {
         // In skip mode, auto-advance past all dialogue without showing it
@@ -5015,7 +5016,19 @@ export class EventState extends State {
 
       case 'music':
       case 'change_music': {
-        const musicNid = args[0] ?? '';
+        // change_music can be called two ways:
+        // 1. music;musicNid (direct play)
+        // 2. change_music;phase_type;musicNid (change phase music)
+        // Phase types: player_phase, enemy_phase, other_phase, player_battle, enemy_battle
+        const phaseTypes = ['player_phase', 'enemy_phase', 'other_phase', 'player_battle', 'enemy_battle'];
+        let musicNid: string;
+        if (args.length >= 2 && phaseTypes.includes(args[0])) {
+          // Phase variant: args[0] is phase type, args[1] is music NID
+          // TODO: actually store the phase music override for the level
+          musicNid = args[1];
+        } else {
+          musicNid = args[0] ?? '';
+        }
         if (musicNid && game.audioManager) {
           game.audioManager.playMusic(musicNid);
         }
@@ -5579,6 +5592,22 @@ export class EventState extends State {
 
       // ----- Tilemap commands -----
 
+      case 'change_tilemap': {
+        // change_tilemap;TilemapNid[;PositionOffset;reload]
+        const tmNid = args[0] ?? '';
+        if (tmNid) {
+          // Async: block the event until the tilemap is loaded
+          this.waiting = true;
+          game.changeTilemap(tmNid).then(() => {
+            this.waiting = false;
+            this.advancePointer();
+          });
+          return true;
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'show_layer': {
         const layerNid = args[0] ?? '';
         if (game.tilemap) {
@@ -5886,6 +5915,7 @@ export class EventState extends State {
         return false;
       }
 
+      case 'bop':           // short alias
       case 'bop_portrait': {
         // bop_portrait;PortraitNid;[NumBops];[Time]
         const bopNid = args[0] ?? '';
@@ -6325,6 +6355,54 @@ export class EventState extends State {
         // Visual/UI commands — skip for now to allow event progression
         this.advancePointer();
         return false;
+
+      // ----- Preparation / Base (stubs) -----
+
+      case 'prep': {
+        // prep — opens preparations screen. For now, skip it and proceed.
+        console.warn('[Event] prep command not yet implemented — skipping');
+        this.advancePointer();
+        return false;
+      }
+
+      case 'base': {
+        // base — opens base/camp screen. Not yet implemented.
+        console.warn('[Event] base command not yet implemented — skipping');
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Overworld (stubs) -----
+
+      case 'toggle_narration_mode':
+      case 'overworld_cinematic':
+      case 'reveal_overworld_node':
+      case 'reveal_overworld_road':
+      case 'overworld_move_unit':
+      case 'set_overworld_position': {
+        // Overworld system not yet implemented — skip silently
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Arena / overlay (stubs) -----
+
+      case 'draw_overlay_sprite':
+      case 'remove_overlay_sprite':
+      case 'table':
+      case 'remove_table':
+      case 'textbox':
+      case 'set_wexp':
+      case 'resurrect':
+      case 'autolevel_to':
+      case 'add_lore':
+      case 'add_base_convo':
+      case 'enable_fog_of_war':
+      case 'set_fog_of_war': {
+        // Advanced features not yet implemented — skip
+        this.advancePointer();
+        return false;
+      }
 
       default:
         // Unknown/unimplemented command — skip

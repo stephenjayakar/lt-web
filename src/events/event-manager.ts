@@ -75,6 +75,17 @@ export type EventCommandType =
   | 'battle_save' | 'prep' | 'base' | 'shop' | 'choice' | 'unchoice'
   | 'chapter_title' | 'set_tile'
   | 'has_visited' | 'unlock' | 'find_unlock' | 'spend_unlock'
+  // Overworld
+  | 'toggle_narration_mode' | 'overworld_cinematic' | 'reveal_overworld_node'
+  | 'reveal_overworld_road' | 'overworld_move_unit' | 'set_overworld_position'
+  // Arena / overlay
+  | 'draw_overlay_sprite' | 'remove_overlay_sprite' | 'table' | 'remove_table' | 'textbox'
+  // Fog of war
+  | 'enable_fog_of_war' | 'set_fog_of_war'
+  // Misc advanced
+  | 'add_lore' | 'add_base_convo'
+  // Short aliases
+  | 's' | 'bop'
   // Legacy aliases (resolved to canonical form)
   | 'set_game_var' | 'change_objective';
 

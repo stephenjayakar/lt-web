@@ -270,6 +270,75 @@ export class GameState {
   }
 
   // ========================================================================
+  // Change Tilemap (mid-event)
+  // ========================================================================
+
+  /**
+   * Swap the current level's tilemap to a different one.
+   * Used by the `change_tilemap` event command for cutscene backdrops.
+   * Removes all units from the map, rebuilds the game board, resets cursor.
+   */
+  async changeTilemap(tilemapNid: string): Promise<void> {
+    const tilemapData = this.db.tilemaps.get(tilemapNid);
+    if (!tilemapData) {
+      console.warn(`changeTilemap: tilemap "${tilemapNid}" not found`);
+      return;
+    }
+
+    // Save current unit positions before removing them
+    const savedPositions = new Map<string, [number, number]>();
+    for (const unit of this.units.values()) {
+      if (unit.position) {
+        savedPositions.set(unit.nid, [unit.position[0], unit.position[1]]);
+        // Remove from board without action log
+        if (this.board) this.board.removeUnit(unit);
+        else unit.position = null;
+      }
+    }
+    const oldNid = this.tilemap ? this.tilemap.nid : '';
+    this.levelVars.set(`_prev_pos_${oldNid}`, savedPositions);
+
+    // Load tileset images for the new tilemap
+    const tilesetImages = new Map<string, HTMLImageElement>();
+    const autotileImages = new Map<string, HTMLImageElement>();
+    const tilesetDefs = new Map<string, import('../data/types').TilesetData>();
+    await Promise.all(
+      tilemapData.tilesets.map(async (tsNid: string) => {
+        const img = await this.resources.tryLoadImage(
+          `resources/tilesets/${tsNid}.png`,
+        );
+        if (img) tilesetImages.set(tsNid, img);
+        const tsDef = this.db.tilesets.get(tsNid);
+        if (tsDef) {
+          tilesetDefs.set(tsNid, tsDef);
+          if (tsDef.autotiles && Object.keys(tsDef.autotiles).length > 0) {
+            const autoImg = await this.resources.tryLoadImage(
+              `resources/tilesets/${tsNid}_autotiles.png`,
+            );
+            if (autoImg) autotileImages.set(tsNid, autoImg);
+          }
+        }
+      }),
+    );
+
+    // Create the new tilemap
+    this.tilemap = TileMapObject.fromPrefab(tilemapData, tilesetImages, tilesetDefs, autotileImages);
+
+    // Rebuild game board
+    this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
+    this.board.initFromTilemap(this.tilemap);
+
+    // Reset cursor and camera to new map bounds
+    this.cursor.setMapSize(this.tilemap.width, this.tilemap.height);
+    this.cursor.setPos(0, 0);
+    this.camera.setMapSize(this.tilemap.width, this.tilemap.height);
+    this.camera.forcePosition(0, 0);
+
+    // Clear highlights
+    this.highlight.clear();
+  }
+
+  // ========================================================================
   // AI Group Activation
   // ========================================================================
 
