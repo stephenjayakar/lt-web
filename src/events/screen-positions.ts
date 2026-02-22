@@ -6,38 +6,47 @@
  * dialog scenes. Portraits at or left of CenterLeft are auto-mirrored.
  */
 
-import { WINWIDTH, WINHEIGHT } from '../engine/constants';
+import { viewport } from '../engine/viewport';
 
 // Portrait face region is 96x80
 const PORTRAIT_FACE_WIDTH = 96;
 const PORTRAIT_FACE_HEIGHT = 80;
 
-/** Named horizontal screen positions (x offset in pixels). */
-const HORIZ_POSITIONS: Record<string, number> = {
-  offscreenleft: -PORTRAIT_FACE_WIDTH,
-  farleft: -24,
-  leftcorner: -16,
-  left: 0,
-  midleft: 24,
-  centerleft: 24,
-  centerright: WINWIDTH - 120,
-  midright: WINWIDTH - 120,
-  levelupright: WINWIDTH - 100,
-  right: WINWIDTH - PORTRAIT_FACE_WIDTH,
-  rightcorner: WINWIDTH - 80,
-  farright: WINWIDTH - 72,
-  offscreenright: WINWIDTH,
-};
+/**
+ * Build named position maps using the current viewport dimensions.
+ * Called at resolution time (not module load) so they reflect the
+ * actual viewport size, which changes with zoom and screen resize.
+ */
+function getHorizPositions(): Record<string, number> {
+  const W = viewport.width;
+  return {
+    offscreenleft: -PORTRAIT_FACE_WIDTH,
+    farleft: -24,
+    leftcorner: -16,
+    left: 0,
+    midleft: 24,
+    centerleft: 24,
+    centerright: W - 120,
+    midright: W - 120,
+    levelupright: W - 100,
+    right: W - PORTRAIT_FACE_WIDTH,
+    rightcorner: W - 80,
+    farright: W - 72,
+    offscreenright: W,
+  };
+}
 
-/** Named vertical screen positions (y offset in pixels). */
-const VERT_POSITIONS: Record<string, number> = {
-  top: 0,
-  middle: Math.floor((WINHEIGHT - PORTRAIT_FACE_HEIGHT) / 2),
-  bottom: WINHEIGHT - PORTRAIT_FACE_HEIGHT,
-};
+function getVertPositions(): Record<string, number> {
+  const H = viewport.height;
+  return {
+    top: 0,
+    middle: Math.floor((H - PORTRAIT_FACE_HEIGHT) / 2),
+    bottom: H - PORTRAIT_FACE_HEIGHT,
+  };
+}
 
 /** Auto-mirror threshold: portraits at X <= this are mirrored. */
-const MIRROR_THRESHOLD = HORIZ_POSITIONS.centerleft;
+const MIRROR_THRESHOLD = 24; // matches centerleft
 
 /**
  * Resolve a position string to [x, y] and whether to auto-mirror.
@@ -52,6 +61,8 @@ export function parseScreenPosition(pos: string): {
   position: [number, number];
   mirror: boolean;
 } {
+  const HORIZ = getHorizPositions();
+  const VERT = getVertPositions();
   const lower = pos.toLowerCase().replace(/\s+/g, '');
 
   // Check for comma-separated pair
@@ -61,8 +72,8 @@ export function parseScreenPosition(pos: string): {
     const second = parts[1];
 
     // Try named resolution for both parts
-    const x = HORIZ_POSITIONS[first] ?? parseFloat(first);
-    const y = VERT_POSITIONS[second] ?? parseFloat(second);
+    const x = HORIZ[first] ?? parseFloat(first);
+    const y = VERT[second] ?? parseFloat(second);
 
     if (!isNaN(x) && !isNaN(y)) {
       return {
@@ -73,18 +84,18 @@ export function parseScreenPosition(pos: string): {
   }
 
   // Single name: try horizontal first
-  if (HORIZ_POSITIONS[lower] !== undefined) {
-    const x = HORIZ_POSITIONS[lower];
+  if (HORIZ[lower] !== undefined) {
+    const x = HORIZ[lower];
     return {
-      position: [x, VERT_POSITIONS.bottom],
+      position: [x, VERT.bottom],
       mirror: x <= MIRROR_THRESHOLD,
     };
   }
 
   // Try vertical
-  if (VERT_POSITIONS[lower] !== undefined) {
+  if (VERT[lower] !== undefined) {
     return {
-      position: [HORIZ_POSITIONS.left, VERT_POSITIONS[lower]],
+      position: [HORIZ.left, VERT[lower]],
       mirror: true, // Left position = mirrored
     };
   }
@@ -93,14 +104,14 @@ export function parseScreenPosition(pos: string): {
   const num = parseFloat(lower);
   if (!isNaN(num)) {
     return {
-      position: [num, VERT_POSITIONS.bottom],
+      position: [num, VERT.bottom],
       mirror: num <= MIRROR_THRESHOLD,
     };
   }
 
   // Default: left bottom, mirrored
   return {
-    position: [HORIZ_POSITIONS.left, VERT_POSITIONS.bottom],
+    position: [HORIZ.left, VERT.bottom],
     mirror: true,
   };
 }

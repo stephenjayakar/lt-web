@@ -6,9 +6,9 @@ const FONT_SUB = '8px monospace';
 const CHAR_WIDTH_MAIN = 6; // approximate for 10px monospace
 const CHAR_WIDTH_SUB = 5;  // approximate for 8px monospace
 
-const DEFAULT_DURATION = 1500; // ms total
-const FADE_IN_MS = 200;
-const FADE_OUT_MS = 200;
+const DEFAULT_DURATION = 1000; // ms total
+const FADE_IN_MS = 150;
+const FADE_OUT_MS = 150;
 
 const STRIP_HEIGHT = 32;
 const BG_COLOR_BASE = [0, 0, 0] as const; // black

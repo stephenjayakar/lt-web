@@ -29,15 +29,15 @@ export interface CombatResults {
 }
 
 /** Duration constants (milliseconds) */
-const INIT_DURATION_MS = 250; // ~15 frames at 60 fps
-const STRIKE_DURATION_MS = 200; // Lunge + strike animation
-const HP_DRAIN_DURATION_MS = 400; // ~24 frames at 60 fps
-const WAITING_DURATION_MS = 150; // Pause between strikes
-const CLEANUP_DURATION_MS = 300; // Pause before done
+const INIT_DURATION_MS = 150;  // Pre-combat pause
+const STRIKE_DURATION_MS = 130; // Lunge + strike animation
+const HP_DRAIN_DURATION_MS = 250; // HP bar drain animation
+const WAITING_DURATION_MS = 80;  // Pause between strikes
+const CLEANUP_DURATION_MS = 180; // Pause before done
 
 /** Animation sub-timings within STRIKE phase (ms) */
-const LUNGE_DURATION_MS = 120; // Attacker moves toward defender
-const LUNGE_RETURN_MS = 80;    // Attacker snaps back (STRIKE_DURATION - LUNGE)
+const LUNGE_DURATION_MS = 80;  // Attacker moves toward defender
+const LUNGE_RETURN_MS = 50;    // Attacker snaps back
 
 /** Shake animation during HP drain */
 const SHAKE_FREQUENCY = 40;    // ms per oscillation

@@ -32,6 +32,18 @@ touch/mouse/keyboard input. Component dispatch system wired into combat.
   and HP bars now anchor to bottom-left/right of the game surface,
   just above the EXP bar. HUD (unit info + terrain) stays at top.
   Prevents overlap between HUD and combat UI elements.
+- **UI zoom-aware positioning.** Portraits and dialog boxes now use
+  `viewport.width`/`viewport.height` instead of hardcoded 240x160.
+  Screen positions for portraits recalculated dynamically on each
+  `parseScreenPosition()` call. Dialog anchors correctly at viewport
+  bottom regardless of zoom level.
+- **Gameplay speed improvements:**
+  - Unit movement: 6 → 10 tiles/sec
+  - AI delay between actions: 250ms → 100ms (16ms when holding SELECT)
+  - Combat strike cycle: ~40% faster (init 150ms, strike 130ms, HP drain 250ms)
+  - Phase banner: 1500ms → 1000ms
+  - Death fade: 500ms → 350ms, EXP fill: 500ms → 350ms, level-up: 1500ms → 1200ms
+  - SELECT (Enter/Z) fast-forwards: combat at 3x, EXP/level-up at 4x, AI at instant
 - **Fix reinforcements not spawning.** `game.turnCount` was stuck at 1
   because it was never synced from `game.phase.turnCount` after phase
   advances. Now synced in TurnChangeState.begin(). This fixes ALL
