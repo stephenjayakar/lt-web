@@ -169,7 +169,7 @@ export class GameState {
     this.camera = new Camera();
     this.cursor = new Cursor();
     // Load cursor sprite eagerly (fire-and-forget — falls back to rectangle if it fails)
-    this.cursor.loadSprite('/sprites/cursor.png').catch(() => {});
+    this.cursor.loadSprite(`${resources.getBaseUrl()}/sprites/cursor.png`).catch(() => {});
     this.highlight = new HighlightManager();
     this.mapView = new MapView();
     this.unitRenderer = new UnitRenderer();

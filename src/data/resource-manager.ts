@@ -22,6 +22,11 @@ export class ResourceManager {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
+  /** Get the base URL for this resource manager. */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   /** Resolve a relative path to a full URL under the .ltproj root. */
   private resolveUrl(path: string): string {
     return `${this.baseUrl}/${path}`;
