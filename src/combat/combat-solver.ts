@@ -2,11 +2,13 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
 import * as calcs from './combat-calcs';
+import * as skillSystem from './skill-system';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
 // sequence of strikes.
 // Matches LT's CombatPhaseSolver from app/engine/combat/solver.py
+// Now with vantage, desperation, and full skill dispatch.
 // ============================================================
 
 export type RngMode = 'classic' | 'true_hit' | 'true_hit_plus' | 'grandmaster';
@@ -32,11 +34,16 @@ export class CombatPhaseSolver {
    * Resolve a complete combat encounter.
    * Returns an ordered array of all strikes that should occur.
    *
-   * Strike order:
-   *   1. Attacker strikes (x2 if brave weapon)
-   *   2. Defender counter (if able) (x2 if brave weapon)
-   *   3. Attacker double (if speed check passes) (x2 if brave weapon)
-   *   4. Defender double counter (if speed check passes and can counter) (x2 if brave weapon)
+   * Standard strike order:
+   *   1. Attacker strikes (x brave)
+   *   2. Defender counter (if able) (x brave)
+   *   3. Attacker double (if speed check passes) (x brave)
+   *   4. Defender double counter (if speed + defDouble) (x brave)
+   *
+   * Modified by:
+   *   - Vantage: defender strikes first if they have vantage
+   *   - Desperation: attacker does all strikes before counter
+   *   - Disvantage: attacker goes second (opposite of vantage)
    */
   resolve(
     attacker: UnitObject,
@@ -57,62 +64,136 @@ export class CombatPhaseSolver {
     const attackerDoubles = calcs.canDouble(attacker, attackItem, defender, defenseItem, db);
     const defenderDoubles =
       defenderCanCounter && defenseItem
-        ? calcs.canDouble(defender, defenseItem, attacker, attackItem, db)
+        ? calcs.canDefenderDouble(attacker, attackItem, defender, defenseItem, db)
         : false;
 
-    // Check for brave weapon (multi-attack component)
-    const attackerBrave = attackItem.hasComponent('brave');
-    const defenderBrave = defenseItem ? defenseItem.hasComponent('brave') : false;
+    // Compute strike counts (brave weapons, dynamic multiattacks from skills)
+    const attackerStrikeCount = calcs.computeStrikeCount(
+      attacker, attackItem, defender, defenseItem,
+    );
+    const defenderStrikeCount = defenseItem
+      ? calcs.computeStrikeCount(defender, defenseItem, attacker, attackItem)
+      : 1;
 
-    const attackerStrikeCount = attackerBrave ? 2 : 1;
-    const defenderStrikeCount = defenderBrave ? 2 : 1;
+    // Check for skill-based ordering
+    const defenderHasVantage = defenderCanCounter && defenseItem &&
+      skillSystem.vantage(defender) && !skillSystem.disvantage(attacker);
+    const attackerHasDesperation = skillSystem.desperation(attacker);
+    const attackerHasDisvantage = skillSystem.disvantage(attacker) &&
+      !skillSystem.vantage(attacker);
 
-    // 1. Attacker initial strikes
-    for (let i = 0; i < attackerStrikeCount; i++) {
-      if (defenderHp <= 0) break;
-      const strike = this.resolveStrike(attacker, attackItem, defender, db, rngMode, false);
-      this.strikes.push(strike);
-      if (strike.hit) {
-        defenderHp -= strike.damage;
-      }
-    }
+    // Check ignoreDyingInCombat (miracle)
+    const attackerMiracle = skillSystem.ignoreDyingInCombat(attacker);
+    const defenderMiracle = skillSystem.ignoreDyingInCombat(defender);
 
-    // 2. Defender counter
-    if (defenderCanCounter && defenseItem && defenderHp > 0) {
-      for (let i = 0; i < defenderStrikeCount; i++) {
-        if (attackerHp <= 0) break;
-        if (defenderHp <= 0) break;
-        const strike = this.resolveStrike(defender, defenseItem, attacker, db, rngMode, true);
+    // Helper: execute a series of strikes for one side
+    const doStrikes = (
+      striker: UnitObject,
+      item: ItemObject,
+      target: UnitObject,
+      count: number,
+      isCounter: boolean,
+      strikerHpRef: { hp: number },
+      targetHpRef: { hp: number },
+      targetMiracle: boolean,
+    ) => {
+      for (let i = 0; i < count; i++) {
+        if (targetHpRef.hp <= 0) break;
+        if (strikerHpRef.hp <= 0) break;
+        const strike = this.resolveStrike(striker, item, target, db, rngMode, isCounter);
         this.strikes.push(strike);
         if (strike.hit) {
-          attackerHp -= strike.damage;
+          targetHpRef.hp -= strike.damage;
+          // Miracle: target survives at 1 HP if they would die
+          if (targetMiracle && targetHpRef.hp <= 0) {
+            targetHpRef.hp = 1;
+          }
         }
       }
-    }
+    };
 
-    // 3. Attacker double
-    if (attackerDoubles && defenderHp > 0 && attackerHp > 0) {
-      for (let i = 0; i < attackerStrikeCount; i++) {
-        if (defenderHp <= 0) break;
-        if (attackerHp <= 0) break;
-        const strike = this.resolveStrike(attacker, attackItem, defender, db, rngMode, false);
-        this.strikes.push(strike);
-        if (strike.hit) {
-          defenderHp -= strike.damage;
+    const atkHp = { hp: attackerHp };
+    const defHp = { hp: defenderHp };
+
+    // ---- Determine strike ordering based on skills ----
+
+    if (defenderHasVantage && defenseItem) {
+      // VANTAGE: Defender strikes first
+      // 1. Defender initial counter
+      doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+
+      // 2. Attacker strikes (all if desperation, normal otherwise)
+      if (attackerHasDesperation) {
+        // Desperation: attacker does initial + double together
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+        if (attackerDoubles) {
+          doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+        }
+      } else {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      }
+
+      // 3. Defender double counter (if not desperation, which already went)
+      if (!attackerHasDesperation && defenderDoubles) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      }
+
+      // 4. Attacker double (if not desperation, which already went)
+      if (!attackerHasDesperation && attackerDoubles) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      }
+
+      // 5. If desperation, defender double counter last
+      if (attackerHasDesperation && defenderDoubles) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      }
+
+    } else if (attackerHasDisvantage && defenderCanCounter && defenseItem) {
+      // DISVANTAGE: Attacker goes second (similar to vantage but without being a skill on the defender)
+      doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      if (defenderDoubles) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      }
+      if (attackerDoubles) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      }
+
+    } else if (attackerHasDesperation) {
+      // DESPERATION: All attacker strikes before any counter
+      // 1. Attacker initial + double
+      doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      if (attackerDoubles) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      }
+
+      // 2. Defender counter
+      if (defenderCanCounter && defenseItem) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+        // 3. Defender double counter
+        if (defenderDoubles) {
+          doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
         }
       }
-    }
 
-    // 4. Defender double counter
-    if (defenderDoubles && defenseItem && attackerHp > 0 && defenderHp > 0) {
-      for (let i = 0; i < defenderStrikeCount; i++) {
-        if (attackerHp <= 0) break;
-        if (defenderHp <= 0) break;
-        const strike = this.resolveStrike(defender, defenseItem, attacker, db, rngMode, true);
-        this.strikes.push(strike);
-        if (strike.hit) {
-          attackerHp -= strike.damage;
-        }
+    } else {
+      // STANDARD: attacker -> counter -> attacker double -> counter double
+      // 1. Attacker initial strikes
+      doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+
+      // 2. Defender counter
+      if (defenderCanCounter && defenseItem) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      }
+
+      // 3. Attacker double
+      if (attackerDoubles) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      }
+
+      // 4. Defender double counter
+      if (defenderDoubles && defenseItem) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
       }
     }
 
@@ -167,11 +248,16 @@ export class CombatPhaseSolver {
     // Compute hit chance with weapon triangle bonus
     const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
     const baseHit = calcs.computeHit(striker, item, target, db);
-    const wt = calcs.weaponTriangle(item, defWeapon, db);
+    const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
     const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
     // Compute crit chance
-    const critChance = calcs.computeCrit(striker, item, target, db);
+    let critChance = calcs.computeCrit(striker, item, target, db);
+
+    // critAnyway skill: ensure at least some crit chance
+    if (skillSystem.critAnyway(striker) && critChance <= 0) {
+      critChance = 1; // Minimal crit chance if skill is active
+    }
 
     // Roll for hit
     const hit = this.rollHit(finalHit, rngMode);
@@ -184,9 +270,14 @@ export class CombatPhaseSolver {
     if (hit) {
       const baseDmg = calcs.computeDamage(striker, item, target, db);
       dmg = baseDmg + wt.damageBonus;
+
+      // Crit damage
       if (crit) {
-        dmg *= 3; // Critical hit multiplier (LT default)
+        const critDmgMod = skillSystem.modifyCritDamage(striker, item);
+        const baseCritMult = 3; // LT default
+        dmg = dmg * baseCritMult + critDmgMod;
       }
+
       dmg = Math.max(0, dmg);
     }
 

@@ -21,6 +21,10 @@ import { viewport, isSmallScreen } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
+import { ItemObject as ItemObjectClass } from '../../objects/item';
+import { SkillObject } from '../../objects/skill';
+import { evaluateCondition, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
+import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { Banner } from '../../ui/banner';
@@ -580,6 +584,10 @@ export class LevelSelectState extends State {
     game.loadLevel(selected.nid).then(() => {
       this.loading = false;
       game.state.change('free');
+      // If level_start triggered events, push EventState on top of FreeState
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+      }
     }).catch((err: unknown) => {
       this.loading = false;
       console.error('Failed to load level:', err);
@@ -781,6 +789,13 @@ export class FreeState extends MapState {
 
   override update(): StateResult {
     const game = getGame();
+
+    // Check for pending events (might have been queued by another state)
+    if (game.eventManager?.hasActiveEvents()) {
+      game.state.change('event');
+      return;
+    }
+
     // Update HUD hover info
     const pos = game.cursor.getHover();
     const unit = game.board.getUnit(pos.x, pos.y);
@@ -1051,17 +1066,19 @@ export class MenuState extends State {
       }
     }
 
-    // Talk option — check if adjacent allied or enemy unit has a talk event
-    // Simplified: check for adjacent units with 'talk' tag or talk events
+    // Talk option — check if adjacent unit has a talk event
     const adjacentTalkTargets = getAdjacentUnits(ux, uy).filter((other) => {
       if (other === unit) return false;
       // Check if there's a talk event between these two units
       if (game.eventManager) {
+        const ctx = { game, unit1: unit, unit2: other, gameVars: game.gameVars, levelVars: game.levelVars };
         const events = game.eventManager.getEventsForTrigger({
-          type: 'unit_talk',
+          type: 'on_talk',
           unitA: unit.nid,
           unitB: other.nid,
-        });
+          unit1: unit,
+          unit2: other,
+        }, ctx);
         return events.length > 0;
       }
       return false;
@@ -1142,17 +1159,33 @@ export class MenuState extends State {
         this.menu = null;
         game.state.change('drop');
       } else if (value.startsWith('visit_') || value.startsWith('shop_')) {
-        // Trigger the region event
+        // Trigger the region event — try the region's sub_nid first, then 'on_region_interact'
         const regionNid = value.split('_').slice(1).join('_');
+        const region = game.currentLevel?.regions?.find((r: any) => r.nid === regionNid);
+        const ctx = { game, unit1: unit, position: unit.position, region, gameVars: game.gameVars, levelVars: game.levelVars };
         if (game.eventManager) {
-          game.eventManager.trigger(
-            { type: 'region_event', regionNid, unitNid: unit.nid },
-            game.gameVars,
-          );
+          // Try region sub_nid as trigger type first (e.g., 'Visit', 'Arena')
+          let triggered = false;
+          if (region?.sub_nid) {
+            triggered = game.eventManager.trigger(
+              { type: region.sub_nid, regionNid, unitNid: unit.nid, unit1: unit, region },
+              ctx,
+            );
+          }
+          if (!triggered) {
+            game.eventManager.trigger(
+              { type: 'on_region_interact', regionNid, unitNid: unit.nid, unit1: unit, region },
+              ctx,
+            );
+          }
         }
         if (unit) unit.finished = true;
         this.menu = null;
-        game.state.back();
+        if (game.eventManager?.hasActiveEvents()) {
+          game.state.change('event');
+        } else {
+          game.state.back();
+        }
       } else if (value.startsWith('seize_')) {
         // Seize: mark level as won
         if (unit) unit.finished = true;
@@ -1164,35 +1197,46 @@ export class MenuState extends State {
         }
         game.state.back();
       } else if (value === 'talk') {
-        // Trigger talk event
+        // Trigger talk event using 'on_talk' trigger type (matches LT Python)
         const adjacentTalkTargets = getAdjacentUnits(
           unit.position![0],
           unit.position![1],
         ).filter((other) => {
           if (other === unit) return false;
           if (game.eventManager) {
+            const ctx = { game, unit1: unit, unit2: other, gameVars: game.gameVars, levelVars: game.levelVars };
             const events = game.eventManager.getEventsForTrigger({
-              type: 'unit_talk',
+              type: 'on_talk',
               unitA: unit.nid,
               unitB: other.nid,
-            });
+              unit1: unit,
+              unit2: other,
+            }, ctx);
             return events.length > 0;
           }
           return false;
         });
         if (adjacentTalkTargets.length > 0 && game.eventManager) {
+          const target = adjacentTalkTargets[0];
+          const ctx = { game, unit1: unit, unit2: target, gameVars: game.gameVars, levelVars: game.levelVars };
           game.eventManager.trigger(
             {
-              type: 'unit_talk',
+              type: 'on_talk',
               unitA: unit.nid,
-              unitB: adjacentTalkTargets[0].nid,
+              unitB: target.nid,
+              unit1: unit,
+              unit2: target,
             },
-            game.gameVars,
+            ctx,
           );
         }
         if (unit) unit.finished = true;
         this.menu = null;
-        game.state.back();
+        if (game.eventManager?.hasActiveEvents()) {
+          game.state.change('event');
+        } else {
+          game.state.back();
+        }
       } else if (value === 'wait') {
         if (unit) unit.finished = true;
         this.menu = null;
@@ -2195,6 +2239,7 @@ export class CombatState extends State {
 
       case 'cleanup': {
         const attacker = activeCombat!.attacker;
+        const defender = activeCombat!.defender;
         const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
 
         if (!attacker.isDead()) {
@@ -2206,6 +2251,32 @@ export class CombatState extends State {
           } else {
             attacker.finished = true;
           }
+        }
+
+        // Fire combat event triggers
+        if (game.eventManager) {
+          const levelNid = game.currentLevel?.nid;
+          const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
+
+          // combat_death for each dead unit
+          if (this.results?.defenderDead) {
+            game.eventManager.trigger(
+              { type: 'combat_death', unit1: defender, unit2: attacker, unitNid: defender.nid, position: defender.position, levelNid },
+              { ...ctx, unit1: defender, unit2: attacker },
+            );
+          }
+          if (this.results?.attackerDead) {
+            game.eventManager.trigger(
+              { type: 'combat_death', unit1: attacker, unit2: defender, unitNid: attacker.nid, position: attacker.position, levelNid },
+              { ...ctx, unit1: attacker, unit2: defender },
+            );
+          }
+
+          // combat_end fires after every combat
+          game.eventManager.trigger(
+            { type: 'combat_end', unit1: attacker, unit2: defender, levelNid },
+            ctx,
+          );
         }
 
         // Check win/loss conditions
@@ -2231,8 +2302,12 @@ export class CombatState extends State {
         // Pop combat state
         game.state.back();
 
+        // If events were triggered by combat (combat_end, combat_death), push EventState
+        if (game.eventManager?.hasActiveEvents()) {
+          game.state.change('event');
+        }
         // If Canto, re-enter move state for remaining movement
-        if (hasCanto) {
+        else if (hasCanto) {
           game.selectedUnit = attacker;
           game.state.change('move');
         }
@@ -3055,6 +3130,8 @@ export class TurnChangeState extends State {
     game.phase.next((team: string) => game.board.getTeamUnits(team));
 
     const currentTeam = game.phase.getCurrent();
+    const turnCount = game.phase.turnCount;
+    const levelNid = game.currentLevel?.nid;
 
     // Clear the entire state stack to prevent unbounded growth,
     // then push the appropriate states fresh.
@@ -3068,6 +3145,50 @@ export class TurnChangeState extends State {
       // AI phase: push ai, then phase banner on top
       game.state.change('ai');
       game.state.change('phase_change');
+    }
+
+    // Fire event triggers — they'll queue events for the EventState
+    // to process after the phase banner dismisses
+    if (game.eventManager) {
+      const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+
+      // phase_change fires for every phase
+      game.eventManager.trigger(
+        { type: 'phase_change', team: currentTeam, levelNid },
+        ctx,
+      );
+
+      if (currentTeam === 'player') {
+        // turn_change fires on player phase
+        game.eventManager.trigger(
+          { type: 'turn_change', turnCount, levelNid },
+          ctx,
+        );
+        // level_start fires on the first player turn (turnCount === 1)
+        // Note: loadLevel already triggers level_start, but only on initial load.
+        // Subsequent level_start events from turn_change are NOT standard — 
+        // the Python engine fires level_start separately. We skip it here.
+      } else if (currentTeam === 'enemy') {
+        game.eventManager.trigger(
+          { type: 'enemy_turn_change', turnCount, levelNid },
+          ctx,
+        );
+      } else if (currentTeam === 'enemy2') {
+        game.eventManager.trigger(
+          { type: 'enemy2_turn_change', turnCount, levelNid },
+          ctx,
+        );
+      } else {
+        game.eventManager.trigger(
+          { type: 'other_turn_change', turnCount, levelNid, team: currentTeam },
+          ctx,
+        );
+      }
+
+      // If events were triggered, push EventState on top of everything
+      if (game.eventManager.hasActiveEvents()) {
+        game.state.change('event');
+      }
     }
 
     return 'repeat';
@@ -3178,32 +3299,59 @@ export class MovementState extends State {
 // 11. EventState
 // ============================================================================
 
+/**
+ * Set of commands that block execution until they complete.
+ * All other commands are "instant" and processed in burst within a single frame.
+ */
+const BLOCKING_COMMANDS: Set<string> = new Set([
+  'speak', 'wait', 'transition', 'alert',
+  'add_portrait', 'remove_portrait', 'music', 'change_music',
+]);
+
+/** Maximum instant commands processed per frame to prevent infinite loops. */
+const MAX_BURST = 100;
+
 export class EventState extends State {
   readonly name = 'event';
   override readonly transparent = true;
 
+  // Active event pulled from the EventManager queue
+  private currentEvent: GameEvent | null = null;
+
+  // Blocking-command state
   private dialog: Dialog | null = null;
-  private commands: any[] = [];
-  private commandIndex: number = 0;
+  private banner: Banner | null = null;
   private waitTimer: number = 0;
   private waiting: boolean = false;
 
+  // -----------------------------------------------------------------------
+  // Lifecycle
+  // -----------------------------------------------------------------------
+
   override begin(): StateResult {
     const game = getGame();
-    // Load event commands from the game's current event
-    this.commands = game.currentEvent?.commands ?? [];
-    this.commandIndex = 0;
+    this.currentEvent = game.eventManager?.getCurrentEvent() ?? null;
+    if (!this.currentEvent) {
+      // Nothing to process — pop back immediately
+      game.state.back();
+      return;
+    }
+    // Reset blocking UI state
     this.dialog = null;
+    this.banner = null;
     this.waitTimer = 0;
     this.waiting = false;
   }
+
+  // -----------------------------------------------------------------------
+  // Input
+  // -----------------------------------------------------------------------
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
 
     // Forward input to dialog if active
     if (this.dialog) {
-      // Mouse click advances dialog (LMB = SELECT, RMB = BACK/skip)
       let effective = event;
       if (game.input?.mouseClick === 'SELECT' && !effective) {
         effective = 'SELECT';
@@ -3213,236 +3361,799 @@ export class EventState extends State {
       const done = this.dialog.handleInput(effective);
       if (done) {
         this.dialog = null;
-        this.commandIndex++;
+        this.advancePointer();
       }
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Update — burst-processes instant commands each frame
+  // -----------------------------------------------------------------------
+
   override update(): StateResult {
     const game = getGame();
 
-    // Update dialog typewriter
+    // --- Handle active blocking UI elements first ---
+
+    // Dialog typewriter
     if (this.dialog) {
       this.dialog.update();
       return;
     }
 
-    // Handle wait timer
+    // Banner timer
+    if (this.banner) {
+      const done = this.banner.update(FRAMETIME);
+      if (done) {
+        this.banner = null;
+        this.advancePointer();
+      } else {
+        return; // still showing banner
+      }
+    }
+
+    // Wait timer
     if (this.waiting) {
       this.waitTimer -= FRAMETIME;
       if (this.waitTimer <= 0) {
         this.waiting = false;
-        this.commandIndex++;
+        this.advancePointer();
       }
       return;
     }
 
-    // Process next command
-    if (this.commandIndex >= this.commands.length) {
-      // Event complete
-      game.currentEvent = null;
+    // --- Burst-process commands ---
+    let burst = 0;
+    while (burst < MAX_BURST) {
+      burst++;
+
+      // Ensure we have an event to process
+      if (!this.currentEvent) {
+        this.finishAndDequeue();
+        return;
+      }
+
+      const ev = this.currentEvent;
+      const commands = ev.commands;
+
+      // Check if event is complete
+      if (ev.commandPointer >= commands.length || ev.isDone()) {
+        this.finishAndDequeue();
+        return;
+      }
+
+      const cmd = commands[ev.commandPointer];
+      if (!cmd) {
+        this.advancePointer();
+        continue;
+      }
+
+      // Execute the command. Returns true if the command is blocking.
+      const blocking = this.executeCommand(cmd, game);
+      if (blocking) {
+        break; // stop burst — wait for blocking command to finish
+      }
+      // Instant command: pointer was already advanced inside executeCommand,
+      // continue processing next command in the same frame.
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Draw
+  // -----------------------------------------------------------------------
+
+  override draw(surf: Surface): Surface {
+    if (this.dialog) {
+      this.dialog.draw(surf);
+    }
+    if (this.banner) {
+      this.banner.draw(surf);
+    }
+    return surf;
+  }
+
+  // -----------------------------------------------------------------------
+  // Helpers
+  // -----------------------------------------------------------------------
+
+  /** Advance the command pointer of the current event by 1. */
+  private advancePointer(): void {
+    if (this.currentEvent) {
+      this.currentEvent.commandPointer++;
+    }
+  }
+
+  /**
+   * Finish the current event, dequeue it, and either load the next queued
+   * event or pop the state.
+   */
+  private finishAndDequeue(): void {
+    const game = getGame();
+    if (this.currentEvent) {
+      this.currentEvent.finish();
+    }
+    game.eventManager?.dequeueCurrentEvent();
+
+    // Check for more events in the queue
+    const next = game.eventManager?.getCurrentEvent() ?? null;
+    if (next) {
+      this.currentEvent = next;
+      this.dialog = null;
+      this.banner = null;
+      this.waitTimer = 0;
+      this.waiting = false;
+    } else {
+      this.currentEvent = null;
       game.state.back();
-      return;
     }
+  }
 
-    const cmd = this.commands[this.commandIndex];
-    if (!cmd) {
-      this.commandIndex++;
-      return;
+  /**
+   * Find the unit by NID — first try the game unit registry, then the board.
+   */
+  private findUnit(nid: string): UnitObject | undefined {
+    const game = getGame();
+    const fromRegistry = game.units.get(nid);
+    if (fromRegistry) return fromRegistry;
+    return game.board?.getAllUnits().find((u: UnitObject) => u.nid === nid);
+  }
+
+  /**
+   * Build a ConditionContext from the current game state and event trigger.
+   */
+  private buildConditionContext(): ConditionContext {
+    const game = getGame();
+    const trigger = this.currentEvent?.trigger;
+    return {
+      game,
+      unit1: trigger?.unit1,
+      unit2: trigger?.unit2,
+      position: trigger?.position,
+      region: trigger?.region,
+      item: trigger?.item,
+      gameVars: game.gameVars,
+      levelVars: game.levelVars,
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // if / elif / else / end  flow-control
+  // -----------------------------------------------------------------------
+
+  /**
+   * Jump forward from a false if/elif to the matching elif/else/end,
+   * respecting nested if blocks.
+   * Returns the index to jump to (the elif/else/end command itself).
+   */
+  private jumpToNextBranch(fromIndex: number): number {
+    const commands = this.currentEvent!.commands;
+    let depth = 0;
+    for (let i = fromIndex + 1; i < commands.length; i++) {
+      const t = commands[i].type;
+      if (t === 'if') {
+        depth++;
+      } else if (t === 'end') {
+        if (depth === 0) return i;
+        depth--;
+      } else if (depth === 0 && (t === 'elif' || t === 'else')) {
+        return i;
+      }
     }
+    // Couldn't find matching end — jump past end of commands
+    return commands.length;
+  }
 
-    // EventCommand format: { type: string, args: string[] }
-    // args are semicolon-delimited from the source line after the command name.
+  /**
+   * Jump forward from a true elif/else branch that was reached by
+   * fall-through to the matching `end`, skipping nested if blocks.
+   */
+  private jumpToEnd(fromIndex: number): number {
+    const commands = this.currentEvent!.commands;
+    let depth = 0;
+    for (let i = fromIndex + 1; i < commands.length; i++) {
+      const t = commands[i].type;
+      if (t === 'if') {
+        depth++;
+      } else if (t === 'end') {
+        if (depth === 0) return i;
+        depth--;
+      }
+    }
+    return commands.length;
+  }
+
+  // -----------------------------------------------------------------------
+  // Command execution — returns true if command is blocking
+  // -----------------------------------------------------------------------
+
+  private executeCommand(cmd: EventCommand, game: any): boolean {
     const args = cmd.args ?? [];
 
     switch (cmd.type) {
-      case 'speak': {
-        // speak;SpeakerName;Dialog text here
+      // ----- Flow control -----
+      case 'if': {
+        const condition = args[0] ?? 'True';
+        const ctx = this.buildConditionContext();
+        if (evaluateCondition(condition, ctx)) {
+          // Condition true — advance into the if body
+          this._jumpedToBranch = false;
+          this.advancePointer();
+        } else {
+          // Condition false — jump to matching elif/else/end
+          const target = this.jumpToNextBranch(this.currentEvent!.commandPointer);
+          this.currentEvent!.commandPointer = target;
+          this._jumpedToBranch = true;
+          // Don't advance — we land ON the elif/else/end and it will be
+          // processed next iteration.
+        }
+        return false;
+      }
+
+      case 'elif': {
+        // If reached naturally (fall-through from a true if/elif body),
+        // the previous branch was true — skip to end.
+        // If jumped to from a false branch, the pointer lands here and
+        // we evaluate the condition.
+        //
+        // We distinguish by checking: did we arrive here by advancing
+        // (commandPointer was just set to this index by jumpToNextBranch)?
+        // We use a simple heuristic: the previous command in the stream
+        // will NOT be 'end' if we jumped here from a false branch — it
+        // could be anything. But if we fell through, the previous executed
+        // command was the last in the true block.
+        //
+        // Instead, use the fact that jumpToNextBranch lands ON this command
+        // without advancing. So if we're processing it, there are two cases:
+        // 1. We were jumped here (false branch) — evaluate condition.
+        // 2. We fell through (true branch) — skip to end.
+        //
+        // The way to disambiguate: check if the command immediately before
+        // this one is an `end` or some other command. But this is fragile.
+        // Instead, use a simpler approach: we check if the condition that
+        // brought us here by looking at whether the PREVIOUS if/elif at the
+        // same nesting level was true. But tracking that is complex.
+        //
+        // Simplest correct approach: treat `elif` like Python's `elif`.
+        // If we reach it by sequential execution (fall-through from true
+        // block), jump to end. We know we fell through if the previous
+        // instruction that was executed was NOT a jump (i.e., the pointer
+        // was sequentially incremented to reach here).
+        //
+        // Actually the cleanest way: when a true if/elif body completes
+        // and reaches an elif/else by fall-through, we must jump to end.
+        // We handle this by checking if the previous command (pointer - 1)
+        // is NOT 'if' and NOT 'elif' — if so, we fell through.
+        //
+        // But the pointer was advanced past all the body commands. The
+        // command at pointer-1 is the last body command, not the if/elif.
+        //
+        // The correct approach used in LT: when an if/elif condition is
+        // TRUE, we execute the body. When execution naturally reaches the
+        // next elif/else, we know the previous branch succeeded, so we
+        // jump to `end`. When an if/elif condition is FALSE, jumpToNextBranch
+        // sets the pointer directly to the elif/else without advancing.
+        //
+        // So we need a flag. Let's track whether we're in a "jump-to" state.
+        // Alternatively, check if the command BEFORE this elif was inside
+        // the previous branch body (not another if/elif/else).
+        //
+        // Simplest: use the fact that jumpToNextBranch does NOT call
+        // advancePointer, it sets commandPointer directly. So when we land
+        // on elif from a false branch, the pointer equals our index.
+        // When we fall through, advancePointer was called, so the pointer
+        // also equals our index. Both cases look the same!
+        //
+        // The real disambiguation is: were we jumped to, or did we arrive
+        // sequentially? We can't tell from the pointer alone.
+        //
+        // The LT engine handles this with a skip-to-end flag. Let's do the
+        // same: when a true branch body finishes and we encounter elif/else,
+        // we jump to end. We'll handle this by checking if the previous
+        // command was NOT 'if' / 'elif' with false condition.
+        //
+        // Actually let me just implement this properly with a simple rule:
+        // We need to know if we jumped here. Let's track `_jumpedToBranch`.
+        if (this._jumpedToBranch) {
+          this._jumpedToBranch = false;
+          // We were jumped here from a false branch — evaluate condition
+          const condition = args[0] ?? 'True';
+          const ctx = this.buildConditionContext();
+          if (evaluateCondition(condition, ctx)) {
+            // Condition true — enter this elif body
+            this.advancePointer();
+          } else {
+            // Still false — jump to next elif/else/end
+            const target = this.jumpToNextBranch(this.currentEvent!.commandPointer);
+            this.currentEvent!.commandPointer = target;
+            this._jumpedToBranch = true;
+          }
+        } else {
+          // Fell through from a true branch — skip to matching end
+          const target = this.jumpToEnd(this.currentEvent!.commandPointer);
+          this.currentEvent!.commandPointer = target;
+          // Landing on `end`, which will just advance
+        }
+        return false;
+      }
+
+      case 'else': {
+        if (this._jumpedToBranch) {
+          this._jumpedToBranch = false;
+          // Jumped here from a false branch — enter the else body
+          this.advancePointer();
+        } else {
+          // Fell through from a true branch — skip to end
+          const target = this.jumpToEnd(this.currentEvent!.commandPointer);
+          this.currentEvent!.commandPointer = target;
+        }
+        return false;
+      }
+
+      case 'end': {
+        // End of an if block — just advance
+        this._jumpedToBranch = false;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'finish': {
+        // Immediately end the event
+        this.currentEvent!.finish();
+        return false;
+      }
+
+      case 'comment':
+      case 'end_skip': {
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Blocking commands -----
+
+      case 'speak':
+      case 'narrate': {
         const speaker = args[0] ?? '';
         const text = args[1] ?? '';
         this.dialog = new Dialog(text, speaker || undefined);
-        break;
+        // Don't advance pointer — it's advanced when dialog finishes (in takeInput)
+        return true;
       }
 
       case 'wait': {
-        // wait;duration_ms
         this.waiting = true;
         this.waitTimer = parseInt(args[0], 10) || 1000;
-        break;
+        return true;
       }
 
       case 'transition': {
-        // transition;type (e.g. "close", "open", "fade_in", "fade_out")
-        // For now, just wait a short time to simulate the transition
         this.waiting = true;
         this.waitTimer = 500;
-        break;
+        return true;
       }
 
+      case 'alert': {
+        const text = args[0] ?? '';
+        this.banner = new Banner(text, undefined, 1500);
+        // Don't advance — advanced when banner finishes (in update)
+        return true;
+      }
+
+      // ----- Unit commands (instant) -----
+
       case 'move_unit': {
-        // move_unit;unit_nid;x,y
         const unitNid = args[0] ?? '';
         const posStr = args[1] ?? '';
         const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
-        const unit: UnitObject | undefined = game.board
-          .getAllUnits()
-          .find((u: UnitObject) => u.nid === unitNid);
-        if (unit && posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
+        const unit = this.findUnit(unitNid);
+        if (unit && game.board && posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
           game.board.moveUnit(unit, posParts[0], posParts[1]);
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
       }
 
       case 'add_unit': {
-        // add_unit;unit_nid;x,y  (or add_unit;unit_nid;starting)
-        // Placeholder — full implementation needs spawn logic
-        this.commandIndex++;
-        break;
+        // add_unit;unit_nid;x,y  or  add_unit;unit_nid;starting
+        const unitNid = args[0] ?? '';
+        const posArg = args[1] ?? 'starting';
+
+        // Skip if unit already exists in the game
+        if (game.units.has(unitNid)) {
+          this.advancePointer();
+          return false;
+        }
+
+        // Look up unit data from the level definition
+        const levelUnits = game.currentLevel?.units ?? [];
+        const unitData = levelUnits.find((u: any) => u.nid === unitNid);
+        if (!unitData) {
+          console.warn(`EventState add_unit: unit "${unitNid}" not found in level data`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Determine position override
+        let posOverride: [number, number] | null = null;
+        if (posArg !== 'starting' && posArg !== '' && posArg !== 'immediate') {
+          const cleanPos = posArg.replace(/;.*/, ''); // strip trailing modifiers like ;immediate;stack
+          const parts = cleanPos.split(',').map((s: string) => parseInt(s.trim(), 10));
+          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            posOverride = [parts[0], parts[1]];
+          }
+        }
+
+        // Spawn the unit — handle both unique and generic
+        this.spawnUnitFromLevelData(unitData, posOverride, game);
+
+        this.advancePointer();
+        return false;
       }
 
       case 'remove_unit': {
-        // remove_unit;unit_nid
         const unitNid = args[0] ?? '';
-        const unit: UnitObject | undefined = game.board
-          .getAllUnits()
-          .find((u: UnitObject) => u.nid === unitNid);
-        if (unit) {
+        const unit = this.findUnit(unitNid);
+        if (unit && game.board) {
           game.board.removeUnit(unit);
+          game.units.delete(unitNid);
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
       }
 
-      case 'add_group': {
-        // add_group;group_nid  — spawn all units in a group at their positions
-        // Placeholder — needs group spawn logic
-        this.commandIndex++;
-        break;
+      case 'kill_unit': {
+        const unitNid = args[0] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) {
+          unit.dead = true;
+          unit.currentHp = 0;
+          if (game.board) {
+            game.board.removeUnit(unit);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_group':
+      case 'spawn_group': {
+        // add_group;group_nid  or  add_group;group_nid;starting_pos_group
+        const groupNid = args[0] ?? '';
+        const groups: any[] = game.currentLevel?.unit_groups ?? [];
+        const group = groups.find((g: any) => g.nid === groupNid);
+        if (!group) {
+          console.warn(`EventState add_group: group "${groupNid}" not found`);
+          this.advancePointer();
+          return false;
+        }
+
+        const unitNids: string[] = group.units ?? [];
+        const positions: Record<string, [number, number]> = group.positions ?? {};
+        const levelUnits = game.currentLevel?.units ?? [];
+
+        for (const uNid of unitNids) {
+          // Skip if already spawned
+          if (game.units.has(uNid)) continue;
+
+          const unitData = levelUnits.find((u: any) => u.nid === uNid);
+          if (!unitData) continue;
+
+          // Position: from group positions, or starting_position
+          const posOverride: [number, number] | null = positions[uNid] ?? null;
+
+          this.spawnUnitFromLevelData(unitData, posOverride, game);
+        }
+        this.advancePointer();
+        return false;
       }
 
       case 'remove_group': {
-        // remove_group;group_nid  — remove all units in a group from the map
-        // Placeholder — needs group removal logic
-        this.commandIndex++;
-        break;
+        const groupNid = args[0] ?? '';
+        const groups: any[] = game.currentLevel?.unit_groups ?? [];
+        const group = groups.find((g: any) => g.nid === groupNid);
+        if (group) {
+          const unitNids: string[] = group.units ?? [];
+          for (const uNid of unitNids) {
+            const unit = this.findUnit(uNid);
+            if (unit) {
+              if (game.board) game.board.removeUnit(unit);
+              game.units.delete(uNid);
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
       }
 
       case 'move_group': {
-        // move_group;group_nid  — move group units to their new positions
-        // Placeholder — needs group movement logic
-        this.commandIndex++;
-        break;
+        const groupNid = args[0] ?? '';
+        const groups: any[] = game.currentLevel?.unit_groups ?? [];
+        const group = groups.find((g: any) => g.nid === groupNid);
+        if (group && game.board) {
+          const positions: Record<string, [number, number]> = group.positions ?? {};
+          const unitNids: string[] = group.units ?? [];
+          for (const uNid of unitNids) {
+            const unit = this.findUnit(uNid);
+            const pos = positions[uNid];
+            if (unit && pos) {
+              game.board.moveUnit(unit, pos[0], pos[1]);
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
       }
 
+      // ----- Item / Skill commands (instant) -----
+
       case 'give_item': {
-        // give_item;unit_nid;item_nid
-        // Placeholder — needs item creation from DB
-        this.commandIndex++;
-        break;
+        const unitNid = args[0] ?? '';
+        const itemNid = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        const itemPrefab = game.db.items.get(itemNid);
+        if (unit && itemPrefab) {
+          const item = new ItemObjectClass(itemPrefab);
+          item.owner = unit;
+          unit.items.push(item);
+          game.items.set(`${unit.nid}_${item.nid}_${unit.items.length}`, item);
+        }
+        this.advancePointer();
+        return false;
       }
 
       case 'remove_item': {
-        // remove_item;unit_nid;item_nid
         const unitNid = args[0] ?? '';
         const itemNid = args[1] ?? '';
-        const unit: UnitObject | undefined = game.board
-          .getAllUnits()
-          .find((u: UnitObject) => u.nid === unitNid);
+        const unit = this.findUnit(unitNid);
         if (unit) {
-          const idx = unit.items.findIndex(i => i.nid === itemNid);
+          const idx = unit.items.findIndex((i: ItemObject) => i.nid === itemNid);
           if (idx !== -1) {
             unit.items.splice(idx, 1);
           }
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
       }
 
+      case 'give_skill': {
+        const unitNid = args[0] ?? '';
+        const skillNid = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        const skillPrefab = game.db.skills.get(skillNid);
+        if (unit && skillPrefab) {
+          // Don't add duplicate skills
+          if (!unit.skills.some((s: any) => s.nid === skillNid)) {
+            const skill = new SkillObject(skillPrefab);
+            unit.skills.push(skill);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_skill': {
+        const unitNid = args[0] ?? '';
+        const skillNid = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) {
+          const idx = unit.skills.findIndex((s: any) => s.nid === skillNid);
+          if (idx !== -1) {
+            unit.skills.splice(idx, 1);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Stat / Property commands (instant) -----
+
       case 'set_current_hp': {
-        // set_current_hp;unit_nid;value
         const unitNid = args[0] ?? '';
         const hpValue = parseInt(args[1], 10);
-        const unit: UnitObject | undefined = game.board
-          .getAllUnits()
-          .find((u: UnitObject) => u.nid === unitNid);
+        const unit = this.findUnit(unitNid);
         if (unit && !isNaN(hpValue)) {
-          unit.currentHp = Math.min(hpValue, unit.maxHp);
+          unit.currentHp = Math.max(0, Math.min(hpValue, unit.maxHp));
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'give_exp': {
+        const unitNid = args[0] ?? '';
+        const amount = parseInt(args[1], 10) || 0;
+        const unit = this.findUnit(unitNid);
+        if (unit) {
+          unit.exp = (unit.exp ?? 0) + amount;
+          // Level up if exp >= 100
+          while (unit.exp >= 100) {
+            unit.exp -= 100;
+            unit.levelUp();
+          }
+        }
+        this.advancePointer();
+        return false;
       }
 
       case 'change_ai': {
-        // change_ai;unit_nid;ai_nid
         const unitNid = args[0] ?? '';
         const aiNid = args[1] ?? 'None';
-        const unit: UnitObject | undefined = game.board
-          .getAllUnits()
-          .find((u: UnitObject) => u.nid === unitNid);
+        const unit = this.findUnit(unitNid);
         if (unit) {
           unit.ai = aiNid;
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
       }
 
       case 'change_team': {
-        // change_team;unit_nid;team
         const unitNid = args[0] ?? '';
         const team = args[1] ?? 'player';
-        const unit: UnitObject | undefined = game.board
-          .getAllUnits()
-          .find((u: UnitObject) => u.nid === unitNid);
+        const unit = this.findUnit(unitNid);
         if (unit) {
           unit.team = team;
+          // Re-palette the sprite (would need async reload in full implementation)
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
       }
+
+      case 'change_stats': {
+        // change_stats;unit_nid;HP,2,STR,1,DEF,-1
+        const unitNid = args[0] ?? '';
+        const changes = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit && changes) {
+          const parts = changes.split(',');
+          for (let i = 0; i < parts.length - 1; i += 2) {
+            const stat = parts[i].trim();
+            const delta = parseInt(parts[i + 1], 10);
+            if (stat && !isNaN(delta) && unit.stats[stat] !== undefined) {
+              unit.stats[stat] += delta;
+              // If HP stat changed, adjust currentHp
+              if (stat === 'HP') {
+                unit.currentHp = Math.min(unit.currentHp + Math.max(0, delta), unit.maxHp);
+              }
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_tag': {
+        const unitNid = args[0] ?? '';
+        const tag = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit && tag && !unit.tags.includes(tag)) {
+          unit.tags.push(tag);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_tag': {
+        const unitNid = args[0] ?? '';
+        const tag = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit && tag) {
+          const idx = unit.tags.indexOf(tag);
+          if (idx !== -1) unit.tags.splice(idx, 1);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Game variable commands (instant) -----
 
       case 'game_var':
       case 'set_game_var': {
-        // game_var;var_name;value
         const varName = args[0] ?? '';
         const value = args[1] ?? 'true';
         if (varName && game.gameVars) {
           game.gameVars.set(varName, value);
         }
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
       }
+
+      case 'inc_game_var': {
+        const varName = args[0] ?? '';
+        if (varName && game.gameVars) {
+          const current = Number(game.gameVars.get(varName) ?? 0);
+          game.gameVars.set(varName, current + 1);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'level_var': {
+        const varName = args[0] ?? '';
+        const value = args[1] ?? 'true';
+        if (varName && game.levelVars) {
+          game.levelVars.set(varName, value);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'inc_level_var': {
+        const varName = args[0] ?? '';
+        if (varName && game.levelVars) {
+          const current = Number(game.levelVars.get(varName) ?? 0);
+          game.levelVars.set(varName, current + 1);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Audio commands -----
 
       case 'music':
       case 'change_music': {
-        // music;music_nid  — change background music
-        // Placeholder — needs audio manager integration
-        this.commandIndex++;
-        break;
+        const musicNid = args[0] ?? '';
+        if (musicNid && game.audioManager) {
+          game.audioManager.playMusic(musicNid);
+        }
+        this.advancePointer();
+        // Music is treated as blocking briefly to let the transition feel natural
+        this.waiting = true;
+        this.waitTimer = 100;
+        return true;
       }
 
       case 'sound': {
-        // sound;sound_nid  — play a sound effect
-        // Placeholder — needs audio manager integration
-        this.commandIndex++;
-        break;
+        const soundNid = args[0] ?? '';
+        if (soundNid && game.audioManager) {
+          game.audioManager.playSfx(soundNid);
+        }
+        this.advancePointer();
+        return false;
       }
 
+      // ----- Win / Lose (instant — they change the state machine) -----
+
       case 'win_game': {
-        // win_game — trigger victory
+        if (this.currentEvent) this.currentEvent.finish();
+        game.eventManager?.dequeueCurrentEvent();
         game.state.clear();
         game.state.change('title');
-        break;
+        return true; // stop burst
       }
 
       case 'lose_game': {
-        // lose_game — trigger defeat
+        if (this.currentEvent) this.currentEvent.finish();
+        game.eventManager?.dequeueCurrentEvent();
         game.state.clear();
         game.state.change('title');
-        break;
+        return true;
       }
 
-      // Portrait commands — advance immediately (visual-only, no game state change)
+      // ----- Turn management -----
+
+      case 'has_attacked': {
+        const unitNid = args[0] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) unit.hasAttacked = true;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'has_finished': {
+        const unitNid = args[0] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) unit.finished = true;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'reset': {
+        const unitNid = args[0] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) unit.resetTurnState();
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Portrait / visual commands (instant, visual-only) -----
       case 'add_portrait':
       case 'multi_add_portrait':
       case 'remove_portrait':
@@ -3461,35 +4172,101 @@ export class EventState extends State {
       case 'flicker_cursor':
       case 'screen_shake':
       case 'screen_shake_end':
-        // These are visual/UI commands that need proper rendering support.
-        // For now, skip them to allow the event to progress.
-        this.commandIndex++;
-        break;
+        // Visual/UI commands — skip for now to allow event progression
+        this.advancePointer();
+        return false;
 
-      // Flow control — skip for now (would need conditional evaluation)
-      case 'if':
-      case 'elif':
-      case 'else':
-      case 'end':
-      case 'for':
-      case 'endf':
-      case 'finish':
-      case 'end_skip':
-      case 'comment':
-        this.commandIndex++;
-        break;
+      // ----- for / endf — not yet implemented, skip the block -----
+      case 'for': {
+        // Skip the entire for block to endf
+        const commands = this.currentEvent!.commands;
+        let depth = 0;
+        for (let i = this.currentEvent!.commandPointer + 1; i < commands.length; i++) {
+          if (commands[i].type === 'for') depth++;
+          if (commands[i].type === 'endf') {
+            if (depth === 0) {
+              this.currentEvent!.commandPointer = i + 1;
+              return false;
+            }
+            depth--;
+          }
+        }
+        // No matching endf — skip to end
+        this.currentEvent!.commandPointer = commands.length;
+        return false;
+      }
+
+      case 'endf': {
+        this.advancePointer();
+        return false;
+      }
 
       default:
         // Unknown/unimplemented command — skip
-        this.commandIndex++;
-        break;
+        this.advancePointer();
+        return false;
     }
   }
 
-  override draw(surf: Surface): Surface {
-    if (this.dialog) {
-      this.dialog.draw(surf);
+  // -----------------------------------------------------------------------
+  // Unit spawning helper: handles both unique and generic units from level data
+  // -----------------------------------------------------------------------
+
+  private spawnUnitFromLevelData(
+    unitData: any,
+    posOverride: [number, number] | null,
+    game: any,
+  ): void {
+    const isGeneric = unitData.generic === true;
+    const pos = posOverride ?? unitData.starting_position ?? null;
+
+    if (isGeneric) {
+      // Generic unit — build synthetic prefab and spawn
+      const data = { ...unitData, starting_position: pos };
+      game.spawnGenericUnit(data);
+      const spawned = game.units.get(unitData.nid);
+      if (spawned) this.loadMapSpriteForUnit(spawned, game);
+    } else {
+      // Unique unit — look up prefab from db
+      const prefab = game.db.units.get(unitData.nid);
+      if (prefab) {
+        const spawned = game.spawnUnit(
+          prefab,
+          unitData.team ?? 'player',
+          pos,
+          unitData.ai ?? 'None',
+        );
+        this.loadMapSpriteForUnit(spawned, game);
+      } else {
+        console.warn(`EventState: unique unit prefab "${unitData.nid}" not found in db`);
+      }
     }
-    return surf;
   }
+
+  // -----------------------------------------------------------------------
+  // Async helper: load map sprite for a newly spawned unit
+  // -----------------------------------------------------------------------
+
+  private loadMapSpriteForUnit(unit: UnitObject, game: any): void {
+    const klassDef = game.db.classes.get(unit.klass);
+    if (!klassDef) return;
+    const spriteNid = klassDef.map_sprite_nid;
+    if (!spriteNid) return;
+
+    const teamDef = game.db.teams.defs.find((t: any) => t.nid === unit.team);
+    const teamPalette = teamDef?.palette ?? undefined;
+
+    // Fire-and-forget async load
+    game.resources.tryLoadMapSprite(spriteNid).then((sprites: any) => {
+      const mapSprite = MapSpriteClass.fromImages(sprites.stand, sprites.move, teamPalette);
+      unit.sprite = mapSprite;
+    }).catch((err: any) => {
+      console.warn(`EventState: failed to load map sprite for unit "${unit.nid}":`, err);
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Internal flag for if/elif/else flow control
+  // -----------------------------------------------------------------------
+  private _jumpedToBranch: boolean = false;
 }

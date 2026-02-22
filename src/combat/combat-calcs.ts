@@ -1,10 +1,13 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
+import * as itemSystem from './item-system';
+import * as skillSystem from './skill-system';
 
 // ============================================================
 // CombatCalcs - All combat calculation formulas.
 // Matches LT's combat_calcs.py formulas.
+// Now wired through item-system.ts and skill-system.ts dispatch.
 // ============================================================
 
 // ------------------------------------------------------------------
@@ -111,70 +114,140 @@ function isMagic(item: ItemObject): boolean {
 }
 
 // ------------------------------------------------------------------
-// Core formulas
+// Core formulas (now with component dispatch)
 // ------------------------------------------------------------------
 
 /** Calculate hit rate for an attacker. */
 export function accuracy(unit: UnitObject, item: ItemObject, db: Database): number {
-  const baseHit = resolveEquation(db, 'HIT', 'SKL * 2 + LCK // 2', unit);
-  return baseHit + item.getHit();
+  // Check for skill formula override
+  const formulaOverride = skillSystem.accuracyFormula(unit);
+  const eqName = formulaOverride ?? 'HIT';
+
+  const baseHit = resolveEquation(db, eqName, 'SKL * 2 + LCK // 2', unit);
+  const itemHit = item.getHit();
+
+  // Add item + skill static modifiers
+  const itemMod = itemSystem.modifyAccuracy(unit, item);
+  const skillMod = skillSystem.modifyAccuracy(unit, item);
+
+  return baseHit + itemHit + itemMod + skillMod;
 }
 
 /** Calculate avoid for a defender. */
 export function avoid(unit: UnitObject, db: Database): number {
+  // Check for skill formula override
+  const formulaOverride = skillSystem.avoidFormula(unit);
+  const eqName = formulaOverride ?? 'AVOID';
+
   // Avoid uses AS (attack speed), which factors in equipped weapon weight.
-  // Default: SPD*2 + LCK//2  (but SPD here means AS)
-  const equippedWeapon = unit.items.find((i) => i.isWeapon());
+  const equippedWeapon = unit.items.find((i) => i.isWeapon()) ?? null;
   const weaponWeight = equippedWeapon ? equippedWeapon.getWeight() : 0;
   const spd = unit.getStatValue('SPD');
   const con = unit.getStatValue('CON');
   const as = spd - Math.max(0, weaponWeight - con);
 
-  const avoidExpr = db.getEquation('AVOID') ?? 'SPD * 2 + LCK // 2';
+  const avoidExpr = db.getEquation(eqName) ?? 'SPD * 2 + LCK // 2';
   // Replace SPD with AS value in the avoid formula
   const processed = avoidExpr.replace(/\bSPD\b/g, String(as));
-  return evaluateEquation(processed, unit);
+  const baseAvoid = evaluateEquation(processed, unit);
+
+  // Add skill static modifier
+  const skillMod = skillSystem.modifyAvoid(unit, equippedWeapon);
+
+  return baseAvoid + skillMod;
 }
 
 /** Calculate damage output. */
 export function damage(unit: UnitObject, item: ItemObject, db: Database): number {
+  // Check for skill formula override
+  const formulaOverride = skillSystem.damageFormula(unit);
+
   const magic = isMagic(item);
   const defaultExpr = magic ? 'MAG' : 'STR';
-  const baseDmg = resolveEquation(db, 'DAMAGE', defaultExpr, unit);
-  return baseDmg + item.getDamage();
+  const eqName = formulaOverride ?? 'DAMAGE';
+  const baseDmg = resolveEquation(db, eqName, defaultExpr, unit);
+  const itemDmg = item.getDamage();
+
+  // Add item + skill static modifiers
+  const itemMod = itemSystem.modifyDamage(unit, item);
+  const skillMod = skillSystem.modifyDamage(unit, item);
+
+  return baseDmg + itemDmg + itemMod + skillMod;
 }
 
 /** Calculate defense/resistance against an incoming attack item. */
 export function defense(unit: UnitObject, attackItem: ItemObject, db: Database): number {
+  // Check for skill formula override
+  const formulaOverride = skillSystem.resistFormula(unit);
+
   const magic = isMagic(attackItem);
   const defaultExpr = magic ? 'RES' : 'DEF';
-  return resolveEquation(db, magic ? 'MAGIC_DEFENSE' : 'DEFENSE', defaultExpr, unit);
+  const eqName = formulaOverride ?? (magic ? 'MAGIC_DEFENSE' : 'DEFENSE');
+  const baseDef = resolveEquation(db, eqName, defaultExpr, unit);
+
+  // Add skill static modifier for resist
+  const skillMod = skillSystem.modifyResist(unit, null);
+
+  return baseDef + skillMod;
 }
 
 /** Calculate attack speed (for doubling checks). */
 export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): number {
+  // Check for skill formula override
+  const formulaOverride = skillSystem.attackSpeedFormula(unit);
+
   const spd = unit.getStatValue('SPD');
   const con = unit.getStatValue('CON');
   const weight = item.getWeight();
 
+  let baseAS: number;
+
   // Try DB equation first
-  const asExpr = db.getEquation('ATTACK_SPEED');
+  const asExpr = db.getEquation(formulaOverride ?? 'ATTACK_SPEED');
   if (asExpr) {
     // Replace 'weight' token if present
     const processed = asExpr.replace(/\bweight\b/gi, String(weight));
-    return evaluateEquation(processed, unit);
+    baseAS = evaluateEquation(processed, unit);
+  } else {
+    // Default: SPD - max(0, weight - CON)
+    baseAS = spd - Math.max(0, weight - con);
   }
 
-  // Default: SPD - max(0, weight - CON)
-  return spd - Math.max(0, weight - con);
+  // Add item + skill static modifiers
+  const itemMod = itemSystem.modifyAttackSpeed(unit, item);
+  const skillMod = skillSystem.modifyAttackSpeed(unit, item);
+
+  return baseAS + itemMod + skillMod;
+}
+
+/** Calculate defense speed (for doubling checks on the defender side). */
+export function defenseSpeed(unit: UnitObject, item: ItemObject, db: Database): number {
+  // Check for skill formula override
+  const formulaOverride = skillSystem.defenseSpeedFormula(unit);
+
+  // If there's a dedicated defense speed formula, use it; otherwise same as attack speed
+  const asExpr = db.getEquation(formulaOverride ?? 'DEFENSE_SPEED');
+  if (asExpr) {
+    const weight = item.getWeight();
+    const processed = asExpr.replace(/\bweight\b/gi, String(weight));
+    const base = evaluateEquation(processed, unit);
+    const skillMod = skillSystem.modifyDefenseSpeed(unit, item);
+    return base + skillMod;
+  }
+
+  // Fallback: use attack speed + defense speed modifier from skills
+  const base = attackSpeed(unit, item, db);
+  const defSpeedMod = skillSystem.modifyDefenseSpeed(unit, item);
+  return base + defSpeedMod;
 }
 
 // ------------------------------------------------------------------
-// Composite formulas
+// Composite formulas (with dynamic modifiers + multipliers)
 // ------------------------------------------------------------------
 
 /**
  * Compute final hit chance (attacker accuracy - defender avoid, clamped 0-100).
+ * Includes dynamic modifiers from items and skills.
  */
 export function computeHit(
   attacker: UnitObject,
@@ -184,12 +257,20 @@ export function computeHit(
 ): number {
   const acc = accuracy(attacker, attackItem, db);
   const avo = avoid(defender, db);
-  const raw = acc - avo;
+
+  // Dynamic modifiers from items and skills (combat context)
+  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const itemDynAcc = itemSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, 'attack', null, acc);
+  const skillDynAcc = skillSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, 'attack', null, acc);
+  const skillDynAvo = skillSystem.dynamicAvoid(defender, defWeapon, attacker, attackItem, 'defense', null, avo);
+
+  const raw = acc + itemDynAcc + skillDynAcc - avo - skillDynAvo;
   return Math.max(0, Math.min(100, raw));
 }
 
 /**
  * Compute final damage (attacker damage - defender defense, min 0).
+ * Includes dynamic modifiers, effective damage, and multipliers.
  */
 export function computeDamage(
   attacker: UnitObject,
@@ -199,13 +280,33 @@ export function computeDamage(
 ): number {
   const atk = damage(attacker, attackItem, db);
   const def = defense(defender, attackItem, db);
-  return Math.max(0, atk - def);
+
+  // Dynamic modifiers from items and skills
+  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const baseDmg = atk - def;
+
+  const itemDynDmg = itemSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, 'attack', null, baseDmg);
+  const skillDynDmg = skillSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, 'attack', null, baseDmg);
+  const skillDynResist = skillSystem.dynamicResist(defender, defWeapon, attacker, attackItem, 'defense', null, def);
+
+  let finalDmg = baseDmg + itemDynDmg + skillDynDmg - skillDynResist;
+
+  // Apply damage multiplier from attacker skills
+  const dmgMult = skillSystem.damageMultiplier(attacker, attackItem, defender, defWeapon, 'attack', null, finalDmg);
+  finalDmg = Math.floor(finalDmg * dmgMult);
+
+  // Apply resist multiplier from defender skills
+  const resMult = skillSystem.resistMultiplier(defender, defWeapon, attacker, attackItem, 'defense', null, finalDmg);
+  if (resMult !== 1) {
+    finalDmg = Math.floor(finalDmg / resMult);
+  }
+
+  return Math.max(0, finalDmg);
 }
 
 /**
  * Check if attacker doubles defender.
- * Attacker doubles when their AS exceeds the defender's AS by at least
- * the SPEED_TO_DOUBLE threshold (default 4).
+ * Now checks item canDouble and skill noDouble/defDouble.
  */
 export function canDouble(
   attacker: UnitObject,
@@ -214,10 +315,18 @@ export function canDouble(
   defenseItem: ItemObject | null,
   db: Database,
 ): boolean {
+  // Item can't double? (e.g., cannot_double component)
+  if (!itemSystem.canDouble(attacker, attackItem)) return false;
+
+  // Skill prevents doubling?
+  if (skillSystem.noDouble(attacker)) return false;
+
   const attackerAS = attackSpeed(attacker, attackItem, db);
-  const defenderWeapon = defenseItem ?? defender.items.find((i) => i.isWeapon());
+
+  // Use defense speed for the defender's side
+  const defenderWeapon = defenseItem ?? defender.items.find((i) => i.isWeapon()) ?? null;
   const defenderAS = defenderWeapon
-    ? attackSpeed(defender, defenderWeapon, db)
+    ? defenseSpeed(defender, defenderWeapon, db)
     : defender.getStatValue('SPD');
 
   const thresholdExpr = db.getEquation('SPEED_TO_DOUBLE');
@@ -227,9 +336,27 @@ export function canDouble(
 }
 
 /**
+ * Check if defender can counter-double (double on the counter).
+ * Only possible if defender has defDouble skill or via normal speed comparison.
+ */
+export function canDefenderDouble(
+  attacker: UnitObject,
+  attackItem: ItemObject,
+  defender: UnitObject,
+  defenseItem: ItemObject,
+  db: Database,
+): boolean {
+  // defDouble skill allows the defender to double
+  if (skillSystem.defDouble(defender)) {
+    return canDouble(defender, defenseItem, attacker, attackItem, db);
+  }
+  // Standard: defender can double if their AS exceeds the attacker's
+  return canDouble(defender, defenseItem, attacker, attackItem, db);
+}
+
+/**
  * Check if defender can counterattack.
- * Defender must have a weapon equipped, and the attack distance must
- * be within the weapon's range.
+ * Now checks distant_counter, close_counter, and item canCounter/canBeCountered.
  */
 export function canCounterattack(
   attacker: UnitObject,
@@ -237,9 +364,18 @@ export function canCounterattack(
   defender: UnitObject,
   _db: Database,
 ): boolean {
+  // Check if attacker's weapon can't be countered
+  if (!itemSystem.canBeCountered(attacker, attackItem)) return false;
+
+  // Check if defender's skills prevent countering
+  if (!skillSystem.canCounter(defender)) return false;
+
   // Find the defender's equipped weapon
   const defWeapon = defender.items.find((i) => i.isWeapon());
   if (!defWeapon) return false;
+
+  // Check if the weapon itself can counter
+  if (!itemSystem.canCounter(defender, defWeapon)) return false;
 
   // Compute the Manhattan distance between the two units
   const aPos = attacker.position;
@@ -248,7 +384,13 @@ export function canCounterattack(
 
   const dist = Math.abs(aPos[0] - dPos[0]) + Math.abs(aPos[1] - dPos[1]);
 
-  // Defender can counter if the distance is within their weapon's range
+  // Check if defender has distant_counter (can counter at any range)
+  if (skillSystem.distantCounter(defender)) return true;
+
+  // Check if defender has close_counter (can counter at range 1 with ranged weapon)
+  if (dist === 1 && skillSystem.closeCounter(defender)) return true;
+
+  // Standard range check: defender can counter if distance is within their weapon's range
   const minRange = defWeapon.getMinRange();
   const maxRange = defWeapon.getMaxRange();
   return dist >= minRange && dist <= maxRange;
@@ -256,18 +398,19 @@ export function canCounterattack(
 
 /**
  * Get weapon triangle advantage bonus.
- *
- * Looks up the attacker's weapon type advantages/disadvantages against
- * the defender's weapon type in the database weapon definitions.
- * Returns hit and damage bonuses (can be negative for disadvantage).
+ * Now checks ignoreWeaponAdvantage from items.
  */
 export function weaponTriangle(
   attackItem: ItemObject,
   defenseItem: ItemObject | null,
   db: Database,
+  attacker?: UnitObject,
 ): { hitBonus: number; damageBonus: number } {
   const noBonus = { hitBonus: 0, damageBonus: 0 };
   if (!defenseItem) return noBonus;
+
+  // Check if either item ignores weapon advantage
+  if (attacker && itemSystem.ignoreWeaponAdvantage(attacker, attackItem)) return noBonus;
 
   const atkType = attackItem.getWeaponType();
   const defType = defenseItem.getWeaponType();
@@ -312,6 +455,7 @@ function parseNumericValue(value: string): number {
 /**
  * Compute crit rate.
  * Crit = attacker crit - defender crit avoid, clamped 0-100.
+ * Now includes item + skill crit modifiers.
  */
 export function computeCrit(
   attacker: UnitObject,
@@ -323,8 +467,37 @@ export function computeCrit(
   const itemCrit = attackItem.getComponent<number>('crit') ?? 0;
   const critAvoid = resolveEquation(db, 'CRIT_AVOID', 'LCK', defender);
 
-  const raw = baseCrit + itemCrit - critAvoid;
+  // Skill modifiers
+  const skillCritAcc = skillSystem.modifyCritAccuracy(attacker, attackItem);
+  const skillCritAvo = skillSystem.modifyCritAvoid(defender, null);
+
+  // Item crit modifier
+  const itemCritMod = itemSystem.modifyCritAccuracy(attacker, attackItem);
+
+  const raw = baseCrit + itemCrit + skillCritAcc + itemCritMod - critAvoid - skillCritAvo;
   return Math.max(0, Math.min(100, raw));
+}
+
+/**
+ * Compute the number of strikes for one side (base + brave + dynamic multiattacks).
+ */
+export function computeStrikeCount(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  defenseItem: ItemObject | null,
+): number {
+  let count = 1;
+
+  // Brave from items
+  const itemExtra = itemSystem.dynamicMultiattacks(unit, item, target, defenseItem, 'attack', null, 0);
+  count += itemExtra;
+
+  // Dynamic multiattacks from skills
+  const skillExtra = skillSystem.dynamicMultiattacks(unit, item, target, defenseItem, 'attack', null, 0);
+  count += skillExtra;
+
+  return count;
 }
 
 // ------------------------------------------------------------------

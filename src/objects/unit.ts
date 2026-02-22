@@ -64,6 +64,12 @@ export class UnitObject {
   /** Optional renderer-managed map sprite handle. */
   sprite: MapSprite | null;
 
+  /** Where this unit was originally placed (for Defend AI / return-home). */
+  startingPosition: [number, number] | null;
+
+  /** AI group NID (for coordinated activation). */
+  aiGroup: NID;
+
   // -- Turn-state flags ---------------------------------------------------
   hasAttacked: boolean;
   hasMoved: boolean;
@@ -140,6 +146,8 @@ export class UnitObject {
     }
 
     this.sprite = null;
+    this.startingPosition = null;
+    this.aiGroup = '';
     this.hasAttacked = false;
     this.hasMoved = false;
     this.hasTraded = false;

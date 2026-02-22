@@ -4,15 +4,25 @@ import type { NID, EventPrefab } from '../data/types';
 // Event Scripting System
 // ============================================================
 
+/**
+ * EventTrigger describes what kind of event to match.
+ * Fields beyond `type` are optional and used for context-sensitive matching.
+ */
 export interface EventTrigger {
-  type: string; // 'level_start', 'turn_change', 'combat_death', 'phase_change', 'unit_talk', 'region_event', etc.
+  type: string; // 'level_start', 'turn_change', 'combat_end', 'combat_death', 'on_talk', etc.
   levelNid?: NID;
-  unitNid?: NID;
-  unitA?: NID;
-  unitB?: NID;
+  unitNid?: NID;        // primary unit (unit1)
+  unitA?: NID;           // alias for unit1 in talk triggers
+  unitB?: NID;           // unit2 in talk triggers
   regionNid?: NID;
   turnCount?: number;
   team?: string;
+  // Context objects for condition evaluation
+  unit1?: any;           // UnitObject reference
+  unit2?: any;           // UnitObject reference
+  position?: [number, number];
+  region?: any;          // RegionData reference
+  item?: any;            // ItemObject reference
 }
 
 export type EventCommandType =
@@ -176,18 +186,20 @@ const COMMAND_ALIASES: Record<string, string> = {
 export class GameEvent {
   nid: NID;
   commands: EventCommand[];
-  currentIndex: number;
+  commandPointer: number;
   state: 'running' | 'waiting' | 'done';
+  trigger: EventTrigger;
 
   // For speak commands
   currentDialog: { speaker: string; text: string } | null;
   waitingForInput: boolean;
 
-  constructor(prefab: EventPrefab) {
+  constructor(prefab: EventPrefab, trigger: EventTrigger) {
     this.nid = prefab.nid;
     this.commands = [];
-    this.currentIndex = 0;
+    this.commandPointer = 0;
     this.state = 'running';
+    this.trigger = trigger;
     this.currentDialog = null;
     this.waitingForInput = false;
 
@@ -236,99 +248,399 @@ export class GameEvent {
     return { type, args };
   }
 
-  /**
-   * Advance to next command.
-   * Returns the command to execute, or null if waiting/done.
-   */
-  advance(): EventCommand | null {
-    // Cannot advance if waiting for input or already done
-    if (this.state === 'waiting' || this.state === 'done') {
-      return null;
-    }
-
-    // Check bounds
-    if (this.currentIndex >= this.commands.length) {
-      this.state = 'done';
-      return null;
-    }
-
-    const cmd = this.commands[this.currentIndex];
-    this.currentIndex++;
-
-    // Speak commands pause the event until the player advances the dialog
-    if (cmd.type === 'speak') {
-      this.state = 'waiting';
-      this.waitingForInput = true;
-      this.currentDialog = {
-        speaker: cmd.args[0] ?? '',
-        text: cmd.args[1] ?? '',
-      };
-    }
-
-    // Wait command pauses for a timed duration (resolved externally)
-    if (cmd.type === 'wait') {
-      this.state = 'waiting';
-      this.waitingForInput = false;
-    }
-
-    // Transition command pauses while the visual transition plays
-    if (cmd.type === 'transition') {
-      this.state = 'waiting';
-      this.waitingForInput = false;
-    }
-
-    // Check if we've reached the end after consuming this command
-    if (this.currentIndex >= this.commands.length && this.state === 'running') {
-      this.state = 'done';
-    }
-
-    return cmd;
-  }
-
-  /** Mark current wait as resolved, resume execution */
-  resolveWait(): void {
-    if (this.state !== 'waiting') {
-      return;
-    }
-
-    this.waitingForInput = false;
-    this.currentDialog = null;
-
-    // If there are more commands, go back to running; otherwise done
-    if (this.currentIndex >= this.commands.length) {
-      this.state = 'done';
-    } else {
-      this.state = 'running';
-    }
-  }
-
   /** Check if event is complete */
   isDone(): boolean {
     return this.state === 'done';
   }
+
+  /** Mark event as done */
+  finish(): void {
+    this.state = 'done';
+  }
 }
+
+// ============================================================
+// Condition Evaluator
+// ============================================================
+
+/**
+ * Evaluate a condition string from event data.
+ * 
+ * Supports a subset of the Python conditions used in LT:
+ * - "True" / "False" / "1" / "0" / ""
+ * - "game.turncount == N" / "game.turncount >= N" etc.
+ * - "unit.nid == 'Name'" / "unit1.nid == 'Name'"
+ * - "unit2.nid == 'Name'" / "unit.team == 'player'"
+ * - "game.check_dead('Name')" / "check_dead('Name')"
+ * - "not <condition>"
+ * - "A and B" / "A or B"
+ * - "region.nid == 'Name'"
+ * - "check_pair('A', 'B')" — checks if unit1/unit2 match A/B in either order
+ * - Simple variable lookups in gameVars/levelVars
+ */
+export function evaluateCondition(
+  condition: string,
+  context: ConditionContext,
+): boolean {
+  const trimmed = condition.trim();
+
+  // Empty condition or literal True
+  if (trimmed === '' || trimmed === 'True' || trimmed === 'true' || trimmed === '1') {
+    return true;
+  }
+
+  // Literal False
+  if (trimmed === 'False' || trimmed === 'false' || trimmed === '0') {
+    return false;
+  }
+
+  // Handle 'and' / 'or' (split at top level, respecting parens)
+  const andParts = splitAtTopLevel(trimmed, ' and ');
+  if (andParts.length > 1) {
+    return andParts.every(part => evaluateCondition(part, context));
+  }
+
+  const orParts = splitAtTopLevel(trimmed, ' or ');
+  if (orParts.length > 1) {
+    return orParts.some(part => evaluateCondition(part, context));
+  }
+
+  // Negation: "not <expr>"
+  if (trimmed.toLowerCase().startsWith('not ')) {
+    return !evaluateCondition(trimmed.slice(4), context);
+  }
+
+  // Strip outer parentheses
+  if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
+    const inner = trimmed.slice(1, -1);
+    // Only strip if the parens are balanced
+    if (findMatchingParen(trimmed, 0) === trimmed.length - 1) {
+      return evaluateCondition(inner, context);
+    }
+  }
+
+  // Function calls: game.check_dead('Name'), check_dead('Name'), check_pair('A','B')
+  const funcMatch = trimmed.match(/^(?:game\.)?check_dead\s*\(\s*['"](.+?)['"]\s*\)/);
+  if (funcMatch) {
+    const unitNid = funcMatch[1];
+    return isUnitDead(unitNid, context);
+  }
+
+  const checkPairMatch = trimmed.match(/^check_pair\s*\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)/);
+  if (checkPairMatch) {
+    const a = checkPairMatch[1];
+    const b = checkPairMatch[2];
+    const u1 = context.unit1?.nid;
+    const u2 = context.unit2?.nid;
+    return (u1 === a && u2 === b) || (u1 === b && u2 === a);
+  }
+
+  const checkDefaultMatch = trimmed.match(/^check_default\s*\(\s*['"](.+?)['"]\s*,\s*\[(.+?)\]\s*\)/);
+  if (checkDefaultMatch) {
+    // check_default("target_nid", ['unit1_nid', 'unit2_nid'])
+    // Returns true if unit2 matches target_nid AND unit1 is NOT in the exception list
+    const targetNid = checkDefaultMatch[1];
+    const exceptionList = checkDefaultMatch[2].split(',').map(s => s.trim().replace(/['"]/g, ''));
+    const u1 = context.unit1?.nid;
+    const u2 = context.unit2?.nid;
+    if (u2 !== targetNid) return false;
+    return !exceptionList.includes(u1 ?? '');
+  }
+
+  // len(game.get_enemy_units()) == N
+  const lenEnemyMatch = trimmed.match(/^len\s*\(\s*game\.get_enemy_units\s*\(\s*\)\s*\)\s*(==|!=|>=|<=|>|<)\s*(\d+)/);
+  if (lenEnemyMatch) {
+    const op = lenEnemyMatch[1];
+    const n = parseInt(lenEnemyMatch[2], 10);
+    const enemies = context.game?.board?.getTeamUnits('enemy') ?? [];
+    const count = enemies.filter((u: any) => !u.isDead()).length;
+    return compareNumbers(count, op, n);
+  }
+
+  // Comparison operators: resolve dotted paths
+  const comparisonOps = ['==', '!=', '>=', '<=', '>', '<'] as const;
+  for (const op of comparisonOps) {
+    const idx = findTopLevelOperator(trimmed, op);
+    if (idx !== -1) {
+      const lhs = trimmed.slice(0, idx).trim();
+      const rhs = trimmed.slice(idx + op.length).trim();
+      return evaluateComparison(lhs, op, rhs, context);
+    }
+  }
+
+  // Bare variable/path: truthy check
+  const value = resolvePath(trimmed, context);
+  if (value !== undefined) {
+    return !!value;
+  }
+
+  // Unknown condition — warn and default to true (safer than blocking events)
+  console.warn(`EventCondition: cannot evaluate "${trimmed}", defaulting to true`);
+  return true;
+}
+
+/** Context object for condition evaluation. */
+export interface ConditionContext {
+  game?: any;            // GameState reference
+  unit1?: any;           // Primary unit (from trigger)
+  unit2?: any;           // Secondary unit (from trigger)
+  position?: [number, number];
+  region?: any;          // RegionData
+  item?: any;            // ItemObject
+  gameVars?: Map<string, any>;
+  levelVars?: Map<string, any>;
+  localArgs?: Map<string, any>;  // Trigger-specific extra args
+}
+
+/** Resolve a dotted path like "game.turncount", "unit.nid", "region.nid" to a value. */
+function resolvePath(path: string, ctx: ConditionContext): any {
+  const trimmed = path.trim();
+
+  // String literals
+  if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+    return trimmed.slice(1, -1);
+  }
+
+  // Numeric literals
+  const num = Number(trimmed);
+  if (!isNaN(num) && trimmed !== '') {
+    return num;
+  }
+
+  // Boolean literals
+  if (trimmed === 'True' || trimmed === 'true') return true;
+  if (trimmed === 'False' || trimmed === 'false') return false;
+
+  // Dotted path resolution
+  const parts = trimmed.split('.');
+
+  // game.turncount, game.game_vars, game.level_vars, etc.
+  if (parts[0] === 'game' && ctx.game) {
+    return resolveObject(ctx.game, parts.slice(1));
+  }
+
+  // unit.nid, unit.team, unit.level, etc. (alias for unit1)
+  if ((parts[0] === 'unit' || parts[0] === 'unit1') && ctx.unit1) {
+    return resolveObject(ctx.unit1, parts.slice(1));
+  }
+
+  // unit2.nid, unit2.team, etc.
+  if (parts[0] === 'unit2' && ctx.unit2) {
+    return resolveObject(ctx.unit2, parts.slice(1));
+  }
+
+  // region.nid, region.region_type, etc.
+  if (parts[0] === 'region' && ctx.region) {
+    return resolveObject(ctx.region, parts.slice(1));
+  }
+
+  // item.nid, etc.
+  if (parts[0] === 'item' && ctx.item) {
+    return resolveObject(ctx.item, parts.slice(1));
+  }
+
+  // position
+  if (trimmed === 'position') return ctx.position;
+
+  // support_rank_nid (from trigger local args)
+  if (ctx.localArgs?.has(trimmed)) {
+    return ctx.localArgs.get(trimmed);
+  }
+
+  // Game vars lookup
+  if (ctx.gameVars?.has(trimmed)) {
+    return ctx.gameVars.get(trimmed);
+  }
+
+  // Level vars lookup
+  if (ctx.levelVars?.has(trimmed)) {
+    return ctx.levelVars.get(trimmed);
+  }
+
+  return undefined;
+}
+
+/** Walk an object by property names. */
+function resolveObject(obj: any, parts: string[]): any {
+  let current = obj;
+  for (const part of parts) {
+    if (current == null) return undefined;
+    // Handle snake_case -> camelCase mapping for common fields
+    const camelPart = snakeToCamel(part);
+    if (part in current) {
+      current = current[part];
+    } else if (camelPart in current) {
+      current = current[camelPart];
+    } else {
+      // Special cases for GameState
+      if (part === 'turncount' || part === 'turn_count') return current.turnCount ?? current.turncount;
+      if (part === 'game_vars') return current.gameVars ?? current.game_vars;
+      if (part === 'level_vars') return current.levelVars ?? current.level_vars;
+      if (part === 'current_hp') return current.currentHp ?? current.current_hp;
+      if (part === 'max_hp') return current.maxHp ?? current.max_hp;
+      return undefined;
+    }
+  }
+  return current;
+}
+
+function snakeToCamel(s: string): string {
+  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function isUnitDead(nid: string, ctx: ConditionContext): boolean {
+  if (!ctx.game) return false;
+  const unit = ctx.game.units?.get(nid) ?? ctx.game.getUnit?.(nid);
+  if (!unit) return true; // Unit not found = treated as dead
+  return unit.isDead?.() ?? unit.dead ?? false;
+}
+
+function compareNumbers(lhs: number, op: string, rhs: number): boolean {
+  switch (op) {
+    case '==': return lhs === rhs;
+    case '!=': return lhs !== rhs;
+    case '>': return lhs > rhs;
+    case '<': return lhs < rhs;
+    case '>=': return lhs >= rhs;
+    case '<=': return lhs <= rhs;
+    default: return false;
+  }
+}
+
+function evaluateComparison(
+  lhsStr: string,
+  op: string,
+  rhsStr: string,
+  ctx: ConditionContext,
+): boolean {
+  const lhsValue = resolvePath(lhsStr, ctx);
+  const rhsValue = resolvePath(rhsStr, ctx);
+
+  // If both resolve to numbers, compare numerically
+  const lhsNum = typeof lhsValue === 'number' ? lhsValue : Number(lhsValue);
+  const rhsNum = typeof rhsValue === 'number' ? rhsValue : Number(rhsValue);
+  const bothNumeric = !isNaN(lhsNum) && !isNaN(rhsNum) &&
+    lhsValue !== undefined && rhsValue !== undefined &&
+    lhsStr !== '' && rhsStr !== '';
+
+  if (bothNumeric) {
+    return compareNumbers(lhsNum, op, rhsNum);
+  }
+
+  // String comparison
+  const lhsFinal = lhsValue !== undefined ? String(lhsValue) : lhsStr;
+  const rhsFinal = rhsValue !== undefined ? String(rhsValue) : rhsStr;
+
+  switch (op) {
+    case '==': return lhsFinal === rhsFinal;
+    case '!=': return lhsFinal !== rhsFinal;
+    case '>': return lhsFinal > rhsFinal;
+    case '<': return lhsFinal < rhsFinal;
+    case '>=': return lhsFinal >= rhsFinal;
+    case '<=': return lhsFinal <= rhsFinal;
+    default: return false;
+  }
+}
+
+/** Find the index of a comparison operator, skipping operators inside strings/parens. */
+function findTopLevelOperator(str: string, op: string): number {
+  let depth = 0;
+  let inString: string | null = null;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inString) {
+      if (ch === inString && str[i - 1] !== '\\') inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { inString = ch; continue; }
+    if (ch === '(') { depth++; continue; }
+    if (ch === ')') { depth--; continue; }
+    if (depth === 0 && str.slice(i, i + op.length) === op) {
+      // Make sure we're not matching a longer operator (e.g., '=' inside '==')
+      if (op === '>' && str[i + 1] === '=') continue;
+      if (op === '<' && str[i + 1] === '=') continue;
+      if (op === '=' && str[i + 1] === '=') continue;
+      if (op === '!' && str[i + 1] === '=') continue;
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** Split a string at a delimiter, but only at the top level (not inside parens/strings). */
+function splitAtTopLevel(str: string, delimiter: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inString: string | null = null;
+  let start = 0;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inString) {
+      if (ch === inString && str[i - 1] !== '\\') inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { inString = ch; continue; }
+    if (ch === '(') { depth++; continue; }
+    if (ch === ')') { depth--; continue; }
+    if (depth === 0 && str.slice(i, i + delimiter.length) === delimiter) {
+      parts.push(str.slice(start, i));
+      start = i + delimiter.length;
+      i += delimiter.length - 1;
+    }
+  }
+  parts.push(str.slice(start));
+  return parts;
+}
+
+/** Find the matching closing paren for the paren at index `start`. */
+function findMatchingParen(str: string, start: number): number {
+  let depth = 0;
+  for (let i = start; i < str.length; i++) {
+    if (str[i] === '(') depth++;
+    if (str[i] === ')') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+// ============================================================
+// EventManager
+// ============================================================
 
 /**
  * EventManager - Queues and dispatches events based on triggers.
  * Events are matched by trigger type & level, sorted by priority,
  * and filtered by condition and only_once flags.
+ *
+ * CRITICAL CHANGE: trigger() now returns the GameEvent objects and
+ * the caller is responsible for pushing them to the EventState.
+ * The EventState reads from the eventQueue and processes events
+ * sequentially.
  */
 export class EventManager {
   private allEvents: Map<NID, EventPrefab>;
-  private eventStack: GameEvent[];
+  /** Queue of events waiting to be processed. First in = first out. */
+  eventQueue: GameEvent[];
   private onceTriggered: Set<NID>;
 
   constructor(events: Map<NID, EventPrefab>) {
     this.allEvents = events;
-    this.eventStack = [];
+    this.eventQueue = [];
     this.onceTriggered = new Set();
   }
 
   /**
    * Check for matching events and queue them.
    * Returns true if at least one event was triggered.
+   *
+   * The caller MUST check hasActiveEvents() after this and push
+   * EventState onto the state machine if events are queued.
    */
-  trigger(trigger: EventTrigger, gameVars?: Map<string, any>): boolean {
+  trigger(trigger: EventTrigger, context: ConditionContext): boolean {
     const matches = this.findMatchingEvents(trigger);
     let triggered = false;
 
@@ -338,8 +650,18 @@ export class EventManager {
         continue;
       }
 
+      // Build full condition context
+      const fullContext: ConditionContext = {
+        ...context,
+        unit1: trigger.unit1 ?? context.unit1,
+        unit2: trigger.unit2 ?? context.unit2,
+        position: trigger.position ?? context.position,
+        region: trigger.region ?? context.region,
+        item: trigger.item ?? context.item,
+      };
+
       // Evaluate the condition
-      if (!this.evaluateCondition(prefab.condition, gameVars)) {
+      if (!evaluateCondition(prefab.condition, fullContext)) {
         continue;
       }
 
@@ -348,136 +670,47 @@ export class EventManager {
         this.onceTriggered.add(prefab.nid);
       }
 
-      // Create and push the event onto the stack
-      const event = new GameEvent(prefab);
+      // Create and enqueue the event
+      const event = new GameEvent(prefab, trigger);
       if (!event.isDone()) {
-        this.eventStack.push(event);
+        this.eventQueue.push(event);
         triggered = true;
+        console.log(`EventManager: triggered "${prefab.nid}" (${prefab.trigger})`);
       }
     }
 
     return triggered;
   }
 
-  /** Get the current active event (top of stack) */
+  /** Get the current event being processed (front of queue). */
   getCurrentEvent(): GameEvent | null {
-    if (this.eventStack.length === 0) {
-      return null;
-    }
-    return this.eventStack[this.eventStack.length - 1];
+    if (this.eventQueue.length === 0) return null;
+    return this.eventQueue[0];
   }
 
-  /** Check if any events are active */
+  /** Remove the front event from the queue (called when event finishes). */
+  dequeueCurrentEvent(): void {
+    if (this.eventQueue.length > 0) {
+      this.eventQueue.shift();
+    }
+  }
+
+  /** Check if any events are queued. */
   hasActiveEvents(): boolean {
-    return this.eventStack.length > 0;
-  }
-
-  /** Pop completed events from the top of the stack */
-  update(): void {
-    while (this.eventStack.length > 0) {
-      const top = this.eventStack[this.eventStack.length - 1];
-      if (top.isDone()) {
-        this.eventStack.pop();
-      } else {
-        break;
-      }
-    }
-  }
-
-  /**
-   * Evaluate a condition string.
-   * Supports:
-   *   - "True" / "true" / "1"  -> true
-   *   - "False" / "false" / "0" / "" -> false
-   *   - "game_var_name" -> truthy check on gameVars
-   *   - "var == value", "var != value" -> equality comparisons
-   *   - "var > value", "var < value", "var >= value", "var <= value" -> numeric comparisons
-   *   - "not condition" -> negation
-   */
-  private evaluateCondition(condition: string, gameVars?: Map<string, any>): boolean {
-    const trimmed = condition.trim();
-
-    // Empty condition or literal True
-    if (trimmed === '' || trimmed === 'True' || trimmed === 'true' || trimmed === '1') {
-      return true;
-    }
-
-    // Literal False
-    if (trimmed === 'False' || trimmed === 'false' || trimmed === '0') {
-      return false;
-    }
-
-    // Negation: "not <expr>"
-    if (trimmed.toLowerCase().startsWith('not ')) {
-      return !this.evaluateCondition(trimmed.slice(4), gameVars);
-    }
-
-    // Comparison operators (check multi-char operators first)
-    const comparisonOps = ['==', '!=', '>=', '<=', '>', '<'] as const;
-    for (const op of comparisonOps) {
-      const idx = trimmed.indexOf(op);
-      if (idx !== -1) {
-        const lhs = trimmed.slice(0, idx).trim();
-        const rhs = trimmed.slice(idx + op.length).trim();
-        return this.evaluateComparison(lhs, op, rhs, gameVars);
-      }
-    }
-
-    // Bare variable name: truthy check
-    if (gameVars && gameVars.has(trimmed)) {
-      return !!gameVars.get(trimmed);
-    }
-
-    // Unknown condition defaults to false
-    return false;
-  }
-
-  /**
-   * Evaluate a comparison expression.
-   * Resolves lhs from gameVars if possible, then compares to rhs.
-   */
-  private evaluateComparison(
-    lhs: string,
-    op: '==' | '!=' | '>=' | '<=' | '>' | '<',
-    rhs: string,
-    gameVars?: Map<string, any>,
-  ): boolean {
-    // Resolve the left-hand side from game vars
-    let lhsValue: any = lhs;
-    if (gameVars && gameVars.has(lhs)) {
-      lhsValue = gameVars.get(lhs);
-    }
-
-    // Try to parse both sides as numbers for numeric comparison
-    const lhsNum = Number(lhsValue);
-    const rhsNum = Number(rhs);
-    const bothNumeric = !isNaN(lhsNum) && !isNaN(rhsNum) && rhs !== '';
-
-    switch (op) {
-      case '==':
-        if (bothNumeric) return lhsNum === rhsNum;
-        return String(lhsValue) === rhs;
-      case '!=':
-        if (bothNumeric) return lhsNum !== rhsNum;
-        return String(lhsValue) !== rhs;
-      case '>':
-        return bothNumeric ? lhsNum > rhsNum : String(lhsValue) > rhs;
-      case '<':
-        return bothNumeric ? lhsNum < rhsNum : String(lhsValue) < rhs;
-      case '>=':
-        return bothNumeric ? lhsNum >= rhsNum : String(lhsValue) >= rhs;
-      case '<=':
-        return bothNumeric ? lhsNum <= rhsNum : String(lhsValue) <= rhs;
-    }
+    return this.eventQueue.length > 0;
   }
 
   /**
    * Get all event prefabs that match a trigger, without actually triggering them.
    * Used for checking if a Talk, Visit, etc. option should be shown.
    */
-  getEventsForTrigger(trigger: EventTrigger): EventPrefab[] {
+  getEventsForTrigger(trigger: EventTrigger, context?: ConditionContext): EventPrefab[] {
     return this.findMatchingEvents(trigger).filter((prefab) => {
       if (prefab.only_once && this.onceTriggered.has(prefab.nid)) return false;
+      // If context provided, also check condition
+      if (context) {
+        return evaluateCondition(prefab.condition, context);
+      }
       return true;
     });
   }
@@ -497,14 +730,14 @@ export class EventManager {
       }
 
       // If the event is scoped to a level, it must match the trigger's level
-      if (prefab.level_nid !== null && trigger.levelNid !== undefined) {
+      if (prefab.level_nid !== null && prefab.level_nid !== '' && trigger.levelNid !== undefined) {
         if (prefab.level_nid !== trigger.levelNid) {
           continue;
         }
       }
 
       // If the event is scoped to a level but the trigger has no level, skip
-      if (prefab.level_nid !== null && trigger.levelNid === undefined) {
+      if (prefab.level_nid !== null && prefab.level_nid !== '' && trigger.levelNid === undefined) {
         continue;
       }
 

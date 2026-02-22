@@ -199,6 +199,7 @@ export interface UniqueUnitData {
   nid: NID;
   team: string;
   ai: NID;
+  ai_group: NID | null;
   starting_position: [number, number] | null;
   generic: false;
 }
@@ -214,6 +215,7 @@ export interface GenericUnitData {
   starting_skills: NID[];
   team: string;
   ai: NID;
+  ai_group: NID | null;
   starting_position: [number, number] | null;
   generic: true;
 }
