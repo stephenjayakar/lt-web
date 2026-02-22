@@ -7,6 +7,7 @@ import { BattleAnimation, type BattleAnimDrawData } from './battle-animation';
 import type { CombatEffectData, PaletteData } from './battle-anim-types';
 import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
 import { convertSpritesheetToFrames } from './sprite-loader';
+import { computeHit, computeDamage, computeCrit } from './combat-calcs';
 
 
 // ============================================================
@@ -100,9 +101,9 @@ export interface AnimationCombatRenderState {
   /** Full-screen color blend (null when inactive). */
   screenBlend: { color: [number, number, number]; alpha: number } | null;
 
-  /** HP bar data per side. */
-  leftHp: { current: number; max: number; name: string; weapon: string };
-  rightHp: { current: number; max: number; name: string; weapon: string };
+  /** HP bar data per side (including combat stats). */
+  leftHp: { current: number; max: number; name: string; weapon: string; hit: number | null; damage: number | null; crit: number | null };
+  rightHp: { current: number; max: number; name: string; weapon: string; hit: number | null; damage: number | null; crit: number | null };
 
   /** Active damage popups. */
   damagePopups: DamagePopup[];
@@ -216,6 +217,13 @@ export class AnimationCombat implements AnimationCombatOwner {
   // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
 
+  // -- Frame timing accumulator (ensures animations run at 60fps rate) ------
+  animFrameAccumulator: number = 0;
+  private static readonly FRAME_MS = 1000 / 60; // ~16.67ms per frame
+
+  // -- Skip mode (START/ESC toggles 4x speed) --------------------------------
+  skipMode: boolean = false;
+
   // -- Effect sprite cache ---------------------------------------------------
   effectFrameCache: Map<string, Map<string, ImageBitmap | HTMLCanvasElement>> = new Map();
   effectLoadingSet: Set<string> = new Set();
@@ -282,6 +290,16 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.combatRange = range;
     this.panConfig = getPanConfig(this.combatRange);
 
+    // Initialize pan offset like Python: pan_offset starts at +pan_max or
+    // -pan_max depending on which side has focus. Left starts focused, so
+    // panOffset = +max (camera shifted right, viewing left unit).
+    // Python: if focus_right: pan_offset = -pan_max; else: pan_offset = pan_max
+    if (this.panConfig.max > 0) {
+      this.panOffset = leftIsAttacker ? this.panConfig.max : -this.panConfig.max;
+      this.panTarget = this.panOffset;
+      this.panFocusLeft = leftIsAttacker;
+    }
+
     // Viewbox iris target: defender's tile position
     if (dPos) {
       this.viewPos = [dPos[0], dPos[1]];
@@ -292,9 +310,40 @@ export class AnimationCombat implements AnimationCombatOwner {
   // Main update
   // ================================================================
 
+  /** How many animation frame ticks should happen this update, based on real delta. */
+  private computeAnimTicks(deltaMs: number): number {
+    // When in skip mode, animations run at 4x speed (matching Python's
+    // battle_anim_speed = 0.25 which means each frame lasts 1/4 as long)
+    const effectiveDelta = this.skipMode ? deltaMs * 4 : deltaMs;
+    this.animFrameAccumulator += effectiveDelta;
+    let ticks = 0;
+    while (this.animFrameAccumulator >= AnimationCombat.FRAME_MS) {
+      this.animFrameAccumulator -= AnimationCombat.FRAME_MS;
+      ticks++;
+    }
+    // Cap at 4 ticks per update to avoid runaway in case of frame spikes
+    return Math.min(ticks, 4);
+  }
+
+  /** Run BattleAnimation.update() the correct number of times for this frame. */
+  private tickAnims(ticks: number): void {
+    for (let i = 0; i < ticks; i++) {
+      this.leftAnim.update();
+      this.rightAnim.update();
+    }
+  }
+
+  /** The real deltaMs from the game loop (stored for use by state methods). */
+  private currentDeltaMs: number = 0;
+
   update(deltaMs: number): boolean {
+    this.currentDeltaMs = deltaMs;
+
     // Advance frame-based timers
-    this.stateTimer += deltaMs;
+    // When in skip mode, accelerate state timers too (matching Python where
+    // _skip bypasses most timing waits)
+    const effectiveMs = this.skipMode ? deltaMs * 4 : deltaMs;
+    this.stateTimer += effectiveMs;
 
     // Update screen shake
     this.advanceShake();
@@ -303,13 +352,13 @@ export class AnimationCombat implements AnimationCombatOwner {
 
     // Update damage popups
     for (const p of this.damagePopups) {
-      p.elapsed += deltaMs;
+      p.elapsed += effectiveMs;
     }
     this.damagePopups = this.damagePopups.filter(p => p.elapsed < p.duration);
 
     // Update sparks
     for (const s of this.sparks) {
-      s.elapsed += deltaMs;
+      s.elapsed += effectiveMs;
     }
     this.sparks = this.sparks.filter(s => s.elapsed < s.duration);
 
@@ -355,12 +404,13 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateEntrance(): boolean {
-    this.stateFrameCount++;
-    const t = Math.min(1, this.stateFrameCount / ENTRANCE_FRAMES);
+    // Use ms-based progress for frame-rate independence
+    // ENTRANCE_FRAMES at 60fps ≈ 233ms
+    const entranceMs = ENTRANCE_FRAMES * AnimationCombat.FRAME_MS;
+    const t = Math.min(1, this.stateTimer / entranceMs);
     this.entranceProgress = t;
 
     // Platforms slide up from below screen to resting position (offset 0)
-    // Start offset is enough to push platforms off the bottom of the 160px screen
     this.leftPlatformY = lerp(80, 0, easeOutQuad(t));
     this.rightPlatformY = lerp(80, 0, easeOutQuad(t));
 
@@ -368,11 +418,11 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.nameTagProgress = t;
     this.hpBarProgress = Math.min(1, Math.max(0, (t - 0.3) / 0.7));
 
-    // Update both anims each frame
-    this.leftAnim.update();
-    this.rightAnim.update();
+    // Update both anims at fixed 60fps rate
+    const ticks = this.computeAnimTicks(this.currentDeltaMs);
+    this.tickAnims(Math.max(1, ticks));
 
-    if (this.stateFrameCount >= ENTRANCE_FRAMES) {
+    if (t >= 1) {
       this.nameTagProgress = 1;
       this.hpBarProgress = 1;
       this.transition('init_pause');
@@ -381,10 +431,11 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateInitPause(): boolean {
-    this.stateFrameCount++;
-    this.leftAnim.update();
-    this.rightAnim.update();
-    if (this.stateFrameCount >= INIT_PAUSE_FRAMES) {
+    // stateTimer is ms-based; compare against INIT_PAUSE_FRAMES in ms
+    const pauseMs = INIT_PAUSE_FRAMES * AnimationCombat.FRAME_MS;
+    const ticks = this.computeAnimTicks(this.currentDeltaMs);
+    this.tickAnims(Math.max(1, ticks));
+    if (this.stateTimer >= pauseMs) {
       this.transition('begin_phase');
     }
     return false;
@@ -419,9 +470,9 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateAnim(): boolean {
-    this.leftAnim.update();
-    this.rightAnim.update();
-    this.animFrameCounter++;
+    const ticks = this.computeAnimTicks(this.currentDeltaMs);
+    this.tickAnims(Math.max(1, ticks));
+    this.animFrameCounter += Math.max(1, ticks);
 
     // The hit is processed via the startHit callback when the animation
     // fires the start_hit command. Once both anims return to idle/done,
@@ -454,10 +505,11 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateHpChange(): boolean {
-    this.hpDrainElapsedFrames++;
+    // Use ms-based timing for HP drain
+    const drainMs = this.hpDrainFrames * AnimationCombat.FRAME_MS;
+    const t = Math.min(1, this.stateTimer / Math.max(1, drainMs));
 
     // Animate HP bars
-    const t = Math.min(1, this.hpDrainElapsedFrames / Math.max(1, this.hpDrainFrames));
     this.leftDisplayHp = lerp(this.hpDrainStartLeft, this.leftTargetHp, t);
     this.rightDisplayHp = lerp(this.hpDrainStartRight, this.rightTargetHp, t);
 
@@ -471,8 +523,8 @@ export class AnimationCombat implements AnimationCombatOwner {
       }
     }
 
-    this.leftAnim.update();
-    this.rightAnim.update();
+    const ticks = this.computeAnimTicks(this.currentDeltaMs);
+    this.tickAnims(Math.max(1, ticks));
 
     if (t >= 1) {
       // Snap HP
@@ -510,8 +562,8 @@ export class AnimationCombat implements AnimationCombatOwner {
     // Set both anims to Stand
     this.leftAnim.setPose('Stand');
     this.rightAnim.setPose('Stand');
-    this.leftAnim.update();
-    this.rightAnim.update();
+    const ticks = this.computeAnimTicks(this.currentDeltaMs);
+    this.tickAnims(Math.max(1, ticks));
 
     // Wait for both to settle
     const leftIdle = this.leftAnim.isIdle() || this.leftAnim.isDone();
@@ -667,7 +719,9 @@ export class AnimationCombat implements AnimationCombatOwner {
   pan(): void {
     if (this.panConfig.max === 0) return;
     this.panFocusLeft = !this.panFocusLeft;
-    this.panTarget = this.panFocusLeft ? -this.panConfig.max : this.panConfig.max;
+    // Python: focus_right -> pan_target = -pan_max; !focus_right -> pan_target = +pan_max
+    // panFocusLeft is the inverse of Python's focus_right
+    this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
   }
 
   /** Set camera offset (in pixels) so the viewbox iris can compute tile-relative positions. */
@@ -1021,12 +1075,18 @@ export class AnimationCombat implements AnimationCombatOwner {
         max: leftUnit.maxHp,
         name: leftUnit.name,
         weapon: leftItem?.name ?? '',
+        hit: leftItem ? Math.min(100, Math.max(0, computeHit(leftUnit, leftItem, rightUnit, this.db))) : null,
+        damage: leftItem ? Math.max(0, computeDamage(leftUnit, leftItem, rightUnit, this.db)) : null,
+        crit: leftItem ? Math.min(100, Math.max(0, computeCrit(leftUnit, leftItem, rightUnit, this.db))) : null,
       },
       rightHp: {
         current: Math.max(0, Math.round(this.rightDisplayHp)),
         max: rightUnit.maxHp,
         name: rightUnit.name,
         weapon: rightItem?.name ?? '',
+        hit: rightItem ? Math.min(100, Math.max(0, computeHit(rightUnit, rightItem, leftUnit, this.db))) : null,
+        damage: rightItem ? Math.max(0, computeDamage(rightUnit, rightItem, leftUnit, this.db)) : null,
+        crit: rightItem ? Math.min(100, Math.max(0, computeCrit(rightUnit, rightItem, leftUnit, this.db))) : null,
       },
       damagePopups: this.damagePopups,
       sparks: this.sparks.map(s => ({ type: s.type, elapsed: s.elapsed, duration: s.duration, isLeft: s.isLeft })),

@@ -365,6 +365,10 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
   // Handle mouse click: move cursor to tile, then return the action
   if (input.mouseClick) {
     if (input.mouseClick === 'SELECT' && tile) {
+      const curPos = game.cursor.getHover();
+      if (tile[0] !== curPos.x || tile[1] !== curPos.y) {
+        game.audioManager?.playSfx?.('Select 5');
+      }
       game.cursor.setPos(tile[0], tile[1]);
       // Only auto-center camera on tap for small/mobile screens
       if (isSmallScreen()) {
@@ -376,6 +380,10 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
       return 'BACK';
     }
     if (input.mouseClick === 'INFO' && tile) {
+      const curPos = game.cursor.getHover();
+      if (tile[0] !== curPos.x || tile[1] !== curPos.y) {
+        game.audioManager?.playSfx?.('Select 5');
+      }
       game.cursor.setPos(tile[0], tile[1]);
       if (isSmallScreen()) {
         game.camera.focusTile(tile[0], tile[1]);
@@ -389,8 +397,8 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
     const curPos = game.cursor.getHover();
     if (tile[0] !== curPos.x || tile[1] !== curPos.y) {
       game.cursor.setPos(tile[0], tile[1]);
-      // Don't auto-pan camera on hover — only on click.
-      // This prevents disorienting camera movement while browsing.
+      // Play cursor movement sound on hover too (matches keyboard behavior)
+      game.audioManager?.playSfx?.('Select 5');
     }
   }
 
@@ -2563,6 +2571,11 @@ export class CombatState extends State {
     this.deathFadeProgress = 0;
     this.levelUpGains = null;
 
+    // Clear all highlights and hide cursor before combat starts
+    // (Python does this in interaction.py and the red_cursor state)
+    game.highlight.clear();
+    game.cursor.visible = false;
+
     // Play battle music (push current phase music onto the stack)
     const levelMusic = game.currentLevel?.music;
     if (levelMusic) {
@@ -2772,6 +2785,19 @@ export class CombatState extends State {
     }
   }
 
+  override takeInput(): StateResult {
+    const game = getGame();
+    if (!game.input) return;
+
+    // BACK (Escape/X) or START (S) toggles skip mode for animation combat
+    // Matches Python: START toggles self._skip which sets battle_anim_speed=0.25
+    if (game.input.justPressed('BACK') || game.input.justPressed('START')) {
+      if (this.animCombat) {
+        this.animCombat.skipMode = !this.animCombat.skipMode;
+      }
+    }
+  }
+
   override update(): StateResult {
     const activeCombat = this.isAnimationCombat ? this.animCombat : this.combat;
     if (!activeCombat) return;
@@ -2782,10 +2808,8 @@ export class CombatState extends State {
 
     switch (this.phase) {
       case 'combat': {
-        // SELECT (Enter/Z) fast-forwards combat animation at 3x speed
-        const combatFastFwd = game.input?.isPressed('SELECT') ?? false;
-        const combatDelta = combatFastFwd ? realDelta * 3 : realDelta;
-        const done = activeCombat.update(combatDelta);
+        // Pass real delta to combat (skip mode is handled inside AnimationCombat)
+        const done = activeCombat.update(realDelta);
         if (done) {
           this.results = activeCombat.applyResults();
           // Record combat message for turnwheel
@@ -2935,6 +2959,9 @@ export class CombatState extends State {
 
         // Restore phase music (pop battle music from the stack)
         void game.audioManager.popMusic();
+
+        // Restore cursor visibility (hidden at combat start)
+        game.cursor.visible = true;
 
         // Clear combat animation offsets
         setActiveCombatOffsets(null);
@@ -3146,14 +3173,18 @@ export class CombatState extends State {
     const SCENE_FLOOR_Y = WINHEIGHT - 72; // 88
 
     // Melee: platforms touch at center. Ranged: gap with pan offset.
+    // Python formula: left = W/2 - width - 11 - pan_max + shake + pan_offset
+    //                 right = W/2 + 11 + pan_max + shake + pan_offset
+    // The pan_max provides the base separation; pan_offset shifts the camera.
     let leftPlatX: number;
     let rightPlatX: number;
+    const panMax = this.animCombat!.panConfig?.max ?? 0;
     if (isMelee) {
       leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W + shakeX;
       rightPlatX = Math.floor(WINWIDTH / 2) + shakeX;
     } else {
-      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W - 11 + shakeX - rs.panOffset;
-      rightPlatX = Math.floor(WINWIDTH / 2) + 11 + shakeX + rs.panOffset;
+      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W - 11 - panMax + shakeX + rs.panOffset;
+      rightPlatX = Math.floor(WINWIDTH / 2) + 11 + panMax + shakeX + rs.panOffset;
     }
     const leftPlatY = SCENE_FLOOR_Y + rs.leftPlatformY + rs.platformShakeY + shakeY;
     const rightPlatY = SCENE_FLOOR_Y + rs.rightPlatformY + rs.platformShakeY + shakeY;
@@ -3296,7 +3327,7 @@ export class CombatState extends State {
     const hpSlide = rs.hpBarProgress;
     if (hpSlide > 0) {
       const HP_BAR_W = WINWIDTH / 2 + 3; // Each bar covers half the screen
-      const HP_BAR_H = 28;
+      const HP_BAR_H = 44; // Taller to fit weapon name + HIT/DMG/CRT + HP bar
       // Bottom anchor: slide up from below screen
       const hpY = WINHEIGHT + (1 - hpSlide) * 52 - HP_BAR_H + shakeY;
       const leftHpX = -3 + shakeX;
@@ -3432,25 +3463,54 @@ export class CombatState extends State {
     return surf;
   }
 
-  /** Draw a battle-scene HP bar (used in animation combat). */
+  /** Draw a battle-scene HP bar (used in animation combat).
+   *  Layout matching Python: weapon name at top, then combat stats
+   *  (HIT/DMG/CRT), then HP bar with blip-style display at bottom. */
   private drawBattleHpBar(
     surf: Surface,
     x: number,
     y: number,
     width: number,
     height: number,
-    hp: { current: number; max: number; name: string; weapon: string },
+    hp: { current: number; max: number; name: string; weapon: string; hit: number | null; damage: number | null; crit: number | null },
   ): void {
     // Background
     surf.fillRect(x, y, width, height, 'rgba(16,16,40,0.9)');
     surf.drawRect(x, y, width, height, 'rgba(100,100,160,0.8)');
 
-    // Weapon name (top row)
-    surf.drawText(hp.weapon, x + 3, y + 2, 'rgba(180,180,220,1)', '7px monospace');
+    // Weapon name (top row, centered)
+    const weaponFont = '7px monospace';
+    surf.drawText(hp.weapon, x + 3, y + 2, 'rgba(180,180,220,1)', weaponFont);
 
-    // HP bar (middle row, below weapon text with clear gap)
+    // Combat stats: HIT / DMG / CRT (right-aligned column)
+    const statFont = '6px monospace';
+    const statLabelColor = 'rgba(140,140,180,1)';
+    const statValueColor = 'rgba(255,255,255,1)';
+    const labelX = x + 3;
+    const valueX = x + width - 5;
+    let statY = y + 11;
+
+    // HIT
+    surf.drawText('HIT', labelX, statY, statLabelColor, statFont);
+    const hitStr = hp.hit !== null ? `${hp.hit}` : '--';
+    surf.drawText(hitStr, valueX - hitStr.length * 4, statY, statValueColor, statFont);
+    statY += 7;
+
+    // DMG
+    surf.drawText('DMG', labelX, statY, statLabelColor, statFont);
+    const dmgStr = hp.damage !== null ? `${hp.damage}` : '--';
+    surf.drawText(dmgStr, valueX - dmgStr.length * 4, statY, statValueColor, statFont);
+    statY += 7;
+
+    // CRT
+    surf.drawText('CRT', labelX, statY, statLabelColor, statFont);
+    const crtStr = hp.crit !== null ? `${hp.crit}` : '--';
+    surf.drawText(crtStr, valueX - crtStr.length * 4, statY, statValueColor, statFont);
+    statY += 8;
+
+    // HP bar (below stats)
     const barX = x + 3;
-    const barY = y + 12;
+    const barY = statY;
     const barW = width - 6;
     const barH = 4;
     const ratio = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
@@ -3678,9 +3738,15 @@ export class AIState extends MapState {
       // popped, we are now the top state and can advance.
       // We detect this by checking if we're still waiting — CombatState
       // sets attacker.hasAttacked and attacker.finished in its cleanup.
+      // Also check hasAttacked to handle canto units (finished=false but
+      // hasAttacked=true).
       const unit = this.aiUnits[this.currentAiIndex];
-      if (unit && (unit.finished || unit.isDead())) {
+      if (unit && (unit.finished || unit.isDead() || unit.hasAttacked)) {
         this.waitingForCombat = false;
+        // AI units with canto should still be marked finished
+        if (unit.hasAttacked && !unit.finished && !unit.isDead()) {
+          unit.finished = true;
+        }
         this.advanceToNextUnit();
       }
       return;
@@ -4039,15 +4105,19 @@ export class AIState extends MapState {
   override draw(surf: Surface): Surface {
     surf = drawMap(surf, false);
 
-    // Show current AI unit indicator
-    const game = getGame();
-    if (this.currentAiIndex < this.aiUnits.length) {
-      const unit = this.aiUnits[this.currentAiIndex];
-      if (unit && unit.position) {
-        const cameraOffset = game.camera.getOffset();
-        const ux = unit.position[0] * TILEWIDTH - cameraOffset[0];
-        const uy = unit.position[1] * TILEHEIGHT - cameraOffset[1];
-        surf.drawRect(ux, uy, TILEWIDTH, TILEHEIGHT, 'rgba(255,80,80,0.8)', 2);
+    // Show current AI unit indicator — but NOT when combat is in progress
+    // (CombatState is transparent and draws on top, so the red rect would
+    // bleed through the viewbox iris during animation combat)
+    if (!this.waitingForCombat) {
+      const game = getGame();
+      if (this.currentAiIndex < this.aiUnits.length) {
+        const unit = this.aiUnits[this.currentAiIndex];
+        if (unit && unit.position) {
+          const cameraOffset = game.camera.getOffset();
+          const ux = unit.position[0] * TILEWIDTH - cameraOffset[0];
+          const uy = unit.position[1] * TILEHEIGHT - cameraOffset[1];
+          surf.drawRect(ux, uy, TILEWIDTH, TILEHEIGHT, 'rgba(255,80,80,0.8)', 2);
+        }
       }
     }
     return surf;
