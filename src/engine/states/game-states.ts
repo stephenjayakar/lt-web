@@ -3433,6 +3433,17 @@ export class EventState extends State {
   // Currently speaking portrait (for talk animation)
   private speakingPortrait: EventPortrait | null = null;
 
+  // Background panorama image (drawn behind portraits, on top of map)
+  private background: HTMLImageElement | null = null;
+
+  // Chapter title overlay state
+  private chapterTitlePhase: 'none' | 'fade_in' | 'hold' | 'fade_out' = 'none';
+  private chapterTitleTimer: number = 0;
+  private chapterTitleText: string = '';
+
+  // Location card state
+  private locationCard: { text: string; timer: number; phase: 'fade_in' | 'hold' | 'fade_out'; alpha: number } | null = null;
+
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
@@ -3461,6 +3472,11 @@ export class EventState extends State {
     this.portraits.clear();
     this.portraitPriorityCounter = 1;
     this.speakingPortrait = null;
+    this.background = null;
+    this.chapterTitlePhase = 'none';
+    this.chapterTitleTimer = 0;
+    this.chapterTitleText = '';
+    this.locationCard = null;
   }
 
   // -----------------------------------------------------------------------
@@ -3498,6 +3514,16 @@ export class EventState extends State {
           this.speakingPortrait.stopTalking();
           this.speakingPortrait = null;
         }
+        this.advancePointer();
+      }
+      return;
+    }
+
+    // Allow skipping chapter title
+    if (this.chapterTitlePhase !== 'none') {
+      if (effective === 'SELECT' || effective === 'BACK') {
+        this.chapterTitlePhase = 'none';
+        this.chapterTitleTimer = 0;
         this.advancePointer();
       }
       return;
@@ -3583,6 +3609,61 @@ export class EventState extends State {
       return;
     }
 
+    // Chapter title overlay animation
+    if (this.chapterTitlePhase !== 'none') {
+      this.chapterTitleTimer += FRAMETIME;
+      switch (this.chapterTitlePhase) {
+        case 'fade_in':
+          if (this.chapterTitleTimer >= 1000) {
+            this.chapterTitlePhase = 'hold';
+            this.chapterTitleTimer = 0;
+          }
+          break;
+        case 'hold':
+          if (this.chapterTitleTimer >= 3000) {
+            this.chapterTitlePhase = 'fade_out';
+            this.chapterTitleTimer = 0;
+          }
+          break;
+        case 'fade_out':
+          if (this.chapterTitleTimer >= 1000) {
+            this.chapterTitlePhase = 'none';
+            this.chapterTitleTimer = 0;
+            this.advancePointer();
+          }
+          break;
+      }
+      return;
+    }
+
+    // Location card timer (non-blocking: just updates alpha, doesn't stop command processing)
+    if (this.locationCard) {
+      this.locationCard.timer += FRAMETIME;
+      switch (this.locationCard.phase) {
+        case 'fade_in':
+          this.locationCard.alpha = Math.min(0.9, this.locationCard.timer / 200);
+          if (this.locationCard.timer >= 200) {
+            this.locationCard.phase = 'hold';
+            this.locationCard.timer = 0;
+          }
+          break;
+        case 'hold':
+          this.locationCard.alpha = 0.9;
+          if (this.locationCard.timer >= 2000) {
+            this.locationCard.phase = 'fade_out';
+            this.locationCard.timer = 0;
+          }
+          break;
+        case 'fade_out':
+          this.locationCard.alpha = Math.max(0, 0.9 - (this.locationCard.timer / 200) * 0.9);
+          if (this.locationCard.timer >= 200) {
+            this.locationCard = null;
+          }
+          break;
+      }
+      // Location card does NOT block command processing — fall through
+    }
+
     // --- Burst-process commands ---
     let burst = 0;
     while (burst < MAX_BURST) {
@@ -3624,6 +3705,14 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   override draw(surf: Surface): Surface {
+    // Background panorama (drawn on top of map, behind portraits)
+    if (this.background) {
+      // Center the background image on the 240x160 surface
+      const bx = Math.floor((surf.width - this.background.width) / 2);
+      const by = Math.floor((surf.height - this.background.height) / 2);
+      surf.blitImage(this.background, 0, 0, this.background.width, this.background.height, bx, by);
+    }
+
     // Transition fade overlay
     if (this.transitionAlpha > 0) {
       surf.fillRect(0, 0, surf.width, surf.height, `rgba(0,0,0,${this.transitionAlpha})`);
@@ -3660,6 +3749,58 @@ export class EventState extends State {
     if (this.choiceMenu) {
       this.choiceMenu.draw(surf);
     }
+
+    // Chapter title overlay (drawn on top of everything)
+    if (this.chapterTitlePhase !== 'none') {
+      let ctAlpha = 1;
+      if (this.chapterTitlePhase === 'fade_in') {
+        ctAlpha = Math.min(1, this.chapterTitleTimer / 1000);
+      } else if (this.chapterTitlePhase === 'fade_out') {
+        ctAlpha = Math.max(0, 1 - this.chapterTitleTimer / 1000);
+      }
+
+      // Black background
+      surf.fillRect(0, 0, surf.width, surf.height, `rgba(0,0,0,${ctAlpha})`);
+
+      if (ctAlpha > 0.1) {
+        // Horizontal banner bar across the middle
+        const bannerY = Math.floor(surf.height / 2) - 16;
+        const bannerH = 32;
+        surf.fillRect(0, bannerY, surf.width, bannerH, `rgba(40,20,10,${ctAlpha * 0.9})`);
+        // Gold border lines
+        surf.fillRect(0, bannerY, surf.width, 1, `rgba(200,170,80,${ctAlpha * 0.8})`);
+        surf.fillRect(0, bannerY + bannerH - 1, surf.width, 1, `rgba(200,170,80,${ctAlpha * 0.8})`);
+
+        // Chapter title text (centered)
+        const titleColor = `rgba(255,230,120,${ctAlpha})`;
+        const titleFont = '10px monospace';
+        // Approximate centering
+        const textW = this.chapterTitleText.length * 6; // ~6px per char at 10px mono
+        const tx = Math.floor((surf.width - textW) / 2);
+        const ty = bannerY + Math.floor((bannerH - 10) / 2);
+        surf.drawText(this.chapterTitleText, tx, ty, titleColor, titleFont);
+      }
+    }
+
+    // Location card overlay (upper-left corner)
+    if (this.locationCard && this.locationCard.alpha > 0) {
+      const lc = this.locationCard;
+      const lcPad = 8;
+      const lcFont = '8px monospace';
+      const lcTextW = lc.text.length * 5; // ~5px per char at 8px mono
+      const lcW = lcTextW + lcPad * 2;
+      const lcH = 16 + lcPad;
+      const lcX = 10;
+      const lcY = 4;
+
+      // Brown card background
+      surf.fillRect(lcX, lcY, lcW, lcH, `rgba(60,40,20,${lc.alpha})`);
+      surf.drawRect(lcX, lcY, lcW, lcH, `rgba(140,110,60,${lc.alpha * 0.8})`);
+
+      // Text
+      surf.drawText(lc.text, lcX + lcPad, lcY + Math.floor(lcPad / 2), `rgba(255,240,200,${lc.alpha})`, lcFont);
+    }
+
     return surf;
   }
 
@@ -3701,9 +3842,17 @@ export class EventState extends State {
       this.waiting = false;
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
+      this.background = null;
+      this.chapterTitleTimer = 0;
+      this.chapterTitlePhase = 'none';
+      this.locationCard = null;
     } else {
       this.currentEvent = null;
       this.portraits.clear();
+      this.background = null;
+      this.chapterTitleTimer = 0;
+      this.chapterTitlePhase = 'none';
+      this.locationCard = null;
       game.state.back();
     }
   }
@@ -5098,10 +5247,160 @@ export class EventState extends State {
         return false;
       }
 
-      // ----- Other visual commands (still stubs) -----
+      // ----- Background -----
+      case 'change_background': {
+        // change_background;[PanoramaNid];[keep_portraits];[scroll]
+        // No panorama arg = remove background
+        const bgKnownFlags = new Set(['keep_portraits', 'scroll']);
+        const bgFlagSet = new Set<string>();
+        let bgNid: string | null = null;
+
+        for (const a of args) {
+          const lower = a.trim().toLowerCase();
+          if (bgKnownFlags.has(lower)) {
+            bgFlagSet.add(lower);
+          } else if (a.trim() && !bgNid) {
+            bgNid = a.trim(); // Keep original case for the panorama NID
+          }
+        }
+
+        if (!bgNid) {
+          // Remove background
+          this.background = null;
+        } else {
+          // Load panorama image asynchronously
+          const game = getGame();
+          const panoramaNid = bgNid;
+          game.resourceManager?.loadPanorama(panoramaNid).then((img: HTMLImageElement) => {
+            this.background = img;
+          }).catch(() => {
+            console.warn(`EventState: panorama "${panoramaNid}" not found`);
+          });
+        }
+
+        // By default, change_background clears all portraits
+        if (!bgFlagSet.has('keep_portraits')) {
+          this.portraits.clear();
+        }
+
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Chapter Title -----
+      case 'chapter_title': {
+        // chapter_title;[Music];[CustomTitle]
+        const ctMusic = args[0]?.trim() || null;
+        const ctTitle = args[1]?.trim() || null;
+
+        // Start music if specified
+        if (ctMusic) {
+          const game = getGame();
+          game.audioManager?.playMusic(ctMusic);
+        }
+
+        // Determine title text
+        const game2 = getGame();
+        this.chapterTitleText = ctTitle || game2.currentLevel?.name || 'Chapter';
+        this.chapterTitlePhase = 'fade_in';
+        this.chapterTitleTimer = 0;
+
+        // Disable skip mode (player must watch or manually skip)
+        this.skipMode = false;
+
+        // Blocking — don't advance pointer; the update loop handles it
+        return true;
+      }
+
+      // ----- Location Card -----
+      case 'location_card': {
+        // location_card;Text
+        const lcText = args[0]?.trim() || '';
+        this.locationCard = {
+          text: lcText,
+          timer: 0,
+          phase: 'fade_in',
+          alpha: 0,
+        };
+        // Block for the fade_in + hold duration. The wait timer mechanism
+        // will advance the pointer when done.
+        this.waiting = true;
+        this.waitTimer = 2200; // 200ms fade in + 2000ms hold
+        return true;
+      }
+
+      // ----- Has Visited (marks unit as having completed an action) -----
+      case 'has_visited': {
+        // has_visited;UnitNid;[attacked]
+        const hvUnitNid = args[0]?.trim() ?? '';
+        const hvFlags = args.slice(1).map(a => a.trim().toLowerCase());
+        const hvUnit = this.findUnit(hvUnitNid);
+        if (hvUnit) {
+          if (hvFlags.includes('attacked')) {
+            hvUnit.hasAttacked = true;
+          } else {
+            hvUnit.hasTraded = true;
+          }
+          // If the unit doesn't have Canto, mark them as finished
+          if (!hvUnit.hasCanto) {
+            hvUnit.finished = true;
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Unlock (simplified: consume a key/lockpick use) -----
+      case 'unlock':
+      case 'find_unlock':
+      case 'spend_unlock': {
+        // unlock;UnitNid — in the full Python engine, this is a complex macro.
+        // Simplified: find the first item with 'unlock' component, decrement its uses.
+        const unlockUnitNid = args[0]?.trim() ?? '';
+        const unlockUnit = this.findUnit(unlockUnitNid);
+        if (unlockUnit) {
+          // Find first item that can unlock (has 'unlock' or 'key' component)
+          const keyItem = unlockUnit.items.find(item => {
+            for (const [compName] of item.components) {
+              if (compName === 'unlock' || compName === 'Unlock' ||
+                  compName === 'keys' || compName === 'Keys') return true;
+            }
+            return false;
+          });
+          if (keyItem && keyItem.uses !== undefined && keyItem.uses > 0) {
+            keyItem.uses--;
+            if (keyItem.uses <= 0) {
+              // Remove broken item
+              const idx = unlockUnit.items.indexOf(keyItem);
+              if (idx >= 0) unlockUnit.items.splice(idx, 1);
+            }
+          }
+          // If no key item, check for Locktouch skill (no item consumed)
+          // Already handled implicitly — if no key found, nothing happens
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Interact Unit (scripted combat — simplified) -----
+      case 'interact_unit': {
+        // interact_unit;AttackerNid;DefenderNid;[outcomes...]
+        // outcomes like hit1, crit1, miss1, end
+        // For now, skip (complex to implement properly)
+        console.warn('EventState: interact_unit not yet fully implemented');
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Load unit into memory (doesn't place on map) -----
+      case 'load_unit':
+      case 'make_generic':
+        // Stub — used in later chapter cinematics
+        this.advancePointer();
+        return false;
+
       case 'hide_combat_ui':
       case 'show_combat_ui':
-      case 'change_background':
       case 'pause_background':
       case 'unpause_background':
         // Visual/UI commands — skip for now to allow event progression
