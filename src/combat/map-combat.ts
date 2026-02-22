@@ -105,6 +105,7 @@ export class MapCombat {
     db: Database,
     rngMode: RngMode,
     board?: GameBoard | null,
+    script?: string[] | null,
   ) {
     this.attacker = attacker;
     this.attackItem = attackItem;
@@ -114,7 +115,7 @@ export class MapCombat {
 
     // Solve the combat to get the strike sequence
     const solver = new CombatPhaseSolver();
-    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board);
+    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
 
     this.state = 'init';
     this.currentStrikeIndex = 0;

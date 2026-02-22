@@ -2045,9 +2045,13 @@ export class CombatState extends State {
     const defenseItem = getEquippedWeapon(defender);
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
+    // Read and consume the combat script (set by interact_unit)
+    const script = game.combatScript;
+    game.combatScript = null;
+
     // Check if both units have battle animations available
     const canAnimate = this.tryCreateAnimationCombat(
-      attacker, attackItem, defender, defenseItem, rngMode, game,
+      attacker, attackItem, defender, defenseItem, rngMode, game, script,
     );
 
     if (canAnimate) {
@@ -2066,6 +2070,7 @@ export class CombatState extends State {
         game.db,
         rngMode,
         game.board,
+        script,
       );
       console.log(`CombatState: using MapCombat (${attacker.name} vs ${defender.name})`);
     }
@@ -2100,6 +2105,7 @@ export class CombatState extends State {
     defenseItem: ItemObject | null,
     rngMode: string,
     game: any,
+    script?: string[] | null,
   ): boolean {
     try {
       const db = game.db;
@@ -2150,6 +2156,7 @@ export class CombatState extends State {
         rightAnim,
         leftIsAttacker,
         game.board,
+        script,
       );
 
       // Load platform images asynchronously (they'll appear once loaded)
@@ -5616,14 +5623,112 @@ export class EventState extends State {
         return false;
       }
 
-      // ----- Interact Unit (scripted combat — simplified) -----
+      // ----- Interact Unit (scripted combat) -----
       case 'interact_unit': {
-        // interact_unit;AttackerNid;DefenderNid;[outcomes...]
-        // outcomes like hit1, crit1, miss1, end
-        // For now, skip (complex to implement properly)
-        console.warn('EventState: interact_unit not yet fully implemented');
-        this.advancePointer();
-        return false;
+        // interact_unit;AttackerNid;TargetNidOrPos;CombatScript;Ability;flags
+        // e.g. interact_unit;Eirika;Boss;hit1,crit1,end;Rapier
+        // CombatScript: comma-separated tokens (hit1,hit2,crit1,crit2,miss1,miss2,--,end)
+        // flags: immediate, force_animation, force_no_animation
+        const iuAttackerNid = args[0] ?? '';
+        const iuTargetArg = args[1] ?? '';
+        const iuScriptStr = args[2] ?? '';
+        const iuAbilityNid = args[3] ?? '';
+        const iuFlagsStr = args.slice(4).join(';').toLowerCase();
+        const iuImmediate = iuFlagsStr.includes('immediate');
+
+        // Resolve attacker
+        const iuAttacker = game.units.get(iuAttackerNid) ?? null;
+        if (!iuAttacker) {
+          console.warn(`interact_unit: attacker "${iuAttackerNid}" not found`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Resolve defender - try unit NID first, then position
+        let iuDefender: UnitObject | null = null;
+        iuDefender = game.units.get(iuTargetArg) ?? null;
+        if (!iuDefender) {
+          // Try parsing as position (x,y)
+          const posMatch = iuTargetArg.match(/\(?(\d+),\s*(\d+)\)?/);
+          if (posMatch && game.board) {
+            const tx = parseInt(posMatch[1], 10);
+            const ty = parseInt(posMatch[2], 10);
+            iuDefender = game.board.getUnit(tx, ty);
+          }
+        }
+        if (!iuDefender) {
+          console.warn(`interact_unit: target "${iuTargetArg}" not found`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Parse combat script
+        const iuScript = iuScriptStr
+          ? iuScriptStr.split(',').map((t: string) => t.trim().toLowerCase())
+          : null;
+
+        // Resolve ability/item — equip specified weapon if provided
+        if (iuAbilityNid) {
+          let abilityItem = iuAttacker.items.find(
+            (i: ItemObject) => i.nid === iuAbilityNid || i.name === iuAbilityNid,
+          );
+          if (!abilityItem && game.db) {
+            // Create a temporary item from the DB
+            const itemPrefab = game.db.items?.get(iuAbilityNid);
+            if (itemPrefab) {
+              abilityItem = new ItemObjectClass(itemPrefab);
+              iuAttacker.items.unshift(abilityItem);
+            }
+          }
+          if (abilityItem) {
+            // Move to front of inventory (equip)
+            const idx = iuAttacker.items.indexOf(abilityItem);
+            if (idx > 0) {
+              iuAttacker.items.splice(idx, 1);
+              iuAttacker.items.unshift(abilityItem);
+            }
+          }
+        }
+
+        // Set up combat through CombatState
+        game.selectedUnit = iuAttacker;
+        game.combatTarget = iuDefender;
+        game.combatScript = iuScript;
+
+        if (iuImmediate) {
+          // Immediate mode: resolve combat without visual animation
+          const attackItem = iuAttacker.items.find((i: ItemObject) => i.isWeapon());
+          const defItem = iuDefender.items.find((i: ItemObject) => i.isWeapon()) ?? null;
+          if (attackItem) {
+            const rngMode2 = game.db.getConstant('rng_mode', 'true_hit') as any;
+            const mc = new MapCombat(
+              iuAttacker, attackItem, iuDefender, defItem,
+              game.db, rngMode2, game.board, iuScript,
+            );
+            // Run combat to completion instantly
+            while (mc.state !== 'done') {
+              mc.update(16);
+            }
+            const results = mc.applyResults();
+            // Handle deaths
+            if (results.defenderDead && iuDefender.position && game.board) {
+              game.board.removeUnit(iuDefender.position[0], iuDefender.position[1]);
+              game.units.delete(iuDefender.nid);
+            }
+            if (results.attackerDead && iuAttacker.position && game.board) {
+              game.board.removeUnit(iuAttacker.position[0], iuAttacker.position[1]);
+              game.units.delete(iuAttacker.nid);
+            }
+          }
+          game.combatScript = null;
+          this.advancePointer();
+          return false;
+        } else {
+          // Push combat state — event pauses until combat completes
+          game.state.change('combat');
+          this.advancePointer();
+          return true; // Block until combat state completes
+        }
       }
 
       // ----- Load unit into memory (doesn't place on map) -----

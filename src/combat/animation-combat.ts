@@ -212,6 +212,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     rightAnim: BattleAnimation,
     leftIsAttacker: boolean,
     board?: any,
+    script?: string[] | null,
   ) {
     this.attacker = attacker;
     this.defender = defender;
@@ -243,7 +244,7 @@ export class AnimationCombat implements AnimationCombatOwner {
 
     // Solve strikes
     const solver = new CombatPhaseSolver();
-    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board);
+    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board, script);
 
     // HP init
     const leftUnit = leftIsAttacker ? attacker : defender;
