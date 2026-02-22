@@ -40,6 +40,7 @@ export class UnitRenderer {
     cameraOffsetX: number,
     cameraOffsetY: number,
     movementOffsets: Map<string, [number, number]>,
+    currentPhaseTeam: string = '',
   ): void {
     // Filter to alive, positioned units
     const visible = units.filter(
@@ -64,8 +65,8 @@ export class UnitRenderer {
       const sprite = this.sprites.get(unit.nid);
 
       if (sprite) {
-        // Update sprite state
-        if (unit.finished) {
+        // Update sprite state — only grey out finished units on the active team
+        if (unit.finished && unit.team === currentPhaseTeam) {
           sprite.state = 'gray';
         } else if (moveOffset && (moveOffset[0] !== 0 || moveOffset[1] !== 0)) {
           sprite.state = 'moving';
@@ -76,7 +77,7 @@ export class UnitRenderer {
 
         sprite.draw(surf, worldX, worldY, cameraOffsetX, cameraOffsetY);
       } else {
-        this.drawPlaceholder(surf, unit, worldX, worldY, cameraOffsetX, cameraOffsetY);
+        this.drawPlaceholder(surf, unit, worldX, worldY, cameraOffsetX, cameraOffsetY, currentPhaseTeam);
       }
     }
   }
@@ -85,7 +86,7 @@ export class UnitRenderer {
    * Update sprite states based on unit state.
    * Called independently of drawing when you need to sync states without rendering.
    */
-  updateSpriteStates(units: UnitObject[]): void {
+  updateSpriteStates(units: UnitObject[], currentPhaseTeam: string = ''): void {
     for (const unit of units) {
       const sprite = this.sprites.get(unit.nid);
       if (!sprite) continue;
@@ -93,7 +94,7 @@ export class UnitRenderer {
       if (unit.isDead()) {
         // Dead units won't be drawn, but keep state consistent
         sprite.state = 'gray';
-      } else if (unit.finished) {
+      } else if (unit.finished && unit.team === currentPhaseTeam) {
         sprite.state = 'gray';
       } else if (sprite.state === 'gray') {
         // Unit is no longer finished; restore to standing
@@ -113,6 +114,7 @@ export class UnitRenderer {
     worldY: number,
     offsetX: number,
     offsetY: number,
+    currentPhaseTeam: string = '',
   ): void {
     const px = worldX - offsetX;
     const py = worldY - offsetY;
@@ -121,8 +123,8 @@ export class UnitRenderer {
     const inset = 2;
     surf.fillRect(px + inset, py + inset, TILEWIDTH - inset * 2, TILEHEIGHT - inset * 2, color);
 
-    // Dim overlay for finished units
-    if (unit.finished) {
+    // Dim overlay for finished units on the active team only
+    if (unit.finished && unit.team === currentPhaseTeam) {
       surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, 'rgba(0,0,0,0.35)');
     }
   }
