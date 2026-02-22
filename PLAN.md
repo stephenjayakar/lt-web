@@ -61,6 +61,22 @@ menu backgrounds, and item icon rendering.
   CSS font sizes mapped to BMP font NIDs (<=7px -> small, else text).
   CSS colors mapped to palette names. Dialog word-wrap uses BMP font
   width measurement for accurate line breaks.
+- **Event command gap analysis and fixes.**
+  - Added `s` alias for `speak` (fixes 173 broken support conversation
+    dialogue lines).
+  - Added `bop` alias for `bop_portrait`.
+  - Fixed `change_music` phase variant: now correctly reads `args[1]`
+    as music NID when `args[0]` is a phase type (player_phase, etc.).
+  - Implemented `change_tilemap` event command: swaps the level's
+    tilemap mid-event, saves unit positions, rebuilds game board,
+    resets cursor/camera. Used for cutscene backdrop changes.
+  - Added `prep` and `base` stubs (skip to proceed).
+  - Added overworld command stubs (`toggle_narration_mode`,
+    `overworld_cinematic`, `reveal_overworld_node/road`,
+    `overworld_move_unit`, `set_overworld_position`).
+  - Added arena/overlay/advanced stubs (`draw_overlay_sprite`,
+    `table`, `textbox`, `set_wexp`, `resurrect`, `autolevel_to`,
+    `add_lore`, `add_base_convo`, `enable_fog_of_war`, `set_fog_of_war`).
 
 ### Previous Session
 - **Autotile animation system.** Tilesets with animated water/lava tiles
@@ -497,7 +513,9 @@ add:
 - [x] `screen_shake` / `screen_shake_end` (5 shake patterns, blocking/non-blocking)
 - [x] `interact_unit` (scripted combat with forced outcomes, CombatScript tokens, immediate mode)
 - [x] `shop` (full shop interface: buy/sell with stock, gold tracking, item icons)
-- [ ] `prep` (opens preparations screen — not yet implemented)
+- [x] `change_tilemap` (swaps tilemap mid-event, saves/restores unit positions, rebuilds board)
+- [x] `s` / `bop` aliases (speak short alias for support convos, bop_portrait alias)
+- [ ] `prep` (stub — skips; full prep screen not yet implemented)
 
 Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 
