@@ -2720,14 +2720,18 @@ export class CombatState extends State {
     drawBattleSprite(rightDraw, '200,80,80', rightPlatX, rightPlatY);
 
     // --- Name tags ---
-    // Slide in from left/right edges based on nameTagProgress
+    // Anchored to bottom-left / bottom-right, above HP bars
+    // EXP bar is at WINHEIGHT-14 (10px tall). HP bars sit above it.
+    // Name tags sit above HP bars.
     const nameSlide = rs.nameTagProgress;
     if (nameSlide > 0) {
       const NAME_TAG_W = 80;
       const NAME_TAG_H = 12;
+      const HP_BAR_SECTION_H = 20;
+      // Bottom anchor: name tag above HP bar, which is above EXP bar area
+      const nameY = WINHEIGHT - 14 - HP_BAR_SECTION_H - 2 - NAME_TAG_H - 2 + shakeY;
       const leftNameX = -NAME_TAG_W + nameSlide * (NAME_TAG_W + 4) + shakeX;
       const rightNameX = WINWIDTH - nameSlide * (NAME_TAG_W + 4) + shakeX;
-      const nameY = 4 + shakeY;
 
       // Left name tag background
       surf.fillRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(32,32,64,0.9)');
@@ -2739,14 +2743,15 @@ export class CombatState extends State {
     }
 
     // --- HP bars ---
-    // Slide in from left/right edges based on hpBarProgress
+    // Anchored to bottom-left / bottom-right, just above EXP bar area
     const hpSlide = rs.hpBarProgress;
     if (hpSlide > 0) {
       const HP_BAR_W = 72;
       const HP_BAR_SECTION_H = 20;
+      // Bottom anchor: HP bar just above the EXP bar (WINHEIGHT - 14)
+      const hpY = WINHEIGHT - 14 - HP_BAR_SECTION_H - 2 + shakeY;
       const leftHpX = -HP_BAR_W + hpSlide * (HP_BAR_W + 4) + shakeX;
       const rightHpX = WINWIDTH - hpSlide * (HP_BAR_W + 4) + shakeX;
-      const hpY = 18 + shakeY;
 
       // Left HP bar
       this.drawBattleHpBar(surf, leftHpX, hpY, HP_BAR_W, HP_BAR_SECTION_H, rs.leftHp);

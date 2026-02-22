@@ -28,10 +28,10 @@ touch/mouse/keyboard input. Component dispatch system wired into combat.
   left of the name/stats. Portraits loaded asynchronously via
   ResourceManager and cached per portrait NID. HUD text shifts right
   when portrait is displayed.
-- **HUD anchored to bottom of screen.** Unit info panel moved to
-  bottom-left, terrain info panel to bottom-right. Prevents overlap
-  with combat UI elements (name tags, HP bars) which draw at the top
-  of the game surface.
+- **Combat UI moved to bottom of screen.** Animation combat name tags
+  and HP bars now anchor to bottom-left/right of the game surface,
+  just above the EXP bar. HUD (unit info + terrain) stays at top.
+  Prevents overlap between HUD and combat UI elements.
 - **Fix reinforcements not spawning.** `game.turnCount` was stuck at 1
   because it was never synced from `game.phase.turnCount` after phase
   advances. Now synced in TurnChangeState.begin(). This fixes ALL
