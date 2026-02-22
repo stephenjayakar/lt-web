@@ -70,6 +70,9 @@ export class UnitObject {
   /** AI group NID (for coordinated activation). */
   aiGroup: NID;
 
+  /** Portrait NID for this unit (used for chibi display in HUD). */
+  portraitNid: NID;
+
   // -- Turn-state flags ---------------------------------------------------
   hasAttacked: boolean;
   hasMoved: boolean;
@@ -148,6 +151,7 @@ export class UnitObject {
     this.sprite = null;
     this.startingPosition = null;
     this.aiGroup = '';
+    this.portraitNid = prefab.portrait_nid ?? '';
     this.hasAttacked = false;
     this.hasMoved = false;
     this.hasTraded = false;

@@ -1,7 +1,7 @@
 import { Surface } from '../engine/surface';
 import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS } from '../engine/constants';
 
-export type HighlightType = 'move' | 'attack' | 'spell' | 'splash' | 'selected';
+export type HighlightType = 'move' | 'attack' | 'spell' | 'splash' | 'selected' | 'threat';
 
 /** Base RGBA for each highlight type (alpha is the centre value of the pulse). */
 const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> = {
@@ -10,6 +10,7 @@ const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> 
   spell:    [0,   200, 80,  0.25],
   splash:   [200, 100, 255, 0.20],
   selected: [255, 255, 0,   0.30],
+  threat:   [180, 0,   80,  0.22],  // Magenta/purple for enemy threat zones
 };
 
 /**
@@ -60,6 +61,30 @@ export class HighlightManager {
     for (const [x, y] of positions) {
       this.highlights.set(`${x},${y}`, 'spell');
     }
+  }
+
+  setThreatHighlights(positions: [number, number][]): void {
+    for (const [key, type] of this.highlights) {
+      if (type === 'threat') this.highlights.delete(key);
+    }
+    for (const [x, y] of positions) {
+      this.highlights.set(`${x},${y}`, 'threat');
+    }
+  }
+
+  /** Clear all highlights of a specific type. */
+  clearType(type: HighlightType): void {
+    for (const [key, t] of this.highlights) {
+      if (t === type) this.highlights.delete(key);
+    }
+  }
+
+  /** Check if any highlights of a given type exist. */
+  hasType(type: HighlightType): boolean {
+    for (const t of this.highlights.values()) {
+      if (t === type) return true;
+    }
+    return false;
   }
 
   getHighlights(): Map<string, HighlightType> {

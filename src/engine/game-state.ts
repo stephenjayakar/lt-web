@@ -97,6 +97,7 @@ export class GameState {
     this.unitRenderer = new UnitRenderer();
     this.movementSystem = new MovementSystem();
     this.hud = new HUD();
+    this.hud.setResourceManager(resources);
     this.actionLog = new ActionLog();
 
     // Subsystems that depend on level data — null until loadLevel()

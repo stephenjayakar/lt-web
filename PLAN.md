@@ -17,6 +17,26 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **Enemy threat zones.** Press INFO (C/Shift) on an empty tile to
+  toggle all-enemy threat range overlay (magenta/purple). Press SELECT
+  on an enemy unit to show that unit's individual move (blue) and attack
+  (red) ranges. Press INFO on an enemy to show their range. Computed
+  using PathSystem.getValidMoves + getAttackPositions for each enemy.
+  New `'threat'` highlight type added to HighlightManager.
+- **Chibi portrait in HUD.** Unit info panel now shows the unit's 32x32
+  chibi portrait (extracted from sprite sheet at position 96,16) to the
+  left of the name/stats. Portraits loaded asynchronously via
+  ResourceManager and cached per portrait NID. HUD text shifts right
+  when portrait is displayed.
+- **Fix reinforcements not spawning.** `game.turnCount` was stuck at 1
+  because it was never synced from `game.phase.turnCount` after phase
+  advances. Now synced in TurnChangeState.begin(). This fixes ALL
+  turn-conditioned events (reinforcements, AI changes, etc.) for every
+  chapter.
+- **portraitNid field on UnitObject.** Copied from `UnitPrefab.portrait_nid`
+  at construction time, enabling portrait lookup without database access.
+
+### Previous Session
 - **Dialog text word-wrapping.** Dialog boxes now word-wrap text to fit
   within the box width. Uses Canvas `measureText()` for accurate pixel
   width measurement. Box height auto-sizes based on number of wrapped
@@ -371,6 +391,10 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   rendered below each unit on the map. Still needed: rescue icon, status
   effect icons, movement arrows.
   - Original: `app/engine/unit_sprite.py` (draw_hp, draw_rescue_icon, etc.)
+- [x] **Enemy threat zones.** INFO on empty tile toggles all-enemy attack
+  range overlay (magenta). SELECT/INFO on enemy shows individual range.
+  Computed via PathSystem per enemy unit. New `'threat'` highlight type.
+  - Original: `app/engine/boundary.py`
 - [x] **Cursor sprite.** Uses the actual 128x128 cursor sprite sheet
   (`sprites/cursor.png`) with 32x32 frames. 3-frame back-and-forth
   bounce animation (timing [20,2,8,2] = ~533ms cycle) matching the
@@ -565,7 +589,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `data/database.ts` | 436 | Done — combat anim data loading |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
 | `data/resource-manager.ts` | 309 | Done |
-| `objects/unit.ts` | 420 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup |
+| `objects/unit.ts` | ~429 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup, portraitNid |
 | `objects/item.ts` | ~195 | Done — healing, stat boosters, uses decrement, droppable, isSpell/isUsable/targetsAllies/hasNoAI/canHeal |
 | `objects/skill.ts` | 43 | Stub, needs component dispatch |
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
@@ -573,7 +597,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `rendering/map-view.ts` | 270 | Done — dynamic viewport, unit HP bar overlays |
 | `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
 | `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
-| `rendering/highlight.ts` | 112 | Done |
+| `rendering/highlight.ts` | 137 | Done — threat highlight type, clearType/hasType helpers |
 | `pathfinding/pathfinding.ts` | 408 | Done |
 | `pathfinding/path-system.ts` | 228 | Done |
 | `movement/movement-system.ts` | 168 | Done, needs roam movement |
@@ -590,7 +614,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `events/event-manager.ts` | 770 | Done — FIFO queue, condition evaluator, talk pairs, ConditionContext |
 | `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
 | `ui/menu.ts` | 205 | Done — click + hover mouse support. Needs 9-slice backgrounds |
-| `ui/hud.ts` | 214 | Done — screen-space rendering, terrain DEF + AVO display |
+| `ui/hud.ts` | ~253 | Done — screen-space rendering, terrain DEF + AVO display, chibi portraits |
 | `ui/health-bar.ts` | 97 | Done |
 | `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
 | `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
