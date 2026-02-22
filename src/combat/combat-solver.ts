@@ -1,6 +1,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
+import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
 
@@ -52,6 +53,7 @@ export class CombatPhaseSolver {
     defenseItem: ItemObject | null,
     db: Database,
     rngMode: RngMode,
+    board?: GameBoard | null,
   ): CombatStrike[] {
     this.strikes = [];
 
@@ -100,7 +102,7 @@ export class CombatPhaseSolver {
       for (let i = 0; i < count; i++) {
         if (targetHpRef.hp <= 0) break;
         if (strikerHpRef.hp <= 0) break;
-        const strike = this.resolveStrike(striker, item, target, db, rngMode, isCounter);
+        const strike = this.resolveStrike(striker, item, target, db, rngMode, isCounter, board);
         this.strikes.push(strike);
         if (strike.hit) {
           targetHpRef.hp -= strike.damage;
@@ -244,10 +246,11 @@ export class CombatPhaseSolver {
     db: Database,
     rngMode: RngMode,
     isCounter: boolean,
+    board?: GameBoard | null,
   ): CombatStrike {
     // Compute hit chance with weapon triangle bonus
     const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
-    const baseHit = calcs.computeHit(striker, item, target, db);
+    const baseHit = calcs.computeHit(striker, item, target, db, board);
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
     const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
@@ -268,7 +271,7 @@ export class CombatPhaseSolver {
     // Compute damage (0 on miss)
     let dmg = 0;
     if (hit) {
-      const baseDmg = calcs.computeDamage(striker, item, target, db);
+      const baseDmg = calcs.computeDamage(striker, item, target, db, board);
       dmg = baseDmg + wt.damageBonus;
 
       // Crit damage

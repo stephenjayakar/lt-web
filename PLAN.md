@@ -17,6 +17,11 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **Terrain avoid/defense now applied in combat.** Extracted shared
+  `terrain-bonuses.ts` utility. `avoid()` and `defense()` in combat-calcs
+  now accept an optional `board` parameter and add terrain bonuses from
+  the terrain's status skill. Threaded through CombatPhaseSolver,
+  MapCombat, AnimationCombat, and AIController.
 - **HUD moved to top of screen.** Unit info panel (top-left) and terrain
   info panel (top-right) no longer overlap with dialogue boxes at bottom.
 - **Skip-all-dialogue.** Pressing BACK (X/Escape) during a dialog now

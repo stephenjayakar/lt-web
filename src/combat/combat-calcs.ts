@@ -1,8 +1,10 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
+import type { GameBoard } from '../objects/game-board';
 import * as itemSystem from './item-system';
 import * as skillSystem from './skill-system';
+import { getTerrainBonusesForUnit } from './terrain-bonuses';
 
 // ============================================================
 // CombatCalcs - All combat calculation formulas.
@@ -134,7 +136,7 @@ export function accuracy(unit: UnitObject, item: ItemObject, db: Database): numb
 }
 
 /** Calculate avoid for a defender. */
-export function avoid(unit: UnitObject, db: Database): number {
+export function avoid(unit: UnitObject, db: Database, board?: GameBoard | null): number {
   // Check for skill formula override
   const formulaOverride = skillSystem.avoidFormula(unit);
   const eqName = formulaOverride ?? 'AVOID';
@@ -154,7 +156,10 @@ export function avoid(unit: UnitObject, db: Database): number {
   // Add skill static modifier
   const skillMod = skillSystem.modifyAvoid(unit, equippedWeapon);
 
-  return baseAvoid + skillMod;
+  // Add terrain avoid bonus
+  const terrainAvo = board ? getTerrainBonusesForUnit(unit, board, db)[1] : 0;
+
+  return baseAvoid + skillMod + terrainAvo;
 }
 
 /** Calculate damage output. */
@@ -176,7 +181,7 @@ export function damage(unit: UnitObject, item: ItemObject, db: Database): number
 }
 
 /** Calculate defense/resistance against an incoming attack item. */
-export function defense(unit: UnitObject, attackItem: ItemObject, db: Database): number {
+export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, board?: GameBoard | null): number {
   // Check for skill formula override
   const formulaOverride = skillSystem.resistFormula(unit);
 
@@ -188,7 +193,10 @@ export function defense(unit: UnitObject, attackItem: ItemObject, db: Database):
   // Add skill static modifier for resist
   const skillMod = skillSystem.modifyResist(unit, null);
 
-  return baseDef + skillMod;
+  // Add terrain defense bonus (only for physical attacks)
+  const terrainDef = (!magic && board) ? getTerrainBonusesForUnit(unit, board, db)[0] : 0;
+
+  return baseDef + skillMod + terrainDef;
 }
 
 /** Calculate attack speed (for doubling checks). */
@@ -254,9 +262,10 @@ export function computeHit(
   attackItem: ItemObject,
   defender: UnitObject,
   db: Database,
+  board?: GameBoard | null,
 ): number {
   const acc = accuracy(attacker, attackItem, db);
-  const avo = avoid(defender, db);
+  const avo = avoid(defender, db, board);
 
   // Dynamic modifiers from items and skills (combat context)
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
@@ -277,9 +286,10 @@ export function computeDamage(
   attackItem: ItemObject,
   defender: UnitObject,
   db: Database,
+  board?: GameBoard | null,
 ): number {
   const atk = damage(attacker, attackItem, db);
-  const def = defense(defender, attackItem, db);
+  const def = defense(defender, attackItem, db, board);
 
   // Dynamic modifiers from items and skills
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;

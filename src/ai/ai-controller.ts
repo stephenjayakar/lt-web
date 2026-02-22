@@ -710,11 +710,11 @@ export class AIController {
     offenseBias: number,
   ): number {
     // --- Offense ---
-    const expectedDamage = computeDamage(unit, item, target, this.db);
+    const expectedDamage = computeDamage(unit, item, target, this.db, this.board);
     const targetHP = Math.max(1, target.currentHp);
     const lethality = Math.min(1.0, expectedDamage / targetHP);
 
-    const hitChance = computeHit(unit, item, target, this.db);
+    const hitChance = computeHit(unit, item, target, this.db, this.board);
     const accuracy = hitChance / 100;
 
     const defenderWeapon = getEquippedWeapon(target);
@@ -741,8 +741,8 @@ export class AIController {
     let defense: number;
 
     if (counterWeapon) {
-      const targetDamage = computeDamage(target, counterWeapon, unit, this.db);
-      const targetAccuracy = computeHit(target, counterWeapon, unit, this.db);
+      const targetDamage = computeDamage(target, counterWeapon, unit, this.db, this.board);
+      const targetAccuracy = computeHit(target, counterWeapon, unit, this.db, this.board);
       const rawThreat = (targetDamage * targetAccuracy) / 100;
       const unitHP = Math.max(1, unit.currentHp);
       defense = 1 - Math.min(1.0, rawThreat / unitHP);
