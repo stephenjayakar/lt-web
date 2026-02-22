@@ -8,7 +8,7 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**47 source files, ~17,200 lines of TypeScript.**
+**49 source files, ~18,000 lines of TypeScript.**
 Builds cleanly with zero type errors (176KB JS / 49KB gzipped).
 Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
 rendering to a dynamically-scaled HTML5 Canvas with dynamic viewport
@@ -17,6 +17,49 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **AI item use (healing items and staves).** AI units with `Support`
+  behavior now use `supportPrimaryAI()` to evaluate all healing items
+  (staves and consumables) against injured allies. Implements the Python
+  `Heal.ai_priority()` formula: `help_term * heal_term` where help_term
+  is missing health fraction and heal_term is effective heal fraction.
+  Staves go through the combat system (`'attack'` action); consumables
+  (Vulnerary, Elixir) use a new `'use_item'` action type that applies
+  healing directly. Self-targeting for consumables uses a "safest position"
+  heuristic (farthest from enemies). SecondaryAI for Support now weights
+  by injury severity (weight 100) over distance (weight 60), matching
+  Python behavior. Items with `no_ai` component are skipped.
+  New `ItemObject` methods: `isSpell()`, `isUsable()`, `targetsAllies()`,
+  `hasNoAI()`, `canHeal()`. `getHealAmount()` now accepts optional caster
+  MAG for staff equation estimation. `getMaxItemRange()` now includes
+  spells/staves for proper view range calculations.
+- **Portraits in dialog.** Full portrait system ported from Python:
+  - New `EventPortrait` class (`event-portrait.ts`, ~430 lines) with
+    sprite sheet compositing (main face + mouth frames + eye blink),
+    automatic blinking, talking animation (randomized mouth state machine),
+    transitions (fade in/out + slide), movement, bop, mirroring,
+    saturation, and expression system (Smile, CloseEyes, Wink, etc.).
+  - New `screen-positions.ts` (~100 lines) resolving named positions
+    (Left, Right, MidLeft, CenterRight, etc.) to pixel coordinates
+    with auto-mirror for left-side portraits.
+  - Portrait metadata loaded from `portraits.json` (blinking_offset,
+    smiling_offset) via Database. `PortraitPrefab` type added.
+  - All 9 portrait event commands implemented: `add_portrait`,
+    `multi_add_portrait`, `remove_portrait`, `multi_remove_portrait`,
+    `remove_all_portraits`, `move_portrait`, `bop_portrait`,
+    `mirror_portrait`, `expression`.
+  - `speak` command now looks up speaker's portrait, starts talking
+    animation, and passes portrait to Dialog for positioning.
+  - Dialog draws as speech bubble above portrait with tail pointer,
+    or full-width bar at bottom when no portrait is active.
+  - Portrait NID resolution: tries `unit.portrait_nid` first, then
+    direct NID lookup in `RESOURCES.portraits`.
+- **Cursor sprite.** Replaced the pulsing rectangle with the actual
+  128x128 cursor sprite sheet. 3-frame back-and-forth bounce animation
+  matching Python's `GenericAnimCounter`. Loaded eagerly at game init.
+- **AGENTS.md updated** with reference codebase section pointing to
+  `lt-maker/` directory and `lt-maker/AGENTS.md` technical reference.
+
+### Previous Session
 - **Terrain avoid/defense now applied in combat.** Extracted shared
   `terrain-bonuses.ts` utility. `avoid()` and `defense()` in combat-calcs
   now accept an optional `board` parameter and add terrain bonuses from
@@ -212,7 +255,9 @@ Expect issues in all of the following areas:
   `GameState.activeAiGroups` tracks activation state. `AIController` has
   `checkGroupActivation()` and `activateGroupOnCombat()`. `AIState` skips
   units in inactive groups.
-- [ ] **AI item use.** AI units using healing items or staves.
+- [x] **AI item use.** AI units using healing items or staves. Full
+  `supportPrimaryAI()` with heal priority evaluation, self-heal for
+  consumables, `'use_item'` action type in AIState.
 - [x] **AI view range guard mode.** `view_range = -1` restricts valid moves
   to current position only. All view_range modes (-4 through positive) now
   correctly implemented.
@@ -237,7 +282,8 @@ add:
 - [x] `change_team` (defection / recruitment)
 - [x] `set_game_var` / `inc_game_var` / `modify_game_var`
 - [x] `change_objective` / `change_objective_win` / `change_objective_loss`
-- [ ] `add_portrait` / `remove_portrait` (for dialog scenes — stub, no visuals)
+- [x] `add_portrait` / `remove_portrait` (full portrait system with compositing,
+  expressions, blinking, talking animation, transitions, movement, bop)
 - [x] `music` / `sound` / `music_fade_back` / `music_clear`
 - [x] `win_game` / `lose_game`
 - [x] `if` / `elif` / `else` / `end` (flow control with condition evaluator)
@@ -284,13 +330,18 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   rendered below each unit on the map. Still needed: rescue icon, status
   effect icons, movement arrows.
   - Original: `app/engine/unit_sprite.py` (draw_hp, draw_rescue_icon, etc.)
-- [ ] **Cursor sprite.** Replace the pulsing rectangle with the actual
-  cursor sprite from `sprites/cursor.png` and `sprites/cursor2.png`.
+- [x] **Cursor sprite.** Uses the actual 128x128 cursor sprite sheet
+  (`sprites/cursor.png`) with 32x32 frames. 3-frame back-and-forth
+  bounce animation (timing [20,2,8,2] = ~533ms cycle) matching the
+  Python `GenericAnimCounter`. Centered on tile with 8px overhang.
+  Falls back to rectangle outline if sprite fails to load.
 - [ ] **Menu window backgrounds.** Replace solid-color menu backgrounds with
   proper 9-slice window chrome from system sprites.
   - Original: `app/engine/base_surf.py`
-- [ ] **Portraits in dialog.** Show character portraits during `speak`
-  events with positioning, blinking, and expression support.
+- [x] **Portraits in dialog.** Full portrait system: `EventPortrait` class
+  with sprite sheet compositing, blinking, talking, expressions, transitions,
+  movement, bop, mirroring. All 9 portrait event commands implemented.
+  Dialog positions as speech bubble relative to portrait.
   - Original: `app/events/event_portrait.py`
 - [ ] **Bitmap font rendering.** Replace Canvas `fillText` with the original
   BMP font system for authentic GBA-style text.
@@ -463,7 +514,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/state.ts` | 52 | Done |
 | `engine/state-machine.ts` | 207 | Done |
 | `engine/camera.ts` | 111 | Done — dynamic viewport, `pan()` method, needs shake effect |
-| `engine/cursor.ts` | 135 | Done, needs actual cursor sprite |
+| `engine/cursor.ts` | ~185 | Done — actual cursor sprite with 3-frame bounce animation |
 | `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
@@ -474,7 +525,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
 | `data/resource-manager.ts` | 309 | Done |
 | `objects/unit.ts` | 420 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup |
-| `objects/item.ts` | 159 | Done — healing, stat boosters, uses decrement, droppable |
+| `objects/item.ts` | ~195 | Done — healing, stat boosters, uses decrement, droppable, isSpell/isUsable/targetsAllies/hasNoAI/canHeal |
 | `objects/skill.ts` | 43 | Stub, needs component dispatch |
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
 | `rendering/tilemap.ts` | 200 | Done — showLayer/hideLayer, needs autotile animation |
@@ -494,13 +545,15 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback |
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
 | `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
-| `ai/ai-controller.ts` | 910 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation |
+| `ai/ai-controller.ts` | ~1080 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI |
 | `events/event-manager.ts` | 770 | Done — FIFO queue, condition evaluator, talk pairs, ConditionContext |
 | `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
 | `ui/menu.ts` | 205 | Done — click + hover mouse support. Needs 9-slice backgrounds |
 | `ui/hud.ts` | 214 | Done — screen-space rendering, terrain DEF + AVO display |
 | `ui/health-bar.ts` | 97 | Done |
-| `ui/dialog.ts` | 207 | Done, needs portraits |
+| `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
+| `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
+| `ui/dialog.ts` | ~230 | Done — portrait-aware positioning with speech bubble tail |
 | `ui/banner.ts` | 108 | Done |
 | `main.ts` | 318 | Done — LevelSelectState, dynamic viewport, DPR-aware display |
 

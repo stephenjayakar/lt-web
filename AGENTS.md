@@ -11,6 +11,27 @@ When making modifications, you should generally plan out what to do in PLAN.md, 
 
 ---
 
+## 0. Reference Codebase
+
+The original **Lex Talionis** Python codebase (lt-maker) is checked into
+this repo at `lt-maker/`. Use it as the authoritative reference for how
+any feature should work. Key directories:
+
+- `lt-maker/app/engine/` — core engine (state machine, rendering, game systems)
+- `lt-maker/app/events/` — event scripting (commands, functions, portraits)
+- `lt-maker/app/data/` — data loading and database
+- `lt-maker/app/editor/` — editor UI (not relevant for the web port)
+- `lt-maker/default.ltproj/` — default Sacred Stones project data
+- `lt-maker/AGENTS.md` — comprehensive technical reference for the
+  original engine (architecture, data model, all systems, conventions)
+
+When implementing a new feature, **always read the corresponding Python
+source first** to understand the original behavior before writing TypeScript.
+The `lt-maker/AGENTS.md` file is an excellent starting point for understanding
+any system before diving into the Python source.
+
+---
+
 ## 1. Analysis Phase: Three Parallel Deep Dives
 
 The original Lex Talionis codebase is approximately 80,000+ lines of

@@ -11,6 +11,10 @@ export const FRAMETIME = 1000 / FPS;
 // Transparent color key (used in original for colorkey transparency)
 export const COLORKEY: [number, number, number] = [128, 160, 128];
 
+// Portrait dimensions (LT standard)
+export const PORTRAIT_WIDTH = 128;
+export const PORTRAIT_HEIGHT = 112;
+
 // Animation frame counters
 export const ANIMATION_COUNTERS = {
   passive: 0,
