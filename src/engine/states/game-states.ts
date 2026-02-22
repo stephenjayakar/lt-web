@@ -3506,6 +3506,353 @@ export class MovementState extends State {
 // 11. EventState
 // ============================================================================
 
+// ===================================================================
+// ShopState — Buy/sell items at a shop
+// ===================================================================
+
+type ShopPhase = 'choice' | 'buy' | 'sell' | 'done';
+
+export class ShopState extends State {
+  readonly name = 'shop';
+  override readonly transparent = false;
+
+  private phase: ShopPhase = 'choice';
+  private unit: UnitObject | null = null;
+  private shopItems: ItemObject[] = [];
+  private shopStock: number[] = []; // -1 = unlimited
+  private money: number = 0;
+
+  // Buy/sell menu selection
+  private menuIndex: number = 0;
+  private sellIndex: number = 0;
+
+  // Choice menu (Buy/Sell)
+  private choiceIndex: number = 0; // 0=Buy, 1=Sell
+
+  // Message display
+  private message: string = '';
+  private messageTimer: number = 0;
+
+  override begin(): StateResult {
+    const game = getGame();
+    this.unit = game.shopUnit ?? game.selectedUnit;
+    this.shopItems = game.shopItems ?? [];
+    this.shopStock = game.shopStock ?? this.shopItems.map(() => -1);
+    this.money = Number(game.gameVars.get('money') ?? 0);
+    this.phase = 'choice';
+    this.menuIndex = 0;
+    this.sellIndex = 0;
+    this.choiceIndex = 0;
+    this.message = '';
+    this.messageTimer = 0;
+
+    // Clear transient shop data
+    game.shopUnit = null;
+    game.shopItems = null;
+    game.shopStock = null;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!event) return;
+    const game = getGame();
+
+    // Dismiss message
+    if (this.messageTimer > 0) {
+      if (event === 'SELECT' || event === 'BACK') {
+        this.messageTimer = 0;
+        this.message = '';
+      }
+      return;
+    }
+
+    switch (this.phase) {
+      case 'choice': {
+        if (event === 'LEFT') this.choiceIndex = 0;
+        if (event === 'RIGHT') this.choiceIndex = 1;
+        if (event === 'SELECT') {
+          if (this.choiceIndex === 0) {
+            this.phase = 'buy';
+            this.menuIndex = 0;
+          } else {
+            this.phase = 'sell';
+            this.sellIndex = 0;
+          }
+        }
+        if (event === 'BACK') {
+          game.state.back();
+        }
+        return;
+      }
+
+      case 'buy': {
+        if (event === 'UP') {
+          this.menuIndex = (this.menuIndex - 1 + this.shopItems.length) % this.shopItems.length;
+        }
+        if (event === 'DOWN') {
+          this.menuIndex = (this.menuIndex + 1) % this.shopItems.length;
+        }
+        if (event === 'SELECT') {
+          this.tryBuyItem(game);
+        }
+        if (event === 'BACK') {
+          this.phase = 'choice';
+        }
+        return;
+      }
+
+      case 'sell': {
+        if (!this.unit || this.unit.items.length === 0) {
+          this.phase = 'choice';
+          return;
+        }
+        const sellableItems = this.unit.items.filter(i => i.getValue() > 0);
+        if (sellableItems.length === 0) {
+          this.showMessage('Nothing to sell.');
+          this.phase = 'choice';
+          return;
+        }
+        if (event === 'UP') {
+          this.sellIndex = (this.sellIndex - 1 + sellableItems.length) % sellableItems.length;
+        }
+        if (event === 'DOWN') {
+          this.sellIndex = (this.sellIndex + 1) % sellableItems.length;
+        }
+        if (event === 'SELECT') {
+          this.trySellItem(game, sellableItems);
+        }
+        if (event === 'BACK') {
+          this.phase = 'choice';
+        }
+        return;
+      }
+    }
+  }
+
+  override update(): StateResult {
+    if (this.messageTimer > 0) {
+      this.messageTimer -= FRAMETIME;
+      if (this.messageTimer <= 0) {
+        this.message = '';
+        this.messageTimer = 0;
+      }
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    // Dark background
+    surf.fillRect(0, 0, surf.width, surf.height, 'rgba(8, 8, 24, 0.95)');
+
+    const FONT = '8px monospace';
+    const SMALL = '7px monospace';
+    const W = surf.width;
+
+    // Title
+    surf.drawText('SHOP', 4, 4, '#FFD700', FONT);
+
+    // Money display
+    const moneyStr = `Gold: ${this.money}`;
+    surf.drawText(moneyStr, W - 4 - moneyStr.length * 5, 4, '#FFD700', FONT);
+
+    // Unit name
+    if (this.unit) {
+      surf.drawText(this.unit.name, 4, 16, 'white', FONT);
+    }
+
+    if (this.message) {
+      // Show message centered
+      const mx = Math.floor((W - this.message.length * 5) / 2);
+      surf.fillRect(mx - 4, 70, this.message.length * 5 + 8, 16, 'rgba(40, 40, 80, 0.95)');
+      surf.drawText(this.message, mx, 74, '#FFD700', FONT);
+      return surf;
+    }
+
+    switch (this.phase) {
+      case 'choice': {
+        // Buy/Sell choice
+        const cx = Math.floor(W / 2);
+        const cy = 50;
+        surf.fillRect(cx - 50, cy, 100, 20, 'rgba(32, 32, 64, 0.9)');
+        surf.drawRect(cx - 50, cy, 100, 20, 'rgba(180, 180, 220, 0.6)');
+        const buyColor = this.choiceIndex === 0 ? '#FFD700' : 'rgba(160,160,160,1)';
+        const sellColor = this.choiceIndex === 1 ? '#FFD700' : 'rgba(160,160,160,1)';
+        surf.drawText('Buy', cx - 40, cy + 6, buyColor, FONT);
+        surf.drawText('Sell', cx + 15, cy + 6, sellColor, FONT);
+        break;
+      }
+
+      case 'buy': {
+        this.drawBuyMenu(surf, FONT, SMALL);
+        break;
+      }
+
+      case 'sell': {
+        this.drawSellMenu(surf, FONT, SMALL);
+        break;
+      }
+    }
+
+    return surf;
+  }
+
+  private drawBuyMenu(surf: Surface, FONT: string, SMALL: string): void {
+    const startY = 28;
+    const rowH = 12;
+    const W = surf.width;
+
+    // Column headers
+    surf.drawText('Item', 6, startY, 'rgba(180,180,220,1)', SMALL);
+    surf.drawText('Price', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
+
+    for (let i = 0; i < this.shopItems.length; i++) {
+      const item = this.shopItems[i];
+      const y = startY + 10 + i * rowH;
+      const stock = this.shopStock[i] ?? -1;
+      const price = this.getBuyPrice(item);
+      const canAfford = this.money >= price && stock !== 0;
+
+      // Highlight selected row
+      if (i === this.menuIndex) {
+        surf.fillRect(2, y - 1, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
+      }
+
+      const textColor = canAfford ? 'white' : 'rgba(128,128,128,1)';
+      surf.drawText(item.name, 6, y + 1, textColor, SMALL);
+
+      // Price
+      const priceStr = String(price);
+      surf.drawText(priceStr, W - 6 - priceStr.length * 4, y + 1,
+        canAfford ? '#90D0FF' : 'rgba(128,128,128,1)', SMALL);
+
+      // Stock (if limited)
+      if (stock >= 0) {
+        const stockStr = `x${stock}`;
+        surf.drawText(stockStr, W - 50 - stockStr.length * 4, y + 1,
+          stock > 0 ? 'rgba(200,200,200,1)' : 'rgba(128,128,128,1)', SMALL);
+      }
+    }
+
+    // Item description at bottom
+    if (this.shopItems[this.menuIndex]) {
+      const desc = this.shopItems[this.menuIndex].desc || '';
+      if (desc) {
+        surf.fillRect(0, surf.height - 14, W, 14, 'rgba(16,16,32,0.9)');
+        surf.drawText(desc.slice(0, Math.floor(W / 4)), 4, surf.height - 11, 'rgba(200,200,200,1)', SMALL);
+      }
+    }
+  }
+
+  private drawSellMenu(surf: Surface, FONT: string, SMALL: string): void {
+    const startY = 28;
+    const rowH = 12;
+    const W = surf.width;
+    const sellableItems = this.unit?.items.filter(i => i.getValue() > 0) ?? [];
+
+    surf.drawText('Item', 6, startY, 'rgba(180,180,220,1)', SMALL);
+    surf.drawText('Value', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
+
+    for (let i = 0; i < sellableItems.length; i++) {
+      const item = sellableItems[i];
+      const y = startY + 10 + i * rowH;
+      const price = this.getSellPrice(item);
+
+      if (i === this.sellIndex) {
+        surf.fillRect(2, y - 1, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
+      }
+
+      surf.drawText(item.name, 6, y + 1, 'white', SMALL);
+      const priceStr = String(price);
+      surf.drawText(priceStr, W - 6 - priceStr.length * 4, y + 1, '#90D0FF', SMALL);
+    }
+
+    if (sellableItems.length === 0) {
+      surf.drawText('No items to sell', 6, startY + 12, 'rgba(160,160,160,1)', SMALL);
+    }
+  }
+
+  private tryBuyItem(game: any): void {
+    const item = this.shopItems[this.menuIndex];
+    if (!item || !this.unit) return;
+    const price = this.getBuyPrice(item);
+    const stock = this.shopStock[this.menuIndex] ?? -1;
+
+    if (stock === 0) {
+      this.showMessage('Out of stock!');
+      return;
+    }
+    if (this.money < price) {
+      this.showMessage('Not enough gold!');
+      return;
+    }
+    if (this.unit.items.length >= 5) {
+      this.showMessage('Inventory full!');
+      return;
+    }
+
+    // Deduct money
+    this.money -= price;
+    game.gameVars.set('money', this.money);
+
+    // Decrement stock
+    if (stock > 0) {
+      this.shopStock[this.menuIndex] = stock - 1;
+    }
+
+    // Create new item and give to unit
+    const prefab = game.db?.items?.get(item.nid);
+    if (prefab) {
+      const newItem = new ItemObjectClass(prefab);
+      newItem.owner = this.unit;
+      this.unit.items.push(newItem);
+      this.showMessage(`Bought ${item.name}!`);
+    }
+  }
+
+  private trySellItem(game: any, sellableItems: ItemObject[]): void {
+    const item = sellableItems[this.sellIndex];
+    if (!item || !this.unit) return;
+    const price = this.getSellPrice(item);
+
+    // Gain money
+    this.money += price;
+    game.gameVars.set('money', this.money);
+
+    // Remove item from unit
+    const idx = this.unit.items.indexOf(item);
+    if (idx >= 0) {
+      this.unit.items.splice(idx, 1);
+    }
+
+    this.showMessage(`Sold ${item.name}!`);
+
+    // Adjust sell index
+    const remaining = this.unit.items.filter(i => i.getValue() > 0);
+    if (this.sellIndex >= remaining.length) {
+      this.sellIndex = Math.max(0, remaining.length - 1);
+    }
+    if (remaining.length === 0) {
+      this.phase = 'choice';
+    }
+  }
+
+  private getBuyPrice(item: ItemObject): number {
+    return item.getValue();
+  }
+
+  private getSellPrice(item: ItemObject): number {
+    // Sell price = half of buy price, adjusted for remaining uses
+    const base = item.getValue();
+    if (item.maxUses > 0 && item.uses > 0) {
+      return Math.floor((base * item.uses) / (item.maxUses * 2));
+    }
+    return Math.floor(base / 2);
+  }
+
+  private showMessage(msg: string): void {
+    this.message = msg;
+    this.messageTimer = 1500;
+  }
+}
+
 /**
  * Set of commands that block execution until they complete.
  * All other commands are "instant" and processed in burst within a single frame.
@@ -5808,6 +6155,78 @@ export class EventState extends State {
         if (mgUnit) this.loadMapSpriteForUnit(mgUnit, game);
         this.advancePointer();
         return false;
+      }
+
+      // ----- Shop -----
+      case 'shop': {
+        // shop;UnitNid;Item1,Item2,...;[Flavor];[Stock1,Stock2,...];[ShopId];[preview]
+        const shopUnitNid = args[0] ?? '';
+        const shopItemsStr = args[1] ?? '';
+        const shopFlavor = args[2] ?? 'armory';
+        const shopStockStr = args[3] ?? '';
+        const shopId = args[4] ?? '';
+        const shopFlags = args.slice(5).join(';').toLowerCase();
+        const shopPreview = shopFlags.includes('preview');
+
+        // Resolve unit
+        let shopUnit = game.units.get(shopUnitNid) ?? null;
+        if (!shopUnit && shopUnitNid === '{unit}') {
+          shopUnit = game.selectedUnit;
+        }
+        if (!shopUnit) {
+          console.warn(`shop: unit "${shopUnitNid}" not found`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Create item objects from NID list
+        const shopItemNids = shopItemsStr.split(',').map((s: string) => s.trim()).filter(Boolean);
+        const shopItems: ItemObject[] = [];
+        for (const itemNid of shopItemNids) {
+          const prefab = game.db?.items?.get(itemNid);
+          if (prefab) {
+            shopItems.push(new ItemObjectClass(prefab));
+          } else {
+            console.warn(`shop: item "${itemNid}" not found in db`);
+          }
+        }
+
+        if (shopItems.length === 0) {
+          console.warn('shop: no valid items');
+          this.advancePointer();
+          return false;
+        }
+
+        // Parse stock list
+        let shopStock: number[] = shopItems.map(() => -1);
+        if (shopStockStr) {
+          const stockParts = shopStockStr.split(',').map((s: string) => parseInt(s.trim(), 10));
+          for (let si = 0; si < shopItems.length && si < stockParts.length; si++) {
+            if (!isNaN(stockParts[si])) {
+              shopStock[si] = stockParts[si];
+            }
+          }
+          // Adjust for persistent stock tracking
+          if (shopId) {
+            for (let si = 0; si < shopItems.length; si++) {
+              if (shopStock[si] > 0) {
+                const boughtKey = `__shop_${shopId}_${shopItems[si].nid}`;
+                const bought = Number(game.gameVars.get(boughtKey) ?? 0);
+                shopStock[si] = Math.max(0, shopStock[si] - bought);
+              }
+            }
+          }
+        }
+
+        // Set up transient data for ShopState
+        game.shopUnit = shopUnit;
+        game.shopItems = shopItems;
+        game.shopStock = shopStock;
+
+        // Push shop state
+        game.state.change('shop');
+        this.advancePointer();
+        return true; // Block until shop closes
       }
 
       case 'hide_combat_ui':
