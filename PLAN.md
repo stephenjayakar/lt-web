@@ -8,38 +8,56 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**38 source files, ~12,000+ lines of TypeScript.**
-Builds cleanly with zero type errors.
+**47 source files, ~17,200 lines of TypeScript.**
+Builds cleanly with zero type errors (176KB JS / 49KB gzipped).
 Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
-rendering to a dynamically-scaled HTML5 Canvas (240x160 logical, DPR-
-aware physical resolution for crisp text and nearest-neighbor sprites).
-Phase 1.2 core gameplay implemented: death handling, EXP/level-up with
-growth rolls, win/loss conditions, item use, trading, rescue/drop,
-status effects, canto, weapon uses, and 16 game states.
+rendering to a dynamically-scaled HTML5 Canvas with dynamic viewport
+(mobile + desktop). Phase 1.2 core gameplay implemented, plus GBA-style
+combat animations, team-colored map sprites, level select, and full
+touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
-- **Fixed AI combat animations.** AI combat was running synchronously in
-  a `while` loop with zero visual frames. Now pushes `CombatState` via
-  `game.state.change('combat')` — same animated path as player combat.
-  AI move-only also waits for movement animation before advancing.
-- **Fixed unit stats double-counting.** Constructor was adding class bases
-  to prefab bases (Eirika HP: 16+16=32). Now uses prefab bases directly.
-- **Fixed weapon triangle sign bug.** Disadvantage data already stored
-  negative values; code was double-negating.
-- **Expanded event system to ~100+ commands** with alias resolution.
-- **Fixed EventState** to use `EventCommand.args[]` array format.
-- **Fixed symlink** for `default.ltproj` game data.
-- **Added null guards** for `game.board` throughout game states.
-- **Fixed turn state flow** — units could still act after finishing.
-  Added cascade guards in MoveState/MenuState/TargetingState.
-- **Dynamic render resolution.** Surface class supports a scale factor.
-  Physical canvas is `width*scale x height*scale`. All drawing ops auto-
-  scale. Text renders at native resolution. Sprites use nearest-neighbor.
-- **Full mouse controls.** LMB click on tile moves cursor + fires action.
-  RMB = context-dependent back. Mouse hover tracks cursor in real-time.
-  Click-on-menu-option support. All map states (Free, Move, Targeting,
-  Drop) and menu states (Menu, OptionMenu) support mouse. Mouse events
-  decoupled from keyboard button system to prevent double-processing.
+- **Component dispatch wired into combat.** `item-system.ts` and
+  `skill-system.ts` dispatch layers now fully integrated into
+  `combat-calcs.ts`. All damage/hit/avoid/crit/speed formulas go
+  through item and skill modifiers. Supports formula overrides from
+  skills, dynamic modifiers, multipliers, and effective damage.
+- **Vantage/desperation/miracle in combat solver.** `combat-solver.ts`
+  rewritten with full skill-based strike ordering: vantage (defender
+  first), desperation (all attacker strikes before counter), disvantage,
+  ignoreDyingInCombat (miracle), critAnyway. Uses `computeStrikeCount()`
+  for brave weapons + dynamic multiattacks from skills.
+- **AI system overhaul.** `ai-controller.ts` rewritten (540 lines) with:
+  - All view_range modes: -1 (guard), -2 (single move), -3 (double
+    move), -4 (full map), 0 (disabled), positive (custom range)
+  - Guard mode movement restriction (only current position)
+  - target/target_spec filtering: Tag, Class, Name, ID, Team with
+    invert_targeting support
+  - Behaviour iteration with fallback (tries each in order)
+  - Primary -> secondary fallback per behaviour
+  - Defend AI: Move_to Position/Starting (return to starting position)
+  - Move_away_from (smart retreat -- maximize distance from threats)
+  - Support/Steal/Interact/Move_to action types
+  - Kill bonus in utility evaluation for target prioritization
+  - Normalized offense_bias weighting
+- **UnitObject.startingPosition and aiGroup.** Units now track where
+  they were originally placed (for Defend AI) and their AI group NID.
+  Both set during spawning.
+- **ai_group field in level data.** UniqueUnitData and GenericUnitData
+  types now include `ai_group: NID | null`.
+
+### Previous Session
+- GBA-style combat animations (920 + 763 lines).
+- Enemy team colors via palette swapping.
+- Level select screen.
+- Terrain AVO display, mobile UI / responsive viewport.
+- Combat animation fixes.
+
+### Earlier Sessions
+- Fixed AI combat animations (push CombatState, not synchronous loop).
+- Fixed unit stats double-counting, weapon triangle sign bug.
+- Expanded event system to ~100+ commands with alias resolution.
+- Dynamic render resolution, full mouse controls, turn state flow fixes.
 
 ---
 
@@ -161,14 +179,20 @@ Expect issues in all of the following areas:
 ### 1.3 AI Improvements
 
 - [ ] **AI group support.** Groups of enemies that activate together when a
-  threshold is met. Currently `AIController` ignores `ai_groups`.
+  threshold is met. `AIController` has `aiGroup` field on units but trigger
+  threshold / ping logic not yet implemented.
   - Original: `app/engine/ai_controller.py` (lines 283-341)
 - [ ] **AI item use.** AI units using healing items or staves.
-- [ ] **AI view range guard mode.** `view_range = -1` means "don't move, only
-  attack if enemy is adjacent." Currently the code may not handle this
-  correctly.
-- [ ] **AI retreat / smart positioning.** `Move_away_from` behavior and
-  `smart_retreat()`.
+- [x] **AI view range guard mode.** `view_range = -1` restricts valid moves
+  to current position only. All view_range modes (-4 through positive) now
+  correctly implemented.
+- [x] **AI retreat / smart positioning.** `Move_away_from` behavior and
+  `smart_retreat()` implemented — maximizes minimum distance from threats.
+- [x] **AI target/target_spec filtering.** Tag, Class, Name, ID, Team
+  filtering with `invert_targeting` support. Behaviour iteration with
+  per-behaviour primary -> secondary fallback.
+- [x] **Defend AI.** `Move_to` Position/Starting returns unit to
+  `startingPosition` when no enemies in range.
 
 ### 1.4 Event System Expansion
 
@@ -214,9 +238,9 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 - [ ] **Map animations.** Spritesheet-based animations played at map
   positions (miss, no-damage, level-up sparkle, etc.).
   - Original: `app/engine/animations.py`
-- [ ] **Unit sprite palette swap.** Team color conversion (blue -> red, etc.)
-  by remapping palette colors on the map sprites. Currently units always
-  use their default palette.
+- [x] **Unit sprite palette swap.** Team color conversion (blue -> red, etc.)
+  by remapping palette colors on the map sprites. 4 default palettes
+  (blue/red/green/purple) loaded from team definitions.
   - Original: `app/engine/unit_sprite.py`, `app/engine/image_mods.py` (color_convert)
 - [ ] **Unit overlays.** HP bar under units, rescue icon, status effect
   icons, movement arrows.
@@ -236,64 +260,32 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   sheets (16x16, 32x32).
   - Original: `app/engine/icons.py`
 
-### 2.2 Combat Animations (IN PROGRESS)
+### 2.2 Combat Animations (MOSTLY DONE)
 
 Full GBA-style battle animation system — LT's flagship feature.
-~3500 lines across the original Python (`battle_animation.py` 998 lines,
-`animation_combat.py` 1359 lines, `mock_combat.py` 500 lines).
+Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
+`battle-animation.ts` (763), `sprite-loader.ts` (380),
+`combat-anim-loader.ts` (342), `battle-anim-types.ts` (162).
 
-**Implementation plan:**
-
-- [ ] **Battle animation data loading.** Load `combat_anims.json` and
-  `combat_effects.json` with frame rects, pose timelines, and palette
-  mappings. Load spritesheet PNGs via ResourceManager with colorkey and
-  palette conversion (`(0,x,y)` -> target RGB via palette coordinate map).
-  - Data: `resources/combat_anims/combat_anims.json`, `*.png` spritesheets
-  - Palette system: `combat_palettes.json` maps `(x,y)` grid coords to RGB
-  - Colorkey: `(128,160,128)` for characters, `(0,0,0)` for effects
-
-- [ ] **BattleAnimation controller.** Frame-by-frame pose playback engine:
-  - Script commands: `frame`, `dual_frame`, `over_frame`, `under_frame`,
-    `wait`, `sound`, `start_hit`, `wait_for_hit`, `miss`, `spell`,
-    `spell_hit`, `enemy_tint`, `self_tint`, `screen_blend`, `hit_spark`,
-    `screen_shake`, `pan`, `start_loop`/`end_loop`, `effect`, `opacity`
-  - States: `inert`, `run`, `wait`, `dying`, `leaving`
-  - Entrance scaling (map sprite -> battle position over 14 frames)
-  - Death animation (87-frame opacity flicker sequence + white flash)
-  - Pose fallback chain (RangedStand->Stand, Critical->Attack, etc.)
-  - Looping for idle poses (Stand, RangedStand)
-
-- [ ] **AnimationCombat state machine.** The full battle scene coordinator:
-  - States: init -> red_cursor -> fade_in (viewbox iris) -> entrance ->
-    init_pause -> begin_phase -> anim -> combat_hit -> hp_change ->
-    end_phase (loop) -> exp -> fade_out (viewbox iris) -> done
-  - Left/right assignment (player on right, enemy on left)
-  - Camera panning between combatants (offset-based, range-dependent)
-  - Screen shake patterns (4 intensity levels)
-  - Damage numbers, proc icons, miss text
-
-- [ ] **Combat scene rendering.** Full draw pipeline:
-  - Terrain-specific battle backgrounds (panorama images, fade in/out)
-  - Platforms (54 terrain variants, melee vs ranged, horizontally flipped)
-  - Under-frames, main frames, over-frames, effect frames (layered draw)
-  - HP bars with name tags, weapon info, hit/mt/crit stats
-  - Hit sparks and crit sparks
-
-- [ ] **Viewbox iris transition.** 250ms shrinking/expanding rectangle
-  centered on the defender's tile for entering/exiting battle scene.
-
-- [ ] **Combat effect system.** Same script engine as battle anims but
-  for spell/weapon effects. `end_parent_loop` interaction with parent.
-  100+ effects in default.ltproj (projectiles, magic, healing, procs).
-
-- [ ] **Weapon animation resolution.** Map item type to weapon anim NID:
-  Sword, MagicSword, Lance, RangedLance, Axe, MagicAxe, Bow, MagicAnima,
-  MagicLight, MagicDark, MagicStaff, Transform, Unarmed. Ranged/Magic
-  prefix logic with fallbacks.
-
-- [ ] **Wire into CombatState.** `has_animation()` check: if both units
-  have battle anims loaded, use AnimationCombat; otherwise fall back to
-  existing MapCombat. User setting: Always/Your Turn/Never.
+- [x] **Battle animation data loading.** Loads `combat_anims.json` and
+  `combat_effects.json`. Spritesheet PNGs loaded via ResourceManager with
+  colorkey `(128,160,128)` and palette conversion `(0,x,y)` -> target RGB.
+- [x] **BattleAnimation controller.** Frame-by-frame pose playback with
+  `frame`, `wait`, `start_hit`, `wait_for_hit` commands. States: `inert`,
+  `run`, `wait`, `dying`, `leaving`. Pose fallback chain, looping idle.
+- [x] **AnimationCombat state machine.** Scene coordinator with left/right
+  assignment, entrance animations, combat phases, HP drain, death handling.
+- [x] **Combat scene rendering.** Terrain-specific panorama backgrounds,
+  platform images (melee/ranged variants), sprite layering, HP bars.
+- [x] **Weapon animation resolution.** Maps item weapon type to anim NID
+  with fallbacks. `selectWeaponAnim()` in `sprite-loader.ts`.
+- [x] **Wire into CombatState.** Auto-detects if both units have anims,
+  falls back to MapCombat. Async sprite hot-swap during scene.
+- [ ] **Viewbox iris transition.** Not yet implemented (scene enters/exits
+  abruptly).
+- [ ] **Combat effect system.** Spell/weapon effects not yet implemented
+  (100+ effects in default.ltproj).
+- [ ] **Screen shake, damage numbers, hit/crit sparks.** Partially stubbed.
 
 ---
 
@@ -324,15 +316,18 @@ Full GBA-style battle animation system — LT's flagship feature.
 
 ### 3.2 Advanced Game Systems
 
-- [ ] **Component system.** Full item and skill component dispatch (the
-  original compiles Python source at startup). In TS, implement as a
-  dispatch table mapping component names to handler functions.
-  - Original: `app/engine/item_components/` (16 files), `app/engine/skill_components/` (16 files), `app/engine/component_system/`
-  - This is critical for items and skills to actually *work* beyond basic
-    damage/hit/range.
-- [ ] **Skill system.** Runtime skill effects: stat modifiers, combat hooks
-  (vantage, desperation, wary fighter), aura propagation, charge/cooldown,
-  conditional activation, status immunity.
+- [x] **Component system (core).** Item and skill component dispatch
+  (`item-system.ts`, `skill-system.ts`) wired into `combat-calcs.ts`.
+  Handles: value hooks, boolean hooks, static modifiers, dynamic modifiers,
+  multipliers, formula overrides. Covers ~80% of combat-relevant components.
+  - Still missing: aura propagation, charge/cooldown, conditional activation,
+    status immunity, proc skills.
+  - Original: `app/engine/item_components/` (16 files), `app/engine/skill_components/` (16 files)
+- [x] **Skill system (combat).** Runtime combat hooks: vantage, desperation,
+  disvantage, noDouble, defDouble, distantCounter, closeCounter, critAnyway,
+  ignoreDyingInCombat (miracle). All wired into `combat-solver.ts`.
+  - Still missing: aura propagation, charge/cooldown, conditional activation,
+    status immunity, proc skills.
   - Original: `app/engine/aura_funcs.py`, `app/engine/skill_components/`
 - [ ] **Support system.** Adjacency-based support points, rank progression,
   stat bonuses, support conversations.
@@ -399,11 +394,13 @@ Full GBA-style battle animation system — LT's flagship feature.
 
 ## Phase 4 -- Mobile / Distribution
 
-- [ ] **Touch controls.** Virtual D-pad and action buttons for mobile. The
-  `InputManager` has basic tap/swipe but needs a proper on-screen control
-  overlay.
-- [ ] **Responsive scaling.** Handle portrait/landscape orientation changes,
-  notch safe areas, and different aspect ratios.
+- [x] **Touch controls.** Tap-to-move cursor, pinch-to-zoom, drag-to-pan.
+  `isSmallScreen()` gates camera snap behavior (mobile centers, desktop
+  stays put). No virtual D-pad yet — direct touch interaction only.
+- [x] **Responsive scaling.** Dynamic viewport (`viewport.ts`) handles
+  orientation changes, zoom levels, and different aspect ratios. HUD
+  draws in screen-space at DPR-aware sizes. Middle-click pan + scroll
+  zoom on desktop.
 - [ ] **PWA support.** Service worker for offline play, manifest for add-to-
   homescreen.
 - [ ] **Asset bundling.** Pack `.ltproj` assets into a single downloadable
@@ -422,43 +419,51 @@ Full GBA-style battle animation system — LT's flagship feature.
 | File | Lines | Status |
 |------|------:|--------|
 | `engine/constants.ts` | 37 | Done |
-| `engine/surface.ts` | 300+ | Done — scale-aware Surface with DPR support, nearest-neighbor sprites, crisp text |
-| `engine/input.ts` | 340+ | Done — mouse decoupled from keyboard, tile conversion, display scale. Needs touch UI overlay |
+| `engine/surface.ts` | 333 | Done — scale-aware Surface, `drawImageFull()` for combat anims |
+| `engine/input.ts` | 476 | Done — mouse, touch, pinch-zoom, drag-pan, scroll-zoom, middle-click pan |
 | `engine/state.ts` | 52 | Done |
-| `engine/state-machine.ts` | 202 | Done |
-| `engine/camera.ts` | 133 | Done, needs shake effect |
+| `engine/state-machine.ts` | 207 | Done |
+| `engine/camera.ts` | 111 | Done — dynamic viewport, `pan()` method, needs shake effect |
 | `engine/cursor.ts` | 135 | Done, needs actual cursor sprite |
+| `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
-| `engine/action.ts` | 480+ | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
-| `engine/game-state.ts` | 560+ | Done — win/loss conditions, skill loading, droppable items, input ref |
-| `engine/states/game-states.ts` | 2100+ | 16 states: +ItemUse, Trade, Rescue, Drop. CombatState with death/EXP/levelup. AI uses CombatState. Full mouse support. |
-| `data/types.ts` | 307 | Done |
-| `data/database.ts` | 387 | Done |
-| `data/resource-manager.ts` | 297 | Done |
-| `objects/unit.ts` | 330+ | Done — levelUp(), status effects, rescue, canto, effective stats |
-| `objects/item.ts` | 160+ | Done — healing, stat boosters, uses decrement, droppable |
+| `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
+| `engine/game-state.ts` | 615 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup |
+| `engine/states/game-states.ts` | 3495 | 17 states incl. LevelSelect, CombatState with animation combat, AI animated combat |
+| `data/types.ts` | 342 | Done |
+| `data/database.ts` | 436 | Done — combat anim data loading |
+| `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
+| `data/resource-manager.ts` | 309 | Done |
+| `objects/unit.ts` | 420 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup |
+| `objects/item.ts` | 159 | Done — healing, stat boosters, uses decrement, droppable |
 | `objects/skill.ts` | 43 | Stub, needs component dispatch |
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
 | `rendering/tilemap.ts` | 188 | Done, needs autotile animation |
-| `rendering/map-view.ts` | 220 | Done, needs weather/animations |
-| `rendering/map-sprite.ts` | 163 | Done, needs palette swap |
+| `rendering/map-view.ts` | 250 | Done — dynamic viewport support |
+| `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
 | `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
 | `rendering/highlight.ts` | 112 | Done |
 | `pathfinding/pathfinding.ts` | 408 | Done |
 | `pathfinding/path-system.ts` | 228 | Done |
-| `movement/movement-system.ts` | 143 | Done, needs roam movement |
-| `combat/combat-calcs.ts` | 338 | Done, needs skill/component hooks |
-| `combat/combat-solver.ts` | 203 | Done, needs vantage/desperation |
-| `combat/map-combat.ts` | 340+ | Done — weapon uses, growth-based levelup, droppable items, CombatResults |
-| `ai/ai-controller.ts` | 413 | Done, needs group AI / retreat |
-| `events/event-manager.ts` | 385+ | Partial — +getEventsForTrigger(), +unit_talk/region_event triggers. Needs ~50 more commands |
+| `movement/movement-system.ts` | 168 | Done, needs roam movement |
+| `combat/combat-calcs.ts` | 455 | Done — full item-system + skill-system dispatch |
+| `combat/combat-solver.ts` | 275 | Done — vantage, desperation, miracle, disvantage |
+| `combat/item-system.ts` | 248 | Done — item component dispatch layer |
+| `combat/skill-system.ts` | 399 | Done — skill component dispatch layer |
+| `combat/map-combat.ts` | 552 | Done — weapon uses, growth-based levelup, CombatResults |
+| `combat/animation-combat.ts` | 920 | Done — full animation combat state machine |
+| `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback |
+| `combat/battle-anim-types.ts` | 162 | Done — type definitions |
+| `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
+| `ai/ai-controller.ts` | 540 | Done — full behaviour iteration, guard, defend, retreat, target_spec |
+| `events/event-manager.ts` | 530 | Done — FIFO queue, condition evaluator, ConditionContext |
 | `audio/audio-manager.ts` | 261 | Done |
-| `ui/menu.ts` | 200+ | Done — click + hover mouse support. Needs 9-slice backgrounds |
-| `ui/hud.ts` | 143 | Done, needs icons |
+| `ui/menu.ts` | 205 | Done — click + hover mouse support. Needs 9-slice backgrounds |
+| `ui/hud.ts` | 214 | Done — screen-space rendering, terrain DEF + AVO display |
 | `ui/health-bar.ts` | 97 | Done |
 | `ui/dialog.ts` | 207 | Done, needs portraits |
 | `ui/banner.ts` | 108 | Done |
-| `main.ts` | 340+ | Done — dynamic render resolution, DPR-aware display, input wiring |
+| `main.ts` | 318 | Done — LevelSelectState, dynamic viewport, DPR-aware display |
 
 ---
 

@@ -228,7 +228,7 @@ export class GameState {
     if (this.eventManager) {
       this.eventManager.trigger(
         { type: 'level_start', levelNid },
-        this.gameVars,
+        { game: this, gameVars: this.gameVars, levelVars: this.levelVars },
       );
     }
   }
@@ -468,6 +468,9 @@ export class GameState {
       unit.position = position;
     }
 
+    // Record starting position for Defend AI / return-home
+    unit.startingPosition = position ? [...position] as [number, number] : null;
+
     this.units.set(unit.nid, unit);
     return unit;
   }
@@ -494,20 +497,21 @@ export class GameState {
    * Spawn a unique unit from level data.
    * Unique units reference a UnitPrefab in db.units by NID.
    */
-  private spawnUniqueUnit(data: UniqueUnitData): void {
+  spawnUniqueUnit(data: UniqueUnitData): void {
     const prefab = this.db.units.get(data.nid);
     if (!prefab) {
       console.warn(`GameState: unique unit prefab "${data.nid}" not found in db`);
       return;
     }
-    this.spawnUnit(prefab, data.team, data.starting_position, data.ai);
+    const unit = this.spawnUnit(prefab, data.team, data.starting_position, data.ai);
+    if (data.ai_group) unit.aiGroup = data.ai_group;
   }
 
   /**
    * Spawn a generic unit from level data.
    * Generic units are defined inline with class, level, items, etc.
    */
-  private spawnGenericUnit(data: GenericUnitData): void {
+  spawnGenericUnit(data: GenericUnitData): void {
     // Build a synthetic UnitPrefab from the generic data
     const klassDef = this.db.classes.get(data.klass);
     if (!klassDef) {
@@ -538,7 +542,8 @@ export class GameState {
       affinity: '',
     };
 
-    this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
+    const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
+    if (data.ai_group) unit.aiGroup = data.ai_group;
   }
 
   /**
