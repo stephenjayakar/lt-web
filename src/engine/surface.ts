@@ -293,10 +293,23 @@ export class Surface {
   }
 
   /**
-   * Draw text. The font size in the font string is scaled up by the
-   * surface scale so text renders crisply at native resolution.
+   * Draw text using bitmap fonts when available, falling back to Canvas fillText.
+   *
+   * The `font` parameter can be either:
+   * - A BMP font NID string (e.g. 'text', 'text-blue', 'convo', 'small')
+   * - A CSS font string (e.g. '8px monospace') — triggers fallback or auto-mapping
+   *
+   * The `color` parameter can be either:
+   * - A BMP palette color name (e.g. 'white', 'blue', 'yellow') when using BMP fonts
+   * - A CSS color string (e.g. 'white', '#FFD700', 'rgba(...)') for fallback
    */
   drawText(text: string, x: number, y: number, color: string = 'white', font: string = '8px monospace'): void {
+    // Try bitmap font rendering first
+    if (_bmpDrawText && _bmpDrawText(this, text, x, y, color, font)) {
+      return; // Successfully rendered with BMP font
+    }
+
+    // Fallback: Canvas fillText
     const s = this.scale;
     // Scale the font size: extract the numeric px value and multiply by scale
     const scaledFont = font.replace(/(\d+(?:\.\d+)?)px/, (_, size) => `${parseFloat(size) * s}px`);
@@ -305,6 +318,18 @@ export class Surface {
     this._ctx.textBaseline = 'top';
     this._ctx.fillText(text, Math.round(x * s), Math.round(y * s));
   }
+}
+
+/**
+ * Callback for BMP font rendering. Set by the font system at init time.
+ * Returns true if text was rendered, false to fall back to Canvas text.
+ */
+type BmpDrawTextFn = (surf: Surface, text: string, x: number, y: number, color: string, font: string) => boolean;
+let _bmpDrawText: BmpDrawTextFn | null = null;
+
+/** Register the BMP font draw callback (called by bmp-font.ts after init) */
+export function registerBmpDrawText(fn: BmpDrawTextFn): void {
+  _bmpDrawText = fn;
 }
 
 /** Create a surface from an HTMLImageElement */

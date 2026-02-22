@@ -2,6 +2,7 @@ import { Surface } from '../engine/surface';
 import { viewport } from '../engine/viewport';
 import type { InputEvent } from '../engine/input';
 import type { EventPortrait } from '../events/event-portrait';
+import { FONT as BMP_FONTS, areFontsReady } from '../rendering/bmp-font';
 
 export type DialogState = 'typing' | 'waiting' | 'done';
 
@@ -35,8 +36,13 @@ function getMeasureCtx(): OffscreenCanvasRenderingContext2D {
   return _measureCtx;
 }
 
-/** Measure text pixel width using the given CSS font string. */
+/** Measure text pixel width using BMP fonts when available, else Canvas. */
 function measureTextWidth(text: string, font: string): number {
+  // Try BMP font width measurement first
+  if (areFontsReady()) {
+    const bmpFont = BMP_FONTS['text'];
+    if (bmpFont) return bmpFont.width(text);
+  }
   const ctx = getMeasureCtx();
   ctx.font = font;
   return ctx.measureText(text).width;
