@@ -6,8 +6,8 @@
 
 import type { UnitObject } from '../objects/unit';
 
-/** Default movement speed in tiles per second (matches LT's feel). */
-const DEFAULT_SPEED = 6;
+/** Default movement speed in tiles per second. */
+const DEFAULT_SPEED = 10;
 
 interface MovementComponent {
   unit: UnitObject;

@@ -2259,7 +2259,10 @@ export class CombatState extends State {
 
     switch (this.phase) {
       case 'combat': {
-        const done = activeCombat.update(FRAMETIME);
+        // SELECT (Enter/Z) fast-forwards combat animation at 3x speed
+        const combatFastFwd = game.input?.isPressed('SELECT') ?? false;
+        const combatDelta = combatFastFwd ? FRAMETIME * 3 : FRAMETIME;
+        const done = activeCombat.update(combatDelta);
         if (done) {
           this.results = activeCombat.applyResults();
           if (this.results.attackerDead || this.results.defenderDead) {
@@ -2277,10 +2280,10 @@ export class CombatState extends State {
       }
 
       case 'death': {
-        // Death animation: 500ms fade-out
+        // Death animation: 350ms fade-out
         this.phaseTimer += FRAMETIME;
-        this.deathFadeProgress = Math.min(1, this.phaseTimer / 500);
-        if (this.phaseTimer >= 500) {
+        this.deathFadeProgress = Math.min(1, this.phaseTimer / 350);
+        if (this.phaseTimer >= 350) {
           // Remove dead units from board
           if (this.results!.defenderDead) {
             game.board.removeUnit(activeCombat!.defender);
@@ -2305,9 +2308,10 @@ export class CombatState extends State {
       }
 
       case 'exp': {
-        // Animate EXP bar fill over 500ms
-        this.phaseTimer += FRAMETIME;
-        const t = Math.min(1, this.phaseTimer / 500);
+        // Animate EXP bar fill over 350ms. SELECT skips to end.
+        const expSkip = game.input?.isPressed('SELECT') ?? false;
+        this.phaseTimer += expSkip ? FRAMETIME * 4 : FRAMETIME;
+        const t = Math.min(1, this.phaseTimer / 350);
         this.expDisplayCurrent = this.expDisplayStart + (this.expDisplayTarget - this.expDisplayStart) * t;
 
         if (t >= 1) {
@@ -2325,9 +2329,10 @@ export class CombatState extends State {
       }
 
       case 'levelup': {
-        // Show level-up stats for 1500ms
-        this.phaseTimer += FRAMETIME;
-        if (this.phaseTimer >= 1500) {
+        // Show level-up stats for 1200ms. SELECT skips.
+        const lvlSkip = game.input?.isPressed('SELECT') ?? false;
+        this.phaseTimer += lvlSkip ? FRAMETIME * 4 : FRAMETIME;
+        if (this.phaseTimer >= 1200) {
           this.phase = 'cleanup';
           this.phaseTimer = 0;
         }
@@ -3060,9 +3065,12 @@ export class AIState extends MapState {
       return;
     }
 
-    // Process one AI unit with a short delay between each
+    // Process one AI unit with a short delay between each.
+    // SELECT (Enter/Z) fast-forwards by reducing the delay to 1 frame.
+    const fastForward = game.input?.isPressed('SELECT') ?? false;
+    const aiDelay = fastForward ? 1 : 6; // ~100ms normal, ~16ms when holding SELECT
     this.frameCounter++;
-    if (this.frameCounter < 15) return; // ~0.25s pause between AI actions
+    if (this.frameCounter < aiDelay) return;
     this.frameCounter = 0;
 
     const unit = this.aiUnits[this.currentAiIndex];

@@ -1,5 +1,4 @@
 import { Surface } from '../engine/surface';
-import { WINWIDTH, WINHEIGHT } from '../engine/constants';
 import { viewport } from '../engine/viewport';
 import type { InputEvent } from '../engine/input';
 import type { EventPortrait } from '../events/event-portrait';
@@ -211,13 +210,13 @@ export class Dialog {
     if (this.portrait) {
       // Position dialog as speech bubble relative to portrait
       const portraitCenter = this.portrait.getDesiredCenter();
-      boxW = Math.min(WINWIDTH - 8, 120); // Slightly narrower for speech bubble
-      boxX = Math.max(2, Math.min(portraitCenter - boxW / 2, WINWIDTH - boxW - 2));
+      boxW = Math.min(viewport.width - 8, 120); // Slightly narrower for speech bubble
+      boxX = Math.max(2, Math.min(portraitCenter - boxW / 2, viewport.width - boxW - 2));
       tailX = Math.max(boxX + 6, Math.min(portraitCenter, boxX + boxW - 6));
     } else {
       // Default: full-width bar at bottom of screen
       boxX = BOX_MARGIN;
-      boxW = WINWIDTH - BOX_MARGIN * 2;
+      boxW = viewport.width - BOX_MARGIN * 2;
     }
 
     // Word-wrap displayed text to fit within box
@@ -239,7 +238,7 @@ export class Dialog {
         boxY = this.portrait.position[1] + 80 + TAIL_HEIGHT + 2;
       }
     } else {
-      boxY = WINHEIGHT - boxH - BOX_MARGIN;
+      boxY = viewport.height - boxH - BOX_MARGIN;
     }
 
     // Background
