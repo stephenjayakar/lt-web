@@ -48,7 +48,7 @@ import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
-import { getEquippedWeapon } from '../../combat/combat-calcs';
+import { getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
@@ -2602,9 +2602,18 @@ export class CombatState extends State {
       const defAnimData = db.combatAnims.get(defKlass.combat_anim_nid);
       if (!atkAnimData || !defAnimData) return false;
 
-      // Determine weapon type for selecting the weapon animation
-      const atkWeaponType = attackItem.getWeaponType() ?? null;
-      const defWeaponType = defenseItem?.getWeaponType() ?? null;
+      // Determine weapon type for selecting the weapon animation.
+      // Python's get_battle_anim() prepends "Magic" to the weapon type when
+      // the item has the 'magic' or 'magic_at_range' component, and prepends
+      // "Ranged" for ranged weapons at distance > 1.
+      let atkWeaponType = attackItem.getWeaponType() ?? null;
+      if (atkWeaponType && isMagic(attackItem)) {
+        atkWeaponType = 'Magic' + atkWeaponType;
+      }
+      let defWeaponType = defenseItem?.getWeaponType() ?? null;
+      if (defWeaponType && defenseItem && isMagic(defenseItem)) {
+        defWeaponType = 'Magic' + defWeaponType;
+      }
 
       // Select weapon animations
       const atkWeaponAnim = selectWeaponAnim(atkAnimData, atkWeaponType ?? null);
@@ -3258,43 +3267,45 @@ export class CombatState extends State {
     drawBattleSprite(rightDraw, '200,80,80', rightPlatX, rightPlatY);
 
     // --- Name tags ---
-    // Anchored to bottom-left / bottom-right, above HP bars
-    // EXP bar is at WINHEIGHT-14 (10px tall). HP bars sit above it.
-    // Name tags sit above HP bars.
+    // --- Name tags (top of screen, matching Python layout) ---
+    // Python: name tags slide in from y=-60, visible at y=0.
+    // Left name tag at x=-3, right name tag right-aligned.
     const nameSlide = rs.nameTagProgress;
     if (nameSlide > 0) {
       const NAME_TAG_W = 80;
-      const NAME_TAG_H = 12;
-      const HP_BAR_SECTION_H = 26;
-      // Bottom anchor: name tag above HP bar, which is above EXP bar area
-      const nameY = WINHEIGHT - 14 - HP_BAR_SECTION_H - 2 - NAME_TAG_H - 2 + shakeY;
-      const leftNameX = -NAME_TAG_W + nameSlide * (NAME_TAG_W + 4) + shakeX;
-      const rightNameX = WINWIDTH - nameSlide * (NAME_TAG_W + 4) + shakeX;
+      const NAME_TAG_H = 14;
+      // Slide in from above: fully visible at y=0, hidden at y=-NAME_TAG_H-60
+      const nameY = -NAME_TAG_H - 60 + nameSlide * (NAME_TAG_H + 60) + shakeY;
+      const leftNameX = -3 + shakeX;
+      const rightNameX = WINWIDTH + 3 - NAME_TAG_W + shakeX;
 
-      // Left name tag background
+      // Left name tag background (blue tint for player/left)
       surf.fillRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(32,32,64,0.9)');
-      surf.drawText(rs.leftHp.name, leftNameX + 3, nameY + 2, 'white', '8px monospace');
+      surf.drawRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(100,100,160,0.7)');
+      surf.drawText(rs.leftHp.name, leftNameX + 4, nameY + 3, 'white', '8px monospace');
 
-      // Right name tag background
+      // Right name tag background (red tint for enemy/right)
       surf.fillRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(64,32,32,0.9)');
-      surf.drawText(rs.rightHp.name, rightNameX + 3, nameY + 2, 'white', '8px monospace');
+      surf.drawRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(160,100,100,0.7)');
+      surf.drawText(rs.rightHp.name, rightNameX + 4, nameY + 3, 'white', '8px monospace');
     }
 
-    // --- HP bars ---
-    // Anchored to bottom-left / bottom-right, just above EXP bar area
+    // --- HP bars (bottom of screen, matching Python layout) ---
+    // Python: bars slide up from 52px below, visible at y=WINHEIGHT-barH.
+    // Left bar at x=-3, right bar at x=WINWIDTH/2.
     const hpSlide = rs.hpBarProgress;
     if (hpSlide > 0) {
-      const HP_BAR_W = 72;
-      const HP_BAR_SECTION_H = 26;
-      // Bottom anchor: HP bar just above the EXP bar (WINHEIGHT - 14)
-      const hpY = WINHEIGHT - 14 - HP_BAR_SECTION_H - 2 + shakeY;
-      const leftHpX = -HP_BAR_W + hpSlide * (HP_BAR_W + 4) + shakeX;
-      const rightHpX = WINWIDTH - hpSlide * (HP_BAR_W + 4) + shakeX;
+      const HP_BAR_W = WINWIDTH / 2 + 3; // Each bar covers half the screen
+      const HP_BAR_H = 28;
+      // Bottom anchor: slide up from below screen
+      const hpY = WINHEIGHT + (1 - hpSlide) * 52 - HP_BAR_H + shakeY;
+      const leftHpX = -3 + shakeX;
+      const rightHpX = WINWIDTH / 2 + shakeX;
 
       // Left HP bar
-      this.drawBattleHpBar(surf, leftHpX, hpY, HP_BAR_W, HP_BAR_SECTION_H, rs.leftHp);
+      this.drawBattleHpBar(surf, leftHpX, hpY, HP_BAR_W, HP_BAR_H, rs.leftHp);
       // Right HP bar
-      this.drawBattleHpBar(surf, rightHpX, hpY, HP_BAR_W, HP_BAR_SECTION_H, rs.rightHp);
+      this.drawBattleHpBar(surf, rightHpX, hpY, HP_BAR_W, HP_BAR_H, rs.rightHp);
     }
 
     // --- Spark effects ---

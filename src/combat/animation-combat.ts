@@ -207,6 +207,9 @@ export class AnimationCombat implements AnimationCombatOwner {
   currentStrikeDefenderAnim: BattleAnimation | null = null;
   awaitingHit: boolean = false;
 
+  // -- Safety timeout for animation state (prevent infinite loops) ----------
+  animFrameCounter: number = 0;
+
   // -- Results cache ---------------------------------------------------------
   cachedResults: CombatResults | null = null;
 
@@ -410,6 +413,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     const defPose = this.combatRange > 1 ? 'RangedStand' : 'Stand';
     defAnim.setPose(defPose);
 
+    this.animFrameCounter = 0; // Reset safety timeout
     this.transition('anim');
     return false;
   }
@@ -417,6 +421,7 @@ export class AnimationCombat implements AnimationCombatOwner {
   private updateAnim(): boolean {
     this.leftAnim.update();
     this.rightAnim.update();
+    this.animFrameCounter++;
 
     // The hit is processed via the startHit callback when the animation
     // fires the start_hit command. Once both anims return to idle/done,
@@ -427,6 +432,15 @@ export class AnimationCombat implements AnimationCombatOwner {
       if (atkDone && defDone) {
         this.transition('end_phase');
       }
+    }
+
+    // Safety timeout: if animation is stuck for 600 frames (~10s at 60fps),
+    // force-clear awaitingHit and advance.  This prevents infinite loops when
+    // a spell effect fails to spawn or a command callback is missed.
+    if (this.animFrameCounter > 600) {
+      console.warn('[AnimationCombat] Safety timeout in anim state — forcing end_phase');
+      this.awaitingHit = false;
+      this.transition('end_phase');
     }
     return false;
   }
@@ -548,7 +562,13 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.hpDrainStartLeft = this.leftTargetHp;
     this.hpDrainStartRight = this.rightTargetHp;
 
-    const defAnim = (anim === this.leftAnim) ? this.rightAnim : this.leftAnim;
+    // Use currentStrikeDefenderAnim set during beginStrike() rather than
+    // deriving from anim identity.  When a child spell effect fires
+    // spell_hit, `anim` is the child effect (not leftAnim/rightAnim),
+    // so `anim === this.leftAnim` would always fail.
+    const defAnim = this.currentStrikeDefenderAnim ?? (
+      (anim === this.leftAnim) ? this.rightAnim : this.leftAnim
+    );
     const isLeftDefending = (defAnim === this.leftAnim);
 
     if (strike.hit) {

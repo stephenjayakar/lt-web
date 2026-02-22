@@ -354,20 +354,34 @@ export function selectWeaponAnim(
     return combatAnim.weapon_anims.find(wa => wa.nid === 'Unarmed') ?? null;
   }
 
-  // Direct match
+  // Direct match (e.g. "MagicAnima", "Sword", item-specific "MagicElfire")
   const direct = combatAnim.weapon_anims.find(wa => wa.nid === weaponType);
   if (direct) return direct;
 
-  // Try generic weapon categories
+  // For magic types (prefixed with "Magic"), try fallbacks:
+  // MagicAnima -> Magic -> MagicGeneric
+  if (weaponType.startsWith('Magic')) {
+    const magicFallbacks = ['Magic', 'MagicGeneric'];
+    for (const fb of magicFallbacks) {
+      const found = combatAnim.weapon_anims.find(wa => wa.nid === fb);
+      if (found) return found;
+    }
+  }
+
+  // For ranged types (prefixed with "Ranged"), try stripping the prefix:
+  // RangedBow -> Bow
+  if (weaponType.startsWith('Ranged')) {
+    const base = weaponType.slice(6); // strip "Ranged"
+    const found = combatAnim.weapon_anims.find(wa => wa.nid === base);
+    if (found) return found;
+  }
+
+  // Try generic weapon categories for non-prefixed types
   const genericMappings: Record<string, string[]> = {
     'Sword': ['Sword'],
     'Lance': ['Lance'],
     'Axe': ['Axe'],
     'Bow': ['Bow', 'RangedBow'],
-    'MagicAnima': ['MagicAnima', 'Magic'],
-    'MagicLight': ['MagicLight', 'Magic'],
-    'MagicDark': ['MagicDark', 'Magic'],
-    'Magic': ['Magic', 'MagicAnima'],
   };
 
   const candidates = genericMappings[weaponType];

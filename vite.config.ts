@@ -86,12 +86,27 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Disable automatic file watching and HMR (use /refresh to reload manually)
+    watch: null,
+    hmr: false,
     fs: {
       // Allow serving files from lt-maker/ (game assets, not committed)
       allow: ['..'],
     },
   },
   plugins: [
+    // GET /refresh — triggers a full page reload on all connected clients.
+    // Temporary dev convenience: replaces auto-watch/HMR.
+    {
+      name: 'manual-refresh',
+      configureServer(server) {
+        server.middlewares.use('/refresh', (_req, res) => {
+          server.ws.send({ type: 'full-reload' });
+          res.writeHead(302, { Location: '/' });
+          res.end();
+        });
+      },
+    },
     // Serve lt-maker/*.ltproj at /game-data/*.ltproj — no symlink needed.
     // The lt-maker/ directory is gitignored; users supply their own copy.
     {

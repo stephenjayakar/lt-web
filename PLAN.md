@@ -28,14 +28,39 @@ world map with nodes, roads, party movement).
 
 - [x] ~~**Dialogue box positioned at bottom after turn transition.**~~ Fixed: dialog Y now uses Python's fixed formula (`viewport.height - boxH - 80 - 4`) instead of relative-to-portrait positioning. Dialog width expanded to full-width (matching Python).
 - [x] ~~**Mouth animations too fast and random.**~~ Fixed: per-transition durations now match Python exactly (was using per-destination-state durations, which scrambled the timing).
-- [x] ~~**Magic attacks freeze combat.**~~ Fixed 5 issues: (1) `spell_hit` now pauses animation + enters wait state, (2) `spell_hit_2` (crit variant) implemented, (3) `wait_for_hit` is now conditional on `waitForHit` flag, (4) `endParentLoop` now calls `breakLoop()` on the parent attacker animation, (5) loop mechanism supports proper break-out via `skipNextLoop` counter.
-- [x] ~~**No hit/crit/attack sound effects.**~~ Fixed: `AnimationCombat.playSound()` now wired to `AudioManager.playSfx()`. `MapCombat` plays hit/crit/miss sounds at strike impact.
-- [x] ~~**No sound effects on move or UI interaction.**~~ Fixed: cursor movement plays `Select 5`, menu up/down plays `Select 6`, confirm plays `Select 1`, back plays `Select 4`.
+- [x] ~~**Magic attacks freeze combat.**~~ Fixed 8 issues total: (1) `spell_hit` now pauses animation + enters wait state, (2) `spell_hit_2` (crit variant) implemented, (3) `wait_for_hit` is now conditional on `waitForHit` flag, (4) `endParentLoop` now calls `breakLoop()` on the parent attacker animation, (5) loop mechanism supports proper break-out via `skipNextLoop` counter, (6) **weapon type resolution now prepends "Magic" prefix** for magic items matching Python's `get_battle_anim()` (was passing raw `Anima`/`Light`/`Dark` which fell back to `Unarmed`), (7) **`startHit()` side detection** now uses `currentStrikeDefenderAnim` instead of anim identity comparison (child spell effects were misidentified), (8) **safety timeout** (600 frames) in `updateAnim()` prevents infinite loops if spell effects fail.
+- [x] ~~**No hit/crit/attack sound effects.**~~ Fixed: `AnimationCombat.playSound()` now wired to `AudioManager.playSfx()`. `MapCombat` plays hit/crit/miss sounds at strike impact. Audio file URLs now use `encodeURIComponent` for proper handling of filenames with spaces.
+- [x] ~~**No sound effects on move or UI interaction.**~~ Fixed: cursor movement plays `Select 5`, menu up/down plays `Select 6`, confirm plays `Select 1`, back plays `Select 4`. Mouse click and hover on menus now also plays corresponding sounds.
 - [x] ~~**Can't select Move option.**~~ Not a real bug — Move is not a menu option (matches Python). Unit movement works via FreeState → MoveState flow.
 - [x] ~~**Can't select weapon before attacking.**~~ Fixed: new `WeaponChoiceState` shows all usable weapons when attacking. Auto-selects if only one weapon. Shows attack range per weapon on hover. MenuState now goes to `weapon_choice` → `targeting` instead of directly to `targeting`.
-- [x] ~~**Combat UI overlap.**~~ Fixed: increased `HP_BAR_SECTION_H` from 20 to 26, moved HP bar down to `y+12`, HP text below bar at `barY+barH+1`. Weapon name, HP bar, and HP numbers no longer overlap.
+- [x] ~~**Combat UI overlap.**~~ Fixed: name tags now render at top of screen (matching Python layout), HP bars at bottom. Name tags slide in from above, HP bars slide up from below. Each occupies its own screen region — no more overlap.
 
 ### Recent Changes (Latest Session)
+- **6 follow-up fixes across magic combat, audio, UI, and menu sounds.**
+  - **Magic weapon type resolution.** `game-states.ts` now prepends `"Magic"`
+    prefix for items with `magic`/`magic_at_range` components before calling
+    `selectWeaponAnim()`, matching Python's `get_battle_anim()`. Raw weapon types
+    like `Anima`/`Light`/`Dark` were falling back to `Unarmed` (no Attack pose →
+    freeze). `selectWeaponAnim()` rewritten with `Magic*` → `Magic` → `MagicGeneric`
+    fallback chain and `Ranged*` prefix stripping (matching Python).
+  - **Spell hit side detection.** `startHit()` now uses `currentStrikeDefenderAnim`
+    (set during `beginStrike`) instead of comparing `anim === leftAnim`. Child spell
+    effects pass themselves as `anim`, not the parent anim, so identity comparison
+    always failed → damage applied to wrong side.
+  - **Animation safety timeout.** `updateAnim()` now has a 600-frame (~10s) timeout.
+    If the animation state gets stuck (spell effect fails to spawn, callback missed),
+    it force-clears `awaitingHit` and transitions to `end_phase`.
+  - **Audio URL encoding.** `loadSfxBuffer()` and `loadMusicBuffer()` now use
+    `encodeURIComponent()` for filenames, fixing issues with SFX names containing
+    spaces (e.g. `"Attack Hit 1"`, `"Select 5"`).
+  - **Mouse/touch menu sounds.** `ChoiceMenu.handleClick()` now plays `Select 1`
+    (confirm), `Select 4` (back), `Error` (disabled). `handleMouseHover()` plays
+    `Select 6` when hover changes selection.
+  - **Combat UI layout overhaul.** Name tags moved to top of screen (matching Python's
+    layout where they slide in from y=-60). HP bars remain at bottom, sliding up from
+    below screen. Each occupies its own screen region — no more overlap.
+
+### Previous Session
 - **8 bug fixes across combat, UI, portraits, and audio.**
   - **Magic attack freeze fix.** Five root causes in `battle-animation.ts` and
     `animation-combat.ts`: (1) `spell_hit` command now sets `state='wait'` and

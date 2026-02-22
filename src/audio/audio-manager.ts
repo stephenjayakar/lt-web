@@ -204,11 +204,13 @@ export class AudioManager {
 
   /**
    * Attempt to load a music buffer, trying .ogg, .mp3, .wav in order.
+   * Encodes the filename portion for proper URL handling of spaces/special chars.
    */
   private async loadMusicBuffer(nid: string): Promise<AudioBuffer | null> {
+    const encodedNid = encodeURIComponent(nid);
     const extensions = ['ogg', 'mp3', 'wav'];
     for (const ext of extensions) {
-      const path = `${this.baseUrl}/resources/music/${nid}.${ext}`;
+      const path = `${this.baseUrl}/resources/music/${encodedNid}.${ext}`;
       const buffer = await this.loadAudioBuffer(path);
       if (buffer) {
         return buffer;
@@ -220,11 +222,13 @@ export class AudioManager {
 
   /**
    * Attempt to load an SFX buffer, trying .ogg, .wav in order.
+   * Encodes the filename portion for proper URL handling of spaces/special chars.
    */
   private async loadSfxBuffer(nid: string): Promise<AudioBuffer | null> {
+    const encodedNid = encodeURIComponent(nid);
     const extensions = ['ogg', 'wav'];
     for (const ext of extensions) {
-      const path = `${this.baseUrl}/resources/sfx/${nid}.${ext}`;
+      const path = `${this.baseUrl}/resources/sfx/${encodedNid}.${ext}`;
       const buffer = await this.loadAudioBuffer(path);
       if (buffer) {
         return buffer;
