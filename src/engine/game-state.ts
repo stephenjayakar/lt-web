@@ -11,6 +11,7 @@ import type {
   UniqueUnitData,
   ItemPrefab,
 } from '../data/types';
+import { FRAMETIME } from './constants';
 import { Database } from '../data/database';
 import { ResourceManager } from '../data/resource-manager';
 import { StateMachine } from './state-machine';
@@ -73,6 +74,10 @@ export class GameState {
   // -- Input ----------------------------------------------------------------
   /** Reference to the InputManager, set after construction from main.ts. */
   input: InputManager | null = null;
+
+  // -- Timing ---------------------------------------------------------------
+  /** Actual frame delta in ms (set each frame by main loop). */
+  frameDeltaMs: number = FRAMETIME;
 
   // -- Transient state (used by game states) --------------------------------
   selectedUnit: UnitObject | null;
@@ -248,6 +253,7 @@ export class GameState {
 
     // h2. Create AIController -----------------------------------------------
     this.aiController = new AIController(this.db, this.board, this.pathSystem);
+    this.aiController.gameRef = this;
 
     // i. Initialize camera and cursor to map size --------------------------
     this.camera.setMapSize(this.tilemap.width, this.tilemap.height);

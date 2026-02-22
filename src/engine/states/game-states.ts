@@ -2280,11 +2280,14 @@ export class CombatState extends State {
     if (!activeCombat) return;
     const game = getGame();
 
+    // Use real frame delta for consistent timing across refresh rates
+    const realDelta = game.frameDeltaMs ?? FRAMETIME;
+
     switch (this.phase) {
       case 'combat': {
         // SELECT (Enter/Z) fast-forwards combat animation at 3x speed
         const combatFastFwd = game.input?.isPressed('SELECT') ?? false;
-        const combatDelta = combatFastFwd ? FRAMETIME * 3 : FRAMETIME;
+        const combatDelta = combatFastFwd ? realDelta * 3 : realDelta;
         const done = activeCombat.update(combatDelta);
         if (done) {
           this.results = activeCombat.applyResults();
@@ -2304,7 +2307,7 @@ export class CombatState extends State {
 
       case 'death': {
         // Death animation: 350ms fade-out
-        this.phaseTimer += FRAMETIME;
+        this.phaseTimer += realDelta;
         this.deathFadeProgress = Math.min(1, this.phaseTimer / 350);
         if (this.phaseTimer >= 350) {
           // Remove dead units from board
@@ -2333,7 +2336,7 @@ export class CombatState extends State {
       case 'exp': {
         // Animate EXP bar fill over 350ms. SELECT skips to end.
         const expSkip = game.input?.isPressed('SELECT') ?? false;
-        this.phaseTimer += expSkip ? FRAMETIME * 4 : FRAMETIME;
+        this.phaseTimer += expSkip ? realDelta * 4 : realDelta;
         const t = Math.min(1, this.phaseTimer / 350);
         this.expDisplayCurrent = this.expDisplayStart + (this.expDisplayTarget - this.expDisplayStart) * t;
 
@@ -2354,7 +2357,7 @@ export class CombatState extends State {
       case 'levelup': {
         // Show level-up stats for 1200ms. SELECT skips.
         const lvlSkip = game.input?.isPressed('SELECT') ?? false;
-        this.phaseTimer += lvlSkip ? FRAMETIME * 4 : FRAMETIME;
+        this.phaseTimer += lvlSkip ? realDelta * 4 : realDelta;
         if (this.phaseTimer >= 1200) {
           this.phase = 'cleanup';
           this.phaseTimer = 0;
@@ -3036,6 +3039,7 @@ export class AIState extends MapState {
   private processing: boolean = false;
   private waitingForCombat: boolean = false;
   private waitingForMovement: boolean = false;
+  private waitingForEvent: boolean = false;
   private pendingCombatTarget: UnitObject | null = null;
   private pendingCombatWeapon: ItemObject | null = null;
 
@@ -3050,6 +3054,7 @@ export class AIState extends MapState {
     this.processing = false;
     this.waitingForCombat = false;
     this.waitingForMovement = false;
+    this.waitingForEvent = false;
     this.pendingCombatTarget = null;
     this.pendingCombatWeapon = null;
 
@@ -3078,6 +3083,15 @@ export class AIState extends MapState {
     if (this.waitingForMovement) {
       if (!game.movementSystem.isMoving()) {
         this.waitingForMovement = false;
+      }
+      return;
+    }
+
+    // Wait for event (from interact action) to finish
+    if (this.waitingForEvent) {
+      if (!game.eventManager?.hasActiveEvents()) {
+        this.waitingForEvent = false;
+        this.advanceToNextUnit();
       }
       return;
     }
@@ -3255,6 +3269,112 @@ export class AIState extends MapState {
               );
             }
             applyItem();
+          }
+        } else {
+          unit.finished = true;
+          this.advanceToNextUnit();
+        }
+        break;
+      }
+
+      case 'interact': {
+        // AI interacting with a region (e.g., destroying a village)
+        if (action.targetPosition) {
+          const prevPos: [number, number] | null = unit.position
+            ? [unit.position[0], unit.position[1]]
+            : null;
+
+          const triggerInteract = () => {
+            // Find the region at the target position
+            const regionNid = action.regionNid;
+            const regionSubNid = action.regionSubNid ?? '';
+            const regions = game.currentLevel?.regions ?? [];
+            const region = regionNid
+              ? regions.find((r: any) => r.nid === regionNid)
+              : regions.find((r: any) =>
+                  r.region_type === 'event' &&
+                  r.sub_nid === regionSubNid &&
+                  action.targetPosition![0] >= r.position[0] &&
+                  action.targetPosition![0] < r.position[0] + (r.size?.[0] ?? 1) &&
+                  action.targetPosition![1] >= r.position[1] &&
+                  action.targetPosition![1] < r.position[1] + (r.size?.[1] ?? 1),
+                );
+
+            if (region && game.eventManager) {
+              // Build context for event trigger
+              const ctx = {
+                game,
+                unit1: unit,
+                position: action.targetPosition,
+                region,
+                gameVars: game.gameVars,
+                levelVars: game.levelVars,
+              };
+
+              // Try RegionTrigger (uses sub_nid as trigger type, e.g., 'Destructible')
+              let triggered = game.eventManager.trigger(
+                { type: region.sub_nid, unit1: unit, position: action.targetPosition, region, levelNid: game.currentLevel?.nid },
+                ctx,
+              );
+              // Fallback to generic on_region_interact
+              if (!triggered) {
+                triggered = game.eventManager.trigger(
+                  { type: 'on_region_interact', unit1: unit, position: action.targetPosition, region, levelNid: game.currentLevel?.nid },
+                  ctx,
+                );
+              }
+
+              // Remove region if only_once
+              if (triggered && region.only_once) {
+                const idx = regions.indexOf(region);
+                if (idx !== -1) regions.splice(idx, 1);
+              }
+
+              // Push EventState if events were triggered
+              if (triggered && game.eventManager.hasActiveEvents()) {
+                this.waitingForEvent = true;
+                game.state.change('event');
+              }
+            }
+
+            unit.hasAttacked = true;
+            unit.finished = true;
+            if (!this.waitingForEvent) {
+              this.advanceToNextUnit();
+            }
+          };
+
+          if (
+            action.movePath &&
+            action.movePath.length > 1 &&
+            prevPos &&
+            (action.targetPosition[0] !== prevPos[0] ||
+              action.targetPosition[1] !== prevPos[1])
+          ) {
+            // Move first, then interact
+            game.board.moveUnit(
+              unit,
+              action.targetPosition[0],
+              action.targetPosition[1],
+            );
+            game.camera.focusTile(
+              action.targetPosition[0],
+              action.targetPosition[1],
+            );
+            this.waitingForMovement = true;
+            game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
+              this.waitingForMovement = false;
+              triggerInteract();
+            });
+          } else {
+            if (action.targetPosition) {
+              game.board.moveUnit(
+                unit,
+                action.targetPosition[0],
+                action.targetPosition[1],
+              );
+            }
+            triggerInteract();
           }
         } else {
           unit.finished = true;
@@ -3929,34 +4049,41 @@ export class EventState extends State {
 
   override begin(): StateResult {
     const game = getGame();
-    this.currentEvent = game.eventManager?.getCurrentEvent() ?? null;
-    if (!this.currentEvent) {
+    const nextEvent = game.eventManager?.getCurrentEvent() ?? null;
+    if (!nextEvent) {
       // Nothing to process — pop back immediately
       game.state.back();
       return;
     }
-    // Reset blocking UI state
-    this.dialog = null;
-    this.banner = null;
-    this.bannerIsAlert = false;
-    this.waitTimer = 0;
-    this.waiting = false;
-    this.transitionAlpha = 0;
-    this.transitionFadingIn = false;
-    this.transitionFadingOut = false;
-    this.transitionHoldBlack = false;
-    this.choiceMenu = null;
-    this.choiceResult = null;
-    this.forLoopStack = [];
-    this.skipMode = false;
-    this.portraits.clear();
-    this.portraitPriorityCounter = 1;
-    this.speakingPortrait = null;
-    this.background = null;
-    this.chapterTitlePhase = 'none';
-    this.chapterTitleTimer = 0;
-    this.chapterTitleText = '';
-    this.locationCard = null;
+    // Only do a full reset when starting a genuinely NEW event.
+    // When EventState is re-activated after another state pops (e.g.,
+    // movement, shop, combat), we keep skipMode and other state intact.
+    const isNewEvent = nextEvent !== this.currentEvent;
+    this.currentEvent = nextEvent;
+    if (isNewEvent) {
+      // Full reset for a new event
+      this.dialog = null;
+      this.banner = null;
+      this.bannerIsAlert = false;
+      this.waitTimer = 0;
+      this.waiting = false;
+      this.transitionAlpha = 0;
+      this.transitionFadingIn = false;
+      this.transitionFadingOut = false;
+      this.transitionHoldBlack = false;
+      this.choiceMenu = null;
+      this.choiceResult = null;
+      this.forLoopStack = [];
+      this.skipMode = false;
+      this.portraits.clear();
+      this.portraitPriorityCounter = 1;
+      this.speakingPortrait = null;
+      this.background = null;
+      this.chapterTitlePhase = 'none';
+      this.chapterTitleTimer = 0;
+      this.chapterTitleText = '';
+      this.locationCard = null;
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -4034,6 +4161,28 @@ export class EventState extends State {
       }
       return;
     }
+
+    // Enable skip mode when BACK is pressed outside of any blocking UI.
+    // This handles the case where the user presses Escape during wait,
+    // transition, screen_shake, or between instant commands.
+    if (effective === 'BACK') {
+      this.skipMode = true;
+      // If we're in a wait, transition, or other blockable state, resolve it
+      if (this.waiting) {
+        this.waiting = false;
+        this.waitTimer = 0;
+        this.advancePointer();
+      }
+      if (this.banner) {
+        this.banner = null;
+        this.bannerIsAlert = false;
+        this.advancePointer();
+      }
+      if (this.locationCard) {
+        this.locationCard = null;
+        this.advancePointer();
+      }
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -4047,52 +4196,88 @@ export class EventState extends State {
 
     // Dialog typewriter
     if (this.dialog) {
-      this.dialog.update();
-      return;
+      if (this.skipMode) {
+        // Skip mode: instantly dismiss dialog
+        this.dialog = null;
+        if (this.speakingPortrait) {
+          this.speakingPortrait.stopTalking();
+          this.speakingPortrait = null;
+        }
+        this.advancePointer();
+      } else {
+        this.dialog.update();
+        return;
+      }
     }
 
     // Banner timer
     if (this.banner) {
-      const done = this.banner.update(FRAMETIME);
-      if (done) {
+      if (this.skipMode) {
         this.banner = null;
         this.bannerIsAlert = false;
         this.advancePointer();
       } else {
-        return; // still showing banner
+        const done = this.banner.update(FRAMETIME);
+        if (done) {
+          this.banner = null;
+          this.bannerIsAlert = false;
+          this.advancePointer();
+        } else {
+          return; // still showing banner
+        }
       }
     }
 
     // Wait timer
     if (this.waiting) {
-      this.waitTimer -= FRAMETIME;
-      if (this.waitTimer <= 0) {
+      if (this.skipMode) {
         this.waiting = false;
+        this.waitTimer = 0;
         this.advancePointer();
+      } else {
+        this.waitTimer -= FRAMETIME;
+        if (this.waitTimer <= 0) {
+          this.waiting = false;
+          this.advancePointer();
+        }
+        return;
       }
-      return;
     }
 
     // Transition fade animation
     if (this.transitionFadingIn) {
-      this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / this.transitionDurationMs);
-      if (this.transitionAlpha >= 1) {
+      if (this.skipMode) {
+        this.transitionAlpha = 1;
         this.transitionFadingIn = false;
         this.transitionHoldBlack = true;
         this.advancePointer();
-        // Don't return — allow burst to continue while holding black
       } else {
-        return;
+        this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / this.transitionDurationMs);
+        if (this.transitionAlpha >= 1) {
+          this.transitionFadingIn = false;
+          this.transitionHoldBlack = true;
+          this.advancePointer();
+          // Don't return — allow burst to continue while holding black
+        } else {
+          return;
+        }
       }
     }
     if (this.transitionFadingOut) {
-      this.transitionAlpha = Math.max(0, this.transitionAlpha - FRAMETIME / this.transitionDurationMs);
-      if (this.transitionAlpha <= 0) {
+      if (this.skipMode) {
+        this.transitionAlpha = 0;
         this.transitionFadingOut = false;
         this.transitionHoldBlack = false;
         this.advancePointer();
+      } else {
+        this.transitionAlpha = Math.max(0, this.transitionAlpha - FRAMETIME / this.transitionDurationMs);
+        if (this.transitionAlpha <= 0) {
+          this.transitionFadingOut = false;
+          this.transitionHoldBlack = false;
+          this.advancePointer();
+        }
+        return;
       }
-      return;
     }
 
     // Choice menu — block while active
@@ -4102,29 +4287,35 @@ export class EventState extends State {
 
     // Chapter title overlay animation
     if (this.chapterTitlePhase !== 'none') {
-      this.chapterTitleTimer += FRAMETIME;
-      switch (this.chapterTitlePhase) {
-        case 'fade_in':
-          if (this.chapterTitleTimer >= 1000) {
-            this.chapterTitlePhase = 'hold';
-            this.chapterTitleTimer = 0;
-          }
-          break;
-        case 'hold':
-          if (this.chapterTitleTimer >= 3000) {
-            this.chapterTitlePhase = 'fade_out';
-            this.chapterTitleTimer = 0;
-          }
-          break;
-        case 'fade_out':
-          if (this.chapterTitleTimer >= 1000) {
-            this.chapterTitlePhase = 'none';
-            this.chapterTitleTimer = 0;
-            this.advancePointer();
-          }
-          break;
+      if (this.skipMode) {
+        this.chapterTitlePhase = 'none';
+        this.chapterTitleTimer = 0;
+        this.advancePointer();
+      } else {
+        this.chapterTitleTimer += FRAMETIME;
+        switch (this.chapterTitlePhase) {
+          case 'fade_in':
+            if (this.chapterTitleTimer >= 1000) {
+              this.chapterTitlePhase = 'hold';
+              this.chapterTitleTimer = 0;
+            }
+            break;
+          case 'hold':
+            if (this.chapterTitleTimer >= 3000) {
+              this.chapterTitlePhase = 'fade_out';
+              this.chapterTitleTimer = 0;
+            }
+            break;
+          case 'fade_out':
+            if (this.chapterTitleTimer >= 1000) {
+              this.chapterTitlePhase = 'none';
+              this.chapterTitleTimer = 0;
+              this.advancePointer();
+            }
+            break;
+        }
+        return;
       }
-      return;
     }
 
     // Location card timer (non-blocking: just updates alpha, doesn't stop command processing)
@@ -4795,10 +4986,16 @@ export class EventState extends State {
         return false;
       }
 
-      case 'add_group':
-      case 'spawn_group': {
-        // add_group;group_nid  or  add_group;group_nid;starting_pos_group
+      case 'add_group': {
+        // add_group;GroupNid;StartingGroup;EntryType;Placement
+        // StartingGroup: empty=group's own positions, 'starting'=unit.startingPosition,
+        //   'x,y'=literal coords (all units), or another group NID's positions
+        // EntryType: fade (default), immediate, warp, swoosh
+        // Placement: giveup (default), stack, closest, push
         const groupNid = args[0] ?? '';
+        const startingGroup = args[1] ?? '';
+        // args[2] = entry type (ignored for now — all entries are immediate)
+        const placement = (args[3] ?? 'giveup').toLowerCase().trim();
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (!group) {
@@ -4808,29 +5005,114 @@ export class EventState extends State {
         }
 
         const unitNids: string[] = group.units ?? [];
-        const positions: Record<string, [number, number]> = group.positions ?? {};
         const levelUnits = game.currentLevel?.units ?? [];
 
         for (const uNid of unitNids) {
-          // Skip if already spawned
-          if (game.units.has(uNid)) continue;
+          // Skip if already on map or dead
+          const existing = this.findUnit(uNid);
+          if (existing?.position || existing?.isDead()) continue;
+          // If not spawned yet, skip units that are already in the registry
+          if (existing && existing.position) continue;
 
-          let unitData = levelUnits.find((u: any) => u.nid === uNid);
-          // Fall back to global unit DB if not found in level data
-          if (!unitData) {
-            const dbUnit = game.db.units.get(uNid);
-            if (dbUnit) {
-              unitData = { ...dbUnit, generic: false, team: 'enemy', ai: 'Normal' };
-            } else {
-              continue;
+          const position = this._getGroupPosition(startingGroup, uNid, group, groups, game);
+          if (!position) continue;
+
+          const finalPos = this._checkPlacement(position, placement, game);
+          if (!finalPos) continue;
+
+          // Need to spawn the unit first if not yet in registry
+          if (!existing) {
+            let unitData = levelUnits.find((u: any) => u.nid === uNid);
+            if (!unitData) {
+              const dbUnit = game.db.units.get(uNid);
+              if (dbUnit) {
+                unitData = { ...dbUnit, generic: false, team: 'enemy', ai: 'Normal' };
+              } else {
+                continue;
+              }
+            }
+            this.spawnUnitFromLevelData(unitData, finalPos, game);
+          } else {
+            // Unit exists but not on map — place them
+            if (game.board) {
+              game.board.moveUnit(existing, finalPos[0], finalPos[1]);
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'spawn_group': {
+        // spawn_group;GroupNid;CardinalDirection;StartingGroup;MovementType;Placement
+        // Units appear at map edge, then walk to their destination position.
+        const groupNid = args[0] ?? '';
+        const direction = (args[1] ?? 'south').toLowerCase().trim();
+        const startingGroup = args[2] ?? '';
+        // args[3] = movement type (normal/immediate/warp/fade; all treated as immediate for now)
+        const placement = (args[4] ?? 'giveup').toLowerCase().trim();
+        const groups: any[] = game.currentLevel?.unit_groups ?? [];
+        const group = groups.find((g: any) => g.nid === groupNid);
+        if (!group) {
+          console.warn(`EventState spawn_group: group "${groupNid}" not found`);
+          this.advancePointer();
+          return false;
+        }
+
+        const unitNids: string[] = group.units ?? [];
+        const levelUnits = game.currentLevel?.units ?? [];
+        const tilemap = game.tilemap;
+        const mapW = tilemap?.width ?? 20;
+        const mapH = tilemap?.height ?? 20;
+
+        for (const uNid of unitNids) {
+          const existing = this.findUnit(uNid);
+          if (existing?.position || existing?.isDead()) continue;
+
+          const destPos = this._getGroupPosition(startingGroup, uNid, group, groups, game);
+          if (!destPos) continue;
+
+          const finalDest = this._checkPlacement(destPos, placement, game);
+          if (!finalDest) continue;
+
+          // Compute edge spawn position
+          let edgePos: [number, number];
+          if (direction === 'north') {
+            edgePos = [finalDest[0], 0];
+          } else if (direction === 'south') {
+            edgePos = [finalDest[0], mapH - 1];
+          } else if (direction === 'west') {
+            edgePos = [0, finalDest[1]];
+          } else {
+            edgePos = [mapW - 1, finalDest[1]]; // east
+          }
+
+          // Spawn or place the unit at the edge first
+          if (!existing) {
+            let unitData = levelUnits.find((u: any) => u.nid === uNid);
+            if (!unitData) {
+              const dbUnit = game.db.units.get(uNid);
+              if (dbUnit) {
+                unitData = { ...dbUnit, generic: false, team: 'enemy', ai: 'Normal' };
+              } else {
+                continue;
+              }
+            }
+            this.spawnUnitFromLevelData(unitData, edgePos, game);
+          } else {
+            if (game.board) {
+              game.board.moveUnit(existing, edgePos[0], edgePos[1]);
             }
           }
 
-          // Position: from group positions, or starting_position
-          const posOverride: [number, number] | null = positions[uNid] ?? null;
-
-          this.spawnUnitFromLevelData(unitData, posOverride, game);
+          // Now move the unit from edge to destination
+          const spawnedUnit = this.findUnit(uNid);
+          if (spawnedUnit && game.board) {
+            game.board.moveUnit(spawnedUnit, finalDest[0], finalDest[1]);
+          }
         }
+        // TODO: In Python, spawn_group pauses for movement animation unless no_block.
+        // For now, units teleport instantly. Movement animation can be added later.
         this.advancePointer();
         return false;
       }
@@ -4854,18 +5136,23 @@ export class EventState extends State {
       }
 
       case 'move_group': {
+        // move_group;GroupNid;StartingGroup;MovementType;Placement
         const groupNid = args[0] ?? '';
+        const startingGroup = args[1] ?? '';
+        // args[2] = movement type (ignored — all teleport for now)
+        const placement = (args[3] ?? 'giveup').toLowerCase().trim();
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (group && game.board) {
-          const positions: Record<string, [number, number]> = group.positions ?? {};
           const unitNids: string[] = group.units ?? [];
           for (const uNid of unitNids) {
             const unit = this.findUnit(uNid);
-            const pos = positions[uNid];
-            if (unit && pos) {
-              game.board.moveUnit(unit, pos[0], pos[1]);
-            }
+            if (!unit?.position) continue; // skip units not on map
+            const destPos = this._getGroupPosition(startingGroup, uNid, group, groups, game);
+            if (!destPos) continue;
+            const finalPos = this._checkPlacement(destPos, placement, game);
+            if (!finalPos) continue;
+            game.board.moveUnit(unit, finalPos[0], finalPos[1]);
           }
         }
         this.advancePointer();
@@ -6463,6 +6750,140 @@ export class EventState extends State {
         // Unknown/unimplemented command — skip
         this.advancePointer();
         return false;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Group position lookup: mirrors Python's Event._get_position()
+  // -----------------------------------------------------------------------
+
+  /**
+   * Resolve the position for a unit within a group command.
+   *
+   * @param nextPos     The StartingGroup parameter. Rules:
+   *   - empty/null  → use the group's own positions dict
+   *   - 'starting'  → use unit.startingPosition
+   *   - 'x,y'       → literal coordinate (all units get same position)
+   *   - other string → another group NID's positions dict
+   * @param unitNid    The unit to look up
+   * @param group      The primary group being operated on
+   * @param allGroups  All level unit groups (for cross-group lookups)
+   * @param game       GameState reference
+   */
+  private _getGroupPosition(
+    nextPos: string,
+    unitNid: string,
+    group: any,
+    allGroups: any[],
+    game: any,
+  ): [number, number] | null {
+    if (!nextPos || nextPos === '') {
+      // Use the group's own positions dict
+      const pos = group.positions?.[unitNid];
+      return pos ? [pos[0], pos[1]] : null;
+    }
+
+    if (nextPos.toLowerCase() === 'starting') {
+      // Use the unit's starting_position
+      const unit = this.findUnit(unitNid);
+      if (unit?.startingPosition) {
+        return [unit.startingPosition[0], unit.startingPosition[1]];
+      }
+      // Also check level data for starting_position
+      const levelUnits = game.currentLevel?.units ?? [];
+      const levelUnit = levelUnits.find((u: any) => u.nid === unitNid);
+      if (levelUnit?.starting_position) {
+        return [levelUnit.starting_position[0], levelUnit.starting_position[1]];
+      }
+      return null;
+    }
+
+    // Check if it's a literal "x,y" coordinate
+    if (nextPos.includes(',')) {
+      const parts = nextPos.split(',').map((s: string) => parseInt(s.trim(), 10));
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return [parts[0], parts[1]];
+      }
+    }
+
+    // Otherwise, treat as another group's NID and look up positions
+    const otherGroup = allGroups.find((g: any) => g.nid === nextPos);
+    if (otherGroup?.positions?.[unitNid]) {
+      const pos = otherGroup.positions[unitNid];
+      return [pos[0], pos[1]];
+    }
+
+    return null;
+  }
+
+  /**
+   * Check placement validity: mirrors Python's Event._check_placement().
+   *
+   * @param position  Desired position
+   * @param placement One of: 'giveup', 'stack', 'closest', 'push'
+   * @param game      GameState reference
+   * @returns The final position, or null if placement fails
+   */
+  private _checkPlacement(
+    position: [number, number],
+    placement: string,
+    game: any,
+  ): [number, number] | null {
+    // Check bounds
+    if (game.tilemap && !game.tilemap.checkBounds(position[0], position[1])) {
+      return null;
+    }
+
+    // Check if tile is occupied
+    const occupant = game.board?.getUnit(position[0], position[1]);
+    if (!occupant) {
+      return position; // tile is free
+    }
+
+    switch (placement) {
+      case 'giveup':
+        return null; // skip this unit
+      case 'stack':
+        return position; // place on top (units overlap)
+      case 'closest': {
+        // Find nearest unoccupied tile
+        const maxRange = 10;
+        for (let r = 1; r <= maxRange; r++) {
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+              if (Math.abs(dx) + Math.abs(dy) !== r) continue;
+              const nx = position[0] + dx;
+              const ny = position[1] + dy;
+              if (game.tilemap && !game.tilemap.checkBounds(nx, ny)) continue;
+              if (!game.board?.getUnit(nx, ny)) {
+                return [nx, ny];
+              }
+            }
+          }
+        }
+        return null;
+      }
+      case 'push': {
+        // Push the occupant to a nearby tile, then use this position
+        const maxRange = 5;
+        for (let r = 1; r <= maxRange; r++) {
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+              if (Math.abs(dx) + Math.abs(dy) !== r) continue;
+              const nx = position[0] + dx;
+              const ny = position[1] + dy;
+              if (game.tilemap && !game.tilemap.checkBounds(nx, ny)) continue;
+              if (!game.board?.getUnit(nx, ny)) {
+                game.board.moveUnit(occupant, nx, ny);
+                return position;
+              }
+            }
+          }
+        }
+        return null;
+      }
+      default:
+        return position;
     }
   }
 

@@ -20,14 +20,18 @@ import {
   canDouble,
   getEquippedWeapon,
 } from '../combat/combat-calcs';
+import { evaluateCondition } from '../events/event-manager';
+import type { ConditionContext } from '../events/event-manager';
 
 export interface AIAction {
-  type: 'attack' | 'move' | 'wait' | 'use_item';
+  type: 'attack' | 'move' | 'wait' | 'use_item' | 'interact';
   unit: UnitObject;
   targetPosition?: [number, number]; // position to move to
   targetUnit?: UnitObject; // unit to attack/heal
   item?: ItemObject; // weapon or item to use
   movePath?: [number, number][]; // path to follow
+  regionNid?: string; // region NID for interact actions
+  regionSubNid?: string; // region sub_nid for interact actions (e.g., 'Destructible')
 }
 
 /**
@@ -45,11 +49,14 @@ export class AIController {
   private db: Database;
   private board: GameBoard;
   private pathSystem: PathSystem;
+  /** Reference to the game state for region lookups. Set after construction. */
+  gameRef: any;
 
   constructor(db: Database, board: GameBoard, pathSystem: PathSystem) {
     this.db = db;
     this.board = board;
     this.pathSystem = pathSystem;
+    this.gameRef = null;
   }
 
   /**
@@ -173,7 +180,33 @@ export class AIController {
       const targetPositions = this.getTargetPositions(unit, behaviour);
       if (targetPositions.length === 0) return null;
 
-      // Find closest target position and move toward it
+      // Check if any target position is directly reachable this turn
+      const targetSpec = typeof behaviour.target_spec === 'string' ? behaviour.target_spec : '';
+      for (const targetPos of targetPositions) {
+        const reachable = validMoves.some(([mx, my]) => mx === targetPos[0] && my === targetPos[1]);
+        if (reachable) {
+          // Find the matching region for this position
+          const regions = this.gameRef?.currentLevel?.regions ?? [];
+          const region = regions.find((r: any) =>
+            r.region_type === 'event' &&
+            r.sub_nid === targetSpec &&
+            targetPos[0] >= r.position[0] && targetPos[0] < r.position[0] + (r.size?.[0] ?? 1) &&
+            targetPos[1] >= r.position[1] && targetPos[1] < r.position[1] + (r.size?.[1] ?? 1),
+          );
+
+          const movePath = this.pathSystem.getPath(unit, targetPos[0], targetPos[1], this.board);
+          return {
+            type: 'interact',
+            unit,
+            targetPosition: targetPos,
+            movePath: movePath ?? (unit.position ? [unit.position, targetPos] : [targetPos]),
+            regionNid: region?.nid,
+            regionSubNid: region?.sub_nid ?? targetSpec,
+          };
+        }
+      }
+
+      // Can't reach target this turn — move toward it
       return this.moveTowardPosition(unit, validMoves, targetPositions);
     }
 
@@ -289,9 +322,45 @@ export class AIController {
    */
   private getTargetPositions(unit: UnitObject, behaviour: AiBehavior): [number, number][] {
     if (behaviour.target === 'Event') {
-      // Find regions matching target_spec sub_nid
-      // TODO: implement region lookup when regions are loaded
-      return [];
+      // Find Event regions matching target_spec sub_nid
+      const targetSpec = typeof behaviour.target_spec === 'string' ? behaviour.target_spec : '';
+      const regions = this.gameRef?.currentLevel?.regions ?? [];
+      const positions: [number, number][] = [];
+      for (const region of regions) {
+        if (region.region_type !== 'event') continue;
+        if (targetSpec && region.sub_nid !== targetSpec) continue;
+        // Evaluate region condition against this unit
+        if (region.condition) {
+          const condCtx: ConditionContext = {
+            game: this.gameRef,
+            unit1: unit,
+            region,
+            gameVars: this.gameRef?.gameVars,
+            levelVars: this.gameRef?.levelVars,
+          };
+          try {
+            if (!evaluateCondition(region.condition, condCtx)) continue;
+          } catch {
+            continue;
+          }
+        }
+        // Add all positions in the region
+        const [rx, ry] = region.position;
+        const [rw, rh] = region.size ?? [1, 1];
+        for (let x = rx; x < rx + rw; x++) {
+          for (let y = ry; y < ry + rh; y++) {
+            positions.push([x, y]);
+          }
+        }
+      }
+      // Deduplicate
+      const seen = new Set<string>();
+      return positions.filter(([x, y]) => {
+        const key = `${x},${y}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
 
     if (behaviour.target === 'Terrain') {

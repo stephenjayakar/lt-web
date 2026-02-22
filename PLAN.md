@@ -8,16 +8,52 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**54 source files, ~24,500 lines of TypeScript.**
+**54 source files, ~25,500 lines of TypeScript.**
 Builds cleanly with zero type errors. Loads `.ltproj` game data over
 HTTP and runs a 60 fps game loop rendering to a dynamically-scaled
 HTML5 Canvas with dynamic viewport (mobile + desktop). Phase 1.2 core
 gameplay implemented, plus GBA-style combat animations, team-colored
 map sprites, level select, full touch/mouse/keyboard input, component
 dispatch system, scripted combat, shop system, map animations, 9-slice
-menu backgrounds, and item icon rendering.
+menu backgrounds, item icon rendering, and JS-based condition evaluator.
 
 ### Recent Changes (Latest Session)
+- **Group command position system rewrite.** `add_group`, `spawn_group`,
+  and `move_group` now correctly implement the Python `_get_position()`
+  logic: empty = group's own positions, `'starting'` = unit.startingPosition,
+  `'x,y'` = literal coordinates (all units), or another group NID for
+  cross-group position lookup. Placement modes (`giveup`, `stack`,
+  `closest`, `push`) properly handle occupied tiles. `spawn_group` now
+  spawns units at the correct map edge based on cardinal direction and
+  moves them to destination positions. Fixes all chapter cutscene unit
+  spawning (intro, reinforcements, bandits).
+- **JavaScript-based condition evaluator fallback.** When the pattern
+  matcher cannot parse a complex condition, a `Function()`-based fallback
+  evaluates the expression with a Python-compatible game proxy scope.
+  Supports complex chains like
+  `game.level.regions.get('X').contains(game.get_unit('Y').position)`,
+  `any(... for unit in game.get_units_in_party())`,
+  `len(game.get_enemy_units()) == 0`, and all standard Python operators.
+  Translates Python `len()`, `True/False/None`, `and/or/not`, and
+  generator-expression `any()` to JavaScript equivalents. Fixes chapter 1
+  enemy reinforcement conditions.
+- **AI Interact behaviour for Destructible regions.** AI units with
+  `PursueVillage` AI can now find and interact with Event regions matching
+  `target_spec` (e.g., `Destructible`). `getTargetPositions()` searches
+  level regions by `sub_nid`, evaluates region conditions. When reachable,
+  returns `'interact'` action type that triggers `RegionTrigger` events
+  (fires `show_layer;Ruin` to swap village to ruins). `AIState` handles
+  `'interact'` actions: moves unit, triggers event, removes `only_once`
+  regions, waits for event completion. Fixes village destruction in
+  chapters 2 and 5.
+- **Skip mode (Escape) fix.** Pressing Escape now enables skip mode
+  regardless of what blocking state the event is in (not just during
+  dialog). Works during `wait`, `transition`, `banner`, `location_card`,
+  `chapter_title`, and between instant commands. The `update()` loop
+  also checks skip mode to instantly resolve blocking UI (dialog,
+  banner, wait, transition, chapter title).
+
+### Previous Session
 - **`interact_unit` scripted combat.** Full implementation of the
   `interact_unit` event command for scripted combat with forced outcomes.
   CombatScript tokens (`hit1`, `hit2`, `crit1`, `crit2`, `miss1`, `miss2`,
@@ -718,6 +754,11 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 - [x] **Condition evaluator.** Supports `'X' in unit.tags`, `'X' not in
   unit.tags`, `has_item()`, `has_skill()`, `v()`, `can_unlock()`,
   `any_unit_in_region()`, `is_dead()`, `check_alive()`.
+- [x] **JavaScript fallback evaluator.** Complex Python expressions that
+  the pattern matcher can't handle are evaluated via `Function()` with a
+  Python-compatible game proxy scope. Handles `game.level.regions.get()`,
+  `game.get_unit()`, `len()`, `any()` generators, and all standard
+  operators.
 - [ ] **Full equation support.** Still missing:
   - Game state queries beyond `v()`
   - Custom functions beyond `max` / `min` / `clamp`
@@ -773,7 +814,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
 | `engine/game-state.ts` | ~672 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading, shop transient fields, combatScript |
-| `engine/states/game-states.ts` | ~6530 | 18 states (+ ShopState), scripted combat, ~65 event commands, {unit} template vars, unit NID position resolution |
+| `engine/states/game-states.ts` | ~6930 | 18 states (+ ShopState), scripted combat, ~65 event commands, {unit} template vars, group position system, placement modes, skip mode fix |
 | `data/types.ts` | 342 | Done |
 | `data/database.ts` | ~464 | Done — combat anim data loading, map animation catalog |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
@@ -802,8 +843,8 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback |
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
 | `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
-| `ai/ai-controller.ts` | ~1080 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI |
-| `events/event-manager.ts` | ~905 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead, check_alive), talk pairs |
+| `ai/ai-controller.ts` | ~1170 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI, Interact (Event regions) |
+| `events/event-manager.ts` | ~1100 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead, check_alive), JS fallback eval, talk pairs |
 | `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
 | `ui/menu.ts` | ~204 | Done — click + hover mouse support, 9-slice backgrounds via base-surf |
 | `ui/base-surf.ts` | ~228 | **NEW** — 9-slice menu window backgrounds from system sprites |

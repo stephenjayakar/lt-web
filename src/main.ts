@@ -246,6 +246,9 @@ async function main(): Promise<void> {
     const deltaMs = Math.min(rawDelta, FRAMETIME * 3);
     lastTimestamp = timestamp;
 
+    // Store real frame delta on game state for time-based animations
+    game.frameDeltaMs = deltaMs;
+
     // --- Process input ---
     const event = inputManager.processInput(deltaMs);
 
