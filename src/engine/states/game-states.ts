@@ -34,6 +34,7 @@ import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import { MapAnimation } from '../../rendering/map-animation';
+import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { getEquippedWeapon } from '../../combat/combat-calcs';
@@ -3697,15 +3698,15 @@ export class ShopState extends State {
 
   private drawBuyMenu(surf: Surface, FONT: string, SMALL: string): void {
     const startY = 28;
-    const rowH = 12;
+    const rowH = 14;
     const W = surf.width;
 
     // Column headers
-    surf.drawText('Item', 6, startY, 'rgba(180,180,220,1)', SMALL);
+    surf.drawText('Item', 20, startY, 'rgba(180,180,220,1)', SMALL);
     surf.drawText('Price', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
 
     for (let i = 0; i < this.shopItems.length; i++) {
-      const item = this.shopItems[i];
+      const item = this.shopItems[i] as ItemObject;
       const y = startY + 10 + i * rowH;
       const stock = this.shopStock[i] ?? -1;
       const price = this.getBuyPrice(item);
@@ -3713,11 +3714,14 @@ export class ShopState extends State {
 
       // Highlight selected row
       if (i === this.menuIndex) {
-        surf.fillRect(2, y - 1, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
+        surf.fillRect(2, y - 2, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
       }
 
+      // Draw item icon (16x16)
+      drawItemIcon(surf, item, 2, y - 2);
+
       const textColor = canAfford ? 'white' : 'rgba(128,128,128,1)';
-      surf.drawText(item.name, 6, y + 1, textColor, SMALL);
+      surf.drawText(item.name, 20, y + 1, textColor, SMALL);
 
       // Price
       const priceStr = String(price);
@@ -3744,11 +3748,11 @@ export class ShopState extends State {
 
   private drawSellMenu(surf: Surface, FONT: string, SMALL: string): void {
     const startY = 28;
-    const rowH = 12;
+    const rowH = 14;
     const W = surf.width;
     const sellableItems = this.unit?.items.filter(i => i.getValue() > 0) ?? [];
 
-    surf.drawText('Item', 6, startY, 'rgba(180,180,220,1)', SMALL);
+    surf.drawText('Item', 20, startY, 'rgba(180,180,220,1)', SMALL);
     surf.drawText('Value', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
 
     for (let i = 0; i < sellableItems.length; i++) {
@@ -3757,16 +3761,19 @@ export class ShopState extends State {
       const price = this.getSellPrice(item);
 
       if (i === this.sellIndex) {
-        surf.fillRect(2, y - 1, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
+        surf.fillRect(2, y - 2, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
       }
 
-      surf.drawText(item.name, 6, y + 1, 'white', SMALL);
+      // Draw item icon (16x16)
+      drawItemIcon(surf, item, 2, y - 2);
+
+      surf.drawText(item.name, 20, y + 1, 'white', SMALL);
       const priceStr = String(price);
       surf.drawText(priceStr, W - 6 - priceStr.length * 4, y + 1, '#90D0FF', SMALL);
     }
 
     if (sellableItems.length === 0) {
-      surf.drawText('No items to sell', 6, startY + 12, 'rgba(160,160,160,1)', SMALL);
+      surf.drawText('No items to sell', 20, startY + 12, 'rgba(160,160,160,1)', SMALL);
     }
   }
 
