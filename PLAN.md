@@ -8,7 +8,7 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**53 source files, ~23,600 lines of TypeScript.**
+**54 source files, ~24,200 lines of TypeScript.**
 Builds cleanly with zero type errors. Loads `.ltproj` game data over
 HTTP and runs a 60 fps game loop rendering to a dynamically-scaled
 HTML5 Canvas with dynamic viewport (mobile + desktop). Phase 1.2 core
@@ -50,6 +50,17 @@ menu backgrounds, and item icon rendering.
   `resources/icons32/`. `drawItemIcon()` renders item icons by
   `icon_nid` and `icon_index` ([x, y] grid coords). Integrated into
   shop buy and sell menus.
+- **Bitmap font rendering system.** New `src/rendering/bmp-font.ts`
+  (~530 lines). Loads all 23 font variants from `resources/fonts/`
+  (`.png` spritesheets + `.idx` character maps). `BmpFont` class
+  supports: variable-width glyphs, stacked rendering (chapter/label
+  fonts), `allUppercase`/`allLowercase` transforms, `spaceOffset`.
+  Color palette variants generated via pixel-level color conversion
+  (19 colors for text/small/narrow fonts). `Surface.drawText()` auto-
+  routes to BMP fonts via callback pattern (avoids circular deps).
+  CSS font sizes mapped to BMP font NIDs (<=7px -> small, else text).
+  CSS colors mapped to palette names. Dialog word-wrap uses BMP font
+  width measurement for accurate line breaks.
 
 ### Previous Session
 - **Autotile animation system.** Tilesets with animated water/lava tiles
@@ -540,8 +551,13 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   movement, bop, mirroring. All 9 portrait event commands implemented.
   Dialog positions as speech bubble relative to portrait.
   - Original: `app/events/event_portrait.py`
-- [ ] **Bitmap font rendering.** Replace Canvas `fillText` with the original
-  BMP font system for authentic GBA-style text.
+- [x] **Bitmap font rendering.** New `src/rendering/bmp-font.ts` (~530 lines).
+  Loads all 23 font variants from `resources/fonts/` (PNG spritesheets +
+  `.idx` character maps). Supports variable-width glyphs, color palette
+  variants (19 colors for text/small/narrow), stacked rendering (chapter/
+  label), allUppercase/allLowercase transforms. `Surface.drawText()` auto-
+  routes to BMP fonts when loaded, with transparent fallback to Canvas
+  `fillText`. Dialog word-wrap uses BMP font width measurement.
   - Original: `app/engine/bmpfont.py`, `app/engine/fonts.py`
 - [x] **Icon rendering.** New `src/ui/icons.ts` (~150 lines). Loads 16x16 and
   32x32 icon sheets from `resources/icons16/` and `resources/icons32/`.
@@ -711,7 +727,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | File | Lines | Status |
 |------|------:|--------|
 | `engine/constants.ts` | 37 | Done |
-| `engine/surface.ts` | 333 | Done — scale-aware Surface, `drawImageFull()` for combat anims |
+| `engine/surface.ts` | ~358 | Done — scale-aware Surface, `drawImageFull()`, BMP font callback integration |
 | `engine/input.ts` | 476 | Done — mouse, touch, pinch-zoom, drag-pan, scroll-zoom, middle-click pan |
 | `engine/state.ts` | 52 | Done |
 | `engine/state-machine.ts` | 207 | Done |
@@ -733,7 +749,8 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `rendering/tilemap.ts` | ~330 | Done — showLayer/hideLayer, autotile animation, weather management |
 | `rendering/map-view.ts` | ~275 | Done — dynamic viewport, unit HP bar overlays, weather rendering |
 | `rendering/weather.ts` | ~238 | Done — WeatherSystem with 7 types (rain, snow, sand, light, dark, night, sunset) |
-| `rendering/map-animation.ts` | ~169 | **NEW** — MapAnimation sprite-sheet system, below/above-unit rendering |
+| `rendering/map-animation.ts` | ~169 | Done — MapAnimation sprite-sheet system, below/above-unit rendering |
+| `rendering/bmp-font.ts` | ~526 | **NEW** — Bitmap font system: BmpFont class, IDX parser, palette variants, font registry |
 | `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
 | `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
 | `rendering/highlight.ts` | 137 | Done — threat highlight type, clearType/hasType helpers |
@@ -759,9 +776,9 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `ui/health-bar.ts` | 97 | Done |
 | `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
 | `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
-| `ui/dialog.ts` | ~320 | Done — portrait-aware positioning with speech bubble tail, word-wrap |
+| `ui/dialog.ts` | ~322 | Done — portrait-aware positioning with speech bubble tail, word-wrap, BMP font width measurement |
 | `ui/banner.ts` | 108 | Done |
-| `main.ts` | ~324 | Done — LevelSelectState, dynamic viewport, DPR-aware display, ShopState registration, icon init |
+| `main.ts` | ~327 | Done — LevelSelectState, dynamic viewport, DPR-aware display, ShopState registration, icon + font init |
 
 ---
 

@@ -15,6 +15,7 @@ import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
 import { initIcons } from './ui/icons';
+import { initFonts } from './rendering/bmp-font';
 import {
   setGameRef,
   TitleState,
@@ -169,8 +170,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --- Icons ---
+  // --- Icons & Fonts ---
   initIcons(baseUrl);
+  // Load bitmap fonts (async, text rendering falls back to Canvas until ready)
+  initFonts(baseUrl);
 
   // --- Audio ---
   const audioManager = new AudioManager(baseUrl);
