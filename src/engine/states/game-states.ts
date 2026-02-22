@@ -3892,6 +3892,8 @@ export class EventState extends State {
   private transitionFadingIn: boolean = false;  // true = fading to black
   private transitionFadingOut: boolean = false; // true = fading from black
   private transitionHoldBlack: boolean = false; // true = holding black between open/close
+  private transitionDurationMs: number = 500;   // fade duration in ms
+  private transitionColor: string = '0,0,0';    // fade color as "r,g,b"
 
   // Choice menu state
   private choiceMenu: ChoiceMenu | null = null;
@@ -4073,7 +4075,7 @@ export class EventState extends State {
 
     // Transition fade animation
     if (this.transitionFadingIn) {
-      this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / 500);
+      this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / this.transitionDurationMs);
       if (this.transitionAlpha >= 1) {
         this.transitionFadingIn = false;
         this.transitionHoldBlack = true;
@@ -4084,7 +4086,7 @@ export class EventState extends State {
       }
     }
     if (this.transitionFadingOut) {
-      this.transitionAlpha = Math.max(0, this.transitionAlpha - FRAMETIME / 500);
+      this.transitionAlpha = Math.max(0, this.transitionAlpha - FRAMETIME / this.transitionDurationMs);
       if (this.transitionAlpha <= 0) {
         this.transitionFadingOut = false;
         this.transitionHoldBlack = false;
@@ -4204,7 +4206,7 @@ export class EventState extends State {
 
     // Transition fade overlay
     if (this.transitionAlpha > 0) {
-      surf.fillRect(0, 0, surf.width, surf.height, `rgba(0,0,0,${this.transitionAlpha})`);
+      surf.fillRect(0, 0, surf.width, surf.height, `rgba(${this.transitionColor},${this.transitionAlpha})`);
     }
 
     // Update and draw portraits (sorted by priority, ascending)
@@ -4357,6 +4359,25 @@ export class EventState extends State {
   }
 
   /**
+   * Resolve a position argument that could be either "x,y" coordinates
+   * or a unit NID (resolves to the unit's current position).
+   */
+  private resolvePosition(posOrUnit: string, game: any): [number, number] | null {
+    if (!posOrUnit) return null;
+    // Try parsing as x,y coordinates first
+    const parts = posOrUnit.split(',');
+    if (parts.length >= 2) {
+      const x = parseInt(parts[0].trim(), 10);
+      const y = parseInt(parts[1].trim(), 10);
+      if (!isNaN(x) && !isNaN(y)) return [x, y];
+    }
+    // Try resolving as a unit NID
+    const unit = this.findUnit(posOrUnit);
+    if (unit?.position) return [unit.position[0], unit.position[1]];
+    return null;
+  }
+
+  /**
    * Build a ConditionContext from the current game state and event trigger.
    */
   private buildConditionContext(): ConditionContext {
@@ -4425,7 +4446,17 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   private executeCommand(cmd: EventCommand, game: any): boolean {
-    const args = cmd.args ?? [];
+    const rawArgs = cmd.args ?? [];
+
+    // Substitute template variables in all args:
+    // {unit} -> the unit that triggered this event (from trigger.unitNid or unit1.nid)
+    // {unit2} -> the secondary unit (from trigger.unit2.nid)
+    const trigger = this.currentEvent?.trigger;
+    const unitNid = trigger?.unitNid ?? trigger?.unit1?.nid ?? '';
+    const unit2Nid = trigger?.unitB ?? trigger?.unit2?.nid ?? '';
+    const args = rawArgs.map(a =>
+      a.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid)
+    );
 
     switch (cmd.type) {
       // ----- Flow control -----
@@ -4620,9 +4651,26 @@ export class EventState extends State {
       }
 
       case 'transition': {
-        // transition;open — fade FROM black (reveal)
-        // transition;close — fade TO black (hide)
+        // transition;open[;duration[;r,g,b]] — fade FROM color (reveal)
+        // transition;close[;duration[;r,g,b]] — fade TO color (hide)
         // transition (no args) — same as close
+        // Parse optional duration (ms) and color
+        const durationArg = parseInt(args[1], 10);
+        if (!isNaN(durationArg) && durationArg > 0) {
+          this.transitionDurationMs = durationArg;
+        } else {
+          this.transitionDurationMs = 500; // default
+        }
+        // Parse optional color (r,g,b)
+        if (args[2]) {
+          const colorParts = args[2].split(',');
+          if (colorParts.length >= 3) {
+            this.transitionColor = `${colorParts[0].trim()},${colorParts[1].trim()},${colorParts[2].trim()}`;
+          }
+        } else {
+          this.transitionColor = '0,0,0'; // default black
+        }
+
         if (this.skipMode) {
           // In skip mode, apply transitions instantly
           const dir = (args[0] ?? 'close').toLowerCase();
@@ -4660,12 +4708,26 @@ export class EventState extends State {
       // ----- Unit commands (instant) -----
 
       case 'move_unit': {
+        // move_unit;UnitNid;x,y  or  move_unit;UnitNid (uses starting_position)
         const unitNid = args[0] ?? '';
-        const posStr = args[1] ?? '';
-        const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
         const unit = this.findUnit(unitNid);
-        if (unit && game.board && posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
-          game.board.moveUnit(unit, posParts[0], posParts[1]);
+        if (unit && game.board) {
+          let targetPos: [number, number] | null = null;
+          // Try parsing explicit position
+          const posStr = args[1] ?? '';
+          if (posStr) {
+            const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
+            if (posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
+              targetPos = [posParts[0], posParts[1]];
+            }
+          }
+          // Fallback to starting position if no explicit position given
+          if (!targetPos && unit.startingPosition) {
+            targetPos = [unit.startingPosition[0], unit.startingPosition[1]];
+          }
+          if (targetPos) {
+            game.board.moveUnit(unit, targetPos[0], targetPos[1]);
+          }
         }
         this.advancePointer();
         return false;
@@ -5121,16 +5183,12 @@ export class EventState extends State {
 
       case 'center_cursor':
       case 'move_cursor': {
-        // center_cursor;x,y or move_cursor;x,y
-        const posStr = args[0] ?? '';
-        const parts = posStr.split(',');
-        if (parts.length >= 2) {
-          const cx = parseInt(parts[0], 10);
-          const cy = parseInt(parts[1], 10);
-          if (!isNaN(cx) && !isNaN(cy)) {
-            game.cursor?.setPos(cx, cy);
-            game.camera?.focusTile(cx, cy);
-          }
+        // center_cursor;x,y or center_cursor;UnitNid
+        const posOrUnit = args[0] ?? '';
+        const resolved = this.resolvePosition(posOrUnit, game);
+        if (resolved) {
+          game.cursor?.setPos(resolved[0], resolved[1]);
+          game.camera?.focusTile(resolved[0], resolved[1]);
         }
         this.advancePointer();
         return false;
@@ -5175,15 +5233,12 @@ export class EventState extends State {
       }
 
       case 'flicker_cursor': {
-        // Briefly highlight a tile — just move camera there for now
-        const posStr2 = args[0] ?? '';
-        const parts2 = posStr2.split(',');
-        if (parts2.length >= 2) {
-          const fx = parseInt(parts2[0], 10);
-          const fy = parseInt(parts2[1], 10);
-          if (!isNaN(fx) && !isNaN(fy)) {
-            game.camera?.focusTile(fx, fy);
-          }
+        // Briefly highlight a tile — move camera and cursor there
+        const flickerTarget = args[0] ?? '';
+        const flickerPos = this.resolvePosition(flickerTarget, game);
+        if (flickerPos) {
+          game.cursor?.setPos(flickerPos[0], flickerPos[1]);
+          game.camera?.focusTile(flickerPos[0], flickerPos[1]);
         }
         this.advancePointer();
         return false;

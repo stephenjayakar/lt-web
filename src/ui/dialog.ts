@@ -104,6 +104,8 @@ export class Dialog {
 
   /** Optional portrait for speech bubble positioning. */
   private portrait: EventPortrait | null;
+  /** Whether to clear displayed text on next input (from {clear} tag). */
+  private _clearOnResume: boolean = false;
 
   constructor(text: string, speaker?: string, portrait?: EventPortrait, typeSpeed?: number) {
     this.text = text;
@@ -133,6 +135,14 @@ export class Dialog {
         return false;
       }
       if (this.state === 'waiting') {
+        // If {clear} was triggered, clear text and continue typing same line
+        if (this._clearOnResume) {
+          this._clearOnResume = false;
+          this.displayedText = '';
+          this.state = 'typing';
+          this.waitingForInput = false;
+          return false;
+        }
         // Advance to next line or finish
         if (this.currentLine < this.lines.length - 1) {
           this.currentLine++;
@@ -196,6 +206,41 @@ export class Dialog {
         this.charIndex += 4;
         this.displayedText += '\n';
         continue;
+      }
+
+      if (remaining.startsWith('{clear}')) {
+        // Clear the text box and wait for input before continuing
+        this.charIndex += 7;
+        this.state = 'waiting';
+        this.waitingForInput = true;
+        this._clearOnResume = true;
+        return;
+      }
+
+      if (remaining.startsWith('{p}')) {
+        // Brief pause (auto-continues) — treat as short wait
+        this.charIndex += 3;
+        this.state = 'waiting';
+        this.waitingForInput = true;
+        return;
+      }
+
+      // {c:command;arg1;arg2} — inline event command (skip silently)
+      if (remaining.startsWith('{c:')) {
+        const endIdx = remaining.indexOf('}');
+        if (endIdx !== -1) {
+          this.charIndex += endIdx + 1;
+          continue;
+        }
+      }
+
+      // Skip other unrecognized {tags}
+      if (remaining.startsWith('{')) {
+        const endIdx = remaining.indexOf('}');
+        if (endIdx !== -1) {
+          this.charIndex += endIdx + 1;
+          continue;
+        }
       }
 
       // Normal character
