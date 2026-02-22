@@ -1,5 +1,6 @@
 import { Surface } from '../engine/surface';
 import type { InputEvent } from '../engine/input';
+import { getMenuBackgroundSync } from './base-surf';
 
 export interface MenuOption {
   label: string;
@@ -79,11 +80,9 @@ export class ChoiceMenu {
 
     const totalHeight = this.options.length * ROW_HEIGHT + PADDING_Y * 2;
 
-    // Dark semi-transparent background
-    surf.fillRect(this.x, this.y, this.width, totalHeight, 'rgba(16, 16, 32, 0.85)');
-
-    // 1px border
-    surf.drawRect(this.x, this.y, this.width, totalHeight, 'rgba(180, 180, 220, 0.6)');
+    // 9-slice menu background (falls back to dark surface if sprite not loaded yet)
+    const bgSurf = getMenuBackgroundSync(this.width, totalHeight);
+    surf.blit(bgSurf, this.x, this.y);
 
     for (let i = 0; i < this.options.length; i++) {
       const opt = this.options[i];
