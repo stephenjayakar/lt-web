@@ -8,7 +8,7 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**54 source files, ~24,200 lines of TypeScript.**
+**54 source files, ~24,500 lines of TypeScript.**
 Builds cleanly with zero type errors. Loads `.ltproj` game data over
 HTTP and runs a 60 fps game loop rendering to a dynamically-scaled
 HTML5 Canvas with dynamic viewport (mobile + desktop). Phase 1.2 core
@@ -77,6 +77,24 @@ menu backgrounds, and item icon rendering.
   - Added arena/overlay/advanced stubs (`draw_overlay_sprite`,
     `table`, `textbox`, `set_wexp`, `resurrect`, `autolevel_to`,
     `add_lore`, `add_base_convo`, `enable_fog_of_war`, `set_fog_of_war`).
+- **Critical gameplay bug fixes (chapters 0-2).**
+  - `{unit}` / `{unit2}` template variable substitution now applies to
+    ALL event command args (was only `shop`). Fixes village rewards, house
+    visits, unlock, portrait loading, has_visited across all chapters.
+  - `move_cursor` / `center_cursor` / `flicker_cursor` now resolve unit
+    NIDs to positions (e.g., `move_cursor;Eirika` finds Eirika's tile).
+    Fixes camera choreography in all chapter cutscenes.
+  - `check_alive()` added to condition evaluator (opposite of
+    `check_dead()`). Fixes Garcia/Ross chapter 2 outro recruit branch.
+  - Dialog `{clear}` tag: clears text box and waits for input, then
+    continues typing. Fixes multi-page dialog in chapter 1/2 outros.
+  - Dialog `{c:...}` inline command tags skipped gracefully (no more
+    literal `{c:expression;...}` rendered as text).
+  - Dialog `{p}` pause tag handled; unknown `{tags}` silently skipped.
+  - `transition` command now supports custom duration and color params
+    (`transition;Close;750;248,248,248` for white fades).
+  - `move_unit` with no position falls back to `startingPosition`.
+  - New `resolvePosition()` helper resolves "x,y" coords OR unit NIDs.
 
 ### Previous Session
 - **Autotile animation system.** Tilesets with animated water/lava tiles
@@ -699,7 +717,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
   conditional stat formulas (e.g. RESCUE_AID).
 - [x] **Condition evaluator.** Supports `'X' in unit.tags`, `'X' not in
   unit.tags`, `has_item()`, `has_skill()`, `v()`, `can_unlock()`,
-  `any_unit_in_region()`, `is_dead()`.
+  `any_unit_in_region()`, `is_dead()`, `check_alive()`.
 - [ ] **Full equation support.** Still missing:
   - Game state queries beyond `v()`
   - Custom functions beyond `max` / `min` / `clamp`
@@ -755,7 +773,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
 | `engine/game-state.ts` | ~672 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading, shop transient fields, combatScript |
-| `engine/states/game-states.ts` | ~6397 | 18 states (+ ShopState), scripted combat, ~60 event commands incl. interact_unit, shop, map_anim, remove_map_anim |
+| `engine/states/game-states.ts` | ~6530 | 18 states (+ ShopState), scripted combat, ~65 event commands, {unit} template vars, unit NID position resolution |
 | `data/types.ts` | 342 | Done |
 | `data/database.ts` | ~464 | Done — combat anim data loading, map animation catalog |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
@@ -785,7 +803,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
 | `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
 | `ai/ai-controller.ts` | ~1080 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI |
-| `events/event-manager.ts` | ~888 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead), talk pairs, any_unit_in_region, can_unlock |
+| `events/event-manager.ts` | ~905 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead, check_alive), talk pairs |
 | `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
 | `ui/menu.ts` | ~204 | Done — click + hover mouse support, 9-slice backgrounds via base-surf |
 | `ui/base-surf.ts` | ~228 | **NEW** — 9-slice menu window backgrounds from system sprites |
@@ -794,7 +812,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `ui/health-bar.ts` | 97 | Done |
 | `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
 | `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
-| `ui/dialog.ts` | ~322 | Done — portrait-aware positioning with speech bubble tail, word-wrap, BMP font width measurement |
+| `ui/dialog.ts` | ~367 | Done — portrait-aware positioning, word-wrap, BMP font widths, {clear}/{c:...}/{p} inline tags |
 | `ui/banner.ts` | 108 | Done |
 | `main.ts` | ~327 | Done — LevelSelectState, dynamic viewport, DPR-aware display, ShopState registration, icon + font init |
 
