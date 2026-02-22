@@ -156,6 +156,7 @@ export class ChoiceMenu {
     if (!this.visible) return null;
 
     if (button === 'BACK') {
+      _menuAudioManager?.playSfx?.('Select 4');
       return { back: true };
     }
 
@@ -174,9 +175,13 @@ export class ChoiceMenu {
     if (rowIdx < 0 || rowIdx >= this.options.length) return null;
 
     const opt = this.options[rowIdx];
-    if (!opt.enabled) return null;
+    if (!opt.enabled) {
+      _menuAudioManager?.playSfx?.('Error');
+      return null;
+    }
 
     this.selectedIndex = rowIdx;
+    _menuAudioManager?.playSfx?.('Select 1');
     return { selected: opt.value };
   }
 
@@ -198,6 +203,9 @@ export class ChoiceMenu {
     const relY = gameY - this.y - PADDING_Y;
     const rowIdx = Math.floor(relY / ROW_HEIGHT);
     if (rowIdx >= 0 && rowIdx < this.options.length && this.options[rowIdx].enabled) {
+      if (this.selectedIndex !== rowIdx) {
+        _menuAudioManager?.playSfx?.('Select 6');
+      }
       this.selectedIndex = rowIdx;
     }
   }

@@ -250,7 +250,7 @@ function resolveEquation(
 // Damage type helpers
 // ------------------------------------------------------------------
 
-function isMagic(item: ItemObject): boolean {
+export function isMagic(item: ItemObject): boolean {
   // LT convention: if the weapon has a "magic" or "magic_at_range"
   // component it deals magic damage.  Also check weapon_type for
   // known magical types.
