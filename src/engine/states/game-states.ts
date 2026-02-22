@@ -21,6 +21,7 @@ import { viewport, isSmallScreen } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
+import type { RegionData } from '../../data/types';
 import { ItemObject as ItemObjectClass } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
 import { evaluateCondition, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
@@ -1074,6 +1075,7 @@ export class MenuState extends State {
 
   private menu: ChoiceMenu | null = null;
   private previousPosition: [number, number] | null = null;
+  private validRegions: RegionData[] = [];
 
   override begin(): StateResult {
     const game = getGame();
@@ -1132,20 +1134,28 @@ export class MenuState extends State {
       }
     }
 
-    // Visit / Seize / Talk — check regions at current position
+    // Region interactions (Visit, Seize, Shop, Armory, Chest, etc.)
+    // Regions with region_type === 'event' show their sub_nid as the menu label.
+    this.validRegions = [];
     if (game.currentLevel?.regions) {
       for (const region of game.currentLevel.regions) {
+        if (region.region_type.toLowerCase() !== 'event') continue;
         const [rx, ry] = region.position;
         const [rw, rh] = region.size;
         if (ux >= rx && ux < rx + rw && uy >= ry && uy < ry + rh) {
-          const rtype = region.region_type.toLowerCase();
-          if (rtype === 'village' || rtype === 'visit') {
-            options.push({ label: 'Visit', value: `visit_${region.nid}`, enabled: true });
-          } else if (rtype === 'shop' || rtype === 'armory' || rtype === 'vendor') {
-            options.push({ label: 'Shop', value: `shop_${region.nid}`, enabled: true });
-          } else if (rtype === 'seize') {
-            options.push({ label: 'Seize', value: `seize_${region.nid}`, enabled: true });
-          }
+          // Evaluate region condition
+          const condCtx: ConditionContext = {
+            game, unit1: unit, region,
+            gameVars: game.gameVars, levelVars: game.levelVars,
+          };
+          const conditionStr = region.condition ?? 'True';
+          const conditionMet = evaluateCondition(conditionStr, condCtx);
+          if (!conditionMet) continue;
+          // No duplicate sub_nid labels
+          const subNid = region.sub_nid || 'Visit';
+          if (options.some(o => o.label === subNid)) continue;
+          options.push({ label: subNid, value: `region_${region.nid}`, enabled: true });
+          this.validRegions.push(region);
         }
       }
     }
@@ -1242,44 +1252,48 @@ export class MenuState extends State {
       } else if (value === 'drop') {
         this.menu = null;
         game.state.change('drop');
-      } else if (value.startsWith('visit_') || value.startsWith('shop_')) {
-        // Trigger the region event — try the region's sub_nid first, then 'on_region_interact'
-        const regionNid = value.split('_').slice(1).join('_');
-        const region = game.currentLevel?.regions?.find((r: any) => r.nid === regionNid);
+      } else if (value.startsWith('region_')) {
+        // Region interaction — triggered by sub_nid (Visit, Seize, Shop, Armory, Chest, etc.)
+        const regionNid = value.slice('region_'.length);
+        const region = this.validRegions.find((r) => r.nid === regionNid);
+        const subNid = region?.sub_nid || '';
         const ctx = { game, unit1: unit, position: unit.position, region, gameVars: game.gameVars, levelVars: game.levelVars };
+        let didTrigger = false;
         if (game.eventManager) {
-          // Try region sub_nid as trigger type first (e.g., 'Visit', 'Arena')
-          let triggered = false;
-          if (region?.sub_nid) {
-            triggered = game.eventManager.trigger(
-              { type: region.sub_nid, regionNid, unitNid: unit.nid, unit1: unit, region },
+          // Try region sub_nid as trigger type first (e.g., 'Visit', 'Seize', 'Armory')
+          if (subNid) {
+            didTrigger = game.eventManager.trigger(
+              { type: subNid, regionNid, unitNid: unit.nid, unit1: unit, region },
               ctx,
             );
           }
-          if (!triggered) {
-            game.eventManager.trigger(
+          // Fallback to generic on_region_interact
+          if (!didTrigger) {
+            didTrigger = game.eventManager.trigger(
               { type: 'on_region_interact', regionNid, unitNid: unit.nid, unit1: unit, region },
               ctx,
             );
           }
         }
+        // Remove only_once regions after triggering
+        if (didTrigger && region?.only_once && game.currentLevel?.regions) {
+          game.currentLevel.regions = game.currentLevel.regions.filter(
+            (r: RegionData) => r.nid !== regionNid,
+          );
+        }
         if (unit) unit.finished = true;
         this.menu = null;
+        // Seize also checks win condition immediately
+        if (subNid === 'Seize') {
+          if (game.checkWinCondition()) {
+            console.warn('VICTORY — seize condition met');
+          }
+        }
         if (game.eventManager?.hasActiveEvents()) {
           game.state.change('event');
         } else {
           game.state.back();
         }
-      } else if (value.startsWith('seize_')) {
-        // Seize: mark level as won
-        if (unit) unit.finished = true;
-        this.menu = null;
-        // Check win immediately
-        if (game.checkWinCondition()) {
-          console.warn('VICTORY — seize condition met');
-          // TODO: push VictoryState
-        }
-        game.state.back();
       } else if (value === 'talk') {
         // Trigger talk event using 'on_talk' trigger type (matches LT Python)
         const adjacentTalkTargets = getAdjacentUnits(
@@ -3507,6 +3521,7 @@ export class EventState extends State {
   // Blocking-command state
   private dialog: Dialog | null = null;
   private banner: Banner | null = null;
+  private bannerIsAlert: boolean = false;  // true if banner is from 'alert' command (allows early dismiss)
   private waitTimer: number = 0;
   private waiting: boolean = false;
 
@@ -3559,6 +3574,7 @@ export class EventState extends State {
     // Reset blocking UI state
     this.dialog = null;
     this.banner = null;
+    this.bannerIsAlert = false;
     this.waitTimer = 0;
     this.waiting = false;
     this.transitionAlpha = 0;
@@ -3629,6 +3645,16 @@ export class EventState extends State {
       return;
     }
 
+    // Allow early dismiss of alert banners after 300ms
+    if (this.banner && this.bannerIsAlert) {
+      if (effective && this.banner.getElapsed() > 300) {
+        this.banner = null;
+        this.bannerIsAlert = false;
+        this.advancePointer();
+      }
+      return;
+    }
+
     // Forward input to choice menu if active
     if (this.choiceMenu) {
       const result = this.choiceMenu.handleInput(effective);
@@ -3666,6 +3692,7 @@ export class EventState extends State {
       const done = this.banner.update(FRAMETIME);
       if (done) {
         this.banner = null;
+        this.bannerIsAlert = false;
         this.advancePointer();
       } else {
         return; // still showing banner
@@ -4261,8 +4288,9 @@ export class EventState extends State {
           return false;
         }
         const text = args[0] ?? '';
-        this.banner = new Banner(text, undefined, 1500);
-        // Don't advance — advanced when banner finishes (in update)
+        this.banner = new Banner(text, undefined, 3000);
+        this.bannerIsAlert = true;
+        // Don't advance — advanced when banner finishes (in update) or early dismissed via input
         return true;
       }
 
@@ -4744,12 +4772,29 @@ export class EventState extends State {
       }
 
       case 'screen_shake': {
-        // Stub — camera shake not yet implemented
-        this.advancePointer();
-        return false;
+        // screen_shake;duration;shake_type;flags
+        // shake_type: default, combat, kill, random, celeste (default: 'default')
+        // flags: no_block
+        const durationMs = parseInt(args[0], 10) || 500;
+        const shakeType = (args[1] ?? 'default').toLowerCase().trim();
+        const noBlock = args.some((a: string) => a.toLowerCase().trim() === 'no_block');
+        if (game.camera) {
+          game.camera.setShake(shakeType, durationMs);
+        }
+        if (noBlock || this.skipMode) {
+          this.advancePointer();
+          return false;
+        }
+        // Block for the shake duration
+        this.waitTimer = durationMs;
+        this.waiting = true;
+        return true;
       }
 
       case 'screen_shake_end': {
+        if (game.camera) {
+          game.camera.resetShake();
+        }
         this.advancePointer();
         return false;
       }
@@ -4999,8 +5044,65 @@ export class EventState extends State {
       // ----- Region management -----
 
       case 'add_region': {
-        // add_region;nid;type;x,y,w,h (simplified)
-        // Regions are complex — store in level data for now
+        // add_region;NID;Position;Size;RegionType;SubNid;TimeLeft;flags
+        // Example: add_region;MyRegion;5,6;1,1;event;Visit;only_once
+        const regionNid = args[0] ?? '';
+        const posStr = args[1] ?? '0,0';
+        const sizeStr = args[2] ?? '1,1';
+        const regionType = (args[3] ?? 'normal').toLowerCase();
+        const subNid = args[4] ?? '';
+        // Time left could be in args[5], flags could be scattered in remaining args
+        let timeLeft: number | null = null;
+        let onlyOnce = false;
+        let interruptMove = false;
+        let hideTime = false;
+        for (let i = 5; i < args.length; i++) {
+          const a = args[i].toLowerCase().trim();
+          if (a === 'only_once') onlyOnce = true;
+          else if (a === 'interrupt_move') interruptMove = true;
+          else if (a === 'true' || a === 'false') hideTime = a === 'true';
+          else {
+            const n = parseInt(a, 10);
+            if (!isNaN(n) && timeLeft === null) timeLeft = n;
+          }
+        }
+
+        // Parse position
+        const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
+        const pos: [number, number] = [posParts[0] || 0, posParts[1] || 0];
+
+        // Parse size
+        const sizeParts = sizeStr.split(',').map((s: string) => parseInt(s.trim(), 10));
+        const size: [number, number] = [sizeParts[0] || 1, sizeParts[1] || 1];
+
+        // Check for duplicate NID
+        if (game.currentLevel?.regions?.some((r: RegionData) => r.nid === regionNid)) {
+          console.warn(`add_region: Region "${regionNid}" already exists`);
+          this.advancePointer();
+          return false;
+        }
+
+        const newRegion: RegionData = {
+          nid: regionNid,
+          region_type: regionType,
+          position: pos,
+          size: size,
+          sub_nid: subNid,
+          condition: 'True',
+          time_left: timeLeft,
+          only_once: onlyOnce,
+          interrupt_move: interruptMove,
+          hide_time: hideTime,
+        };
+
+        if (!game.currentLevel) {
+          this.advancePointer();
+          return false;
+        }
+        if (!game.currentLevel.regions) {
+          game.currentLevel.regions = [];
+        }
+        game.currentLevel.regions.push(newRegion);
         this.advancePointer();
         return false;
       }
@@ -5009,7 +5111,7 @@ export class EventState extends State {
         const regionNid = args[0] ?? '';
         if (game.currentLevel?.regions) {
           game.currentLevel.regions = game.currentLevel.regions.filter(
-            (r: any) => r.nid !== regionNid
+            (r: RegionData) => r.nid !== regionNid
           );
         }
         this.advancePointer();
@@ -5017,7 +5119,17 @@ export class EventState extends State {
       }
 
       case 'region_condition': {
-        // Stub — region condition management
+        // region_condition;RegionNID;ConditionExpression
+        const rcNid = args[0] ?? '';
+        const rcCondition = args[1] ?? 'True';
+        if (game.currentLevel?.regions) {
+          const reg = game.currentLevel.regions.find((r: RegionData) => r.nid === rcNid);
+          if (reg) {
+            reg.condition = rcCondition;
+          } else {
+            console.warn(`region_condition: Region "${rcNid}" not found`);
+          }
+        }
         this.advancePointer();
         return false;
       }

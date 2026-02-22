@@ -17,6 +17,37 @@ const SMOOTH_FACTOR = 0.15;
 /** Snap threshold: stop interpolating below this pixel distance. */
 const SNAP_THRESHOLD = 0.5;
 
+/** Predefined shake offset patterns (in pixels). */
+const SHAKE_PATTERNS: Record<string, [number, number][]> = {
+  default: [[0, -2], [0, -2], [0, 0], [0, 0]],
+  combat:  [[-3, -3], [0, 0], [3, 3], [0, 0]],
+  kill:    [[3, 3], [0, 0], [0, 0], [3, 3], [-3, -3], [3, 3], [-3, -3], [0, 0]],
+};
+
+/** Generate a random shake pattern. */
+function randomShake(count: number, amplitude: number): [number, number][] {
+  const offsets: [number, number][] = [];
+  for (let i = 0; i < count; i++) {
+    offsets.push([
+      Math.floor(Math.random() * (amplitude * 2 + 1)) - amplitude,
+      Math.floor(Math.random() * (amplitude * 2 + 1)) - amplitude,
+    ]);
+  }
+  return offsets;
+}
+
+/** Generate a celeste-style shake (subtle ±1). */
+function celesteShake(count: number): [number, number][] {
+  const offsets: [number, number][] = [];
+  for (let i = 0; i < count; i++) {
+    offsets.push([
+      Math.random() < 0.5 ? -1 : 1,
+      Math.random() < 0.5 ? -1 : 1,
+    ]);
+  }
+  return offsets;
+}
+
 export class Camera {
   /** Current viewport top-left in world pixels. */
   private x: number = 0;
@@ -29,6 +60,11 @@ export class Camera {
   /** Map dimensions in pixels (derived from tile counts). */
   private mapPixelW: number = 240;
   private mapPixelH: number = 160;
+
+  /** Shake state. */
+  private shakeOffsets: [number, number][] = [[0, 0]];
+  private shakeIdx: number = 0;
+  private shakeEndTime: number = 0; // 0 = permanent until resetShake()
 
   setMapSize(widthTiles: number, heightTiles: number): void {
     this.mapPixelW = widthTiles * TILEWIDTH;
@@ -68,15 +104,48 @@ export class Camera {
     if (Math.abs(dx) < SNAP_THRESHOLD && Math.abs(dy) < SNAP_THRESHOLD) {
       this.x = this.targetX;
       this.y = this.targetY;
-      return;
+    } else {
+      this.x += dx * SMOOTH_FACTOR;
+      this.y += dy * SMOOTH_FACTOR;
     }
 
-    this.x += dx * SMOOTH_FACTOR;
-    this.y += dy * SMOOTH_FACTOR;
+    // Advance shake frame
+    this.shakeIdx = (this.shakeIdx + 1) % this.shakeOffsets.length;
+    if (this.shakeEndTime > 0 && Date.now() > this.shakeEndTime) {
+      this.resetShake();
+    }
   }
 
   getOffset(): [number, number] {
-    return [Math.round(this.x), Math.round(this.y)];
+    const shake = this.shakeOffsets[this.shakeIdx];
+    return [Math.round(this.x) + shake[0], Math.round(this.y) + shake[1]];
+  }
+
+  /** Start a screen shake with a named pattern or custom offsets. */
+  setShake(shakeType: string, durationMs: number = 0): void {
+    let offsets: [number, number][];
+    if (shakeType === 'random') {
+      offsets = randomShake(16, 4);
+    } else if (shakeType === 'celeste') {
+      offsets = celesteShake(16);
+    } else {
+      offsets = SHAKE_PATTERNS[shakeType] ?? SHAKE_PATTERNS['default'];
+    }
+    this.shakeOffsets = offsets;
+    this.shakeIdx = 0;
+    this.shakeEndTime = durationMs > 0 ? Date.now() + durationMs : 0;
+  }
+
+  /** Stop any active shake. */
+  resetShake(): void {
+    this.shakeOffsets = [[0, 0]];
+    this.shakeIdx = 0;
+    this.shakeEndTime = 0;
+  }
+
+  /** Get the current shake offset (for applying to non-camera elements like backgrounds). */
+  getShake(): [number, number] {
+    return this.shakeOffsets[this.shakeIdx];
   }
 
   getCullRect(): { x: number; y: number; w: number; h: number } {
