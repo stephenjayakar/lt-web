@@ -29,6 +29,8 @@ import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { Banner } from '../../ui/banner';
 import { Dialog } from '../../ui/dialog';
+import { EventPortrait } from '../../events/event-portrait';
+import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
@@ -3079,6 +3081,69 @@ export class AIState extends MapState {
         break;
       }
 
+      case 'use_item': {
+        // AI uses a consumable item (Vulnerary, Elixir, etc.)
+        // Move to position first, then apply item effect
+        if (action.targetPosition && action.item) {
+          const prevPos: [number, number] | null = unit.position
+            ? [unit.position[0], unit.position[1]]
+            : null;
+
+          const applyItem = () => {
+            const item = action.item!;
+            // Apply healing
+            if (item.isHealing()) {
+              const healAmount = item.getHealAmount();
+              unit.currentHp = Math.min(unit.maxHp, unit.currentHp + healAmount);
+            }
+            // Decrement uses
+            const broken = item.decrementUses();
+            if (broken) {
+              const itemIdx = unit.items.indexOf(item);
+              if (itemIdx !== -1) unit.items.splice(itemIdx, 1);
+            }
+            unit.finished = true;
+            this.advanceToNextUnit();
+          };
+
+          if (
+            action.movePath &&
+            action.movePath.length > 1 &&
+            prevPos &&
+            (action.targetPosition[0] !== prevPos[0] ||
+              action.targetPosition[1] !== prevPos[1])
+          ) {
+            game.board.moveUnit(
+              unit,
+              action.targetPosition[0],
+              action.targetPosition[1],
+            );
+            game.camera.focusTile(
+              action.targetPosition[0],
+              action.targetPosition[1],
+            );
+            this.waitingForMovement = true;
+            game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
+              this.waitingForMovement = false;
+              applyItem();
+            });
+          } else {
+            if (action.targetPosition) {
+              game.board.moveUnit(
+                unit,
+                action.targetPosition[0],
+                action.targetPosition[1],
+              );
+            }
+            applyItem();
+          }
+        } else {
+          unit.finished = true;
+          this.advanceToNextUnit();
+        }
+        break;
+      }
+
       case 'wait':
       default:
         unit.finished = true;
@@ -3361,6 +3426,13 @@ export class EventState extends State {
   // Skip mode: when true, all speak/narrate commands are auto-advanced
   private skipMode: boolean = false;
 
+  // Portrait state
+  private portraits: Map<string, EventPortrait> = new Map();
+  private portraitPriorityCounter: number = 1;
+
+  // Currently speaking portrait (for talk animation)
+  private speakingPortrait: EventPortrait | null = null;
+
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
@@ -3386,6 +3458,9 @@ export class EventState extends State {
     this.choiceResult = null;
     this.forLoopStack = [];
     this.skipMode = false;
+    this.portraits.clear();
+    this.portraitPriorityCounter = 1;
+    this.speakingPortrait = null;
   }
 
   // -----------------------------------------------------------------------
@@ -3409,12 +3484,20 @@ export class EventState extends State {
         // remaining speak/narrate commands in the current event
         this.skipMode = true;
         this.dialog = null;
+        if (this.speakingPortrait) {
+          this.speakingPortrait.stopTalking();
+          this.speakingPortrait = null;
+        }
         this.advancePointer();
         return;
       }
       const done = this.dialog.handleInput(effective);
       if (done) {
         this.dialog = null;
+        if (this.speakingPortrait) {
+          this.speakingPortrait.stopTalking();
+          this.speakingPortrait = null;
+        }
         this.advancePointer();
       }
       return;
@@ -3545,6 +3628,29 @@ export class EventState extends State {
     if (this.transitionAlpha > 0) {
       surf.fillRect(0, 0, surf.width, surf.height, `rgba(0,0,0,${this.transitionAlpha})`);
     }
+
+    // Update and draw portraits (sorted by priority, ascending)
+    const dt = FRAMETIME; // ~16.67ms per frame
+    const toRemove: string[] = [];
+    for (const [name, portrait] of this.portraits) {
+      const finished = portrait.update(dt);
+      if (finished) {
+        toRemove.push(name);
+      }
+    }
+    for (const name of toRemove) {
+      this.portraits.delete(name);
+    }
+
+    // Draw portraits sorted by priority (lowest first = drawn behind)
+    const sortedPortraits = [...this.portraits.values()].sort(
+      (a, b) => a.priority - b.priority,
+    );
+    for (const portrait of sortedPortraits) {
+      portrait.draw(surf);
+    }
+
+    // UI on top of portraits
     if (this.dialog) {
       this.dialog.draw(surf);
     }
@@ -3579,6 +3685,12 @@ export class EventState extends State {
     }
     game.eventManager?.dequeueCurrentEvent();
 
+    // Clean up portraits and talking state
+    if (this.speakingPortrait) {
+      this.speakingPortrait.stopTalking();
+      this.speakingPortrait = null;
+    }
+
     // Check for more events in the queue
     const next = game.eventManager?.getCurrentEvent() ?? null;
     if (next) {
@@ -3587,8 +3699,11 @@ export class EventState extends State {
       this.banner = null;
       this.waitTimer = 0;
       this.waiting = false;
+      this.portraits.clear();
+      this.portraitPriorityCounter = 1;
     } else {
       this.currentEvent = null;
+      this.portraits.clear();
       game.state.back();
     }
   }
@@ -3824,7 +3939,33 @@ export class EventState extends State {
         }
         const speaker = args[0] ?? '';
         const text = args[1] ?? '';
-        this.dialog = new Dialog(text, speaker || undefined);
+
+        // Stop previous speaking portrait
+        if (this.speakingPortrait) {
+          this.speakingPortrait.stopTalking();
+          this.speakingPortrait = null;
+        }
+
+        // Look up portrait for the speaker
+        const portrait = this.portraits.get(speaker) ?? null;
+
+        // Check flags (flags are extra args like 'no_talk', 'low_priority', 'hold')
+        const flagArgs = args.slice(2).map(s => s.toLowerCase());
+        const noTalk = flagArgs.includes('no_talk');
+
+        if (portrait && !noTalk && cmd.type !== 'narrate') {
+          portrait.startTalking();
+          this.speakingPortrait = portrait;
+
+          // Raise portrait priority (bring to front) unless low_priority
+          if (!flagArgs.includes('low_priority')) {
+            portrait.priority = this.portraitPriorityCounter++;
+          }
+        }
+
+        // Create dialog with optional portrait reference for positioning
+        this.dialog = new Dialog(text, speaker || undefined, portrait ?? undefined);
+
         // Don't advance pointer — it's advanced when dialog finishes (in takeInput)
         return true;
       }
@@ -4732,16 +4873,232 @@ export class EventState extends State {
         return false;
       }
 
-      // ----- Portrait / visual commands (instant, visual-only stubs) -----
-      case 'add_portrait':
-      case 'multi_add_portrait':
-      case 'remove_portrait':
-      case 'multi_remove_portrait':
-      case 'remove_all_portraits':
-      case 'move_portrait':
-      case 'bop_portrait':
-      case 'mirror_portrait':
-      case 'expression':
+      // ----- Portrait commands -----
+      case 'add_portrait': {
+        // add_portrait;PortraitNid;ScreenPosition;[Slide];[ExpressionList]
+        // flags (in args): mirror, immediate, no_block, low_priority, low_saturation
+        const portraitNid = args[0] ?? '';
+        const positionStr = args[1] ?? 'Left';
+        // Remaining args may be slide, expressions, or flags
+        const extraArgs = args.slice(2).map(s => s.toLowerCase().trim());
+        const knownFlags = new Set(['mirror', 'immediate', 'no_block', 'low_priority', 'low_saturation']);
+
+        // Separate flags from positional args
+        const pFlags = extraArgs.filter(a => knownFlags.has(a));
+        const pArgs = extraArgs.filter(a => !knownFlags.has(a));
+
+        const slideArg = pArgs[0] ?? '';
+        const expressionArg = pArgs[1] ?? '';
+
+        if (!portraitNid) {
+          this.advancePointer();
+          return false;
+        }
+
+        // Resolve portrait NID: try unit portrait_nid first, then direct
+        const game = getGame();
+        let resolvedNid = portraitNid;
+        const unitPrefab = game.db?.units.get(portraitNid);
+        if (unitPrefab && unitPrefab.portrait_nid) {
+          resolvedNid = unitPrefab.portrait_nid;
+        }
+
+        // Get portrait metadata
+        const portraitMeta = game.db?.portraits.get(resolvedNid);
+        const blinkOffset: [number, number] = portraitMeta?.blinking_offset ?? [24, 32];
+        const smileOffset: [number, number] = portraitMeta?.smiling_offset ?? [16, 48];
+
+        // Parse position
+        const { position: pos, mirror: autoMirror } = parseScreenPosition(positionStr);
+
+        // Parse slide
+        const slide: 'left' | 'right' | null =
+          slideArg === 'left' ? 'left' :
+          slideArg === 'right' ? 'right' : null;
+
+        // Parse expressions
+        const expressions = expressionArg
+          ? expressionArg.split(',').map(s => s.trim()).filter(Boolean)
+          : [];
+
+        // Check flags
+        const isMirror = pFlags.includes('mirror') ? !autoMirror : autoMirror;
+        const immediate = pFlags.includes('immediate');
+        const lowPriority = pFlags.includes('low_priority');
+
+        const priority = lowPriority ? 0 : this.portraitPriorityCounter++;
+
+        // Load portrait image asynchronously, then create the EventPortrait
+        game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
+          const portrait = new EventPortrait(
+            image,
+            blinkOffset,
+            smileOffset,
+            pos,
+            priority,
+            portraitNid, // Use original NID as the name key
+            {
+              transition: !immediate,
+              slide,
+              mirror: isMirror,
+              expressions,
+              speedMult: 1,
+            },
+          );
+          this.portraits.set(portraitNid, portrait);
+        }).catch(() => {
+          console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
+        });
+
+        this.advancePointer();
+        return false;
+      }
+
+      case 'multi_add_portrait': {
+        // multi_add_portrait;P1;Pos1;P2;Pos2;[P3;Pos3;P4;Pos4]
+        // Process pairs of (portrait, position)
+        for (let i = 0; i + 1 < args.length; i += 2) {
+          const pNid = args[i] ?? '';
+          const pPos = args[i + 1] ?? 'Left';
+          if (!pNid) continue;
+
+          const game = getGame();
+          let resolvedNid = pNid;
+          const unitPrefab = game.db?.units.get(pNid);
+          if (unitPrefab && unitPrefab.portrait_nid) {
+            resolvedNid = unitPrefab.portrait_nid;
+          }
+          const portraitMeta = game.db?.portraits.get(resolvedNid);
+          const blinkOffset: [number, number] = portraitMeta?.blinking_offset ?? [24, 32];
+          const smileOffset: [number, number] = portraitMeta?.smiling_offset ?? [16, 48];
+          const { position: pos, mirror: autoMirror } = parseScreenPosition(pPos);
+          const priority = this.portraitPriorityCounter++;
+
+          game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
+            const portrait = new EventPortrait(
+              image, blinkOffset, smileOffset, pos, priority, pNid,
+              { transition: true, mirror: autoMirror },
+            );
+            this.portraits.set(pNid, portrait);
+          }).catch(() => {
+            console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
+          });
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_portrait': {
+        // remove_portrait;PortraitNid;[SpeedMult];[Slide];[immediate]
+        const removeNid = args[0] ?? '';
+        const removeExtraArgs = args.slice(1).map(s => s.toLowerCase().trim());
+        const removeImmediate = removeExtraArgs.includes('immediate');
+        const speedMultStr = removeExtraArgs.find(a => !isNaN(parseFloat(a)) && a !== 'immediate');
+        const speedMult = speedMultStr ? parseFloat(speedMultStr) : 1;
+        const removeSlide = removeExtraArgs.find(a => a === 'left' || a === 'right') as 'left' | 'right' | undefined;
+
+        const portrait = this.portraits.get(removeNid);
+        if (portrait) {
+          if (removeImmediate) {
+            this.portraits.delete(removeNid);
+          } else {
+            portrait.end(speedMult, removeSlide);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'multi_remove_portrait': {
+        // multi_remove_portrait;P1;P2;...[;immediate]
+        const mrExtraArgs = args.map(s => s.toLowerCase().trim());
+        const mrImmediate = mrExtraArgs.includes('immediate');
+        const mrNids = args.filter(a => a.toLowerCase().trim() !== 'immediate');
+        for (const nid of mrNids) {
+          const portrait = this.portraits.get(nid);
+          if (portrait) {
+            if (mrImmediate) {
+              this.portraits.delete(nid);
+            } else {
+              portrait.end();
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_all_portraits': {
+        const rapImmediate = args.some(a => a.toLowerCase().trim() === 'immediate');
+        if (rapImmediate) {
+          this.portraits.clear();
+        } else {
+          for (const portrait of this.portraits.values()) {
+            portrait.end();
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'move_portrait': {
+        // move_portrait;PortraitNid;ScreenPosition;[SpeedMult];[immediate]
+        const moveNid = args[0] ?? '';
+        const movePos = args[1] ?? 'Left';
+        const moveImmediate = args.slice(2).some(a => a.toLowerCase().trim() === 'immediate');
+
+        const portrait = this.portraits.get(moveNid);
+        if (portrait) {
+          const { position: newPos } = parseScreenPosition(movePos);
+          if (moveImmediate) {
+            portrait.quickMove(newPos);
+          } else {
+            portrait.move(newPos);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'bop_portrait': {
+        // bop_portrait;PortraitNid;[NumBops];[Time]
+        const bopNid = args[0] ?? '';
+        const numBops = parseInt(args[1], 10) || 2;
+        const bopTime = parseInt(args[2], 10) || undefined;
+
+        const portrait = this.portraits.get(bopNid);
+        if (portrait) {
+          portrait.bop(numBops, 2, bopTime);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'mirror_portrait': {
+        // mirror_portrait;PortraitNid
+        const mirrorNid = args[0] ?? '';
+        const portrait = this.portraits.get(mirrorNid);
+        if (portrait) {
+          portrait.mirror = !portrait.mirror;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'expression': {
+        // expression;PortraitNid;ExpressionList (comma-separated)
+        const exprNid = args[0] ?? '';
+        const exprList = args[1] ?? '';
+        const portrait = this.portraits.get(exprNid);
+        if (portrait) {
+          const exprs = exprList.split(',').map(s => s.trim()).filter(Boolean);
+          portrait.setExpressions(exprs);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Other visual commands (still stubs) -----
       case 'hide_combat_ui':
       case 'show_combat_ui':
       case 'change_background':

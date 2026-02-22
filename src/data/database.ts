@@ -29,6 +29,7 @@ import type {
   EquationDef,
   McostData,
   TeamsData,
+  PortraitPrefab,
 } from './types';
 import type { CombatAnimData, CombatEffectData, PaletteData } from '../combat/battle-anim-types';
 import { loadCombatAnims, loadCombatEffects, loadCombatPalettes } from './loaders/combat-anim-loader';
@@ -65,6 +66,9 @@ export class Database {
   // Resources
   tilemaps: Map<NID, TilemapData> = new Map();
   tilesets: Map<NID, TilesetData> = new Map();
+
+  // Portrait metadata
+  portraits: Map<NID, PortraitPrefab> = new Map();
 
   // Combat animation data
   combatAnims: Map<string, CombatAnimData> = new Map();
@@ -114,16 +118,26 @@ export class Database {
       }
     }
 
-    // Phase 3: tilemap & tileset resources + combat animations (all independent)
+    // Phase 3: tilemap & tileset resources + combat animations + portraits (all independent)
     const phase3Results = await Promise.allSettled([
       this.loadTilemaps(resources),
       this.loadTilesets(resources),
       this.loadCombatAnimData(resources),
+      this.loadPortraits(resources),
     ]);
     for (const result of phase3Results) {
       if (result.status === 'rejected') {
         console.warn('Database: phase 3 loader failed:', result.reason);
       }
+    }
+  }
+
+  /** Load portrait metadata from resources/portraits/portraits.json. */
+  private async loadPortraits(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<PortraitPrefab[]>('resources/portraits/portraits.json');
+    if (!data) return;
+    for (const p of data) {
+      this.portraits.set(p.nid, p);
     }
   }
 

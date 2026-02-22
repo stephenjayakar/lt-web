@@ -22,11 +22,11 @@ import {
 } from '../combat/combat-calcs';
 
 export interface AIAction {
-  type: 'attack' | 'move' | 'wait';
+  type: 'attack' | 'move' | 'wait' | 'use_item';
   unit: UnitObject;
   targetPosition?: [number, number]; // position to move to
-  targetUnit?: UnitObject; // unit to attack
-  item?: ItemObject; // weapon to use
+  targetUnit?: UnitObject; // unit to attack/heal
+  item?: ItemObject; // weapon or item to use
   movePath?: [number, number][]; // path to follow
 }
 
@@ -137,17 +137,24 @@ export class AIController {
     }
 
     if (action === 'Support') {
-      // Support targets are allies -- find allies that need healing
+      // Support targets are allies that need healing (HP < max)
       const allies = this.getAllies(unit).filter(ally => {
         return ally.currentHp < ally.maxHp;
       });
+      // Also include self if the unit is damaged (for self-heal consumables)
+      const selfDamaged = unit.currentHp < unit.maxHp;
       const filtered = this.filterByTargetSpec(allies, behaviour);
       const inRange = this.filterByViewRange(unit, filtered, behaviour.view_range);
 
-      // Try to move toward nearest ally that needs healing
-      // For now, just move toward them (full support AI with items is complex)
-      const secondaryAction = this.secondaryAI(unit, validMoves, inRange, behaviour.view_range);
-      return secondaryAction;
+      // Try primary AI: use a healing item/staff on an ally (or self)
+      const primaryAction = this.supportPrimaryAI(unit, validMoves, inRange, selfDamaged);
+      if (primaryAction) return primaryAction;
+
+      // Fall back to secondary AI: move toward most injured ally
+      const secondaryAction = this.supportSecondaryAI(unit, validMoves, inRange, behaviour.view_range);
+      if (secondaryAction) return secondaryAction;
+
+      return null;
     }
 
     if (action === 'Steal') {
@@ -424,12 +431,13 @@ export class AIController {
   }
 
   /**
-   * Get the maximum range of any weapon the unit has.
+   * Get the maximum range of any weapon or usable item the unit has.
+   * Includes staves and spells for proper view range calculations.
    */
   private getMaxItemRange(unit: UnitObject): number {
     let maxRange = 0;
     for (const item of unit.items) {
-      if (item.isWeapon()) {
+      if (item.isWeapon() || item.isSpell()) {
         maxRange = Math.max(maxRange, item.getMaxRange());
       }
     }
@@ -587,6 +595,211 @@ export class AIController {
       targetUnit: nearestTarget,
       movePath: movePath ?? [unit.position, bestMove],
     };
+  }
+
+  // ====================================================================
+  // Support AI: Healing items and staves
+  // ====================================================================
+
+  /**
+   * Gather all items the AI can use for healing/support:
+   * - Staves (spell + target_ally + has uses)
+   * - Consumable healing items (usable/heal + has uses)
+   * Excludes items with the no_ai component.
+   */
+  private getSupportItems(unit: UnitObject): ItemObject[] {
+    const items: ItemObject[] = [];
+    for (const item of unit.items) {
+      if (item.hasNoAI()) continue;
+      if (!item.hasUsesRemaining()) continue;
+
+      // Staves: spell/magic items that target allies and can heal
+      if ((item.isSpell() || item.hasComponent('weapon_type')) && item.targetsAllies() && item.canHeal()) {
+        items.push(item);
+        continue;
+      }
+
+      // Consumable healing items (Vulnerary, Elixir, etc.)
+      if (item.isHealing() && !item.isWeapon()) {
+        items.push(item);
+        continue;
+      }
+    }
+    return items;
+  }
+
+  /**
+   * Primary AI for Support behavior: evaluate healing item use.
+   * For each healing item × target × valid move position, compute heal priority.
+   * Handles both staves (ranged, targets allies) and consumables (self-heal).
+   *
+   * Matches Python's PrimaryAI logic: items with target_ally use
+   * item_system.ai_priority() which dispatches to Heal.ai_priority().
+   */
+  private supportPrimaryAI(
+    unit: UnitObject,
+    validMoves: [number, number][],
+    targets: UnitObject[],
+    selfDamaged: boolean,
+  ): AIAction | null {
+    if (validMoves.length === 0) return null;
+
+    const items = this.getSupportItems(unit);
+    if (items.length === 0) return null;
+
+    let bestPriority = 0; // Must exceed 0 to be worth doing
+    let bestAction: AIAction | null = null;
+
+    for (const item of items) {
+      const isStaff = item.isSpell() || (item.targetsAllies() && item.getMaxRange() > 0);
+      const isSelfHeal = !isStaff && item.isHealing();
+
+      if (isStaff) {
+        // Staff: evaluate against each ally target from each valid position
+        for (const target of targets) {
+          if (target.isDead() || !target.position) continue;
+          // Skip fully healed allies
+          if (target.currentHp >= target.maxHp) continue;
+
+          const attackPositions = this.getAttackPositions(validMoves, target, item);
+
+          for (const pos of attackPositions) {
+            const priority = this.computeHealPriority(unit, item, target);
+            if (priority > bestPriority) {
+              bestPriority = priority;
+              const path = unit.position
+                ? this.pathSystem.getPath(unit, pos[0], pos[1], this.board)
+                : null;
+
+              bestAction = {
+                type: 'attack', // Staves go through combat system
+                unit,
+                targetPosition: pos,
+                targetUnit: target,
+                item,
+                movePath: path ?? [pos],
+              };
+            }
+          }
+        }
+      } else if (isSelfHeal && selfDamaged) {
+        // Consumable self-heal: can use from any valid move position
+        // Python's range-0 hack: items with range 0 add all valid moves as
+        // potential target positions, allowing self-heal from any reachable spot.
+        // Pick the safest position (farthest from enemies).
+        const enemies = this.getEnemies(unit);
+        const priority = this.computeHealPriority(unit, item, unit);
+
+        if (priority > bestPriority) {
+          // Find the safest position to use the item from
+          let safestPos = validMoves[0];
+          let bestMinDist = -1;
+
+          for (const pos of validMoves) {
+            let minDistToEnemy = Infinity;
+            for (const enemy of enemies) {
+              if (!enemy.position) continue;
+              minDistToEnemy = Math.min(minDistToEnemy, this.distance(pos, enemy.position));
+            }
+            if (minDistToEnemy > bestMinDist) {
+              bestMinDist = minDistToEnemy;
+              safestPos = pos;
+            }
+          }
+
+          bestPriority = priority;
+          const path = unit.position
+            ? this.pathSystem.getPath(unit, safestPos[0], safestPos[1], this.board)
+            : null;
+
+          bestAction = {
+            type: 'use_item', // Consumables bypass combat system
+            unit,
+            targetPosition: safestPos,
+            targetUnit: unit, // Self-target
+            item,
+            movePath: path ?? [safestPos],
+          };
+        }
+      }
+    }
+
+    return bestAction;
+  }
+
+  /**
+   * Compute heal priority for an AI unit using a healing item on a target.
+   * Matches Python's Heal.ai_priority():
+   *   help_term = clamp(missing_health / max_hp, 0, 1)
+   *   heal_term = clamp(min(heal_amount, missing_health) / max_hp, 0, 1)
+   *   priority = help_term * heal_term
+   *
+   * Higher priority = ally is more injured AND the heal covers more of the gap.
+   */
+  private computeHealPriority(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+  ): number {
+    const maxHp = target.maxHp;
+    if (maxHp <= 0) return 0;
+
+    const missingHealth = maxHp - target.currentHp;
+    if (missingHealth <= 0) return 0;
+
+    const helpTerm = Math.min(1, Math.max(0, missingHealth / maxHp));
+
+    // Get heal amount — for staves, pass the caster's MAG stat
+    const mag = unit.getStatValue('MAG') ?? unit.getStatValue('STR') ?? 0;
+    const healAmount = item.getHealAmount(mag);
+    const effectiveHeal = Math.min(healAmount, missingHealth);
+    const healTerm = Math.min(1, Math.max(0, effectiveHeal / maxHp));
+
+    return helpTerm * healTerm;
+  }
+
+  /**
+   * Enhanced secondary AI for Support: move toward the most injured ally.
+   * Weights strongly by injury severity (help_term weight 100 vs distance weight 60),
+   * matching the Python SecondaryAI's Support priority weighting.
+   */
+  private supportSecondaryAI(
+    unit: UnitObject,
+    validMoves: [number, number][],
+    targets: UnitObject[],
+    viewRange: number,
+  ): AIAction | null {
+    if (validMoves.length === 0 || !unit.position || targets.length === 0) return null;
+
+    // Score each target by injury severity weighted against distance
+    let bestMove: [number, number] | null = null;
+    let bestScore = -Infinity;
+    let nearestTarget: UnitObject | null = null;
+
+    for (const target of targets) {
+      if (target.isDead() || !target.position) continue;
+
+      const maxHp = target.maxHp;
+      const missingHealth = maxHp - target.currentHp;
+      if (missingHealth <= 0) continue;
+
+      const helpTerm = Math.min(1, Math.max(0, missingHealth / maxHp));
+      const dist = this.distance(unit.position, target.position);
+      const distTerm = 1 / (1 + dist);
+
+      // Python weights: help_term * 100, dist_term * 60
+      const score = helpTerm * 100 + distTerm * 60;
+
+      if (score > bestScore) {
+        bestScore = score;
+        nearestTarget = target;
+      }
+    }
+
+    if (!nearestTarget) return null;
+
+    // Use the standard secondary AI movement toward the best target
+    return this.secondaryAI(unit, validMoves, [nearestTarget], viewRange);
   }
 
   /**

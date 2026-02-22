@@ -105,9 +105,34 @@ export class ItemObject {
   // Type queries
   // ------------------------------------------------------------------
 
-  /** Whether this item is a healing consumable (has 'heal' component). */
+  /** Whether this item has a 'heal' component (consumable heal like Vulnerary). */
   isHealing(): boolean {
     return this.components.has('heal');
+  }
+
+  /** Whether this item is a spell (staff or magic). */
+  isSpell(): boolean {
+    return this.components.has('spell') || this.components.has('magic');
+  }
+
+  /** Whether this item is a 'usable' consumable (non-weapon, non-spell). */
+  isUsable(): boolean {
+    return this.components.has('usable');
+  }
+
+  /** Whether this item targets allies (heal staves, Vulneraries). */
+  targetsAllies(): boolean {
+    return this.components.has('target_ally');
+  }
+
+  /** Whether this item has the 'no_ai' flag (AI should not use). */
+  hasNoAI(): boolean {
+    return this.components.has('no_ai');
+  }
+
+  /** Whether this item can heal (has 'heal' or 'equation_heal' component). */
+  canHeal(): boolean {
+    return this.components.has('heal') || this.components.has('equation_heal');
   }
 
   /** Whether this item is a stat booster (has 'permanent_stat_change' component). */
@@ -123,9 +148,21 @@ export class ItemObject {
   /**
    * Get the healing amount for a healing item.
    * The 'heal' component stores the HP to restore.
+   * For equation_heal items, returns a default estimate (staff heal = MAG + value).
    */
-  getHealAmount(): number {
-    return this.getComponent<number>('heal') ?? 0;
+  getHealAmount(casterMag?: number): number {
+    const directHeal = this.getComponent<number>('heal');
+    if (directHeal != null) return directHeal;
+
+    // equation_heal staves: estimate heal amount from equation name
+    const eqHeal = this.getComponent<string>('equation_heal');
+    if (eqHeal && casterMag != null) {
+      // Common LT heal equations: HEAL = MAG + some base
+      // Return a rough estimate: MAG + 10 for basic, MAG + 20 for Recover
+      return casterMag + 10;
+    }
+
+    return 0;
   }
 
   /**

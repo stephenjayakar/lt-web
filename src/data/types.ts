@@ -329,6 +329,17 @@ export interface ProjectMetadata {
 }
 
 // ------------------------------------------------------------------
+// Portrait data
+// ------------------------------------------------------------------
+
+export interface PortraitPrefab {
+  nid: NID;
+  blinking_offset: [number, number];
+  smiling_offset: [number, number];
+  info_offset: number;
+}
+
+// ------------------------------------------------------------------
 // Event system
 // ------------------------------------------------------------------
 
