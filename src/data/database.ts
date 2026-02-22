@@ -33,6 +33,7 @@ import type {
 } from './types';
 import type { CombatAnimData, CombatEffectData, PaletteData } from '../combat/battle-anim-types';
 import { loadCombatAnims, loadCombatEffects, loadCombatPalettes } from './loaders/combat-anim-loader';
+import type { MapAnimPrefab } from '../rendering/map-animation';
 
 export class Database {
   // Non-chunked data
@@ -74,6 +75,9 @@ export class Database {
   combatAnims: Map<string, CombatAnimData> = new Map();
   combatEffects: Map<string, CombatEffectData> = new Map();
   combatPalettes: Map<string, PaletteData> = new Map();
+
+  // Map animation prefabs
+  mapAnimations: Map<string, MapAnimPrefab> = new Map();
 
   /**
    * Load the entire database from the .ltproj served by the given ResourceManager.
@@ -118,17 +122,27 @@ export class Database {
       }
     }
 
-    // Phase 3: tilemap & tileset resources + combat animations + portraits (all independent)
+    // Phase 3: tilemap & tileset resources + combat animations + portraits + map anims (all independent)
     const phase3Results = await Promise.allSettled([
       this.loadTilemaps(resources),
       this.loadTilesets(resources),
       this.loadCombatAnimData(resources),
       this.loadPortraits(resources),
+      this.loadMapAnimations(resources),
     ]);
     for (const result of phase3Results) {
       if (result.status === 'rejected') {
         console.warn('Database: phase 3 loader failed:', result.reason);
       }
+    }
+  }
+
+  /** Load map animation prefabs from resources/animations/animations.json. */
+  private async loadMapAnimations(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<MapAnimPrefab[]>('resources/animations/animations.json');
+    if (!data) return;
+    for (const anim of data) {
+      this.mapAnimations.set(anim.nid, anim);
     }
   }
 

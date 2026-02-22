@@ -2,6 +2,7 @@ import { Surface } from '../engine/surface';
 import type { TilemapData, TilemapLayerData, TilesetData, NID } from '../data/types';
 import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
 import { WeatherSystem } from './weather';
+import type { MapAnimation } from './map-animation';
 
 /** Number of autotile animation frames (matches Python AUTOTILE_FRAMES). */
 const AUTOTILE_FRAMES = 16;
@@ -134,6 +135,11 @@ export class TileMapObject {
 
   /** Active weather systems. */
   weather: WeatherSystem[] = [];
+
+  /** Map animations drawn below units. */
+  animations: MapAnimation[] = [];
+  /** Map animations drawn above units (overlay). */
+  highAnimations: MapAnimation[] = [];
 
   private constructor(nid: NID, width: number, height: number) {
     this.nid = nid;

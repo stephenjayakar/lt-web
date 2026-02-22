@@ -85,6 +85,12 @@ export class MapView {
       this.drawGrid(this.mapSurface, tilemap.width, tilemap.height, offsetX, offsetY);
     }
 
+    // 3.5. Map animations (below units)
+    tilemap.animations = tilemap.animations.filter(anim => !anim.update());
+    for (const anim of tilemap.animations) {
+      anim.draw(this.mapSurface, cullRect.x, cullRect.y);
+    }
+
     // 4. Units (sorted by Y for depth ordering)
     this.drawUnits(this.mapSurface, units, offsetX, offsetY);
 
@@ -92,6 +98,12 @@ export class MapView {
     const fg = tilemap.getForegroundImage(cullRect);
     if (fg) {
       this.mapSurface.blit(fg, -TILEWIDTH, -TILEHEIGHT);
+    }
+
+    // 5.5. High map animations (above units/foreground)
+    tilemap.highAnimations = tilemap.highAnimations.filter(anim => !anim.update());
+    for (const anim of tilemap.highAnimations) {
+      anim.draw(this.mapSurface, cullRect.x, cullRect.y);
     }
 
     // 6. Cursor
