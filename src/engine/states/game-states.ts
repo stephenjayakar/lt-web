@@ -716,6 +716,24 @@ export class FreeState extends MapState {
         if (unit && unit.team === 'player' && unit.canStillAct()) {
           game.selectedUnit = unit;
           game.state.change('move');
+        } else if (unit && unit.team !== 'player' && unit.position) {
+          // SELECT on enemy: toggle individual enemy range display
+          const key = `${unit.position[0]},${unit.position[1]}`;
+          const existing = game.highlight.getHighlights().get(key);
+          if (existing === 'selected') {
+            game.highlight.clearType('selected');
+            game.highlight.clearType('move');
+            game.highlight.clearType('attack');
+          } else {
+            game.highlight.clearType('selected');
+            game.highlight.clearType('move');
+            game.highlight.clearType('attack');
+            const validMoves = game.pathSystem!.getValidMoves(unit, game.board);
+            const attackPos = game.pathSystem!.getAttackPositions(unit, game.board, validMoves);
+            game.highlight.setMoveHighlights(validMoves);
+            game.highlight.setAttackHighlights(attackPos);
+            game.highlight.addHighlight(unit.position[0], unit.position[1], 'selected');
+          }
         } else {
           // No actionable unit — open option menu
           game.state.change('option_menu');
@@ -730,22 +748,40 @@ export class FreeState extends MapState {
       }
 
       case 'INFO': {
-        // Toggle highlight for the hovered unit
         const unit = getUnitUnderCursor();
-        if (unit && unit.position) {
+        if (!unit) {
+          // Empty tile: toggle ALL enemy threat zone overlay
+          if (game.highlight.hasType('threat')) {
+            game.highlight.clearType('threat');
+          } else {
+            this.showAllEnemyThreat(game);
+          }
+        } else if (unit.team !== 'player' && unit.position) {
+          // Enemy unit: toggle individual enemy range
           const key = `${unit.position[0]},${unit.position[1]}`;
           const existing = game.highlight.getHighlights().get(key);
           if (existing === 'selected') {
-            game.highlight.removeHighlight(
-              unit.position[0],
-              unit.position[1],
-            );
+            // Clear this unit's individual highlights
+            game.highlight.clearType('selected');
+            game.highlight.clearType('attack');
           } else {
-            game.highlight.addHighlight(
-              unit.position[0],
-              unit.position[1],
-              'selected',
-            );
+            game.highlight.clearType('selected');
+            game.highlight.clearType('attack');
+            // Show this enemy's move + attack range
+            const validMoves = game.pathSystem!.getValidMoves(unit, game.board);
+            const attackPos = game.pathSystem!.getAttackPositions(unit, game.board, validMoves);
+            game.highlight.setMoveHighlights(validMoves);
+            game.highlight.setAttackHighlights(attackPos);
+            game.highlight.addHighlight(unit.position[0], unit.position[1], 'selected');
+          }
+        } else if (unit.position) {
+          // Player/ally unit: toggle selected highlight
+          const key = `${unit.position[0]},${unit.position[1]}`;
+          const existing = game.highlight.getHighlights().get(key);
+          if (existing === 'selected') {
+            game.highlight.removeHighlight(unit.position[0], unit.position[1]);
+          } else {
+            game.highlight.addHighlight(unit.position[0], unit.position[1], 'selected');
           }
         }
         break;
@@ -815,6 +851,53 @@ export class FreeState extends MapState {
     surf = drawMap(surf);
     // HUD is drawn in screen-space by main.ts after the game surface blit.
     return surf;
+  }
+
+  /**
+   * Compute and display the union of all enemy units' attack ranges.
+   * This iterates every enemy unit, computes their valid moves and
+   * attack positions, and combines them into a single 'threat' overlay.
+   */
+  private showAllEnemyThreat(game: any): void {
+    const board = game.board;
+    const pathSystem = game.pathSystem;
+    if (!board || !pathSystem) return;
+
+    const allThreatPositions = new Set<string>();
+
+    // Gather all teams that are hostile to the player
+    const enemyTeams = ['enemy', 'enemy2'];
+    for (const team of enemyTeams) {
+      const enemies: UnitObject[] = board.getTeamUnits(team);
+      for (const enemy of enemies) {
+        if (!enemy.position || enemy.isDead()) continue;
+
+        try {
+          const validMoves = pathSystem.getValidMoves(enemy, board);
+          const attackPos = pathSystem.getAttackPositions(enemy, board, validMoves);
+
+          // Both move positions (they can attack from there) and attack positions are threats
+          for (const [x, y] of validMoves) {
+            allThreatPositions.add(`${x},${y}`);
+          }
+          for (const [x, y] of attackPos) {
+            allThreatPositions.add(`${x},${y}`);
+          }
+        } catch (e) {
+          // Skip units that fail (e.g. missing movement group data)
+          continue;
+        }
+      }
+    }
+
+    // Convert to position array
+    const positions: [number, number][] = [];
+    for (const key of allThreatPositions) {
+      const [x, y] = key.split(',').map(Number);
+      positions.push([x, y]);
+    }
+
+    game.highlight.setThreatHighlights(positions);
   }
 }
 
@@ -3214,6 +3297,10 @@ export class TurnChangeState extends State {
 
     // Advance to next phase
     game.phase.next((team: string) => game.board.getTeamUnits(team));
+
+    // Sync turnCount to GameState so event conditions like
+    // "game.turncount == 2" resolve correctly
+    game.turnCount = game.phase.turnCount;
 
     const currentTeam = game.phase.getCurrent();
     const turnCount = game.phase.turnCount;

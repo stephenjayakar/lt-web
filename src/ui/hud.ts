@@ -1,5 +1,6 @@
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
+import type { ResourceManager } from '../data/resource-manager';
 
 /**
  * Base dimensions at the "mobile" reference size (CSS pixels).
@@ -45,11 +46,23 @@ export class HUD {
   private terrainDefense: number;
   private terrainAvoid: number;
 
+  /** Cached chibi portrait images, keyed by portrait NID. */
+  private chibiCache: Map<string, HTMLImageElement> = new Map();
+  /** Portrait NIDs currently being loaded (to avoid duplicate fetches). */
+  private loadingPortraits: Set<string> = new Set();
+  /** Optional reference to the resource manager for loading portraits. */
+  private resourceManager: ResourceManager | null = null;
+
   constructor() {
     this.hoveredUnit = null;
     this.terrainName = '';
     this.terrainDefense = 0;
     this.terrainAvoid = 0;
+  }
+
+  /** Set the resource manager reference (call once after construction). */
+  setResourceManager(rm: ResourceManager): void {
+    this.resourceManager = rm;
   }
 
   /** Set the currently hovered unit/terrain info */
@@ -58,6 +71,19 @@ export class HUD {
     this.terrainName = terrainName;
     this.terrainDefense = terrainDef;
     this.terrainAvoid = terrainAvo;
+
+    // Kick off portrait loading if needed
+    if (unit && unit.portraitNid && this.resourceManager &&
+        !this.chibiCache.has(unit.portraitNid) && !this.loadingPortraits.has(unit.portraitNid)) {
+      const nid = unit.portraitNid;
+      this.loadingPortraits.add(nid);
+      this.resourceManager.loadPortrait(nid).then((img) => {
+        this.chibiCache.set(nid, img);
+        this.loadingPortraits.delete(nid);
+      }).catch(() => {
+        this.loadingPortraits.delete(nid);
+      });
+    }
   }
 
   /**
@@ -102,9 +128,22 @@ export class HUD {
     ctx.strokeStyle = INNER_BORDER;
     ctx.strokeRect(px + bw + 0.5, py + bw + 0.5, pw - 2 * bw - 1, ph - 2 * bw - 1);
 
-    const textX = px + pad;
+    let textX = px + pad;
     let textY = py + pad;
     ctx.textBaseline = 'top';
+
+    // Chibi portrait (32x32 from sprite sheet at position 96,16)
+    const chibiDisplaySize = 36 * s; // slightly larger than native 32 for readability
+    const chibiImg = unit.portraitNid ? this.chibiCache.get(unit.portraitNid) : undefined;
+    if (chibiImg) {
+      const chibiX = px + pad * 0.5;
+      const chibiY = py + pad * 0.5;
+      // Draw chibi: source rect (96, 16, 32, 32) from the 128x112 sprite sheet
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(chibiImg, 96, 16, 32, 32, chibiX, chibiY, chibiDisplaySize, chibiDisplaySize);
+      // Shift text to the right of the chibi
+      textX = px + pad * 0.5 + chibiDisplaySize + pad * 0.5;
+    }
 
     // Unit name
     ctx.font = `bold ${BASE_FONT_MAIN * s}px monospace`;
@@ -123,7 +162,7 @@ export class HUD {
     ctx.fillStyle = 'rgba(200, 200, 220, 1)';
     ctx.fillText('HP', textX, textY);
     const barX = textX + BASE_HP_LABEL_OFFSET * s;
-    const barW = pw - pad * 2 - BASE_HP_LABEL_OFFSET * s;
+    const barW = pw - (textX - px) - pad - BASE_HP_LABEL_OFFSET * s;
     this.drawHpBar(ctx, barX, textY + 2 * dpr * hs, unit.currentHp, unit.maxHp, barW, BASE_HP_BAR_HEIGHT * s);
     textY += lh;
 
