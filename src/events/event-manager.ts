@@ -359,6 +359,12 @@ export function evaluateCondition(
     return isUnitDead(unitNid, context);
   }
 
+  // game.check_alive('Name') / check_alive('Name') — opposite of check_dead
+  const aliveMatch = trimmed.match(/^(?:game\.)?check_alive\s*\(\s*['"](.+?)['"]\s*\)/);
+  if (aliveMatch) {
+    return !isUnitDead(aliveMatch[1], context);
+  }
+
   const checkPairMatch = trimmed.match(/^check_pair\s*\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)/);
   if (checkPairMatch) {
     const a = checkPairMatch[1];
