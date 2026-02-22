@@ -113,9 +113,8 @@ export class HUD {
     const ph = BASE_UNIT_PANEL_H * s;
     const lh = BASE_LINE_HEIGHT * s;
 
-    // Anchor to bottom-left
     const px = margin;
-    const py = screenH * dpr - ph - margin;
+    const py = margin;
 
     // Background
     ctx.fillStyle = BG_COLOR;
@@ -184,9 +183,8 @@ export class HUD {
     const ph = BASE_TERRAIN_PANEL_H * s;
     const lh = BASE_LINE_HEIGHT * s;
 
-    // Anchor to bottom-right
     const px = screenW * dpr - pw - margin;
-    const py = screenH * dpr - ph - margin;
+    const py = margin;
 
     // Background
     ctx.fillStyle = BG_COLOR;
