@@ -77,6 +77,8 @@ export class GameState {
   // -- Transient state (used by game states) --------------------------------
   selectedUnit: UnitObject | null;
   combatTarget: UnitObject | null;
+  /** Script tokens for scripted combat (interact_unit). Null for normal combat. */
+  combatScript: string[] | null;
   currentEvent: GameEvent | null;
   _moveOrigin: [number, number] | null;
   _pendingAfterMovement: string | null;
@@ -120,6 +122,7 @@ export class GameState {
     // Transient state
     this.selectedUnit = null;
     this.combatTarget = null;
+    this.combatScript = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._pendingAfterMovement = null;
@@ -163,6 +166,7 @@ export class GameState {
     this.turnCount = 1;
     this.selectedUnit = null;
     this.combatTarget = null;
+    this.combatScript = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._pendingAfterMovement = null;
