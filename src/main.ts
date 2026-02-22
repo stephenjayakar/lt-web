@@ -14,6 +14,7 @@ import { ResourceManager } from './data/resource-manager';
 import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
+import { initIcons } from './ui/icons';
 import {
   setGameRef,
   TitleState,
@@ -167,6 +168,9 @@ async function main(): Promise<void> {
     drawErrorScreen(ctx, `DB load failed: ${msg}`);
     return;
   }
+
+  // --- Icons ---
+  initIcons(baseUrl);
 
   // --- Audio ---
   const audioManager = new AudioManager(baseUrl);

@@ -8,15 +8,50 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**50 source files, ~22,000 lines of TypeScript.**
-Builds cleanly with zero type errors (220KB JS / 61KB gzipped).
-Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
-rendering to a dynamically-scaled HTML5 Canvas with dynamic viewport
-(mobile + desktop). Phase 1.2 core gameplay implemented, plus GBA-style
-combat animations, team-colored map sprites, level select, and full
-touch/mouse/keyboard input. Component dispatch system wired into combat.
+**53 source files, ~23,600 lines of TypeScript.**
+Builds cleanly with zero type errors. Loads `.ltproj` game data over
+HTTP and runs a 60 fps game loop rendering to a dynamically-scaled
+HTML5 Canvas with dynamic viewport (mobile + desktop). Phase 1.2 core
+gameplay implemented, plus GBA-style combat animations, team-colored
+map sprites, level select, full touch/mouse/keyboard input, component
+dispatch system, scripted combat, shop system, map animations, 9-slice
+menu backgrounds, and item icon rendering.
 
 ### Recent Changes (Latest Session)
+- **`interact_unit` scripted combat.** Full implementation of the
+  `interact_unit` event command for scripted combat with forced outcomes.
+  CombatScript tokens (`hit1`, `hit2`, `crit1`, `crit2`, `miss1`, `miss2`,
+  `--`, `end`) control who strikes and forced hit/miss/crit results.
+  `CombatPhaseSolver.resolveScripted()` processes script tokens. Script
+  passed through MapCombat and AnimationCombat constructors. Supports
+  both animation and map combat modes. `immediate` flag skips combat
+  animation entirely, applying results instantly.
+- **Shop event command and ShopState.** `shop` event command opens a full
+  shop interface. ShopState supports buy and sell modes with tab switching.
+  Buy mode shows available items with prices, stock tracking, and
+  affordability indication. Sell mode shows unit's sellable items with
+  values. Gold display, item descriptions, inventory full/out-of-stock
+  messages. Shop data stored as transient fields on GameState (`shopUnit`,
+  `shopItems`, `shopStock`). Money via `game.gameVars.get('money')`.
+- **Map animation system.** New `src/rendering/map-animation.ts` (~170
+  lines). Sprite-sheet based animations with `frame_x`, `frame_y`,
+  `num_frames`, `speed`, `frame_times`, `use_frame_time` support.
+  Animations loaded from `resources/animations/animations.json` manifest.
+  `map_anim` / `remove_map_anim` event commands. Animations render in
+  MapView at below-unit or above-unit layers. Database loads animation
+  catalog via `loadMapAnimations()`.
+- **9-slice menu window backgrounds.** New `src/ui/base-surf.ts` (~230
+  lines). Loads 24x24 source sprite (8x8 tiles) from
+  `sprites/menus/menu_bg_base.png`. Creates arbitrarily-sized window
+  backgrounds with proper corner/edge/center tiling. Integrated into
+  ChoiceMenu via `getMenuBackgroundSync()`.
+- **Icon rendering system.** New `src/ui/icons.ts` (~150 lines). Loads
+  16x16 and 32x32 icon sheets from `resources/icons16/` and
+  `resources/icons32/`. `drawItemIcon()` renders item icons by
+  `icon_nid` and `icon_index` ([x, y] grid coords). Integrated into
+  shop buy and sell menus.
+
+### Previous Session
 - **Autotile animation system.** Tilesets with animated water/lava tiles
   now animate at runtime. `LayerObject.buildSurface()` identifies autotile
   positions from `TilesetData.autotiles` dict, builds 16 pre-rendered
@@ -431,7 +466,7 @@ add:
 - [x] `remove_region`
 - [x] `region_condition` (updates region condition expression)
 - [x] `camera` control (`center_cursor`, `move_cursor`, `disp_cursor`, `flicker_cursor`)
-  - [ ] `map_anim` (play animation at a tile — requires map animation system)
+  - [x] `map_anim` / `remove_map_anim` (sprite-sheet animations at map positions)
 - [x] `choice` / `unchoice` (branching dialogue menus)
 - [x] `show_layer` / `hide_layer` (tilemap layer toggling)
 - [x] `add_talk` / `remove_talk` (dynamic talk pair management)
@@ -449,8 +484,8 @@ add:
 - [x] `make_generic` (fabricates generic unit from class/level/team)
 - [x] `add_weather` / `remove_weather` (weather particle effects on map)
 - [x] `screen_shake` / `screen_shake_end` (5 shake patterns, blocking/non-blocking)
-- [ ] `interact_unit` (scripted combat with forced outcomes — stubbed)
-- [ ] `shop` (opens shop interface — not yet implemented)
+- [x] `interact_unit` (scripted combat with forced outcomes, CombatScript tokens, immediate mode)
+- [x] `shop` (full shop interface: buy/sell with stock, gold tracking, item icons)
 - [ ] `prep` (opens preparations screen — not yet implemented)
 
 Original: `app/events/event_commands.py`, `app/events/event_functions.py`
@@ -474,8 +509,10 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   loading. TileMapObject.addWeather/removeWeather methods. Rendered in MapView
   after foreground. `add_weather`/`remove_weather` event commands.
   - Original: `app/engine/particles.py`
-- [ ] **Map animations.** Spritesheet-based animations played at map
-  positions (miss, no-damage, level-up sparkle, etc.).
+- [x] **Map animations.** Spritesheet-based animations played at map
+  positions. New `src/rendering/map-animation.ts` (~170 lines). Loaded from
+  `resources/animations/animations.json`. `map_anim`/`remove_map_anim` event
+  commands. Below-unit and above-unit rendering layers in MapView.
   - Original: `app/engine/animations.py`
 - [x] **Unit sprite palette swap.** Team color conversion (blue -> red, etc.)
   by remapping palette colors on the map sprites. 4 default palettes
@@ -494,8 +531,9 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   bounce animation (timing [20,2,8,2] = ~533ms cycle) matching the
   Python `GenericAnimCounter`. Centered on tile with 8px overhang.
   Falls back to rectangle outline if sprite fails to load.
-- [ ] **Menu window backgrounds.** Replace solid-color menu backgrounds with
-  proper 9-slice window chrome from system sprites.
+- [x] **Menu window backgrounds.** 9-slice window system (`src/ui/base-surf.ts`,
+  ~230 lines). Loads 24x24 source sprite, creates arbitrarily-sized windows
+  with corner/edge/center tiling. Integrated into ChoiceMenu.
   - Original: `app/engine/base_surf.py`
 - [x] **Portraits in dialog.** Full portrait system: `EventPortrait` class
   with sprite sheet compositing, blinking, talking, expressions, transitions,
@@ -505,8 +543,10 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 - [ ] **Bitmap font rendering.** Replace Canvas `fillText` with the original
   BMP font system for authentic GBA-style text.
   - Original: `app/engine/bmpfont.py`, `app/engine/fonts.py`
-- [ ] **Icon rendering.** Load and display item/skill/class icons from icon
-  sheets (16x16, 32x32).
+- [x] **Icon rendering.** New `src/ui/icons.ts` (~150 lines). Loads 16x16 and
+  32x32 icon sheets from `resources/icons16/` and `resources/icons32/`.
+  `drawItemIcon()` renders item icons by `icon_nid` and `icon_index`.
+  Integrated into shop buy/sell menus.
   - Original: `app/engine/icons.py`
 
 ### 2.2 Combat Animations (MOSTLY DONE)
@@ -680,10 +720,10 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
-| `engine/game-state.ts` | ~658 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading |
-| `engine/states/game-states.ts` | ~5784 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~55 event commands |
+| `engine/game-state.ts` | ~672 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading, shop transient fields, combatScript |
+| `engine/states/game-states.ts` | ~6397 | 18 states (+ ShopState), scripted combat, ~60 event commands incl. interact_unit, shop, map_anim, remove_map_anim |
 | `data/types.ts` | 342 | Done |
-| `data/database.ts` | 436 | Done — combat anim data loading |
+| `data/database.ts` | ~464 | Done — combat anim data loading, map animation catalog |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
 | `data/resource-manager.ts` | 309 | Done |
 | `objects/unit.ts` | ~429 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup, portraitNid |
@@ -692,7 +732,8 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
 | `rendering/tilemap.ts` | ~330 | Done — showLayer/hideLayer, autotile animation, weather management |
 | `rendering/map-view.ts` | ~275 | Done — dynamic viewport, unit HP bar overlays, weather rendering |
-| `rendering/weather.ts` | ~238 | **NEW** — WeatherSystem with 7 types (rain, snow, sand, light, dark, night, sunset) |
+| `rendering/weather.ts` | ~238 | Done — WeatherSystem with 7 types (rain, snow, sand, light, dark, night, sunset) |
+| `rendering/map-animation.ts` | ~169 | **NEW** — MapAnimation sprite-sheet system, below/above-unit rendering |
 | `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
 | `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
 | `rendering/highlight.ts` | 137 | Done — threat highlight type, clearType/hasType helpers |
@@ -700,25 +741,27 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `pathfinding/path-system.ts` | 228 | Done |
 | `movement/movement-system.ts` | 168 | Done, needs roam movement |
 | `combat/combat-calcs.ts` | ~582 | Done — full item-system + skill-system dispatch, Python ternary in equations |
-| `combat/combat-solver.ts` | 275 | Done — vantage, desperation, miracle, disvantage |
+| `combat/combat-solver.ts` | ~409 | Done — vantage, desperation, miracle, disvantage, resolveScripted() for CombatScript |
 | `combat/item-system.ts` | 248 | Done — item component dispatch layer |
 | `combat/skill-system.ts` | 399 | Done — skill component dispatch layer |
-| `combat/map-combat.ts` | 552 | Done — weapon uses, growth-based levelup, CombatResults |
-| `combat/animation-combat.ts` | 920 | Done — full animation combat state machine |
+| `combat/map-combat.ts` | ~555 | Done — weapon uses, growth-based levelup, CombatResults, script parameter |
+| `combat/animation-combat.ts` | ~922 | Done — full animation combat state machine, script parameter |
 | `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback |
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
 | `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
 | `ai/ai-controller.ts` | ~1080 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI |
-| `events/event-manager.ts` | ~888 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead), talk pairs |
+| `events/event-manager.ts` | ~888 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead), talk pairs, any_unit_in_region, can_unlock |
 | `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
-| `ui/menu.ts` | 205 | Done — click + hover mouse support. Needs 9-slice backgrounds |
+| `ui/menu.ts` | ~204 | Done — click + hover mouse support, 9-slice backgrounds via base-surf |
+| `ui/base-surf.ts` | ~228 | **NEW** — 9-slice menu window backgrounds from system sprites |
+| `ui/icons.ts` | ~151 | **NEW** — Icon sheet loading (16x16/32x32), drawItemIcon() |
 | `ui/hud.ts` | ~253 | Done — screen-space rendering, terrain DEF + AVO display, chibi portraits |
 | `ui/health-bar.ts` | 97 | Done |
 | `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
 | `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
 | `ui/dialog.ts` | ~320 | Done — portrait-aware positioning with speech bubble tail, word-wrap |
 | `ui/banner.ts` | 108 | Done |
-| `main.ts` | 318 | Done — LevelSelectState, dynamic viewport, DPR-aware display |
+| `main.ts` | ~324 | Done — LevelSelectState, dynamic viewport, DPR-aware display, ShopState registration, icon init |
 
 ---
 
