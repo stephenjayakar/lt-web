@@ -1,0 +1,33 @@
+{
+  "$schema": "https://nickersoft.github.io/bubblewrap/schema/twa-manifest.schema.json",
+  "packageId": "com.lextalionis.web.twa",
+  "host": "lextalionis.example.com",
+  "name": "Lex Talionis",
+  "launcherName": "LT Web",
+  "display": "fullscreen",
+  "themeColor": "#0a0a2e",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#000000",
+  "enableNotifications": false,
+  "startUrl": "/?source=twa",
+  "iconUrl": "/icons/icon-512.png",
+  "maskableIconUrl": "/icons/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "lt-web.jks",
+    "alias": "lt-web"
+  },
+  "appVersionCode": 1,
+  "appVersionName": "0.1.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "/manifest.json",
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "orientation": "any"
+}

@@ -5,6 +5,7 @@ import type { GameBoard } from '../objects/game-board';
 import * as itemSystem from './item-system';
 import * as skillSystem from './skill-system';
 import { getTerrainBonusesForUnit } from './terrain-bonuses';
+import type { SupportEffect } from '../engine/support-system';
 
 // ============================================================
 // CombatCalcs - All combat calculation formulas.
@@ -21,25 +22,55 @@ const STAT_NAMES = [
 ];
 
 // ------------------------------------------------------------------
+// Lazy game/db reference for equation context
+// ------------------------------------------------------------------
+
+let _eqGameRef: (() => any) | null = null;
+
+/** Set the game reference getter for equation evaluation context. */
+export function setEquationGameRef(getter: () => any): void {
+  _eqGameRef = getter;
+}
+
+// ------------------------------------------------------------------
 // Expression evaluator
 // ------------------------------------------------------------------
 
 /**
- * Evaluate a simple equation string with stat substitution.
- *
- * Replaces stat name tokens (HP, STR, MAG, ...) with the unit's stat
- * values, converts Python-style `//` (integer division) to
- * `Math.floor(a/b)`, and wraps bare `max`/`min` calls with `Math.max`
- * / `Math.min` before evaluating.
- *
- * Handles basic math ops: +, -, *, /, //, %, max(), min().
+ * Extended equation evaluation context. When provided, allows equations
+ * to reference other named equations, game constants, query functions,
+ * and additional variables beyond bare stat tokens.
  */
-export function evaluateEquation(expr: string, unit: UnitObject): number {
+interface EquationContext {
+  /** Secondary unit for two-unit equations (e.g., combat formulas). */
+  unit2?: UnitObject | null;
+  /** Specific item context (e.g., for item component expressions). */
+  item?: ItemObject | null;
+  /** Database for equation/constant lookups. */
+  db?: Database | null;
+}
+
+/**
+ * Evaluate an equation string with stat substitution and extended context.
+ *
+ * Supports:
+ *   - Stat token substitution: HP, STR, MAG, ... → unit stat values
+ *   - Python ternary: `X if COND else Y`
+ *   - Python integer division: `a // b` → `Math.floor(a/b)`
+ *   - Named equation references: equation names → recursive evaluation
+ *   - `max()`, `min()`, `abs()`, `int()`, `float()` builtins
+ *   - `unit.level`, `unit.klass`, `unit.get_internal_level()` access
+ *   - `clamp(value, lo, hi)` utility
+ *   - Game constants via `DB.constants.value('name')` pattern
+ */
+export function evaluateEquation(
+  expr: string,
+  unit: UnitObject,
+  ctx?: EquationContext,
+): number {
   let processed = expr;
 
   // Handle Python ternary: "X if COND else Y" -> JS ternary
-  // Match: value_expr if condition_expr else else_expr
-  // Use a loop since there may be nested ternaries
   const ternaryRe = /^(.+?)\s+if\s+(.+?)\s+else\s+(.+)$/;
   const ternaryMatch = processed.match(ternaryRe);
   if (ternaryMatch) {
@@ -47,39 +78,86 @@ export function evaluateEquation(expr: string, unit: UnitObject): number {
     const condExpr = ternaryMatch[2].trim();
     const elseExpr = ternaryMatch[3].trim();
 
-    // Evaluate the condition
-    const condResult = evaluateEquationCondition(condExpr, unit);
-    // Recursively evaluate the chosen branch
+    const condResult = evaluateEquationCondition(condExpr, unit, ctx);
     return condResult
-      ? evaluateEquation(valueExpr, unit)
-      : evaluateEquation(elseExpr, unit);
+      ? evaluateEquation(valueExpr, unit, ctx)
+      : evaluateEquation(elseExpr, unit, ctx);
   }
 
-  // Replace stat tokens with their numeric values.
-  // Sort longest-first so e.g. "SPEED" doesn't partially match "SPD".
-  // Use word-boundary regex to avoid false positives.
+  // Resolve the database for equation lookups
+  const db = ctx?.db ?? (_eqGameRef?.()?.db as Database | undefined) ?? null;
+
+  // Replace named equation references FIRST (before stat substitution)
+  // so that e.g. HIT (equation) doesn't collide with HIT (stat if it existed).
+  // Named equations are identifiers that exist in db.equations but NOT in STAT_NAMES.
+  if (db) {
+    const eqNames = db.getEquationNames?.() ?? [];
+    // Sort longest-first to avoid partial matches
+    const sortedEqs = [...eqNames].sort((a, b) => b.length - a.length);
+    for (const eqName of sortedEqs) {
+      // Don't replace stat names — those are handled below
+      if (STAT_NAMES.includes(eqName)) continue;
+      const re = new RegExp(`\\b${eqName}\\b`, 'g');
+      if (re.test(processed)) {
+        // Avoid infinite recursion: only resolve if the equation differs
+        const eqExpr = db.getEquation(eqName);
+        if (eqExpr && eqExpr !== expr) {
+          const eqValue = evaluateEquation(eqExpr, unit, ctx);
+          processed = processed.replace(re, String(eqValue));
+        }
+      }
+    }
+  }
+
+  // Replace stat tokens with their numeric values
   const sortedStats = [...STAT_NAMES].sort((a, b) => b.length - a.length);
   for (const stat of sortedStats) {
     const re = new RegExp(`\\b${stat}\\b`, 'g');
     processed = processed.replace(re, String(unit.getStatValue(stat)));
   }
 
-  // Convert Python-style integer division `//` to Math.floor.
-  // We iteratively replace `a // b` patterns.  This handles simple
-  // cases like `12 // 2` after stat substitution.
+  // Replace unit.level, unit.klass, etc. with actual values
+  processed = processed.replace(/\bunit\.level\b/g, String(unit.level));
+  processed = processed.replace(/\bunit\.klass\b/g, `"${unit.klass}"`);
+  processed = processed.replace(
+    /\bunit\.get_internal_level\s*\(\s*\)/g,
+    String(_getInternalLevel(unit, db)),
+  );
+
+  // Replace DB.constants.value('name') with the constant value
+  if (db) {
+    processed = processed.replace(
+      /\bDB\.constants\.value\s*\(\s*['"](.+?)['"]\s*\)/g,
+      (_m, constName) => {
+        const val = db.getConstant(constName, 0);
+        return typeof val === 'number' ? String(val) : `"${val}"`;
+      },
+    );
+  }
+
+  // Convert Python-style integer division `//` to Math.floor
   processed = processed.replace(
     /(\b[\d.]+)\s*\/\/\s*([\d.]+\b)/g,
     (_match, a, b) => `Math.floor((${a})/(${b}))`,
   );
 
-  // Wrap bare max/min with Math. prefix (only if not already prefixed).
+  // Wrap bare max/min/abs/int/float with Math/JS equivalents
   processed = processed.replace(/(?<!Math\.)(?<![\w.])\bmax\b/g, 'Math.max');
   processed = processed.replace(/(?<!Math\.)(?<![\w.])\bmin\b/g, 'Math.min');
+  processed = processed.replace(/(?<!Math\.)(?<![\w.])\babs\b/g, 'Math.abs');
+  // Python int() -> Math.floor()
+  processed = processed.replace(/(?<![\w.])\bint\s*\(/g, 'Math.floor(');
+  // Python float() -> Number()
+  processed = processed.replace(/(?<![\w.])\bfloat\s*\(/g, 'Number(');
 
   try {
-    // Safe-ish evaluation via Function constructor (only numeric math).
-    const fn = new Function('Math', `"use strict"; return (${processed});`);
-    const result = fn(Math);
+    // Build evaluation context with clamp utility and math
+    const clamp = (val: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, val));
+    const fn = new Function(
+      'Math', 'clamp',
+      `"use strict"; return (${processed});`,
+    );
+    const result = fn(Math, clamp);
     return typeof result === 'number' && Number.isFinite(result)
       ? Math.floor(result)
       : 0;
@@ -89,11 +167,29 @@ export function evaluateEquation(expr: string, unit: UnitObject): number {
   }
 }
 
+/** Helper: compute a unit's internal level (accounting for promotion tiers). */
+function _getInternalLevel(unit: UnitObject, db: Database | null): number {
+  if (!db) return unit.level;
+  const klassDef = db.classes?.get(unit.klass);
+  if (!klassDef) return unit.level;
+  const tier = klassDef.tier ?? 0;
+  if (tier > 0) {
+    // For promoted classes, add the max level of the base (unpromoted) tier
+    const maxLevel = db.getConstant('max_level', 20) as number;
+    return unit.level + maxLevel * tier;
+  }
+  return unit.level;
+}
+
 /**
  * Evaluate a condition within an equation expression.
- * Handles: 'X' in unit.tags, simple comparisons, boolean literals.
+ * Handles: tag membership, boolean literals, comparisons, unit properties.
  */
-function evaluateEquationCondition(cond: string, unit: UnitObject): boolean {
+function evaluateEquationCondition(
+  cond: string,
+  unit: UnitObject,
+  ctx?: EquationContext,
+): boolean {
   // 'Tag' in unit.tags
   const inTagsMatch = cond.match(/^['"](.+?)['"]\s+in\s+unit\.tags$/);
   if (inTagsMatch) {
@@ -110,11 +206,18 @@ function evaluateEquationCondition(cond: string, unit: UnitObject): boolean {
   if (cond === 'True' || cond === 'true') return true;
   if (cond === 'False' || cond === 'false') return false;
 
+  // unit.klass == 'ClassName'
+  const klassMatch = cond.match(/^unit\.klass\s*(==|!=)\s*['"](.+?)['"]$/);
+  if (klassMatch) {
+    const eq = klassMatch[1] === '==';
+    return eq ? unit.klass === klassMatch[2] : unit.klass !== klassMatch[2];
+  }
+
   // Simple numeric comparison: LHS op RHS (after stat substitution)
   const compMatch = cond.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
   if (compMatch) {
-    const lhs = evaluateEquation(compMatch[1].trim(), unit);
-    const rhs = evaluateEquation(compMatch[3].trim(), unit);
+    const lhs = evaluateEquation(compMatch[1].trim(), unit, ctx);
+    const rhs = evaluateEquation(compMatch[3].trim(), unit, ctx);
     switch (compMatch[2]) {
       case '==': return lhs === rhs;
       case '!=': return lhs !== rhs;
@@ -125,7 +228,6 @@ function evaluateEquationCondition(cond: string, unit: UnitObject): boolean {
     }
   }
 
-  // Default to true (safer)
   console.warn(`CombatCalcs: unknown equation condition "${cond}"`);
   return true;
 }
@@ -141,7 +243,7 @@ function resolveEquation(
   unit: UnitObject,
 ): number {
   const expr = db.getEquation(eqName) ?? defaultExpr;
-  return evaluateEquation(expr, unit);
+  return evaluateEquation(expr, unit, { db });
 }
 
 // ------------------------------------------------------------------
@@ -314,7 +416,7 @@ export function defenseSpeed(unit: UnitObject, item: ItemObject, db: Database): 
 
 /**
  * Compute final hit chance (attacker accuracy - defender avoid, clamped 0-100).
- * Includes dynamic modifiers from items and skills.
+ * Includes dynamic modifiers from items and skills, plus support bonuses.
  */
 export function computeHit(
   attacker: UnitObject,
@@ -322,6 +424,7 @@ export function computeHit(
   defender: UnitObject,
   db: Database,
   board?: GameBoard | null,
+  game?: any,
 ): number {
   const acc = accuracy(attacker, attackItem, db);
   const avo = avoid(defender, db, board);
@@ -332,13 +435,17 @@ export function computeHit(
   const skillDynAcc = skillSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, 'attack', null, acc);
   const skillDynAvo = skillSystem.dynamicAvoid(defender, defWeapon, attacker, attackItem, 'defense', null, avo);
 
-  const raw = acc + itemDynAcc + skillDynAcc - avo - skillDynAvo;
+  // Support bonuses
+  const atkSupport = getSupportBonusForCombat(attacker, game);
+  const defSupport = getSupportBonusForCombat(defender, game);
+
+  const raw = acc + itemDynAcc + skillDynAcc + atkSupport.accuracy - avo - skillDynAvo - defSupport.avoid;
   return Math.max(0, Math.min(100, raw));
 }
 
 /**
  * Compute final damage (attacker damage - defender defense, min 0).
- * Includes dynamic modifiers, effective damage, and multipliers.
+ * Includes dynamic modifiers, effective damage, multipliers, and support bonuses.
  */
 export function computeDamage(
   attacker: UnitObject,
@@ -346,6 +453,7 @@ export function computeDamage(
   defender: UnitObject,
   db: Database,
   board?: GameBoard | null,
+  game?: any,
 ): number {
   const atk = damage(attacker, attackItem, db);
   const def = defense(defender, attackItem, db, board);
@@ -358,7 +466,11 @@ export function computeDamage(
   const skillDynDmg = skillSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, 'attack', null, baseDmg);
   const skillDynResist = skillSystem.dynamicResist(defender, defWeapon, attacker, attackItem, 'defense', null, def);
 
-  let finalDmg = baseDmg + itemDynDmg + skillDynDmg - skillDynResist;
+  // Support bonuses
+  const atkSupport = getSupportBonusForCombat(attacker, game);
+  const defSupport = getSupportBonusForCombat(defender, game);
+
+  let finalDmg = baseDmg + itemDynDmg + skillDynDmg - skillDynResist + atkSupport.damage - defSupport.resist;
 
   // Apply damage multiplier from attacker skills
   const dmgMult = skillSystem.damageMultiplier(attacker, attackItem, defender, defWeapon, 'attack', null, finalDmg);
@@ -524,13 +636,14 @@ function parseNumericValue(value: string): number {
 /**
  * Compute crit rate.
  * Crit = attacker crit - defender crit avoid, clamped 0-100.
- * Now includes item + skill crit modifiers.
+ * Now includes item + skill crit modifiers and support bonuses.
  */
 export function computeCrit(
   attacker: UnitObject,
   attackItem: ItemObject,
   defender: UnitObject,
   db: Database,
+  game?: any,
 ): number {
   const baseCrit = resolveEquation(db, 'CRIT', 'SKL // 2', attacker);
   const itemCrit = attackItem.getComponent<number>('crit') ?? 0;
@@ -543,7 +656,12 @@ export function computeCrit(
   // Item crit modifier
   const itemCritMod = itemSystem.modifyCritAccuracy(attacker, attackItem);
 
-  const raw = baseCrit + itemCrit + skillCritAcc + itemCritMod - critAvoid - skillCritAvo;
+  // Support bonuses
+  const atkSupport = getSupportBonusForCombat(attacker, game);
+  const defSupport = getSupportBonusForCombat(defender, game);
+
+  const raw = baseCrit + itemCrit + skillCritAcc + itemCritMod + atkSupport.crit
+    - critAvoid - skillCritAvo - defSupport.dodge;
   return Math.max(0, Math.min(100, raw));
 }
 
@@ -567,6 +685,28 @@ export function computeStrikeCount(
   count += skillExtra;
 
   return count;
+}
+
+// ------------------------------------------------------------------
+// Support bonus helper
+// ------------------------------------------------------------------
+
+const EMPTY_SUPPORT_EFFECT: SupportEffect = {
+  damage: 0, resist: 0, accuracy: 0, avoid: 0,
+  crit: 0, dodge: 0, attack_speed: 0, defense_speed: 0,
+};
+
+/**
+ * Get the aggregate support bonus for a unit in combat.
+ * Calls the SupportController if available, otherwise returns zeros.
+ */
+export function getSupportBonusForCombat(unit: UnitObject, game?: any): SupportEffect {
+  if (!game?.supports) return EMPTY_SUPPORT_EFFECT;
+  try {
+    return game.supports.getSupportRankBonus(unit, game.board, game.db, game);
+  } catch {
+    return EMPTY_SUPPORT_EFFECT;
+  }
 }
 
 // ------------------------------------------------------------------

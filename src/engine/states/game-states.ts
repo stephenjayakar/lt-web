@@ -26,19 +26,33 @@ import { ItemObject as ItemObjectClass } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
 import { evaluateCondition, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
 import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
+import {
+  MarkActionGroupStart,
+  MarkActionGroupEnd,
+  MarkPhase,
+  LockTurnwheel,
+  MessageAction,
+  PromoteAction,
+  ClassChangeAction,
+} from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
+export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { Banner } from '../../ui/banner';
 import { Dialog } from '../../ui/dialog';
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import { MapAnimation } from '../../rendering/map-animation';
+import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { getEquippedWeapon } from '../../combat/combat-calcs';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
+import { handleBaseEventCommand } from './base-state';
+import { RECORDS, ACHIEVEMENTS } from '../records';
+import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots } from '../save';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — set once at bootstrap to break circular deps.
@@ -128,11 +142,20 @@ function collectVisibleUnits(): {
 
     // Update sprite state: gray for finished units on the active team only.
     // Units from other teams should never appear greyed out.
+    // In initiative mode, non-current-initiative units appear greyed.
     // (moving state is set by the movement system)
     if (u.sprite && typeof u.sprite === 'object' && 'state' in u.sprite) {
       const spr = u.sprite as { state: string };
       if (spr.state !== 'moving') {
-        spr.state = (u.finished && u.team === currentTeam) ? 'gray' : 'standing';
+        let showGray = u.finished && u.team === currentTeam;
+        // Initiative mode: grey out units that aren't the current initiative unit
+        if (game.initiative) {
+          const initNid = game.initiative.getCurrentUnitNid();
+          if (initNid && u.nid !== initNid && u.team === currentTeam) {
+            showGray = true;
+          }
+        }
+        spr.state = showGray ? 'gray' : 'standing';
       }
     }
 
@@ -192,6 +215,18 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     },
   };
 
+  // Build fog of war config if fog is active
+  let fogConfig: FogRenderConfig | null = null;
+  const fogInfo = game.getCurrentFogInfo?.();
+  if (fogInfo && game.board && (fogInfo.isActive || game.board.fogRegionSet?.size > 0)) {
+    fogConfig = {
+      fogInfo,
+      board: game.board,
+      db: game.db,
+      allUnits: game.getAllUnits(),
+    };
+  }
+
   const mapSurf = game.mapView.draw(
     game.tilemap,
     cullRect,
@@ -200,6 +235,7 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     cursorInfo,
     false, // showGrid
     surf.scale,
+    fogConfig,
   );
 
   surf.blit(mapSurf);
@@ -360,7 +396,7 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
 }
 
 // ============================================================================
-// 1. TitleState
+// 1. TitleStartState — "Press Start" splash screen
 // ============================================================================
 
 export class TitleState extends State {
@@ -368,28 +404,66 @@ export class TitleState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
-  override draw(surf: Surface): Surface {
-    surf.fill(16, 16, 32);
+  private bgImage: HTMLImageElement | null = null;
+  private pulseTimer: number = 0;
 
-    // Title text centred
+  override start(): StateResult {
+    const game = getGame();
+    // Load the title background panorama
+    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
+      this.bgImage = img;
+    });
+
+    // Play title music if configured
+    const titleMusic = game.db.getConstant('music_main', null) as string | null;
+    if (titleMusic) {
+      void game.audioManager.playMusic(titleMusic);
+    }
+  }
+
+  override update(): StateResult {
+    this.pulseTimer += getGame().frameDeltaMs ?? 16;
+  }
+
+  override draw(surf: Surface): Surface {
+    const vw = viewport.width;
+    const vh = viewport.height;
+
+    // Background — scale panorama to fill viewport
+    if (this.bgImage) {
+      const s = surf.scale;
+      const imgW = this.bgImage.naturalWidth || vw;
+      const imgH = this.bgImage.naturalHeight || vh;
+      surf.ctx.imageSmoothingEnabled = false;
+      surf.ctx.drawImage(
+        this.bgImage,
+        0, 0, imgW, imgH,
+        0, 0, Math.round(vw * s), Math.round(vh * s),
+      );
+    } else {
+      surf.fill(16, 16, 32);
+    }
+
+    // Title text — centered, upper third
     const title = 'Lex Talionis';
-    const titleW = title.length * 7;
+    const titleW = title.length * 8;
     surf.drawText(
       title,
-      Math.floor((viewport.width - titleW) / 2),
-      Math.floor(viewport.height / 3),
+      Math.floor((vw - titleW) / 2),
+      Math.floor(vh / 3),
       'white',
-      '12px monospace',
+      '14px monospace',
     );
 
-    // Prompt
-    const prompt = 'Press START';
+    // "Press Start" — pulsing alpha
+    const alpha = 0.5 + 0.5 * Math.sin(this.pulseTimer / 500 * Math.PI);
+    const prompt = 'Press Start';
     const promptW = prompt.length * 5;
     surf.drawText(
       prompt,
-      Math.floor((viewport.width - promptW) / 2),
-      Math.floor(viewport.height / 2),
-      'rgba(200,200,220,1)',
+      Math.floor((vw - promptW) / 2),
+      Math.floor(vh * 4 / 5),
+      `rgba(200,200,220,${alpha.toFixed(2)})`,
       '8px monospace',
     );
 
@@ -397,11 +471,154 @@ export class TitleState extends State {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    // Mouse click also starts the game
     const game = getGame();
     if (event === 'START' || event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
-      game.state.change('level_select');
-      return;
+      game.state.change('title_main');
+    }
+  }
+}
+
+// ============================================================================
+// 1a. TitleMainState — Main title menu (New Game / Extras)
+// ============================================================================
+
+export class TitleMainState extends State {
+  readonly name = 'title_main';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private bgImage: HTMLImageElement | null = null;
+  private options: string[] = ['New Game', 'Extras'];
+  private cursor: number = 0;
+  private slideX: number = -120;
+  private targetX: number = 0;
+  private slideTimer: number = 0;
+  private hasSaveData: boolean = false;
+
+  override start(): StateResult {
+    const game = getGame();
+    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
+      this.bgImage = img;
+    });
+    this.slideX = -120;
+    this.targetX = 24;
+    this.cursor = 0;
+
+    // Check if any save data exists to show Load Game / Continue options
+    const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
+    const numSlots = game.db?.getConstant?.('num_save_slots', 3) ?? 3;
+    Promise.all([
+      loadSaveSlots(gameNid as string, numSlots as number),
+      hasSuspend(gameNid as string),
+    ]).then(([slots, hasSusp]) => {
+      const hasAnySave = hasSusp || slots.some(s => s.name !== '--NO DATA--');
+      this.hasSaveData = hasAnySave;
+      this.rebuildOptions();
+    }).catch(() => {
+      // Ignore errors — just show default options
+    });
+  }
+
+  override begin(): StateResult {
+    this.slideX = -120;
+    this.cursor = 0;
+    this.slideTimer = 0;
+    this.rebuildOptions();
+  }
+
+  private rebuildOptions(): void {
+    const opts: string[] = [];
+    if (this.hasSaveData) {
+      opts.push('Continue');
+    }
+    opts.push('New Game');
+    if (this.hasSaveData) {
+      opts.push('Load Game');
+    }
+    opts.push('Extras');
+    this.options = opts;
+    // Keep cursor in bounds
+    if (this.cursor >= this.options.length) {
+      this.cursor = 0;
+    }
+  }
+
+  override update(): StateResult {
+    // Slide menu in
+    if (this.slideX < this.targetX) {
+      this.slideX = Math.min(this.targetX, this.slideX + 12);
+    }
+    this.slideTimer += getGame().frameDeltaMs ?? 16;
+  }
+
+  override draw(surf: Surface): Surface {
+    const vw = viewport.width;
+    const vh = viewport.height;
+
+    // Background — scale panorama to fill viewport
+    if (this.bgImage) {
+      const s = surf.scale;
+      const imgW = this.bgImage.naturalWidth || vw;
+      const imgH = this.bgImage.naturalHeight || vh;
+      surf.ctx.imageSmoothingEnabled = false;
+      surf.ctx.drawImage(
+        this.bgImage,
+        0, 0, imgW, imgH,
+        0, 0, Math.round(vw * s), Math.round(vh * s),
+      );
+    } else {
+      surf.fill(16, 16, 32);
+    }
+
+    // Semi-transparent panel behind menu
+    const panelX = Math.floor(this.slideX - 8);
+    const panelY = Math.floor(vh / 2 - 10);
+    const panelW = 90;
+    const panelH = this.options.length * 16 + 8;
+    surf.fillRect(panelX, panelY, panelW, panelH, 'rgba(16,16,48,0.85)');
+    surf.drawRect(panelX, panelY, panelW, panelH, 'rgba(100,100,180,0.7)');
+
+    // Menu options
+    for (let i = 0; i < this.options.length; i++) {
+      const optY = Math.floor(vh / 2 + i * 16 - 4);
+      const optX = Math.floor(this.slideX);
+
+      if (i === this.cursor) {
+        // Highlight bar
+        surf.fillRect(panelX + 2, optY - 2, panelW - 4, 14, 'rgba(64,64,160,0.6)');
+        // Animated cursor arrow with bobbing
+        const bobOffset = Math.sin(this.slideTimer / 300 * Math.PI) * 1.5;
+        surf.drawText('>', optX - 8, optY + bobOffset, 'rgba(255,255,128,1)', '8px monospace');
+      }
+
+      const color = i === this.cursor ? 'white' : 'rgba(180,180,200,1)';
+      surf.drawText(this.options[i], optX, optY, color, '8px monospace');
+    }
+
+    return surf;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+
+    if (event === 'UP') {
+      this.cursor = (this.cursor - 1 + this.options.length) % this.options.length;
+    } else if (event === 'DOWN') {
+      this.cursor = (this.cursor + 1) % this.options.length;
+    } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
+      const selected = this.options[this.cursor];
+      if (selected === 'New Game') {
+        game.state.change('level_select');
+      } else if (selected === 'Continue') {
+        // Load the most recent save (highest realtime)
+        game.state.change('load_menu');
+      } else if (selected === 'Load Game') {
+        game.state.change('load_menu');
+      } else if (selected === 'Extras') {
+        // Placeholder — not yet implemented
+      }
+    } else if (event === 'BACK') {
+      game.state.back(); // Return to press-start screen
     }
   }
 }
@@ -608,12 +825,25 @@ export class OptionMenuState extends State {
 
   override begin(): StateResult {
     const game = getGame();
-    const options: MenuOption[] = [
-      { label: 'End Turn', value: 'end_turn', enabled: true },
-    ];
+    const hasMinimap = !!(game.board && game.tilemap);
+
+    // Check if turnwheel is enabled (constant + game var)
+    const turnwheelConstant = game.db?.getConstant?.('turnwheel', null) ?? null;
+    const turnwheelEnabled = !!turnwheelConstant && !!game.gameVars.get('_turnwheel');
+
+    const options: MenuOption[] = [];
+    options.push({ label: 'End Turn', value: 'end_turn', enabled: true });
+    if (turnwheelEnabled) {
+      options.push({ label: 'Turnwheel', value: 'turnwheel', enabled: true });
+    }
+    options.push({ label: 'Minimap', value: 'minimap', enabled: hasMinimap });
+    options.push({ label: 'Save', value: 'save', enabled: true });
+    options.push({ label: 'Suspend', value: 'suspend', enabled: true });
+    options.push({ label: 'Options', value: 'options', enabled: true });
+
     // Centre the menu on screen
     const menuX = Math.floor(viewport.width / 2) - 30;
-    const menuY = Math.floor(viewport.height / 2) - 12;
+    const menuY = Math.floor(viewport.height / 2) - (options.length * 8 + 4);
     this.menu = new ChoiceMenu(options, menuX, menuY);
   }
 
@@ -657,6 +887,48 @@ export class OptionMenuState extends State {
           game.state.change('turn_change');
           break;
         }
+        case 'turnwheel': {
+          // Check if the player has uses remaining (or unlimited = -1)
+          const currentUses = game.gameVars.get('_current_turnwheel_uses') ?? -1;
+          if (currentUses > 0 || currentUses === -1) {
+            this.menu = null;
+            game.state.change('turnwheel');
+          } else {
+            // No uses remaining
+            game.audioManager?.playSfx?.('Error');
+          }
+          break;
+        }
+        case 'minimap': {
+          this.menu = null;
+          game.state.back();
+          game.state.change('minimap');
+          break;
+        }
+        case 'save': {
+          this.menu = null;
+          game.state.back();
+          game.state.change('save_menu');
+          break;
+        }
+        case 'suspend': {
+          this.menu = null;
+          game.state.back();
+          doSuspendGame(game).then(() => {
+            game.state.clear();
+            game.state.change('title');
+          }).catch(() => {
+            game.state.clear();
+            game.state.change('title');
+          });
+          break;
+        }
+        case 'options': {
+          this.menu = null;
+          game.state.back();
+          game.state.change('settings_menu');
+          break;
+        }
       }
     }
   }
@@ -679,14 +951,40 @@ export class FreeState extends MapState {
   override begin(): StateResult {
     const game = getGame();
     const board = getBoard();
+
+    // Check for free roam mode
+    const roamInfo = game.roamInfo;
+    if (roamInfo && roamInfo.roam && roamInfo.roamUnitNid) {
+      const roamUnit = game.getUnit(roamInfo.roamUnitNid);
+      if (roamUnit && roamUnit.position) {
+        game.state.change('free_roam');
+        return 'repeat';
+      }
+    }
+
     game.cursor.visible = true;
 
-    // Auto-cursor to first available player unit
-    const playerUnits: UnitObject[] = board.getTeamUnits('player');
-    const available = playerUnits.find((u) => u.canStillAct() && u.position);
-    if (available && available.position) {
-      game.cursor.setPos(available.position[0], available.position[1]);
-      game.camera.focusTile(available.position[0], available.position[1]);
+    // Mark end of previous action group (turnwheel marker)
+    game.actionLog.doAction(new MarkActionGroupEnd('free'));
+
+    // Initiative mode: auto-cursor to the initiative unit
+    if (game.initiative) {
+      const unitNid = game.initiative.getCurrentUnitNid();
+      if (unitNid) {
+        const unit = game.getUnit(unitNid);
+        if (unit && unit.position) {
+          game.cursor.setPos(unit.position[0], unit.position[1]);
+          game.camera.focusTile(unit.position[0], unit.position[1]);
+        }
+      }
+    } else {
+      // Standard mode: auto-cursor to first available player unit
+      const playerUnits: UnitObject[] = board.getTeamUnits('player');
+      const available = playerUnits.find((u) => u.canStillAct() && u.position);
+      if (available && available.position) {
+        game.cursor.setPos(available.position[0], available.position[1]);
+        game.camera.focusTile(available.position[0], available.position[1]);
+      }
     }
   }
 
@@ -717,6 +1015,16 @@ export class FreeState extends MapState {
       case 'SELECT': {
         const unit = getUnitUnderCursor();
         if (unit && unit.team === 'player' && unit.canStillAct()) {
+          // In initiative mode, only allow selecting the current initiative unit
+          if (game.initiative) {
+            const initUnitNid = game.initiative.getCurrentUnitNid();
+            if (initUnitNid && unit.nid !== initUnitNid) {
+              // Not the initiative unit — treat as enemy click (show range) or error
+              break;
+            }
+          }
+          // Mark start of this unit's action group (turnwheel marker)
+          game.actionLog.doAction(new MarkActionGroupStart(unit, 'free'));
           game.selectedUnit = unit;
           game.state.change('move');
         } else if (unit && unit.team !== 'player' && unit.position) {
@@ -759,33 +1067,10 @@ export class FreeState extends MapState {
           } else {
             this.showAllEnemyThreat(game);
           }
-        } else if (unit.team !== 'player' && unit.position) {
-          // Enemy unit: toggle individual enemy range
-          const key = `${unit.position[0]},${unit.position[1]}`;
-          const existing = game.highlight.getHighlights().get(key);
-          if (existing === 'selected') {
-            // Clear this unit's individual highlights
-            game.highlight.clearType('selected');
-            game.highlight.clearType('attack');
-          } else {
-            game.highlight.clearType('selected');
-            game.highlight.clearType('attack');
-            // Show this enemy's move + attack range
-            const validMoves = game.pathSystem!.getValidMoves(unit, game.board);
-            const attackPos = game.pathSystem!.getAttackPositions(unit, game.board, validMoves);
-            game.highlight.setMoveHighlights(validMoves);
-            game.highlight.setAttackHighlights(attackPos);
-            game.highlight.addHighlight(unit.position[0], unit.position[1], 'selected');
-          }
-        } else if (unit.position) {
-          // Player/ally unit: toggle selected highlight
-          const key = `${unit.position[0]},${unit.position[1]}`;
-          const existing = game.highlight.getHighlights().get(key);
-          if (existing === 'selected') {
-            game.highlight.removeHighlight(unit.position[0], unit.position[1]);
-          } else {
-            game.highlight.addHighlight(unit.position[0], unit.position[1], 'selected');
-          }
+        } else {
+          // Any unit: open info menu
+          game.infoMenuUnit = unit;
+          game.state.change('info_menu');
         }
         break;
       }
@@ -817,7 +1102,12 @@ export class FreeState extends MapState {
       }
 
       case 'START':
-        game.state.change('option_menu');
+        // In initiative mode, START toggles the initiative bar display
+        if (game.initiative) {
+          game.initiative.toggleDraw();
+        } else {
+          game.state.change('option_menu');
+        }
         break;
     }
   }
@@ -839,13 +1129,26 @@ export class FreeState extends MapState {
     const [tDef, tAvo] = getTerrainBonuses(terrainDef, game.db);
     game.hud.setHover(unit, terrainDef?.name ?? '', tDef, tAvo);
 
-    // Auto end-turn: if all player units are finished, advance
-    const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
-    if (playerUnits.length > 0) {
-      const allFinished = playerUnits.every((u) => u.finished || u.isDead());
-      if (allFinished) {
-        game.state.change('turn_change');
-        return;
+    // Auto end-turn logic
+    if (game.initiative) {
+      // Initiative mode: auto-end when the current initiative unit is finished
+      const initUnitNid = game.initiative.getCurrentUnitNid();
+      if (initUnitNid) {
+        const initUnit = game.getUnit(initUnitNid);
+        if (initUnit && initUnit.finished) {
+          game.state.change('turn_change');
+          return;
+        }
+      }
+    } else {
+      // Standard mode: if all player units are finished, advance
+      const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
+      if (playerUnits.length > 0) {
+        const allFinished = playerUnits.every((u) => u.finished || u.isDead());
+        if (allFinished) {
+          game.state.change('turn_change');
+          return;
+        }
       }
     }
   }
@@ -1338,6 +1641,8 @@ export class MenuState extends State {
           game.state.back();
         }
       } else if (value === 'wait') {
+        // Record end of action group (turnwheel marker)
+        game.actionLog.doAction(new MarkActionGroupEnd('menu'));
         if (unit) unit.finished = true;
         this.menu = null;
         game.state.back();
@@ -2147,6 +2452,9 @@ export class CombatState extends State {
       const leftAnim = leftIsAttacker ? atkAnim : defAnim;
       const rightAnim = leftIsAttacker ? defAnim : atkAnim;
 
+      // Store resources on globalThis so effect loaders can access them
+      (globalThis as any).__ltResources = game.resources;
+
       this.animCombat = new AnimationCombat(
         attacker,
         attackItem,
@@ -2291,6 +2599,18 @@ export class CombatState extends State {
         const done = activeCombat.update(combatDelta);
         if (done) {
           this.results = activeCombat.applyResults();
+          // Record combat message for turnwheel
+          const atkName = activeCombat.attacker.name;
+          const defName = activeCombat.defender.name;
+          const isSpell = activeCombat.attackItem?.isSpell?.();
+          const isHeal = activeCombat.attackItem?.targetsAllies?.();
+          if (isHeal) {
+            game.actionLog.doAction(new MessageAction(`${atkName} helped ${defName}`));
+          } else if (isSpell) {
+            game.actionLog.doAction(new MessageAction(`${atkName} used ${activeCombat.attackItem?.name ?? 'spell'}`));
+          } else {
+            game.actionLog.doAction(new MessageAction(`${atkName} attacked ${defName}`));
+          }
           if (this.results.attackerDead || this.results.defenderDead) {
             this.phase = 'death';
             this.phaseTimer = 0;
@@ -2310,11 +2630,13 @@ export class CombatState extends State {
         this.phaseTimer += realDelta;
         this.deathFadeProgress = Math.min(1, this.phaseTimer / 350);
         if (this.phaseTimer >= 350) {
-          // Remove dead units from board
+          // Remove dead units from board and initiative tracker
           if (this.results!.defenderDead) {
+            if (game.initiative) game.initiative.removeUnit(activeCombat!.defender);
             game.board.removeUnit(activeCombat!.defender);
           }
           if (this.results!.attackerDead) {
+            if (game.initiative) game.initiative.removeUnit(activeCombat!.attacker);
             game.board.removeUnit(activeCombat!.attacker);
           }
 
@@ -2572,6 +2894,11 @@ export class CombatState extends State {
 
   /** Render the GBA-style animation combat scene. */
   private drawAnimationCombat(surf: Surface): Surface {
+    // Pass camera offset so the viewbox iris can compute tile-relative positions
+    const game = getGame();
+    const cameraOffset = game.camera.getOffset();
+    this.animCombat!.setCameraOffset(cameraOffset[0], cameraOffset[1]);
+
     const rs = this.animCombat!.getRenderState();
 
     // Apply screen shake to the entire scene
@@ -2585,21 +2912,21 @@ export class CombatState extends State {
       // Darken everything outside the viewbox iris
       // Top bar
       if (vb.y > 0) {
-        surf.fillRect(0, 0, WINWIDTH, Math.max(0, vb.y), 'rgba(0,0,0,0.85)');
+        surf.fillRect(0, 0, WINWIDTH, Math.max(0, vb.y), 'rgba(0,0,0,0.75)');
       }
       // Bottom bar
       const botY = vb.y + vb.height;
       if (botY < WINHEIGHT) {
-        surf.fillRect(0, botY, WINWIDTH, WINHEIGHT - botY, 'rgba(0,0,0,0.85)');
+        surf.fillRect(0, botY, WINWIDTH, WINHEIGHT - botY, 'rgba(0,0,0,0.75)');
       }
       // Left bar (between top and bottom bars)
       if (vb.x > 0) {
-        surf.fillRect(0, Math.max(0, vb.y), vb.x, Math.max(0, vb.height), 'rgba(0,0,0,0.85)');
+        surf.fillRect(0, Math.max(0, vb.y), vb.x, Math.max(0, vb.height), 'rgba(0,0,0,0.75)');
       }
       // Right bar
       const rightX = vb.x + vb.width;
       if (rightX < WINWIDTH) {
-        surf.fillRect(rightX, Math.max(0, vb.y), WINWIDTH - rightX, Math.max(0, vb.height), 'rgba(0,0,0,0.85)');
+        surf.fillRect(rightX, Math.max(0, vb.y), WINWIDTH - rightX, Math.max(0, vb.height), 'rgba(0,0,0,0.75)');
       }
 
       // If still fading in, don't draw the battle scene yet
@@ -2790,16 +3117,87 @@ export class CombatState extends State {
       this.drawBattleHpBar(surf, rightHpX, hpY, HP_BAR_W, HP_BAR_SECTION_H, rs.rightHp);
     }
 
-    // --- Damage popups (in battle scene space) ---
+    // --- Spark effects ---
+    for (const spark of rs.sparks) {
+      const t = spark.elapsed / spark.duration;
+
+      // Position spark at the defender's platform center
+      const sparkBaseX = spark.isLeft
+        ? leftPlatX + PLAT_W / 2
+        : rightPlatX + PLAT_W / 2;
+      const sparkBaseY = spark.isLeft ? leftPlatY - 16 : rightPlatY - 16;
+
+      if (spark.type === 'hit') {
+        // Burst of radiating particles
+        const numParticles = 8;
+        const alpha = Math.max(0, 1 - t * 1.5);
+        for (let i = 0; i < numParticles; i++) {
+          const angle = (i / numParticles) * Math.PI * 2;
+          const dist = t * 20;
+          const px = sparkBaseX + Math.cos(angle) * dist;
+          const py = sparkBaseY + Math.sin(angle) * dist;
+          const size = Math.max(1, 3 * (1 - t));
+          surf.fillRect(px - size / 2, py - size / 2, size, size, `rgba(255,255,200,${alpha.toFixed(2)})`);
+        }
+      } else if (spark.type === 'crit') {
+        // Dramatic crit flash + large particle burst
+        const alpha = Math.max(0, 1 - t);
+        if (t < 0.15) {
+          // Initial flash
+          const flashAlpha = (1 - t / 0.15) * 0.6;
+          surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, `rgba(255,255,255,${flashAlpha.toFixed(2)})`);
+        }
+        const numParticles = 16;
+        for (let i = 0; i < numParticles; i++) {
+          const angle = (i / numParticles) * Math.PI * 2 + t * 2;
+          const dist = t * 35;
+          const px = sparkBaseX + Math.cos(angle) * dist;
+          const py = sparkBaseY + Math.sin(angle) * dist;
+          const size = Math.max(1, 4 * (1 - t));
+          surf.fillRect(px - size / 2, py - size / 2, size, size, `rgba(255,255,128,${alpha.toFixed(2)})`);
+        }
+      } else if (spark.type === 'noDamage') {
+        // Small blue "ping"
+        const alpha = Math.max(0, 1 - t * 2);
+        const radius = t * 10 + 2;
+        // Draw as a small ring approximation
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2;
+          const px = sparkBaseX + Math.cos(angle) * radius;
+          const py = sparkBaseY + Math.sin(angle) * radius;
+          surf.fillRect(px, py, 2, 2, `rgba(100,160,255,${alpha.toFixed(2)})`);
+        }
+      }
+      // 'miss' is handled by damage popups already
+    }
+
+    // --- Damage popups (in battle scene space) with bounce physics ---
     for (const popup of rs.damagePopups) {
-      const t = popup.elapsed / popup.duration;
-      const floatY = -16 * t;
-      const alpha = Math.max(0, 1 - t * 1.2);
+      const t = popup.elapsed; // time in ms
 
       // Position popups centered above the platform the hit landed on
       const isLeftSide = popup.x < WINWIDTH / (2 * TILEWIDTH);
       const popupBaseX = isLeftSide ? leftPlatX + PLAT_W / 2 : rightPlatX + PLAT_W / 2;
       const popupBaseY = isLeftSide ? leftPlatY - 24 : rightPlatY - 24;
+
+      // Bounce physics: damped sine wave (3-phase animation)
+      let floatY = 0;
+      let alpha = 1;
+
+      if (t < 400) {
+        // Phase 0: Bounce (damped sine wave)
+        floatY = -10 * Math.exp(-t / 250) * Math.sin(t / 25);
+        alpha = Math.min(1, t / 100); // Fade in over first 100ms
+      } else if (t < 1000) {
+        // Phase 1: Pause (sit still)
+        floatY = 0;
+        alpha = 1;
+      } else {
+        // Phase 2: Fade out (drift upward)
+        const fadeT = t - 1000;
+        floatY = -fadeT / 15;
+        alpha = Math.max(0, 1 - fadeT / 200);
+      }
 
       if (popup.value === 0) {
         surf.drawText(
@@ -2810,7 +3208,7 @@ export class CombatState extends State {
         const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
         const color = popup.isCrit
           ? `rgba(255,255,64,${alpha.toFixed(2)})`
-          : `rgba(255,255,255,${alpha.toFixed(2)})`;
+          : `rgba(255,64,64,${alpha.toFixed(2)})`;
         const font = popup.isCrit ? '9px monospace' : '8px monospace';
         surf.drawText(text, popupBaseX - 4, popupBaseY + floatY, color, font);
       }
@@ -3045,10 +3443,28 @@ export class AIState extends MapState {
 
   override begin(): StateResult {
     const game = getGame();
-    const currentTeam = game.phase.getCurrent();
-    this.aiUnits = game.board
-      .getTeamUnits(currentTeam)
-      .filter((u: UnitObject) => !u.isDead() && u.canStillAct() && game.isAiGroupActive(u.aiGroup));
+
+    // Initiative mode: only process the single current initiative unit
+    if (game.initiative) {
+      const unitNid = game.initiative.getCurrentUnitNid();
+      if (unitNid) {
+        const unit = game.getUnit(unitNid);
+        if (unit && unit.position && !unit.finished && !unit.isDead()) {
+          this.aiUnits = [unit];
+        } else {
+          this.aiUnits = [];
+        }
+      } else {
+        this.aiUnits = [];
+      }
+    } else {
+      // Standard mode: gather all units for the current team
+      const currentTeam = game.phase.getCurrent();
+      this.aiUnits = game.board
+        .getTeamUnits(currentTeam)
+        .filter((u: UnitObject) => !u.isDead() && u.canStillAct() && game.isAiGroupActive(u.aiGroup));
+    }
+
     this.currentAiIndex = 0;
     this.frameCounter = 0;
     this.processing = false;
@@ -3115,6 +3531,9 @@ export class AIState extends MapState {
       this.advanceToNextUnit();
       return;
     }
+
+    // Mark start of AI unit's action group (turnwheel marker)
+    game.actionLog.doAction(new MarkActionGroupStart(unit, 'ai'));
 
     // Get AI decision
     const action = game.aiController.getAction(unit);
@@ -3418,6 +3837,9 @@ export class AIState extends MapState {
   }
 
   private advanceToNextUnit(): void {
+    const game = getGame();
+    // Mark end of AI unit's action group (turnwheel marker)
+    game.actionLog.doAction(new MarkActionGroupEnd('ai'));
     this.currentAiIndex++;
     this.frameCounter = 0;
     this.waitingForCombat = false;
@@ -3450,6 +3872,57 @@ export class TurnChangeState extends State {
 
   override begin(): StateResult {
     const game = getGame();
+
+    // --- Initiative mode ---
+    // Python: TurnChangeState.begin() calls refresh() + back() -> 'repeat'
+    // Then TurnChangeState.end() does the real work. We do both in begin()
+    // since our state machine doesn't call end() on back().
+    if (game.initiative) {
+      // Handle end-turn supports for initiative (player unit ending turn)
+      const curUnitNid = game.initiative.getCurrentUnitNid();
+      if (curUnitNid) {
+        const curUnit = game.getUnit(curUnitNid);
+        if (curUnit && curUnit.team === 'player' && game.supports) {
+          game.supports.incrementEndTurnSupports?.(curUnit);
+        }
+      }
+
+      // Save cursor position to memory
+      game.memory.set('previous_cursor_position', game.cursor.getPosition());
+
+      // Advance initiative to next unit
+      game.initiative.next();
+
+      // If we wrapped back to the start, increment the turn counter
+      if (game.initiative.atStart()) {
+        game.turnCount++;
+        if (game.phase) {
+          game.phase.turnCount = game.turnCount;
+        }
+        // Fire turn_change event
+        if (game.eventManager) {
+          const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+          game.eventManager.trigger(
+            { type: 'turn_change', turnCount: game.turnCount, levelNid: game.currentLevel?.nid },
+            ctx,
+          );
+        }
+      }
+
+      // Clear the state stack and push initiative_upkeep
+      game.state.clear();
+      game.state.change('initiative_upkeep');
+
+      return 'repeat';
+    }
+
+    // --- Standard phase mode ---
+
+    // Handle end-turn supports for standard mode
+    if (game.phase?.getCurrent() === 'player' && game.supports) {
+      game.supports.incrementEndTurnSupportsForTeam?.('player');
+    }
+    game.memory.set('previous_cursor_position', game.cursor.getPosition());
 
     // Advance to next phase
     game.phase.next((team: string) => game.board.getTeamUnits(team));
@@ -3525,6 +3998,80 @@ export class TurnChangeState extends State {
 }
 
 // ============================================================================
+// 8b. InitiativeUpkeepState
+// ============================================================================
+
+/**
+ * InitiativeUpkeepState — Transition state for the initiative system.
+ *
+ * Port of Python's InitiativeUpkeep (general_states.py).
+ *
+ * When initiative mode is active, this state is pushed after advancing
+ * to the next unit in the initiative line. It determines which team the
+ * current unit belongs to, updates the phase controller, and pushes the
+ * appropriate gameplay state (free for player, ai for enemies), with a
+ * phase_change banner on top.
+ *
+ * Design: The Python version uses begin() -> back() -> end(), where
+ * end() does the real work. But in our TS state machine, back() calls
+ * finish() not end(). So instead we do the work directly in begin(),
+ * then pop self. The states we push via change() are deferred, so they
+ * won't fire until after we're popped.
+ */
+export class InitiativeUpkeepState extends State {
+  readonly name = 'initiative_upkeep';
+  override readonly transparent = false;
+
+  override begin(): StateResult {
+    const game = getGame();
+    if (!game.initiative) {
+      game.state.back();
+      return 'repeat';
+    }
+
+    const unitNid = game.initiative.getCurrentUnitNid();
+    if (!unitNid) {
+      game.state.back();
+      return 'repeat';
+    }
+
+    const unit = game.getUnit(unitNid);
+    if (!unit || unit.isDead() || !unit.position) {
+      // Unit was removed/dead/off-map — skip to next via turn_change
+      game.state.back();
+      game.state.change('turn_change');
+      return 'repeat';
+    }
+
+    // Matches Python: phase.next() in initiative mode sets current
+    // to the initiative unit's team index
+    if (game.phase) {
+      game.phase.setCurrentTeam(unit.team);
+    }
+
+    // Pop self
+    game.state.back();
+
+    // Push the appropriate state
+    if (unit.team === 'player') {
+      game.state.change('free');
+    } else {
+      game.state.change('ai');
+    }
+
+    // Push phase_change banner on top for visual feedback
+    // (Python pushes status_upkeep too, but we don't have that yet)
+    game.state.change('phase_change');
+
+    return 'repeat';
+  }
+
+  override takeInput(_event: InputEvent): StateResult {
+    return 'repeat';
+  }
+}
+
+// ============================================================================
 // 9. PhaseChangeState
 // ============================================================================
 
@@ -3538,6 +4085,10 @@ export class PhaseChangeState extends State {
     const game = getGame();
     const currentTeam = game.phase.getCurrent();
     const turnCount = game.phase.turnCount;
+
+    // Turnwheel markers: lock during non-player phases, mark phase change
+    game.actionLog.doAction(new LockTurnwheel(currentTeam !== 'player'));
+    game.actionLog.doAction(new MarkPhase(currentTeam));
 
     let bannerText: string;
     let subText: string;
@@ -3559,19 +4110,55 @@ export class PhaseChangeState extends State {
 
     this.banner = new Banner(bannerText, subText);
 
-    // Reset all units for the new phase and process status effects
-    const teamUnits: UnitObject[] = game.board.getTeamUnits(currentTeam);
-    for (const unit of teamUnits) {
-      unit.resetTurnState();
-      // Process status effects (DOT damage, duration tick-down)
-      const dotDamage = unit.processStatusEffects();
-      if (dotDamage > 0) {
-        // Unit took status damage — check if they died from it
-        if (unit.currentHp <= 0) {
-          unit.dead = true;
-          game.board.removeUnit(unit);
+    // Reset units for the new phase and process status effects
+    if (game.initiative) {
+      // Initiative mode: only reset the current initiative unit
+      const unitNid = game.initiative.getCurrentUnitNid();
+      if (unitNid) {
+        const unit = game.getUnit(unitNid);
+        if (unit && !unit.isDead()) {
+          unit.resetTurnState();
+          const dotDamage = unit.processStatusEffects();
+          if (dotDamage > 0 && unit.currentHp <= 0) {
+            unit.dead = true;
+            game.board.removeUnit(unit);
+          }
         }
       }
+      // Move cursor to initiative unit's position
+      if (unitNid) {
+        const unit = game.getUnit(unitNid);
+        if (unit && unit.position) {
+          game.cursor.setPos(unit.position[0], unit.position[1]);
+        }
+      }
+    } else {
+      // Standard mode: reset all units of the team
+      const teamUnits: UnitObject[] = game.board.getTeamUnits(currentTeam);
+      for (const unit of teamUnits) {
+        unit.resetTurnState();
+        // Process status effects (DOT damage, duration tick-down)
+        const dotDamage = unit.processStatusEffects();
+        if (dotDamage > 0) {
+          // Unit took status damage — check if they died from it
+          if (unit.currentHp <= 0) {
+            unit.dead = true;
+            game.board.removeUnit(unit);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Called when this state is popped off the stack.
+   * Sets the first free action on the first player turn so the
+   * turnwheel cannot rewind before this point.
+   */
+  override finish(): void {
+    const game = getGame();
+    if (game.turnCount === 1 && game.phase?.getCurrent() === 'player') {
+      game.actionLog.setFirstFreeAction();
     }
   }
 
@@ -4285,6 +4872,12 @@ export class EventState extends State {
       return;
     }
 
+    // Overworld movement — block while an entity is moving along a road
+    if (game.overworldMovement && game.overworldMovement.isMoving()) {
+      game.overworldMovement.update(FRAMETIME);
+      return;
+    }
+
     // Chapter title overlay animation
     if (this.chapterTitlePhase !== 'none') {
       if (this.skipMode) {
@@ -4965,6 +5558,10 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
         if (unit && game.board) {
+          // Remove from initiative tracker if active
+          if (game.initiative) {
+            game.initiative.removeUnit(unit);
+          }
           game.board.removeUnit(unit);
           game.units.delete(unitNid);
         }
@@ -4976,6 +5573,10 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
         if (unit) {
+          // Remove from initiative tracker if active
+          if (game.initiative) {
+            game.initiative.removeUnit(unit);
+          }
           unit.dead = true;
           unit.currentHp = 0;
           if (game.board) {
@@ -5162,15 +5763,29 @@ export class EventState extends State {
       // ----- Item / Skill commands (instant) -----
 
       case 'give_item': {
-        const unitNid = args[0] ?? '';
-        const itemNid = args[1] ?? '';
-        const unit = this.findUnit(unitNid);
-        const itemPrefab = game.db.items.get(itemNid);
-        if (unit && itemPrefab) {
-          const item = new ItemObjectClass(itemPrefab);
-          item.owner = unit;
-          unit.items.push(item);
-          game.items.set(`${unit.nid}_${item.nid}_${unit.items.length}`, item);
+        // give_item;unit_nid;item_nid — give an item to a unit
+        // If unit_nid is 'convoy', put it directly in the convoy
+        const giUnitNid = args[0] ?? '';
+        const giItemNid = args[1] ?? '';
+        const giItemPrefab = game.db.items.get(giItemNid);
+        if (giItemPrefab) {
+          const giItem = new ItemObjectClass(giItemPrefab);
+          if (giUnitNid.toLowerCase() === 'convoy') {
+            // Put directly in convoy
+            const giParty = game.getParty();
+            if (giParty) {
+              giItem.owner = null;
+              giParty.convoy.push(giItem);
+              game.items.set(`convoy_${giItem.nid}_${giParty.convoy.length}`, giItem);
+            }
+          } else {
+            const giUnit = this.findUnit(giUnitNid);
+            if (giUnit) {
+              giItem.owner = giUnit;
+              giUnit.items.push(giItem);
+              game.items.set(`${giUnit.nid}_${giItem.nid}_${giUnit.items.length}`, giItem);
+            }
+          }
         }
         this.advancePointer();
         return false;
@@ -5564,17 +6179,66 @@ export class EventState extends State {
       // ----- Money / BExp -----
 
       case 'give_money': {
+        // give_money;amount[;party_nid]
         const amount = parseInt(args[0], 10) || 0;
-        const current = Number(game.gameVars.get('money') ?? 0);
-        game.gameVars.set('money', current + amount);
+        const moneyPartyNid = args[1] || undefined;
+        const party = game.getParty(moneyPartyNid);
+        if (party) {
+          const clampedAmount = party.money + amount < 0 ? -party.money : amount;
+          party.money += clampedAmount;
+        }
+        // Also update legacy gameVars for backward compatibility
+        game.gameVars.set('money', game.getMoney());
         this.advancePointer();
         return false;
       }
 
       case 'give_bexp': {
+        // give_bexp;amount[;party_nid]
         const bexpAmount = parseInt(args[0], 10) || 0;
-        const currentBexp = Number(game.gameVars.get('bexp') ?? 0);
-        game.gameVars.set('bexp', currentBexp + bexpAmount);
+        const bexpPartyNid = args[1] || undefined;
+        const bexpParty = game.getParty(bexpPartyNid);
+        if (bexpParty) {
+          bexpParty.bexp = Math.max(0, bexpParty.bexp + bexpAmount);
+        }
+        // Also update legacy gameVars for backward compatibility
+        game.gameVars.set('bexp', game.getBexp());
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Convoy / Party commands -----
+
+      case 'enable_convoy': {
+        // enable_convoy — enables or disables convoy access
+        // Sets the _convoy game variable
+        game.gameVars.set('_convoy', true);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'disable_convoy': {
+        game.gameVars.set('_convoy', false);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_party': {
+        // change_party;unit_nid;party_nid — assigns a unit to a different party
+        const cpUnitNid = args[0] ?? '';
+        const cpPartyNid = args[1] ?? '';
+        const cpUnit = this.findUnit(cpUnitNid);
+        if (cpUnit && cpPartyNid) {
+          cpUnit.party = cpPartyNid;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'open_convoy': {
+        // open_convoy — opens the convoy/supply UI (stub for now)
+        // This would push a supply_items state; currently just skip
+        console.warn('open_convoy: convoy UI not yet implemented');
         this.advancePointer();
         return false;
       }
@@ -5694,15 +6358,104 @@ export class EventState extends State {
         return false;
       }
 
+      case 'promote': {
+        // promote;unit_nid;[class_nid1,class_nid2,...];[silent]
+        // If silent + single class: apply immediately with stat changes
+        // If not silent or multiple classes: for now, treat as silent with first class
+        const promoUnitNid = args[0] ?? '';
+        const promoUnit = this.findUnit(promoUnitNid);
+        if (promoUnit) {
+          const klassListStr = args[1] ?? '';
+          const isSilent = args.some((a: string) => a.toLowerCase() === 'silent');
+          let klassList = klassListStr
+            ? klassListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
+            : [];
+
+          // If no class list given, use the class's turns_into
+          if (klassList.length === 0) {
+            const currentKlass = game.db.classes.get(promoUnit.klass);
+            if (currentKlass && currentKlass.turns_into && currentKlass.turns_into.length > 0) {
+              klassList = [...currentKlass.turns_into];
+            }
+          }
+
+          if (klassList.length > 0) {
+            // Use the first class (for multi-class, a choice UI would be needed)
+            const newKlass = klassList[0];
+            const promoAction = new PromoteAction(promoUnit, newKlass);
+            game.actionLog.doAction(promoAction);
+
+            // Grant new class skills
+            this.grantClassSkills(promoUnit, game);
+
+            // Apply new weapon experience
+            const { newWexp } = promoAction.getData();
+            if (newWexp) {
+              for (const [weaponNid, value] of Object.entries(newWexp)) {
+                if (value > 0) {
+                  const current = promoUnit.wexp[weaponNid] ?? 0;
+                  promoUnit.wexp[weaponNid] = Math.max(current, value);
+                }
+              }
+            }
+
+            // Reload map sprite for new class
+            this.loadMapSpriteForUnit(promoUnit, game);
+          } else {
+            console.warn(`promote: no promotion classes available for unit "${promoUnitNid}"`);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'change_class': {
-        // change_class;unit_nid;class_nid
-        const unitNid7 = args[0] ?? '';
-        const klassNid = args[1] ?? '';
-        const unit7 = this.findUnit(unitNid7);
-        if (unit7 && klassNid) {
-          unit7.klass = klassNid;
-          // Reload map sprite for new class
-          this.loadMapSpriteForUnit(unit7, game);
+        // change_class;unit_nid;[class_nid1,class_nid2,...];[silent]
+        // If silent + single class: apply immediately with stat changes
+        // If not silent or multiple classes: for now, treat as silent with first class
+        const ccUnitNid = args[0] ?? '';
+        const ccUnit = this.findUnit(ccUnitNid);
+        if (ccUnit) {
+          const ccKlassListStr = args[1] ?? '';
+          const ccIsSilent = args.some((a: string) => a.toLowerCase() === 'silent');
+          let ccKlassList = ccKlassListStr
+            ? ccKlassListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
+            : [];
+
+          // If no class list given, use the class's turns_into as a fallback
+          if (ccKlassList.length === 0) {
+            const currentKlass = game.db.classes.get(ccUnit.klass);
+            if (currentKlass && currentKlass.turns_into && currentKlass.turns_into.length > 0) {
+              ccKlassList = [...currentKlass.turns_into];
+            }
+          }
+
+          if (ccKlassList.length > 0) {
+            const newKlass = ccKlassList[0];
+            if (newKlass !== ccUnit.klass) {
+              const ccAction = new ClassChangeAction(ccUnit, newKlass);
+              game.actionLog.doAction(ccAction);
+
+              // Grant new class skills
+              this.grantClassSkills(ccUnit, game);
+
+              // Apply new weapon experience
+              const { newWexp } = ccAction.getData();
+              if (newWexp) {
+                for (const [weaponNid, value] of Object.entries(newWexp)) {
+                  if (value > 0) {
+                    const current = ccUnit.wexp[weaponNid] ?? 0;
+                    ccUnit.wexp[weaponNid] = Math.max(current, value);
+                  }
+                }
+              }
+
+              // Reload map sprite for new class
+              this.loadMapSpriteForUnit(ccUnit, game);
+            }
+          } else {
+            console.warn(`change_class: no class options available for unit "${ccUnitNid}"`);
+          }
         }
         this.advancePointer();
         return false;
@@ -6520,10 +7273,12 @@ export class EventState extends State {
             const results = mc.applyResults();
             // Handle deaths
             if (results.defenderDead && iuDefender.position && game.board) {
+              if (game.initiative) game.initiative.removeUnit(iuDefender);
               game.board.removeUnit(iuDefender.position[0], iuDefender.position[1]);
               game.units.delete(iuDefender.nid);
             }
             if (results.attackerDead && iuAttacker.position && game.board) {
+              if (game.initiative) game.initiative.removeUnit(iuAttacker);
               game.board.removeUnit(iuAttacker.position[0], iuAttacker.position[1]);
               game.units.delete(iuAttacker.nid);
             }
@@ -6701,33 +7456,334 @@ export class EventState extends State {
       // ----- Preparation / Base (stubs) -----
 
       case 'prep': {
-        // prep — opens preparations screen. For now, skip it and proceed.
-        console.warn('[Event] prep command not yet implemented — skipping');
+        // prep — opens preparations screen
+        // args[0]: pick units enabled ('True'/'False'), default True
+        // args[1]: music track to play during prep
+        const pickEnabled = args[0] !== 'False' && args[0] !== 'false';
+        game.levelVars.set('_prep_pick', pickEnabled);
+
+        if (args[1]) {
+          void game.audioManager.playMusic(args[1]);
+        }
+
+        // Advance pointer before pushing — when prep exits (back()),
+        // the EventState resumes and processes the next command.
         this.advancePointer();
-        return false;
+        game.state.change('prep_main');
+        return true; // Block until prep closes
       }
 
       case 'base': {
-        // base — opens base/camp screen. Not yet implemented.
-        console.warn('[Event] base command not yet implemented — skipping');
+        // base — opens base/camp screen with panorama background and menu.
+        // args: [background, music, other_options, options_enabled, options_events]
+        const baseBg = args[0] || '';
+        const baseMusic = args[1] || '';
+        if (baseBg) {
+          game.gameVars.set('_base_bg_name', baseBg);
+        }
+        if (baseMusic) {
+          game.gameVars.set('_base_music', baseMusic);
+        }
+        // Check for show_map flag
+        if (args[0] === 'show_map' || args[0] === 'True') {
+          game.gameVars.set('_base_transparent', true);
+        }
+        this.advancePointer();
+        game.state.change('base_main');
+        return true; // Block until base closes
+      }
+
+      // ----- Overworld commands -----
+
+      case 'toggle_narration_mode': {
+        // Narration mode toggle — visual-only, currently a no-op
         this.advancePointer();
         return false;
       }
 
-      // ----- Overworld (stubs) -----
+      case 'overworld_cinematic': {
+        // Set up overworld as a background for cutscenes
+        // args[0] = overworld NID (optional, uses first if omitted)
+        // The OverworldManager is imported lazily to avoid circular deps
+        if (game.db.overworlds.size > 0) {
+          const owNid = args[0] || null;
+          let prefab = null;
+          if (owNid) {
+            prefab = game.db.overworlds.get(owNid);
+          } else {
+            prefab = game.db.overworlds.values().next().value ?? null;
+          }
+          if (prefab && !game.overworldController) {
+            // Store the prefab NID so the overworld state can pick it up
+            game.gameVars.set('_overworld_cinematic_nid', prefab.nid);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
 
-      case 'toggle_narration_mode':
-      case 'overworld_cinematic':
-      case 'reveal_overworld_node':
-      case 'reveal_overworld_road':
-      case 'overworld_move_unit':
+      case 'reveal_overworld_node': {
+        // args[0] = node NID
+        const nodeNid = args[0];
+        if (nodeNid && game.overworldController) {
+          game.overworldController.enableNode(nodeNid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'reveal_overworld_road': {
+        // args[0] = road NID (format "nodeA-nodeB")
+        const roadNid = args[0];
+        if (roadNid && game.overworldController) {
+          game.overworldController.enableRoad(roadNid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'overworld_move_unit': {
+        // args[0] = entity NID, args[1] = target node NID
+        // This is non-blocking when no overworld controller exists
+        const entityNid = args[0];
+        const targetNodeNid = args[1];
+        const owCtrl = game.overworldController;
+        if (entityNid && targetNodeNid && owCtrl) {
+          const entity = owCtrl.entities.get(entityNid);
+          if (entity && entity.onNode) {
+            const pathPoints = owCtrl.getPathPoints(entity.onNode, targetNodeNid);
+            if (pathPoints && pathPoints.length >= 2 && game.overworldMovement) {
+              game.overworldMovement.beginMove(entity, pathPoints, {
+                follow: true,
+                callback: () => {
+                  owCtrl.movePartyToNode(entityNid, targetNodeNid);
+                },
+              });
+              // Block until movement finishes — update loop will unblock
+              this.advancePointer();
+              return true;
+            } else {
+              // No path or no movement manager — instant move
+              owCtrl.movePartyToNode(entityNid, targetNodeNid);
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'set_overworld_position': {
-        // Overworld system not yet implemented — skip silently
+        // args[0] = entity NID, args[1] = node NID or "x,y"
+        const entityNid = args[0];
+        const posArg = args[1];
+        const owCtrl = game.overworldController;
+        if (entityNid && posArg && owCtrl) {
+          const node = owCtrl.getNode(posArg);
+          if (node) {
+            owCtrl.movePartyToNode(entityNid, posArg);
+          } else {
+            // Try x,y format
+            const coords = posArg.split(',');
+            if (coords.length === 2) {
+              const x = parseInt(coords[0], 10);
+              const y = parseInt(coords[1], 10);
+              const entity = owCtrl.entities.get(entityNid);
+              if (entity && !isNaN(x) && !isNaN(y)) {
+                entity.displayPosition = [x, y];
+              }
+            }
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'create_overworld_entity': {
+        // args[0] = entity NID, args[1] = dtype ('party'/'unit'),
+        // args[2] = data NID (party/unit NID), args[3] = team, args[4] = node NID
+        const owCtrl = game.overworldController;
+        if (owCtrl && args[0]) {
+          const eNid = args[0];
+          const dtype = args[1] || 'party';
+          const dnid = args[2] || eNid;
+          const team = args[3] || 'player';
+          const nodeNid = args[4] || null;
+          owCtrl.createEntity(eNid, dtype, dnid, team, nodeNid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'disable_overworld_entity': {
+        // args[0] = entity NID
+        const owCtrl = game.overworldController;
+        if (owCtrl && args[0]) {
+          owCtrl.removeEntity(args[0]);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_overworld_menu_option_enabled': {
+        // args[0] = node NID, args[1] = option NID, args[2] = 'True'/'False'
+        const owCtrl = game.overworldController;
+        if (owCtrl && args[0] && args[1]) {
+          const enabled = args[2] !== 'False' && args[2] !== 'false';
+          owCtrl.toggleMenuOptionEnabled(args[0], args[1], enabled);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_overworld_menu_option_visible': {
+        // args[0] = node NID, args[1] = option NID, args[2] = 'True'/'False'
+        const owCtrl = game.overworldController;
+        if (owCtrl && args[0] && args[1]) {
+          const visible = args[2] !== 'False' && args[2] !== 'false';
+          owCtrl.toggleMenuOptionVisible(args[0], args[1], visible);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'enter_level_from_overworld': {
+        // args[0] = level NID (optional — uses node's level if omitted)
+        const owCtrl = game.overworldController;
+        if (owCtrl) {
+          const levelNid = args[0] || owCtrl.nextLevel;
+          if (levelNid) {
+            game.gameVars.set('_overworld_level', levelNid);
+            game.state.change('overworld_level_transition');
+            this.advancePointer();
+            return true; // Block until level transition completes
+          }
+        }
         this.advancePointer();
         return false;
       }
 
       // ----- Arena / overlay (stubs) -----
+
+      // ----- Base screen event commands -----
+      case 'add_base_convo':
+      case 'ignore_base_convo':
+      case 'remove_base_convo':
+      case 'add_market_item':
+      case 'remove_market_item':
+      case 'clear_market_items': {
+        handleBaseEventCommand(cmd.type, args, game);
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Victory / Credits event commands -----
+      case 'victory_screen': {
+        this.advancePointer();
+        game.state.change('victory');
+        return true; // Block until victory screen closes
+      }
+
+      case 'credits':
+      case 'credit': {
+        this.advancePointer();
+        game.state.change('credit');
+        return true; // Block until credits close
+      }
+
+      // ----- Support system event commands -----
+
+      case 'enable_supports': {
+        // Sets the _supports game var to enable supports
+        game.gameVars.set('_supports', true);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'increment_support_points': {
+        // increment_support_points;unit1;unit2;amount
+        const u1 = args[0];
+        const u2 = args[1];
+        const amount = parseInt(args[2] ?? '1', 10);
+        if (u1 && u2 && game.supports) {
+          const pair = game.supports.getPair(u1, u2);
+          if (pair) {
+            game.supports.incrementPoints(pair, amount);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'unlock_support_rank': {
+        // unlock_support_rank;unit1;unit2;rank
+        const u1 = args[0];
+        const u2 = args[1];
+        const rank = args[2];
+        if (u1 && u2 && rank && game.supports) {
+          const pair = game.supports.getPair(u1, u2);
+          if (pair) {
+            game.supports.unlockRank(pair.nid, rank);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'disable_support_rank': {
+        // disable_support_rank;unit1;unit2;rank
+        const u1 = args[0];
+        const u2 = args[1];
+        const rank = args[2];
+        if (u1 && u2 && rank && game.supports) {
+          const pair = game.supports.getPair(u1, u2);
+          if (pair) {
+            game.supports.disableRank(pair.nid, rank);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'enable_turnwheel': {
+        // enable_turnwheel;true/false
+        const activated = args[0]?.toLowerCase() !== 'false';
+        game.gameVars.set('_turnwheel', activated);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'activate_turnwheel': {
+        // activate_turnwheel;force
+        // Opens the turnwheel UI. If 'force' is specified, the player
+        // must use the turnwheel (cannot cancel).
+        const force = args[0]?.toLowerCase() !== 'false';
+        if (!game.memory) game.memory = new Map();
+        game.memory.set('force_turnwheel', force);
+        game.memory.set('event_turnwheel', true);
+        game.state.change('turnwheel');
+        this.advancePointer();
+        return true; // blocking — turnwheel state takes over
+      }
+
+      case 'clear_turnwheel': {
+        // clear_turnwheel — sets the first free action to current position,
+        // preventing the turnwheel from rewinding before this point.
+        game.actionLog.setFirstFreeAction();
+        this.advancePointer();
+        return false;
+      }
+
+      case 'stop_turnwheel_recording': {
+        game.actionLog.stopRecording();
+        this.advancePointer();
+        return false;
+      }
+
+      case 'start_turnwheel_recording': {
+        game.actionLog.startRecording();
+        this.advancePointer();
+        return false;
+      }
 
       case 'draw_overlay_sprite':
       case 'remove_overlay_sprite':
@@ -6737,11 +7793,235 @@ export class EventState extends State {
       case 'set_wexp':
       case 'resurrect':
       case 'autolevel_to':
-      case 'add_lore':
-      case 'add_base_convo':
-      case 'enable_fog_of_war':
-      case 'set_fog_of_war': {
+      case 'add_lore': {
         // Advanced features not yet implemented — skip
+        this.advancePointer();
+        return false;
+      }
+
+      case 'enable_fog_of_war': {
+        const fogEnableStr = args[0]?.toLowerCase?.() ?? 'true';
+        const fogEnable = fogEnableStr === 'true' || fogEnableStr === '1';
+        game.levelVars.set('_fog_of_war', fogEnable);
+        console.log(`Event: enable_fog_of_war -> ${fogEnable}`);
+        if (typeof game.recalculateAllFow === 'function') game.recalculateAllFow();
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_fog_of_war': {
+        const fogModeStr = (args[0] ?? 'gba').toLowerCase();
+        let fogMode = 1;
+        if (fogModeStr === 'gba') fogMode = 1;
+        else if (fogModeStr === 'thracia') fogMode = 2;
+        else if (fogModeStr === 'hybrid') fogMode = 3;
+        else if (fogModeStr === 'gba_deprecated') fogMode = 0;
+        else { const fp = parseInt(fogModeStr, 10); if (!isNaN(fp)) fogMode = fp; }
+        const fogRadius = parseInt(args[1] ?? '0', 10) || 0;
+        const fogAiRadius = args[2] ? (parseInt(args[2], 10) || fogRadius) : fogRadius;
+        const fogOtherRadius = args[3] ? (parseInt(args[3], 10) || fogAiRadius) : fogAiRadius;
+        game.levelVars.set('_fog_of_war_type', fogMode);
+        game.levelVars.set('_fog_of_war_radius', fogRadius);
+        game.levelVars.set('_ai_fog_of_war_radius', fogAiRadius);
+        game.levelVars.set('_other_fog_of_war_radius', fogOtherRadius);
+        console.log(`Event: set_fog_of_war mode=${fogMode} radius=${fogRadius} ai=${fogAiRadius} other=${fogOtherRadius}`);
+        if (typeof game.recalculateAllFow === 'function') game.recalculateAllFow();
+        this.advancePointer();
+        return false;
+      }
+
+      // ---------------------------------------------------------------
+      // Initiative commands
+      // ---------------------------------------------------------------
+
+      case 'add_to_initiative': {
+        // add_to_initiative;UnitNid;Position
+        // Adds unit at position relative to current initiative index
+        const unitNid = args[0] ?? '';
+        const pos = parseInt(args[1] ?? '0', 10) || 0;
+        const unit = this.findUnit(unitNid);
+        if (unit && game.initiative) {
+          game.initiative.removeUnit(unit);
+          game.initiative.insertAt(
+            unit.nid,
+            game.initiative.currentIdx + pos,
+            game.initiative.getInitiativeForUnit(unit.nid),
+          );
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'move_in_initiative': {
+        // move_in_initiative;UnitNid;Offset
+        // Moves unit by offset positions in the initiative order
+        const unitNid = args[0] ?? '';
+        const offset = parseInt(args[1] ?? '0', 10) || 0;
+        const unit = this.findUnit(unitNid);
+        if (unit && game.initiative) {
+          const oldIdx = game.initiative.getIndex(unit.nid);
+          const initVal = game.initiative.getInitiativeForUnit(unit.nid);
+          if (oldIdx !== undefined && initVal !== undefined) {
+            game.initiative.removeUnit(unit);
+            const newIdx = Math.max(0, Math.min(oldIdx + offset, game.initiative.unitLine.length));
+            game.initiative.insertAt(unit.nid, newIdx, initVal);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ---------------------------------------------------------------
+      // Roam mode commands
+      // ---------------------------------------------------------------
+
+      case 'set_roam': {
+        // set_roam;true/false
+        const val = (args[0] ?? 'true').toLowerCase();
+        game.roamInfo.roam = val !== 'false' && val !== '0';
+        console.log(`Event: set_roam -> ${game.roamInfo.roam}`);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_roam_unit': {
+        // set_roam_unit;UnitNid
+        game.roamInfo.roamUnitNid = args[0] || null;
+        console.log(`Event: set_roam_unit -> ${game.roamInfo.roamUnitNid}`);
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Persistent records & achievements -----
+      case 'create_record': {
+        // create_record;nid;expression
+        try {
+          const nid = args[0];
+          const value = args[1] ?? 'true';
+          if (nid && RECORDS) {
+            let evaluated: any = value;
+            if (value === 'True' || value === 'true') evaluated = true;
+            else if (value === 'False' || value === 'false') evaluated = false;
+            else if (!isNaN(Number(value))) evaluated = Number(value);
+            RECORDS.create(nid, evaluated);
+          }
+        } catch (e) { console.warn('create_record error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'update_record': {
+        try {
+          const nid = args[0];
+          const value = args[1] ?? 'true';
+          if (nid && RECORDS) {
+            let evaluated: any = value;
+            if (value === 'True' || value === 'true') evaluated = true;
+            else if (value === 'False' || value === 'false') evaluated = false;
+            else if (!isNaN(Number(value))) evaluated = Number(value);
+            RECORDS.update(nid, evaluated);
+          }
+        } catch (e) { console.warn('update_record error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'replace_record': {
+        try {
+          const nid = args[0];
+          const value = args[1] ?? 'true';
+          if (nid && RECORDS) {
+            let evaluated: any = value;
+            if (value === 'True' || value === 'true') evaluated = true;
+            else if (value === 'False' || value === 'false') evaluated = false;
+            else if (!isNaN(Number(value))) evaluated = Number(value);
+            RECORDS.replace(nid, evaluated);
+          }
+        } catch (e) { console.warn('replace_record error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'delete_record': {
+        try {
+          if (args[0] && RECORDS) RECORDS.delete(args[0]);
+        } catch (e) { console.warn('delete_record error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'unlock_difficulty': {
+        try {
+          if (args[0] && RECORDS) RECORDS.unlockDifficulty(args[0]);
+        } catch (e) { console.warn('unlock_difficulty error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'unlock_song': {
+        try {
+          if (args[0] && RECORDS) RECORDS.unlockSong(args[0]);
+        } catch (e) { console.warn('unlock_song error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'add_achievement': {
+        // add_achievement;nid;name;desc;[completed];[hidden]
+        try {
+          if (args[0] && ACHIEVEMENTS) {
+            const nid = args[0];
+            const name = args[1] ?? nid;
+            const desc = args[2] ?? '';
+            const complete = (args[3] ?? '').toLowerCase() === 'true';
+            const hidden = (args[4] ?? '').toLowerCase() === 'true';
+            ACHIEVEMENTS.add(nid, name, desc, complete, hidden);
+          }
+        } catch (e) { console.warn('add_achievement error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'complete_achievement': {
+        // complete_achievement;nid;[True/False]
+        try {
+          if (args[0] && ACHIEVEMENTS) {
+            const complete = (args[1] ?? 'True').toLowerCase() !== 'false';
+            if (complete) ACHIEVEMENTS.complete(args[0]);
+          }
+        } catch (e) { console.warn('complete_achievement error:', e); }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Save/load commands -----
+      case 'battle_save':
+      case 'battle_save_prompt': {
+        // battle_save — save during chapter (auto-save or prompted)
+        // For now, push the save menu state
+        game.state.change('save_menu');
+        this.advancePointer();
+        return true; // blocking until save menu exits
+      }
+      case 'skip_save': {
+        // skip_save — silently auto-save to current slot
+        try {
+          const slot = game.currentSaveSlot >= 0 ? game.currentSaveSlot : 0;
+          doSaveGame(game, slot, 'battle').catch((err: any) => {
+            console.warn('skip_save failed:', err);
+          });
+        } catch (e) { console.warn('skip_save error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'suspend': {
+        // suspend — save and return to title
+        try {
+          doSuspendGame(game).then(() => {
+            game.state.clear();
+            game.state.change('title');
+          }).catch(() => {
+            game.state.clear();
+            game.state.change('title');
+          });
+        } catch (e) {
+          console.warn('suspend error:', e);
+          game.state.clear();
+          game.state.change('title');
+        }
         this.advancePointer();
         return false;
       }
@@ -6904,7 +8184,13 @@ export class EventState extends State {
       const data = { ...unitData, starting_position: pos };
       game.spawnGenericUnit(data);
       const spawned = game.units.get(unitData.nid);
-      if (spawned) this.loadMapSpriteForUnit(spawned, game);
+      if (spawned) {
+        this.loadMapSpriteForUnit(spawned, game);
+        // Insert into initiative tracker if active
+        if (game.initiative) {
+          game.initiative.insertUnit(spawned, game.db);
+        }
+      }
     } else {
       // Unique unit — look up prefab from db
       const prefab = game.db.units.get(unitData.nid);
@@ -6916,6 +8202,10 @@ export class EventState extends State {
           unitData.ai ?? 'None',
         );
         this.loadMapSpriteForUnit(spawned, game);
+        // Insert into initiative tracker if active
+        if (game.initiative) {
+          game.initiative.insertUnit(spawned, game.db);
+        }
       } else {
         console.warn(`EventState: unique unit prefab "${unitData.nid}" not found in db`);
       }
@@ -6942,6 +8232,39 @@ export class EventState extends State {
     }).catch((err: any) => {
       console.warn(`EventState: failed to load map sprite for unit "${unit.nid}":`, err);
     });
+  }
+
+  // -----------------------------------------------------------------------
+  // Helper: grant skills from a new class after promotion/class change
+  // -----------------------------------------------------------------------
+
+  /**
+   * Grant learned skills from the unit's current class.
+   * After promotion/class change, iterate the new class's learned_skills
+   * and add any skills the unit doesn't already have, up to their current level.
+   * Matches Python's event_functions.py promote/change_class logic.
+   */
+  private grantClassSkills(unit: UnitObject, game: any): void {
+    const unitKlass = game.db.classes.get(unit.klass);
+    if (!unitKlass || !unitKlass.learned_skills) return;
+
+    for (const [levelNeeded, classSkillNid] of unitKlass.learned_skills) {
+      if (unit.level >= levelNeeded) {
+        // Check if unit already has this skill
+        const hasSkill = unit.skills.some((s: any) => s.nid === classSkillNid);
+        if (!hasSkill) {
+          const skillPrefab = game.db.skills.get(classSkillNid);
+          if (skillPrefab) {
+            const skill = new SkillObject(skillPrefab);
+            unit.skills.push(skill);
+            // Check for canto
+            if (skill.hasComponent('canto')) {
+              unit.hasCanto = true;
+            }
+          }
+        }
+      }
+    }
   }
 
   // -----------------------------------------------------------------------

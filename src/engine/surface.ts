@@ -32,6 +32,29 @@ export class Surface {
     this._ctx.imageSmoothingEnabled = false;
   }
 
+  /**
+   * Create a Surface wrapping a pre-existing (pooled) canvas and context.
+   * Used by SurfacePool to avoid allocating new OffscreenCanvas objects.
+   */
+  static fromPooled(
+    width: number,
+    height: number,
+    scale: number,
+    canvas: OffscreenCanvas,
+    ctx: OffscreenCanvasRenderingContext2D,
+  ): Surface {
+    // Use Object.create to bypass the constructor (avoids allocating a new canvas)
+    const surf = Object.create(Surface.prototype) as Surface;
+    // Set readonly fields via Object.defineProperty
+    Object.defineProperty(surf, 'width', { value: width, writable: false });
+    Object.defineProperty(surf, 'height', { value: height, writable: false });
+    Object.defineProperty(surf, 'scale', { value: scale, writable: false });
+    (surf as any)._canvas = canvas;
+    (surf as any)._ctx = ctx;
+    (surf as any)._alpha = 1.0;
+    return surf;
+  }
+
   get canvas(): OffscreenCanvas {
     return this._canvas;
   }

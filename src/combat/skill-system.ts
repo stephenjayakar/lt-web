@@ -396,3 +396,35 @@ export function expMultiplier(unit: UnitObject, _target: UnitObject): number {
 export function wexpMultiplier(unit: UnitObject, _target: UnitObject): number {
   return getSkillValue<number>(unit, 'wexp_multiplier') ?? 1;
 }
+
+// ============================================================
+// Fog of War — Sight Range
+// ============================================================
+
+/**
+ * Get the total sight range bonus from all skills on a unit.
+ *
+ * Checks for 'sight_range_bonus' (flat bonus) and
+ * 'decreasing_sight_range_bonus' (bonus that decreases by 1 each turn,
+ * tracked via skill data 'torch_counter').
+ *
+ * Port of LT's sight_range hook in skill_components/base_components.py.
+ */
+export function sightRange(unit: UnitObject): number {
+  let total = 0;
+  for (const skill of unit.skills) {
+    // Flat sight range bonus
+    const flatBonus = skill.getComponent<number>('sight_range_bonus');
+    if (typeof flatBonus === 'number') {
+      total += flatBonus;
+    }
+
+    // Decreasing sight range bonus (torch effect)
+    const decBonus = skill.getComponent<number>('decreasing_sight_range_bonus');
+    if (typeof decBonus === 'number') {
+      const counter = (skill.data.get('torch_counter') as number) ?? 0;
+      total += Math.max(0, decBonus - counter);
+    }
+  }
+  return total;
+}

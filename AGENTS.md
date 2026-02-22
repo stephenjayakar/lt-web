@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 during a single AI-assisted session, covering the analysis strategy,
 design decisions, parallelization approach, and the agent workflow that
-produced ~9,200 lines of TypeScript across 37 files.
+produced ~44,400 lines of TypeScript across 84 files.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
 

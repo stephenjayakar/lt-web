@@ -153,6 +153,79 @@ function extractFrames(
 }
 
 // -----------------------------------------------------------------------
+// Colorkey transparency (no palette)
+// -----------------------------------------------------------------------
+
+/**
+ * Make all COLORKEY pixels transparent in raw image data.
+ * Used when no palette is available (e.g. pre-colored effect spritesheets).
+ */
+function applyColorkey(data: Uint8ClampedArray): void {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] === COLORKEY_R && data[i + 1] === COLORKEY_G && data[i + 2] === COLORKEY_B) {
+      data[i + 3] = 0; // Make transparent
+    }
+  }
+}
+
+// -----------------------------------------------------------------------
+// Spritesheet-to-frames conversion (for effects)
+// -----------------------------------------------------------------------
+
+/**
+ * Convert a loaded spritesheet image into individual frame canvases.
+ *
+ * Applies palette conversion if a palette is provided, otherwise just
+ * applies colorkey transparency. Used for combat effect spritesheets.
+ *
+ * @param img - The loaded spritesheet HTMLImageElement
+ * @param frames - Frame definitions (nid, rect, offset)
+ * @param palette - Optional palette for color remapping
+ * @returns Map from frame nid to HTMLCanvasElement
+ */
+export function convertSpritesheetToFrames(
+  img: HTMLImageElement,
+  frames: BattleAnimFrame[],
+  palette: PaletteData | null,
+): Map<string, HTMLCanvasElement> {
+  const result = new Map<string, HTMLCanvasElement>();
+
+  // Draw the full spritesheet to a canvas to get pixel data
+  const fullCanvas = document.createElement('canvas');
+  fullCanvas.width = img.naturalWidth || img.width;
+  fullCanvas.height = img.naturalHeight || img.height;
+  const fullCtx = fullCanvas.getContext('2d', { willReadFrequently: true })!;
+  fullCtx.drawImage(img, 0, 0);
+
+  // Apply palette conversion to the full sheet if palette provided
+  const imageData = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
+  if (palette) {
+    const lut = buildPaletteLUT(palette);
+    applyPaletteToImageData(imageData, lut);
+  } else {
+    // Still apply colorkey transparency even without palette
+    applyColorkey(imageData.data);
+  }
+  fullCtx.putImageData(imageData, 0, 0);
+
+  // Extract each frame as a separate canvas
+  for (const frame of frames) {
+    const [sx, sy, sw, sh] = frame.rect;
+    if (sw <= 0 || sh <= 0) continue;
+
+    const frameCanvas = document.createElement('canvas');
+    frameCanvas.width = sw;
+    frameCanvas.height = sh;
+    const frameCtx = frameCanvas.getContext('2d')!;
+    frameCtx.drawImage(fullCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    result.set(frame.nid, frameCanvas);
+  }
+
+  return result;
+}
+
+// -----------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------
 

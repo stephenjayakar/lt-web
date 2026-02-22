@@ -1,4 +1,5 @@
 import { Surface } from '../engine/surface';
+import { SurfacePool } from '../engine/surface-pool';
 import type { TilemapData, TilemapLayerData, TilesetData, NID } from '../data/types';
 import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
 import { WeatherSystem } from './weather';
@@ -65,6 +66,11 @@ export class LayerObject {
       const parts = posKey.split(',');
       const mapX = parseInt(parts[0], 10);
       const mapY = parseInt(parts[1], 10);
+
+      // Guard against malformed keys (NaN) or out-of-bounds coordinates
+      if (isNaN(mapX) || isNaN(mapY) || mapX < 0 || mapY < 0 || mapX >= width || mapY >= height) {
+        continue;
+      }
 
       // Check if this tile position is an autotile
       const tsAutotiles = tilesetAutotiles.get(tilesetNid);
@@ -141,6 +147,15 @@ export class TileMapObject {
   /** Map animations drawn above units (overlay). */
   highAnimations: MapAnimation[] = [];
 
+  /** Reusable surface for getFullImage (avoids per-frame allocation). */
+  private _bgSurface: Surface | null = null;
+  private _bgSurfW: number = 0;
+  private _bgSurfH: number = 0;
+  /** Reusable surface for getForegroundImage. */
+  private _fgSurface: Surface | null = null;
+  private _fgSurfW: number = 0;
+  private _fgSurfH: number = 0;
+
   private constructor(nid: NID, width: number, height: number) {
     this.nid = nid;
     this.width = width;
@@ -207,9 +222,10 @@ export class TileMapObject {
   /**
    * Get terrain at a tile position.
    * Walks layers top-to-bottom (last layer = highest priority) to find first
-   * defined terrain. Returns null if no layer defines terrain at this position.
+   * defined terrain. Returns '0' (default terrain NID) if no layer defines
+   * terrain at this position, matching Python's tilemap.get_terrain() behaviour.
    */
-  getTerrain(x: number, y: number): NID | null {
+  getTerrain(x: number, y: number): NID {
     const key = `${x},${y}`;
     // Iterate in reverse: highest layer has priority
     for (let i = this.layers.length - 1; i >= 0; i--) {
@@ -220,7 +236,8 @@ export class TileMapObject {
         return terrain;
       }
     }
-    return null;
+    // Match Python default: return '0' for unmapped positions
+    return '0';
   }
 
   /**
@@ -229,7 +246,16 @@ export class TileMapObject {
    * only the portion visible within cullRect.
    */
   getFullImage(cullRect: { x: number; y: number; w: number; h: number }): Surface {
-    const result = new Surface(cullRect.w, cullRect.h);
+    // Reuse cached surface if dimensions match, otherwise allocate via pool
+    if (!this._bgSurface || this._bgSurfW !== cullRect.w || this._bgSurfH !== cullRect.h) {
+      if (this._bgSurface) SurfacePool.release(this._bgSurface);
+      this._bgSurface = SurfacePool.acquire(cullRect.w, cullRect.h);
+      this._bgSurfW = cullRect.w;
+      this._bgSurfH = cullRect.h;
+    } else {
+      this._bgSurface.clear();
+    }
+    const result = this._bgSurface;
 
     for (const layer of this.layers) {
       if (!layer.visible || layer.foreground || !layer.surface) continue;
@@ -268,7 +294,16 @@ export class TileMapObject {
     const hasForeground = this.layers.some(l => l.visible && l.foreground && l.surface);
     if (!hasForeground) return null;
 
-    const result = new Surface(cullRect.w, cullRect.h);
+    // Reuse cached surface if dimensions match, otherwise allocate via pool
+    if (!this._fgSurface || this._fgSurfW !== cullRect.w || this._fgSurfH !== cullRect.h) {
+      if (this._fgSurface) SurfacePool.release(this._fgSurface);
+      this._fgSurface = SurfacePool.acquire(cullRect.w, cullRect.h);
+      this._fgSurfW = cullRect.w;
+      this._fgSurfH = cullRect.h;
+    } else {
+      this._fgSurface.clear();
+    }
+    const result = this._fgSurface;
 
     for (const layer of this.layers) {
       if (!layer.visible || !layer.foreground || !layer.surface) continue;

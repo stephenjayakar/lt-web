@@ -1,4 +1,11 @@
 import type { NID, EventPrefab } from '../data/types';
+import { isPyev1 as _isPyev1, PythonEventProcessor as _PythonEventProcessor } from './python-events';
+import { GameQueryEngine } from '../engine/query-engine';
+
+// Lazy accessor to avoid circular-import issues at module evaluation time.
+function _getPythonEvents() {
+  return { isPyev1: _isPyev1, PythonEventProcessor: _PythonEventProcessor };
+}
 
 // ============================================================
 // Event Scripting System
@@ -43,7 +50,9 @@ export type EventCommandType =
   | 'disp_cursor' | 'move_cursor' | 'center_cursor' | 'flicker_cursor' | 'screen_shake' | 'screen_shake_end'
   // Game-wide variables
   | 'game_var' | 'inc_game_var' | 'modify_game_var' | 'set_next_chapter'
-  | 'enable_convoy' | 'enable_supports' | 'enable_turnwheel'
+  | 'enable_convoy' | 'disable_convoy' | 'open_convoy' | 'enable_supports' | 'enable_turnwheel'
+  | 'activate_turnwheel' | 'clear_turnwheel'
+  | 'stop_turnwheel_recording' | 'start_turnwheel_recording'
   | 'give_money' | 'give_bexp' | 'add_market_item' | 'remove_market_item'
   // Level-wide variables
   | 'level_var' | 'inc_level_var' | 'modify_level_var'
@@ -78,12 +87,30 @@ export type EventCommandType =
   // Overworld
   | 'toggle_narration_mode' | 'overworld_cinematic' | 'reveal_overworld_node'
   | 'reveal_overworld_road' | 'overworld_move_unit' | 'set_overworld_position'
+  | 'create_overworld_entity' | 'disable_overworld_entity'
+  | 'set_overworld_menu_option_enabled' | 'set_overworld_menu_option_visible'
+  | 'enter_level_from_overworld'
   // Arena / overlay
   | 'draw_overlay_sprite' | 'remove_overlay_sprite' | 'table' | 'remove_table' | 'textbox'
   // Fog of war
   | 'enable_fog_of_war' | 'set_fog_of_war'
   // Misc advanced
-  | 'add_lore' | 'add_base_convo'
+  | 'add_lore' | 'add_base_convo' | 'ignore_base_convo' | 'remove_base_convo'
+  | 'clear_market_items'
+  // Victory / credits
+  | 'victory_screen' | 'credit'
+  // Support system
+  | 'increment_support_points' | 'unlock_support_rank' | 'disable_support_rank'
+  // Initiative
+  | 'add_to_initiative' | 'move_in_initiative'
+  // Roam mode
+  | 'set_roam' | 'set_roam_unit'
+  // Persistent records & achievements
+  | 'create_record' | 'update_record' | 'replace_record' | 'delete_record'
+  | 'unlock_difficulty' | 'unlock_song'
+  | 'add_achievement' | 'complete_achievement'
+  // Save/load
+  | 'battle_save_prompt' | 'suspend'
   // Short aliases
   | 's' | 'bop'
   // Legacy aliases (resolved to canonical form)
@@ -113,7 +140,9 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'disp_cursor', 'move_cursor', 'center_cursor', 'flicker_cursor', 'screen_shake', 'screen_shake_end',
   // Game-wide variables
   'game_var', 'inc_game_var', 'modify_game_var', 'set_next_chapter',
-  'enable_convoy', 'enable_supports', 'enable_turnwheel',
+  'enable_convoy', 'disable_convoy', 'open_convoy', 'enable_supports', 'enable_turnwheel',
+  'activate_turnwheel', 'clear_turnwheel',
+  'stop_turnwheel_recording', 'start_turnwheel_recording',
   'give_money', 'give_bexp', 'add_market_item', 'remove_market_item',
   // Level-wide variables
   'level_var', 'inc_level_var', 'modify_level_var',
@@ -145,6 +174,27 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'battle_save', 'prep', 'base', 'shop', 'choice', 'unchoice',
   'chapter_title', 'set_tile',
   'has_visited', 'unlock', 'find_unlock', 'spend_unlock',
+  // Base screen
+  'add_base_convo', 'ignore_base_convo', 'remove_base_convo',
+  'clear_market_items',
+  // Support system
+  'increment_support_points', 'unlock_support_rank', 'disable_support_rank',
+  // Fog of war
+  'enable_fog_of_war', 'set_fog_of_war',
+  // Initiative
+  'add_to_initiative', 'move_in_initiative',
+  // Victory / credits
+  'victory_screen', 'credit',
+  // Overworld
+  'create_overworld_entity', 'disable_overworld_entity',
+  'set_overworld_menu_option_enabled', 'set_overworld_menu_option_visible',
+  'enter_level_from_overworld',
+  // Persistent records & achievements
+  'create_record', 'update_record', 'replace_record', 'delete_record',
+  'unlock_difficulty', 'unlock_song',
+  'add_achievement', 'complete_achievement',
+  // Save/load
+  'battle_save', 'battle_save_prompt', 'skip_save', 'suspend',
   // Legacy/aliases from our old code
   'set_game_var', 'change_objective',
 ]);
@@ -182,6 +232,7 @@ const COMMAND_ALIASES: Record<string, string> = {
   'add_skill': 'give_skill',
   'set_ai': 'change_ai',
   'set_roam_ai': 'change_roam_ai',
+  'omove': 'overworld_move_unit',
   'set_ai_group': 'change_ai_group',
   'morph_group': 'move_group',
   'break': 'finish',
@@ -194,7 +245,8 @@ const COMMAND_ALIASES: Record<string, string> = {
 
 /**
  * GameEvent - A single event instance being executed.
- * Commands are parsed from semicolon-delimited source lines.
+ * Commands are parsed from semicolon-delimited source lines,
+ * or processed through the PYEV1 Python-syntax event system.
  */
 export class GameEvent {
   nid: NID;
@@ -207,7 +259,10 @@ export class GameEvent {
   currentDialog: { speaker: string; text: string } | null;
   waitingForInput: boolean;
 
-  constructor(prefab: EventPrefab, trigger: EventTrigger) {
+  /** PYEV1 processor for Python-syntax events (null for standard events). */
+  pyev1Processor: any | null;
+
+  constructor(prefab: EventPrefab, trigger: EventTrigger, gameGetter?: () => any) {
     this.nid = prefab.nid;
     this.commands = [];
     this.commandPointer = 0;
@@ -215,19 +270,49 @@ export class GameEvent {
     this.trigger = trigger;
     this.currentDialog = null;
     this.waitingForInput = false;
+    this.pyev1Processor = null;
 
-    // Parse each source line into a command
-    for (const line of prefab._source) {
-      const cmd = GameEvent.parseCommand(line);
-      if (cmd) {
-        this.commands.push(cmd);
+    // Check for PYEV1 format
+    const { isPyev1, PythonEventProcessor } = _getPythonEvents();
+    if (isPyev1(prefab._source)) {
+      // Use PYEV1 processor
+      this.pyev1Processor = new PythonEventProcessor(prefab._source, gameGetter);
+      // Pre-fetch initial commands won't be used — getNextCommand will use pyev1
+    } else {
+      // Standard semicolon-delimited format
+      for (const line of prefab._source) {
+        const cmd = GameEvent.parseCommand(line);
+        if (cmd) {
+          this.commands.push(cmd);
+        }
       }
     }
 
-    // If the event has no commands, mark as done immediately
-    if (this.commands.length === 0) {
+    // If the event has no commands and no pyev1 processor, mark as done immediately
+    if (this.commands.length === 0 && !this.pyev1Processor) {
       this.state = 'done';
     }
+  }
+
+  /**
+   * Get the next command for this event.
+   * For PYEV1 events, fetches from the Python processor.
+   * For standard events, returns the command at the current pointer.
+   */
+  getNextCommand(): EventCommand | null {
+    if (this.pyev1Processor) {
+      const cmd = this.pyev1Processor.fetchNextCommand();
+      if (!cmd) {
+        if (this.pyev1Processor.finished) {
+          this.state = 'done';
+        }
+        return null;
+      }
+      return cmd;
+    }
+    // Standard path
+    if (this.commandPointer >= this.commands.length) return null;
+    return this.commands[this.commandPointer];
   }
 
   /**
@@ -974,16 +1059,41 @@ function evaluateWithJsFallback(
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
 
+  // Inject query engine functions (u, v, get_item, has_item, is_dead, etc.)
+  const _queryEngine = new GameQueryEngine();
+  const _queryFuncs = _queryEngine.getFuncDict();
+
   try {
     // eslint-disable-next-line no-new-func
     const fn = new Function(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
       'check_pair', 'check_default', '__len__', 'v', 'cf', 'support_rank_nid',
-      `"use strict"; return (${jsExpr});`,
+      '_qf',
+      `"use strict";
+       // Spread query engine functions into local scope
+       var u = _qf.u, get_item = _qf.get_item, has_item = _qf.has_item,
+           get_subitem = _qf.get_subitem, get_skill = _qf.get_skill,
+           has_skill = _qf.has_skill, get_klass = _qf.get_klass,
+           get_class = _qf.get_class, get_closest_allies = _qf.get_closest_allies,
+           get_units_within_distance = _qf.get_units_within_distance,
+           get_allies_within_distance = _qf.get_allies_within_distance,
+           get_units_in_area = _qf.get_units_in_area, get_debuff_count = _qf.get_debuff_count,
+           get_units_in_region = _qf.get_units_in_region, any_unit_in_region = _qf.any_unit_in_region,
+           is_dead = _qf.is_dead, check_alive = _qf.check_alive,
+           get_internal_level = _qf.get_internal_level,
+           get_support_rank = _qf.get_support_rank, get_terrain = _qf.get_terrain,
+           has_achievement = _qf.has_achievement, check_shove = _qf.check_shove,
+           get_money = _qf.get_money, get_bexp = _qf.get_bexp,
+           is_roam = _qf.is_roam, get_roam_unit = _qf.get_roam_unit,
+           ai_group_active = _qf.ai_group_active, get_team_units = _qf.get_team_units,
+           get_player_units = _qf.get_player_units, get_enemy_units = _qf.get_enemy_units,
+           get_all_units = _qf.get_all_units, get_convoy_inventory = _qf.get_convoy_inventory;
+       return (${jsExpr});`,
     );
     return fn(
       gameProxy, unit, unit, target, target, region, position,
       check_pair, check_default, __len__, v, cf, support_rank_nid,
+      _queryFuncs,
     );
   } catch (e) {
     // Expression evaluation failed

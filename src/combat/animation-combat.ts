@@ -4,6 +4,9 @@ import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
 import type { CombatResults, DamagePopup } from './map-combat';
 import { BattleAnimation, type BattleAnimDrawData } from './battle-animation';
+import type { CombatEffectData, PaletteData } from './battle-anim-types';
+import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
+import { convertSpritesheetToFrames } from './sprite-loader';
 
 
 // ============================================================
@@ -68,6 +71,8 @@ export interface AnimationCombatOwner {
   lighten(): void;
   endParentLoop(anim: BattleAnimation): void;
   spawnEffect(anim: BattleAnimation, effectNid: string, under: boolean): void;
+  getEffectData(effectNid: string): CombatEffectData | null;
+  getEffectFrameImages(effectNid: string): Map<string, ImageBitmap | HTMLCanvasElement>;
 }
 
 // -- Render state interface --------------------------------------------------
@@ -101,6 +106,9 @@ export interface AnimationCombatRenderState {
 
   /** Active damage popups. */
   damagePopups: DamagePopup[];
+
+  /** Active spark effects. */
+  sparks: { type: 'hit' | 'crit' | 'miss' | 'noDamage'; elapsed: number; duration: number; isLeft: boolean }[];
 
   /** Camera pan offset for ranged combat. */
   panOffset: number;
@@ -184,11 +192,15 @@ export class AnimationCombat implements AnimationCombatOwner {
   rightPlatformY: number = 80;
 
   // -- Viewbox iris ----------------------------------------------------------
-  viewboxCenterX: number = 120;
-  viewboxCenterY: number = 80;
+  viewPos: [number, number] = [0, 0];  // defender tile position
+  cameraX: number = 0;  // camera offset in tile coords
+  cameraY: number = 0;
 
   // -- Damage popups ---------------------------------------------------------
   damagePopups: DamagePopup[] = [];
+
+  // -- Spark effects ---------------------------------------------------------
+  sparks: { x: number; y: number; type: 'hit' | 'crit' | 'miss' | 'noDamage'; elapsed: number; duration: number; isLeft: boolean }[] = [];
 
   // -- Current strike tracking -----------------------------------------------
   currentStrikeAttackerAnim: BattleAnimation | null = null;
@@ -200,6 +212,10 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
+
+  // -- Effect sprite cache ---------------------------------------------------
+  effectFrameCache: Map<string, Map<string, ImageBitmap | HTMLCanvasElement>> = new Map();
+  effectLoadingSet: Set<string> = new Set();
 
   constructor(
     attacker: UnitObject,
@@ -260,10 +276,9 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.combatRange = range;
     this.panConfig = getPanConfig(this.combatRange);
 
-    // Viewbox center on defender
+    // Viewbox iris target: defender's tile position
     if (dPos) {
-      this.viewboxCenterX = dPos[0] * 16 + 8;
-      this.viewboxCenterY = dPos[1] * 16 + 8;
+      this.viewPos = [dPos[0], dPos[1]];
     }
   }
 
@@ -285,6 +300,12 @@ export class AnimationCombat implements AnimationCombatOwner {
       p.elapsed += deltaMs;
     }
     this.damagePopups = this.damagePopups.filter(p => p.elapsed < p.duration);
+
+    // Update sparks
+    for (const s of this.sparks) {
+      s.elapsed += deltaMs;
+    }
+    this.sparks = this.sparks.filter(s => s.elapsed < s.duration);
 
     // Advance pan
     this.advancePan();
@@ -560,7 +581,7 @@ export class AnimationCombat implements AnimationCombatOwner {
           value: strike.damage,
           isCrit: strike.crit,
           elapsed: 0,
-          duration: 600,
+          duration: 1200,
         });
       }
     } else {
@@ -576,7 +597,7 @@ export class AnimationCombat implements AnimationCombatOwner {
           value: 0,
           isCrit: false,
           elapsed: 0,
-          duration: 500,
+          duration: 1200,
         });
       }
     }
@@ -598,9 +619,13 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.shakeIndex = 0;
   }
 
-  castSpell(_anim: BattleAnimation, _effectNid: string | null): void {
-    // Spell effect spawning is delegated to the renderer via getRenderState.
-    // No-op here; the animation system handles the visual.
+  castSpell(anim: BattleAnimation, effectNid: string | null): void {
+    if (!effectNid) {
+      // Fall back to the attack item NID
+      effectNid = this.attackItem.nid;
+    }
+    // Spawn the effect as a child of the calling animation
+    anim.spawnEffect(effectNid, anim.effects);
   }
 
   shake(intensity: number): void {
@@ -622,17 +647,70 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.panTarget = this.panFocusLeft ? -this.panConfig.max : this.panConfig.max;
   }
 
+  /** Set camera offset (in pixels) so the viewbox iris can compute tile-relative positions. */
+  setCameraOffset(pixelX: number, pixelY: number): void {
+    this.cameraX = pixelX / 16;
+    this.cameraY = pixelY / 16;
+  }
+
   playSound(_name: string): void {
     // Audio playback is handled externally. This is a hook point
     // for the game state that owns us to intercept via subclass or wrapper.
   }
 
-  showHitSpark(_anim: BattleAnimation): void {
-    // Visual effect handled by renderer using getRenderState.
+  showHitSpark(anim: BattleAnimation): void {
+    // Determine which side the defending unit is on
+    const isLeftDefending = (anim === this.rightAnim);
+    const strike = this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
+
+    if (strike && strike.hit && strike.damage > 0) {
+      this.sparks.push({
+        x: 0, y: 0,
+        type: 'hit',
+        elapsed: 0,
+        duration: 300,
+        isLeft: isLeftDefending,
+      });
+    } else if (strike && !strike.hit) {
+      this.sparks.push({
+        x: 0, y: 0,
+        type: 'miss',
+        elapsed: 0,
+        duration: 400,
+        isLeft: isLeftDefending,
+      });
+    } else {
+      this.sparks.push({
+        x: 0, y: 0,
+        type: 'noDamage',
+        elapsed: 0,
+        duration: 300,
+        isLeft: isLeftDefending,
+      });
+    }
   }
 
-  showCritSpark(_anim: BattleAnimation): void {
-    // Visual effect handled by renderer using getRenderState.
+  showCritSpark(anim: BattleAnimation): void {
+    const isLeftDefending = (anim === this.rightAnim);
+    const strike = this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
+
+    if (strike && strike.hit && strike.damage > 0) {
+      this.sparks.push({
+        x: 0, y: 0,
+        type: 'crit',
+        elapsed: 0,
+        duration: 500,
+        isLeft: isLeftDefending,
+      });
+    } else {
+      this.sparks.push({
+        x: 0, y: 0,
+        type: 'noDamage',
+        elapsed: 0,
+        duration: 300,
+        isLeft: isLeftDefending,
+      });
+    }
   }
 
   screenBlend(frames: number, color: [number, number, number]): void {
@@ -656,8 +734,88 @@ export class AnimationCombat implements AnimationCombatOwner {
     anim.resume();
   }
 
-  spawnEffect(_anim: BattleAnimation, _effectNid: string, _under: boolean): void {
-    // Effect spawning is managed by the renderer layer.
+  spawnEffect(anim: BattleAnimation, effectNid: string, under: boolean): void {
+    const targetList = under ? anim.underEffects : anim.effects;
+    anim.spawnEffect(effectNid, targetList);
+  }
+
+  // ================================================================
+  // Effect data / sprites
+  // ================================================================
+
+  getEffectData(effectNid: string): CombatEffectData | null {
+    return this.db.combatEffects?.get(effectNid) ?? null;
+  }
+
+  getEffectFrameImages(effectNid: string): Map<string, ImageBitmap | HTMLCanvasElement> {
+    const cached = this.effectFrameCache.get(effectNid);
+    if (cached) return cached;
+
+    // Start async load if not already loading
+    if (!this.effectLoadingSet.has(effectNid)) {
+      this.effectLoadingSet.add(effectNid);
+      this.loadEffectSprites(effectNid);
+    }
+
+    return new Map(); // return empty initially; sprites hot-swap in once loaded
+  }
+
+  private async loadEffectSprites(effectNid: string): Promise<void> {
+    try {
+      const effectData = this.db.combatEffects?.get(effectNid) as CombatEffectData | undefined;
+      if (!effectData) return;
+
+      const resources = (globalThis as any).__ltResources;
+      if (!resources) return;
+
+      // Load the effect spritesheet
+      const img = await loadEffectSpritesheet(resources, effectNid);
+      if (!img) return;
+
+      // Get the palette for this effect (if any)
+      const palettes = this.db.combatPalettes as Map<string, PaletteData> | undefined;
+      let palette: PaletteData | null = null;
+
+      if (effectData.palettes.length > 0) {
+        // Use the first palette mapping
+        const [, paletteNid] = effectData.palettes[0];
+        palette = palettes?.get(paletteNid) ?? null;
+      }
+
+      // Convert spritesheet to frame images
+      const frames = convertSpritesheetToFrames(img, effectData.frames, palette);
+
+      this.effectFrameCache.set(effectNid, frames);
+
+      // Hot-swap into any existing child effects
+      this.hotSwapEffectFrames(effectNid, frames);
+    } catch (e) {
+      console.warn(`AnimationCombat: failed to load effect "${effectNid}":`, e);
+    }
+  }
+
+  private hotSwapEffectFrames(effectNid: string, frames: Map<string, ImageBitmap | HTMLCanvasElement>): void {
+    const updateAnim = (anim: BattleAnimation) => {
+      // Check child effects
+      for (const effect of anim.effects) {
+        if (effect.animData?.nid === effectNid) {
+          for (const [nid, canvas] of frames) {
+            effect.frameImages.set(nid, canvas);
+          }
+        }
+        updateAnim(effect);
+      }
+      for (const effect of anim.underEffects) {
+        if (effect.animData?.nid === effectNid) {
+          for (const [nid, canvas] of frames) {
+            effect.frameImages.set(nid, canvas);
+          }
+        }
+        updateAnim(effect);
+      }
+    };
+    updateAnim(this.leftAnim);
+    updateAnim(this.rightAnim);
   }
 
   // ================================================================
@@ -784,32 +942,29 @@ export class AnimationCombat implements AnimationCombatOwner {
     const leftItem = this.leftIsAttacker ? this.attackItem : this.defenseItem;
     const rightItem = this.leftIsAttacker ? this.defenseItem : this.attackItem;
 
-    // Viewbox iris
+    // Viewbox iris — Python-faithful asymmetric iris toward defender tile
+    const TILEX = 15; // WINWIDTH / TILEWIDTH (240 / 16)
+    const TILEY = 10; // WINHEIGHT / TILEHEIGHT (160 / 16)
     let viewbox: AnimationCombatRenderState['viewbox'] = null;
     if (this.state === 'fade_in') {
-      const progress = Math.min(1, this.stateTimer / FADE_DURATION_MS);
-      const maxW = 240;
-      const maxH = 160;
-      const w = maxW * (1 - progress);
-      const h = maxH * (1 - progress);
-      viewbox = {
-        x: this.viewboxCenterX - w / 2,
-        y: this.viewboxCenterY - h / 2,
-        width: w,
-        height: h,
-      };
+      const vbMul = Math.min(1, this.stateTimer / FADE_DURATION_MS);
+      const trueX = this.viewPos[0] - this.cameraX + 0.5;
+      const trueY = this.viewPos[1] - this.cameraY + 0.5;
+      const vbX = Math.floor(vbMul * trueX * 16);
+      const vbY = Math.floor(vbMul * trueY * 16);
+      const vbW = Math.floor(240 - vbX - (vbMul * (TILEX - trueX)) * 16);
+      const vbH = Math.floor(160 - vbY - (vbMul * (TILEY - trueY)) * 16);
+      viewbox = { x: vbX, y: vbY, width: Math.max(0, vbW), height: Math.max(0, vbH) };
     } else if (this.state === 'fade_out') {
       const progress = Math.min(1, this.stateTimer / FADE_OUT_DURATION_MS);
-      const maxW = 240;
-      const maxH = 160;
-      const w = maxW * progress;
-      const h = maxH * progress;
-      viewbox = {
-        x: this.viewboxCenterX - w / 2,
-        y: this.viewboxCenterY - h / 2,
-        width: w,
-        height: h,
-      };
+      const vbMul = 1 - progress; // inverted: iris expands outward
+      const trueX = this.viewPos[0] - this.cameraX + 0.5;
+      const trueY = this.viewPos[1] - this.cameraY + 0.5;
+      const vbX = Math.floor(vbMul * trueX * 16);
+      const vbY = Math.floor(vbMul * trueY * 16);
+      const vbW = Math.floor(240 - vbX - (vbMul * (TILEX - trueX)) * 16);
+      const vbH = Math.floor(160 - vbY - (vbMul * (TILEY - trueY)) * 16);
+      viewbox = { x: vbX, y: vbY, width: Math.max(0, vbW), height: Math.max(0, vbH) };
     }
 
     // Screen shake
@@ -849,6 +1004,7 @@ export class AnimationCombat implements AnimationCombatOwner {
         weapon: rightItem?.name ?? '',
       },
       damagePopups: this.damagePopups,
+      sparks: this.sparks.map(s => ({ type: s.type, elapsed: s.elapsed, duration: s.duration, isLeft: s.isLeft })),
       panOffset: this.panOffset,
       nameTagProgress: this.nameTagProgress,
       hpBarProgress: this.hpBarProgress,

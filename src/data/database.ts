@@ -25,11 +25,16 @@ import type {
   TilesetData,
   WeaponRankDef,
   DifficultyMode,
+  FactionDef,
   NID,
   EquationDef,
   McostData,
   TeamsData,
   PortraitPrefab,
+  AffinityDef,
+  SupportPairPrefab,
+  OverworldPrefab,
+  PartyPrefab,
 } from './types';
 import type { CombatAnimData, CombatEffectData, PaletteData } from '../combat/battle-anim-types';
 import { loadCombatAnims, loadCombatEffects, loadCombatPalettes } from './loaders/combat-anim-loader';
@@ -53,6 +58,7 @@ export class Database {
     alliances: [],
   };
   ai: Map<NID, AiDef> = new Map();
+  factions: Map<NID, FactionDef> = new Map();
   difficultyModes: DifficultyMode[] = [];
   tags: string[] = [];
 
@@ -79,6 +85,18 @@ export class Database {
   // Map animation prefabs
   mapAnimations: Map<string, MapAnimPrefab> = new Map();
 
+  // Support system data
+  supportRanks: string[] = [];
+  supportConstants: Map<string, any> = new Map();
+  affinities: Map<string, AffinityDef> = new Map();
+  supportPairs: SupportPairPrefab[] = [];
+
+  // Overworld data
+  overworlds: Map<NID, OverworldPrefab> = new Map();
+
+  // Party data
+  parties: Map<NID, PartyPrefab> = new Map();
+
   /**
    * Load the entire database from the .ltproj served by the given ResourceManager.
    * Non-chunked files are loaded in parallel first, then chunked data,
@@ -97,7 +115,14 @@ export class Database {
       this.loadTeams(resources),
       this.loadTags(resources),
       this.loadAi(resources),
+      this.loadFactions(resources),
       this.loadDifficultyModes(resources),
+      this.loadSupportRanks(resources),
+      this.loadSupportConstants(resources),
+      this.loadAffinities(resources),
+      this.loadSupportPairs(resources),
+      this.loadOverworlds(resources),
+      this.loadParties(resources),
     ]);
 
     for (const result of nonChunkedResults) {
@@ -286,12 +311,86 @@ export class Database {
   }
 
   /**
+   * factions.json is an array of FactionDef objects.
+   */
+  private async loadFactions(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<FactionDef[]>('game_data/factions.json');
+    if (!data) return;
+
+    for (const faction of data) {
+      this.factions.set(faction.nid, faction);
+    }
+  }
+
+  /**
    * difficulty_modes.json is an array of DifficultyMode objects.
    */
   private async loadDifficultyModes(resources: ResourceManager): Promise<void> {
     const data = await resources.tryLoadJson<DifficultyMode[]>('game_data/difficulty_modes.json');
     if (!data) return;
     this.difficultyModes = data;
+  }
+
+  /**
+   * support_ranks.json is an array of strings like ["C", "B", "A"].
+   */
+  private async loadSupportRanks(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<string[]>('game_data/support_ranks.json');
+    if (!data) return;
+    this.supportRanks = data;
+  }
+
+  /**
+   * support_constants.json is an array of [key, value] tuples.
+   */
+  private async loadSupportConstants(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<[string, any][]>('game_data/support_constants.json');
+    if (!data) return;
+    for (const [key, value] of data) {
+      this.supportConstants.set(key, value);
+    }
+  }
+
+  /**
+   * affinities.json is an array of AffinityDef objects.
+   */
+  private async loadAffinities(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<AffinityDef[]>('game_data/affinities.json');
+    if (!data) return;
+    for (const aff of data) {
+      this.affinities.set(aff.nid, aff);
+    }
+  }
+
+  /**
+   * support_pairs.json is an array of SupportPairPrefab objects.
+   */
+  private async loadSupportPairs(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<SupportPairPrefab[]>('game_data/support_pairs.json');
+    if (!data) return;
+    this.supportPairs = data;
+  }
+
+  /**
+   * overworlds.json is an array of OverworldPrefab objects.
+   */
+  private async loadOverworlds(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<OverworldPrefab[]>('game_data/overworlds.json');
+    if (!data) return;
+    for (const ow of data) {
+      this.overworlds.set(ow.nid, ow);
+    }
+  }
+
+  /**
+   * parties.json is an array of PartyPrefab objects.
+   */
+  private async loadParties(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<PartyPrefab[]>('game_data/parties.json');
+    if (!data) return;
+    for (const party of data) {
+      this.parties.set(party.nid, party);
+    }
   }
 
   // -------------------------------------------------------------------
@@ -401,6 +500,21 @@ export class Database {
 
     for (const { nid, data } of results) {
       if (data) {
+        // Defensive: ensure layers have terrain_grid and sprite_grid objects
+        if (data.layers) {
+          for (const layer of data.layers) {
+            if (!layer.terrain_grid || typeof layer.terrain_grid !== 'object') {
+              layer.terrain_grid = {};
+            }
+            if (!layer.sprite_grid || typeof layer.sprite_grid !== 'object') {
+              layer.sprite_grid = {};
+            }
+            // Default foreground to false if missing (matches Python's get('foreground', False))
+            if (layer.foreground === undefined) {
+              layer.foreground = false;
+            }
+          }
+        }
         this.tilemaps.set(nid, data);
       } else {
         console.warn(`Database: tilemap data not found for "${nid}"`);
@@ -410,16 +524,40 @@ export class Database {
 
   /**
    * Load tileset metadata.
-   * tilesets.json is an array of TilesetData objects stored at
+   * tilesets.json is a JSON array of TilesetData objects stored at
    * resources/tilesets/tilesets.json.
+   *
+   * Python reference: tiles.py TileSetCatalog (manifest = 'tilesets.json').
+   * The ManifestCatalog pattern serialises as a flat array.
+   *
+   * Defensive handling:
+   *  - Missing `terrain_grid` / `autotiles` default to empty objects.
+   *  - Entries without an `nid` are skipped with a warning.
+   *  - If the top-level JSON is not an array, it is wrapped in one
+   *    (some serialization versions may differ).
    */
   private async loadTilesets(resources: ResourceManager): Promise<void> {
-    const data = await resources.tryLoadJson<TilesetData[]>(
+    const raw = await resources.tryLoadJson<TilesetData[] | TilesetData>(
       'resources/tilesets/tilesets.json',
     );
-    if (!data) return;
+    if (!raw) return;
+
+    // Normalise: ensure we always work with an array
+    const data: TilesetData[] = Array.isArray(raw) ? raw : [raw];
 
     for (const ts of data) {
+      if (!ts || typeof ts !== 'object') continue;
+      if (!ts.nid) {
+        console.warn('Database.loadTilesets: entry missing nid, skipping');
+        continue;
+      }
+      // Ensure terrain_grid and autotiles are objects (may be absent in some versions)
+      if (!ts.terrain_grid || typeof ts.terrain_grid !== 'object') {
+        ts.terrain_grid = {};
+      }
+      if (!ts.autotiles || typeof ts.autotiles !== 'object') {
+        ts.autotiles = {};
+      }
       this.tilesets.set(ts.nid, ts);
     }
   }
@@ -443,6 +581,11 @@ export class Database {
   /** Get an equation expression by NID. */
   getEquation(nid: NID): string | undefined {
     return this.equations.get(nid);
+  }
+
+  /** Get all equation names (for named equation resolution in evaluator). */
+  getEquationNames(): string[] {
+    return Array.from(this.equations.keys());
   }
 
   /** Get terrain movement cost for a given terrain type and unit movement group. */

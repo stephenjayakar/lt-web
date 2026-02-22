@@ -267,6 +267,18 @@ export type AlliancePair = [NID, NID];
 export type TeamsData = [TeamDef[], AlliancePair[]];
 
 // ------------------------------------------------------------------
+// Factions
+// ------------------------------------------------------------------
+
+export interface FactionDef {
+  nid: NID;
+  name: string;
+  desc: string;
+  icon_nid: NID;
+  icon_index: [number, number];
+}
+
+// ------------------------------------------------------------------
 // AI
 // ------------------------------------------------------------------
 
@@ -321,6 +333,18 @@ export interface DifficultyMode {
   start_locked: boolean;
 }
 
+// ------------------------------------------------------------------
+// Fog of War
+// ------------------------------------------------------------------
+
+export interface FogOfWarConfig {
+  isActive: boolean;
+  mode: number; // 0=GBA_DEPRECATED, 1=GBA, 2=THRACIA, 3=HYBRID
+  defaultRadius: number;  // Player team vision radius
+  aiRadius: number;       // Enemy team vision radius
+  otherRadius: number;    // Allied non-player vision radius
+}
+
 /** [constant_nid, value] */
 export type ConstantDef = [string, boolean | number | string];
 
@@ -356,4 +380,91 @@ export interface EventPrefab {
   only_once: boolean;
   priority: number;
   _source: string[];
+}
+
+// ------------------------------------------------------------------
+// Support system
+// ------------------------------------------------------------------
+
+export interface SupportRankBonus {
+  support_rank: string;
+  damage: number;
+  resist: number;
+  accuracy: number;
+  avoid: number;
+  crit: number;
+  dodge: number;
+  attack_speed: number;
+  defense_speed: number;
+}
+
+export interface AffinityDef {
+  nid: NID;
+  name: string;
+  desc: string;
+  bonus: SupportRankBonus[];
+  icon_nid: NID;
+  icon_index: [number, number];
+}
+
+export interface SupportRankRequirement {
+  support_rank: string;
+  requirement: number;
+  gate: string;
+  damage: number;
+  resist: number;
+  accuracy: number;
+  avoid: number;
+  crit: number;
+  dodge: number;
+  attack_speed: number;
+  defense_speed: number;
+}
+
+export interface SupportPairPrefab {
+  unit1: NID;
+  unit2: NID;
+  one_way: boolean;
+  requirements: SupportRankRequirement[];
+}
+
+// ------------------------------------------------------------------
+// Overworld
+// ------------------------------------------------------------------
+
+export interface NodeMenuEvent {
+  nid: NID;
+  event: NID | null;
+  option_name: string;
+  visible: boolean;
+  enabled: boolean;
+}
+
+export interface OverworldNodePrefab {
+  nid: NID;
+  name: string;
+  pos: [number, number];
+  icon: string;
+  level: NID | null;
+  menu_options: NodeMenuEvent[];
+}
+
+export interface OverworldPrefab {
+  nid: NID;
+  name: string;
+  tilemap: NID | null;
+  music: NID | null;
+  overworld_nodes: OverworldNodePrefab[];
+  map_paths: Record<string, [number, number][]>;  // key = "p1-p2", value = point list
+  border_tile_width: number;
+}
+
+// ------------------------------------------------------------------
+// Party data
+// ------------------------------------------------------------------
+
+export interface PartyPrefab {
+  nid: NID;
+  name: string;
+  leader: NID;  // leader unit NID
 }

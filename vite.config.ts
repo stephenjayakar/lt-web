@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve, join, extname } from 'path';
-import { createReadStream, stat } from 'fs';
+import { createReadStream, stat, writeFileSync, readdirSync, statSync } from 'fs';
+import type { Plugin, ResolvedConfig } from 'vite';
 
 // MIME types for game assets
 const MIME: Record<string, string> = {
@@ -13,6 +14,69 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain',
   '.html': 'text/html',
 };
+
+/**
+ * Vite plugin: Generate a precache manifest for the service worker.
+ *
+ * After each production build, writes a `precache-manifest.json` to the
+ * output directory. The service worker reads this to precache the app shell
+ * (HTML, JS, CSS bundles with content hashes) on install.
+ *
+ * This avoids hardcoding hashed filenames in sw.js.
+ */
+function swPrecacheManifest(): Plugin {
+  let config: ResolvedConfig;
+  return {
+    name: 'sw-precache-manifest',
+    configResolved(resolvedConfig) {
+      config = resolvedConfig;
+    },
+    closeBundle() {
+      if (config.command !== 'build') return;
+
+      const outDir = resolve(config.root, config.build.outDir);
+      const manifest: { url: string; revision: string | null }[] = [];
+
+      // Walk the output directory and collect files to precache
+      function walk(dir: string, prefix: string): void {
+        let entries: ReturnType<typeof readdirSync>;
+        try {
+          entries = readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of entries) {
+          const fullPath = join(dir, entry.name);
+          const urlPath = prefix + entry.name;
+          if (entry.isDirectory()) {
+            // Skip game-data and bundles (too large, cached separately)
+            if (entry.name === 'game-data' || entry.name === 'bundles') continue;
+            walk(fullPath, urlPath + '/');
+          } else if (entry.isFile()) {
+            // Skip the manifest itself and the SW
+            if (entry.name === 'precache-manifest.json' || entry.name === 'sw.js') continue;
+            // Files with content hashes don't need a revision
+            // Vite uses base64url hashes (mixed case + digits), e.g. index-gWOkYjRK.js
+            const hasHash = /[-\.][0-9a-zA-Z_-]{6,}\.\w+$/.test(entry.name) &&
+              /assets\//.test(urlPath);
+            manifest.push({
+              url: '/' + urlPath,
+              revision: hasHash ? null : String(statSync(fullPath).mtimeMs),
+            });
+          }
+        }
+      }
+
+      walk(outDir, '');
+
+      writeFileSync(
+        join(outDir, 'precache-manifest.json'),
+        JSON.stringify(manifest, null, 2),
+      );
+      console.log(`[sw-precache-manifest] Generated ${manifest.length} entries`);
+    },
+  };
+}
 
 export default defineConfig({
   resolve: {
@@ -53,6 +117,8 @@ export default defineConfig({
         });
       },
     },
+    // Generate precache manifest for the service worker
+    swPrecacheManifest(),
   ],
   build: {
     target: 'es2022',

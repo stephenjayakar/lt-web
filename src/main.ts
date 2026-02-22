@@ -14,11 +14,13 @@ import { ResourceManager } from './data/resource-manager';
 import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
+import { setActionGameRef } from './engine/action';
 import { initIcons } from './ui/icons';
 import { initFonts } from './rendering/bmp-font';
 import {
   setGameRef,
   TitleState,
+  TitleMainState,
   LevelSelectState,
   OptionMenuState,
   FreeState,
@@ -36,7 +38,71 @@ import {
   MovementState,
   EventState,
   ShopState,
+  InfoMenuState,
+  setInfoMenuGameRef,
+  InitiativeUpkeepState,
 } from './engine/states/game-states';
+import {
+  PrepMainState,
+  PrepPickUnitsState,
+  PrepMapState,
+  setPrepGameRef,
+} from './engine/states/prep-state';
+import {
+  BaseMainState,
+  BaseConvosState,
+  setBaseGameRef,
+} from './engine/states/base-state';
+import {
+  SettingsMenuState,
+  setSettingsGameRef,
+} from './engine/states/settings-state';
+import {
+  MinimapState,
+  setMinimapGameRef,
+} from './engine/states/minimap-state';
+import {
+  VictoryState,
+  setVictoryGameRef,
+} from './engine/states/victory-state';
+import {
+  CreditState,
+  setCreditGameRef,
+} from './engine/states/credit-state';
+import {
+  TurnwheelState,
+  setTurnwheelGameRef,
+} from './engine/states/turnwheel-state';
+import {
+  OverworldFreeState,
+  OverworldMovementState,
+  OverworldLevelTransitionState,
+  setOverworldGameRef,
+} from './engine/states/overworld-state';
+import {
+  FreeRoamState,
+  FreeRoamRationalizeState,
+  setRoamGameRef,
+} from './engine/states/roam-state';
+import { setQueryEngineGameRef } from './engine/query-engine';
+import { setEquationGameRef } from './combat/combat-calcs';
+import { initPersistentSystems } from './engine/records';
+import {
+  SaveMenuState,
+  LoadMenuState,
+  setSaveLoadGameRef,
+} from './engine/states/save-load-state';
+import {
+  registerServiceWorker,
+  requestPersistentStorage,
+  setupInstallPrompt,
+  setupConnectivityTracking,
+  onUpdateAvailable,
+} from './pwa';
+import { AssetBundle, installBundleFetchInterceptor, installBundleImageInterceptor } from './data/asset-bundle';
+import { initNativePlatform, onAppPause, onAppResume } from './native';
+import { PerfMonitor } from './engine/perf-monitor';
+import { SurfacePool } from './engine/surface-pool';
 
 // ---------------------------------------------------------------------------
 // Display helpers
@@ -155,6 +221,25 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const projectPath = params.get('project') ?? 'default.ltproj';
   const baseUrl = `/game-data/${projectPath}`;
+  const useBundle = params.get('bundle') !== 'false'; // opt-out with ?bundle=false
+
+  // --- Try loading asset bundle (single zip instead of hundreds of requests) ---
+  if (useBundle) {
+    const bundleUrl = `/bundles/${projectPath}.zip`;
+    try {
+      const bundle = new AssetBundle();
+      await bundle.load(bundleUrl, (progress) => {
+        drawLoadingScreen(ctx, progress.message);
+      });
+      // Install interceptors so ResourceManager reads from the bundle
+      installBundleFetchInterceptor(bundle, baseUrl);
+      installBundleImageInterceptor(bundle, baseUrl);
+      console.info(`[Bundle] Loaded ${bundle.fileCount} files from ${bundleUrl}`);
+    } catch {
+      // Bundle not available — fall through to individual HTTP requests
+      console.info('[Bundle] No asset bundle found, using individual requests');
+    }
+  }
 
   // --- Load game data ---
   const resources = new ResourceManager(baseUrl);
@@ -182,11 +267,30 @@ async function main(): Promise<void> {
   // --- GameState ---
   drawLoadingScreen(ctx, 'Initializing...');
   const gameState = initGameState(db, resources, audioManager);
+  setActionGameRef(() => gameState);
   setGameRef(gameState);
+  setInfoMenuGameRef(gameState);
+  setPrepGameRef(gameState);
+  setBaseGameRef(gameState);
+  setSettingsGameRef(gameState);
+  setMinimapGameRef(gameState);
+  setVictoryGameRef(gameState);
+  setCreditGameRef(gameState);
+  setTurnwheelGameRef(gameState);
+  setOverworldGameRef(gameState);
+  setRoamGameRef(gameState);
+  setQueryEngineGameRef(() => gameState);
+  setEquationGameRef(() => gameState);
+  setSaveLoadGameRef(gameState);
+
+  // Initialize persistent systems (cross-save records and achievements)
+  const gameNid = db.getConstant('game_nid', 'default') as string;
+  initPersistentSystems(gameNid);
 
   // --- Register states ---
   const states = [
     new TitleState(),
+    new TitleMainState(),
     new LevelSelectState(),
     new OptionMenuState(),
     new FreeState(),
@@ -200,10 +304,29 @@ async function main(): Promise<void> {
     new CombatState(),
     new AIState(),
     new TurnChangeState(),
+    new InitiativeUpkeepState(),
     new PhaseChangeState(),
     new MovementState(),
     new EventState(),
     new ShopState(),
+    new InfoMenuState(),
+    new PrepMainState(),
+    new PrepPickUnitsState(),
+    new PrepMapState(),
+    new BaseMainState(),
+    new BaseConvosState(),
+    new SettingsMenuState(),
+    new MinimapState(),
+    new VictoryState(),
+    new CreditState(),
+    new TurnwheelState(),
+    new OverworldFreeState(),
+    new OverworldMovementState(),
+    new OverworldLevelTransitionState(),
+    new FreeRoamState(),
+    new FreeRoamRationalizeState(),
+    new SaveMenuState(),
+    new LoadMenuState(),
   ];
   for (const state of states) {
     gameState.state.register(state);
@@ -241,7 +364,39 @@ async function main(): Promise<void> {
   // --- Game loop ---
   let lastTimestamp = 0;
 
+  // F3 toggles performance overlay, F4 toggles profiling session
+  let profilingSession = false;
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'F3') {
+      e.preventDefault();
+      PerfMonitor.toggle();
+    }
+    if (e.key === 'F4') {
+      e.preventDefault();
+      if (!profilingSession) {
+        PerfMonitor.startProfiling();
+        profilingSession = true;
+        console.info('[Perf] Press F4 again to stop and export the profiling report');
+      } else {
+        const report = PerfMonitor.stopProfiling();
+        profilingSession = false;
+        // Log summary to console
+        console.info('[Perf] === Profiling Report ===');
+        console.info(`  Duration: ${report.durationSec.toFixed(1)}s, ${report.totalFrames} frames`);
+        console.info(`  Avg FPS: ${report.avgFps.toFixed(1)}, Min FPS: ${report.minFps.toFixed(0)}`);
+        console.info(`  Frame time: avg=${report.avgFrameTimeMs.toFixed(1)}ms, p95=${report.p95FrameTimeMs.toFixed(1)}ms, p99=${report.p99FrameTimeMs.toFixed(1)}ms, peak=${report.peakFrameTimeMs.toFixed(1)}ms`);
+        console.info(`  Dropped frames: ${report.droppedFrames} (${(report.droppedFrames / report.totalFrames * 100).toFixed(1)}%)`);
+        console.info(`  Memory peak: ${report.memory.peakMb.toFixed(0)}MB`);
+        console.info('[Perf] Full report: __PerfMonitor.exportReport()');
+        // Also store as downloadable JSON
+        console.info('[Perf] Report object:', report);
+      }
+    }
+  });
+
   function gameLoop(timestamp: number): void {
+    PerfMonitor.beginFrame();
+
     const rawDelta = lastTimestamp === 0 ? FRAMETIME : timestamp - lastTimestamp;
     const deltaMs = Math.min(rawDelta, FRAMETIME * 3);
     lastTimestamp = timestamp;
@@ -273,6 +428,7 @@ async function main(): Promise<void> {
     gameSurface.clear();
 
     // --- State machine update ---
+    PerfMonitor.beginUpdate();
     let repeat = true;
     let iterations = 0;
     const maxIterations = 10;
@@ -283,6 +439,7 @@ async function main(): Promise<void> {
       repeat = shouldRepeat;
       iterations++;
     }
+    PerfMonitor.endUpdate();
 
     // --- Animations ---
     updateAnimationCounters();
@@ -291,14 +448,25 @@ async function main(): Promise<void> {
     game.movementSystem.update(deltaMs);
 
     // --- Blit to display ---
+    PerfMonitor.beginDraw();
     display.ctx.imageSmoothingEnabled = false;
     display.ctx.clearRect(0, 0, display.canvas.width, display.canvas.height);
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
     // --- HUD overlay (fixed screen-space, not affected by zoom) ---
     game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db);
+    PerfMonitor.endDraw();
+
+    // --- Performance overlay (screen-space, on top of everything) ---
+    // Sync perf overlay with the in-game settings (display_fps)
+    const fpsSettingVal = game.gameVars?.get('_setting_display_fps');
+    if (fpsSettingVal !== undefined) {
+      PerfMonitor.setEnabled(fpsSettingVal === 1 || fpsSettingVal === true);
+    }
+    PerfMonitor.draw(display.ctx, display.canvas.width, display.canvas.height);
 
     // --- End of frame ---
+    PerfMonitor.endFrame();
     inputManager.endFrame();
     audioManager.resume();
 
@@ -306,6 +474,38 @@ async function main(): Promise<void> {
   }
 
   requestAnimationFrame(gameLoop);
+
+  // --- Native platform (Capacitor / TWA / Wake Lock) ---
+  initNativePlatform();
+  onAppPause(() => {
+    // Pause audio when the app is backgrounded
+    audioManager.suspendContext();
+  });
+  onAppResume(() => {
+    // Resume audio when the app comes back
+    audioManager.resume();
+  });
+
+  // --- PWA: install prompt + connectivity + service worker ---
+  setupInstallPrompt();
+  setupConnectivityTracking();
+  onUpdateAvailable((apply) => {
+    // Log update availability; the game can check and apply via settings menu
+    console.info('[PWA] Update available — call apply() to reload with new version');
+    // Store the apply function on the game state so the settings/title screen can use it
+    game.gameVars.set('_pwa_update_available', true);
+    game.gameVars.set('_pwa_apply_update', apply as any);
+  });
+  registerServiceWorker().then((reg) => {
+    if (reg) {
+      // Request persistent storage so the browser won't evict cached game data
+      requestPersistentStorage().then((granted) => {
+        if (granted) {
+          console.info('[PWA] Persistent storage granted');
+        }
+      });
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
