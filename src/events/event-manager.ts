@@ -74,6 +74,7 @@ export type EventCommandType =
   // Misc
   | 'battle_save' | 'prep' | 'base' | 'shop' | 'choice' | 'unchoice'
   | 'chapter_title' | 'set_tile'
+  | 'has_visited' | 'unlock' | 'find_unlock' | 'spend_unlock'
   // Legacy aliases (resolved to canonical form)
   | 'set_game_var' | 'change_objective';
 
@@ -132,6 +133,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   // Misc
   'battle_save', 'prep', 'base', 'shop', 'choice', 'unchoice',
   'chapter_title', 'set_tile',
+  'has_visited', 'unlock', 'find_unlock', 'spend_unlock',
   // Legacy/aliases from our old code
   'set_game_var', 'change_objective',
 ]);

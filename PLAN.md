@@ -8,7 +8,7 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**49 source files, ~18,000 lines of TypeScript.**
+**49 source files, ~18,500 lines of TypeScript.**
 Builds cleanly with zero type errors (176KB JS / 49KB gzipped).
 Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
 rendering to a dynamically-scaled HTML5 Canvas with dynamic viewport
@@ -17,6 +17,39 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **Dialog text word-wrapping.** Dialog boxes now word-wrap text to fit
+  within the box width. Uses Canvas `measureText()` for accurate pixel
+  width measurement. Box height auto-sizes based on number of wrapped
+  lines. Fixes text overflow in both portrait speech bubbles (120px) and
+  full-width bottom bars (236px).
+- **`change_background` event command.** Loads panorama images from
+  `resources/panoramas/` and displays them as full-screen backgrounds
+  behind portraits during dialogue scenes. Supports `keep_portraits`
+  flag (default clears portraits on background change). 45 uses across
+  chapters 0-4. Background drawn on top of map, behind portraits.
+- **`chapter_title` event command.** Full-screen chapter title overlay
+  with fade-in (1s), hold (3s), fade-out (1s) animation. Gold banner
+  bar with chapter name text. Skippable via SELECT/BACK. Disables
+  skip mode so players see the title.
+- **`location_card` event command.** Small translucent brown card in
+  the upper-left corner showing location text. Fades in (200ms), holds
+  (2s), fades out (200ms). Blocks event processing during display.
+- **`has_visited` event command.** Marks a unit as having completed
+  their action (sets `hasTraded` or `hasAttacked` flag). Units without
+  Canto are marked as finished. Supports `attacked` flag.
+- **`unlock` event command.** Simplified unlock that finds the first
+  key/lockpick item in the unit's inventory and decrements its uses.
+  Broken items are removed from inventory.
+- **`interact_unit` event command.** Stubbed (logs warning) — scripted
+  combat with forced outcomes is complex and deferred.
+- **`load_unit` / `make_generic` stubs.** Skip gracefully to allow
+  event progression in later chapter cinematics.
+- **Foreground tilemap layers verified.** Already fully implemented in
+  both `TileMapObject` and `MapView` — no changes needed.
+- **`set_tile` command removed from plan.** Does not exist in the
+  original Python engine. Terrain changes use `show_layer`/`hide_layer`.
+
+### Previous Session
 - **AI item use (healing items and staves).** AI units with `Support`
   behavior now use `supportPrimaryAI()` to evaluate all healing items
   (staves and consumables) against injured allies. Implements the Python
@@ -288,10 +321,10 @@ add:
 - [x] `win_game` / `lose_game`
 - [x] `if` / `elif` / `else` / `end` (flow control with condition evaluator)
 - [x] `for` / `endf` loop (iterates over comma-separated values)
-- [ ] `set_tile` (change tilemap terrain mid-level)
+  - [x] `set_tile` — N/A (does not exist in original engine; use show_layer/hide_layer)
 - [x] `remove_region` (add_region still stub)
 - [x] `camera` control (`center_cursor`, `move_cursor`, `disp_cursor`, `flicker_cursor`)
-- [ ] `map_anim` (play animation at a tile)
+  - [ ] `map_anim` (play animation at a tile — requires map animation system)
 - [x] `choice` / `unchoice` (branching dialogue menus)
 - [x] `show_layer` / `hide_layer` (tilemap layer toggling)
 - [x] `add_talk` / `remove_talk` (dynamic talk pair management)
@@ -300,6 +333,14 @@ add:
   `change_class`, `has_traded`, `set_current_mana`
 - [x] `remove_all_enemies` / `remove_all_units`
 - [x] `add_group` / `spawn_group` / `remove_group` / `move_group`
+- [x] `change_background` (panorama loading, keep_portraits flag, remove on empty)
+- [x] `chapter_title` (full-screen overlay with fade animation, skippable)
+- [x] `location_card` (translucent upper-left card with fade animation)
+- [x] `has_visited` (marks unit action state, handles Canto)
+- [x] `unlock` (simplified: finds key item, decrements uses)
+- [ ] `interact_unit` (scripted combat with forced outcomes — stubbed)
+- [ ] `shop` (opens shop interface — not yet implemented)
+- [ ] `prep` (opens preparations screen — not yet implemented)
 
 Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 
@@ -313,9 +354,9 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   tilemap data has `autotile_fps` and autotile column references. Needs a
   frame counter to swap between pre-rendered autotile frames.
   - Original: `app/engine/objects/tilemap.py` (lines 127-148)
-- [ ] **Foreground tilemap layers.** Layers marked `foreground: true` should
-  draw on top of units. `MapView` has a slot for this but it may not be
-  wired up correctly in all states.
+- [x] **Foreground tilemap layers.** Layers marked `foreground: true` draw
+  on top of units. `TileMapObject.getForegroundImage()` composites visible
+  foreground layers, drawn in `MapView.draw()` step 5 (after units, before cursor).
 - [ ] **Weather particles.** Rain, snow, sand, fog. The original has a full
   particle system with pooling.
   - Original: `app/engine/particles.py`
@@ -519,7 +560,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
 | `engine/game-state.ts` | 635 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation |
-| `engine/states/game-states.ts` | ~4800 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~40 event commands |
+| `engine/states/game-states.ts` | ~5480 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~50 event commands |
 | `data/types.ts` | 342 | Done |
 | `data/database.ts` | 436 | Done — combat anim data loading |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
@@ -553,7 +594,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `ui/health-bar.ts` | 97 | Done |
 | `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
 | `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
-| `ui/dialog.ts` | ~230 | Done — portrait-aware positioning with speech bubble tail |
+| `ui/dialog.ts` | ~320 | Done — portrait-aware positioning with speech bubble tail, word-wrap |
 | `ui/banner.ts` | 108 | Done |
 | `main.ts` | 318 | Done — LevelSelectState, dynamic viewport, DPR-aware display |
 
