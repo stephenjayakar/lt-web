@@ -8,8 +8,8 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**49 source files, ~18,800 lines of TypeScript.**
-Builds cleanly with zero type errors (211KB JS / 58KB gzipped).
+**50 source files, ~22,000 lines of TypeScript.**
+Builds cleanly with zero type errors (220KB JS / 61KB gzipped).
 Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
 rendering to a dynamically-scaled HTML5 Canvas with dynamic viewport
 (mobile + desktop). Phase 1.2 core gameplay implemented, plus GBA-style
@@ -17,6 +17,40 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **Autotile animation system.** Tilesets with animated water/lava tiles
+  now animate at runtime. `LayerObject.buildSurface()` identifies autotile
+  positions from `TilesetData.autotiles` dict, builds 16 pre-rendered
+  frame surfaces per layer. `TileMapObject.updateAutotiles()` cycles
+  frames based on `autotile_fps` timing. Composited in `getFullImage()`
+  and `getForegroundImage()`. Autotile images loaded in
+  `GameState.loadLevel()` from `{tileset}_autotiles.png`.
+- **Weather particle system.** New `src/rendering/weather.ts` (~240 lines)
+  with `WeatherSystem` class. 7 weather types: rain (blue streaks), snow
+  (drifting white flakes), sand (horizontal tan particles), light (fading
+  golden motes), dark (same motes), night (blue overlay), sunset (warm
+  overlay). Particles are canvas-drawn shapes (no sprite loading). System
+  pre-fills 300 frames on creation so particles don't gradually appear.
+  `TileMapObject.addWeather()`/`removeWeather()` manage active systems.
+  Weather renders in MapView after foreground/cursor layers.
+  `add_weather`/`remove_weather` event commands implemented.
+- **`load_unit` event command.** Loads a unique unit from DB into memory
+  without placing on the map. Looks up unit prefab, creates UnitObject
+  from prefab data (stats, items, skills), and registers in
+  `game.allUnits`. Supports level override argument.
+- **`make_generic` event command.** Fabricates a generic unit from
+  class/level/team without placing on map. Creates a UnitObject with
+  class-derived stats, assigns to specified team, registers in
+  `game.allUnits`.
+- **Equation evaluator improvements.** Now supports Python ternary
+  expressions (`X if COND else Y`) and `'Tag' in unit.tags` within
+  stat equations (needed for `RESCUE_AID` and similar conditional
+  formulas). New `evaluateEquationCondition()` helper.
+- **Condition evaluator improvements.** Added support for: `'X' in
+  unit.tags`, `'X' not in unit.tags`, `has_item()`, `has_skill()`,
+  `v()` variable lookup, `unit.can_unlock(region)`,
+  `any_unit_in_region()`, `is_dead()`.
+
+### Previous Session
 - **Fix region type matching in action menu.** The action menu was
   checking `region_type` against hardcoded strings like 'village',
   'visit', 'shop', 'seize' — but actual level data uses
@@ -111,8 +145,10 @@ touch/mouse/keyboard input. Component dispatch system wired into combat.
   Broken items are removed from inventory.
 - **`interact_unit` event command.** Stubbed (logs warning) — scripted
   combat with forced outcomes is complex and deferred.
-- **`load_unit` / `make_generic` stubs.** Skip gracefully to allow
-  event progression in later chapter cinematics.
+- **`load_unit` / `make_generic` fully implemented.** `load_unit` loads
+  unique units from DB into memory (stats, items, skills). `make_generic`
+  fabricates generic units from class/level/team. Both register into
+  `game.allUnits` without placing on map.
 - **Foreground tilemap layers verified.** Already fully implemented in
   both `TileMapObject` and `MapView` — no changes needed.
 - **`set_tile` command removed from plan.** Does not exist in the
@@ -409,6 +445,10 @@ add:
 - [x] `location_card` (translucent upper-left card with fade animation)
 - [x] `has_visited` (marks unit action state, handles Canto)
 - [x] `unlock` (simplified: finds key item, decrements uses)
+- [x] `load_unit` (loads unique unit from DB into memory, stats/items/skills)
+- [x] `make_generic` (fabricates generic unit from class/level/team)
+- [x] `add_weather` / `remove_weather` (weather particle effects on map)
+- [x] `screen_shake` / `screen_shake_end` (5 shake patterns, blocking/non-blocking)
 - [ ] `interact_unit` (scripted combat with forced outcomes — stubbed)
 - [ ] `shop` (opens shop interface — not yet implemented)
 - [ ] `prep` (opens preparations screen — not yet implemented)
@@ -421,15 +461,18 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 
 ### 2.1 Rendering
 
-- [ ] **Autotile animation.** Tilesets with animated water/lava tiles. The
-  tilemap data has `autotile_fps` and autotile column references. Needs a
-  frame counter to swap between pre-rendered autotile frames.
+- [x] **Autotile animation.** LayerObject builds 16 autotile frame surfaces
+  from `TilesetData.autotiles` dict. TileMapObject.updateAutotiles() cycles
+  frames based on `autotile_fps` timing. Composited in getFullImage/
+  getForegroundImage. Autotile images loaded from `{tileset}_autotiles.png`.
   - Original: `app/engine/objects/tilemap.py` (lines 127-148)
 - [x] **Foreground tilemap layers.** Layers marked `foreground: true` draw
   on top of units. `TileMapObject.getForegroundImage()` composites visible
   foreground layers, drawn in `MapView.draw()` step 5 (after units, before cursor).
-- [ ] **Weather particles.** Rain, snow, sand, fog. The original has a full
-  particle system with pooling.
+- [x] **Weather particles.** WeatherSystem class with 7 weather types (rain,
+  snow, sand, light, dark, night, sunset). Canvas-drawn particles, no sprite
+  loading. TileMapObject.addWeather/removeWeather methods. Rendered in MapView
+  after foreground. `add_weather`/`remove_weather` event commands.
   - Original: `app/engine/particles.py`
 - [ ] **Map animations.** Spritesheet-based animations played at map
   positions (miss, no-damage, level-up sparkle, etc.).
@@ -576,14 +619,17 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 
 ### 3.4 Expression / Equation Evaluator
 
-- [ ] **Full equation support.** The original uses Python `eval()` for user-
-  defined equations with access to unit stats, game vars, and utility
-  functions. The current `evaluateEquation` in `combat-calcs.ts` handles
-  basic math but not:
-  - Ternary expressions (`x if condition else y`)
-  - Unit attribute access (`unit.tags`, `'Mounted' in unit.tags`)
-  - Game state queries
-  - Custom functions beyond `max` / `min`
+- [x] **Ternary expressions.** `x if condition else y` now parsed and
+  evaluated in equation evaluator.
+- [x] **Unit tag checks in equations.** `'Tag' in unit.tags` works for
+  conditional stat formulas (e.g. RESCUE_AID).
+- [x] **Condition evaluator.** Supports `'X' in unit.tags`, `'X' not in
+  unit.tags`, `has_item()`, `has_skill()`, `v()`, `can_unlock()`,
+  `any_unit_in_region()`, `is_dead()`.
+- [ ] **Full equation support.** Still missing:
+  - Game state queries beyond `v()`
+  - Custom functions beyond `max` / `min` / `clamp`
+  - Full query engine parity (`get_units`, `get_hp`, etc.)
   - Original: `app/engine/evaluate.py`, `app/engine/query_engine.py`
 
 ### 3.5 Python Event Scripting
@@ -634,8 +680,8 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
-| `engine/game-state.ts` | 635 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation |
-| `engine/states/game-states.ts` | ~5690 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~50 event commands |
+| `engine/game-state.ts` | ~658 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading |
+| `engine/states/game-states.ts` | ~5784 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~55 event commands |
 | `data/types.ts` | 342 | Done |
 | `data/database.ts` | 436 | Done — combat anim data loading |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
@@ -644,15 +690,16 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `objects/item.ts` | ~195 | Done — healing, stat boosters, uses decrement, droppable, isSpell/isUsable/targetsAllies/hasNoAI/canHeal |
 | `objects/skill.ts` | 43 | Stub, needs component dispatch |
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
-| `rendering/tilemap.ts` | 200 | Done — showLayer/hideLayer, needs autotile animation |
-| `rendering/map-view.ts` | 270 | Done — dynamic viewport, unit HP bar overlays |
+| `rendering/tilemap.ts` | ~330 | Done — showLayer/hideLayer, autotile animation, weather management |
+| `rendering/map-view.ts` | ~275 | Done — dynamic viewport, unit HP bar overlays, weather rendering |
+| `rendering/weather.ts` | ~238 | **NEW** — WeatherSystem with 7 types (rain, snow, sand, light, dark, night, sunset) |
 | `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
 | `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
 | `rendering/highlight.ts` | 137 | Done — threat highlight type, clearType/hasType helpers |
 | `pathfinding/pathfinding.ts` | 408 | Done |
 | `pathfinding/path-system.ts` | 228 | Done |
 | `movement/movement-system.ts` | 168 | Done, needs roam movement |
-| `combat/combat-calcs.ts` | 455 | Done — full item-system + skill-system dispatch |
+| `combat/combat-calcs.ts` | ~582 | Done — full item-system + skill-system dispatch, Python ternary in equations |
 | `combat/combat-solver.ts` | 275 | Done — vantage, desperation, miracle, disvantage |
 | `combat/item-system.ts` | 248 | Done — item component dispatch layer |
 | `combat/skill-system.ts` | 399 | Done — skill component dispatch layer |
@@ -662,7 +709,7 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
 | `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
 | `ai/ai-controller.ts` | ~1080 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI |
-| `events/event-manager.ts` | 770 | Done — FIFO queue, condition evaluator, talk pairs, ConditionContext |
+| `events/event-manager.ts` | ~888 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead), talk pairs |
 | `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
 | `ui/menu.ts` | 205 | Done — click + hover mouse support. Needs 9-slice backgrounds |
 | `ui/hud.ts` | ~253 | Done — screen-space rendering, terrain DEF + AVO display, chibi portraits |
