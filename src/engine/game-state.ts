@@ -175,8 +175,10 @@ export class GameState {
       );
     }
 
-    // Load all tileset images referenced by this tilemap
+    // Load all tileset images and autotile images referenced by this tilemap
     const tilesetImages = new Map<NID, HTMLImageElement>();
+    const autotileImages = new Map<NID, HTMLImageElement>();
+    const tilesetDefs = new Map<NID, import('../data/types').TilesetData>();
     await Promise.all(
       tilemapData.tilesets.map(async (tsNid) => {
         const img = await this.resources.tryLoadImage(
@@ -185,10 +187,24 @@ export class GameState {
         if (img) {
           tilesetImages.set(tsNid, img);
         }
+        // Load tileset definition for autotile mapping
+        const tsDef = this.db.tilesets.get(tsNid);
+        if (tsDef) {
+          tilesetDefs.set(tsNid, tsDef);
+          // Load autotile image if this tileset has autotiles
+          if (tsDef.autotiles && Object.keys(tsDef.autotiles).length > 0) {
+            const autoImg = await this.resources.tryLoadImage(
+              `resources/tilesets/${tsNid}_autotiles.png`,
+            );
+            if (autoImg) {
+              autotileImages.set(tsNid, autoImg);
+            }
+          }
+        }
       }),
     );
 
-    this.tilemap = TileMapObject.fromPrefab(tilemapData, tilesetImages);
+    this.tilemap = TileMapObject.fromPrefab(tilemapData, tilesetImages, tilesetDefs, autotileImages);
 
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);

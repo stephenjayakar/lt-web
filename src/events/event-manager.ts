@@ -321,6 +321,26 @@ export function evaluateCondition(
     }
   }
 
+  // 'X' in unit.tags / 'X' in unit1.tags / 'X' in unit2.tags (Python `in` for lists)
+  const inMatch = trimmed.match(/^['"](.+?)['"]\s+in\s+(.+)$/);
+  if (inMatch) {
+    const needle = inMatch[1];
+    const haystack = resolvePath(inMatch[2], context);
+    if (Array.isArray(haystack)) return haystack.includes(needle);
+    if (typeof haystack === 'string') return haystack.includes(needle);
+    return false;
+  }
+
+  // 'X' not in unit.tags
+  const notInMatch = trimmed.match(/^['"](.+?)['"]\s+not\s+in\s+(.+)$/);
+  if (notInMatch) {
+    const needle = notInMatch[1];
+    const haystack = resolvePath(notInMatch[2], context);
+    if (Array.isArray(haystack)) return !haystack.includes(needle);
+    if (typeof haystack === 'string') return !haystack.includes(needle);
+    return true;
+  }
+
   // Function calls: game.check_dead('Name'), check_dead('Name'), check_pair('A','B')
   const funcMatch = trimmed.match(/^(?:game\.)?check_dead\s*\(\s*['"](.+?)['"]\s*\)/);
   if (funcMatch) {
@@ -349,6 +369,78 @@ export function evaluateCondition(
     return !exceptionList.includes(u1 ?? '');
   }
 
+  // has_item('ItemNid', unit_nid_or_specifier) — check if a unit has an item
+  const hasItemMatch = trimmed.match(/^has_item\s*\(\s*['"](.+?)['"]\s*(?:,\s*(.+?))?\s*\)/);
+  if (hasItemMatch) {
+    const itemNid = hasItemMatch[1];
+    const specifier = hasItemMatch[2]?.trim();
+    // If specifier is a path like unit.nid, resolve it
+    let targetNid: string | undefined;
+    if (specifier) {
+      const resolved = resolvePath(specifier, context);
+      targetNid = typeof resolved === 'string' ? resolved : undefined;
+    }
+    // Search units for the item
+    if (context.game?.units) {
+      for (const [_, u] of context.game.units) {
+        if (targetNid && (u as any).nid !== targetNid) continue;
+        const items = (u as any).items ?? [];
+        if (items.some((item: any) => item.nid === itemNid)) return true;
+      }
+    }
+    return false;
+  }
+
+  // has_skill('SkillNid', unit_nid_or_specifier) — check if a unit has a skill
+  const hasSkillFuncMatch = trimmed.match(/^has_skill\s*\(\s*['"](.+?)['"]\s*(?:,\s*(.+?))?\s*\)/);
+  if (hasSkillFuncMatch) {
+    const skillNid = hasSkillFuncMatch[1];
+    const specifier = hasSkillFuncMatch[2]?.trim();
+    let targetUnit = context.unit1;
+    if (specifier) {
+      const resolved = resolvePath(specifier, context);
+      if (typeof resolved === 'string' && context.game?.units) {
+        targetUnit = context.game.units.get(resolved);
+      } else if (resolved && typeof resolved === 'object') {
+        targetUnit = resolved;
+      }
+    }
+    if (!targetUnit) return false;
+    const skills = targetUnit.skills ?? [];
+    return skills.some((s: any) => s.nid === skillNid);
+  }
+
+  // v('varname') / v('varname', default) — variable lookup (level vars then game vars)
+  const vMatch = trimmed.match(/^v\s*\(\s*['"](.+?)['"]\s*(?:,\s*(.+?))?\s*\)/);
+  if (vMatch) {
+    const varName = vMatch[1];
+    const fallback = vMatch[2] !== undefined ? resolvePath(vMatch[2], context) : undefined;
+    if (context.levelVars?.has(varName)) return context.levelVars.get(varName);
+    if (context.gameVars?.has(varName)) return context.gameVars.get(varName);
+    return fallback ?? 0;
+  }
+
+  // unit.can_unlock(region) — check if unit has a key/lockpick item
+  const canUnlockMatch = trimmed.match(/^(?:unit\d?\.)?can_unlock\s*\(\s*(\w+)\s*\)/);
+  if (canUnlockMatch) {
+    const unit = context.unit1;
+    if (!unit) return false;
+    const items = unit.items ?? [];
+    return items.some((item: any) => {
+      const comps = item.components ?? [];
+      return comps.some((c: any) => {
+        const name = Array.isArray(c) ? c[0] : c.nid ?? c.name ?? '';
+        return name === 'unlock' || name === 'lockpick' || name === 'key';
+      });
+    });
+  }
+
+  // is_dead('UnitNid') — shorthand for check_dead
+  const isDeadMatch = trimmed.match(/^(?:game\.)?is_dead\s*\(\s*['"](.+?)['"]\s*\)/);
+  if (isDeadMatch) {
+    return isUnitDead(isDeadMatch[1], context);
+  }
+
   // len(game.get_enemy_units()) == N
   const lenEnemyMatch = trimmed.match(/^len\s*\(\s*game\.get_enemy_units\s*\(\s*\)\s*\)\s*(==|!=|>=|<=|>|<)\s*(\d+)/);
   if (lenEnemyMatch) {
@@ -357,6 +449,29 @@ export function evaluateCondition(
     const enemies = context.game?.board?.getTeamUnits('enemy') ?? [];
     const count = enemies.filter((u: any) => !u.isDead()).length;
     return compareNumbers(count, op, n);
+  }
+
+  // any_unit_in_region('RegionNid', team='enemy') and similar patterns
+  const anyUnitInRegionMatch = trimmed.match(/^any_unit_in_region\s*\(\s*['"](.+?)['"]\s*(?:,\s*(?:team\s*=\s*)?['"](.+?)['"]\s*)?\)/);
+  if (anyUnitInRegionMatch) {
+    const regionNid = anyUnitInRegionMatch[1];
+    const teamFilter = anyUnitInRegionMatch[2];
+    const regions = context.game?.currentLevel?.regions ?? [];
+    const region = regions.find((r: any) => r.nid === regionNid);
+    if (!region) return false;
+    const [rx, ry] = region.position;
+    const [rw, rh] = region.size;
+    if (context.game?.units) {
+      for (const [_, u] of context.game.units) {
+        if (teamFilter && (u as any).team !== teamFilter) continue;
+        const pos = (u as any).position;
+        if (!pos) continue;
+        if (pos[0] >= rx && pos[0] < rx + rw && pos[1] >= ry && pos[1] < ry + rh) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // Comparison operators: resolve dotted paths

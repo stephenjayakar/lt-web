@@ -5154,6 +5154,28 @@ export class EventState extends State {
         return false;
       }
 
+      // ----- Weather -----
+
+      case 'add_weather': {
+        // add_weather;nid
+        const weatherNid = (args[0] ?? '').toLowerCase();
+        if (weatherNid && game.tilemap) {
+          game.tilemap.addWeather(weatherNid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_weather': {
+        // remove_weather;nid
+        const weatherNid2 = (args[0] ?? '').toLowerCase();
+        if (weatherNid2 && game.tilemap) {
+          game.tilemap.removeWeather(weatherNid2);
+        }
+        this.advancePointer();
+        return false;
+      }
+
       // ----- Modify game var (arithmetic) -----
 
       case 'modify_game_var': {
@@ -5605,11 +5627,83 @@ export class EventState extends State {
       }
 
       // ----- Load unit into memory (doesn't place on map) -----
-      case 'load_unit':
-      case 'make_generic':
-        // Stub — used in later chapter cinematics
+      case 'load_unit': {
+        // load_unit;UniqueUnitNID;Team;AI
+        const luNid = args[0] ?? '';
+        const luTeam = args[1] || 'player';
+        const luAi = args[2] || 'None';
+        if (game.units.has(luNid)) {
+          console.warn(`load_unit: Unit "${luNid}" already exists`);
+          this.advancePointer();
+          return false;
+        }
+        const luPrefab = game.db?.units?.get(luNid);
+        if (!luPrefab) {
+          console.warn(`load_unit: Unit prefab "${luNid}" not found in db`);
+          this.advancePointer();
+          return false;
+        }
+        // Spawn into memory with no position (doesn't place on map)
+        const luUnit = game.spawnUnit(luPrefab, luTeam, null, luAi);
+        this.loadMapSpriteForUnit(luUnit, game);
         this.advancePointer();
         return false;
+      }
+
+      case 'make_generic': {
+        // make_generic;NID;Klass;Level;Team;AI;Faction;AnimVariant;ItemList
+        let mgNid = args[0] ?? '';
+        const mgKlass = args[1] ?? '';
+        const mgLevel = parseInt(args[2], 10) || 1;
+        const mgTeam = args[3] || 'player';
+        const mgAi = args[4] || 'None';
+        // args[5] = faction (ignored for now)
+        const mgVariant = args[6] || '';
+        // args[7] = comma-separated item list
+        const mgItemStr = args[7] ?? '';
+        const mgItems: [string, boolean][] = mgItemStr
+          ? mgItemStr.split(',').map((s: string) => [s.trim(), false] as [string, boolean])
+          : [];
+
+        // Auto-generate NID if empty
+        if (!mgNid) {
+          let counter = 201;
+          while (game.units.has(String(counter))) counter++;
+          mgNid = String(counter);
+        } else if (game.units.has(mgNid)) {
+          console.warn(`make_generic: Unit "${mgNid}" already exists`);
+          this.advancePointer();
+          return false;
+        }
+
+        const mgKlassDef = game.db?.classes?.get(mgKlass);
+        if (!mgKlassDef) {
+          console.warn(`make_generic: Class "${mgKlass}" not found in db`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Build synthetic GenericUnitData and spawn
+        const mgData: any = {
+          nid: mgNid,
+          variant: mgVariant || null,
+          level: mgLevel,
+          klass: mgKlass,
+          faction: args[5] || '',
+          starting_items: mgItems,
+          starting_skills: [],
+          team: mgTeam,
+          ai: mgAi,
+          ai_group: null,
+          starting_position: null,
+          generic: true,
+        };
+        game.spawnGenericUnit(mgData);
+        const mgUnit = game.units.get(mgNid);
+        if (mgUnit) this.loadMapSpriteForUnit(mgUnit, game);
+        this.advancePointer();
+        return false;
+      }
 
       case 'hide_combat_ui':
       case 'show_combat_ui':
