@@ -4,7 +4,7 @@ import type { InputEvent } from '../engine/input';
 import type { EventPortrait } from '../events/event-portrait';
 import { FONT as BMP_FONTS, areFontsReady } from '../rendering/bmp-font';
 
-export type DialogState = 'typing' | 'waiting' | 'done';
+export type DialogState = 'transition_in' | 'typing' | 'waiting' | 'done';
 
 const FONT = '8px monospace';
 const SPEAKER_FONT = '8px monospace';
@@ -107,12 +107,16 @@ export class Dialog {
   /** Whether to clear displayed text on next input (from {clear} tag). */
   private _clearOnResume: boolean = false;
 
+  /** Transition-in progress 0..1 (matching Python's ~167ms / 10 frames). */
+  private transitionProgress: number = 0;
+  private static readonly TRANSITION_DURATION_MS = 167; // 10 frames at 60fps
+
   constructor(text: string, speaker?: string, portrait?: EventPortrait, typeSpeed?: number) {
     this.text = text;
     this.displayedText = '';
     this.charIndex = 0;
     this.speaker = speaker ?? '';
-    this.state = 'typing';
+    this.state = 'transition_in';
     this.typeSpeed = typeSpeed ?? DEFAULT_TYPE_SPEED;
     this.frameCounter = 0;
     this.waitingForInput = false;
@@ -129,6 +133,12 @@ export class Dialog {
     if (event === null) return false;
 
     if (event === 'SELECT') {
+      // Skip transition if still transitioning in
+      if (this.state === 'transition_in') {
+        this.transitionProgress = 1;
+        this.state = 'typing';
+        return false;
+      }
       if (this.state === 'typing') {
         // Skip to end of current line
         this._finishCurrentLine();
@@ -172,6 +182,17 @@ export class Dialog {
 
   /** Update typewriter effect. Called once per frame. */
   update(): void {
+    // Handle transition_in: advance progress until complete, then start typing
+    if (this.state === 'transition_in') {
+      // ~16.67ms per frame at 60fps
+      this.transitionProgress = Math.min(1, this.transitionProgress + (1000 / 60) / Dialog.TRANSITION_DURATION_MS);
+      if (this.transitionProgress >= 1) {
+        this.transitionProgress = 1;
+        this.state = 'typing';
+      }
+      return;
+    }
+
     if (this.state !== 'typing') return;
 
     const currentLineText = this.lines[this.currentLine] ?? '';
@@ -253,6 +274,9 @@ export class Dialog {
   draw(surf: Surface): void {
     if (this.state === 'done') return;
 
+    const isTransitionIn = this.state === 'transition_in';
+    const transT = this.transitionProgress;
+
     // Compute box position — either relative to portrait or at bottom
     let boxX: number;
     let boxW: number;
@@ -295,6 +319,23 @@ export class Dialog {
       if (boxY < 2) boxY = 2;
     } else {
       boxY = viewport.height - boxH - BOX_MARGIN;
+    }
+
+    // During transition_in, animate the background growing + fading in
+    // Python: background grows from center and opacity increases over 10 frames
+    if (isTransitionIn) {
+      const alpha = 0.92 * transT;
+      const scaleW = 0.5 + 0.5 * transT;
+      const scaleH = 0.3 + 0.7 * transT;
+      const transBoxW = boxW * scaleW;
+      const transBoxH = boxH * scaleH;
+      const transBoxX = boxX + (boxW - transBoxW) / 2;
+      const transBoxY = boxY + (boxH - transBoxH) / 2;
+      surf.fillRect(transBoxX, transBoxY, transBoxW, transBoxH, `rgba(12, 12, 28, ${alpha.toFixed(2)})`);
+      surf.drawRect(transBoxX, transBoxY, transBoxW, transBoxH,
+        `rgba(160, 160, 200, ${(0.5 * transT).toFixed(2)})`);
+      // Don't draw tail, text, or speaker during transition_in (matching Python)
+      return;
     }
 
     // Background
