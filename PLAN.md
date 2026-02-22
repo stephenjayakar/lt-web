@@ -17,6 +17,12 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **HUD moved to top of screen.** Unit info panel (top-left) and terrain
+  info panel (top-right) no longer overlap with dialogue boxes at bottom.
+- **Skip-all-dialogue.** Pressing BACK (X/Escape) during a dialog now
+  enables "skip mode" which auto-advances through all remaining speak,
+  narrate, wait, alert, and transition commands in the current event.
+  Non-dialogue commands (unit spawns, variable changes, etc.) still execute.
 - **Battle music transitions.** AudioManager now has a music stack
   (`pushMusic`/`popMusic`). CombatState plays `player_battle` or
   `enemy_battle` music when combat begins and restores phase music

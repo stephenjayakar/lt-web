@@ -88,7 +88,7 @@ export class HUD {
     const lh = BASE_LINE_HEIGHT * s;
 
     const px = margin;
-    const py = screenH * dpr - ph - margin;
+    const py = margin;
 
     // Background
     ctx.fillStyle = BG_COLOR;
@@ -145,7 +145,7 @@ export class HUD {
     const lh = BASE_LINE_HEIGHT * s;
 
     const px = screenW * dpr - pw - margin;
-    const py = screenH * dpr - ph - margin;
+    const py = margin;
 
     // Background
     ctx.fillStyle = BG_COLOR;

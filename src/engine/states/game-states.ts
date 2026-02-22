@@ -3375,6 +3375,9 @@ export class EventState extends State {
   // For-loop state: stack of { varName, values[], currentIndex, loopStartPointer }
   private forLoopStack: { varName: string; values: string[]; currentIndex: number; startPointer: number }[] = [];
 
+  // Skip mode: when true, all speak/narrate commands are auto-advanced
+  private skipMode: boolean = false;
+
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
@@ -3399,6 +3402,7 @@ export class EventState extends State {
     this.choiceMenu = null;
     this.choiceResult = null;
     this.forLoopStack = [];
+    this.skipMode = false;
   }
 
   // -----------------------------------------------------------------------
@@ -3417,6 +3421,14 @@ export class EventState extends State {
 
     // Forward input to dialog if active
     if (this.dialog) {
+      if (effective === 'BACK') {
+        // Enable skip mode — dismiss this dialog and auto-skip all
+        // remaining speak/narrate commands in the current event
+        this.skipMode = true;
+        this.dialog = null;
+        this.advancePointer();
+        return;
+      }
       const done = this.dialog.handleInput(effective);
       if (done) {
         this.dialog = null;
@@ -3822,6 +3834,11 @@ export class EventState extends State {
 
       case 'speak':
       case 'narrate': {
+        // In skip mode, auto-advance past all dialogue without showing it
+        if (this.skipMode) {
+          this.advancePointer();
+          return false;
+        }
         const speaker = args[0] ?? '';
         const text = args[1] ?? '';
         this.dialog = new Dialog(text, speaker || undefined);
@@ -3830,6 +3847,10 @@ export class EventState extends State {
       }
 
       case 'wait': {
+        if (this.skipMode) {
+          this.advancePointer();
+          return false;
+        }
         this.waiting = true;
         this.waitTimer = parseInt(args[0], 10) || 1000;
         return true;
@@ -3839,6 +3860,16 @@ export class EventState extends State {
         // transition;open — fade FROM black (reveal)
         // transition;close — fade TO black (hide)
         // transition (no args) — same as close
+        if (this.skipMode) {
+          // In skip mode, apply transitions instantly
+          const dir = (args[0] ?? 'close').toLowerCase();
+          this.transitionAlpha = dir === 'open' ? 0 : 1;
+          this.transitionFadingIn = false;
+          this.transitionFadingOut = false;
+          this.transitionHoldBlack = dir !== 'open';
+          this.advancePointer();
+          return false;
+        }
         const direction = (args[0] ?? 'close').toLowerCase();
         if (direction === 'open') {
           this.transitionFadingOut = true;
@@ -3852,6 +3883,10 @@ export class EventState extends State {
       }
 
       case 'alert': {
+        if (this.skipMode) {
+          this.advancePointer();
+          return false;
+        }
         const text = args[0] ?? '';
         this.banner = new Banner(text, undefined, 1500);
         // Don't advance — advanced when banner finishes (in update)
