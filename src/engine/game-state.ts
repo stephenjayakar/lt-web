@@ -103,6 +103,9 @@ export class GameState {
   combatTarget: UnitObject | null;
   /** Script tokens for scripted combat (interact_unit). Null for normal combat. */
   combatScript: string[] | null;
+  /** Whether the current combat was triggered from an event (interact_unit).
+   *  When true, CombatState should NOT push EventState on cleanup. */
+  eventCombat: boolean;
   /** Transient shop data (set by shop event command, consumed by ShopState). */
   shopUnit: any | null;
   shopItems: any[] | null;
@@ -203,6 +206,7 @@ export class GameState {
     this.infoMenuUnit = null;
     this.combatTarget = null;
     this.combatScript = null;
+    this.eventCombat = false;
     this.shopUnit = null;
     this.shopItems = null;
     this.shopStock = null;
@@ -279,6 +283,7 @@ export class GameState {
     this.infoMenuUnit = null;
     this.combatTarget = null;
     this.combatScript = null;
+    this.eventCombat = false;
     this.shopUnit = null;
     this.shopItems = null;
     this.shopStock = null;

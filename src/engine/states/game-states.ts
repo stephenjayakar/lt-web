@@ -2489,6 +2489,15 @@ export class CombatState extends State {
   private phase: CombatPhase = 'combat';
   private phaseTimer: number = 0;
 
+  /**
+   * Whether this combat was triggered from an event (interact_unit).
+   * When true, CombatState should NOT push EventState on cleanup —
+   * the calling EventState is already on the stack and will resume
+   * processing when CombatState pops via back().
+   * Matches Python's `event_combat` flag in `simple_combat.py`.
+   */
+  private eventCombat: boolean = false;
+
   // EXP bar animation
   private expDisplayStart: number = 0;
   private expDisplayTarget: number = 0;
@@ -2974,15 +2983,22 @@ export class CombatState extends State {
         this.rightPlatformImg = null;
         this.battleBackgroundImg = null;
 
+        // Clear eventCombat flag
+        const wasEventCombat = game.eventCombat;
+        game.eventCombat = false;
+
         // Pop combat state
         game.state.back();
 
-        // If events were triggered by combat (combat_end, combat_death), push EventState
-        if (game.eventManager?.hasActiveEvents()) {
+        // If events were triggered by combat (combat_end, combat_death), push EventState.
+        // BUT skip this when combat was triggered from an event (interact_unit) —
+        // EventState is already on the stack below and will resume processing.
+        // Matches Python's handle_state_stack which does `pass` for event_combat.
+        if (!wasEventCombat && game.eventManager?.hasActiveEvents()) {
           game.state.change('event');
         }
         // If Canto, re-enter move state for remaining movement
-        else if (hasCanto) {
+        else if (!wasEventCombat && hasCanto) {
           game.selectedUnit = attacker;
           game.state.change('move');
         }
@@ -4899,9 +4915,11 @@ export class EventState extends State {
     const game = getGame();
     const nextEvent = game.eventManager?.getCurrentEvent() ?? null;
     if (!nextEvent) {
-      // Nothing to process — pop back immediately
+      // Nothing to process — pop back immediately.
+      // Return 'repeat' so the state machine flushes this back() before
+      // running update() on us (which would queue a second back()).
       game.state.back();
-      return;
+      return 'repeat';
     }
     // Only do a full reset when starting a genuinely NEW event.
     // When EventState is re-activated after another state pops (e.g.,
@@ -7516,6 +7534,7 @@ export class EventState extends State {
         game.selectedUnit = iuAttacker;
         game.combatTarget = iuDefender;
         game.combatScript = iuScript;
+        game.eventCombat = true;  // Flag so CombatState doesn't double-push EventState
 
         if (iuImmediate) {
           // Immediate mode: resolve combat without visual animation

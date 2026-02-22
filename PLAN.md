@@ -95,6 +95,12 @@ All Phase 0-4 work is done. Key systems implemented:
     from `computeHit`/`computeDamage`/`computeCrit`), weapon name, and HP bar. Panel
     height increased from 28px to 44px to accommodate stats. Matches Python's layout
     with stat labels + right-aligned values.
+  - **Game freeze after cutscene combat (interact_unit).** Fixed double-pop of state
+    stack caused by CombatState unnecessarily pushing EventState after event-triggered
+    combat. Added `game.eventCombat` flag set by `interact_unit` handler; CombatState
+    cleanup now skips `change('event')` when this flag is set (matching Python's
+    `event_combat` flag in `simple_combat.py`). Also fixed EventState `begin()` to
+    return `'repeat'` when queue is empty to prevent double `back()` in same frame.
 
 ---
 
