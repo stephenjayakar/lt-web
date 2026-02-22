@@ -259,10 +259,16 @@ export class Dialog {
     let tailX: number | null = null; // Speech bubble tail X position
 
     if (this.portrait) {
-      // Position dialog as speech bubble relative to portrait
+      // Position dialog relative to portrait, matching Python's layout.
+      // Python uses: pos_x centered on portrait with width from text measurement.
+      // Wide dialog (>= viewport - 8) gets fixed at x=4.
       const portraitCenter = this.portrait.getDesiredCenter();
-      boxW = Math.min(viewport.width - 8, 120); // Slightly narrower for speech bubble
-      boxX = Math.max(2, Math.min(portraitCenter - boxW / 2, viewport.width - boxW - 2));
+      boxW = viewport.width - 8; // Full width for readability (matching Python)
+      if (boxW >= viewport.width - 8) {
+        boxX = 4;
+      } else {
+        boxX = Math.max(8, Math.min(portraitCenter - boxW / 2, viewport.width - 8 - boxW));
+      }
       tailX = Math.max(boxX + 6, Math.min(portraitCenter, boxX + boxW - 6));
     } else {
       // Default: full-width bar at bottom of screen
@@ -280,14 +286,13 @@ export class Dialog {
     const boxH = Math.max(MIN_BOX_HEIGHT, totalLines * LINE_HEIGHT + INNER_PAD * 2);
 
     // Compute Y position (depends on box height)
+    // Python formula: pos_y = WINHEIGHT - height - portrait_height(80) - 4
+    // This places the dialog above the portrait area at the bottom of screen.
     let boxY: number;
     if (this.portrait) {
-      // Place above the portrait
-      boxY = Math.max(2, this.portrait.position[1] - boxH - TAIL_HEIGHT - 2);
-      // If that puts it off-screen, place below
-      if (boxY < 2) {
-        boxY = this.portrait.position[1] + 80 + TAIL_HEIGHT + 2;
-      }
+      boxY = viewport.height - boxH - 80 - 4;
+      // Clamp to at least 2px from top
+      if (boxY < 2) boxY = 2;
     } else {
       boxY = viewport.height - boxH - BOX_MARGIN;
     }

@@ -16,6 +16,7 @@ import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
 import { setActionGameRef } from './engine/action';
 import { initIcons } from './ui/icons';
+import { setMenuAudioManager } from './ui/menu';
 import { initFonts } from './rendering/bmp-font';
 import {
   setGameRef,
@@ -30,6 +31,7 @@ import {
   TradeState,
   RescueState,
   DropState,
+  WeaponChoiceState,
   TargetingState,
   CombatState,
   AIState,
@@ -270,6 +272,7 @@ async function main(): Promise<void> {
   setActionGameRef(() => gameState);
   setGameRef(gameState);
   setInfoMenuGameRef(gameState);
+  setMenuAudioManager(audioManager);
   setPrepGameRef(gameState);
   setBaseGameRef(gameState);
   setSettingsGameRef(gameState);
@@ -300,6 +303,7 @@ async function main(): Promise<void> {
     new TradeState(),
     new RescueState(),
     new DropState(),
+    new WeaponChoiceState(),
     new TargetingState(),
     new CombatState(),
     new AIState(),

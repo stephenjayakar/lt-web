@@ -1,9 +1,10 @@
 # AGENTS.md -- How the Engine Was Designed and Built
 
 This document describes how the Lex Talionis web engine was architected
-during a single AI-assisted session, covering the analysis strategy,
-design decisions, parallelization approach, and the agent workflow that
-produced ~44,400 lines of TypeScript across 84 files.
+and built across multiple AI-assisted sessions, covering the analysis strategy,
+design decisions, parallelization approach, and the full set of implemented
+systems. The engine currently spans **~43,300 lines of TypeScript across 84
+source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
 
@@ -272,9 +273,6 @@ top-level game state machine manages which of these is active.
 - **The `any` type** is used in a few places (the lazy game reference in
   `game-states.ts`, the `MapSprite = unknown` type alias). These should
   be replaced with proper typed interfaces to prevent runtime surprises.
-- **No runtime testing** was done during the build. The engine compiles
-  but has not been executed against real game data. The first runtime
-  test will likely surface dozens of integration issues.
 - **Agent prompt size** became a challenge for the larger files
   (`game-states.ts` at 1353 lines). Extremely detailed prompts were
   needed to get all 11 states correct in a single pass.
@@ -282,3 +280,239 @@ top-level game state machine manages which of these is active.
   `combat-calcs.ts` with slightly different APIs. This was resolved by
   keeping the more complete version, but better coordination (or writing
   shared interfaces first) would have prevented it.
+
+### Known Bugs
+
+All previously tracked bugs have been resolved. See PLAN.md "Known Bugs"
+section for the full resolution history.
+
+---
+
+## 8. Implemented Systems
+
+This section summarizes all major systems that have been implemented
+across multiple development sessions. For detailed change logs, see
+`PLAN.md`.
+
+### 8.1 Core Gameplay (Phase 0 + 1)
+
+All foundation and core gameplay systems are complete:
+
+- **State machine**: Stack-based with 21+ states (Title, Free, Move, Menu,
+  Targeting, Combat, AI, TurnChange, PhaseChange, Movement, Event, Shop,
+  Prep, Base, Settings, Minimap, Victory, Credits, Turnwheel, Info, Overworld, etc.)
+- **Tilemap rendering**: Multi-layer tilemaps with autotile animation, weather
+  particles (7 types), foreground layers, layer show/hide, map animations
+- **Unit system**: Full UnitObject with stats, items, skills, status effects,
+  rescue/carry, canto, affinity, party assignment, portrait NID
+- **Action menu**: Dynamic options (Attack, Item, Trade, Rescue, Drop, Visit,
+  Shop, Seize, Talk, Wait) with eligibility checks
+- **Combat**: Full combat calcs with weapon triangle, terrain bonuses, support
+  bonuses, component dispatch, scripted combat (`interact_unit`), both
+  MapCombat and AnimationCombat paths
+- **AI**: Behaviour iteration with primary/secondary fallback, all view_range
+  modes, target_spec filtering, guard/defend/retreat, group activation,
+  healing item/staff use, Interact behaviour for destructible regions
+- **Experience/leveling**: Growth-based stat rolls, animated EXP bar, level-up
+  display, random and fixed growth modes
+- **Win/loss conditions**: Rout, Defeat Boss, Seize, Survive X turns,
+  specific unit death, Lord death
+
+### 8.2 Event System (~100+ Commands)
+
+The event system supports both semicolon-delimited (EVNT) and Python-syntax
+(PYEV1) event scripts. Key command categories:
+
+- **Dialog**: `speak`/`s`, `narrate`, `choice`/`unchoice`, `alert`,
+  `chapter_title`, `location_card`, `change_background`
+- **Portraits**: `add_portrait`, `multi_add_portrait`, `remove_portrait`,
+  `multi_remove_portrait`, `remove_all_portraits`, `move_portrait`,
+  `bop_portrait`/`bop`, `mirror_portrait`, `expression`
+- **Units**: `add_unit`, `load_unit`, `make_generic`, `remove_unit`,
+  `kill_unit`, `move_unit`, `add_group`, `spawn_group`, `remove_group`,
+  `move_group`, `set_name`, `equip_item`, `set_stats`, `change_class`,
+  `promote`, `has_visited`
+- **Items/Money**: `give_item`, `remove_item`, `give_money`, `give_exp`,
+  `give_bexp`, `unlock`
+- **Map**: `show_layer`, `hide_layer`, `change_tilemap`, `add_region`,
+  `remove_region`, `region_condition`, `map_anim`, `remove_map_anim`,
+  `add_weather`, `remove_weather`, `screen_shake`
+- **Flow**: `if`/`elif`/`else`/`end`, `for`/`endf`, `transition`,
+  `wait`, `end_turn`, `win_game`, `lose_game`
+- **Audio**: `music`, `sound`, `music_fade_back`, `music_clear`,
+  `change_music`
+- **Camera**: `center_cursor`, `move_cursor`, `disp_cursor`, `flicker_cursor`
+- **Game state**: `set_game_var`, `inc_game_var`, `modify_game_var`,
+  `change_objective`, `change_team`, `add_talk`, `remove_talk`
+- **Combat**: `interact_unit` (scripted combat with forced outcomes), `shop`
+- **Prep/Base**: `prep`, `base`, `add_base_convo`, `add_market_item`
+- **Overworld**: 11 commands (`overworld_cinematic`, `reveal_overworld_node`,
+  `overworld_move_unit`, `set_overworld_position`, etc.)
+- **Fog/Turnwheel**: `enable_fog_of_war`, `set_fog_of_war`,
+  `enable_turnwheel`, `activate_turnwheel`, `clear_turnwheel`
+- **Initiative**: `add_to_initiative`, `move_in_initiative`
+- **Records**: `create_record`, `update_record`, `add_achievement`,
+  `complete_achievement`
+- **Save**: `battle_save`, `battle_save_prompt`, `skip_save`, `suspend`
+- **Roam**: `set_roam`, `set_roam_unit`
+
+### 8.3 Visual Polish (Phase 2)
+
+- **GBA-style combat animations**: ~2,600 lines across 5 files. Full pose
+  playback, weapon animation resolution, combat effects (spell/weapon),
+  terrain panorama backgrounds, platform images, viewbox iris transition,
+  screen shake, damage numbers (bounce physics), hit/crit sparks
+- **Bitmap font rendering**: 23 font variants with variable-width glyphs,
+  19 color palette variants, stacked rendering
+- **Portrait system**: Sprite sheet compositing (face + mouth + eyes),
+  automatic blinking, talking animation, expressions, transitions
+- **9-slice menu backgrounds**: Arbitrarily-sized window backgrounds from
+  24x24 source tiles
+- **Icon rendering**: 16x16 and 32x32 icon sheets for item display
+- **Team palette swap**: Color conversion on map sprites for team colors
+- **Weather**: 7 particle types (rain, snow, sand, light, dark, night, sunset)
+- **Autotile animation**: 16-frame cycling for animated water/lava tiles
+- **Map animations**: Spritesheet-based animations at map positions
+- **Enemy threat zones**: All-enemy and individual-enemy range overlays
+- **Cursor sprite**: Animated 3-frame bounce from actual sprite sheet
+
+### 8.4 Advanced Game Systems (Phase 3)
+
+- **Support system**: Adjacency-based support points, rank progression,
+  5 affinity bonus methods, combat stat bonuses, per-chapter limits
+- **Fog of war**: GBA/Thracia/Hybrid modes, per-team vision grids, Bresenham
+  LOS, torch/thief sight bonuses, fog overlay rendering
+- **Turnwheel / Divine Pulse**: Full undo/redo of game actions, action groups,
+  navigation UI, lock mechanism, recording control
+- **Initiative turn system**: Speed-based per-unit turn order as alternative
+  to standard phase cycle, auto-insert/remove on spawn/death
+- **Overworld map**: FE8-style world map with nodes, roads, Dijkstra pathfinding,
+  animated entity movement, level entry, 11 event commands
+- **Free roam mode**: ARPG-style direct unit control with physics-based
+  movement, collision detection, NPC/region interaction
+- **Promotion / class change**: Full stat recalculation with sentinel values,
+  growth changes, wexp gain, class skill granting
+- **Difficulty modes**: Runtime difficulty with permadeath, growths, RNG mode,
+  base stat bonuses, autolevel counters
+- **Party/Convoy**: Multi-party support with separate inventories, 7 convoy
+  action classes, money/bexp management
+- **Save/Load**: IndexedDB storage with localStorage fallback, full game state
+  serialization (units/items/skills/levels/parties/supports), 15-step
+  ordered restoration, suspend/resume
+- **Records**: Per-save statistics (kills, damage, healing, etc.),
+  cross-save persistent records, achievement system
+- **Query engine**: 28 Python-compatible query functions with camelCase and
+  snake_case aliases for event condition evaluation
+- **Python events (PYEV1)**: Line-by-line interpreter with indentation-based
+  blocks, if/elif/else/for/while, Python-to-JS expression translation
+- **Equation evaluator**: Python ternary expressions, unit tag checks,
+  DB constant/equation references, JS fallback for complex expressions
+
+### 8.5 Mobile / Distribution (Phase 4)
+
+- **Touch controls**: Tap-to-move, pinch-to-zoom, drag-to-pan
+- **Responsive scaling**: Dynamic viewport, orientation-aware, DPR-aware HUD
+- **PWA**: Service worker with precaching, offline support, install prompt,
+  update detection, connectivity tracking
+- **Asset bundling**: Client-side zip parser, transparent ResourceManager
+  interceptors, zero external dependencies
+- **Performance profiling**: Frame budget monitor, per-function timing,
+  histogram, profiling sessions (F4), exportable JSON reports
+- **Capacitor / TWA**: iOS/Android wrapper config, wake lock, status bar,
+  pause/resume lifecycle, back button handling, safe area insets
+
+---
+
+## 9. File Architecture
+
+### Core Engine (`src/engine/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `game-state.ts` | ~1150 | Singleton hub: subsystem refs, level loading, win/loss, difficulty |
+| `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
+| `action.ts` | ~1720 | All game actions (Move, Damage, Heal, Promote, Convoy, etc.) |
+| `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
+| `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
+| `initiative.ts` | ~210 | Initiative-based turn system tracker |
+| `difficulty.ts` | ~135 | Difficulty mode runtime class |
+| `save.ts` | ~1474 | IndexedDB save/load with full serialization |
+| `records.ts` | ~903 | Recordkeeper, persistent records, achievements |
+| `query-engine.ts` | ~874 | 28 Python-compatible query functions |
+| `support-system.ts` | ~500 | Support pairs, ranks, affinity bonuses |
+| `line-of-sight.ts` | ~170 | Bresenham LOS for fog of war |
+| `perf-monitor.ts` | ~440 | Frame budget monitor, profiling |
+
+### Game States (`src/engine/states/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `game-states.ts` | ~8050 | 21+ states, ~84 event commands, all gameplay logic |
+| `prep-state.ts` | ~499 | GBA-style preparation screen |
+| `base-state.ts` | ~510 | Base screen hub menu |
+| `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
+| `minimap-state.ts` | ~355 | Minimap overlay |
+| `victory-state.ts` | ~332 | Victory screen |
+| `credit-state.ts` | ~438 | Credits screen |
+| `info-menu-state.ts` | ~621 | Unit info/status screen |
+| `save-load-state.ts` | ~300 | Save/Load UI |
+| `overworld-state.ts` | ~668 | Overworld map (3 states) |
+| `turnwheel-state.ts` | ~300 | Turnwheel undo/redo UI |
+
+### Combat (`src/combat/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `combat-calcs.ts` | ~722 | Hit, damage, crit, avoid, weapon triangle, component dispatch |
+| `combat-solver.ts` | ~409 | Strike sequencing, vantage/desperation/miracle |
+| `animation-combat.ts` | ~1078 | GBA-style animation combat state machine |
+| `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
+| `map-combat.ts` | ~555 | Map-mode combat (no animations) |
+| `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
+| `item-system.ts` | ~247 | Item component dispatch |
+| `skill-system.ts` | ~398 | Skill component dispatch |
+
+### Events (`src/events/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `event-manager.ts` | ~1265 | Event queue, condition evaluator, JS fallback eval |
+| `event-portrait.ts` | ~700 | Portrait compositing, blinking, talking, expressions |
+| `python-events.ts` | ~995 | PYEV1 Python-syntax event interpreter |
+| `screen-positions.ts` | ~117 | Named screen position resolver |
+
+### Data (`src/data/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `database.ts` | ~479 | All game data loading (chunked + non-chunked JSON) |
+| `resource-manager.ts` | ~309 | HTTP asset loader with caching |
+| `types.ts` | ~371 | TypeScript interfaces for all LT data formats |
+| `asset-bundle.ts` | ~497 | Client-side zip parser for bundled assets |
+
+### Rendering (`src/rendering/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `tilemap.ts` | ~360 | Multi-layer tilemap, autotile, weather management |
+| `map-view.ts` | ~287 | Full rendering pipeline (tilemap, units, fog, weather) |
+| `bmp-font.ts` | ~526 | Bitmap font system (23 variants, 19 color palettes) |
+| `map-sprite.ts` | ~294 | Unit map sprites with team palette swap |
+| `weather.ts` | ~238 | Weather particle system (7 types) |
+| `map-animation.ts` | ~169 | Spritesheet-based map animations |
+
+### AI (`src/ai/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `ai-controller.ts` | ~1195 | Full AI: behaviours, targeting, healing, group activation |
+
+### UI (`src/ui/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `dialog.ts` | ~367 | Dialog boxes with portrait awareness, word-wrap |
+| `hud.ts` | ~253 | Unit info + terrain info panels |
+| `base-surf.ts` | ~228 | 9-slice menu window backgrounds |
+| `menu.ts` | ~204 | Choice menu with mouse/touch support |
+| `icons.ts` | ~151 | Item icon rendering (16x16/32x32) |
+| `banner.ts` | ~113 | Phase/alert banners |
+
+### Platform (`src/`)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `main.ts` | ~496 | Bootstrap, canvas, game loop, state registration |
+| `pwa.ts` | ~310 | Service worker, install prompt, connectivity |
+| `native.ts` | ~210 | Capacitor/TWA platform detection, lifecycle |
