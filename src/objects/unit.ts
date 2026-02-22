@@ -73,6 +73,9 @@ export class UnitObject {
   /** Portrait NID for this unit (used for chibi display in HUD). */
   portraitNid: NID;
 
+  /** Affinity NID for support bonuses. */
+  affinity: string;
+
   // -- Turn-state flags ---------------------------------------------------
   hasAttacked: boolean;
   hasMoved: boolean;
@@ -89,6 +92,12 @@ export class UnitObject {
   // -- Canto / post-combat movement ---------------------------------------
   /** Whether this unit has Canto (can move after attacking). */
   hasCanto: boolean;
+
+  // -- Party membership ---------------------------------------------------
+  /** Party NID this unit belongs to. Empty string if unassigned. */
+  party: NID;
+  /** Whether this unit persists across levels. DB-loaded units are persistent; event-spawned generics may not be. */
+  persistent: boolean;
 
   // -- Status effects -----------------------------------------------------
   statusEffects: StatusEffect[];
@@ -152,6 +161,7 @@ export class UnitObject {
     this.startingPosition = null;
     this.aiGroup = '';
     this.portraitNid = prefab.portrait_nid ?? '';
+    this.affinity = prefab.affinity ?? '';
     this.hasAttacked = false;
     this.hasMoved = false;
     this.hasTraded = false;
@@ -160,6 +170,8 @@ export class UnitObject {
     this.rescuing = null;
     this.rescuedBy = null;
     this.hasCanto = false;
+    this.party = '';
+    this.persistent = true;
     this.statusEffects = [];
   }
 

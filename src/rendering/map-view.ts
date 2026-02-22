@@ -2,6 +2,20 @@ import { Surface } from '../engine/surface';
 import type { TileMapObject } from './tilemap';
 import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
 import { viewport } from '../engine/viewport';
+import type { GameBoard } from '../objects/game-board';
+import type { FogOfWarConfig } from '../data/types';
+import type { Database } from '../data/database';
+import type { UnitObject } from '../objects/unit';
+
+/**
+ * Configuration for fog of war rendering, passed into MapView.draw().
+ */
+export interface FogRenderConfig {
+  fogInfo: FogOfWarConfig;
+  board: GameBoard;
+  db: Database;
+  allUnits: UnitObject[];
+}
 
 /**
  * MapView - The core rendering pipeline for the game map.
@@ -11,6 +25,7 @@ import { viewport } from '../engine/viewport';
  * 3. Grid lines (optional)
  * 4. Units (sorted by Y for depth)
  * 5. Foreground tilemap layers
+ * 5.6. Fog of war overlay
  * 6. Cursor
  * 7. Weather (TODO)
  * 8. UI overlay
@@ -41,6 +56,8 @@ export class MapView {
    * @param highlights "x,y" -> highlight color type, or null for none.
    * @param cursor     The cursor to draw, or null.
    * @param showGrid   Whether to draw the tile grid overlay.
+   * @param renderScale Canvas render scale.
+   * @param fogConfig  Optional fog of war rendering configuration.
    * @returns          The composited map surface, ready for presentation.
    */
   draw(
@@ -56,6 +73,7 @@ export class MapView {
     } | null,
     showGrid: boolean,
     renderScale: number = 1,
+    fogConfig: FogRenderConfig | null = null,
   ): Surface {
     this.ensureSurface(renderScale);
     this.mapSurface.clear();
@@ -65,6 +83,10 @@ export class MapView {
     // offset is one tile inset from the cull rect origin.
     const offsetX = cullRect.x + TILEWIDTH;
     const offsetY = cullRect.y + TILEHEIGHT;
+
+    // Determine if fog of war is active
+    const fogActive = fogConfig &&
+      (fogConfig.fogInfo.isActive || fogConfig.board.fogRegionSet.size > 0);
 
     // 1. Background tilemap layers
     // Update autotile animation frame before rendering
@@ -92,7 +114,21 @@ export class MapView {
     }
 
     // 4. Units (sorted by Y for depth ordering)
-    this.drawUnits(this.mapSurface, units, offsetX, offsetY);
+    // Filter out units not in vision when fog is active
+    let visibleUnits = units;
+    if (fogActive && fogConfig) {
+      visibleUnits = units.filter(u => {
+        const pos: [number, number] = [u.x, u.y];
+        return fogConfig.board.inVision(
+          pos,
+          'player',
+          fogConfig.fogInfo,
+          fogConfig.db,
+          fogConfig.allUnits,
+        );
+      });
+    }
+    this.drawUnits(this.mapSurface, visibleUnits, offsetX, offsetY);
 
     // 5. Foreground tilemap layers (drawn on top of units)
     const fg = tilemap.getForegroundImage(cullRect);
@@ -104,6 +140,11 @@ export class MapView {
     tilemap.highAnimations = tilemap.highAnimations.filter(anim => !anim.update());
     for (const anim of tilemap.highAnimations) {
       anim.draw(this.mapSurface, cullRect.x, cullRect.y);
+    }
+
+    // 5.6. Fog of war overlay
+    if (fogActive && fogConfig) {
+      this.drawFogOfWar(this.mapSurface, fogConfig, cullRect, offsetX, offsetY, tilemap.width, tilemap.height);
     }
 
     // 6. Cursor
@@ -219,6 +260,60 @@ export class MapView {
         const fillWidth = Math.round(barWidth * hpRatio);
         if (fillWidth > 0) {
           surf.fillRect(barX, barY, fillWidth, barHeight, barColor);
+        }
+      }
+    }
+  }
+
+  /**
+   * Draw fog of war overlay.
+   *
+   * Iterates every visible tile in the viewport:
+   * - Tiles NOT in vision with known terrain: semi-transparent dark overlay
+   * - Tiles NOT in vision with unknown terrain: fully opaque black
+   */
+  private drawFogOfWar(
+    surf: Surface,
+    fogConfig: FogRenderConfig,
+    cullRect: { x: number; y: number; w: number; h: number },
+    offsetX: number,
+    offsetY: number,
+    mapW: number,
+    mapH: number,
+  ): void {
+    const { fogInfo, board, db, allUnits } = fogConfig;
+
+    // Compute visible tile range
+    const startCol = Math.max(0, Math.floor(offsetX / TILEWIDTH) - 1);
+    const endCol = Math.min(mapW - 1, Math.ceil((offsetX + viewport.width) / TILEWIDTH) + 1);
+    const startRow = Math.max(0, Math.floor(offsetY / TILEHEIGHT) - 1);
+    const endRow = Math.min(mapH - 1, Math.ceil((offsetY + viewport.height) / TILEHEIGHT) + 1);
+
+    for (let ty = startRow; ty <= endRow; ty++) {
+      for (let tx = startCol; tx <= endCol; tx++) {
+        const pos: [number, number] = [tx, ty];
+        const isVisible = board.inVision(pos, 'player', fogInfo, db, allUnits);
+
+        if (!isVisible) {
+          const px = tx * TILEWIDTH - offsetX;
+          const py = ty * TILEHEIGHT - offsetY;
+
+          // Quick viewport cull
+          if (
+            px + TILEWIDTH <= 0 || py + TILEHEIGHT <= 0 ||
+            px >= viewport.width || py >= viewport.height
+          ) {
+            continue;
+          }
+
+          const known = board.terrainKnown(pos, isVisible, fogInfo);
+          if (known) {
+            // Terrain is known but not in vision: semi-transparent dark overlay
+            surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, 'rgba(0,0,0,0.55)');
+          } else {
+            // Terrain is unknown: fully opaque black
+            surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, 'rgba(0,0,0,1.0)');
+          }
         }
       }
     }

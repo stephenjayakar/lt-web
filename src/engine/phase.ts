@@ -69,6 +69,18 @@ export class PhaseController {
     return this.getCurrent() === 'player';
   }
 
+  /**
+   * Set the current team directly by NID.
+   * Used by the initiative system to switch phases to match the
+   * current initiative unit's team without advancing the turn counter.
+   */
+  setCurrentTeam(team: string): void {
+    const idx = this.teams.indexOf(team);
+    if (idx !== -1) {
+      this.currentIndex = idx;
+    }
+  }
+
   /** Reset to start (turn 1, first team). */
   reset(): void {
     this.currentIndex = 0;

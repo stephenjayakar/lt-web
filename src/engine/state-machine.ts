@@ -73,6 +73,13 @@ export class StateMachine {
   update(event: InputEvent, surf: Surface): [Surface, boolean] {
     const current = this.getCurrentState();
     if (!current) {
+      if (this.tempState.length === 0) {
+        // No state on the stack AND nothing queued — the game loop will
+        // spin forever doing nothing. This indicates a bootstrap error
+        // (e.g. gameState.state.change('title') was never called).
+        console.warn('StateMachine.update: empty stack with no pending transitions');
+        return [surf, false];
+      }
       // Even with an empty stack, process deferred transitions so that
       // an initial change('title') (queued before the first update) is
       // flushed and the state actually gets pushed.
@@ -149,7 +156,15 @@ export class StateMachine {
     return surf;
   }
 
-  /** Flush the deferred transition queue. */
+  /**
+   * Flush the deferred transition queue.
+   *
+   * Note: Unlike Python's process_temp_state, this calls end() on each
+   * displaced state during multi-transition processing. In Python, end()
+   * is called once in update() on the original top, and process_temp_state
+   * only handles stack manipulation. The difference only matters when
+   * multiple transitions are queued in a single frame (rare).
+   */
   private processTempState(): void {
     while (this.tempState.length > 0) {
       const op = this.tempState.shift()!;

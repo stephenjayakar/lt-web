@@ -619,7 +619,7 @@ export class BattleAnimation {
   // Child effect spawning
   // -------------------------------------------------------------------
 
-  private spawnEffect(effectNid: string, targetList: BattleAnimation[]): void {
+  spawnEffect(effectNid: string, targetList: BattleAnimation[]): void {
     if (!this.owner?.getEffectData) return;
 
     const effectData: CombatEffectData | null = this.owner.getEffectData(effectNid);

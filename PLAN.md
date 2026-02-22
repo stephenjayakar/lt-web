@@ -8,16 +8,371 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**54 source files, ~25,500 lines of TypeScript.**
+**84 source files, ~44,400 lines of TypeScript.**
 Builds cleanly with zero type errors. Loads `.ltproj` game data over
 HTTP and runs a 60 fps game loop rendering to a dynamically-scaled
 HTML5 Canvas with dynamic viewport (mobile + desktop). Phase 1.2 core
 gameplay implemented, plus GBA-style combat animations, team-colored
 map sprites, level select, full touch/mouse/keyboard input, component
 dispatch system, scripted combat, shop system, map animations, 9-slice
-menu backgrounds, item icon rendering, and JS-based condition evaluator.
+menu backgrounds, item icon rendering, JS-based condition evaluator,
+GBA-style preparation screen, base screen hub, settings menu, minimap,
+victory screen, credits screen, support system (adjacency-based support
+points, rank progression, stat bonuses), fog of war (GBA/Thracia/Hybrid
+modes, vision grids, torch/thief sight bonuses), turnwheel / Divine
+Pulse (full undo/redo of game actions), initiative turn system
+(speed-based per-unit turn order), and overworld map system (FE8-style
+world map with nodes, roads, party movement).
 
 ### Recent Changes (Latest Session)
+- **Phase 4 Mobile/Distribution completed.** All four remaining Phase 4
+  items (PWA, Asset Bundling, Performance Profiling, Capacitor/TWA) are now
+  fully implemented and wired in.
+- **PWA support enhanced.** `src/pwa.ts` expanded with `beforeinstallprompt`
+  capture and deferred install prompt API (`canInstall()`, `showInstallPrompt()`),
+  update detection with `onUpdateAvailable()` callback, online/offline
+  connectivity tracking (`setupConnectivityTracking()`, `isOnline()`),
+  comprehensive `getPwaStatus()` for debugging. Vite plugin
+  (`swPrecacheManifest()`) in `vite.config.ts` generates
+  `precache-manifest.json` after each build listing all output files with
+  content hashes. `public/sw.js` upgraded to v2: reads precache manifest on
+  install (falls back to static list in dev), SPA navigation fallback
+  serves cached `index.html` for offline navigation. `manifest.json`
+  enhanced with `display_override`, `launch_handler`, `scope`, `id`,
+  separated any/maskable icon entries. Install prompt, connectivity, and
+  update handler wired into `main.ts` startup.
+- **Performance profiling enhanced.** `src/engine/perf-monitor.ts` rewritten
+  to ~440 lines with: min FPS tracking (matching Python's `draw_fps()`
+  from `lt-maker/app/engine/driver.py`), sustained budget violation
+  detection (warns after 3s of dropped frames — critical for mobile),
+  per-function timing API (`timeFunction()`/`endTimeFunction()` inspired
+  by Python's `@frame_time` decorator from `lt-maker/app/utilities/
+  frame_time.py`), long frame spike logging (>33ms entries, console warn
+  at >50ms), frame time histogram (7 buckets), profiling session recording
+  with F4 key (start/stop with console summary), exportable JSON report
+  with percentiles (p50/p95/p99), dropped frame count, device info
+  (hardwareConcurrency, deviceMemory, DPR), function hotspots, and memory
+  stats. `__PerfMonitor` exposed on globalThis for console profiling.
+  HUD overlay expanded to show min FPS, top 3 function hotspots with
+  color-coded timing.
+- **Capacitor / TWA wrapper implemented.** `capacitor.config.ts` enhanced
+  with SplashScreen plugin config, iOS scroll disable, server
+  allowNavigation. New `twa-manifest.json` for bubblewrap Android TWA
+  builds. New `scripts/setup-native.mjs` interactive setup script with
+  prerequisite checking and step-by-step guidance. New `src/native.ts`
+  (~210 lines) with platform detection, Screen Wake Lock API, dynamic
+  Capacitor plugin loading, app pause/resume lifecycle (audio
+  suspend/resume via new `AudioManager.suspendContext()`), Android back
+  button handling, safe area inset detection. Package.json: added
+  `setup:capacitor`, `setup:twa`, `cap:sync`, `cap:ios`, `cap:android`
+  scripts.
+
+### Previous Session
+- **Equation evaluator wiring completed.** `setEquationGameRef()` now called
+  in `main.ts` so combat equation evaluation can access DB, constants, and
+  named equations at runtime. Previously the game reference was defined but
+  never connected.
+- **Query engine functions injected into event condition evaluator.** The
+  `evaluateWithJsFallback()` in `event-manager.ts` now imports
+  `GameQueryEngine` and injects all 28 query functions (u, get_item,
+  has_item, get_subitem, get_skill, has_skill, get_klass, is_dead,
+  check_alive, get_internal_level, get_support_rank, get_terrain,
+  has_achievement, check_shove, get_money, get_bexp, is_roam,
+  get_roam_unit, ai_group_active, get_team_units, get_player_units,
+  get_enemy_units, get_all_units, get_convoy_inventory, etc.) into
+  the `new Function()` eval scope. Event conditions can now call any
+  query function directly (e.g., `is_dead('Boss')`, `get_money() > 1000`).
+- **GameQueryEngine expanded to 874 lines.** Added 13 new methods:
+  getSubitem, checkAlive, getInternalLevel, getMoney, getBexp, isRoam,
+  getRoamUnit, aiGroupActive, getTeamUnits, getPlayerUnits, getEnemyUnits,
+  getAllUnits, getConvoyInventory. All with snake_case aliases.
+
+### Previous Session
+- **Save/load system implemented.** New `src/engine/save.ts` (~1474 lines)
+  with IndexedDB storage (localStorage fallback), full serialization for
+  units/items/skills/levels/parties/supports, `saveGame()`, `suspendGame()`,
+  `loadGame()`, `loadSuspend()`, `restoreGameState()` (15-step ordered
+  restoration). Save/Load UI in `src/engine/states/save-load-state.ts`
+  (~300 lines) with `SaveMenuState` and `LoadMenuState`. Event commands:
+  `battle_save`, `battle_save_prompt`, `skip_save`, `suspend`.
+- **Query engine implemented.** New `src/engine/query-engine.ts` (~647 lines)
+  with `GameQueryEngine` class providing all Python query functions (u, v,
+  getItem, hasItem, getSkill, hasSkill, getKlass, getClosestAllies,
+  getUnitsWithinDistance, getUnitsInRegion, isDead, getSupportRank,
+  getTerrain, hasAchievement, checkShove) with camelCase + snake_case aliases.
+- **PYEV1 Python-syntax events implemented.** New `src/events/python-events.ts`
+  (~995 lines) with `PythonEventProcessor` — line-by-line interpreter with
+  indentation-based blocks, if/elif/else/for/while flow control, `$command`
+  tokenizer, Python-to-JS expression translation with builtins. Integrated
+  into `GameEvent` constructor for automatic detection.
+- **Build fixes.** Replaced `await import()` with static imports in
+  game-states.ts event handlers, replaced `require()` with static import
+  in event-manager.ts, fixed save-load-state.ts to use correct ChoiceMenu
+  API (`handleInput()` instead of non-existent `.pressed`/`.moveCursor`).
+
+### Previous Session
+- **Records system implemented.** New `src/engine/records.ts` (~903 lines)
+  with three systems: `Recordkeeper` (per-save in-memory game statistics —
+  kills, damage, healing, deaths, item use, steals, combat results, turns,
+  levels, exp, money — with append/pop, interrogation methods like getKills,
+  getDamage, getHeal, determineScore, getMvp, getKiller, getLevels,
+  getTurncounts, and full save/restore/clear); `PersistentRecordManager`
+  (cross-save key-value records backed by localStorage — CRUD operations,
+  difficulty/song unlock tracking); `AchievementManager` (cross-save
+  achievements backed by localStorage — add/complete/check/getAll with
+  hidden achievement support). Module-level singletons `RECORDS` and
+  `ACHIEVEMENTS` with `initPersistentSystems()`/`resetPersistentSystems()`.
+
+### Previous Session
+- **Free Roam system implemented.** ARPG-style direct unit control for roam
+  mode levels. New files: `src/engine/roam-info.ts` (~25 lines, roam state
+  data on GameState), `src/movement/roam-movement.ts` (~300 lines,
+  `RoamPlayerMovementComponent` with physics-based acceleration/deceleration,
+  sprinting, collision detection against terrain and enemy units, sub-tile
+  grid sync; `RationalizeMovementComponent` slides units back to grid),
+  `src/engine/states/roam-state.ts` (~470 lines, `FreeRoamState` with direct
+  unit control, NPC/region interaction within talk range, region interrupts,
+  roam-specific map rendering with sub-tile visual offsets;
+  `FreeRoamRationalizeState` transparent overlay for grid snap transitions).
+  `GameState.roamInfo` field initialized from level prefab `roam`/`roam_unit`
+  fields. `FreeState.begin()` redirects to `free_roam` when roam mode is
+  active. Event commands `set_roam` and `set_roam_unit` added to
+  `EventCommandType` and EventState command handler. Both new states
+  registered in `main.ts` with `setRoamGameRef()`.
+
+### Previous Session
+- **Difficulty modes implemented.** New `src/engine/difficulty.ts` (~135 lines)
+  with `DifficultyModeObject` runtime class. Created from DB prefab at
+  `loadLevel()`. Stores permadeath, growths, RNG mode, and mutable autolevel
+  counters. `GameState` gains `currentMode`, `initDifficulty()`, `mode` getter,
+  `getAlliedTeams()`. Unit spawning now applies difficulty base stat bonuses
+  (unique + generic) and difficulty autolevels (generic only) with
+  `promoted_autolevels_fraction` and true levels.
+- **Promotion / class change actions implemented.** New `PromoteAction` and
+  `ClassChangeAction` in `action.ts` (~240 lines combined). `PromoteAction`
+  uses the target class's promotion dict with sentinel values (-99 set to new
+  base, -98 only-if-bigger, -97 base diff). `ClassChangeAction` uses
+  (new base − old base) clamped. Both handle growth changes when
+  `unit_stats_as_bonus` is true, wexp gain, max stat updates, HP adjustment,
+  and full undo/redo. Event commands `promote` and `change_class` rewritten
+  in game-states.ts: resolve class list (single class or `turns_into`), create
+  action via `doAction()`, grant new class skills via `grantClassSkills()`
+  helper, apply wexp, reload map sprites. Replaced the old stub `change_class`
+  that only set `unit.klass`.
+
+### Previous Session
+- **Party and Convoy systems implemented.** Full party system ported from
+  Python's `app/engine/objects/party.py`. New `PartyPrefab` type in
+  `data/types.ts`. `Database.loadParties()` loads `parties.json` (array
+  of `{nid, name, leader}`) in Phase 1 non-chunked data loading. New
+  `PartyObject` class in `src/engine/party.ts` (~32 lines) with `nid`,
+  `name`, `leaderNid`, `money`, `convoy` (ItemObject[]), `bexp` fields.
+  `GameState` extended with `parties` Map, `currentParty` NID,
+  `getParty()` (auto-creates from DB prefab), `initParties()`,
+  `getUnitsInParty()`, `getAllUnitsInParty()`, `getMoney()`, `getBexp()`.
+  Parties initialized during `loadLevel()` with `currentParty` set from
+  level prefab. Player units auto-assigned to current party on spawn.
+  `UnitObject` extended with `party: NID` and `persistent: boolean`
+  fields. Seven new Action classes in `action.ts` for convoy operations:
+  `PutItemInConvoy`, `TakeItemFromConvoy`, `RemoveItemFromConvoy`,
+  `StoreItemAction`, `TradeItemWithConvoy`, `GainMoneyAction`,
+  `GiveBexpAction` — all using `_getGame` pattern to avoid circular deps.
+  `setActionGameRef()` wired in `main.ts`. Event commands updated:
+  `give_money`/`give_bexp` now use party system (with backward-compatible
+  `gameVars` sync). New commands: `enable_convoy`, `disable_convoy`,
+  `change_party`, `open_convoy` (stub). `give_item` supports `'convoy'`
+  as target to place items directly in the party convoy.
+
+### Previous Session
+- **Initiative turn system implemented.** Full port of the initiative-based
+  turn system from Python's `app/engine/initiative.py`. When the `initiative`
+  constant is enabled, units take individual turns ordered by initiative
+  value (from DB equation) instead of the standard team-phase cycle.
+  `InitiativeTracker` class (`src/engine/initiative.ts`, ~210 lines) manages
+  the unit line with binary insert, wrap-around cycling, and index tracking.
+  New `InitiativeUpkeepState` determines which state to push (free/ai) based
+  on the current initiative unit's team. `TurnChangeState` advances
+  initiative and increments turn count on cycle wrap. `FreeState`: auto-cursor
+  to initiative unit, restricts selection to that unit, auto-ends turn when
+  finished, START toggles initiative bar. `AIState`: only processes the
+  single current initiative unit. `PhaseChangeState`: only resets the
+  initiative unit (not whole team). Unit sprites grey out non-initiative units
+  during their team's turn. Event commands: `add_to_initiative` (insert at
+  position relative to current index), `move_in_initiative` (shift by offset).
+  Auto-insert/remove on unit spawn/death via event commands (`add_unit`,
+  `add_group`, `spawn_group`, `remove_unit`, `kill_unit`) and combat death
+  (both MapCombat and AnimationCombat paths, plus interact_unit scripted
+  combat). Registered in `main.ts`. Still missing: initiative bar rendering
+  UI (the visual bar showing unit order at bottom/top of screen).
+
+### Previous Session
+- **Overworld map system implemented.** Full Fire Emblem 8-style world map
+  with nodes, roads, entities, and level entry. New files:
+  `src/engine/overworld/overworld-objects.ts` (41 lines, runtime types),
+  `src/engine/overworld/overworld-manager.ts` (~465 lines, graph operations
+  with Dijkstra shortest path, entity CRUD, node properties, menu option
+  toggles), `src/engine/overworld/overworld-movement.ts` (~180 lines,
+  animated entity movement along road waypoints with interpolation and
+  camera follow). Three game states in `src/engine/states/overworld-state.ts`
+  (~670 lines): `OverworldFreeState` (cursor movement, node selection, party
+  movement initiation, node menu with dynamic options, tilemap rendering,
+  road/node/entity drawing), `OverworldMovementState` (transparent overlay,
+  movement manager updates, fast-forward with SELECT),
+  `OverworldLevelTransitionState` (fade-to-black, loads level, transitions).
+  Database loads `overworlds.json` with `loadOverworlds()`. Data types:
+  `NodeMenuEvent`, `OverworldNodePrefab`, `OverworldPrefab` in `types.ts`.
+  11 event commands fully implemented: `overworld_cinematic`,
+  `reveal_overworld_node`, `reveal_overworld_road`, `overworld_move_unit`
+  (blocking with road animation + movement manager unblock in EventState
+  update), `set_overworld_position`, `create_overworld_entity`,
+  `disable_overworld_entity`, `set_overworld_menu_option_enabled`,
+  `set_overworld_menu_option_visible`, `enter_level_from_overworld`,
+  `toggle_narration_mode`. `omove` alias for `overworld_move_unit`.
+  GameState integration: `overworldController`, `overworldMovement`,
+  `overworldRegistry` fields. All three states registered in `main.ts`.
+
+### Previous Session
+- **Turnwheel / Divine Pulse implemented.** Full undo/redo system for game
+  actions, faithfully ported from Python's `app/engine/turnwheel.py`. Enhanced
+  `ActionLog` in `src/engine/action.ts` with turnwheel navigation: action
+  groups (Move, Phase, Extra types), `doAction()` for recording, `setUp()`
+  to build navigation groups, `backward()`/`forward()` for stepping through
+  groups, `finalize()` to confirm rewind, `reset()` to cancel. Five marker
+  actions: `MarkActionGroupStart`, `MarkActionGroupEnd`, `MarkPhase`,
+  `LockTurnwheel`, `MessageAction`. New `TurnwheelState` in
+  `src/engine/states/turnwheel-state.ts` (~300 lines) — transparent overlay
+  with red/green tint (locked/unlocked), description text, turn counter,
+  unit count, remaining uses display. Navigation via LEFT/UP (backward) and
+  RIGHT/DOWN (forward), SELECT to confirm, BACK to cancel. Force mode
+  prevents canceling. Deducts uses on confirm. Integration across game states:
+  FreeState records `MarkActionGroupEnd` on begin and `MarkActionGroupStart`
+  on unit select; MenuState records `MarkActionGroupEnd` on Wait;
+  PhaseChangeState records `LockTurnwheel` + `MarkPhase` + sets first free
+  action on first player turn; AIState records group start/end per AI unit;
+  CombatState records `MessageAction` for combat descriptions. OptionMenuState
+  shows "Turnwheel" option when `turnwheel` constant and `_turnwheel` game
+  var are both set. Event commands: `enable_turnwheel`, `activate_turnwheel`
+  (with force mode), `clear_turnwheel`, `stop_turnwheel_recording`,
+  `start_turnwheel_recording`. `GameState.memory` Map added for inter-state
+  communication.
+
+### Previous Session
+- **Fog of war system implemented.** New `src/engine/line-of-sight.ts`
+  (~170 lines) porting the Bresenham line algorithm and `simpleCheck()`
+  for LOS verification. `GameBoard` extended with fog of war grids
+  (per-team 2D arrays of Sets), vantage points, opacity grid, fog/vision
+  regions, and `previouslyVisitedTiles` for Hybrid mode. Full `inVision()`
+  logic supporting player allied-team checking, non-player team checking,
+  and optional `fog_los` Bresenham verification. `terrainKnown()` supports
+  GBA (always known), Thracia (only in vision), and Hybrid (in vision or
+  previously visited) modes. `MapView` draws fog overlay: semi-transparent
+  dark for known-but-not-visible terrain, opaque black for unknown terrain,
+  and filters out units not in player vision. `GameState.getCurrentFogInfo()`
+  reads fog config from `levelVars`. `recalculateAllFow()` updates all
+  unit vision grids. `sightRange()` added to `skill-system.ts` for
+  `sight_range_bonus` and `decreasing_sight_range_bonus` skill components.
+  `SkillObject.data` Map added for runtime skill state (e.g., torch
+  counters). Event commands `enable_fog_of_war` and `set_fog_of_war` fully
+  implemented. `FogOfWarConfig` type added to `types.ts`. Fog grids and
+  opacity grid initialized during `loadLevel()` and `changeTilemap()`.
+
+### Previous Session
+- **Support system implemented.** New `src/engine/support-system.ts`
+  (~500 lines) with `SupportController` class. Loads support pairs,
+  ranks, constants, and affinities from DB. Tracks per-pair points,
+  locked/unlocked ranks, per-chapter limits. Five affinity bonus methods
+  (No Bonus, Personal, Partner's, Average, Sum). Range checking (0 =
+  overlapping attack ranges, 1-98 = Manhattan, 99 = entire map).
+  Growth triggers: `incrementEndTurnSupports`, `incrementEndCombatSupports`,
+  `incrementEndChapterSupports`. Combat bonuses wired into `computeHit`,
+  `computeDamage`, `computeCrit` via optional `game` parameter. Event
+  commands: `enable_supports`, `increment_support_points`,
+  `unlock_support_rank`, `disable_support_rank`. `UnitObject.affinity`
+  field added. 4 new types in `data/types.ts`.
+
+### Previous Session
+- **Base screen implemented.** New `src/engine/states/base-state.ts`
+  (~510 lines) with `BaseMainState` (main hub menu: Manage, Market,
+  Convos, Options, Save, Continue) and `BaseConvosState` (transparent
+  child menu for base conversations). `base` event command now pushes
+  `base_main` state, reading `_base_bg_name`, `_base_music`,
+  `_base_transparent`, `_base_market` game vars. Panorama background
+  loaded async. Event commands `add_base_convo`, `ignore_base_convo`,
+  `remove_base_convo`, `add_market_item`, `remove_market_item`,
+  `clear_market_items` all wired. `GameState.baseConvos` and
+  `GameState.marketItems` Maps added for persistence.
+- **Settings menu implemented.** New `src/engine/states/settings-state.ts`
+  (~621 lines) with `SettingsMenuState`. Two-tab layout (Config/Controls)
+  with 14 config settings: animation mode, unit/text speed, music/sound
+  volume, terrain/objective display, autocursor, autoend turn, confirm
+  end, grid opacity, HP map team/cull, FPS display. Slider, bool, and
+  choice option types. Settings persisted in `game.gameVars` with
+  `_setting_` prefix. Volume changes apply immediately. Controls tab
+  shows key bindings read-only. Accessible from OptionMenuState and
+  base screen.
+- **Minimap implemented.** New `src/engine/states/minimap-state.ts`
+  (~355 lines) with `MinimapState` (transparent overlay) and `MiniMap`
+  helper class. Renders entire tilemap at 4px/tile with terrain-type
+  color coding (30+ terrain colors), team-colored unit dots, camera
+  viewport indicator rectangle. 200ms rectangular iris transition on
+  open/close. Scrollable viewport tracks camera position. Accessible
+  from OptionMenuState "Minimap" option.
+- **Victory screen implemented.** New `src/engine/states/victory-state.ts`
+  (~332 lines) with `VictoryState`. Shows animated "VICTORY" banner
+  (gold bar scaling + fading in) and stats panel (turn count, MVP)
+  sliding up from bottom over 20 frames with ease-out easing. Map draws
+  underneath with dark overlay. MVP determined by kills/damage. Triggered
+  by `victory_screen` event command.
+- **Credits screen implemented.** New `src/engine/states/credit-state.ts`
+  (~438 lines) with `CreditState`. Vertically scrolling credit lines
+  over dark background or panorama. Engine credits, web port info,
+  acknowledgments. Edge-fade effect, text shadows on headers, DOWN
+  speeds up scrolling. Triggered by `credits`/`credit` event command.
+- **OptionMenuState expanded.** Now includes "Minimap" and "Options"
+  entries alongside "End Turn". Minimap enabled when level is loaded.
+
+### Previous Session
+- **GBA-style preparation screen.** Implemented `prep` event command
+  handler and three new states in `src/engine/states/prep-state.ts`:
+  `PrepMainState` (main menu: Pick Units, Check Map, Fight!),
+  `PrepPickUnitsState` (toggle player units on/off formation spots),
+  `PrepMapState` (transparent map view with formation highlights and
+  cursor navigation). Required units are auto-placed and locked.
+  The `prep` event command now blocks and pushes the prep screen;
+  pressing "Fight!" pops back to the event system to continue.
+
+### Previous Session
+- **Screen shake, damage numbers, and hit/crit spark animations.** Combat
+  visual polish pass. `showHitSpark()` and `showCritSpark()` in
+  `AnimationCombat` now spawn particle-based spark effects: hit sparks
+  (8 radiating white/yellow particles), crit sparks (16-particle burst
+  with white screen flash), no-damage blue ping, miss handled by popups.
+  Damage popups upgraded from simple linear float to Python-faithful
+  damped-sine-wave bounce physics (3 phases: 400ms bounce, 600ms pause,
+  200ms fade-out drift, 1200ms total). Normal damage in red, crits in
+  yellow, miss in blue-white. Spark effects rendered as canvas-drawn
+  particles in `drawAnimationCombat()`.
+
+### Previous Session
+- **Combat effect system implemented.** Spell/weapon effects (arrows, fire,
+  lightning, etc.) now play during GBA-style battle animations. Added
+  `getEffectData()`, `getEffectFrameImages()`, `loadEffectSprites()`, and
+  `hotSwapEffectFrames()` to `AnimationCombat`. `castSpell` now resolves
+  effect NIDs and spawns child animations. `BattleAnimation.spawnEffect()`
+  made public. New `convertSpritesheetToFrames()` and `applyColorkey()`
+  in `sprite-loader.ts`. Global `__ltResources` set in `CombatState` for
+  async effect loader access.
+
+### Previous Session
+- **Runtime integration bug fixes (Phase 1.1 -- all 5 items resolved).**
+  - Data format edge cases: faction loading, generic unit name resolution,
+    FIXED-mode auto-leveling for generic units.
+  - Tilemap coord parsing: NaN/bounds guards, getTerrain returns '0' default.
+  - Map sprite failures: warnings on null sprites, sprite caching.
+  - Tileset manifest: defensive guards for malformed JSON.
+  - State machine bootstrap: empty-stack warning, documentation.
+
+### Previous Session
 - **Group command position system rewrite.** `add_group`, `spawn_group`,
   and `move_group` now correctly implement the Python `_get_position()`
   logic: empty = group's own positions, `'starting'` = unit.startingPosition,
@@ -437,22 +792,22 @@ priority.
 The engine compiles but has not been tested against live data yet.
 Expect issues in all of the following areas:
 
-- [ ] **Data format edge cases.** The LT data has `UniqueUnitData` vs
+- [x] **Data format edge cases.** The LT data has `UniqueUnitData` vs
   `GenericUnitData` discrimination that relies on the presence of a `klass`
   field. Verify this works for every unit in every level of `default.ltproj`.
   Some levels use `unit_groups` for reinforcements -- these are not spawned
   yet.
-- [ ] **Tilemap sprite grid coordinate parsing.** LT stores tile coordinates
+- [x] **Tilemap sprite grid coordinate parsing.** LT stores tile coordinates
   as `"x,y"` string keys. Verify our parsing handles edge cases (negative
   coords, large maps, missing entries).
-- [ ] **Map sprite loading failures.** Some classes may not have matching
+- [x] **Map sprite loading failures.** Some classes may not have matching
   `<Name>-stand.png` / `<Name>-move.png` files. The engine silently sets
   `sprite = null` but the renderer must handle this gracefully with
   placeholders everywhere (verify `UnitRenderer.drawPlaceholder`).
-- [ ] **Tileset manifest loading.** `tilesets.json` in the original uses a
+- [x] **Tileset manifest loading.** `tilesets.json` in the original uses a
   list of objects. Verify our `Database.loadTilesets` correctly parses the
   actual format.
-- [ ] **State machine first-frame bootstrap.** The `TitleState` is pushed via
+- [x] **State machine first-frame bootstrap.** The `TitleState` is pushed via
   `game.state.change('title')` before the first `update()` call. Verify
   `processTempState` handles this correctly on frame 1.
 
@@ -569,7 +924,7 @@ add:
 - [x] `shop` (full shop interface: buy/sell with stock, gold tracking, item icons)
 - [x] `change_tilemap` (swaps tilemap mid-event, saves/restores unit positions, rebuilds board)
 - [x] `s` / `bop` aliases (speak short alias for support convos, bop_portrait alias)
-- [ ] `prep` (stub — skips; full prep screen not yet implemented)
+- [x] `prep` (GBA-style prep screen: Pick Units, Check Map, Fight!)
 
 Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 
@@ -658,11 +1013,25 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
   with fallbacks. `selectWeaponAnim()` in `sprite-loader.ts`.
 - [x] **Wire into CombatState.** Auto-detects if both units have anims,
   falls back to MapCombat. Async sprite hot-swap during scene.
-- [ ] **Viewbox iris transition.** Not yet implemented (scene enters/exits
-  abruptly).
-- [ ] **Combat effect system.** Spell/weapon effects not yet implemented
-  (100+ effects in default.ltproj).
-- [ ] **Screen shake, damage numbers, hit/crit sparks.** Partially stubbed.
+- [x] **Viewbox iris transition.** Rectangular iris that converges
+  asymmetrically toward the defender's screen-relative tile position on
+  combat entry (250ms) and expands back on exit. Uses the exact Python
+  `build_viewbox` algorithm with camera-relative coordinates. Dark overlay
+  at 75% opacity punched out around the iris window.
+  - Original: `app/engine/combat/animation_combat.py` (build_viewbox)
+- [x] **Combat effect system.** Spell/weapon effects (arrows, fire,
+  lightning, etc.) now load and play during GBA-style battle animations.
+  `AnimationCombat` implements `getEffectData()` and `getEffectFrameImages()`
+  so `BattleAnimation.spawnEffect()` can find and render effects. Effect
+  spritesheets are loaded asynchronously with palette conversion and
+  hot-swapped into running animations. `castSpell` resolves effect NIDs
+  and spawns child `BattleAnimation` instances. New
+  `convertSpritesheetToFrames()` in `sprite-loader.ts` handles effect
+  spritesheet extraction with colorkey/palette support.
+- [x] **Screen shake, damage numbers, hit/crit sparks.** Spark effects
+  (hit/crit/noDamage) with canvas-drawn particles. Bounce-physics damage
+  numbers with damped sine wave (3-phase: bounce, pause, fade). Duration
+  increased to 1200ms. Normal damage red, crit yellow, miss blue-white.
 
 ---
 
@@ -670,25 +1039,47 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 
 ### 3.1 Game Screens
 
-- [ ] **Title screen.** Proper title with background image, New Game, Load
-  Game, Extras options.
+- [x] **Title screen.** Two-state title: `TitleStartState` (panorama
+  background from `resources/panoramas/title_background.png`, pulsing
+  "Press Start" prompt, title music) and `TitleMainState` (sliding menu
+  panel with New Game / Extras options, cursor navigation, highlight bar).
   - Original: `app/engine/title_screen.py`
-- [ ] **Prep screen.** Pre-battle unit management: pick units, set formation,
-  manage items, access convoy, view supports.
+- [x] **Prep screen (GBA-style).** Three states in `prep-state.ts`:
+  `PrepMainState` (main menu: Pick Units, Check Map, Fight!),
+  `PrepPickUnitsState` (scrollable unit list with deploy toggle),
+  `PrepMapState` (transparent map view with formation highlights).
+  Required units auto-placed and locked. Validates minimum deployment.
   - Original: `app/engine/prep.py`, `app/engine/prep_gba.py`
-- [ ] **Base screen.** Between-chapter hub with shops, conversations, unit
-  management.
+- [x] **Base screen.** Two states in `base-state.ts`: `BaseMainState`
+  (hub menu: Manage, Market, Convos, Options, Save, Continue) and
+  `BaseConvosState` (transparent convo sub-menu). Panorama background,
+  music, dynamic menu options. Event commands: `add_base_convo`,
+  `ignore_base_convo`, `remove_base_convo`, `add_market_item`,
+  `remove_market_item`, `clear_market_items`. Still missing: supports,
+  codex, BEXP, sound room, achievements, library/guide sub-screens.
   - Original: `app/engine/base.py`
-- [ ] **Info/status menu.** Detailed unit stats page (stats, growth rates,
-  weapon ranks, items, skills, support list).
+- [x] **Info/status menu (basic).** Three-page unit info screen: personal
+  data (stats, class, level), equipment (items, battle stats), skills
+  (weapon exp, skill list). 621 lines in `info-menu-state.ts`. Still
+  missing: growth rates display, support list, weapon rank letters.
   - Original: `app/engine/info_menu/`
-- [ ] **Settings menu.** Audio, display, controls, gameplay configuration.
+- [x] **Settings menu.** Two-tab Config/Controls menu in
+  `settings-state.ts` (~621 lines). 14 config settings (animation,
+  speed, volume, display, gameplay). Slider/bool/choice types. Settings
+  stored in gameVars with `_setting_` prefix, volume changes immediate.
   - Original: `app/engine/settings_menu.py`, `app/engine/config.py`
-- [ ] **Minimap.** Zoomed-out full-map view with unit positions.
+- [x] **Minimap.** `minimap-state.ts` (~355 lines). Renders full tilemap
+  at 4px/tile with 30+ terrain colors, team-colored unit dots, camera
+  viewport indicator. 200ms iris transition. Scrollable. Accessible from
+  OptionMenuState.
   - Original: `app/engine/minimap.py`
-- [ ] **Victory screen.** End-of-chapter stats display.
+- [x] **Victory screen.** `victory-state.ts` (~332 lines). Animated
+  "VICTORY" banner + stats panel (turns, MVP). Map underneath with dark
+  overlay. 20-frame ease-out animation. `victory_screen` event command.
   - Original: `app/engine/victory_screen.py`
-- [ ] **Credits screen.**
+- [x] **Credits screen.** `credit-state.ts` (~438 lines). Scrolling
+  credits with edge-fade, text shadows, speed-up. `credits`/`credit`
+  event command.
   - Original: `app/engine/credit_state.py`
 
 ### 3.2 Advanced Game Systems
@@ -706,44 +1097,155 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
   - Still missing: aura propagation, charge/cooldown, conditional activation,
     status immunity, proc skills.
   - Original: `app/engine/aura_funcs.py`, `app/engine/skill_components/`
-- [ ] **Support system.** Adjacency-based support points, rank progression,
-  stat bonuses, support conversations.
+- [x] **Support system.** Full `SupportController` in
+  `src/engine/support-system.ts` (~500 lines). Support pairs with point
+  accumulation, rank progression (locked -> unlocked), affinity-based stat
+  bonuses (5 bonus methods), and per-chapter limits. Growth triggers: end
+  turn, end combat, end chapter. Range modes: Manhattan distance (1-98),
+  overlapping attack ranges (0), entire map (99). Combat calc integration:
+  support bonuses for accuracy/avoid/damage/resist/crit/dodge. Database
+  loaders for `support_ranks.json`, `support_constants.json`,
+  `affinities.json`, `support_pairs.json`. Event commands:
+  `enable_supports`, `increment_support_points`, `unlock_support_rank`,
+  `disable_support_rank`. Types: `SupportRankBonus`, `AffinityDef`,
+  `SupportRankRequirement`, `SupportPairPrefab` in `types.ts`.
+  `UnitObject.affinity` field added.
   - Original: `app/engine/supports.py`
-- [ ] **Fog of war.** Three modes (GBA, Thracia, Hybrid): vision grids, fog
-  tiles, previously-visited memory, torch items, thief vision.
+- [x] **Fog of war.** Three modes (GBA, Thracia, Hybrid): vision grids, fog
+  tiles, previously-visited memory, torch items, thief vision. New
+  `src/engine/line-of-sight.ts` (~170 lines) with Bresenham LOS algorithm
+  and `simpleCheck()`. `GameBoard` extended with fog grids (per-team 2D
+  Set grids), vantage points, opacity grid, fog/vision regions,
+  `previouslyVisitedTiles`. Methods: `initFogGrids()`, `initOpacityGrid()`,
+  `updateFow()`, `clearUnitFow()`, `inVision()`, `terrainKnown()`,
+  `getFogOfWarRadius()`, `addFogRegion()`/`removeFogRegion()`,
+  `addVisionRegion()`/`removeVisionRegion()`. `FogOfWarConfig` type in
+  `types.ts`. `GameState.getCurrentFogInfo()` reads fog config from
+  `levelVars`. `GameState.recalculateAllFow()` updates all unit vision.
+  `MapView` draws fog overlay (semi-transparent dark for known terrain,
+  opaque black for unknown) and filters units not in vision. `sightRange()`
+  in `skill-system.ts` sums `sight_range_bonus` and
+  `decreasing_sight_range_bonus` skill components. Event commands
+  `enable_fog_of_war` and `set_fog_of_war` implemented. `SkillObject.data`
+  Map added for runtime skill state.
   - Original: `app/engine/fog_of_war.py`, `app/engine/line_of_sight.py`, `app/engine/bresenham_line_algorithm.py`, `app/engine/game_board.py` (fog grids)
-- [ ] **Turnwheel / Divine Pulse.** Full undo/redo of game actions. The
-  `ActionLog` records actions; needs a UI to select how far to rewind,
-  and reverse execution of all actions in the log.
+- [x] **Turnwheel / Divine Pulse.** Full undo/redo of game actions. Enhanced
+  `ActionLog` (action.ts) with turnwheel navigation: `doAction()`, `setUp()`,
+  `backward()`, `forward()`, `finalize()`, `reset()`, action groups (Move,
+  Phase, Extra), lock mechanism, recording counter, `setFirstFreeAction()`.
+  Marker actions: `MarkActionGroupStart`, `MarkActionGroupEnd`, `MarkPhase`,
+  `LockTurnwheel`, `MessageAction`. New `TurnwheelState` (turnwheel-state.ts,
+  ~300 lines) with transparent overlay, red/green tint, description text,
+  turn counter, uses display, LEFT/UP backward, RIGHT/DOWN forward, SELECT
+  confirm, BACK cancel. Integration: FreeState records `MarkActionGroupEnd`
+  on begin and `MarkActionGroupStart` on unit select. MenuState records
+  `MarkActionGroupEnd` on Wait. PhaseChangeState records `LockTurnwheel` +
+  `MarkPhase`. AIState records group start/end per AI unit. OptionMenuState
+  shows "Turnwheel" option when enabled. Event commands: `enable_turnwheel`,
+  `activate_turnwheel`, `clear_turnwheel`, `stop_turnwheel_recording`,
+  `start_turnwheel_recording`. `GameState.memory` Map added for state
+  communication. CombatState records `MessageAction` for combat descriptions.
   - Original: `app/engine/turnwheel.py`
-- [ ] **Initiative turn system.** Non-phase-based turn order where units act
+- [x] **Initiative turn system.** Non-phase-based turn order where units act
   based on speed. An alternative to the standard player/enemy phase cycle.
+  New `src/engine/initiative.ts` (~210 lines) with `InitiativeTracker` class:
+  sorted unit line (descending initiative), binary insert, index tracking,
+  wrap-around next/back. `InitiativeUpkeepState` pushes free/ai + phase_change
+  based on current initiative unit's team. `TurnChangeState` modified for
+  initiative: advances initiative, increments turnCount on wrap. `FreeState`
+  modified: auto-cursor to initiative unit, only allows selecting that unit,
+  auto-ends turn when it's finished, START toggles initiative bar. `AIState`
+  modified: only processes the single initiative unit. `PhaseChangeState`
+  modified: only resets the initiative unit (not whole team). Unit sprites
+  grey out non-initiative units. Event commands: `add_to_initiative`,
+  `move_in_initiative`. Initiative auto-insert on `add_unit`/`add_group`/
+  `spawn_group`, auto-remove on `remove_unit`/`kill_unit`/combat death.
+  Registered in main.ts. Still missing: initiative bar rendering UI.
   - Original: `app/engine/initiative.py`
-- [ ] **Overworld map.** Node-based world map with roads, party movement,
-  and level selection (Fire Emblem 8-style).
+- [x] **Overworld map.** Node-based world map with roads, party movement,
+  and level selection (Fire Emblem 8-style). Three new files:
+  `src/engine/overworld/overworld-objects.ts` (runtime types),
+  `src/engine/overworld/overworld-manager.ts` (~465 lines, graph/entity/menu
+  management with Dijkstra shortest path),
+  `src/engine/overworld/overworld-movement.ts` (~180 lines, animated road
+  movement). Three game states in `src/engine/states/overworld-state.ts`
+  (~670 lines): `OverworldFreeState` (cursor nav, node selection, menu),
+  `OverworldMovementState` (transparent entity movement overlay),
+  `OverworldLevelTransitionState` (fade-to-black level entry). Database
+  loads `overworlds.json`. 11 event commands: `overworld_cinematic`,
+  `reveal_overworld_node/road`, `overworld_move_unit` (blocking with road
+  animation), `set_overworld_position`, `create_overworld_entity`,
+  `disable_overworld_entity`, `set_overworld_menu_option_enabled/visible`,
+  `enter_level_from_overworld`, `toggle_narration_mode`. `omove` alias.
+  GameState fields: `overworldController`, `overworldMovement`,
+  `overworldRegistry`.
   - Original: `app/engine/overworld/` (8 files)
-- [ ] **Free roam mode.** ARPG-style free movement where the player directly
-  controls a unit, talks to NPCs, explores.
+- [x] **Free roam mode.** ARPG-style free movement where the player directly
+  controls a unit, talks to NPCs, explores. Implemented: `FreeRoamState`,
+  `FreeRoamRationalizeState`, `RoamPlayerMovementComponent` with physics-based
+  movement, collision detection, NPC/region interaction. Event commands:
+  `set_roam`, `set_roam_unit`. Still missing: roam AI for NPCs, shop/talk
+  menu in roam mode.
   - Original: `app/engine/roam/` (5 files)
-- [ ] **Promotion / class change.** Class upgrade menu with preview.
-  - Original: `app/engine/promotion.py`
-- [ ] **Convoy / supply system.** Shared item storage accessible from prep
-  and via Supply units on the map.
+- [x] **Promotion / class change.** Silent promotion and class change via
+  event commands (`promote`, `change_class`). New `PromoteAction` and
+  `ClassChangeAction` in `action.ts` (~240 lines combined) — faithful ports
+  of Python's `action.Promote` and `action.ClassChange` with sentinel values
+  (-99, -98, -97), growth changes when `unit_stats_as_bonus` is true, wexp
+  gain, max stat updates. Both use the `_getGame` pattern for DB access.
+  Event commands: `promote;unit;[class_list];[silent]` and
+  `change_class;unit;[class_list];[silent]` — resolve class list (or use
+  `turns_into`), create action, grant new class skills, apply wexp, reload
+  map sprites. `grantClassSkills()` helper iterates `learned_skills` and
+  adds missing skills up to current level. Still missing: non-silent
+  promotion choice UI state (visual battle anim swap), level-up display
+  after promotion.
+  - Original: `app/engine/promotion.py`, `app/engine/action.py`
+- [x] **Difficulty modes.** New `src/engine/difficulty.ts` (~135 lines) with
+  `DifficultyModeObject` class — runtime difficulty for the session, created
+  from `DifficultyMode` DB prefab. Stores permadeath, growths, RNG mode,
+  and mutable event-driven autolevel counters (enemy/boss autolevels and
+  truelevels). Methods: `getBaseBonus()`, `getGrowthBonus()`,
+  `getDifficultyAutolevels()`, `getDifficultyTruelevels()`, `save()`,
+  `restore()`, `fromPrefab()`. `GameState` integration: `currentMode` field,
+  `initDifficulty()` called during `loadLevel()`, `mode` getter for DB
+  prefab, `getAlliedTeams()` for player-allied team resolution.
+  `spawnUniqueUnit()` applies difficulty base bonuses.
+  `spawnGenericUnit()` applies base bonuses + difficulty autolevels (with
+  `promoted_autolevels_fraction` for promoted units) + true levels. Still
+  missing: RNG mode integration into combat solver, difficulty selection UI,
+  growth mode integration into leveling, permadeath toggle in death handling.
+- [x] **Convoy / supply system.** Shared item storage accessible from prep
+  and via Supply units on the map. Implemented: 7 Action classes
+  (PutItemInConvoy, TakeItemFromConvoy, RemoveItemFromConvoy,
+  StoreItemAction, TradeItemWithConvoy, GainMoneyAction, GiveBexpAction).
+  Event commands: `enable_convoy`, `disable_convoy`, `give_item` to convoy.
+  Still missing: Supply menu state UI (supply_items stub).
   - Original: `app/engine/convoy_funcs.py`
-- [ ] **Difficulty modes.** Runtime stat scaling for enemies, growth mode
-  selection, RNG mode selection, permadeath toggle.
-- [ ] **Parties.** Multi-party support (multiple player factions with
-  separate inventories and unit pools).
+- [x] **Parties.** Multi-party support (multiple player factions with
+  separate inventories and unit pools). Implemented: `PartyObject` class,
+  DB loader, GameState integration (parties Map, currentParty, getParty,
+  getUnitsInParty, getMoney, getBexp). Event commands: `change_party`,
+  `give_money`, `give_bexp`.
 
 ### 3.3 Save / Load
 
-- [ ] **Save system.** Serialize full `GameState` to IndexedDB or
-  localStorage. Support multiple save slots, suspend saves, and
-  chapter-start auto-saves.
-- [ ] **Load system.** Deserialize and restore game state, reinitialize all
-  subsystems from saved data.
-- [ ] **Persistent records.** Cross-save achievements, unlocks, and
-  statistics.
+- [x] **Save system.** New `src/engine/save.ts` (~1474 lines) with IndexedDB
+  storage layer (localStorage fallback). Serialization for units, items,
+  skills, levels, parties, supports. `saveGame()`, `suspendGame()`,
+  `loadSaveSlots()`, `deleteSave()`, `hasSuspend()`, `formatPlaytime()`.
+  Save/Load UI states in `src/engine/states/save-load-state.ts` (~300 lines).
+  Event commands: `battle_save`, `battle_save_prompt`, `skip_save`, `suspend`.
+- [x] **Load system.** `loadGame()`, `loadSuspend()`, `restoreGameState()`
+  with 15-step ordered restoration (items -> skills -> units -> rescue refs ->
+  parties -> level). Wired into LoadMenuState with slot selection and suspend
+  resume.
+- [x] **Persistent records.** `src/engine/records.ts` (~903 lines) with three
+  systems: `Recordkeeper` (per-save stats), `PersistentRecordManager`
+  (cross-save key-value records via localStorage), `AchievementManager`
+  (cross-save achievements). Event commands: `create_record`, `update_record`,
+  `replace_record`, `delete_record`, `unlock_difficulty`, `unlock_song`,
+  `add_achievement`, `complete_achievement`.
 
 ### 3.4 Expression / Equation Evaluator
 
@@ -759,21 +1261,25 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
   Python-compatible game proxy scope. Handles `game.level.regions.get()`,
   `game.get_unit()`, `len()`, `any()` generators, and all standard
   operators.
-- [ ] **Full equation support.** Still missing:
-  - Game state queries beyond `v()`
-  - Custom functions beyond `max` / `min` / `clamp`
-  - Full query engine parity (`get_units`, `get_hp`, etc.)
+- [x] **Full equation support.** New `src/engine/query-engine.ts` (~647 lines)
+  with `GameQueryEngine` class providing all Python query functions: `u()`,
+  `v()`, `getItem()`, `hasItem()`, `getSkill()`, `hasSkill()`, `getKlass()`,
+  `getClosestAllies()`, `getUnitsWithinDistance()`, `getUnitsInRegion()`,
+  `isDead()`, `getSupportRank()`, `getTerrain()`, `hasAchievement()`,
+  `checkShove()`. `getFuncDict()` with both camelCase and snake_case aliases.
   - Original: `app/engine/evaluate.py`, `app/engine/query_engine.py`
 
 ### 3.5 Python Event Scripting
 
-- [ ] **Python-syntax events.** LT supports a second event scripting format
-  (PYEV1) where events are written in Python with a proxy API. Porting
-  this would require either a JS-based Python subset interpreter or a
-  complete reimplementation of the proxy API in TypeScript.
+- [x] **Python-syntax events (PYEV1).** New `src/events/python-events.ts`
+  (~995 lines) with `isPyev1()` detection and `PythonEventProcessor` class.
+  Line-by-line interpreter with indentation-based block structure. Supports
+  if/elif/else, for, while flow control. `$command` tokenizer converts
+  PYEV1 `$command` lines to standard semicolon-delimited event commands.
+  Python-to-JS expression translation with builtins (range, len, sorted,
+  etc.). Integrated into `GameEvent` constructor for automatic PYEV1
+  detection.
   - Original: `app/events/python_eventing/` (10+ files)
-  - Recommendation: defer this indefinitely; focus on the semicolon-
-    delimited format which covers 90%+ of existing games.
 
 ---
 
@@ -786,16 +1292,49 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
   orientation changes, zoom levels, and different aspect ratios. HUD
   draws in screen-space at DPR-aware sizes. Middle-click pan + scroll
   zoom on desktop.
-- [ ] **PWA support.** Service worker for offline play, manifest for add-to-
-  homescreen.
-- [ ] **Asset bundling.** Pack `.ltproj` assets into a single downloadable
-  archive (zip) that can be loaded client-side, rather than requiring
-  hundreds of individual HTTP requests.
-- [ ] **Performance profiling.** Profile on low-end mobile devices. The
-  `Surface` system creates many `OffscreenCanvas` objects; may need to
-  pool or use WebGL for heavy scenes.
-- [ ] **Capacitor / TWA wrapper.** Native mobile app packaging via Capacitor
-  (iOS/Android) for app store distribution.
+- [x] **PWA support.** Full PWA implementation: service worker (`public/sw.js`)
+  with Vite-build-aware precaching (reads `precache-manifest.json` generated
+  by a Vite plugin), stale-while-revalidate for app shell, cache-first for
+  game assets, SPA navigation fallback for offline. Web app manifest with
+  display_override, launch_handler, separated any/maskable icons. `src/pwa.ts`
+  handles SW registration, `beforeinstallprompt` capture with deferred install
+  prompt (`canInstall()`, `showInstallPrompt()`), update detection with
+  callback API (`onUpdateAvailable()`), persistent storage request,
+  online/offline connectivity tracking, standalone mode check, comprehensive
+  `getPwaStatus()`. Install prompt and connectivity wired into `main.ts`.
+- [x] **Asset bundling.** New `src/data/asset-bundle.ts` — client-side zip
+  parser (manual central directory parsing + DecompressionStream), in-memory
+  file store, fetch/Image interceptors for transparent ResourceManager
+  compatibility. Build script `scripts/bundle-assets.mjs` packs `.ltproj`
+  into zip with DEFLATE. Auto-detected at `/bundles/<project>.zip` on
+  startup, opt-out via `?bundle=false`. Zero external dependencies.
+- [x] **Performance profiling.** Comprehensive `src/engine/perf-monitor.ts`
+  (~440 lines) — frame budget monitor with: smoothed FPS + min FPS (matching
+  Python's `draw_fps()`), frame/update/draw time breakdown, peak stutter
+  detection (1-second window), sustained budget violation warning (3s
+  threshold with console warning for mobile), per-function timing via
+  `timeFunction()`/`endTimeFunction()` (inspired by Python's `@frame_time`
+  decorator), long frame spike logging (>33ms, console warns at >50ms),
+  frame time histogram with 7 buckets for distribution analysis, profiling
+  session recording (F4 key start/stop) with exportable JSON report
+  (percentiles, dropped frames, device info, function hotspots, memory
+  stats), `__PerfMonitor` exposed on globalThis for console access. HUD
+  overlay shows FPS (color-coded), frame breakdown, peak, pool stats,
+  memory, top 3 function hotspots. `src/engine/surface-pool.ts` —
+  OffscreenCanvas recycling by size bucket. Game loop fully instrumented.
+- [x] **Capacitor / TWA wrapper.** `capacitor.config.ts` for iOS/Android
+  (fullscreen, dark status bar, splash screen, HTTPS scheme, iOS scroll
+  disable, server allowNavigation). `twa-manifest.json` for bubblewrap
+  Android TWA builds. `scripts/setup-native.mjs` interactive setup script
+  (`npm run setup:capacitor` / `npm run setup:twa`) with prerequisite
+  checking, platform auto-detection, step-by-step guidance. `src/native.ts`
+  (~210 lines) — platform detection (Capacitor iOS/Android, TWA, PWA,
+  browser), Screen Wake Lock API, status bar/splash screen plugin loading
+  (dynamic imports), app pause/resume lifecycle with audio suspend/resume,
+  Android back button handling, safe area inset detection for notched
+  devices. `@capacitor/core` and `@capacitor/cli` as devDependencies.
+  Package.json scripts: `setup:capacitor`, `setup:twa`, `cap:sync`,
+  `cap:ios`, `cap:android`.
 
 ---
 
@@ -803,59 +1342,83 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 
 | File | Lines | Status |
 |------|------:|--------|
-| `engine/constants.ts` | 37 | Done |
-| `engine/surface.ts` | ~358 | Done — scale-aware Surface, `drawImageFull()`, BMP font callback integration |
+| `engine/constants.ts` | 41 | Done |
+| `engine/surface.ts` | 358 | Done — scale-aware Surface, `drawImageFull()`, BMP font callback integration |
 | `engine/input.ts` | 476 | Done — mouse, touch, pinch-zoom, drag-pan, scroll-zoom, middle-click pan |
 | `engine/state.ts` | 52 | Done |
 | `engine/state-machine.ts` | 207 | Done |
-| `engine/camera.ts` | ~155 | Done — dynamic viewport, `pan()` method, screen shake (5 patterns) |
-| `engine/cursor.ts` | ~185 | Done — actual cursor sprite with 3-frame bounce animation |
+| `engine/camera.ts` | 180 | Done — dynamic viewport, `pan()` method, screen shake (5 patterns) |
+| `engine/cursor.ts` | 194 | Done — actual cursor sprite with 3-frame bounce animation |
 | `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
-| `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
-| `engine/game-state.ts` | ~672 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading, shop transient fields, combatScript |
-| `engine/states/game-states.ts` | ~6930 | 18 states (+ ShopState), scripted combat, ~65 event commands, {unit} template vars, group position system, placement modes, skip mode fix |
-| `data/types.ts` | 342 | Done |
-| `data/database.ts` | ~464 | Done — combat anim data loading, map animation catalog |
+| `engine/difficulty.ts` | 135 | Done — DifficultyModeObject runtime class, fromPrefab, base/growth/autolevel bonuses, save/restore |
+| `engine/action.ts` | 1720 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses, PromoteAction, ClassChangeAction, Convoy actions, Money/Bexp |
+| `engine/overworld/overworld-objects.ts` | 41 | Done — OverworldNodeObject, RoadObject, OverworldEntityObject interfaces |
+| `engine/overworld/overworld-manager.ts` | 465 | Done — graph ops (Dijkstra), entity CRUD, node properties, menu options |
+| `engine/overworld/overworld-movement.ts` | 180 | Done — animated road movement, interpolation, camera follow |
+| `engine/states/overworld-state.ts` | 668 | Done — OverworldFreeState, OverworldMovementState, OverworldLevelTransitionState |
+| `engine/initiative.ts` | 210 | Done — InitiativeTracker class, binary insert, initiative equation |
+| `engine/game-state.ts` | 1150 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation, autotile/weather loading, shop transient fields, combatScript, baseConvos, marketItems, overworld fields, initiative init, difficulty mode (currentMode, initDifficulty, getAlliedTeams, applyDifficultyBaseBonuses, applyDifficultyAutolevels) |
+| `engine/states/game-states.ts` | 8050 | 21 states (+ ShopState + TitleMainState + InitiativeUpkeepState), scripted combat, ~84 event commands incl. promote + change_class (with PromoteAction/ClassChangeAction, grantClassSkills, wexp), 11 overworld + 2 initiative commands, initiative mode, {unit} template vars, group position system, placement modes, skip mode fix, viewbox iris, combat VFX, minimap/options in OptionMenu |
+| `engine/states/prep-state.ts` | 499 | Done — GBA-style prep: PrepMainState, PrepPickUnitsState, PrepMapState |
+| `engine/states/base-state.ts` | 510 | Done — Base hub: BaseMainState, BaseConvosState, handleBaseEventCommand |
+| `engine/states/settings-state.ts` | 621 | Done — Settings: Config (14 options) + Controls tabs, slider/bool/choice |
+| `engine/states/minimap-state.ts` | 355 | Done — Minimap overlay: terrain colors, unit dots, iris transition |
+| `engine/states/victory-state.ts` | 332 | Done — Victory banner + stats panel, 20-frame animation |
+| `engine/states/credit-state.ts` | 438 | Done — Scrolling credits, edge-fade, panorama background |
+| `engine/states/info-menu-state.ts` | 621 | Done — detailed unit stats page (stats, items, skills, class info) |
+| `engine/states/save-load-state.ts` | 300 | Done — SaveMenuState, LoadMenuState with slot selection |
+| `engine/records.ts` | 903 | Done — Recordkeeper, PersistentRecordManager, AchievementManager |
+| `engine/query-engine.ts` | 874 | Done — GameQueryEngine with all Python query functions (28 methods + snake_case aliases) |
+| `engine/save.ts` | 1474 | Done — IndexedDB save/load, suspend, 15-step restore |
+| `events/python-events.ts` | 995 | Done — PYEV1 processor with Python-syntax interpreter |
+| `data/types.ts` | 371 | Done |
+| `data/database.ts` | 479 | Done — combat anim data loading, map animation catalog |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
 | `data/resource-manager.ts` | 309 | Done |
-| `objects/unit.ts` | ~429 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup, portraitNid |
-| `objects/item.ts` | ~195 | Done — healing, stat boosters, uses decrement, droppable, isSpell/isUsable/targetsAllies/hasNoAI/canHeal |
+| `objects/unit.ts` | 429 | Done — levelUp(), status effects, rescue, canto, startingPosition, aiGroup, portraitNid |
+| `objects/item.ts` | 196 | Done — healing, stat boosters, uses decrement, droppable, isSpell/isUsable/targetsAllies/hasNoAI/canHeal |
 | `objects/skill.ts` | 43 | Stub, needs component dispatch |
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
-| `rendering/tilemap.ts` | ~330 | Done — showLayer/hideLayer, autotile animation, weather management |
-| `rendering/map-view.ts` | ~275 | Done — dynamic viewport, unit HP bar overlays, weather rendering |
-| `rendering/weather.ts` | ~238 | Done — WeatherSystem with 7 types (rain, snow, sand, light, dark, night, sunset) |
-| `rendering/map-animation.ts` | ~169 | Done — MapAnimation sprite-sheet system, below/above-unit rendering |
-| `rendering/bmp-font.ts` | ~526 | **NEW** — Bitmap font system: BmpFont class, IDX parser, palette variants, font registry |
+| `rendering/tilemap.ts` | 360 | Done — showLayer/hideLayer, autotile animation, weather management, pooled surface caching for getFullImage/getForegroundImage |
+| `rendering/map-view.ts` | 287 | Done — dynamic viewport, unit HP bar overlays, weather rendering |
+| `rendering/weather.ts` | 238 | Done — WeatherSystem with 7 types (rain, snow, sand, light, dark, night, sunset) |
+| `rendering/map-animation.ts` | 169 | Done — MapAnimation sprite-sheet system, below/above-unit rendering |
+| `rendering/bmp-font.ts` | 526 | Done — Bitmap font system: BmpFont class, IDX parser, palette variants, font registry |
 | `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
-| `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
+| `rendering/unit-renderer.ts` | 145 | Done, needs overlays |
 | `rendering/highlight.ts` | 137 | Done — threat highlight type, clearType/hasType helpers |
 | `pathfinding/pathfinding.ts` | 408 | Done |
 | `pathfinding/path-system.ts` | 228 | Done |
 | `movement/movement-system.ts` | 168 | Done, needs roam movement |
-| `combat/combat-calcs.ts` | ~582 | Done — full item-system + skill-system dispatch, Python ternary in equations |
-| `combat/combat-solver.ts` | ~409 | Done — vantage, desperation, miracle, disvantage, resolveScripted() for CombatScript |
-| `combat/item-system.ts` | 248 | Done — item component dispatch layer |
-| `combat/skill-system.ts` | 399 | Done — skill component dispatch layer |
-| `combat/map-combat.ts` | ~555 | Done — weapon uses, growth-based levelup, CombatResults, script parameter |
-| `combat/animation-combat.ts` | ~922 | Done — full animation combat state machine, script parameter |
-| `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback |
+| `combat/combat-calcs.ts` | 722 | Done — full item-system + skill-system dispatch, Python ternary, equation-refs, DB constants, unit properties, clamp/int/float builtins |
+| `combat/combat-solver.ts` | 409 | Done — vantage, desperation, miracle, disvantage, resolveScripted() for CombatScript |
+| `combat/item-system.ts` | 247 | Done — item component dispatch layer |
+| `combat/skill-system.ts` | 398 | Done — skill component dispatch layer |
+| `combat/terrain-bonuses.ts` | 53 | Done — shared terrain avoid/defense utility |
+| `combat/map-combat.ts` | 555 | Done — weapon uses, growth-based levelup, CombatResults, script parameter |
+| `combat/animation-combat.ts` | 1078 | Done — full animation combat state machine, script parameter, combat effects, sparks, viewbox iris |
+| `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback, public spawnEffect for combat effects |
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
-| `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
-| `ai/ai-controller.ts` | ~1170 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI, Interact (Event regions) |
-| `events/event-manager.ts` | ~1100 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead, check_alive), JS fallback eval, talk pairs |
-| `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
-| `ui/menu.ts` | ~204 | Done — click + hover mouse support, 9-slice backgrounds via base-surf |
-| `ui/base-surf.ts` | ~228 | **NEW** — 9-slice menu window backgrounds from system sprites |
-| `ui/icons.ts` | ~151 | **NEW** — Icon sheet loading (16x16/32x32), drawItemIcon() |
-| `ui/hud.ts` | ~253 | Done — screen-space rendering, terrain DEF + AVO display, chibi portraits |
+| `combat/sprite-loader.ts` | 453 | Done — palette conversion, platform loading, convertSpritesheetToFrames for effects |
+| `ai/ai-controller.ts` | 1195 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation, Support healing AI, Interact (Event regions) |
+| `events/event-manager.ts` | 1265 | Done — FIFO queue, condition evaluator (tags, has_item, has_skill, v(), is_dead, check_alive), JS fallback eval with query engine injection (28 functions), talk pairs, base/victory/credit event types |
+| `audio/audio-manager.ts` | 293 | Done — pushMusic/popMusic stack for battle music, suspendContext() for app backgrounding |
+| `ui/menu.ts` | 204 | Done — click + hover mouse support, 9-slice backgrounds via base-surf |
+| `ui/base-surf.ts` | 228 | Done — 9-slice menu window backgrounds from system sprites |
+| `ui/icons.ts` | 151 | Done — Icon sheet loading (16x16/32x32), drawItemIcon() |
+| `ui/hud.ts` | 253 | Done — screen-space rendering, terrain DEF + AVO display, chibi portraits |
 | `ui/health-bar.ts` | 97 | Done |
-| `events/event-portrait.ts` | ~430 | **NEW** — portrait compositing, blinking, talking, transitions, expressions |
-| `events/screen-positions.ts` | ~100 | **NEW** — named screen position resolver for portraits |
-| `ui/dialog.ts` | ~367 | Done — portrait-aware positioning, word-wrap, BMP font widths, {clear}/{c:...}/{p} inline tags |
-| `ui/banner.ts` | 108 | Done |
-| `main.ts` | ~327 | Done — LevelSelectState, dynamic viewport, DPR-aware display, ShopState registration, icon + font init |
+| `events/event-portrait.ts` | 700 | Done — portrait compositing, blinking, talking, transitions, expressions |
+| `events/screen-positions.ts` | 117 | Done — named screen position resolver for portraits |
+| `ui/dialog.ts` | 367 | Done — portrait-aware positioning, word-wrap, BMP font widths, {clear}/{c:...}/{p} inline tags |
+| `ui/banner.ts` | 113 | Done |
+| `main.ts` | 496 | Done — LevelSelectState, dynamic viewport, DPR-aware display, all state registration, icon + font init, equation + query engine game ref wiring, PWA registration + install prompt + connectivity, asset bundle auto-detection, perf monitor instrumentation (F3 overlay, F4 profiling), native platform init |
+| `pwa.ts` | 310 | Done — SW registration, beforeinstallprompt capture, deferred install API, update detection with callback, persistent storage, connectivity tracking, getPwaStatus() |
+| `native.ts` | 210 | Done — Platform detection (Capacitor/TWA/PWA/browser), Wake Lock API, StatusBar/SplashScreen plugin loading, app pause/resume lifecycle, Android back button, safe area insets |
+| `data/asset-bundle.ts` | 497 | Done — Zip parser (central directory), DecompressionStream, AssetBundle class, fetch/Image interceptors |
+| `engine/surface-pool.ts` | 151 | Done — OffscreenCanvas recycling by size bucket, per-frame stats |
+| `engine/perf-monitor.ts` | 440 | Done — Frame budget monitor, min FPS, sustained violation detection, per-function timing, long frame spike log, histogram, profiling sessions (F4), exportable JSON report, __PerfMonitor globalThis |
 
 ---
 

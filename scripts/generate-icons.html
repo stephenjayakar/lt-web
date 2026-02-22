@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<!--
+  Open this file in a browser, right-click each canvas and "Save image as..."
+  to create icon-192.png and icon-512.png for the PWA manifest.
+  Place them in public/icons/.
+-->
+<html>
+<body style="background:#222;color:#fff;font-family:monospace">
+<h2>PWA Icon Generator — Right-click → Save Image As</h2>
+
+<h3>192×192</h3>
+<canvas id="c192" width="192" height="192"></canvas>
+
+<h3>512×512</h3>
+<canvas id="c512" width="512" height="512"></canvas>
+
+<script>
+function drawIcon(canvas) {
+  const s = canvas.width;
+  const ctx = canvas.getContext('2d');
+
+  // Background — dark blue
+  ctx.fillStyle = '#0a0a2e';
+  ctx.fillRect(0, 0, s, s);
+
+  // Sword icon (simplified)
+  const cx = s / 2, cy = s / 2;
+  const unit = s / 16;
+
+  // Blade
+  ctx.strokeStyle = '#c0c0e0';
+  ctx.lineWidth = unit * 1.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - unit * 3, cy + unit * 3);
+  ctx.lineTo(cx + unit * 3, cy - unit * 3);
+  ctx.stroke();
+
+  // Crossguard
+  ctx.strokeStyle = '#d4a017';
+  ctx.lineWidth = unit * 1.0;
+  ctx.beginPath();
+  ctx.moveTo(cx - unit * 1.5, cy - unit * 1.5);
+  ctx.lineTo(cx + unit * 1.5, cy + unit * 1.5);
+  ctx.stroke();
+
+  // Handle
+  ctx.strokeStyle = '#8b4513';
+  ctx.lineWidth = unit * 1.4;
+  ctx.beginPath();
+  ctx.moveTo(cx - unit * 3, cy + unit * 3);
+  ctx.lineTo(cx - unit * 4.5, cy + unit * 4.5);
+  ctx.stroke();
+
+  // "LT" text
+  ctx.fillStyle = '#e8d44d';
+  ctx.font = `bold ${unit * 3}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('LT', cx, cy + unit * 7);
+}
+
+drawIcon(document.getElementById('c192'));
+drawIcon(document.getElementById('c512'));
+</script>
+</body>
+</html>

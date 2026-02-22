@@ -184,6 +184,13 @@ export class AudioManager {
     }
   }
 
+  /** Suspend the audio context (e.g. when app is backgrounded). */
+  suspendContext(): void {
+    if (this.audioContext && this.audioContext.state === 'running') {
+      void this.audioContext.suspend();
+    }
+  }
+
   /** Resume audio context if suspended (e.g. after tab switch) */
   resume(): void {
     if (this.audioContext && this.audioContext.state === 'suspended') {

@@ -16,6 +16,9 @@ export class SkillObject {
   /** Component store keyed by component NID. */
   readonly components: Map<string, any>;
 
+  /** Runtime data store for skill state (e.g., torch counters). */
+  data: Map<string, any>;
+
   constructor(prefab: SkillPrefab) {
     this.nid = prefab.nid;
     this.name = prefab.name;
@@ -27,6 +30,8 @@ export class SkillObject {
     for (const [compNid, value] of prefab.components) {
       this.components.set(compNid, value);
     }
+
+    this.data = new Map<string, any>();
   }
 
   // ------------------------------------------------------------------

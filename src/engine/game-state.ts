@@ -9,8 +9,11 @@ import type {
   UnitPrefab,
   GenericUnitData,
   UniqueUnitData,
-  ItemPrefab,
+  KlassDef,
+  FogOfWarConfig,
+  DifficultyMode,
 } from '../data/types';
+import { DifficultyModeObject } from './difficulty';
 import { FRAMETIME } from './constants';
 import { Database } from '../data/database';
 import { ResourceManager } from '../data/resource-manager';
@@ -34,8 +37,16 @@ import { HUD } from '../ui/hud';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
 import { MapSprite } from '../rendering/map-sprite';
+import { SupportController } from './support-system';
+import { InitiativeTracker } from './initiative';
+import { PartyObject } from './party';
 import type { GameEvent } from '../events/event-manager';
 import type { InputManager } from './input';
+import type { OverworldManager } from './overworld/overworld-manager';
+import type { OverworldMovementManager } from './overworld/overworld-movement';
+import { RoamInfo } from './roam-info';
+import { Recordkeeper } from './records';
+import { GameQueryEngine } from './query-engine';
 
 /**
  * GameState — The god object holding references to every major subsystem
@@ -60,6 +71,8 @@ export class GameState {
   hud: HUD;
   actionLog: ActionLog;
   aiController: AIController | null;
+  supports: SupportController | null;
+  initiative: InitiativeTracker | null;
 
   // -- Game data -----------------------------------------------------------
   units: Map<string, UnitObject>;
@@ -71,6 +84,10 @@ export class GameState {
   levelVars: Map<string, any>;
   activeAiGroups: Set<string>;
 
+  // -- Party system -------------------------------------------------------
+  parties: Map<string, PartyObject>;
+  currentParty: NID;
+
   // -- Input ----------------------------------------------------------------
   /** Reference to the InputManager, set after construction from main.ts. */
   input: InputManager | null = null;
@@ -81,6 +98,8 @@ export class GameState {
 
   // -- Transient state (used by game states) --------------------------------
   selectedUnit: UnitObject | null;
+  /** Unit to display in the InfoMenuState. Set before changing to 'info_menu'. */
+  infoMenuUnit: UnitObject | null;
   combatTarget: UnitObject | null;
   /** Script tokens for scripted combat (interact_unit). Null for normal combat. */
   combatScript: string[] | null;
@@ -91,6 +110,51 @@ export class GameState {
   currentEvent: GameEvent | null;
   _moveOrigin: [number, number] | null;
   _pendingAfterMovement: string | null;
+
+  /**
+   * Transient memory map for passing data between states.
+   * Mirrors Python's game.memory dict. Used by turnwheel (force_turnwheel,
+   * event_turnwheel) and other systems.
+   */
+  memory: Map<string, any>;
+
+  // -- Base screen data -----------------------------------------------------
+  /** Base conversations: key=convo NID, value=true if viewed/ignored. */
+  baseConvos: Map<string, boolean>;
+  /** Market items for base screen: key=item NID, value=stock (-1=infinite). */
+  marketItems: Map<string, number>;
+
+  // -- Difficulty mode -------------------------------------------------------
+  /** Runtime difficulty mode for the current session. Null until initialized. */
+  currentMode: DifficultyModeObject | null;
+
+  // -- Overworld data -------------------------------------------------------
+  /** Active overworld controller (null when not on world map). */
+  overworldController: OverworldManager | null;
+  /** Overworld movement manager (null when not on world map). */
+  overworldMovement: OverworldMovementManager | null;
+  /** Persistent overworld registry (survives level transitions). */
+  overworldRegistry: Map<string, any>;
+
+  // -- Roam mode ----------------------------------------------------------
+  /** Free roam state info (ARPG-style unit control). */
+  roamInfo: RoamInfo;
+
+  // -- Records ------------------------------------------------------------
+  /** Per-save game statistics (kills, damage, healing, MVP, etc.). */
+  records: Recordkeeper;
+
+  // -- Query engine -------------------------------------------------------
+  /** Game state query engine for eval contexts. */
+  queryEngine: GameQueryEngine;
+
+  // -- Playtime -----------------------------------------------------------
+  /** Total playtime in milliseconds across sessions. */
+  playtime: number;
+
+  // -- Save slot ----------------------------------------------------------
+  /** Current save slot index (-1 if no save loaded). */
+  currentSaveSlot: number;
 
   constructor(db: Database, resources: ResourceManager, audioManager: AudioManager) {
     this.db = db;
@@ -117,6 +181,8 @@ export class GameState {
     this.pathSystem = null;
     this.eventManager = null;
     this.aiController = null;
+    this.supports = null;
+    this.initiative = null;
 
     // Game data
     this.units = new Map();
@@ -128,8 +194,13 @@ export class GameState {
     this.levelVars = new Map();
     this.activeAiGroups = new Set();
 
+    // Party system
+    this.parties = new Map();
+    this.currentParty = '';
+
     // Transient state
     this.selectedUnit = null;
+    this.infoMenuUnit = null;
     this.combatTarget = null;
     this.combatScript = null;
     this.shopUnit = null;
@@ -138,6 +209,34 @@ export class GameState {
     this.currentEvent = null;
     this._moveOrigin = null;
     this._pendingAfterMovement = null;
+    this.memory = new Map();
+
+    // Base screen data
+    this.baseConvos = new Map();
+    this.marketItems = new Map();
+
+    // Difficulty mode
+    this.currentMode = null;
+
+    // Overworld
+    this.overworldController = null;
+    this.overworldMovement = null;
+    this.overworldRegistry = new Map();
+
+    // Roam mode
+    this.roamInfo = new RoamInfo();
+
+    // Records
+    this.records = new Recordkeeper();
+
+    // Query engine
+    this.queryEngine = new GameQueryEngine();
+
+    // Playtime
+    this.playtime = 0;
+
+    // Save slot
+    this.currentSaveSlot = -1;
   }
 
   // ========================================================================
@@ -177,6 +276,7 @@ export class GameState {
     this.actionLog.clear();
     this.turnCount = 1;
     this.selectedUnit = null;
+    this.infoMenuUnit = null;
     this.combatTarget = null;
     this.combatScript = null;
     this.shopUnit = null;
@@ -185,6 +285,12 @@ export class GameState {
     this.currentEvent = null;
     this._moveOrigin = null;
     this._pendingAfterMovement = null;
+
+    // a2. Initialize parties and set current party from level ----------------
+    this.initParties();
+    if (levelPrefab.party) {
+      this.currentParty = levelPrefab.party;
+    }
 
     // b. Load tilemap ------------------------------------------------------
     const tilemapData = this.db.tilemaps.get(levelPrefab.tilemap);
@@ -229,6 +335,14 @@ export class GameState {
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
     this.board.initFromTilemap(this.tilemap);
 
+    // c2. Initialize fog of war grids and opacity grid --------------------
+    const teamOrder = this.db.teams.defs.map((t) => t.nid);
+    this.board.initFogGrids(teamOrder);
+    this.board.initOpacityGrid(this.db);
+
+    // c3. Initialize difficulty mode if not already set -------------------
+    this.initDifficulty();
+
     // d. Spawn units -------------------------------------------------------
     for (const unitData of levelPrefab.units) {
       if (isUniqueUnitData(unitData)) {
@@ -238,14 +352,16 @@ export class GameState {
       }
     }
 
+    // d2. Initialize fog of war vision for all spawned units ----------------
+    this.recalculateAllFow();
+
     // e. Load map sprites for each spawned unit ----------------------------
     await this.loadAllMapSprites();
 
     // f. Create PathSystem -------------------------------------------------
     this.pathSystem = new PathSystem(this.db);
 
-    // g. Create PhaseController --------------------------------------------
-    const teamOrder = this.db.teams.defs.map((t) => t.nid);
+    // g. Create PhaseController (uses teamOrder from step c2) ---------------
     this.phase = new PhaseController(teamOrder);
 
     // h. Create EventManager -----------------------------------------------
@@ -254,6 +370,24 @@ export class GameState {
     // h2. Create AIController -----------------------------------------------
     this.aiController = new AIController(this.db, this.board, this.pathSystem);
     this.aiController.gameRef = this;
+
+    // h3. Create SupportController ------------------------------------------
+    this.supports = new SupportController(
+      this.db.supportPairs,
+      this.db.supportRanks,
+      this.db.supportConstants,
+      this.db.affinities,
+    );
+    this.supports.initPairs();
+
+    // h4. Initialize initiative if enabled ----------------------------------
+    if (this.db.getConstant('initiative', false)) {
+      this.initiative = new InitiativeTracker();
+      const allUnits = this.getAllUnits().filter(u => u.position && !u.isDead());
+      this.initiative.start(allUnits, this.db);
+    } else {
+      this.initiative = null;
+    }
 
     // i. Initialize camera and cursor to map size --------------------------
     this.camera.setMapSize(this.tilemap.width, this.tilemap.height);
@@ -265,6 +399,12 @@ export class GameState {
     if (levelPrefab.music?.player_phase) {
       await this.audioManager.playMusic(levelPrefab.music.player_phase);
     }
+
+    // k2. Set up roam info from level prefab ---------------------------------
+    this.roamInfo = new RoamInfo(
+      !!(levelPrefab as any).roam,
+      (levelPrefab as any).roam_unit ?? null,
+    );
 
     // k. Trigger 'level_start' event ---------------------------------------
     if (this.eventManager) {
@@ -333,6 +473,11 @@ export class GameState {
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
     this.board.initFromTilemap(this.tilemap);
+
+    // Reinitialize fog of war grids and opacity
+    const teamNids = this.db.teams.defs.map((t) => t.nid);
+    this.board.initFogGrids(teamNids);
+    this.board.initOpacityGrid(this.db);
 
     // Reset cursor and camera to new map bounds
     this.cursor.setMapSize(this.tilemap.width, this.tilemap.height);
@@ -508,6 +653,82 @@ export class GameState {
   }
 
   // ========================================================================
+  // Difficulty Mode
+  // ========================================================================
+
+  /**
+   * Initialize the difficulty mode for the current session.
+   * If currentMode is already set (e.g., loaded from save), does nothing.
+   * Otherwise, creates a DifficultyModeObject from the first available
+   * difficulty mode in the database.
+   */
+  initDifficulty(): void {
+    if (this.currentMode) return;
+    if (this.db.difficultyModes.length > 0) {
+      this.currentMode = DifficultyModeObject.fromPrefab(this.db.difficultyModes[0]);
+    }
+  }
+
+  /**
+   * Get the DB prefab for the current difficulty mode.
+   * Returns null if no difficulty mode is set.
+   */
+  get mode(): DifficultyMode | null {
+    if (!this.currentMode) return null;
+    return this.db.difficultyModes.find(m => m.nid === this.currentMode!.nid) ?? null;
+  }
+
+  /**
+   * Get all team NIDs that are allied with 'player'.
+   * Includes 'player' itself plus any teams linked via alliance pairs.
+   */
+  getAlliedTeams(): string[] {
+    const allied = ['player'];
+    for (const [a, b] of this.db.teams.alliances) {
+      if (a === 'player' && !allied.includes(b)) allied.push(b);
+      if (b === 'player' && !allied.includes(a)) allied.push(a);
+    }
+    return allied;
+  }
+
+  // ========================================================================
+  // Fog of War
+  // ========================================================================
+
+  /**
+   * Get the current fog of war configuration from level variables.
+   * Port of LT's game_state.get_current_fog_info().
+   */
+  getCurrentFogInfo(): FogOfWarConfig {
+    const aiRadius = (this.levelVars.get('_ai_fog_of_war_radius') ??
+      this.levelVars.get('_fog_of_war_radius') ?? 0) as number;
+    return {
+      isActive: (this.levelVars.get('_fog_of_war') ?? false) as boolean,
+      mode: (this.levelVars.get('_fog_of_war_type') ?? 1) as number,
+      defaultRadius: (this.levelVars.get('_fog_of_war_radius') ?? 0) as number,
+      aiRadius,
+      otherRadius: (this.levelVars.get('_other_fog_of_war_radius') ?? aiRadius) as number,
+    };
+  }
+
+  /**
+   * Recalculate fog of war vision for all units on the board.
+   * Called after fog configuration changes (enable/disable/set).
+   */
+  recalculateAllFow(): void {
+    if (!this.board) return;
+    const fogInfo = this.getCurrentFogInfo();
+    for (const unit of this.units.values()) {
+      if (unit.position && !unit.isDead()) {
+        const radius = this.board.getFogOfWarRadius(unit, fogInfo, this.db);
+        this.board.updateFow(unit, unit.position, radius);
+      } else {
+        this.board.clearUnitFow(unit);
+      }
+    }
+  }
+
+  // ========================================================================
   // Unit queries
   // ========================================================================
 
@@ -530,6 +751,81 @@ export class GameState {
   /** Get a unit by NID, or null if not found. */
   getUnit(nid: string): UnitObject | null {
     return this.units.get(nid) ?? null;
+  }
+
+  // ========================================================================
+  // Party system
+  // ========================================================================
+
+  /** Get a party by NID (defaults to current party). Auto-creates if missing. */
+  getParty(partyNid?: string | null): PartyObject | null {
+    const nid = partyNid || this.currentParty;
+    if (!nid) return null;
+    if (!this.parties.has(nid)) {
+      this._buildParty(nid);
+    }
+    return this.parties.get(nid) ?? null;
+  }
+
+  /** Create a party from DB prefab data. */
+  private _buildParty(partyNid: string): void {
+    const prefab = this.db.parties.get(partyNid);
+    if (prefab) {
+      this.parties.set(partyNid, new PartyObject(prefab.nid, prefab.name, prefab.leader));
+    } else {
+      // Fall back to first party in DB
+      const firstParty = this.db.parties.values().next().value;
+      if (firstParty) {
+        this.parties.set(partyNid, new PartyObject(firstParty.nid, firstParty.name, firstParty.leader));
+      }
+    }
+  }
+
+  /** Initialize all parties from DB. Called during game initialization. */
+  initParties(): void {
+    for (const prefab of this.db.parties.values()) {
+      if (!this.parties.has(prefab.nid)) {
+        this.parties.set(prefab.nid, new PartyObject(prefab.nid, prefab.name, prefab.leader));
+      }
+    }
+    // Set current party to first party if not set
+    if (!this.currentParty && this.db.parties.size > 0) {
+      this.currentParty = this.db.parties.values().next().value?.nid ?? '';
+    }
+  }
+
+  /** Get all living units in a party. */
+  getUnitsInParty(partyNid?: string): UnitObject[] {
+    const nid = partyNid || this.currentParty;
+    const result: UnitObject[] = [];
+    for (const unit of this.units.values()) {
+      if (unit.team === 'player' && unit.party === nid && !unit.isDead()) {
+        result.push(unit);
+      }
+    }
+    return result;
+  }
+
+  /** Get all units in a party including dead ones. */
+  getAllUnitsInParty(partyNid?: string): UnitObject[] {
+    const nid = partyNid || this.currentParty;
+    const result: UnitObject[] = [];
+    for (const unit of this.units.values()) {
+      if (unit.team === 'player' && unit.party === nid) {
+        result.push(unit);
+      }
+    }
+    return result;
+  }
+
+  /** Get the current party's money. */
+  getMoney(): number {
+    return this.getParty()?.money ?? 0;
+  }
+
+  /** Get the current party's BEXP. */
+  getBexp(): number {
+    return this.getParty()?.bexp ?? 0;
   }
 
   // ========================================================================
@@ -604,6 +900,11 @@ export class GameState {
     // Record starting position for Defend AI / return-home
     unit.startingPosition = position ? [...position] as [number, number] : null;
 
+    // Set party for player units if not already assigned
+    if (!unit.party && unit.team === 'player') {
+      unit.party = this.currentParty;
+    }
+
     this.units.set(unit.nid, unit);
     return unit;
   }
@@ -629,6 +930,11 @@ export class GameState {
   /**
    * Spawn a unique unit from level data.
    * Unique units reference a UnitPrefab in db.units by NID.
+   *
+   * Difficulty bonuses applied:
+   *   - Base stat bonuses added to unit stats
+   *   - (Unique units do NOT get difficulty autolevels — they use
+   *     difficulty_auto_level which is growth-bonus-only, handled separately)
    */
   spawnUniqueUnit(data: UniqueUnitData): void {
     const prefab = this.db.units.get(data.nid);
@@ -638,11 +944,20 @@ export class GameState {
     }
     const unit = this.spawnUnit(prefab, data.team, data.starting_position, data.ai);
     if (data.ai_group) unit.aiGroup = data.ai_group;
+
+    // Apply difficulty base bonuses
+    this.applyDifficultyBaseBonuses(unit);
   }
 
   /**
    * Spawn a generic unit from level data.
    * Generic units are defined inline with class, level, items, etc.
+   *
+   * Matches the Python behaviour:
+   *   1. Name is resolved from the faction definition (not the NID).
+   *   2. Stats start from class bases.
+   *   3. Auto-leveling is applied using the FIXED growth method
+   *      (deterministic, matching Python's default for enemies).
    */
   spawnGenericUnit(data: GenericUnitData): void {
     // Build a synthetic UnitPrefab from the generic data
@@ -654,6 +969,15 @@ export class GameState {
       return;
     }
 
+    // Resolve display name from faction (Python: GenericUnit.name -> DB.factions.get(self.faction).name)
+    let displayName = data.variant || data.nid;
+    if (data.faction) {
+      const faction = this.db.factions.get(data.faction);
+      if (faction) {
+        displayName = data.variant || faction.name;
+      }
+    }
+
     // Convert generic starting_skills (NID[]) to learned_skills format ([level, NID][])
     const learnedSkills: [number, string][] = (data.starting_skills ?? []).map(
       (skillNid) => [1, skillNid] as [number, string],
@@ -661,13 +985,13 @@ export class GameState {
 
     const syntheticPrefab: UnitPrefab = {
       nid: data.nid,
-      name: data.variant || data.nid,
+      name: displayName,
       desc: '',
       level: data.level,
       klass: data.klass,
       tags: [],
-      bases: klassDef.bases,
-      growths: klassDef.growths,
+      bases: { ...klassDef.bases },
+      growths: { ...klassDef.growths },
       starting_items: data.starting_items,
       learned_skills: learnedSkills,
       wexp_gain: klassDef.wexp_gain,
@@ -677,39 +1001,234 @@ export class GameState {
 
     const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
     if (data.ai_group) unit.aiGroup = data.ai_group;
+
+    // Auto-level: apply FIXED growth-based stat increases.
+    // Python: num_levels = self.level - 1 for tier 0/1 base classes
+    const numLevels = this.getAutoLevelCount(data.level, klassDef);
+    if (numLevels > 0) {
+      autoLevelFixed(unit, 1, numLevels, klassDef);
+    }
+
+    // Apply difficulty bonuses (base stats + autolevels)
+    this.applyDifficultyBaseBonuses(unit);
+    this.applyDifficultyAutolevels(unit, klassDef);
+  }
+
+  /**
+   * Compute the number of auto-level iterations for a generic unit.
+   * Matches Python's logic from unit.py lines 274-278:
+   *   tier 0: level - 1
+   *   tier 1: level
+   *   tier 2+: level + sum(max_level of promote chain back to tier 1)
+   *
+   * For simplicity we use: level - 1 for tier <= 1, and for tier >= 2 we
+   * add the max_level of the immediate promotes_from class.
+   */
+  private getAutoLevelCount(unitLevel: number, klassDef: KlassDef): number {
+    if (klassDef.tier <= 1) {
+      return unitLevel - 1;
+    }
+    // Promoted class: internal level includes levels from previous tier
+    let baseLevels = 0;
+    if (klassDef.promotes_from) {
+      const baseClass = this.db.classes.get(klassDef.promotes_from);
+      if (baseClass) {
+        baseLevels = baseClass.max_level ?? 20;
+      }
+    }
+    return unitLevel + baseLevels - 1;
+  }
+
+  /**
+   * Apply difficulty base stat bonuses to a unit.
+   * Called after spawning to add stat adjustments from the current difficulty mode.
+   */
+  private applyDifficultyBaseBonuses(unit: UnitObject): void {
+    if (!this.currentMode) return;
+    const prefab = this.mode;
+    if (!prefab) return;
+
+    const alliedTeams = this.getAlliedTeams();
+    const baseBonus = this.currentMode.getBaseBonus(unit, alliedTeams, prefab);
+    if (!baseBonus) return;
+
+    for (const [stat, bonus] of Object.entries(baseBonus)) {
+      if (bonus !== 0 && unit.stats[stat] !== undefined) {
+        const maxStat = unit.maxStats[stat] ?? 99;
+        unit.stats[stat] = Math.min(maxStat, Math.max(0, unit.stats[stat] + bonus));
+      }
+    }
+
+    // Update HP if it was adjusted
+    if (baseBonus['HP'] && baseBonus['HP'] > 0) {
+      unit.currentHp = unit.stats['HP'] ?? unit.currentHp;
+    }
+  }
+
+  /**
+   * Apply difficulty autolevels to a generic unit.
+   * Difficulty autolevels grant extra FIXED-method level-ups beyond
+   * the unit's normal level. Also applies "true levels" which increase
+   * the displayed level without stat gains.
+   */
+  private applyDifficultyAutolevels(unit: UnitObject, klassDef: KlassDef): void {
+    if (!this.currentMode) return;
+    const prefab = this.mode;
+    if (!prefab) return;
+
+    const alliedTeams = this.getAlliedTeams();
+    const extraLevels = this.currentMode.getDifficultyAutolevels(unit, alliedTeams, prefab);
+
+    if (extraLevels > 0) {
+      // Apply promoted_autolevels_fraction for promoted units
+      let effectiveLevels = extraLevels;
+      if (klassDef.tier >= 2 && prefab.promoted_autolevels_fraction !== undefined) {
+        effectiveLevels = Math.round(extraLevels * prefab.promoted_autolevels_fraction);
+      }
+
+      if (effectiveLevels > 0) {
+        // Use the unit's current level as the base for additional auto-leveling
+        autoLevelFixed(unit, unit.level, effectiveLevels, klassDef);
+      }
+    }
+
+    // Apply true levels (display only — increase level without stat gains)
+    const trueLevels = this.currentMode.getDifficultyTruelevels(unit, alliedTeams);
+    if (trueLevels > 0) {
+      unit.level += trueLevels;
+    }
   }
 
   /**
    * Load map sprites for every unit currently in the registry.
    * The sprite NID comes from the unit's class definition.
+   *
+   * If a sprite fails to load, the unit's `sprite` remains null and
+   * the renderer draws a colored placeholder rectangle instead (see
+   * MapView.drawUnits and UnitRenderer.drawPlaceholder).
    */
   private async loadAllMapSprites(): Promise<void> {
     const loadPromises: Promise<void>[] = [];
+    // Cache loaded sprites by (spriteNid + teamPalette) to avoid redundant loads
+    // when multiple units of the same class/team need the same sprite.
+    const spriteCache = new Map<string, ReturnType<typeof MapSprite.fromImages>>();
 
     for (const unit of this.units.values()) {
       const klassDef = this.db.classes.get(unit.klass);
-      if (!klassDef) continue;
+      if (!klassDef) {
+        console.warn(`GameState.loadAllMapSprites: class "${unit.klass}" not found for unit "${unit.nid}"`);
+        continue;
+      }
 
       const spriteNid = klassDef.map_sprite_nid;
-      if (!spriteNid) continue;
+      if (!spriteNid) {
+        console.warn(`GameState.loadAllMapSprites: class "${unit.klass}" has no map_sprite_nid for unit "${unit.nid}"`);
+        continue;
+      }
 
       // Look up team palette for coloring (enemy=red, other=green, etc.)
       const teamDef = this.db.teams.defs.find(t => t.nid === unit.team);
       const teamPalette = teamDef?.palette ?? undefined;
+      const cacheKey = `${spriteNid}__${teamPalette ?? ''}`;
 
       loadPromises.push(
-        this.resources.tryLoadMapSprite(spriteNid).then((sprites) => {
-          // Construct a proper MapSprite from the loaded images.
-          // MapSprite.fromImages handles null move images gracefully.
-          // Pass teamPalette to recolor from blue to the unit's team color.
+        (async () => {
+          // Check cache first
+          if (spriteCache.has(cacheKey)) {
+            unit.sprite = spriteCache.get(cacheKey) ?? null;
+            return;
+          }
+
+          const sprites = await this.resources.tryLoadMapSprite(spriteNid);
           const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move, teamPalette);
+
+          if (!mapSprite) {
+            console.warn(
+              `GameState.loadAllMapSprites: sprite "${spriteNid}" failed to load for unit "${unit.nid}" — using placeholder`,
+            );
+          }
+
+          spriteCache.set(cacheKey, mapSprite);
           unit.sprite = mapSprite;
-        }),
+        })(),
       );
     }
 
     await Promise.all(loadPromises);
   }
+}
+
+// ============================================================================
+// Auto-leveling (FIXED growth method)
+// ============================================================================
+
+/**
+ * Apply deterministic FIXED-mode auto-leveling to a unit.
+ *
+ * Matches Python's `_fixed_levelup` from unit_funcs.py lines 109-126:
+ *   For each stat, for each pseudo-level from baseLevel to baseLevel+numLevels-1:
+ *     - growth >= 100 => guaranteed +1 per 100
+ *     - remainder: compute (50 + remainder * level) % 100;
+ *       if result < remainder => +1
+ *
+ * This creates a perfectly deterministic, evenly-spaced level-up pattern.
+ *
+ * @param unit       The unit to level up (stats are modified in-place).
+ * @param baseLevel  Starting pseudo-level (usually 1).
+ * @param numLevels  Number of levels to auto-apply.
+ * @param klassDef   Class definition for growth_bonus and max_stats.
+ */
+function autoLevelFixed(
+  unit: UnitObject,
+  baseLevel: number,
+  numLevels: number,
+  klassDef: import('../data/types').KlassDef,
+): void {
+  const totalGains: Record<string, number> = {};
+  for (const stat of Object.keys(unit.stats)) {
+    totalGains[stat] = 0;
+  }
+
+  for (let i = 0; i < numLevels; i++) {
+    const level = baseLevel + i;
+    for (const stat of Object.keys(unit.growths)) {
+      // Total growth = unit growths (which are class growths for generics) + class growth_bonus
+      let growth = (unit.growths[stat] ?? 0) + (klassDef.growth_bonus?.[stat] ?? 0);
+      let gained = 0;
+
+      // Guaranteed gains for growth >= 100
+      if (growth >= 100) {
+        gained += Math.floor(growth / 100);
+        growth = growth % 100;
+      }
+
+      // Fractional part: deterministic sawtooth
+      if (growth > 0) {
+        const growthInc = (50 + growth * level) % 100;
+        if (growthInc < growth) {
+          gained += 1;
+        }
+      }
+
+      if (totalGains[stat] !== undefined) {
+        totalGains[stat] += gained;
+      }
+    }
+  }
+
+  // Apply gains, clamped to [0, max_stats]
+  for (const stat of Object.keys(totalGains)) {
+    const maxStat = klassDef.max_stats?.[stat] ?? unit.maxStats[stat] ?? 99;
+    const currentVal = unit.stats[stat] ?? 0;
+    const maxGain = Math.max(0, maxStat - currentVal);
+    const gain = Math.min(totalGains[stat], maxGain);
+    if (gain > 0) {
+      unit.stats[stat] = currentVal + gain;
+    }
+  }
+
+  // Reset HP to full after auto-leveling
+  unit.currentHp = unit.stats['HP'] ?? unit.currentHp;
 }
 
 // ============================================================================

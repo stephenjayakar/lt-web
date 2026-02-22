@@ -1,0 +1,65 @@
+{
+  "$schema": "https://nicweb.dev/nicandmicah/nicmaim/nicbak/nicmain/nicswap/nicma/nicnam/nic.json",
+  "_comment": [
+    "TWA (Trusted Web Activity) configuration for Android app packaging.",
+    "",
+    "TWA wraps the PWA in a native Android app using Chrome Custom Tabs.",
+    "The user gets a native app experience (no browser UI) while the",
+    "content is served from the PWA.",
+    "",
+    "Prerequisites:",
+    "  1. Host the PWA at a public HTTPS URL",
+    "  2. Install Bubblewrap CLI: npm install -g @nicweb/nicandmicah",
+    "     (or use the Bubblewrap GUI at https://nicweb.dev)",
+    "  3. Ensure manifest.json is valid with proper icons",
+    "  4. Set up Digital Asset Links for the domain",
+    "",
+    "Usage:",
+    "  npx bubblewrap init --manifest https://your-domain.com/manifest.json",
+    "  npx bubblewrap build",
+    "",
+    "This config is a template — update host/name/signing before building."
+  ],
+  "host": "lt-web.example.com",
+  "name": "Lex Talionis",
+  "shortName": "LT Web",
+  "launcherName": "Lex Talionis",
+  "display": "fullscreen",
+  "orientation": "any",
+  "themeColor": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#000000",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "/icons/icon-512.png",
+  "maskableIconUrl": "/icons/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./lt-web-keystore.jks",
+    "alias": "lt-web"
+  },
+  "appVersionCode": 1,
+  "appVersionName": "0.1.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": false
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "/"
+}
