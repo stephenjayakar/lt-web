@@ -8,8 +8,8 @@ Lex Talionis Python/Pygame engine.
 
 ## Current State
 
-**49 source files, ~18,500 lines of TypeScript.**
-Builds cleanly with zero type errors (176KB JS / 49KB gzipped).
+**49 source files, ~18,800 lines of TypeScript.**
+Builds cleanly with zero type errors (211KB JS / 58KB gzipped).
 Loads `.ltproj` game data over HTTP and runs a 60 fps game loop
 rendering to a dynamically-scaled HTML5 Canvas with dynamic viewport
 (mobile + desktop). Phase 1.2 core gameplay implemented, plus GBA-style
@@ -17,6 +17,39 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
+- **Fix region type matching in action menu.** The action menu was
+  checking `region_type` against hardcoded strings like 'village',
+  'visit', 'shop', 'seize' — but actual level data uses
+  `region_type: 'event'` with `sub_nid: 'Visit'`, `'Seize'`, etc.
+  Now correctly checks `region_type === 'event'` and uses `sub_nid`
+  as the menu label. Evaluates region conditions. Supports any sub_nid
+  (Visit, Seize, Shop, Armory, Chest, Door, Escape, Secret, etc.).
+  Also removes `only_once` regions after triggering.
+- **RegionData interface expanded.** Added `time_left`, `only_once`,
+  `interrupt_move`, `hide_time` fields to match Python. All fields
+  present in actual level JSON data.
+- **`add_region` event command implemented.** Creates new RegionData
+  and pushes to `game.currentLevel.regions`. Parses NID, position,
+  size, region type, sub_nid, time_left, and flags (only_once,
+  interrupt_move). Checks for duplicate NIDs.
+- **`region_condition` event command implemented.** Updates a region's
+  condition expression string by NID.
+- **Screen shake system.** Camera now supports shake effects with 5
+  pattern types: default (gentle vertical), combat (diagonal), kill
+  (violent), random (16 random offsets ±4), celeste (subtle ±1).
+  Shake offsets applied in `getOffset()`. Duration-based auto-reset.
+  `screen_shake` command blocks by default, `no_block` flag available.
+  `screen_shake_end` immediately resets shake.
+- **Alert command fixed.** Duration changed from 1500ms to 3000ms
+  (matching Python's `time_to_wait`). After 300ms (`time_to_pause`),
+  any input dismisses the alert early. Previously no input handling
+  during alert display.
+- **Seize win-condition fix.** Now checks `region_type === 'event'`
+  with `sub_nid === 'Seize'` (was checking `region_type === 'seize'`).
+  Also iterates all tiles in multi-tile regions (was only checking
+  top-left corner).
+
+### Previous Session
 - **Enemy threat zones.** Press INFO (C/Shift) on an empty tile to
   toggle all-enemy threat range overlay (magenta/purple). Press SELECT
   on an enemy unit to show that unit's individual move (blue) and attack
@@ -358,7 +391,9 @@ add:
 - [x] `if` / `elif` / `else` / `end` (flow control with condition evaluator)
 - [x] `for` / `endf` loop (iterates over comma-separated values)
   - [x] `set_tile` — N/A (does not exist in original engine; use show_layer/hide_layer)
-- [x] `remove_region` (add_region still stub)
+- [x] `add_region` (creates RegionData with position, size, type, sub_nid, flags)
+- [x] `remove_region`
+- [x] `region_condition` (updates region condition expression)
 - [x] `camera` control (`center_cursor`, `move_cursor`, `disp_cursor`, `flicker_cursor`)
   - [ ] `map_anim` (play animation at a tile — requires map animation system)
 - [x] `choice` / `unchoice` (branching dialogue menus)
@@ -594,13 +629,13 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/input.ts` | 476 | Done — mouse, touch, pinch-zoom, drag-pan, scroll-zoom, middle-click pan |
 | `engine/state.ts` | 52 | Done |
 | `engine/state-machine.ts` | 207 | Done |
-| `engine/camera.ts` | 111 | Done — dynamic viewport, `pan()` method, needs shake effect |
+| `engine/camera.ts` | ~155 | Done — dynamic viewport, `pan()` method, screen shake (5 patterns) |
 | `engine/cursor.ts` | ~185 | Done — actual cursor sprite with 3-frame bounce animation |
 | `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
 | `engine/game-state.ts` | 635 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation |
-| `engine/states/game-states.ts` | ~5480 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~50 event commands |
+| `engine/states/game-states.ts` | ~5690 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~50 event commands |
 | `data/types.ts` | 342 | Done |
 | `data/database.ts` | 436 | Done — combat anim data loading |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |

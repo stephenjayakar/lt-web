@@ -233,6 +233,10 @@ export interface RegionData {
   size: [number, number];
   sub_nid: string;
   condition: string;
+  time_left: number | null;
+  only_once: boolean;
+  interrupt_move: boolean;
+  hide_time: boolean;
 }
 
 export interface LevelPrefab {

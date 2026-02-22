@@ -41,6 +41,11 @@ export class Banner {
     return this.timer >= this.duration;
   }
 
+  /** Get the elapsed time in milliseconds. */
+  getElapsed(): number {
+    return this.timer;
+  }
+
   /** Draw the banner */
   draw(surf: Surface): void {
     if (this.timer >= this.duration) return;

@@ -305,15 +305,20 @@ export class GameState {
       return hadBoss;
     }
 
-    // Seize: a player unit is on a 'seize' region
+    // Seize: a player unit is on a 'seize' region (region_type === 'event', sub_nid === 'Seize')
     if (win.includes('seize')) {
       if (this.currentLevel.regions) {
         for (const region of this.currentLevel.regions) {
-          if (region.region_type.toLowerCase() === 'seize' || region.sub_nid === 'Seize') {
+          if (region.region_type.toLowerCase() === 'event' && region.sub_nid === 'Seize') {
             const [rx, ry] = region.position;
-            const unit = this.board?.getUnit(rx, ry);
-            if (unit && unit.team === 'player') {
-              return true;
+            const [rw, rh] = region.size;
+            for (let tx = rx; tx < rx + rw; tx++) {
+              for (let ty = ry; ty < ry + rh; ty++) {
+                const unit = this.board?.getUnit(tx, ty);
+                if (unit && unit.team === 'player') {
+                  return true;
+                }
+              }
             }
           }
         }
