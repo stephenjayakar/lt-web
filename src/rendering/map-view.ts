@@ -46,7 +46,7 @@ export class MapView {
   draw(
     tilemap: TileMapObject,
     cullRect: { x: number; y: number; w: number; h: number },
-    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean }[],
+    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean; currentHp: number; maxHp: number }[],
     highlights: Map<string, string> | null,
     cursor: {
       x: number;
@@ -140,7 +140,7 @@ export class MapView {
    */
   private drawUnits(
     surf: Surface,
-    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean }[],
+    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean; currentHp: number; maxHp: number }[],
     offsetX: number,
     offsetY: number,
   ): void {
@@ -182,6 +182,24 @@ export class MapView {
         // use their gray frame row instead).
         if (unit.finished) {
           surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, 'rgba(0,0,0,0.35)');
+        }
+      }
+
+      // Draw HP bar below the unit tile
+      if (unit.maxHp > 0) {
+        const barWidth = TILEWIDTH - 2;
+        const barHeight = 2;
+        const barX = px + 1;
+        const barY = py + TILEHEIGHT - 1;
+        const hpRatio = Math.max(0, Math.min(1, unit.currentHp / unit.maxHp));
+
+        // Background (dark)
+        surf.fillRect(barX, barY, barWidth, barHeight, 'rgba(0,0,0,0.7)');
+        // Fill (green -> yellow -> red based on HP ratio)
+        const barColor = hpRatio > 0.5 ? '#40e040' : hpRatio > 0.25 ? '#e0e040' : '#e04040';
+        const fillWidth = Math.round(barWidth * hpRatio);
+        if (fillWidth > 0) {
+          surf.fillRect(barX, barY, fillWidth, barHeight, barColor);
         }
       }
     }

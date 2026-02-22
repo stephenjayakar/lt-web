@@ -626,11 +626,14 @@ export class EventManager {
   /** Queue of events waiting to be processed. First in = first out. */
   eventQueue: GameEvent[];
   private onceTriggered: Set<NID>;
+  /** Dynamic talk pairs added via event commands: Set of "unitA|unitB" keys. */
+  private talkPairs: Set<string>;
 
   constructor(events: Map<NID, EventPrefab>) {
     this.allEvents = events;
     this.eventQueue = [];
     this.onceTriggered = new Set();
+    this.talkPairs = new Set();
   }
 
   /**
@@ -713,6 +716,22 @@ export class EventManager {
       }
       return true;
     });
+  }
+
+  /** Add a dynamic talk pair (used by add_talk event command). */
+  addTalkPair(unit1Nid: string, unit2Nid: string): void {
+    this.talkPairs.add(`${unit1Nid}|${unit2Nid}`);
+  }
+
+  /** Remove a dynamic talk pair (used by remove_talk event command). */
+  removeTalkPair(unit1Nid: string, unit2Nid: string): void {
+    this.talkPairs.delete(`${unit1Nid}|${unit2Nid}`);
+  }
+
+  /** Check if a talk pair exists. */
+  hasTalkPair(unit1Nid: string, unit2Nid: string): boolean {
+    return this.talkPairs.has(`${unit1Nid}|${unit2Nid}`) ||
+           this.talkPairs.has(`${unit2Nid}|${unit1Nid}`);
   }
 
   /**

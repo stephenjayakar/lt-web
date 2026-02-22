@@ -181,6 +181,18 @@ export class TileMapObject {
     return result;
   }
 
+  /** Show a layer by NID. */
+  showLayer(nid: string): void {
+    const layer = this.layers.find(l => l.nid === nid);
+    if (layer) layer.visible = true;
+  }
+
+  /** Hide a layer by NID. */
+  hideLayer(nid: string): void {
+    const layer = this.layers.find(l => l.nid === nid);
+    if (layer) layer.visible = false;
+  }
+
   /** Check if a tile position is within map bounds. */
   checkBounds(x: number, y: number): boolean {
     return x >= 0 && y >= 0 && x < this.width && y < this.height;

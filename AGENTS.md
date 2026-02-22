@@ -7,6 +7,8 @@ produced ~9,200 lines of TypeScript across 37 files.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
 
+**Important:** Always update PLAN.md when you complete tasks (check off items, update line counts, add to "Recent Changes") or discover new tasks/bugs (add them to the appropriate section). PLAN.md is the source of truth for project status.
+
 ---
 
 ## 1. Analysis Phase: Three Parallel Deep Dives

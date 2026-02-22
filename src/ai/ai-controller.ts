@@ -866,4 +866,48 @@ export class AIController {
   private distance(a: [number, number], b: [number, number]): number {
     return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
   }
+
+  // =========================================================================
+  // AI Group Activation
+  // =========================================================================
+
+  /**
+   * Check if a player unit at the given position triggers activation of any
+   * AI group. A group activates when a player unit is within the detection
+   * range (move + max weapon range) of any inactive group member.
+   */
+  checkGroupActivation(
+    playerPos: [number, number],
+    game: { isAiGroupActive(g: string): boolean; activateAiGroup(g: string): void },
+  ): void {
+    const allUnits = this.board.getAllUnits();
+    for (const enemy of allUnits) {
+      if (enemy.isDead() || !enemy.position) continue;
+      if (!enemy.aiGroup || enemy.aiGroup === '') continue;
+      if (enemy.team === 'player') continue;
+      if (game.isAiGroupActive(enemy.aiGroup)) continue;
+
+      // Detection range: movement + max weapon range
+      const mov = enemy.getStatValue('MOV');
+      const maxRange = this.getMaxItemRange(enemy);
+      const detectionRange = mov + maxRange;
+
+      if (this.distance(enemy.position, playerPos) <= detectionRange) {
+        game.activateAiGroup(enemy.aiGroup);
+      }
+    }
+  }
+
+  /**
+   * Activate the group of a unit that was involved in combat.
+   */
+  activateGroupOnCombat(
+    unit: UnitObject,
+    game: { activateAiGroup(g: string): void },
+  ): void {
+    if (unit.aiGroup && unit.aiGroup !== '') {
+      game.activateAiGroup(unit.aiGroup);
+    }
+  }
+
 }

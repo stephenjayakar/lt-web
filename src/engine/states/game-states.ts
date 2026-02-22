@@ -118,6 +118,8 @@ function collectVisibleUnits(): {
   sprite: any;
   team: string;
   finished: boolean;
+  currentHp: number;
+  maxHp: number;
 }[] {
   const game = getGame();
   if (!game.board) return [];
@@ -131,6 +133,8 @@ function collectVisibleUnits(): {
     sprite: any;
     team: string;
     finished: boolean;
+    currentHp: number;
+    maxHp: number;
   }[] = [];
 
   for (const u of allUnits) {
@@ -173,6 +177,8 @@ function collectVisibleUnits(): {
       sprite: u.sprite,
       team: u.team,
       finished: u.finished && u.team === currentTeam,
+      currentHp: u.currentHp,
+      maxHp: u.maxHp,
     });
   }
   return result;
@@ -584,10 +590,12 @@ export class LevelSelectState extends State {
 
     this.loading = true;
 
-    // Clear the state stack, load the level, then start gameplay
-    game.state.clear();
+    // Load the level, then clear the stack and start gameplay.
+    // Keep LevelSelectState on the stack during loading so the
+    // loading overlay remains visible.
     game.loadLevel(selected.nid).then(() => {
       this.loading = false;
+      game.state.clear();
       game.state.change('free');
       // If level_start triggered events, push EventState on top of FreeState
       if (game.eventManager?.hasActiveEvents()) {
@@ -916,6 +924,11 @@ export class MoveState extends MapState {
           // Move unit on the board
           game.board.moveUnit(unit, pos.x, pos.y);
           unit.hasMoved = true;
+
+          // Check if this movement triggers AI group activation
+          if (game.aiController && unit.team === 'player') {
+            game.aiController.checkGroupActivation([pos.x, pos.y], game);
+          }
 
           // If we have a path with length > 1, animate movement
           if (path && path.length > 1) {
@@ -2295,6 +2308,12 @@ export class CombatState extends State {
           );
         }
 
+        // Activate AI groups if an enemy was involved in combat
+        if (game.aiController) {
+          game.aiController.activateGroupOnCombat(activeCombat!.attacker, game);
+          game.aiController.activateGroupOnCombat(activeCombat!.defender, game);
+        }
+
         // Check win/loss conditions
         if (game.checkLossCondition()) {
           console.warn('GAME OVER — loss condition met');
@@ -2924,7 +2943,7 @@ export class AIState extends MapState {
     const currentTeam = game.phase.getCurrent();
     this.aiUnits = game.board
       .getTeamUnits(currentTeam)
-      .filter((u: UnitObject) => !u.isDead() && u.canStillAct());
+      .filter((u: UnitObject) => !u.isDead() && u.canStillAct() && game.isAiGroupActive(u.aiGroup));
     this.currentAiIndex = 0;
     this.frameCounter = 0;
     this.processing = false;
@@ -3343,6 +3362,19 @@ export class EventState extends State {
   private waitTimer: number = 0;
   private waiting: boolean = false;
 
+  // Transition fade state
+  private transitionAlpha: number = 0;
+  private transitionFadingIn: boolean = false;  // true = fading to black
+  private transitionFadingOut: boolean = false; // true = fading from black
+  private transitionHoldBlack: boolean = false; // true = holding black between open/close
+
+  // Choice menu state
+  private choiceMenu: ChoiceMenu | null = null;
+  private choiceResult: string | null = null;
+
+  // For-loop state: stack of { varName, values[], currentIndex, loopStartPointer }
+  private forLoopStack: { varName: string; values: string[]; currentIndex: number; startPointer: number }[] = [];
+
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
@@ -3360,6 +3392,13 @@ export class EventState extends State {
     this.banner = null;
     this.waitTimer = 0;
     this.waiting = false;
+    this.transitionAlpha = 0;
+    this.transitionFadingIn = false;
+    this.transitionFadingOut = false;
+    this.transitionHoldBlack = false;
+    this.choiceMenu = null;
+    this.choiceResult = null;
+    this.forLoopStack = [];
   }
 
   // -----------------------------------------------------------------------
@@ -3369,19 +3408,37 @@ export class EventState extends State {
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
 
+    let effective = event;
+    if (game.input?.mouseClick === 'SELECT' && !effective) {
+      effective = 'SELECT';
+    } else if (game.input?.mouseClick === 'BACK' && !effective) {
+      effective = 'BACK';
+    }
+
     // Forward input to dialog if active
     if (this.dialog) {
-      let effective = event;
-      if (game.input?.mouseClick === 'SELECT' && !effective) {
-        effective = 'SELECT';
-      } else if (game.input?.mouseClick === 'BACK' && !effective) {
-        effective = 'BACK';
-      }
       const done = this.dialog.handleInput(effective);
       if (done) {
         this.dialog = null;
         this.advancePointer();
       }
+      return;
+    }
+
+    // Forward input to choice menu if active
+    if (this.choiceMenu) {
+      const result = this.choiceMenu.handleInput(effective);
+      if (result !== null) {
+        if ('selected' in result) {
+          this.choiceResult = result.selected;
+        } else {
+          // BACK — pick first option as default
+          this.choiceResult = this.choiceMenu.options[0]?.value ?? '';
+        }
+        this.choiceMenu = null;
+        this.advancePointer();
+      }
+      return;
     }
   }
 
@@ -3418,6 +3475,33 @@ export class EventState extends State {
         this.waiting = false;
         this.advancePointer();
       }
+      return;
+    }
+
+    // Transition fade animation
+    if (this.transitionFadingIn) {
+      this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / 500);
+      if (this.transitionAlpha >= 1) {
+        this.transitionFadingIn = false;
+        this.transitionHoldBlack = true;
+        this.advancePointer();
+        // Don't return — allow burst to continue while holding black
+      } else {
+        return;
+      }
+    }
+    if (this.transitionFadingOut) {
+      this.transitionAlpha = Math.max(0, this.transitionAlpha - FRAMETIME / 500);
+      if (this.transitionAlpha <= 0) {
+        this.transitionFadingOut = false;
+        this.transitionHoldBlack = false;
+        this.advancePointer();
+      }
+      return;
+    }
+
+    // Choice menu — block while active
+    if (this.choiceMenu) {
       return;
     }
 
@@ -3462,11 +3546,18 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   override draw(surf: Surface): Surface {
+    // Transition fade overlay
+    if (this.transitionAlpha > 0) {
+      surf.fillRect(0, 0, surf.width, surf.height, `rgba(0,0,0,${this.transitionAlpha})`);
+    }
     if (this.dialog) {
       this.dialog.draw(surf);
     }
     if (this.banner) {
       this.banner.draw(surf);
+    }
+    if (this.choiceMenu) {
+      this.choiceMenu.draw(surf);
     }
     return surf;
   }
@@ -3745,8 +3836,18 @@ export class EventState extends State {
       }
 
       case 'transition': {
-        this.waiting = true;
-        this.waitTimer = 500;
+        // transition;open — fade FROM black (reveal)
+        // transition;close — fade TO black (hide)
+        // transition (no args) — same as close
+        const direction = (args[0] ?? 'close').toLowerCase();
+        if (direction === 'open') {
+          this.transitionFadingOut = true;
+          this.transitionAlpha = 1;
+        } else {
+          // 'close' — fade to black
+          this.transitionFadingIn = true;
+          this.transitionAlpha = 0;
+        }
         return true;
       }
 
@@ -3853,8 +3954,16 @@ export class EventState extends State {
           // Skip if already spawned
           if (game.units.has(uNid)) continue;
 
-          const unitData = levelUnits.find((u: any) => u.nid === uNid);
-          if (!unitData) continue;
+          let unitData = levelUnits.find((u: any) => u.nid === uNid);
+          // Fall back to global unit DB if not found in level data
+          if (!unitData) {
+            const dbUnit = game.db.units.get(uNid);
+            if (dbUnit) {
+              unitData = { ...dbUnit, generic: false, team: 'enemy', ai: 'Normal' };
+            } else {
+              continue;
+            }
+          }
 
           // Position: from group positions, or starting_position
           const posOverride: [number, number] | null = positions[uNid] ?? null;
@@ -4172,7 +4281,440 @@ export class EventState extends State {
         return false;
       }
 
-      // ----- Portrait / visual commands (instant, visual-only) -----
+      // ----- Audio extended -----
+
+      case 'music_fade_back': {
+        // Restore the previous music (pop the stack)
+        if (game.audioManager) {
+          void game.audioManager.popMusic();
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'music_clear': {
+        if (game.audioManager) {
+          game.audioManager.stopMusic();
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'stop_sound': {
+        // SFX are fire-and-forget — no way to stop them currently
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Camera / cursor commands -----
+
+      case 'center_cursor':
+      case 'move_cursor': {
+        // center_cursor;x,y or move_cursor;x,y
+        const posStr = args[0] ?? '';
+        const parts = posStr.split(',');
+        if (parts.length >= 2) {
+          const cx = parseInt(parts[0], 10);
+          const cy = parseInt(parts[1], 10);
+          if (!isNaN(cx) && !isNaN(cy)) {
+            game.cursor?.setPos(cx, cy);
+            game.camera?.focusTile(cx, cy);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'disp_cursor': {
+        // disp_cursor;true/false — show or hide cursor
+        const show = (args[0] ?? 'true').toLowerCase();
+        if (game.cursor) {
+          game.cursor.visible = show !== 'false' && show !== '0';
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'screen_shake': {
+        // Stub — camera shake not yet implemented
+        this.advancePointer();
+        return false;
+      }
+
+      case 'screen_shake_end': {
+        this.advancePointer();
+        return false;
+      }
+
+      case 'flicker_cursor': {
+        // Briefly highlight a tile — just move camera there for now
+        const posStr2 = args[0] ?? '';
+        const parts2 = posStr2.split(',');
+        if (parts2.length >= 2) {
+          const fx = parseInt(parts2[0], 10);
+          const fy = parseInt(parts2[1], 10);
+          if (!isNaN(fx) && !isNaN(fy)) {
+            game.camera?.focusTile(fx, fy);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Objective changes -----
+
+      case 'change_objective_simple':
+      case 'change_objective': {
+        const newObj = args[0] ?? '';
+        if (game.currentLevel?.objective) {
+          game.currentLevel.objective.simple = newObj;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_objective_win': {
+        const newWin = args[0] ?? '';
+        if (game.currentLevel?.objective) {
+          game.currentLevel.objective.win = newWin;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_objective_loss': {
+        const newLoss = args[0] ?? '';
+        if (game.currentLevel?.objective) {
+          game.currentLevel.objective.loss = newLoss;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Money / BExp -----
+
+      case 'give_money': {
+        const amount = parseInt(args[0], 10) || 0;
+        const current = Number(game.gameVars.get('money') ?? 0);
+        game.gameVars.set('money', current + amount);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'give_bexp': {
+        const bexpAmount = parseInt(args[0], 10) || 0;
+        const currentBexp = Number(game.gameVars.get('bexp') ?? 0);
+        game.gameVars.set('bexp', currentBexp + bexpAmount);
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Talk management -----
+
+      case 'add_talk': {
+        // add_talk;unit1_nid;unit2_nid
+        if (game.eventManager && args.length >= 2) {
+          game.eventManager.addTalkPair(args[0], args[1]);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_talk': {
+        if (game.eventManager && args.length >= 2) {
+          game.eventManager.removeTalkPair(args[0], args[1]);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'hide_talk':
+      case 'unhide_talk': {
+        // Talk visibility toggling — not yet tracked visually
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- End turn -----
+
+      case 'end_turn': {
+        // Finish this event, then trigger a turn change
+        if (this.currentEvent) this.currentEvent.finish();
+        game.eventManager?.dequeueCurrentEvent();
+        this.currentEvent = null;
+        game.state.back();
+        game.state.change('turn_change');
+        return true;
+      }
+
+      // ----- Unit property modifications -----
+
+      case 'set_name': {
+        const unitNid = args[0] ?? '';
+        const newName = args[1] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) unit.name = newName;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'equip_item': {
+        // equip_item;unit_nid;item_nid — move item to front of inventory
+        const unitNid2 = args[0] ?? '';
+        const itemNid = args[1] ?? '';
+        const unit2 = this.findUnit(unitNid2);
+        if (unit2) {
+          const idx = unit2.items.findIndex((it: any) => it.nid === itemNid);
+          if (idx > 0) {
+            const [item] = unit2.items.splice(idx, 1);
+            unit2.items.unshift(item);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_current_mana': {
+        const unitNid3 = args[0] ?? '';
+        const mana = parseInt(args[1], 10);
+        const unit3 = this.findUnit(unitNid3);
+        if (unit3 && !isNaN(mana)) {
+          (unit3 as any).currentMana = Math.max(0, mana);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'has_traded': {
+        const unitNid4 = args[0] ?? '';
+        const unit4 = this.findUnit(unitNid4);
+        if (unit4) unit4.hasTraded = true;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_exp': {
+        const unitNid5 = args[0] ?? '';
+        const expVal = parseInt(args[1], 10);
+        const unit5 = this.findUnit(unitNid5);
+        if (unit5 && !isNaN(expVal)) {
+          unit5.exp = Math.max(0, Math.min(99, expVal));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_stats': {
+        // set_stats;unit_nid;HP,STR,MAG,SKL,SPD,LCK,DEF,RES
+        const unitNid6 = args[0] ?? '';
+        const statsStr = args[1] ?? '';
+        const unit6 = this.findUnit(unitNid6);
+        if (unit6 && statsStr) {
+          const statNames = ['hp', 'str', 'mag', 'skl', 'spd', 'lck', 'def', 'res'];
+          const values = statsStr.split(',').map((v: string) => parseInt(v, 10));
+          for (let i = 0; i < Math.min(values.length, statNames.length); i++) {
+            if (!isNaN(values[i])) {
+              (unit6 as any)[statNames[i]] = values[i];
+            }
+          }
+          // Clamp HP
+          if (unit6.currentHp > unit6.maxHp) unit6.currentHp = unit6.maxHp;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_class': {
+        // change_class;unit_nid;class_nid
+        const unitNid7 = args[0] ?? '';
+        const klassNid = args[1] ?? '';
+        const unit7 = this.findUnit(unitNid7);
+        if (unit7 && klassNid) {
+          unit7.klass = klassNid;
+          // Reload map sprite for new class
+          this.loadMapSpriteForUnit(unit7, game);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Choice menu -----
+
+      case 'choice': {
+        // choice;header;option1,option2,option3
+        const _header = args[0] ?? 'Choose';
+        const optionStrs = (args[1] ?? '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        if (optionStrs.length > 0) {
+          const menuOptions: MenuOption[] = optionStrs.map((s: string) => ({
+            label: s,
+            value: s,
+            enabled: true,
+          }));
+          // Center the menu on screen
+          const menuX = 80;
+          const menuY = 40;
+          this.choiceMenu = new ChoiceMenu(menuOptions, menuX, menuY);
+          return true; // block until user picks
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'unchoice': {
+        this.choiceResult = null;
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Remove all units / enemies -----
+
+      case 'remove_all_enemies': {
+        const enemies = game.board?.getTeamUnits('enemy') ?? [];
+        for (const enemy of enemies) {
+          game.board?.removeUnit(enemy);
+          game.units.delete(enemy.nid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_all_units': {
+        const allUnits = game.board?.getAllUnits() ?? [];
+        for (const u of allUnits) {
+          game.board?.removeUnit(u);
+          game.units.delete(u.nid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Region management -----
+
+      case 'add_region': {
+        // add_region;nid;type;x,y,w,h (simplified)
+        // Regions are complex — store in level data for now
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_region': {
+        const regionNid = args[0] ?? '';
+        if (game.currentLevel?.regions) {
+          game.currentLevel.regions = game.currentLevel.regions.filter(
+            (r: any) => r.nid !== regionNid
+          );
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'region_condition': {
+        // Stub — region condition management
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Tilemap commands -----
+
+      case 'show_layer': {
+        const layerNid = args[0] ?? '';
+        if (game.tilemap) {
+          game.tilemap.showLayer(layerNid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'hide_layer': {
+        const layerNid2 = args[0] ?? '';
+        if (game.tilemap) {
+          game.tilemap.hideLayer(layerNid2);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Modify game var (arithmetic) -----
+
+      case 'modify_game_var': {
+        // modify_game_var;name;expression
+        const gvarName = args[0] ?? '';
+        const gvarExpr = args[1] ?? '0';
+        const gvarVal = parseInt(gvarExpr, 10);
+        if (!isNaN(gvarVal)) {
+          game.gameVars.set(gvarName, gvarVal);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'modify_level_var': {
+        const lvarName = args[0] ?? '';
+        const lvarExpr = args[1] ?? '0';
+        const lvarVal = parseInt(lvarExpr, 10);
+        if (!isNaN(lvarVal)) {
+          game.levelVars.set(lvarName, lvarVal);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- For loops -----
+
+      case 'for': {
+        // for;varName;value1,value2,value3
+        const forVar = args[0] ?? '_i';
+        const forValues = (args[1] ?? '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        if (forValues.length === 0) {
+          // Empty loop — skip to matching endf
+          const commands = this.currentEvent!.commands;
+          let depth = 0;
+          for (let i = this.currentEvent!.commandPointer + 1; i < commands.length; i++) {
+            if (commands[i].type === 'for') depth++;
+            if (commands[i].type === 'endf') {
+              if (depth === 0) {
+                this.currentEvent!.commandPointer = i + 1;
+                return false;
+              }
+              depth--;
+            }
+          }
+          this.currentEvent!.commandPointer = this.currentEvent!.commands.length;
+          return false;
+        }
+        // Push loop context and set first value
+        this.forLoopStack.push({
+          varName: forVar,
+          values: forValues,
+          currentIndex: 0,
+          startPointer: this.currentEvent!.commandPointer + 1,
+        });
+        game.gameVars.set(forVar, forValues[0]);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'endf': {
+        const loopCtx = this.forLoopStack[this.forLoopStack.length - 1];
+        if (loopCtx) {
+          loopCtx.currentIndex++;
+          if (loopCtx.currentIndex < loopCtx.values.length) {
+            // Set next value and jump back to loop start
+            game.gameVars.set(loopCtx.varName, loopCtx.values[loopCtx.currentIndex]);
+            this.currentEvent!.commandPointer = loopCtx.startPointer;
+            return false;
+          } else {
+            // Loop complete — pop and advance past endf
+            this.forLoopStack.pop();
+            this.advancePointer();
+            return false;
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Portrait / visual commands (instant, visual-only stubs) -----
       case 'add_portrait':
       case 'multi_add_portrait':
       case 'remove_portrait':
@@ -4185,40 +4727,11 @@ export class EventState extends State {
       case 'hide_combat_ui':
       case 'show_combat_ui':
       case 'change_background':
-      case 'disp_cursor':
-      case 'move_cursor':
-      case 'center_cursor':
-      case 'flicker_cursor':
-      case 'screen_shake':
-      case 'screen_shake_end':
+      case 'pause_background':
+      case 'unpause_background':
         // Visual/UI commands — skip for now to allow event progression
         this.advancePointer();
         return false;
-
-      // ----- for / endf — not yet implemented, skip the block -----
-      case 'for': {
-        // Skip the entire for block to endf
-        const commands = this.currentEvent!.commands;
-        let depth = 0;
-        for (let i = this.currentEvent!.commandPointer + 1; i < commands.length; i++) {
-          if (commands[i].type === 'for') depth++;
-          if (commands[i].type === 'endf') {
-            if (depth === 0) {
-              this.currentEvent!.commandPointer = i + 1;
-              return false;
-            }
-            depth--;
-          }
-        }
-        // No matching endf — skip to end
-        this.currentEvent!.commandPointer = commands.length;
-        return false;
-      }
-
-      case 'endf': {
-        this.advancePointer();
-        return false;
-      }
 
       default:
         // Unknown/unimplemented command — skip
