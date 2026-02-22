@@ -17,36 +17,54 @@ combat animations, team-colored map sprites, level select, and full
 touch/mouse/keyboard input. Component dispatch system wired into combat.
 
 ### Recent Changes (Latest Session)
-- **Component dispatch wired into combat.** `item-system.ts` and
-  `skill-system.ts` dispatch layers now fully integrated into
-  `combat-calcs.ts`. All damage/hit/avoid/crit/speed formulas go
-  through item and skill modifiers. Supports formula overrides from
-  skills, dynamic modifiers, multipliers, and effective damage.
-- **Vantage/desperation/miracle in combat solver.** `combat-solver.ts`
-  rewritten with full skill-based strike ordering: vantage (defender
-  first), desperation (all attacker strikes before counter), disvantage,
-  ignoreDyingInCombat (miracle), critAnyway. Uses `computeStrikeCount()`
-  for brave weapons + dynamic multiattacks from skills.
-- **AI system overhaul.** `ai-controller.ts` rewritten (540 lines) with:
-  - All view_range modes: -1 (guard), -2 (single move), -3 (double
-    move), -4 (full map), 0 (disabled), positive (custom range)
-  - Guard mode movement restriction (only current position)
-  - target/target_spec filtering: Tag, Class, Name, ID, Team with
-    invert_targeting support
-  - Behaviour iteration with fallback (tries each in order)
-  - Primary -> secondary fallback per behaviour
-  - Defend AI: Move_to Position/Starting (return to starting position)
-  - Move_away_from (smart retreat -- maximize distance from threats)
-  - Support/Steal/Interact/Move_to action types
-  - Kill bonus in utility evaluation for target prioritization
-  - Normalized offense_bias weighting
-- **UnitObject.startingPosition and aiGroup.** Units now track where
-  they were originally placed (for Defend AI) and their AI group NID.
-  Both set during spawning.
-- **ai_group field in level data.** UniqueUnitData and GenericUnitData
-  types now include `ai_group: NID | null`.
+- **Battle music transitions.** AudioManager now has a music stack
+  (`pushMusic`/`popMusic`). CombatState plays `player_battle` or
+  `enemy_battle` music when combat begins and restores phase music
+  when combat ends. Uses `LevelMusic.player_battle`/`enemy_battle`
+  fields that were previously defined but unused.
+- **Enemy grey-out fix.** Units from non-active teams no longer appear
+  greyed out. The `finished` flag is now scoped to the current phase
+  team in `collectVisibleUnits()`, `UnitRenderer`, and `MapView`.
+- **Event system expansion (~40 commands).** Implemented: visual
+  transitions (fade to/from black), for-loops with variable iteration,
+  camera/cursor control, objective changes, money/bexp, talk pair
+  management, end_turn, music_fade_back/music_clear, choice menus,
+  unit property modifications (set_name, equip_item, set_stats,
+  change_class, etc.), remove_all_enemies/units, region removal,
+  tilemap layer show/hide, modify_game_var/level_var.
+- **For-loop execution.** `for;varName;val1,val2,...` / `endf` now
+  correctly iterates with a loop stack, setting game vars per iteration.
+- **Transition fade.** `transition;close` fades to black (500ms),
+  `transition;open` fades from black. Black screen is held between
+  close/open for event commands that run while hidden.
+- **Runtime bug fixes.**
+  - Level loading screen stays visible during async load (moved
+    `state.clear()` into `.then()` callback).
+  - `add_group` spawning falls back to `db.units` when unit NID not
+    found in level data.
+  - `teams.json` alliances defaults to `[]` to prevent crash on
+    malformed data.
+- **AI group activation.** `GameState.activeAiGroups` tracks which
+  groups are active. Groups activate when a player unit moves within
+  detection range (move + weapon range) of any group member, or when
+  any group member is attacked. `AIState` skips units in inactive groups.
+  `AIController.checkGroupActivation()` and `activateGroupOnCombat()`
+  methods added.
+- **Unit HP bar overlays.** Small color-coded HP bars (green/yellow/red)
+  rendered below each unit on the map. `collectVisibleUnits()` now
+  passes `currentHp`/`maxHp` to the renderer.
+- **Tilemap layer visibility.** `TileMapObject.showLayer()`/`hideLayer()`
+  for event-driven layer toggling.
+- **EventManager talk pairs.** `addTalkPair()`/`removeTalkPair()`/
+  `hasTalkPair()` for dynamic talk event management.
 
 ### Previous Session
+- Component dispatch wired into combat (`item-system.ts`, `skill-system.ts`).
+- Vantage/desperation/miracle in combat solver.
+- AI system overhaul (all view_range modes, target_spec, guard, defend, retreat).
+- UnitObject.startingPosition and aiGroup fields.
+
+### Earlier Session
 - GBA-style combat animations (920 + 763 lines).
 - Enemy team colors via palette swapping.
 - Level select screen.
@@ -178,10 +196,11 @@ Expect issues in all of the following areas:
 
 ### 1.3 AI Improvements
 
-- [ ] **AI group support.** Groups of enemies that activate together when a
-  threshold is met. `AIController` has `aiGroup` field on units but trigger
-  threshold / ping logic not yet implemented.
-  - Original: `app/engine/ai_controller.py` (lines 283-341)
+- [x] **AI group support.** Groups of enemies that activate together when a
+  player unit enters detection range or a group member is attacked.
+  `GameState.activeAiGroups` tracks activation state. `AIController` has
+  `checkGroupActivation()` and `activateGroupOnCombat()`. `AIState` skips
+  units in inactive groups.
 - [ ] **AI item use.** AI units using healing items or staves.
 - [x] **AI view range guard mode.** `view_range = -1` restricts valid moves
   to current position only. All view_range modes (-4 through positive) now
@@ -200,22 +219,30 @@ The current event system handles `speak`, `wait`, `move_unit`,
 `remove_unit`. The original has ~60 event commands. Priority commands to
 add:
 
-- [ ] `transition` (open/close, fade to black and back)
-- [ ] `add_unit` / `create_unit` (spawn units during events)
-- [ ] `give_item` / `remove_item`
-- [ ] `give_money` / `give_exp`
-- [ ] `change_team` (defection / recruitment)
-- [ ] `set_game_var` / `inc_game_var`
-- [ ] `change_objective`
-- [ ] `add_portrait` / `remove_portrait` (for dialog scenes)
-- [ ] `music` / `sound`
-- [ ] `win_game` / `lose_game`
-- [ ] `if` / `elif` / `else` / `end` (flow control)
-- [ ] `for` loop
+- [x] `transition` (open/close, fade to black and back with 500ms animation)
+- [x] `add_unit` / `create_unit` (spawn units during events)
+- [x] `give_item` / `remove_item`
+- [x] `give_money` / `give_exp`
+- [x] `change_team` (defection / recruitment)
+- [x] `set_game_var` / `inc_game_var` / `modify_game_var`
+- [x] `change_objective` / `change_objective_win` / `change_objective_loss`
+- [ ] `add_portrait` / `remove_portrait` (for dialog scenes — stub, no visuals)
+- [x] `music` / `sound` / `music_fade_back` / `music_clear`
+- [x] `win_game` / `lose_game`
+- [x] `if` / `elif` / `else` / `end` (flow control with condition evaluator)
+- [x] `for` / `endf` loop (iterates over comma-separated values)
 - [ ] `set_tile` (change tilemap terrain mid-level)
-- [ ] `add_region` / `remove_region`
-- [ ] `camera` control (pan, center on unit)
+- [x] `remove_region` (add_region still stub)
+- [x] `camera` control (`center_cursor`, `move_cursor`, `disp_cursor`, `flicker_cursor`)
 - [ ] `map_anim` (play animation at a tile)
+- [x] `choice` / `unchoice` (branching dialogue menus)
+- [x] `show_layer` / `hide_layer` (tilemap layer toggling)
+- [x] `add_talk` / `remove_talk` (dynamic talk pair management)
+- [x] `end_turn` (force turn change from events)
+- [x] Unit modifications: `set_name`, `equip_item`, `set_stats`, `set_exp`,
+  `change_class`, `has_traded`, `set_current_mana`
+- [x] `remove_all_enemies` / `remove_all_units`
+- [x] `add_group` / `spawn_group` / `remove_group` / `move_group`
 
 Original: `app/events/event_commands.py`, `app/events/event_functions.py`
 
@@ -242,8 +269,9 @@ Original: `app/events/event_commands.py`, `app/events/event_functions.py`
   by remapping palette colors on the map sprites. 4 default palettes
   (blue/red/green/purple) loaded from team definitions.
   - Original: `app/engine/unit_sprite.py`, `app/engine/image_mods.py` (color_convert)
-- [ ] **Unit overlays.** HP bar under units, rescue icon, status effect
-  icons, movement arrows.
+- [x] **Unit HP bar overlays.** Color-coded HP bars (green/yellow/red)
+  rendered below each unit on the map. Still needed: rescue icon, status
+  effect icons, movement arrows.
   - Original: `app/engine/unit_sprite.py` (draw_hp, draw_rescue_icon, etc.)
 - [ ] **Cursor sprite.** Replace the pulsing rectangle with the actual
   cursor sprite from `sprites/cursor.png` and `sprites/cursor2.png`.
@@ -428,8 +456,8 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `engine/viewport.ts` | 98 | Done — dynamic viewport for mobile/desktop |
 | `engine/phase.ts` | 77 | Done, needs initiative mode |
 | `engine/action.ts` | 557 | Done — Move, Damage, Heal, HasAttacked, Wait, ResetAll, GainExp, UseItem, Trade, Rescue, Drop, Death, WeaponUses |
-| `engine/game-state.ts` | 615 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup |
-| `engine/states/game-states.ts` | 3495 | 17 states incl. LevelSelect, CombatState with animation combat, AI animated combat |
+| `engine/game-state.ts` | 635 | Done — win/loss, skill loading, team palette, startingPosition, aiGroup activation |
+| `engine/states/game-states.ts` | ~4800 | 17 states incl. LevelSelect, CombatState with battle music, AI group filtering, ~40 event commands |
 | `data/types.ts` | 342 | Done |
 | `data/database.ts` | 436 | Done — combat anim data loading |
 | `data/loaders/combat-anim-loader.ts` | 342 | Done — combat anim JSON parsing |
@@ -438,8 +466,8 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `objects/item.ts` | 159 | Done — healing, stat boosters, uses decrement, droppable |
 | `objects/skill.ts` | 43 | Stub, needs component dispatch |
 | `objects/game-board.ts` | 201 | Done, needs fog of war |
-| `rendering/tilemap.ts` | 188 | Done, needs autotile animation |
-| `rendering/map-view.ts` | 250 | Done — dynamic viewport support |
+| `rendering/tilemap.ts` | 200 | Done — showLayer/hideLayer, needs autotile animation |
+| `rendering/map-view.ts` | 270 | Done — dynamic viewport, unit HP bar overlays |
 | `rendering/map-sprite.ts` | 294 | Done — team palette swap with `colorConvert()` |
 | `rendering/unit-renderer.ts` | 143 | Done, needs overlays |
 | `rendering/highlight.ts` | 112 | Done |
@@ -455,9 +483,9 @@ Implemented in ~2,600 lines across 5 files: `animation-combat.ts` (920),
 | `combat/battle-animation.ts` | 763 | Done — frame-by-frame pose playback |
 | `combat/battle-anim-types.ts` | 162 | Done — type definitions |
 | `combat/sprite-loader.ts` | 380 | Done — palette conversion, platform loading |
-| `ai/ai-controller.ts` | 540 | Done — full behaviour iteration, guard, defend, retreat, target_spec |
-| `events/event-manager.ts` | 530 | Done — FIFO queue, condition evaluator, ConditionContext |
-| `audio/audio-manager.ts` | 261 | Done |
+| `ai/ai-controller.ts` | 910 | Done — full behaviour iteration, guard, defend, retreat, target_spec, group activation |
+| `events/event-manager.ts` | 770 | Done — FIFO queue, condition evaluator, talk pairs, ConditionContext |
+| `audio/audio-manager.ts` | 285 | Done — pushMusic/popMusic stack for battle music |
 | `ui/menu.ts` | 205 | Done — click + hover mouse support. Needs 9-slice backgrounds |
 | `ui/hud.ts` | 214 | Done — screen-space rendering, terrain DEF + AVO display |
 | `ui/health-bar.ts` | 97 | Done |

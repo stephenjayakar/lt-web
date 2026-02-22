@@ -68,6 +68,7 @@ export class GameState {
   turnCount: number;
   gameVars: Map<string, any>;
   levelVars: Map<string, any>;
+  activeAiGroups: Set<string>;
 
   // -- Input ----------------------------------------------------------------
   /** Reference to the InputManager, set after construction from main.ts. */
@@ -111,6 +112,7 @@ export class GameState {
     this.turnCount = 1;
     this.gameVars = new Map();
     this.levelVars = new Map();
+    this.activeAiGroups = new Set();
 
     // Transient state
     this.selectedUnit = null;
@@ -151,6 +153,7 @@ export class GameState {
     // Reset per-level state
     this.units.clear();
     this.items.clear();
+    this.activeAiGroups.clear();
     this.levelVars.clear();
     this.highlight.clear();
     this.actionLog.clear();
@@ -231,6 +234,23 @@ export class GameState {
         { game: this, gameVars: this.gameVars, levelVars: this.levelVars },
       );
     }
+  }
+
+  // ========================================================================
+  // AI Group Activation
+  // ========================================================================
+
+  /** Check if an AI group is active (empty/null group IDs are always active). */
+  isAiGroupActive(groupId: string): boolean {
+    return !groupId || groupId === '' || this.activeAiGroups.has(groupId);
+  }
+
+  /** Activate an AI group so its members will act on the next AI turn. */
+  activateAiGroup(groupId: string): void {
+    if (!groupId || groupId === '') return;
+    if (this.activeAiGroups.has(groupId)) return;
+    this.activeAiGroups.add(groupId);
+    console.log(`AI Group activated: ${groupId}`);
   }
 
   // ========================================================================

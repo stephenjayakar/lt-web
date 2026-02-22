@@ -232,7 +232,7 @@ export class Database {
     const [defs, alliances] = data;
     this.teams = {
       defs: defs.map((d) => ({ nid: d.nid, palette: d.map_sprite_palette })),
-      alliances,
+      alliances: alliances ?? [],
     };
   }
 
