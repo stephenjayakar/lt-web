@@ -33,6 +33,7 @@ import {
   PhaseChangeState,
   MovementState,
   EventState,
+  ShopState,
 } from './engine/states/game-states';
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,7 @@ async function main(): Promise<void> {
     new PhaseChangeState(),
     new MovementState(),
     new EventState(),
+    new ShopState(),
   ];
   for (const state of states) {
     gameState.state.register(state);

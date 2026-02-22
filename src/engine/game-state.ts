@@ -79,6 +79,10 @@ export class GameState {
   combatTarget: UnitObject | null;
   /** Script tokens for scripted combat (interact_unit). Null for normal combat. */
   combatScript: string[] | null;
+  /** Transient shop data (set by shop event command, consumed by ShopState). */
+  shopUnit: any | null;
+  shopItems: any[] | null;
+  shopStock: number[] | null;
   currentEvent: GameEvent | null;
   _moveOrigin: [number, number] | null;
   _pendingAfterMovement: string | null;
@@ -123,6 +127,9 @@ export class GameState {
     this.selectedUnit = null;
     this.combatTarget = null;
     this.combatScript = null;
+    this.shopUnit = null;
+    this.shopItems = null;
+    this.shopStock = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._pendingAfterMovement = null;
@@ -167,6 +174,9 @@ export class GameState {
     this.selectedUnit = null;
     this.combatTarget = null;
     this.combatScript = null;
+    this.shopUnit = null;
+    this.shopItems = null;
+    this.shopStock = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._pendingAfterMovement = null;
