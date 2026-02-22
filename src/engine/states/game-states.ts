@@ -33,6 +33,7 @@ import { Dialog } from '../../ui/dialog';
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
+import { MapAnimation } from '../../rendering/map-animation';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { getEquippedWeapon } from '../../combat/combat-calcs';
@@ -5483,6 +5484,87 @@ export class EventState extends State {
           } else {
             console.warn(`region_condition: Region "${rcNid}" not found`);
           }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      // ----- Map animations -----
+
+      case 'map_anim': {
+        // map_anim;AnimNid;Position;[Speed];[flags]
+        // Position: x,y or (x,y) or UnitNid
+        // flags: no_block, permanent, overlay
+        const maAnimNid = args[0] ?? '';
+        const maPosArg = args[1] ?? '';
+        const maSpeedArg = args[2] ?? '1';
+        const maFlagsStr = args.slice(3).join(';').toLowerCase();
+        const maNoBlock = maFlagsStr.includes('no_block');
+        const maPermanent = maFlagsStr.includes('permanent');
+        const maOverlay = maFlagsStr.includes('overlay');
+
+        const maPrefab = game.db?.mapAnimations?.get(maAnimNid);
+        if (!maPrefab) {
+          console.warn(`map_anim: animation "${maAnimNid}" not found`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Parse position
+        let maX = 0, maY = 0;
+        const maPosMatch = maPosArg.match(/\(?(\d+),\s*(\d+)\)?/);
+        if (maPosMatch) {
+          maX = parseInt(maPosMatch[1], 10);
+          maY = parseInt(maPosMatch[2], 10);
+        } else {
+          // Try as unit NID
+          const maUnit = game.units.get(maPosArg);
+          if (maUnit?.position) {
+            maX = maUnit.position[0];
+            maY = maUnit.position[1];
+          }
+        }
+
+        const maSpeed = parseFloat(maSpeedArg) || 1;
+
+        // Create animation
+        const mapAnim = new MapAnimation(maPrefab, maX, maY, {
+          loop: maPermanent,
+          speedAdj: maSpeed,
+        });
+
+        // Load the sprite sheet asynchronously (animation starts once loaded)
+        void game.resources.loadImage(`resources/animations/${maAnimNid}.png`).then((maImg: HTMLImageElement) => {
+          if (maImg) mapAnim.setImage(maImg);
+        }).catch(() => {
+          console.warn(`map_anim: failed to load sprite sheet for "${maAnimNid}"`);
+        });
+
+        // Add to tilemap
+        if (game.tilemap) {
+          if (maOverlay) {
+            game.tilemap.highAnimations.push(mapAnim);
+          } else {
+            game.tilemap.animations.push(mapAnim);
+          }
+        }
+
+        this.advancePointer();
+        if (maNoBlock || maPermanent) {
+          return false;
+        }
+        // Block for animation duration
+        this.waiting = true;
+        this.waitTimer = mapAnim.getDuration();
+        return true;
+      }
+
+      case 'remove_map_anim': {
+        // remove_map_anim;AnimNid
+        const rmaAnimNid = args[0] ?? '';
+        if (game.tilemap) {
+          game.tilemap.animations = game.tilemap.animations.filter((a: MapAnimation) => a.nid !== rmaAnimNid);
+          game.tilemap.highAnimations = game.tilemap.highAnimations.filter((a: MapAnimation) => a.nid !== rmaAnimNid);
         }
         this.advancePointer();
         return false;
