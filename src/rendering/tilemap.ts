@@ -1,9 +1,14 @@
 import { Surface } from '../engine/surface';
-import type { TilemapData, TilemapLayerData, NID } from '../data/types';
+import type { TilemapData, TilemapLayerData, TilesetData, NID } from '../data/types';
 import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
+import { WeatherSystem } from './weather';
+
+/** Number of autotile animation frames (matches Python AUTOTILE_FRAMES). */
+const AUTOTILE_FRAMES = 16;
 
 /**
  * LayerObject - A single layer of a tilemap, pre-rendered to a Surface.
+ * Supports animated autotile frames.
  */
 export class LayerObject {
   nid: string;
@@ -11,6 +16,13 @@ export class LayerObject {
   foreground: boolean;
   terrainGrid: Map<string, NID>; // "x,y" -> terrain NID
   surface: Surface | null = null;
+
+  /** Pre-rendered autotile frames (one per AUTOTILE_FRAMES). */
+  private autotileFrames: Surface[] = [];
+  /** Current autotile frame index. */
+  private autotileFrame: number = 0;
+  /** Whether this layer has any autotiles. */
+  hasAutotiles: boolean = false;
 
   constructor(layerData: TilemapLayerData) {
     this.nid = layerData.nid;
@@ -25,20 +37,25 @@ export class LayerObject {
 
   /**
    * Build the full surface from tileset images.
-   *
-   * Creates a surface of (width * TILEWIDTH) x (height * TILEHEIGHT) pixels.
-   * For each entry in spriteGrid, draws the corresponding 16x16 tile from
-   * the tileset image at the correct map position.
+   * Tiles that have autotile animations are NOT placed on the static surface;
+   * instead, they go into the autotile frame surfaces.
    */
   buildSurface(
     width: number,
     height: number,
     spriteGrid: Record<string, [NID, [number, number]]>,
     tilesetImages: Map<NID, HTMLImageElement>,
+    tilesetAutotiles: Map<NID, Record<string, number>>,
+    autotileImages: Map<NID, HTMLImageElement>,
   ): void {
     const pixelW = width * TILEWIDTH;
     const pixelH = height * TILEHEIGHT;
     this.surface = new Surface(pixelW, pixelH);
+
+    // Build a set of autotile positions for quick lookup
+    // A tile at sprite_grid position [tilesetNid, [col, row]] is an autotile if
+    // tilesetAutotiles[tilesetNid]["col,row"] exists
+    const autotileTiles: { mapX: number; mapY: number; tilesetNid: NID; column: number }[] = [];
 
     for (const [posKey, [tilesetNid, [tileCol, tileRow]]] of Object.entries(spriteGrid)) {
       const image = tilesetImages.get(tilesetNid);
@@ -48,16 +65,53 @@ export class LayerObject {
       const mapX = parseInt(parts[0], 10);
       const mapY = parseInt(parts[1], 10);
 
-      // Source rect within the tileset image
-      const sx = tileCol * TILEWIDTH;
-      const sy = tileRow * TILEHEIGHT;
+      // Check if this tile position is an autotile
+      const tsAutotiles = tilesetAutotiles.get(tilesetNid);
+      const tileKey = `${tileCol},${tileRow}`;
+      const autotileCol = tsAutotiles?.[tileKey];
 
-      // Destination on the layer surface
-      const dx = mapX * TILEWIDTH;
-      const dy = mapY * TILEHEIGHT;
-
-      this.surface.blitImage(image, sx, sy, TILEWIDTH, TILEHEIGHT, dx, dy);
+      if (autotileCol !== undefined && autotileImages.has(tilesetNid)) {
+        // This is an autotile — DON'T blit on static surface
+        autotileTiles.push({ mapX, mapY, tilesetNid, column: autotileCol });
+      } else {
+        // Static tile — blit on the main surface
+        const sx = tileCol * TILEWIDTH;
+        const sy = tileRow * TILEHEIGHT;
+        const dx = mapX * TILEWIDTH;
+        const dy = mapY * TILEHEIGHT;
+        this.surface.blitImage(image, sx, sy, TILEWIDTH, TILEHEIGHT, dx, dy);
+      }
     }
+
+    // Build autotile frame surfaces if there are any autotiles
+    if (autotileTiles.length > 0) {
+      this.hasAutotiles = true;
+      for (let frameIdx = 0; frameIdx < AUTOTILE_FRAMES; frameIdx++) {
+        const frameSurf = new Surface(pixelW, pixelH);
+        for (const { mapX, mapY, tilesetNid, column } of autotileTiles) {
+          const autoImg = autotileImages.get(tilesetNid);
+          if (!autoImg) continue;
+          // Source: column * TILEWIDTH, frameIdx * TILEHEIGHT
+          const sx = column * TILEWIDTH;
+          const sy = frameIdx * TILEHEIGHT;
+          const dx = mapX * TILEWIDTH;
+          const dy = mapY * TILEHEIGHT;
+          frameSurf.blitImage(autoImg, sx, sy, TILEWIDTH, TILEHEIGHT, dx, dy);
+        }
+        this.autotileFrames.push(frameSurf);
+      }
+    }
+  }
+
+  /** Set the current autotile frame index. */
+  setAutotileFrame(frame: number): void {
+    this.autotileFrame = frame % AUTOTILE_FRAMES;
+  }
+
+  /** Get the current autotile frame surface (or null if no autotiles). */
+  getAutotileImage(): Surface | null {
+    if (!this.hasAutotiles || this.autotileFrames.length === 0) return null;
+    return this.autotileFrames[this.autotileFrame] ?? null;
   }
 }
 
@@ -73,6 +127,14 @@ export class TileMapObject {
   pixelHeight: number;
   layers: LayerObject[] = [];
 
+  /** Autotile animation timing. */
+  private autotileFps: number = 29;
+  private autotileWaitMs: number = 0;
+  private hasAutotiles: boolean = false;
+
+  /** Active weather systems. */
+  weather: WeatherSystem[] = [];
+
   private constructor(nid: NID, width: number, height: number) {
     this.nid = nid;
     this.width = width;
@@ -84,21 +146,56 @@ export class TileMapObject {
   /**
    * Construct a TileMapObject from serialized prefab data and loaded tileset
    * images. Each layer's surface is pre-rendered from its sprite_grid.
+   * Autotile data is used to build animated tile frame surfaces.
    */
   static fromPrefab(
     data: TilemapData,
     tilesetImages: Map<NID, HTMLImageElement>,
+    tilesetDefs?: Map<NID, TilesetData>,
+    autotileImages?: Map<NID, HTMLImageElement>,
   ): TileMapObject {
     const [w, h] = data.size;
     const tilemap = new TileMapObject(data.nid, w, h);
+    tilemap.autotileFps = data.autotile_fps ?? 29;
+    // autotile_wait = int(fps * 16.66) ms per frame
+    tilemap.autotileWaitMs = tilemap.autotileFps > 0
+      ? Math.floor(tilemap.autotileFps * 16.66)
+      : 0;
+
+    // Build autotile lookup per tileset
+    const tilesetAutotiles = new Map<NID, Record<string, number>>();
+    if (tilesetDefs) {
+      for (const [nid, tsDef] of tilesetDefs) {
+        if (tsDef.autotiles && Object.keys(tsDef.autotiles).length > 0) {
+          tilesetAutotiles.set(nid, tsDef.autotiles);
+        }
+      }
+    }
 
     for (const layerData of data.layers) {
       const layer = new LayerObject(layerData);
-      layer.buildSurface(w, h, layerData.sprite_grid, tilesetImages);
+      layer.buildSurface(
+        w, h, layerData.sprite_grid, tilesetImages,
+        tilesetAutotiles,
+        autotileImages ?? new Map(),
+      );
       tilemap.layers.push(layer);
+      if (layer.hasAutotiles) tilemap.hasAutotiles = true;
     }
 
     return tilemap;
+  }
+
+  /**
+   * Update autotile animation frame based on elapsed time.
+   * Call once per frame from the game loop.
+   */
+  updateAutotiles(currentTimeMs: number): void {
+    if (!this.hasAutotiles || this.autotileWaitMs <= 0) return;
+    const frame = Math.floor(currentTimeMs / this.autotileWaitMs) % AUTOTILE_FRAMES;
+    for (const layer of this.layers) {
+      layer.setAutotileFrame(frame);
+    }
   }
 
   /**
@@ -144,7 +241,14 @@ export class TileMapObject {
       const destX = srcX - cullRect.x;
       const destY = srcY - cullRect.y;
 
+      // Static tiles
       result.blitFrom(layer.surface, srcX, srcY, drawW, drawH, destX, destY);
+
+      // Autotile overlay
+      const autoSurf = layer.getAutotileImage();
+      if (autoSurf) {
+        result.blitFrom(autoSurf, srcX, srcY, drawW, drawH, destX, destY);
+      }
     }
 
     return result;
@@ -176,6 +280,12 @@ export class TileMapObject {
       const destY = srcY - cullRect.y;
 
       result.blitFrom(layer.surface, srcX, srcY, drawW, drawH, destX, destY);
+
+      // Autotile overlay
+      const autoSurf = layer.getAutotileImage();
+      if (autoSurf) {
+        result.blitFrom(autoSurf, srcX, srcY, drawW, drawH, destX, destY);
+      }
     }
 
     return result;
@@ -191,6 +301,26 @@ export class TileMapObject {
   hideLayer(nid: string): void {
     const layer = this.layers.find(l => l.nid === nid);
     if (layer) layer.visible = false;
+  }
+
+  /** Add a weather effect by NID. Does nothing if already active. */
+  addWeather(nid: string): void {
+    const lower = nid.toLowerCase();
+    if (this.weather.some(w => w.nid === lower)) return;
+    this.weather.push(new WeatherSystem(lower, this.width, this.height));
+  }
+
+  /** Remove a weather effect by NID. */
+  removeWeather(nid: string): void {
+    const lower = nid.toLowerCase();
+    this.weather = this.weather.filter(w => w.nid !== lower);
+  }
+
+  /** Update all active weather systems. Call once per frame. */
+  updateWeather(): void {
+    for (const w of this.weather) {
+      w.update();
+    }
   }
 
   /** Check if a tile position is within map bounds. */

@@ -67,6 +67,8 @@ export class MapView {
     const offsetY = cullRect.y + TILEHEIGHT;
 
     // 1. Background tilemap layers
+    // Update autotile animation frame before rendering
+    tilemap.updateAutotiles(Date.now());
     // The returned surface is larger than the viewport (includes margin).
     // We blit it shifted left/up by the margin so the visible area starts
     // at the camera position, not the margin.
@@ -97,7 +99,12 @@ export class MapView {
       cursor.draw(this.mapSurface, offsetX, offsetY);
     }
 
-    // 7. Weather - TODO
+    // 7. Weather particles and overlays
+    tilemap.updateWeather();
+    for (const weather of tilemap.weather) {
+      weather.draw(this.mapSurface, cullRect.x, cullRect.y);
+    }
+
     // 8. UI overlay - handled externally
 
     return this.mapSurface;

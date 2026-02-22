@@ -37,6 +37,24 @@ const STAT_NAMES = [
 export function evaluateEquation(expr: string, unit: UnitObject): number {
   let processed = expr;
 
+  // Handle Python ternary: "X if COND else Y" -> JS ternary
+  // Match: value_expr if condition_expr else else_expr
+  // Use a loop since there may be nested ternaries
+  const ternaryRe = /^(.+?)\s+if\s+(.+?)\s+else\s+(.+)$/;
+  const ternaryMatch = processed.match(ternaryRe);
+  if (ternaryMatch) {
+    const valueExpr = ternaryMatch[1].trim();
+    const condExpr = ternaryMatch[2].trim();
+    const elseExpr = ternaryMatch[3].trim();
+
+    // Evaluate the condition
+    const condResult = evaluateEquationCondition(condExpr, unit);
+    // Recursively evaluate the chosen branch
+    return condResult
+      ? evaluateEquation(valueExpr, unit)
+      : evaluateEquation(elseExpr, unit);
+  }
+
   // Replace stat tokens with their numeric values.
   // Sort longest-first so e.g. "SPEED" doesn't partially match "SPD".
   // Use word-boundary regex to avoid false positives.
@@ -69,6 +87,47 @@ export function evaluateEquation(expr: string, unit: UnitObject): number {
     console.warn(`CombatCalcs: failed to evaluate equation "${expr}" -> "${processed}"`);
     return 0;
   }
+}
+
+/**
+ * Evaluate a condition within an equation expression.
+ * Handles: 'X' in unit.tags, simple comparisons, boolean literals.
+ */
+function evaluateEquationCondition(cond: string, unit: UnitObject): boolean {
+  // 'Tag' in unit.tags
+  const inTagsMatch = cond.match(/^['"](.+?)['"]\s+in\s+unit\.tags$/);
+  if (inTagsMatch) {
+    return unit.tags?.includes(inTagsMatch[1]) ?? false;
+  }
+
+  // 'Tag' not in unit.tags
+  const notInTagsMatch = cond.match(/^['"](.+?)['"]\s+not\s+in\s+unit\.tags$/);
+  if (notInTagsMatch) {
+    return !(unit.tags?.includes(notInTagsMatch[1]) ?? false);
+  }
+
+  // Boolean literals
+  if (cond === 'True' || cond === 'true') return true;
+  if (cond === 'False' || cond === 'false') return false;
+
+  // Simple numeric comparison: LHS op RHS (after stat substitution)
+  const compMatch = cond.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+  if (compMatch) {
+    const lhs = evaluateEquation(compMatch[1].trim(), unit);
+    const rhs = evaluateEquation(compMatch[3].trim(), unit);
+    switch (compMatch[2]) {
+      case '==': return lhs === rhs;
+      case '!=': return lhs !== rhs;
+      case '>': return lhs > rhs;
+      case '<': return lhs < rhs;
+      case '>=': return lhs >= rhs;
+      case '<=': return lhs <= rhs;
+    }
+  }
+
+  // Default to true (safer)
+  console.warn(`CombatCalcs: unknown equation condition "${cond}"`);
+  return true;
 }
 
 // ------------------------------------------------------------------
