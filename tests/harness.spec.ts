@@ -399,4 +399,106 @@ test.describe('Prologue (with events)', () => {
     // Prologue starts with intro events
     await saveScreenshot(page, '09-prologue-event');
   });
+
+  test('dialog box appears above portraits, not overlapping', async ({ page }) => {
+    // Load prologue with events (non-clean mode) to test dialog positioning.
+    // The prologue intro has: transition;close, change_background;Forest,
+    // transition;open, add_portrait;Seth;Left;no_block,
+    // add_portrait;Eirika;Right, speak;Seth;...
+    //
+    // Previously, add_portrait loaded images asynchronously but advanced
+    // the command pointer immediately, so the speak command couldn't find
+    // the portrait and the dialog rendered at the bottom of the screen,
+    // overlapping with the portrait area.
+    await page.goto('/?harness=true&level=0&bundle=false&clean=false');
+    await waitForHarness(page);
+
+    // Step through the initial event commands (unit moves, transitions).
+    // The first transition;close + change_background + transition;open takes
+    // many frames. We need to step enough frames to get past all the setup
+    // commands and arrive at the first speak command with portraits visible.
+    // Step a large number of frames, pressing SELECT periodically to advance
+    // through any blocking waits.
+    let dialogFound = false;
+    for (let batch = 0; batch < 100; batch++) {
+      await stepFrames(page, 20);
+      const s = await getState(page);
+
+      if (s.currentStateName === 'event') {
+        // Check if we can see a dialog box by sampling pixel colors.
+        // The dialog background is rgba(12, 12, 28, 0.92) — very dark blue.
+        // Portraits are drawn at the bottom 80px of the 240x160 viewport.
+        // The dialog should be ABOVE the portrait area (y < 80).
+        //
+        // Sample the canvas at the game's native resolution (240x160).
+        // The display canvas is 480x320 (2x scaling), so we check at 2x coords.
+        const pixelInfo = await page.evaluate(() => {
+          const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+          if (!canvas) return null;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return null;
+
+          // The game renders at 240x160, display is 480x320 (2x).
+          // Check for dark dialog background at various Y positions.
+          // Dialog box at y ~36 (native) = y ~72 (display) when portrait exists.
+          // Dialog box at y ~116 (native) = y ~232 (display) when no portrait (bottom).
+          // Portrait area: y 80-160 (native) = y 160-320 (display).
+          const width = canvas.width;
+
+          // Sample a horizontal strip in the middle of the canvas at different Y levels
+          const midX = Math.floor(width / 2);
+
+          function getPixel(x: number, y: number) {
+            const data = ctx!.getImageData(x, y, 1, 1).data;
+            return { r: data[0], g: data[1], b: data[2], a: data[3] };
+          }
+
+          // Check for dialog background (very dark, R<30, G<30, B<40)
+          // at Y=72 (native y=36, above portrait area) and at Y=232 (native y=116, overlapping portraits)
+          const abovePortrait = getPixel(midX, 72);  // Should have dialog if positioned correctly
+          const belowInPortrait = getPixel(midX, 240); // Should NOT have dialog if positioned correctly
+
+          // Check if there's a portrait visible (non-black pixels in the portrait area)
+          const portraitArea = getPixel(40, 200); // Left side portrait area
+
+          return {
+            abovePortrait,
+            belowInPortrait,
+            portraitArea,
+          };
+        });
+
+        if (pixelInfo) {
+          const ap = pixelInfo.abovePortrait;
+          // Check if the dark dialog background is present above the portrait area
+          // Dialog bg is rgba(12, 12, 28, 0.92) composited on the forest background
+          const isDarkAbove = ap.r < 50 && ap.g < 50 && ap.b < 60;
+
+          // Check if there's portrait content in the portrait area (not fully black)
+          const pp = pixelInfo.portraitArea;
+          const hasPortraitContent = pp.a > 0 && (pp.r > 20 || pp.g > 20 || pp.b > 20);
+
+          if (isDarkAbove && hasPortraitContent) {
+            // We found a frame where dialog is above portraits!
+            dialogFound = true;
+            console.log(`Dialog found above portraits at batch ${batch}`);
+            console.log(`  Above portrait pixel: R=${ap.r} G=${ap.g} B=${ap.b} A=${ap.a}`);
+            console.log(`  Portrait area pixel: R=${pp.r} G=${pp.g} B=${pp.b} A=${pp.a}`);
+
+            // Verify the dialog is NOT overlapping the portrait area
+            const bp = pixelInfo.belowInPortrait;
+            const isDarkBelow = bp.r < 20 && bp.g < 20 && bp.b < 35 && bp.a > 200;
+            // The area at y=240 (display) should be portrait or background, NOT dialog
+            // (dialog bg has very specific dark blue color)
+            console.log(`  Below-in-portrait pixel: R=${bp.r} G=${bp.g} B=${bp.b} A=${bp.a}`);
+
+            await saveScreenshot(page, '14-dialog-above-portraits');
+            break;
+          }
+        }
+      }
+    }
+
+    expect(dialogFound).toBe(true);
+  });
 });

@@ -419,9 +419,16 @@ export class TitleState extends State {
 
   override start(): StateResult {
     const game = getGame();
-    // Load the title background panorama
+    // Load the title background panorama (try single file, then frame 0 for animated panoramas)
     game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
-      this.bgImage = img;
+      if (img) {
+        this.bgImage = img;
+      } else {
+        // Animated panorama fallback: try title_background0.png
+        game.resources.tryLoadImage('resources/panoramas/title_background0.png').then((img0: HTMLImageElement | null) => {
+          this.bgImage = img0;
+        });
+      }
     });
 
     // Play title music if configured
@@ -508,7 +515,14 @@ export class TitleMainState extends State {
   override start(): StateResult {
     const game = getGame();
     game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
-      this.bgImage = img;
+      if (img) {
+        this.bgImage = img;
+      } else {
+        // Animated panorama fallback: try title_background0.png
+        game.resources.tryLoadImage('resources/panoramas/title_background0.png').then((img0: HTMLImageElement | null) => {
+          this.bgImage = img0;
+        });
+      }
     });
     this.slideX = -120;
     this.targetX = 24;
@@ -4892,6 +4906,8 @@ export class EventState extends State {
   // Portrait state
   private portraits: Map<string, EventPortrait> = new Map();
   private portraitPriorityCounter: number = 1;
+  /** Count of portrait image loads in flight — blocks command processing until 0. */
+  private pendingPortraitLoads: number = 0;
 
   // Currently speaking portrait (for talk animation)
   private speakingPortrait: EventPortrait | null = null;
@@ -4943,6 +4959,7 @@ export class EventState extends State {
       this.skipMode = false;
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
+      this.pendingPortraitLoads = 0;
       this.speakingPortrait = null;
       this.background = null;
       this.chapterTitlePhase = 'none';
@@ -5218,6 +5235,15 @@ export class EventState extends State {
       // Location card does NOT block command processing — fall through
     }
 
+    // Block while portrait images are still loading (async).
+    // In the original Python engine, image loads are synchronous, so portraits
+    // are always available when the next command (e.g. speak) executes.
+    // In skip mode, we still need to wait — the portrait must exist in the
+    // portraits map for subsequent commands that reference it by name.
+    if (this.pendingPortraitLoads > 0) {
+      return;
+    }
+
     // --- Burst-process commands ---
     let burst = 0;
     while (burst < MAX_BURST) {
@@ -5396,6 +5422,7 @@ export class EventState extends State {
       this.waiting = false;
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
+      this.pendingPortraitLoads = 0;
       this.background = null;
       this.chapterTitleTimer = 0;
       this.chapterTitlePhase = 'none';
@@ -5403,6 +5430,7 @@ export class EventState extends State {
     } else {
       this.currentEvent = null;
       this.portraits.clear();
+      this.pendingPortraitLoads = 0;
       this.background = null;
       this.chapterTitleTimer = 0;
       this.chapterTitlePhase = 'none';
@@ -7157,7 +7185,11 @@ export class EventState extends State {
 
         const priority = lowPriority ? 0 : this.portraitPriorityCounter++;
 
-        // Load portrait image asynchronously, then create the EventPortrait
+        // Load portrait image asynchronously. Block command processing until
+        // the image is ready — in the original Python engine, image loads are
+        // synchronous, so the portrait is always available when subsequent
+        // commands (e.g. speak) execute.
+        this.pendingPortraitLoads++;
         game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
           const portrait = new EventPortrait(
             image,
@@ -7175,12 +7207,16 @@ export class EventState extends State {
             },
           );
           this.portraits.set(portraitNid, portrait);
+          this.pendingPortraitLoads--;
         }).catch(() => {
           console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
+          this.pendingPortraitLoads--;
         });
 
         this.advancePointer();
-        return false;
+        // Return true to break the burst loop — the pending portrait load
+        // check in update() will block until the image is ready.
+        return true;
       }
 
       case 'multi_add_portrait': {
@@ -7203,18 +7239,21 @@ export class EventState extends State {
           const { position: pos, mirror: autoMirror } = parseScreenPosition(pPos);
           const priority = this.portraitPriorityCounter++;
 
+          this.pendingPortraitLoads++;
           game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
             const portrait = new EventPortrait(
               image, blinkOffset, smileOffset, pos, priority, pNid,
               { transition: true, mirror: autoMirror },
             );
             this.portraits.set(pNid, portrait);
+            this.pendingPortraitLoads--;
           }).catch(() => {
             console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
+            this.pendingPortraitLoads--;
           });
         }
         this.advancePointer();
-        return false;
+        return true; // Block burst until all portrait images are loaded
       }
 
       case 'remove_portrait': {
