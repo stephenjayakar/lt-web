@@ -198,6 +198,24 @@ export function dynamicDamage(
     }
   }
 
+  // magic_at_range: swap from physical to magical damage formula at range > 1.
+  // Python MagicAtRange.dynamic_damage subtracts DAMAGE (STR) and adds MAGIC_DAMAGE (MAG),
+  // subtracts DEFENSE target and adds MAGIC_DEFENSE target, effectively swapping formulas.
+  if (item.hasComponent('magic_at_range')) {
+    const uPos = unit.position;
+    const tPos = target.position;
+    if (uPos && tPos) {
+      const dist = Math.abs(uPos[0] - tPos[0]) + Math.abs(uPos[1] - tPos[1]);
+      if (dist > 1) {
+        const normalDamage = unit.getStatValue('STR');
+        const newDamage = unit.getStatValue('MAG');
+        const normalResist = target.getStatValue('DEF');
+        const newResist = target.getStatValue('RES');
+        total += -normalDamage + newDamage + normalResist - newResist;
+      }
+    }
+  }
+
   // Brave component: handled via dynamicMultiattacks instead
   return total;
 }

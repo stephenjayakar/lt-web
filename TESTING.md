@@ -48,6 +48,7 @@ game loop is **replaced** with a programmatic API exposed on `window.__harness`:
 | `loadLevel(nid)` | Load a level with events (level_start triggers normally) |
 | `loadLevelClean(nid)` | Load a level, skip all events, go straight to `free` state |
 | `settle(maxFrames)` | Auto-advance through events/menus until reaching `free` state |
+| `giveItem(unitNid, itemNid)` | Give a DB item to a unit (returns `true` on success). Item is inserted at front of inventory so it becomes equipped. |
 
 ### URL Parameters
 
@@ -116,6 +117,9 @@ playwright.config.ts -- Playwright config (uses Vite dev server)
 - Initial map render
 - Cursor navigation to boss unit
 
+**Magic Sword Combat**
+- Give Eirika a Light Brand (magic sword with `battle_cast_anim`), attack adjacent enemy, verify combat resolves without freezing and damage is dealt
+
 **Prologue (with events)**
 - Event state rendering (intro cutscene)
 
@@ -144,6 +148,56 @@ test('my new scenario', async ({ page }) => {
 });
 ```
 
+### Testing Combat and Gameplay
+
+To test combat scenarios (e.g. verifying a weapon type doesn't freeze), use
+`giveItem` to equip units with specific weapons, then drive the UI through
+the combat flow:
+
+```typescript
+test('magic sword combat works', async ({ page }) => {
+  await page.goto('/?harness=true&level=DEBUG&bundle=false');
+  await waitForHarness(page);
+  await stepFrames(page, 5);
+
+  // Give Eirika a Light Brand (magic sword with battle_cast_anim)
+  const given = await giveItem(page, 'Eirika', 'Light_Brand');
+  expect(given).toBe(true);
+
+  // Navigate to Eirika at (2,6), Bone (enemy) is adjacent at (2,5)
+  await navigateCursorTo(page, 2, 6, ...state.cursorPos);
+
+  // SELECT unit -> move state -> SELECT same tile -> menu
+  // -> SELECT "Attack" -> weapon_choice -> SELECT weapon -> targeting
+  // -> SELECT target -> combat
+  await stepFrames(page, 3, 'SELECT');  // select unit
+  await stepFrames(page, 10);
+  await stepFrames(page, 3, 'SELECT');  // confirm position
+  await stepFrames(page, 10);
+  await stepFrames(page, 3, 'SELECT');  // pick "Attack"
+  await stepFrames(page, 10);
+  await stepFrames(page, 3, 'SELECT');  // pick weapon (if weapon_choice)
+  await stepFrames(page, 10);
+  await stepFrames(page, 3, 'SELECT');  // confirm target
+
+  // Run frames until combat resolves, pressing BACK to dismiss post-combat menus
+  for (let batch = 0; batch < 200; batch++) {
+    await stepFrames(page, 20);
+    const s = await getState(page);
+    if (s.currentStateName === 'free') break;
+    // After combat ends, BACK dismisses leftover menus
+    await stepFrames(page, 3, 'BACK');
+  }
+});
+```
+
+**Key state flow for combat:** `free → move → menu → weapon_choice → targeting → combat → (post-combat) → free`
+
+The DEBUG level has these useful adjacencies for combat testing:
+- **Eirika (player, 2,6)** is adjacent to **Bone (enemy, 2,5)** — immediate melee combat
+- **Seth (player, 5,4)** has MOV 8 and can reach most enemies in one turn
+- **Generic Shaman (player, 4,6)** has Flux/Luna (magic weapons) for testing spell combat
+
 ### Tips
 
 - Use `clean` mode (default) to skip events and test map rendering directly
@@ -151,3 +205,4 @@ test('my new scenario', async ({ page }) => {
 - `settle()` auto-presses SELECT through events/menus -- use it to skip intros
 - The DEBUG level is small (7 units) and fast to load -- ideal for quick iteration
 - Screenshots are full-page captures at 480x320 (2x the GBA resolution)
+- Use `giveItem` to test specific weapons — item NIDs match filenames in `lt-maker/default.ltproj/game_data/items/` (e.g. `Light_Brand`, `Wind_Sword`, `Runesword`)

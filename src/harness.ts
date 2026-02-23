@@ -18,6 +18,7 @@ import type { GameState } from './engine/game-state';
 import type { Surface } from './engine/surface';
 import type { InputEvent, GameButton } from './engine/input';
 import { FRAMETIME, updateAnimationCounters } from './engine/constants';
+import { ItemObject } from './objects/item';
 
 export interface HarnessAPI {
   /** Step the game forward by N frames. Optionally inject an input on the first frame. */
@@ -38,6 +39,8 @@ export interface HarnessAPI {
   ready: boolean;
   /** Run N frames, allowing events/transitions to settle (auto-skips event text). */
   settle: (maxFrames: number) => void;
+  /** Give an item (by DB NID) to a unit (by NID). Returns true if successful. */
+  giveItem: (unitNid: string, itemNid: string) => boolean;
 }
 
 export interface HarnessState {
@@ -190,6 +193,24 @@ export function installHarness(
     async waitForReady(): Promise<boolean> {
       // Poll until ready (used by Playwright's waitForFunction)
       return isReady;
+    },
+
+    giveItem(unitNid: string, itemNid: string): boolean {
+      const itemPrefab = game.db.items.get(itemNid);
+      if (!itemPrefab) {
+        console.warn(`[Harness] Item "${itemNid}" not found in DB`);
+        return false;
+      }
+      const unit = game.units.get(unitNid);
+      if (!unit) {
+        console.warn(`[Harness] Unit "${unitNid}" not found`);
+        return false;
+      }
+      const item = new ItemObject(itemPrefab);
+      item.owner = unit;
+      unit.items.unshift(item); // put at front so it's auto-equipped
+      game.items.set(`${unit.nid}_${item.nid}_${unit.items.length}`, item);
+      return true;
     },
 
     settle(maxFrames: number): void {

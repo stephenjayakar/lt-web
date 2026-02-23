@@ -696,8 +696,11 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   castSpell(anim: BattleAnimation, effectNid: string | null): void {
     if (!effectNid) {
-      // Fall back to the attack item NID
-      effectNid = this.attackItem.nid;
+      // Check for battle_cast_anim component (the item's effect_animation hook).
+      // Python: item_system.effect_animation(unit, item) returns the
+      // battle_cast_anim value (e.g. "Gustblade", "Lightning", "Nosferatu").
+      const battleCastAnim = this.attackItem.getComponent<string>('battle_cast_anim');
+      effectNid = battleCastAnim ?? this.attackItem.nid;
     }
     // Spawn the effect as a child of the calling animation
     anim.spawnEffect(effectNid, anim.effects);

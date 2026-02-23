@@ -240,6 +240,151 @@ test.describe('Prologue (clean)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Magic Sword Combat Tests
+// ---------------------------------------------------------------------------
+
+async function giveItem(page: any, unitNid: string, itemNid: string): Promise<boolean> {
+  return page.evaluate(
+    ({ unitNid, itemNid }: { unitNid: string; itemNid: string }) => {
+      return (window as any).__harness.giveItem(unitNid, itemNid);
+    },
+    { unitNid, itemNid },
+  );
+}
+
+async function navigateCursorTo(
+  page: any,
+  targetX: number,
+  targetY: number,
+  currentX: number,
+  currentY: number,
+): Promise<void> {
+  const dx = targetX - currentX;
+  const dy = targetY - currentY;
+  for (let i = 0; i < Math.abs(dx); i++) {
+    await stepFrames(page, 3, dx > 0 ? 'RIGHT' : 'LEFT');
+  }
+  for (let i = 0; i < Math.abs(dy); i++) {
+    await stepFrames(page, 3, dy > 0 ? 'DOWN' : 'UP');
+  }
+  await stepFrames(page, 3);
+}
+
+test.describe('Magic Sword Combat', () => {
+  test('Light Brand combat does not freeze', async ({ page }) => {
+    // Load the DEBUG level cleanly
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    // Give Eirika a Light Brand (has `magic` + `battle_cast_anim: "Lightning"`)
+    const given = await giveItem(page, 'Eirika', 'Light_Brand');
+    expect(given).toBe(true);
+
+    // Verify Eirika is at (2,6) and Bone (enemy) is at (2,5)
+    const state = await getState(page);
+    const eirika = state.units.find((u: any) => u.nid === 'Eirika');
+    const bone = state.units.find((u: any) => u.nid === 'Bone');
+    expect(eirika?.position).toEqual([2, 6]);
+    expect(bone?.position).toEqual([2, 5]);
+
+    // Navigate cursor to Eirika
+    const [cx, cy] = state.cursorPos;
+    await navigateCursorTo(page, 2, 6, cx, cy);
+
+    // Select Eirika (enters move state)
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 10);
+
+    let s = await getState(page);
+    console.log(`After selecting Eirika: ${s.currentStateName}`);
+
+    // Select same tile to open action menu (Eirika stays at her position)
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 10);
+
+    s = await getState(page);
+    console.log(`After confirming position: ${s.currentStateName}`);
+    await saveScreenshot(page, '10-magic-sword-action-menu');
+
+    // "Attack" should be the first option in the menu. Press SELECT to pick it.
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 10);
+
+    s = await getState(page);
+    console.log(`After selecting Attack: ${s.currentStateName}`);
+
+    // If we're in weapon_choice, select the weapon (Light Brand should be first)
+    if (s.currentStateName === 'weapon_choice') {
+      await stepFrames(page, 3, 'SELECT');
+      await stepFrames(page, 10);
+      s = await getState(page);
+      console.log(`After selecting weapon: ${s.currentStateName}`);
+    }
+
+    await saveScreenshot(page, '11-magic-sword-targeting');
+
+    // In targeting mode, Bone should be the target (adjacent at (2,5)).
+    // Press SELECT to confirm attack on Bone.
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 5);
+
+    s = await getState(page);
+    console.log(`Combat started, state: ${s.currentStateName}`);
+    await saveScreenshot(page, '12-magic-sword-combat-start');
+
+    // Run many frames to let combat resolve. Combat completes in ~260 frames,
+    // then the unit may return to menus (weapon_choice/targeting) or post-combat
+    // states that need dismissing. We auto-press BACK to cancel out of any
+    // remaining menus until we return to 'free' state.
+    let combatResolved = false;
+    let lastState = '';
+    let combatSeen = false;
+    for (let batch = 0; batch < 200; batch++) {
+      await stepFrames(page, 20);
+      s = await getState(page);
+      if (s.currentStateName === 'combat' || s.currentStateName === 'animation_combat' ||
+          s.currentStateName === 'map_combat') {
+        combatSeen = true;
+      }
+      if (s.currentStateName !== lastState) {
+        console.log(`  Frame ~${(batch + 1) * 20}: state=${s.currentStateName}`);
+        lastState = s.currentStateName;
+      }
+      if (s.currentStateName === 'free') {
+        combatResolved = true;
+        console.log(`Combat resolved after ~${(batch + 1) * 20} frames`);
+        break;
+      }
+      // After combat is over, if we're back in menus or other states, try to
+      // advance/dismiss. press BACK to cancel out of stacked menus, or settle.
+      if (combatSeen && s.currentStateName !== 'combat' &&
+          s.currentStateName !== 'animation_combat' &&
+          s.currentStateName !== 'map_combat' &&
+          s.currentStateName !== 'exp' && s.currentStateName !== 'exp_gain') {
+        // Try pressing BACK to dismiss any post-combat menus
+        await stepFrames(page, 3, 'BACK');
+      }
+    }
+
+    await saveScreenshot(page, '13-magic-sword-combat-end');
+
+    // Verify combat actually happened — we should have seen a combat state
+    expect(combatSeen).toBe(true);
+
+    // If combat didn't resolve in ~4000 frames, the freeze bug is still present.
+    expect(combatResolved).toBe(true);
+
+    // Verify Bone took damage (Light Brand deals magic damage)
+    const finalState = await getState(page);
+    const boneAfter = finalState.units.find((u: any) => u.nid === 'Bone');
+    console.log(`Bone HP after combat: ${boneAfter?.hp}/${boneAfter?.maxHp}`);
+    // Bone should have taken at least some damage
+    expect(boneAfter!.hp).toBeLessThan(boneAfter!.maxHp);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Prologue with events (non-clean mode)
 // ---------------------------------------------------------------------------
 
