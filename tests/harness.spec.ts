@@ -601,6 +601,131 @@ async function triggerEvent(page: any, triggerType: string): Promise<boolean> {
 }
 
 test.describe('Level Progression', () => {
+  test('Ch.1 intro cutscene plays after Prologue transition', async ({ page }) => {
+    // This test verifies that after the Prologue outro completes,
+    // the Chapter 1 intro cutscene actually runs (not skipped).
+    const logs: string[] = [];
+    page.on('console', msg => logs.push(msg.text()));
+
+    // Load Prologue in clean mode
+    await page.goto('/?harness=true&level=0&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 10);
+
+    // Kill boss and trigger win
+    await killUnit(page, "O'Neill");
+    const triggered = await triggerEvent(page, 'combat_end');
+    expect(triggered).toBe(true);
+
+    // Push event state for the triggered event
+    await stepFrames(page, 3);
+
+    // Step through Prologue outro, level transition, and into Ch.1 intro.
+    // Use waitForTimeout between batches to allow async loadLevel to complete.
+    let reachedLevel1WithEvents = false;
+    let level1EventNid = '';
+    let level1EventCmdCount = 0;
+    let chapterTitleSeen = false;
+
+    for (let batch = 0; batch < 600; batch++) {
+      // Don't press SELECT after reaching level 1 — let the cutscene play naturally
+      const input = (!reachedLevel1WithEvents && batch % 3 === 0) ? 'SELECT' : null;
+      await stepFrames(page, 5, input);
+      // Crucial: yield to the browser event loop so async loadLevel() 
+      // promises can resolve
+      await page.waitForTimeout(10);
+
+      const state = await getState(page);
+
+      // Check for active event in level 1
+      if (state.levelNid === '1' && state.units.length > 0 && state.currentStateName === 'event') {
+        // Track event pointer progress
+        const progress = await page.evaluate(() => {
+          const g = (window as any).__gameRef;
+          if (!g?.eventManager) return null;
+          const ev = g.eventManager.getCurrentEvent();
+          if (!ev) return { pointer: -1, total: 0, cmd: 'none', done: true };
+          const cmd = ev.commands[ev.commandPointer];
+          return {
+            pointer: ev.commandPointer,
+            total: ev.commands.length,
+            cmd: cmd ? `${cmd.type}(${cmd.args?.join(',') ?? ''})` : 'END',
+            done: ev.commandPointer >= ev.commands.length,
+          };
+        });
+        if (progress && !progress.done && batch <= 105) {
+          console.log(`  batch ${batch}: ptr=${progress.pointer}/${progress.total} cmd=${progress.cmd}`);
+        }
+      }
+      if (state.levelNid === '1' && state.units.length > 0) {
+        const eventInfo = await page.evaluate(() => {
+          const g = (window as any).__gameRef;
+          if (!g || !g.eventManager) return null;
+          const ev = g.eventManager.getCurrentEvent();
+          if (!ev) return null;
+          return {
+            nid: ev.nid,
+            commandCount: ev.commands.length,
+            pointer: ev.commandPointer,
+          };
+        });
+
+        if (eventInfo && !reachedLevel1WithEvents) {
+          reachedLevel1WithEvents = true;
+          level1EventNid = eventInfo.nid;
+          level1EventCmdCount = eventInfo.commandCount;
+          // Check skipMode
+          const skipMode = await page.evaluate(() => {
+            const g = (window as any).__gameRef;
+            const es = g?.state?.getCurrentState?.();
+            return (es as any)?.skipMode ?? 'unknown';
+          });
+          console.log(`Ch.1 event found: "${eventInfo.nid}" (${eventInfo.commandCount} cmds, pointer=${eventInfo.pointer}, skipMode=${skipMode})`);
+        }
+
+        // Check if chapter title phase is active
+        const ctPhase = await page.evaluate(() => {
+          const g = (window as any).__gameRef;
+          // Access the EventState's chapterTitlePhase via the state machine
+          const es = g?.state?.getCurrentState?.();
+          return (es as any)?.chapterTitlePhase ?? 'unknown';
+        });
+        if (ctPhase !== 'none' && ctPhase !== 'unknown') {
+          chapterTitleSeen = true;
+          console.log(`Chapter title phase: ${ctPhase}`);
+        }
+      }
+
+      // If we're in free state on level 1, events have finished
+      if (state.levelNid === '1' && state.currentStateName === 'free') {
+        console.log(`Settled to free state at batch ${batch}`);
+        break;
+      }
+
+      if (state.currentStateName === 'title' || state.currentStateName === 'title_main') {
+        console.log('ERROR: ended up at title screen');
+        break;
+      }
+    }
+
+    // Check relevant logs
+    const relevantLogs = logs.filter(l =>
+      l.includes('levelEnd') || l.includes('level_start') || l.includes('level_end') ||
+      l.includes('Player wins') || l.includes('cleanUpLevel') || l.includes('EventManager') ||
+      l.includes('Level transition') || l.includes('startWithBlack') || l.includes('begin()')
+    );
+    console.log('\nRelevant browser logs:');
+    for (const log of relevantLogs) {
+      console.log(`  ${log}`);
+    }
+
+    expect(reachedLevel1WithEvents).toBe(true);
+    expect(level1EventNid).toBe('1 Intro');
+    expect(level1EventCmdCount).toBe(102);
+
+    await saveScreenshot(page, '25-ch1-intro-cutscene');
+  });
+
   test('Prologue win_game transitions to Chapter 1', async ({ page }) => {
     // Load Prologue in clean mode (no level_start events)
     await page.goto('/?harness=true&level=0&bundle=false');

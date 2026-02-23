@@ -44,10 +44,11 @@ interface PanConfig {
   speed: number;
 }
 
-function getPanConfig(range: number): PanConfig {
-  if (range <= 0) return { max: 0, speed: 0 };
-  if (range === 1) return { max: 16, speed: 4 };
-  if (range === 2) return { max: 32, speed: 8 };
+/** Pan config keyed by at_range (distance - 1). 0 = melee, 1 = range 2, etc. */
+function getPanConfig(atRange: number): PanConfig {
+  if (atRange <= 0) return { max: 0, speed: 0 };
+  if (atRange === 1) return { max: 16, speed: 4 };
+  if (atRange === 2) return { max: 32, speed: 8 };
   return { max: 120, speed: 25 };
 }
 
@@ -113,6 +114,17 @@ export interface AnimationCombatRenderState {
 
   /** Camera pan offset for ranged combat. */
   panOffset: number;
+
+  /** Range offsets for sprite positioning (Python: left_range_offset, right_range_offset). */
+  leftRangeOffset: number;
+  rightRangeOffset: number;
+
+  /** Whether combat is at range (at_range > 0). */
+  isAtRange: boolean;
+
+  /** Combined platform + screen shake offsets for sprite rendering. */
+  totalShakeX: number;
+  totalShakeY: number;
 
   /** Name tag slide progress 0 (hidden) to 1 (visible). */
   nameTagProgress: number;
@@ -216,6 +228,8 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
+  /** Python-style at_range = distance - 1. 0 = melee, 1 = range 2, etc. */
+  atRange: number = 0;
 
   // -- Frame timing accumulator (ensures animations run at 60fps rate) ------
   animFrameAccumulator: number = 0;
@@ -267,13 +281,15 @@ export class AnimationCombat implements AnimationCombatOwner {
     const range = (aPos && dPos)
       ? Math.abs(aPos[0] - dPos[0]) + Math.abs(aPos[1] - dPos[1])
       : 1;
-    this.leftAnim.pair(this, this.rightAnim, false, range, ENTRANCE_FRAMES, [0, 0]);
-    this.rightAnim.pair(this, this.leftAnim, true, range, ENTRANCE_FRAMES, [0, 0]);
+    // Python: at_range = distance - 1 (0 for melee, 1 for range-2, etc.)
+    const atRange = range - 1;
+    this.leftAnim.pair(this, this.rightAnim, false, atRange, ENTRANCE_FRAMES, [0, 0]);
+    this.rightAnim.pair(this, this.leftAnim, true, atRange, ENTRANCE_FRAMES, [0, 0]);
     this.leftAnim.isLeft = true;
     this.rightAnim.isLeft = false;
 
     // Set initial standing pose so sprites are visible during entrance
-    const standPose = range > 1 ? 'RangedStand' : 'Stand';
+    const standPose = atRange > 0 ? 'RangedStand' : 'Stand';
     this.leftAnim.setPose(standPose);
     this.rightAnim.setPose(standPose);
 
@@ -291,9 +307,10 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.attackerStartHp = attacker.currentHp;
     this.defenderStartHp = defender.currentHp;
 
-    // Combat range (reuse range computed above for pair())
+    // Combat range (raw distance) and at_range (distance - 1)
     this.combatRange = range;
-    this.panConfig = getPanConfig(this.combatRange);
+    this.atRange = atRange;
+    this.panConfig = getPanConfig(atRange);
 
     // Initialize pan offset like Python: pan_offset starts at +pan_max or
     // -pan_max depending on which side has focus. Left starts focused, so
@@ -466,7 +483,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     atkAnim.setPose(pose);
 
     // Set defender to standing pose (ranged or melee)
-    const defPose = this.combatRange > 1 ? 'RangedStand' : 'Stand';
+    const defPose = this.atRange > 0 ? 'RangedStand' : 'Stand';
     defAnim.setPose(defPose);
 
     this.animFrameCounter = 0; // Reset safety timeout
@@ -641,7 +658,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       this.hpDrainFrames = Math.max(HP_DRAIN_MIN_FRAMES, Math.min(HP_DRAIN_MAX_FRAMES, hpChange));
 
       // Defender takes hit
-      const damagedPose = this.combatRange > 1 ? 'RangedDamaged' : 'Damaged';
+      const damagedPose = this.atRange > 0 ? 'RangedDamaged' : 'Damaged';
       defAnim.setPose(damagedPose);
 
       // Screen shake
@@ -1090,8 +1107,21 @@ export class AnimationCombat implements AnimationCombatOwner {
     // Screen shake
     const screenShake = this.getCurrentShake();
 
-    // Platform shake
-    const platformShakeY = this.getCurrentPlatformShake();
+    // Platform shake (both X and Y components)
+    const platformShake = this.getCurrentPlatformShake();
+    const platformShakeY = platformShake[1];
+
+    // Combined total shake (Python: total_shake_x = shake_offset[0] + platform_shake_offset[0])
+    const totalShakeX = screenShake[0] + platformShake[0];
+    const totalShakeY = screenShake[1] + platformShake[1];
+
+    // Range offsets for sprite positioning (Python: mock_combat.py lines 419-423)
+    let leftRangeOffset = 0;
+    let rightRangeOffset = 0;
+    if (this.atRange > 0) {
+      rightRangeOffset = 24 + this.panConfig.max;
+      leftRangeOffset = -24 - this.panConfig.max;
+    }
 
     // Screen blend
     let screenBlendData: AnimationCombatRenderState['screenBlend'] = null;
@@ -1132,6 +1162,11 @@ export class AnimationCombat implements AnimationCombatOwner {
       damagePopups: this.damagePopups,
       sparks: this.sparks.map(s => ({ type: s.type, elapsed: s.elapsed, duration: s.duration, isLeft: s.isLeft })),
       panOffset: this.panOffset,
+      leftRangeOffset,
+      rightRangeOffset,
+      isAtRange: this.atRange > 0,
+      totalShakeX,
+      totalShakeY,
       nameTagProgress: this.nameTagProgress,
       hpBarProgress: this.hpBarProgress,
     };
@@ -1168,11 +1203,11 @@ export class AnimationCombat implements AnimationCombatOwner {
     }
   }
 
-  private getCurrentPlatformShake(): number {
+  private getCurrentPlatformShake(): [number, number] {
     if (this.platformShakeIndex > 0 && this.platformShakeIndex <= this.platformShakePattern.length) {
-      return this.platformShakePattern[this.platformShakeIndex - 1][1];
+      return this.platformShakePattern[this.platformShakeIndex - 1];
     }
-    return 0;
+    return [0, 0];
   }
 
   private advancePan(): void {

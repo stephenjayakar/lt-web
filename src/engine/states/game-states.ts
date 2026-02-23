@@ -3166,9 +3166,15 @@ export class CombatState extends State {
 
     const rs = this.animCombat!.getRenderState();
 
-    // Apply screen shake to the entire scene
+    // Screen shake (used for background/platforms)
     const shakeX = rs.screenShake[0];
     const shakeY = rs.screenShake[1];
+
+    // Python-faithful sprite shake: sprites get negated total_shake_x (so they
+    // move opposite to platforms, creating a ground-rumbling visual effect).
+    // Python: shake = (-total_shake_x, total_shake_y)
+    const spriteShakeX = -rs.totalShakeX;
+    const spriteShakeY = rs.totalShakeY;
 
     // --- Viewbox iris during fade_in/fade_out ---
     // During transitions, the map is visible and we darken around a shrinking/growing iris.
@@ -3222,21 +3228,30 @@ export class CombatState extends State {
     const SCENE_FLOOR_Y = WINHEIGHT - 72; // 88
 
     // Melee: platforms touch at center. Ranged: gap with pan offset.
-    // Python formula: left = W/2 - width - 11 - pan_max + shake + pan_offset
-    //                 right = W/2 + 11 + pan_max + shake + pan_offset
-    // The pan_max provides the base separation; pan_offset shifts the camera.
+    // Python formula (mock_combat.py:406-417):
+    //   total_shake_x = shake_offset[0] + platform_shake_offset[0]
+    //   total_shake_y = shake_offset[1] + platform_shake_offset[1]
+    //   if at_range:
+    //     left = W/2 - width - 11 - pan_max + total_shake_x + pan_offset
+    //     right = W/2 + 11 + pan_max + total_shake_x + pan_offset
+    //   else:
+    //     left = W/2 - width + total_shake_x
+    //     right = W/2 + total_shake_x
     let leftPlatX: number;
     let rightPlatX: number;
     const panMax = this.animCombat!.panConfig?.max ?? 0;
+    const platShakeX = rs.totalShakeX;
+    const platShakeY = rs.totalShakeY;
     if (isMelee) {
-      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W + shakeX;
-      rightPlatX = Math.floor(WINWIDTH / 2) + shakeX;
+      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W + platShakeX;
+      rightPlatX = Math.floor(WINWIDTH / 2) + platShakeX;
     } else {
-      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W - 11 - panMax + shakeX + rs.panOffset;
-      rightPlatX = Math.floor(WINWIDTH / 2) + 11 + panMax + shakeX + rs.panOffset;
+      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W - 11 - panMax + platShakeX + rs.panOffset;
+      rightPlatX = Math.floor(WINWIDTH / 2) + 11 + panMax + platShakeX + rs.panOffset;
     }
-    const leftPlatY = SCENE_FLOOR_Y + rs.leftPlatformY + rs.platformShakeY + shakeY;
-    const rightPlatY = SCENE_FLOOR_Y + rs.rightPlatformY + rs.platformShakeY + shakeY;
+    // Python: top = platform_top + (platform_trans - platform_offset * platform_trans) + total_shake_y
+    const leftPlatY = SCENE_FLOOR_Y + rs.leftPlatformY + platShakeY;
+    const rightPlatY = SCENE_FLOOR_Y + rs.rightPlatformY + platShakeY;
 
     // Draw platforms (real images or fallback rectangles)
     if (this.leftPlatformImg) {
@@ -3269,6 +3284,7 @@ export class CombatState extends State {
       fallbackColor: string,
       platformX: number,
       platformY: number,
+      rangeOffset: number,
     ) => {
       const alpha = Math.max(0, Math.min(1, draw.opacity / 255));
       if (alpha <= 0) return;
@@ -3283,12 +3299,29 @@ export class CombatState extends State {
       // animation frames are authored facing left (for right-side position).
       const flipSprite = !draw.right;
 
+      // Python-faithful sprite X offset: get_image applies shake + range_offset
+      // + pan_offset into a `left` accumulator, then adds shake[0] again for
+      // right-side sprites. We replicate this exactly.
+      //
+      // Python get_image (battle_animation.py:830-846):
+      //   left = 0
+      //   if not static: left += shake[0] + range_offset
+      //   if at_range and not static: left += pan_offset
+      //   if right: offset = (offset[0] + shake[0] + left, offset[1] + shake[1])
+      //   else:     offset = (WINWIDTH - offset[0] - width + left, offset[1] + shake[1])
+      //
+      // where shake = (-total_shake_x, total_shake_y)
+      let spriteLeft = spriteShakeX + rangeOffset;
+      if (rs.isAtRange) {
+        spriteLeft += rs.panOffset;
+      }
+
       // Draw under-frame first (behind platform)
-      this.drawAnimFrame(surf, draw.underFrame, alpha, shakeX, shakeY, draw.recoilX, flipSprite);
+      this.drawAnimFrame(surf, draw.underFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
 
       // Draw main frame
       if (draw.mainFrame) {
-        this.drawAnimFrame(surf, draw.mainFrame, alpha, shakeX, shakeY, draw.recoilX, flipSprite);
+        this.drawAnimFrame(surf, draw.mainFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
       } else {
         // Stub placeholder: colored rectangle on the platform
         const STUB_W = 32;
@@ -3300,14 +3333,14 @@ export class CombatState extends State {
       }
 
       // Draw over-frame on top
-      this.drawAnimFrame(surf, draw.overFrame, alpha, shakeX, shakeY, draw.recoilX, flipSprite);
+      this.drawAnimFrame(surf, draw.overFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
 
       // Death flash: white overlay
       if (draw.deathFlash && draw.mainFrame) {
         const f = draw.mainFrame;
         surf.fillRect(
-          f.offset[0] + shakeX + draw.recoilX,
-          f.offset[1] + shakeY,
+          f.offset[0] + spriteShakeX + draw.recoilX,
+          f.offset[1] + spriteShakeY,
           (f.image as HTMLCanvasElement).width ?? 32,
           (f.image as HTMLCanvasElement).height ?? 40,
           'rgba(255,255,255,0.9)',
@@ -3320,8 +3353,8 @@ export class CombatState extends State {
           const f = draw.mainFrame;
           const [tr, tg, tb] = tint.color;
           surf.fillRect(
-            f.offset[0] + shakeX + draw.recoilX,
-            f.offset[1] + shakeY,
+            f.offset[0] + spriteShakeX + draw.recoilX,
+            f.offset[1] + spriteShakeY,
             (f.image as HTMLCanvasElement).width ?? 32,
             (f.image as HTMLCanvasElement).height ?? 40,
             `rgba(${tr},${tg},${tb},${(tint.alpha * 0.5).toFixed(2)})`,
@@ -3331,20 +3364,20 @@ export class CombatState extends State {
 
       // Draw child effects (under first, then over)
       for (const ue of draw.underEffects) {
-        drawBattleSprite(ue, fallbackColor, platformX, platformY);
+        drawBattleSprite(ue, fallbackColor, platformX, platformY, rangeOffset);
       }
       for (const e of draw.effects) {
-        drawBattleSprite(e, fallbackColor, platformX, platformY);
+        drawBattleSprite(e, fallbackColor, platformX, platformY, rangeOffset);
       }
 
       // Restore composite mode
       surf.ctx.globalCompositeOperation = prevComposite;
     };
 
-    // Draw left combatant
-    drawBattleSprite(leftDraw, '80,120,200', leftPlatX, leftPlatY);
-    // Draw right combatant
-    drawBattleSprite(rightDraw, '200,80,80', rightPlatX, rightPlatY);
+    // Draw left combatant (Python: left_range_offset = -24 - pan_max for ranged, 0 for melee)
+    drawBattleSprite(leftDraw, '80,120,200', leftPlatX, leftPlatY, rs.leftRangeOffset);
+    // Draw right combatant (Python: right_range_offset = 24 + pan_max for ranged, 0 for melee)
+    drawBattleSprite(rightDraw, '200,80,80', rightPlatX, rightPlatY, rs.rightRangeOffset);
 
     // --- Name tags ---
     // --- Name tags (top of screen, matching Python layout) ---
@@ -3628,21 +3661,37 @@ export class CombatState extends State {
    *
    * Frame offsets are in 240x160 screen space. The image is an
    * HTMLCanvasElement (palette-converted frame) or ImageBitmap.
+   *
+   * Python-faithful positioning (battle_animation.py:830-846):
+   *   For right-side: final_x = offset[0] + shake[0] + left
+   *   For left-side:  final_x = WINWIDTH - offset[0] - width + left
+   *   where left = shake[0] + range_offset + pan_offset (the `spriteLeft` param)
+   *
+   * Note: resolveFrame already handles the left-side mirroring
+   * (WINWIDTH - ox - frameWidth), so for left-side sprites the offset is
+   * already mirrored. We just need to add spriteLeft (which includes
+   * shake + range + pan) and for right-side sprites, also add shake[0].
    */
   private drawAnimFrame(
     surf: Surface,
     frame: { image: ImageBitmap | HTMLCanvasElement; offset: [number, number] } | null,
     alpha: number,
-    shakeX: number,
-    shakeY: number,
+    spriteShakeX: number,
+    spriteShakeY: number,
     recoilX: number,
     flipH: boolean = false,
+    spriteLeft: number = 0,
+    isRight: boolean = true,
   ): void {
     if (!frame) return;
 
     const img = frame.image;
-    const ox = frame.offset[0] + shakeX + recoilX;
-    const oy = frame.offset[1] + shakeY;
+    // Python: right side gets shake[0] + left; left side gets just left
+    // (because left-side mirroring in resolveFrame already handles the base offset)
+    const ox = isRight
+      ? frame.offset[0] + spriteShakeX + spriteLeft + recoilX
+      : frame.offset[0] + spriteLeft + recoilX;
+    const oy = frame.offset[1] + spriteShakeY;
 
     const srcW = (img as HTMLCanvasElement).width ?? 32;
     const srcH = (img as HTMLCanvasElement).height ?? 40;
@@ -5617,7 +5666,16 @@ export class EventState extends State {
     // Load the next level and transition to gameplay
     game.loadLevel(nextLevelNid).then(() => {
       this.levelTransitionInProgress = false;
+      const queueBefore = game.eventManager?.eventQueue.length ?? -1;
+      const hasEventsBefore = game.eventManager?.hasActiveEvents() ?? false;
+      console.log(`levelEnd .then(): queueBefore=${queueBefore}, hasEvents=${hasEventsBefore}`);
+      if (hasEventsBefore) {
+        const ev = game.eventManager!.getCurrentEvent();
+        console.log(`levelEnd .then(): first event="${ev?.nid}" with ${ev?.commands.length} cmds`);
+      }
       game.state.clear();
+      const queueAfterClear = game.eventManager?.eventQueue.length ?? -1;
+      console.log(`levelEnd .then(): queueAfterClear=${queueAfterClear}`);
       game.state.change('free');
       // If level_start triggered events, push EventState
       if (game.eventManager?.hasActiveEvents()) {
@@ -5625,6 +5683,9 @@ export class EventState extends State {
         // chapter_title + transition;Open work as expected
         this.startWithBlackScreen = true;
         game.state.change('event');
+        console.log(`levelEnd .then(): pushed EventState with startWithBlackScreen`);
+      } else {
+        console.log(`levelEnd .then(): NO events after clear!`);
       }
     }).catch((err: unknown) => {
       this.levelTransitionInProgress = false;

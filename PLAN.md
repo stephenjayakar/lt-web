@@ -49,36 +49,29 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   cannot move the cursor or interact with the map.
 - [ ] **Red rectangle randomly appears during magic attack.** A stray red
   rectangle/highlight flashes on screen during magic combat animations.
-- [ ] **Terrain platforms swap/move and sprites float in ranged/magic combat.**
-  Three related bugs cause platform/sprite positioning issues during GBA-style
-  combat animations, especially for magic and ranged attacks:
-  1. **`at_range` off-by-one (CRITICAL):** Python computes `at_range = distance - 1`
-     (0 for melee, 1 for range-2, etc.) and uses it for pan config, platform
-     selection, and standing poses. TypeScript passes raw `range` (Manhattan
-     distance) instead, so melee combat (distance=1) gets ranged pan (16px),
-     ranged standing poses, and wrong platform images. Affects
-     `animation-combat.ts:267-296` (pair calls, panConfig) and
-     `animation-combat.ts:47-52` (getPanConfig thresholds).
-  2. **Sprites don't receive range_offset or pan_offset (CRITICAL):** Python's
-     `draw()` passes `range_offset` (±24 + pan_max for ranged) and `pan_offset`
-     to sprite rendering so sprites move with their platforms. TypeScript only
-     applies shake/recoil to sprites — no range or pan offsets. Platforms slide
-     apart for ranged combat but sprites stay centered, causing them to float
-     off their platforms. Affects `game-states.ts:3260-3342` (drawBattleSprite),
-     `game-states.ts:3632-3650` (drawAnimFrame), and
-     `animation-combat.ts:1059-1138` (getRenderState missing range/pan data).
-  3. **Shake direction not negated for sprites (MEDIUM):** Python negates shake X
-     for sprites (`-total_shake_x`) so sprites move opposite to platforms,
-     creating the visual effect of ground shaking. TypeScript applies the same
-     `+shakeX` to both platforms and sprites — they move in the same direction
-     instead of opposite. Also, platform shake X is not folded into sprite
-     shake at all. Affects `game-states.ts:3169-3171,3644`.
+- [x] **Terrain platforms swap/move and sprites float in ranged/magic combat.**
+  *(Fixed)* Three related bugs in combat animation platform/sprite positioning:
+  1. `at_range` off-by-one — now computes `atRange = distance - 1` matching Python
+  2. Sprites now receive `range_offset` and `pan_offset` so they track with platforms
+  3. Shake direction negated for sprites (`-totalShakeX`) matching Python behavior
 - [ ] **Combat UI layout is wrong.** The combat UI (name tags, HP bars, weapon
   info) during GBA-style battle animations does not match the original Pygame
   engine's layout.
 
 ### Recent Changes
 
+- **Combat animation platform/sprite positioning fix.** Fixed three related bugs
+  causing terrain pillars to move around and sprites to float during ranged/magic
+  combat animations:
+  - Computed `atRange = distance - 1` (matching Python) instead of passing raw
+    Manhattan distance. Fixes melee getting ranged pan/poses/platforms.
+  - Added `leftRangeOffset`, `rightRangeOffset`, `panOffset`, `totalShakeX`,
+    `totalShakeY` to `AnimationCombatRenderState`. `drawBattleSprite` now passes
+    per-side range offsets to `drawAnimFrame`, which applies them Python-faithfully:
+    `spriteLeft = -totalShakeX + rangeOffset + panOffset`.
+  - Negated shake X for sprites (`-totalShakeX`) matching Python's
+    `shake = (-total_shake_x, total_shake_y)`. Combined screen + platform shake
+    into `totalShakeX`/`totalShakeY` for both platforms and sprites.
 - **Level progression / chapter chaining.** Implemented full level-to-level
   transitions matching the Python engine's behavior:
   - `win_game` command now sets `_win_game` flag (deferred, not immediate)
