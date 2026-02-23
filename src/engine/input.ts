@@ -395,6 +395,18 @@ export class InputManager {
     return this.buttonJustReleased.has(button);
   }
 
+  /**
+   * Clear transient per-frame input signals (justPressed, justReleased,
+   * mouseClick) without touching held-button state or camera deltas.
+   * Called between state-machine repeat iterations so that stale input
+   * events don't get consumed by multiple states in the same frame.
+   */
+  clearFrameEvents(): void {
+    this.buttonJustPressed.clear();
+    this.buttonJustReleased.clear();
+    this.mouseClick = null;
+  }
+
   endFrame(): void {
     this.buttonJustPressed.clear();
     this.buttonJustReleased.clear();

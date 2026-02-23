@@ -478,6 +478,12 @@ async function main(): Promise<void> {
 
     while (repeat && iterations < maxIterations) {
       const inputForThisIteration = iterations === 0 ? event : null;
+      // Clear transient input signals on repeat iterations so stale
+      // justPressed/mouseClick events don't get consumed by multiple
+      // states during the repeat chain (prevents double-pop bugs).
+      if (iterations > 0) {
+        inputManager.clearFrameEvents();
+      }
       const [, shouldRepeat] = game.state.update(inputForThisIteration, gameSurface);
       repeat = shouldRepeat;
       iterations++;
