@@ -2812,9 +2812,23 @@ export class CombatState extends State {
     const game = getGame();
     if (!game.input) return;
 
-    // BACK (Escape/X) or START (S) toggles skip mode for animation combat
-    // Matches Python: START toggles self._skip which sets battle_anim_speed=0.25
-    if (game.input.justPressed('BACK') || game.input.justPressed('START')) {
+    // BACK (Escape/X) instantly skips combat (both animation and map combat).
+    // START (S) toggles 4x speed for animation combat.
+    if (game.input.justPressed('BACK')) {
+      if (this.phase === 'combat') {
+        // Skip the combat animation entirely — results will be applied
+        // by the normal 'done' handling in update()
+        const activeCombat = this.isAnimationCombat ? this.animCombat : this.combat;
+        if (activeCombat) {
+          activeCombat.skipToEnd();
+        }
+      } else if (this.phase === 'death' || this.phase === 'exp' || this.phase === 'levelup') {
+        // Skip post-combat phases too — jump straight to cleanup
+        this.phase = 'cleanup';
+        this.phaseTimer = 0;
+      }
+    }
+    if (game.input.justPressed('START')) {
       if (this.animCombat) {
         this.animCombat.skipMode = !this.animCombat.skipMode;
       }

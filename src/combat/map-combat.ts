@@ -143,6 +143,11 @@ export class MapCombat {
     this.damagePopups = [];
   }
 
+  /** Instantly skip to the end of combat (no more animation). */
+  skipToEnd(): void {
+    this.state = 'done';
+  }
+
   /**
    * Advance the combat by one frame.
    * Returns true when the combat is fully complete.
