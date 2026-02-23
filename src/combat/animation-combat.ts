@@ -729,6 +729,17 @@ export class AnimationCombat implements AnimationCombatOwner {
       const battleCastAnim = this.attackItem.getComponent<string>('battle_cast_anim');
       effectNid = battleCastAnim ?? this.attackItem.nid;
     }
+
+    // Check if the effect exists before spawning. If it doesn't exist,
+    // immediately fire the hit so combat doesn't hang waiting for a
+    // spell_hit that will never come.
+    const effectData = this.getEffectData(effectNid);
+    if (!effectData) {
+      console.warn(`[AnimationCombat] castSpell: effect "${effectNid}" not found — firing hit immediately`);
+      this.startHit(anim);
+      return;
+    }
+
     // Spawn the effect as a child of the calling animation
     anim.spawnEffect(effectNid, anim.effects);
   }
