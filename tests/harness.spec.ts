@@ -637,26 +637,6 @@ test.describe('Level Progression', () => {
 
       const state = await getState(page);
 
-      // Check for active event in level 1
-      if (state.levelNid === '1' && state.units.length > 0 && state.currentStateName === 'event') {
-        // Track event pointer progress
-        const progress = await page.evaluate(() => {
-          const g = (window as any).__gameRef;
-          if (!g?.eventManager) return null;
-          const ev = g.eventManager.getCurrentEvent();
-          if (!ev) return { pointer: -1, total: 0, cmd: 'none', done: true };
-          const cmd = ev.commands[ev.commandPointer];
-          return {
-            pointer: ev.commandPointer,
-            total: ev.commands.length,
-            cmd: cmd ? `${cmd.type}(${cmd.args?.join(',') ?? ''})` : 'END',
-            done: ev.commandPointer >= ev.commands.length,
-          };
-        });
-        if (progress && !progress.done && batch <= 105) {
-          console.log(`  batch ${batch}: ptr=${progress.pointer}/${progress.total} cmd=${progress.cmd}`);
-        }
-      }
       if (state.levelNid === '1' && state.units.length > 0) {
         const eventInfo = await page.evaluate(() => {
           const g = (window as any).__gameRef;
@@ -674,54 +654,33 @@ test.describe('Level Progression', () => {
           reachedLevel1WithEvents = true;
           level1EventNid = eventInfo.nid;
           level1EventCmdCount = eventInfo.commandCount;
-          // Check skipMode
-          const skipMode = await page.evaluate(() => {
-            const g = (window as any).__gameRef;
-            const es = g?.state?.getCurrentState?.();
-            return (es as any)?.skipMode ?? 'unknown';
-          });
-          console.log(`Ch.1 event found: "${eventInfo.nid}" (${eventInfo.commandCount} cmds, pointer=${eventInfo.pointer}, skipMode=${skipMode})`);
         }
 
         // Check if chapter title phase is active
         const ctPhase = await page.evaluate(() => {
           const g = (window as any).__gameRef;
-          // Access the EventState's chapterTitlePhase via the state machine
           const es = g?.state?.getCurrentState?.();
           return (es as any)?.chapterTitlePhase ?? 'unknown';
         });
         if (ctPhase !== 'none' && ctPhase !== 'unknown') {
           chapterTitleSeen = true;
-          console.log(`Chapter title phase: ${ctPhase}`);
         }
       }
 
       // If we're in free state on level 1, events have finished
       if (state.levelNid === '1' && state.currentStateName === 'free') {
-        console.log(`Settled to free state at batch ${batch}`);
         break;
       }
 
       if (state.currentStateName === 'title' || state.currentStateName === 'title_main') {
-        console.log('ERROR: ended up at title screen');
         break;
       }
-    }
-
-    // Check relevant logs
-    const relevantLogs = logs.filter(l =>
-      l.includes('levelEnd') || l.includes('level_start') || l.includes('level_end') ||
-      l.includes('Player wins') || l.includes('cleanUpLevel') || l.includes('EventManager') ||
-      l.includes('Level transition') || l.includes('startWithBlack') || l.includes('begin()')
-    );
-    console.log('\nRelevant browser logs:');
-    for (const log of relevantLogs) {
-      console.log(`  ${log}`);
     }
 
     expect(reachedLevel1WithEvents).toBe(true);
     expect(level1EventNid).toBe('1 Intro');
     expect(level1EventCmdCount).toBe(102);
+    expect(chapterTitleSeen).toBe(true);
 
     await saveScreenshot(page, '25-ch1-intro-cutscene');
   });
@@ -740,12 +699,9 @@ test.describe('Level Progression', () => {
     // Find the boss (O'Neill) and player units
     const boss = state.units.find((u: any) => u.nid === "O'Neill");
     expect(boss).toBeTruthy();
-    console.log(`Boss ${boss!.name} HP: ${boss!.hp}/${boss!.maxHp}`);
-
     // Remember Eirika's stats for persistence check
     const eirikaBefore = state.units.find((u: any) => u.nid === 'Eirika');
     expect(eirikaBefore).toBeTruthy();
-    console.log(`Eirika before: HP=${eirikaBefore!.hp}, Level? (stats preserved test)`);
 
     // Kill the boss to set up the win condition
     const killed = await killUnit(page, "O'Neill");
@@ -760,22 +716,15 @@ test.describe('Level Progression', () => {
     // The Prologue has an event "0_Defeat_Boss" with trigger=combat_end that checks
     // if O'Neill is dead, then calls win_game.
     const triggered = await triggerEvent(page, 'combat_end');
-    console.log(`combat_end triggered: ${triggered}`);
 
     // If the event was triggered, push EventState and step through it.
     // The event should set _win_game flag, then when it finishes,
     // finishAndDequeue() handles the level transition.
     if (triggered) {
-      // Push event state
-      await page.evaluate(() => {
-        const g = (window as any).__game ?? (window as any).__harness;
-        // State machine should pick up the event automatically
-      });
       await stepFrames(page, 3);
 
       // Ensure we're in event state processing the win_game command
       state = await getState(page);
-      console.log(`State after trigger: ${state.currentStateName}`);
 
       // Step through event processing and level transition.
       // The level transition is async (loadLevel returns a Promise), so we need
@@ -794,13 +743,11 @@ test.describe('Level Progression', () => {
         // (levelNid is set at the start of loadLevel, but units are populated later)
         if (state.levelNid === '1' && state.units.length > 0) {
           transitioned = true;
-          console.log(`Transitioned to level ${state.levelNid} with ${state.units.length} units after ~${(batch + 1) * 10} frames`);
           break;
         }
 
         // If we're on the title screen, something went wrong
         if (state.currentStateName === 'title' || state.currentStateName === 'title_main') {
-          console.log('Ended up at title screen instead of next level');
           break;
         }
       }
@@ -814,22 +761,13 @@ test.describe('Level Progression', () => {
       // Verify Eirika is present in the new level (either from persistence or level data)
       const eirikaAfter = state.units.find((u: any) => u.nid === 'Eirika');
       expect(eirikaAfter).toBeTruthy();
-      console.log(`Eirika in level 1: HP=${eirikaAfter!.hp}, position=${eirikaAfter!.position}`);
 
       // Verify there are enemy units too (level 1 has ~10 enemies)
       const enemies = state.units.filter((u: any) => u.team === 'enemy');
-      console.log(`Level 1 enemies: ${enemies.length}`);
       expect(enemies.length).toBeGreaterThan(0);
-
-      console.log(`Level 1 units: ${state.units.map((u: any) => `${u.name}(${u.team})`).join(', ')}`);
     } else {
-      console.log('combat_end event did not trigger — win condition check may need different trigger');
-      // Even if the specific event didn't trigger, the win_game mechanism itself should work.
-      // Let's test it by directly setting the flag.
-      await page.evaluate(() => {
-        const harness = (window as any).__harness;
-        // Step into event state manually
-      });
+      // combat_end event did not trigger — test should fail
+      expect(triggered).toBe(true);
     }
   });
 
@@ -900,18 +838,15 @@ test.describe('Level Progression', () => {
 
         if (state.levelNid === '1' && state.units.length > 0) {
           levelChanged = true;
-          console.log(`Level changed to ${state.levelNid} with ${state.units.length} units after ~${(batch + 1) * 10} frames`);
           break;
         }
 
         if (state.currentStateName === 'title' || state.currentStateName === 'title_main') {
-          console.log('Hit title screen — checking if this is because no more levels');
           break;
         }
       }
 
       await saveScreenshot(page, '21-win-flag-mechanism-result');
-      console.log(`Final state: level=${state.levelNid}, state=${state.currentStateName}`);
       expect(levelChanged).toBe(true);
     }
   });

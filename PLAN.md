@@ -60,9 +60,9 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
-- **Combat animation platform/sprite positioning fix.** Fixed three related bugs
-  causing terrain pillars to move around and sprites to float during ranged/magic
-  combat animations:
+- **Combat animation platform/sprite positioning fix (two passes).** Fixed six
+  bugs causing terrain pillars to move around and sprites to float during
+  ranged/magic combat animations:
   - Computed `atRange = distance - 1` (matching Python) instead of passing raw
     Manhattan distance. Fixes melee getting ranged pan/poses/platforms.
   - Added `leftRangeOffset`, `rightRangeOffset`, `panOffset`, `totalShakeX`,
@@ -72,6 +72,14 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   - Negated shake X for sprites (`-totalShakeX`) matching Python's
     `shake = (-total_shake_x, total_shake_y)`. Combined screen + platform shake
     into `totalShakeX`/`totalShakeY` for both platforms and sprites.
+  - **Pan logic overhaul:** Added phase-change pan in `updateBeginPhase()` so
+    the camera pans to focus on each new attacker (matching Python's
+    `set_up_combat_animation -> move_camera`). Split `pan()` into `panAway()`
+    (simple toggle) and `panBack()` (looks at next strike to determine focus).
+    Added `panAway` boolean to `BattleAnimation` with safety cleanup when a
+    pose ends without issuing the return pan command.
+  - Pan advancement now uses a separate frame accumulator for frame-rate
+    independence (ticks at 60fps like Python regardless of browser refresh rate).
 - **Level progression / chapter chaining.** Implemented full level-to-level
   transitions matching the Python engine's behavior:
   - `win_game` command now sets `_win_game` flag (deferred, not immediate)

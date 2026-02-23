@@ -113,6 +113,9 @@ export class BattleAnimation {
   effects: BattleAnimation[] = [];
   underEffects: BattleAnimation[] = [];
 
+  // --- Pan tracking (Python: self.pan_away) ---
+  panAway: boolean = false;
+
   // --- Death ---
   deathOpacity: number[] = [];
   deathFlash: boolean = false;
@@ -287,7 +290,12 @@ export class BattleAnimation {
           this.numFrames = 0;
           this.readScript();
         } else {
-          // Return to Stand
+          // Return to Stand (Python: end_current_pose)
+          // Safety: if pan_away is still True, auto-call pan_back
+          if (this.panAway) {
+            this.panAway = false;
+            this.owner?.panBack?.();
+          }
           this.setPose('Stand');
         }
       } else {
@@ -520,7 +528,13 @@ export class BattleAnimation {
       }
 
       case 'pan': {
-        this.owner?.pan?.();
+        // Python: toggle pan_away flag, then call pan_away() or pan_back()
+        this.panAway = !this.panAway;
+        if (this.panAway) {
+          this.owner?.panAway?.();
+        } else {
+          this.owner?.panBack?.();
+        }
         break;
       }
 
