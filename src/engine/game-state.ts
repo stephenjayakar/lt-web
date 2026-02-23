@@ -169,7 +169,8 @@ export class GameState {
     this.camera = new Camera();
     this.cursor = new Cursor();
     // Load cursor sprite eagerly (fire-and-forget — falls back to rectangle if it fails)
-    this.cursor.loadSprite(`${resources.getBaseUrl()}/sprites/cursor.png`).catch(() => {});
+    // Cursor sprite is an engine-level shared asset at /game-data/sprites/cursor.png
+    this.cursor.loadSprite('/game-data/sprites/cursor.png').catch(() => {});
     this.highlight = new HighlightManager();
     this.mapView = new MapView();
     this.unitRenderer = new UnitRenderer();

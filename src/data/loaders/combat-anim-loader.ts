@@ -261,27 +261,19 @@ export async function loadCombatPalettes(
     return result;
   }
 
-  // Fall back to non-chunked format
-  const rawData = await resources.tryLoadJsonSilent<RawPaletteEntry[]>(
+  // Fall back to non-chunked format — try multiple known paths
+  const nonChunkedPaths = [
     'resources/combat_palettes/combat_palettes.json',
-  );
+    'resources/combat_palettes/palette_data/combat_palettes.json',
+    'resources/combat_palettes/palettes.json',
+  ];
+  let rawData: RawPaletteEntry[] | null = null;
+  for (const path of nonChunkedPaths) {
+    rawData = await resources.tryLoadJsonSilent<RawPaletteEntry[]>(path);
+    if (rawData) break;
+  }
   if (!rawData) {
-    // Also try the old path
-    const altData = await resources.tryLoadJsonSilent<RawPaletteEntry[]>(
-      'resources/combat_palettes/palettes.json',
-    );
-    if (!altData) {
-      console.warn('combat-anim-loader: no combat palettes found (tried chunked + non-chunked)');
-      return result;
-    }
-    for (const raw of altData) {
-      try {
-        const parsed = parsePalette(raw);
-        result.set(parsed.nid, parsed);
-      } catch (err) {
-        console.error(`combat-anim-loader: failed to parse palette "${raw[0]}":`, err);
-      }
-    }
+    console.warn('combat-anim-loader: no combat palettes found (tried chunked + non-chunked)');
     return result;
   }
 

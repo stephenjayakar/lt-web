@@ -14,33 +14,32 @@ Playable, Visual Polish, Mobile/Distribution) are complete. The engine loads
 `.ltproj` game data over HTTP and runs at 60 fps on Canvas 2D with dynamic
 viewport scaling for mobile and desktop.
 
-### Completed Systems (Summary)
+### Multi-Project Support
 
-All Phase 0-4 work is done. Key systems implemented:
+The engine supports loading different `.ltproj` projects via the `?project=`
+query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
+**non-chunked** (single JSON array files) data formats are supported.
 
-- **Core**: Stack-based state machine (21+ states), tilemap rendering (multi-layer,
-  autotile, weather, foreground), unit system (stats, items, skills, status, rescue),
-  action menu, combat (weapon triangle, terrain, supports, component dispatch),
-  AI (behaviours, targeting, healing, group activation), experience/leveling, win/loss
-- **Events**: ~100+ commands across EVNT and PYEV1 formats, portrait system,
-  dialog, transitions, camera control, flow control (if/for/while), query engine
-- **Combat Animations**: GBA-style battle anims (~2,600 lines), spell/weapon effects,
-  terrain panoramas, platforms, damage numbers, hit/crit sparks, viewbox iris
-- **UI**: Bitmap fonts (23 variants), 9-slice menus, icons, HUD, dialog, banners
-- **Game Screens**: Title, Prep, Base, Settings, Minimap, Victory, Credits,
-  Info Menu, Save/Load, Overworld, Turnwheel
-- **Advanced Systems**: Support system, fog of war, turnwheel, initiative turns,
-  overworld map, free roam, promotion/class change, difficulty modes, parties/convoy,
-  save/load (IndexedDB), records/achievements, query engine, equation evaluator
-- **Platform**: Touch controls, responsive scaling, PWA, asset bundling,
-  performance profiling, Capacitor/TWA wrapper
+**Completed:**
+- [x] Configurable project path via `?project=` query param
+- [x] Non-chunked game_data fallback (items.json, skills.json, etc.)
+- [x] Non-chunked tilemap fallback (single tilemaps.json)
+- [x] Engine-level shared assets separated from project assets (sprites/menus, platforms, cursor)
+- [x] Combat palette loading: added `palette_data/` subdirectory fallback path
+- [x] URL encoding: `ResourceManager.resolveUrl()` now encodes path segments for spaces/special chars
+- [x] Title screen: animated panorama fallback (tries `title_background0.png` when single file missing)
+- [x] Icons, fonts, base-surf, sprite-loader all encode NIDs in URLs
+
+**Known Limitations (per-project content):**
+- Missing `combat_*.png` panoramas in non-default projects (combat backgrounds show nothing)
+- Projects may reference combat effects/palettes not present — renders without them gracefully
+
+---
 
 ### Known Bugs
 
 - [ ] **First dialogue still renders over the portrait.** The dialogue box
   appears on top of the portrait sprite instead of being positioned to avoid it.
-- [ ] **No cursor sounds when using mouse.** Moving the cursor via mouse click
-  does not play the `Select 5` sound that keyboard movement plays.
 - [ ] **Combat animations at half speed sometimes.** Battle animations
   occasionally play at roughly half their normal speed.
 - [ ] **Enemies leave blue rectangle at start position when attacking.** When
@@ -53,58 +52,39 @@ All Phase 0-4 work is done. Key systems implemented:
 - [ ] **Terrain platforms swap/move after magic attack starts.** During magic
   combat animations, the terrain platform images appear to shift or swap sides
   unexpectedly, then swap back at the end.
-- [ ] **No ESC to skip combat animation.** There is currently no way to press
-  Escape to skip/fast-forward through a combat animation.
 - [ ] **Combat UI layout is wrong.** The combat UI (name tags, HP bars, weapon
   info) during GBA-style battle animations does not match the original Pygame
-  engine's layout. Needs to be matched faithfully.
+  engine's layout.
 
-### Recent Changes (Latest Session)
+### Recent Changes
 
-- **9 combat/UI/input bug fixes in one session.**
-  - **Blue rectangle at enemy start position.** `CombatState.begin()` now calls
-    `game.highlight.clear()` and `game.cursor.visible = false` before combat starts
-    (matching Python's `interaction.py` + `red_cursor` state). Previously highlights
-    from FreeState/TargetingState persisted through transparent CombatState.
-  - **Red rectangle during magic attack.** `AIState.draw()` now skips the red
-    AI-unit indicator rectangle when `waitingForCombat` is true. The red rect was
-    bleeding through the transparent CombatState's viewbox iris during animation combat.
-  - **Cursor control lost after combat.** AI `waitingForCombat` check now also tests
-    `unit.hasAttacked` (not just `unit.finished || unit.isDead()`), fixing stuck state
-    when AI units have canto. CombatState cleanup now restores `game.cursor.visible = true`.
-  - **Platform swap/move during magic combat.** Fixed ranged platform X formula to
-    include `pan_max` base offset (matching Python's `mock_combat.py`). Initialized
-    `panOffset` to `+/-panConfig.max` based on attacker side (was 0). Fixed `pan()`
-    toggle direction to match Python's `focus_right` logic.
-  - **Combat animations at half speed.** Added frame-time accumulator to
-    `AnimationCombat` — animation ticks now run at fixed 60fps rate regardless of
-    monitor refresh rate. Converted entrance/initPause/hpDrain states from
-    frame-count-based to ms-based timing. Prevents 2x speed on 120Hz monitors and
-    half-speed on frame drops.
-  - **ESC/START to skip combat animation.** Added `CombatState.takeInput()` — pressing
-    BACK (Escape/X) or START (S) toggles `skipMode` on `AnimationCombat`. Skip mode
-    runs animations at 4x speed and accelerates all state timers (matching Python's
-    `battle_anim_speed = 0.25`).
-  - **Mouse cursor sounds.** `processMouseForMap()` now plays `Select 5` when mouse
-    click or hover moves the cursor to a new tile (was only played for keyboard movement).
-  - **Dialog transition-in animation.** New `'transition_in'` dialog state with ~167ms
-    (10 frame) grow+fade animation matching Python's `TRANSITION_IN`. During transition,
-    only the background box is drawn (growing from center, fading in). Tail, speaker
-    name, and text are not drawn until transition completes. SELECT skips transition.
-  - **Combat UI overhaul.** HP bar panels now show HIT/DMG/CRT stat numbers (computed
-    from `computeHit`/`computeDamage`/`computeCrit`), weapon name, and HP bar. Panel
-    height increased from 28px to 44px to accommodate stats. Matches Python's layout
-    with stat labels + right-aligned values.
-  - **Game freeze after cutscene combat (interact_unit).** Fixed double-pop of state
-    stack caused by CombatState unnecessarily pushing EventState after event-triggered
-    combat. Added `game.eventCombat` flag set by `interact_unit` handler; CombatState
-    cleanup now skips `change('event')` when this flag is set (matching Python's
-    `event_combat` flag in `simple_combat.py`). Also fixed EventState `begin()` to
-    return `'repeat'` when queue is empty to prevent double `back()` in same frame.
+- **Magic sword / wind sword freeze fix.** Fixed `castSpell` in `animation-combat.ts`
+  to check the item's `battle_cast_anim` component (e.g. "Gustblade", "Lightning",
+  "Nosferatu") before falling back to the item NID. Without this, spell effects never
+  spawned, causing the animation to loop forever waiting for `end_parent_loop` or
+  `spell_hit`. Also implemented `magic_at_range` dynamic damage in `item-system.ts`
+  (swaps STR→MAG and DEF→RES at distance > 1).
+- **Multi-project support.** Fixed 3 hardcoded asset paths (base-surf, sprite-loader,
+  cursor) to use configurable base URLs. Added `ResourceManager.getBaseUrl()` accessor.
+  Separated engine-level shared assets (`/game-data/`) from project-level assets
+  (`/game-data/{project}.ltproj/`).
+- **Non-chunked data format support.** `loadChunked()` now falls back to loading
+  single `game_data/{type}.json` array files when `.orderkeys` directories don't exist.
+  `loadTilemaps()` now tries `tilemaps.json` bulk file before individual tilemap files.
 
 ---
 
 ## Remaining Work
+
+### Multi-Project Compatibility (Active)
+
+1. **Combat palette path fix** — Non-chunked palettes at `palette_data/combat_palettes.json`
+   not found because engine looks one directory level up.
+2. **URL encoding for resource NIDs** — Tilesets, portraits, icons, panoramas, and music
+   with spaces/special characters in NIDs fail to load. Need `encodeURIComponent()` or
+   `encodeURI()` on URL path segments.
+3. **Animated title panoramas** — Projects with numbered frames (`title_background0.png`
+   through `title_background32.png`) instead of single `title_background.png`.
 
 ### Still Missing (Lower Priority)
 

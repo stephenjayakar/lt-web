@@ -27,9 +27,14 @@ export class ResourceManager {
     return this.baseUrl;
   }
 
-  /** Resolve a relative path to a full URL under the .ltproj root. */
+  /**
+   * Resolve a relative path to a full URL under the .ltproj root.
+   * Each path segment is URI-encoded to handle spaces and special characters
+   * (e.g., "Bethroen 2.png" -> "Bethroen%202.png") while preserving '/' separators.
+   */
   private resolveUrl(path: string): string {
-    return `${this.baseUrl}/${path}`;
+    const encoded = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return `${this.baseUrl}/${encoded}`;
   }
 
   // -------------------------------------------------------------------

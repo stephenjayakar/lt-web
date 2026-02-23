@@ -143,18 +143,18 @@ export function createBaseSurf(
 const bgCache: Map<string, HTMLImageElement> = new Map();
 const bgPending: Map<string, Promise<HTMLImageElement | null>> = new Map();
 
-/** Base URL for game data (set once at init). */
-let baseSurfBaseUrl: string = '/game-data/default.ltproj';
+/** Base URL for engine-level shared assets (set once at init). */
+let engineBaseUrl: string = '/game-data';
 
-/** Initialize the base-surf system with the project base URL. */
+/** Initialize the base-surf system with the engine base URL (parent of .ltproj dirs). */
 export function initBaseSurf(url: string): void {
-  baseSurfBaseUrl = url.replace(/\/$/, '');
+  engineBaseUrl = url.replace(/\/$/, '');
 }
 
 /**
  * Load a menu background sprite from the game data server.
  * Returns the cached image or null if loading fails.
- * Uses the path pattern: {baseUrl}/sprites/menus/{nid}.png
+ * Menu sprites are engine-level shared assets at /game-data/sprites/menus/{nid}.png.
  */
 export async function loadMenuBgSprite(nid: string): Promise<HTMLImageElement | null> {
   const cached = bgCache.get(nid);
@@ -163,7 +163,7 @@ export async function loadMenuBgSprite(nid: string): Promise<HTMLImageElement | 
   const pending = bgPending.get(nid);
   if (pending) return pending;
 
-  const url = `${baseSurfBaseUrl}/sprites/menus/${nid}.png`;
+  const url = `${engineBaseUrl}/sprites/menus/${encodeURIComponent(nid)}.png`;
   const promise = new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
