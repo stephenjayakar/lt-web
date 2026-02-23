@@ -96,7 +96,12 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   - Generic units set `persistent = false` (only unique units carry over)
   - Added `go_to_overworld` field to `LevelPrefab` type
   - Added `killUnit` and `triggerEvent` to test harness
-  - Two Playwright tests: combat_end trigger flow + direct flag mechanism
+  - Fixed timing bug where `.then()` callback ran before deferred state machine
+    ops flushed, causing `1 Intro` event to be dequeued prematurely. Fix: null
+    out `currentEvent` in `levelEnd()` before async load, defer
+    `levelTransitionInProgress` reset to `begin()` instead of `.then()`
+  - Ch.1 intro cutscene now verified: chapter_title + transition + speak all play
+  - Three Playwright tests: cutscene verification + combat_end trigger + direct flag
   - All 12 tests pass (existing + new)
 - **Magic sword / wind sword freeze fix.** Fixed `castSpell` in `animation-combat.ts`
   to check the item's `battle_cast_anim` component (e.g. "Gustblade", "Lightning",
