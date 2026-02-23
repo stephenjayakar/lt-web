@@ -430,7 +430,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Core Engine (`src/engine/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-state.ts` | ~1150 | Singleton hub: subsystem refs, level loading, win/loss, difficulty |
+| `game-state.ts` | ~1450 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
 | `action.ts` | ~1720 | All game actions (Move, Damage, Heal, Promote, Convoy, etc.) |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |

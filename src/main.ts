@@ -387,6 +387,8 @@ async function main(): Promise<void> {
   // --- Harness mode: skip rAF loop, expose programmatic API ---
   if (harnessMode) {
     installHarness(gameState, gameSurface, display.canvas, display.ctx);
+    // Expose game reference for advanced test manipulation
+    (window as any).__gameRef = gameState;
     // Load the requested level directly
     try {
       const h = (window as any).__harness;

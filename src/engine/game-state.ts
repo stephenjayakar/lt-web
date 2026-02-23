@@ -245,6 +245,135 @@ export class GameState {
   }
 
   // ========================================================================
+  // Level cleanup (between chapters)
+  // ========================================================================
+
+  /**
+   * Persistent units saved from the previous level's cleanUpLevel().
+   * These are re-injected into the next level during loadLevel().
+   */
+  private persistentUnits: Map<string, UnitObject> = new Map();
+  private persistentItems: Map<string, ItemObject> = new Map();
+
+  /**
+   * Clean up the current level in preparation for the next one.
+   * Matches Python's game.clean_up(full=True):
+   *   - Remove all units from the board
+   *   - Heal all units to full HP
+   *   - Drop travelers (rescue)
+   *   - Reset unit turn state
+   *   - Remove non-persistent units from the registry
+   *   - Remove orphaned items/skills
+   *   - Clear regions, level vars, etc.
+   *   - Preserve persistent units and their items for the next level
+   */
+  cleanUpLevel(): void {
+    // Remove all units from the board
+    for (const unit of this.units.values()) {
+      if (unit.position && this.board) {
+        this.board.removeUnit(unit);
+      }
+    }
+
+    // Per-unit cleanup
+    for (const unit of this.units.values()) {
+      // Drop rescued units
+      if (unit.rescuing) {
+        unit.rescuing.rescuedBy = null;
+        unit.rescuing = null;
+      }
+      if (unit.rescuedBy) {
+        unit.rescuedBy.rescuing = null;
+        unit.rescuedBy = null;
+      }
+
+      // Heal to full HP
+      unit.currentHp = unit.stats['HP'] ?? unit.currentHp;
+
+      // Clear position (units are off-map between levels)
+      unit.position = null;
+
+      // Reset turn state
+      unit.resetTurnState();
+      unit.finished = false;
+      unit.hasAttacked = false;
+    }
+
+    // Handle player death: resurrect if permadeath is off
+    if (this.currentMode && !this.currentMode.permadeath) {
+      for (const unit of this.units.values()) {
+        if (unit.team === 'player' && unit.isDead()) {
+          unit.dead = false;
+          unit.currentHp = unit.stats['HP'] ?? 1;
+        }
+      }
+    }
+
+    // Preserve persistent units (player units) and their items
+    this.persistentUnits.clear();
+    this.persistentItems.clear();
+    for (const [nid, unit] of this.units) {
+      if (unit.persistent) {
+        this.persistentUnits.set(nid, unit);
+        // Preserve their items too
+        for (const item of unit.items) {
+          const itemKey = `${unit.nid}_${item.nid}_persistent`;
+          this.persistentItems.set(itemKey, item);
+        }
+      }
+    }
+
+    // Preserve convoy items from all parties
+    for (const party of this.parties.values()) {
+      for (const item of party.convoy) {
+        const itemKey = `convoy_${party.nid}_${item.nid}_${Math.random().toString(36).slice(2, 8)}`;
+        this.persistentItems.set(itemKey, item);
+      }
+    }
+
+    // Clear per-level state
+    this.units.clear();
+    this.items.clear();
+    this.activeAiGroups.clear();
+    this.levelVars.clear();
+    this.highlight.clear();
+    this.actionLog.clear();
+    this.turnCount = 1;
+    this.currentLevel = null;
+    this.tilemap = null;
+    this.board = null;
+    this.pathSystem = null;
+    this.eventManager = null;
+    this.aiController = null;
+    this.supports = null;
+    this.initiative = null;
+    this.roamInfo = new RoamInfo();
+
+    // Reset transient state
+    this.selectedUnit = null;
+    this.infoMenuUnit = null;
+    this.combatTarget = null;
+    this.combatScript = null;
+    this.eventCombat = false;
+    this.shopUnit = null;
+    this.shopItems = null;
+    this.shopStock = null;
+    this.currentEvent = null;
+    this._moveOrigin = null;
+    this._pendingAfterMovement = null;
+
+    // Reset turnwheel uses
+    this.gameVars.set(
+      '_current_turnwheel_uses',
+      this.gameVars.get('_max_turnwheel_uses') ?? -1,
+    );
+
+    console.log(
+      `cleanUpLevel: preserved ${this.persistentUnits.size} persistent units, ${this.persistentItems.size} items`,
+    );
+  }
+
+  // ========================================================================
   // Level loading
   // ========================================================================
 
@@ -350,13 +479,60 @@ export class GameState {
     this.initDifficulty();
 
     // d. Spawn units -------------------------------------------------------
+    // Track which persistent units were placed on the map in this level
+    const placedPersistentUnits = new Set<string>();
+
     for (const unitData of levelPrefab.units) {
       if (isUniqueUnitData(unitData)) {
-        this.spawnUniqueUnit(unitData);
+        // Check if this unit was persisted from a previous level
+        const persistedUnit = this.persistentUnits.get(unitData.nid);
+        if (persistedUnit) {
+          // Re-use the persistent unit (with its current stats, items, XP)
+          // but place it at the new level's position
+          const position = unitData.starting_position;
+          if (position && this.board) {
+            this.board.setUnit(position[0], position[1], persistedUnit);
+          } else {
+            persistedUnit.position = position;
+          }
+          persistedUnit.startingPosition = position ? [...position] as [number, number] : null;
+          // Update team/ai from level data
+          persistedUnit.team = unitData.team;
+          persistedUnit.ai = unitData.ai;
+          if (unitData.ai_group) persistedUnit.aiGroup = unitData.ai_group;
+          persistedUnit.resetTurnState();
+          persistedUnit.finished = false;
+          persistedUnit.hasAttacked = false;
+          this.units.set(persistedUnit.nid, persistedUnit);
+          // Re-register items
+          for (let i = 0; i < persistedUnit.items.length; i++) {
+            this.items.set(`${persistedUnit.nid}_${persistedUnit.items[i].nid}_${i}`, persistedUnit.items[i]);
+          }
+          placedPersistentUnits.add(unitData.nid);
+        } else {
+          this.spawnUniqueUnit(unitData);
+        }
       } else {
         this.spawnGenericUnit(unitData);
       }
     }
+
+    // d1b. Register remaining persistent units that aren't in this level's unit list
+    // (they stay in the registry but off-map, e.g., for convoy access or future levels)
+    for (const [nid, unit] of this.persistentUnits) {
+      if (!placedPersistentUnits.has(nid) && !this.units.has(nid)) {
+        unit.position = null;
+        this.units.set(nid, unit);
+        // Re-register items
+        for (let i = 0; i < unit.items.length; i++) {
+          this.items.set(`${unit.nid}_${unit.items[i].nid}_${i}`, unit.items[i]);
+        }
+      }
+    }
+
+    // Clear the persistent storage now that units have been restored
+    this.persistentUnits.clear();
+    this.persistentItems.clear();
 
     // d2. Initialize fog of war vision for all spawned units ----------------
     this.recalculateAllFow();
@@ -1007,6 +1183,9 @@ export class GameState {
 
     const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
     if (data.ai_group) unit.aiGroup = data.ai_group;
+
+    // Generic units are NOT persistent across levels (Python: self.persistent = False)
+    unit.persistent = false;
 
     // Auto-level: apply FIXED growth-based stat increases.
     // Python: num_levels = self.level - 1 for tier 0/1 base classes

@@ -58,6 +58,24 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Level progression / chapter chaining.** Implemented full level-to-level
+  transitions matching the Python engine's behavior:
+  - `win_game` command now sets `_win_game` flag (deferred, not immediate)
+  - `finishAndDequeue()` checks `_win_game` flag after each event, fires
+    `LevelEnd` trigger for outro cutscenes, then calls `levelEnd()`
+  - `levelEnd()` resolves next level via `_goto_level` game var override or
+    sequential order (skipping debug levels), then async loads the next level
+  - `cleanUpLevel()` on GameState persists player units across levels (heals
+    HP, clears rescue state, resets turn flags, removes non-persistent units)
+  - `loadLevel()` restores persistent units from previous level, placing them
+    at positions defined in the new level's unit list
+  - `set_next_chapter` event command overrides sequential progression
+  - `lose_game` command sets `_lose_game` flag (deferred, returns to title)
+  - Generic units set `persistent = false` (only unique units carry over)
+  - Added `go_to_overworld` field to `LevelPrefab` type
+  - Added `killUnit` and `triggerEvent` to test harness
+  - Two Playwright tests: combat_end trigger flow + direct flag mechanism
+  - All 12 tests pass (existing + new)
 - **Magic sword / wind sword freeze fix.** Fixed `castSpell` in `animation-combat.ts`
   to check the item's `battle_cast_anim` component (e.g. "Gustblade", "Lightning",
   "Nosferatu") before falling back to the item NID. Without this, spell effects never
