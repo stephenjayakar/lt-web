@@ -3354,10 +3354,11 @@ export class CombatState extends State {
     // --- HP bars (bottom of screen, matching Python layout) ---
     // Python: bars slide up from 52px below, visible at y=WINHEIGHT-barH.
     // Left bar at x=-3, right bar at x=WINWIDTH/2.
+    // Python bar is 40px tall (no crit) or 48px (with crit), positioned at WINHEIGHT - barH.
     const hpSlide = rs.hpBarProgress;
     if (hpSlide > 0) {
       const HP_BAR_W = WINWIDTH / 2 + 3; // Each bar covers half the screen
-      const HP_BAR_H = 44; // Taller to fit weapon name + HIT/DMG/CRT + HP bar
+      const HP_BAR_H = 56; // Weapon(16px) + HIT/DMG/CRT(8px each) + HP bar + padding
       // Bottom anchor: slide up from below screen
       const hpY = WINHEIGHT + (1 - hpSlide) * 52 - HP_BAR_H + shakeY;
       const leftHpX = -3 + shakeX;
@@ -3494,8 +3495,10 @@ export class CombatState extends State {
   }
 
   /** Draw a battle-scene HP bar (used in animation combat).
-   *  Layout matching Python: weapon name at top, then combat stats
-   *  (HIT/DMG/CRT), then HP bar with blip-style display at bottom. */
+   *  Vertical layout matching GBA Python reference (with crit row):
+   *  Row 0: Weapon name (centered)
+   *  Row 1-3: HIT / DMG / CRT labels (left) + values (right-aligned)
+   *  Row 4: HP number (left) + HP bar (right) */
   private drawBattleHpBar(
     surf: Surface,
     x: number,
@@ -3508,42 +3511,51 @@ export class CombatState extends State {
     surf.fillRect(x, y, width, height, 'rgba(16,16,40,0.9)');
     surf.drawRect(x, y, width, height, 'rgba(100,100,160,0.8)');
 
-    // Weapon name (top row, centered)
-    const weaponFont = '7px monospace';
-    surf.drawText(hp.weapon, x + 3, y + 2, 'rgba(180,180,220,1)', weaponFont);
+    // Inset the content area to avoid drawing at the panel edges
+    const pad = 4;
+    const innerX = x + pad;
+    const innerW = width - pad * 2;
+    const valueRightX = x + width - pad;
 
-    // Combat stats: HIT / DMG / CRT (right-aligned column)
+    // --- Row 0: Weapon name (top) ---
+    // 'text' font (~16px tall glyphs): y+2 to y+18
+    const weaponFont = '7px monospace';
+    surf.drawText(hp.weapon, innerX + Math.floor((innerW - hp.weapon.length * 7) / 2), y + 2, 'rgba(220,220,255,1)', weaponFont);
+
+    // --- Rows 1-3: Combat stats (HIT / DMG / CRT) ---
+    // 'small' font (~8px tall glyphs): start at y+12, right below weapon
     const statFont = '6px monospace';
     const statLabelColor = 'rgba(140,140,180,1)';
     const statValueColor = 'rgba(255,255,255,1)';
-    const labelX = x + 3;
-    const valueX = x + width - 5;
-    let statY = y + 11;
+    let statY = y + 12;
 
     // HIT
-    surf.drawText('HIT', labelX, statY, statLabelColor, statFont);
+    surf.drawText('HIT', innerX, statY, statLabelColor, statFont);
     const hitStr = hp.hit !== null ? `${hp.hit}` : '--';
-    surf.drawText(hitStr, valueX - hitStr.length * 4, statY, statValueColor, statFont);
-    statY += 7;
-
-    // DMG
-    surf.drawText('DMG', labelX, statY, statLabelColor, statFont);
-    const dmgStr = hp.damage !== null ? `${hp.damage}` : '--';
-    surf.drawText(dmgStr, valueX - dmgStr.length * 4, statY, statValueColor, statFont);
-    statY += 7;
-
-    // CRT
-    surf.drawText('CRT', labelX, statY, statLabelColor, statFont);
-    const crtStr = hp.crit !== null ? `${hp.crit}` : '--';
-    surf.drawText(crtStr, valueX - crtStr.length * 4, statY, statValueColor, statFont);
+    surf.drawTextRight(hitStr, valueRightX, statY, statValueColor, statFont);
     statY += 8;
 
-    // HP bar (below stats)
-    const barX = x + 3;
-    const barY = statY;
-    const barW = width - 6;
+    // DMG
+    surf.drawText('DMG', innerX, statY, statLabelColor, statFont);
+    const dmgStr = hp.damage !== null ? `${hp.damage}` : '--';
+    surf.drawTextRight(dmgStr, valueRightX, statY, statValueColor, statFont);
+    statY += 8;
+
+    // CRT
+    surf.drawText('CRT', innerX, statY, statLabelColor, statFont);
+    const crtStr = hp.crit !== null ? `${hp.crit}` : '--';
+    surf.drawTextRight(crtStr, valueRightX, statY, statValueColor, statFont);
+
+    // --- Row 4: HP number (left) + HP bar (right) ---
+    // Positioned at bottom of panel with padding
+    const barX = innerX + 20;
+    const barY = y + height - 8;
+    const barW = innerW - 20;
     const barH = 4;
     const ratio = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
+
+    // HP number to the left of the bar
+    surf.drawTextRight(`${hp.current}`, barX - 2, barY - 1, 'white', '6px monospace');
 
     surf.fillRect(barX, barY, barW, barH, 'rgba(32,32,32,1)');
     let color: string;
@@ -3553,13 +3565,6 @@ export class CombatState extends State {
     const filled = Math.round(barW * ratio);
     if (filled > 0) surf.fillRect(barX, barY, filled, barH, color);
     surf.drawRect(barX, barY, barW, barH, 'rgba(120,120,140,0.8)');
-
-    // HP text (below the bar)
-    surf.drawText(
-      `${hp.current}/${hp.max}`,
-      barX + barW - 28, barY + barH + 1,
-      'white', '6px monospace',
-    );
   }
 
   /** Draw damage popups for map combat (tile-space positions). */

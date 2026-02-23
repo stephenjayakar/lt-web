@@ -231,6 +231,14 @@ async function main(): Promise<void> {
   const harnessLevel = params.get('level') ?? 'DEBUG';
   const harnessClean = params.get('clean') !== 'false'; // default: skip events
 
+  // In harness mode, force zoom so viewport matches GBA resolution (240x160).
+  // With tilesAcross=10 and Playwright viewport 480x320:
+  //   cssScale = 320/(10*16) = 2.0, width = 480/2 = 240, height = 320/2 = 160
+  if (harnessMode) {
+    viewport.setZoom(10);
+    applySize(display);
+  }
+
   // --- Try loading asset bundle (single zip instead of hundreds of requests) ---
   if (useBundle) {
     const bundleUrl = `/bundles/${projectPath}.zip`;

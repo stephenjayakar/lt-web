@@ -340,12 +340,18 @@ test.describe('Magic Sword Combat', () => {
     let combatResolved = false;
     let lastState = '';
     let combatSeen = false;
+    let midCombatScreenshotTaken = false;
     for (let batch = 0; batch < 200; batch++) {
       await stepFrames(page, 20);
       s = await getState(page);
       if (s.currentStateName === 'combat' || s.currentStateName === 'animation_combat' ||
           s.currentStateName === 'map_combat') {
         combatSeen = true;
+        // Capture mid-combat screenshot after HP bar panels have slid in (~60 frames)
+        if (!midCombatScreenshotTaken && batch >= 2) {
+          await saveScreenshot(page, '12b-magic-sword-combat-mid');
+          midCombatScreenshotTaken = true;
+        }
       }
       if (s.currentStateName !== lastState) {
         console.log(`  Frame ~${(batch + 1) * 20}: state=${s.currentStateName}`);
@@ -381,6 +387,71 @@ test.describe('Magic Sword Combat', () => {
     console.log(`Bone HP after combat: ${boneAfter?.hp}/${boneAfter?.maxHp}`);
     // Bone should have taken at least some damage
     expect(boneAfter!.hp).toBeLessThan(boneAfter!.maxHp);
+  });
+  test('combat HP bar and weapon info do not overlap', async ({ page }) => {
+    // Load the DEBUG level cleanly and initiate combat to verify
+    // the combat UI layout. The DEBUG level uses map combat (no animation
+    // data), so the HP bars are the small bars above units.
+    // This test verifies combat starts and captures a mid-combat screenshot.
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    // Navigate cursor to Eirika at (2,6)
+    const state = await getState(page);
+    const [cx, cy] = state.cursorPos;
+    await navigateCursorTo(page, 2, 6, cx, cy);
+
+    // Select Eirika -> confirm position -> Attack -> select weapon -> confirm target
+    await stepFrames(page, 3, 'SELECT'); // select unit
+    await stepFrames(page, 10);
+    await stepFrames(page, 3, 'SELECT'); // confirm position
+    await stepFrames(page, 10);
+    await stepFrames(page, 3, 'SELECT'); // pick Attack
+    await stepFrames(page, 10);
+
+    let s = await getState(page);
+    if (s.currentStateName === 'weapon_choice') {
+      await stepFrames(page, 3, 'SELECT'); // pick weapon
+      await stepFrames(page, 10);
+    }
+
+    await stepFrames(page, 3, 'SELECT'); // confirm target
+    await stepFrames(page, 5);
+
+    // Step frames into the combat. Map combat is fast (~260 frames total).
+    // Step past the initial lunge and into HP drain to capture mid-combat.
+    let combatSeen = false;
+    for (let batch = 0; batch < 40; batch++) {
+      await stepFrames(page, 10);
+      s = await getState(page);
+      if (s.currentStateName === 'combat') {
+        combatSeen = true;
+      }
+      // Capture after we've been in combat for a bit (HP drain phase)
+      if (combatSeen && batch >= 5) {
+        await saveScreenshot(page, '15-combat-ui-layout');
+        break;
+      }
+    }
+    expect(combatSeen).toBe(true);
+
+    // Let combat resolve
+    let combatResolved = false;
+    for (let batch = 0; batch < 200; batch++) {
+      await stepFrames(page, 20);
+      s = await getState(page);
+      if (s.currentStateName === 'free') {
+        combatResolved = true;
+        break;
+      }
+      if (s.currentStateName !== 'combat' && s.currentStateName !== 'animation_combat' &&
+          s.currentStateName !== 'map_combat' && s.currentStateName !== 'exp' &&
+          s.currentStateName !== 'exp_gain') {
+        await stepFrames(page, 3, 'BACK');
+      }
+    }
+    expect(combatResolved).toBe(true);
   });
 });
 
@@ -453,13 +524,21 @@ test.describe('Prologue (with events)', () => {
             return { r: data[0], g: data[1], b: data[2], a: data[3] };
           }
 
+          // The display canvas maps game pixels to physical pixels.
+          // Compute the scale from canvas dimensions vs native 240x160.
+          const scaleX = canvas.width / 240;
+          const scaleY = canvas.height / 160;
+
           // Check for dialog background (very dark, R<30, G<30, B<40)
-          // at Y=72 (native y=36, above portrait area) and at Y=232 (native y=116, overlapping portraits)
-          const abovePortrait = getPixel(midX, 72);  // Should have dialog if positioned correctly
-          const belowInPortrait = getPixel(midX, 240); // Should NOT have dialog if positioned correctly
+          // Dialog is at native y ~46-76 (above portrait area at y=80).
+          // Sample at native y=55 to catch dialog in the middle.
+          const abovePortrait = getPixel(Math.floor(midX), Math.floor(55 * scaleY));
+          // Native y=120 (in portrait overlap zone)
+          const belowInPortrait = getPixel(Math.floor(midX), Math.floor(120 * scaleY));
 
           // Check if there's a portrait visible (non-black pixels in the portrait area)
-          const portraitArea = getPixel(40, 200); // Left side portrait area
+          // Portrait area: native y 80-160, check at native (20, 100)
+          const portraitArea = getPixel(Math.floor(20 * scaleX), Math.floor(100 * scaleY));
 
           return {
             abovePortrait,

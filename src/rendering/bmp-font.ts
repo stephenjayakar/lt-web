@@ -12,7 +12,7 @@
  *   FONT['text-blue'].blit(surf, 'Blue text', 10, 26);
  */
 
-import { Surface, registerBmpDrawText } from '../engine/surface';
+import { Surface, registerBmpDrawText, registerBmpDrawTextRight } from '../engine/surface';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -350,15 +350,16 @@ export async function initFonts(baseUrl: string): Promise<void> {
   await Promise.all(loadPromises);
   fontsReady = true;
 
-  // Register the BMP draw callback on Surface
+  // Register the BMP draw callbacks on Surface
   registerBmpDrawText(bmpDrawText);
+  registerBmpDrawTextRight(bmpDrawTextRight);
 
   console.log(`[BmpFont] Loaded ${Object.keys(FONT).length} font variants`);
 }
 
 async function loadFont(def: FontDef, baseUrl: string): Promise<void> {
-  const pngUrl = `${baseUrl}/resources/fonts/${def.nid}.png`;
-  const idxUrl = `${baseUrl}/resources/fonts/${def.nid}.idx`;
+  const pngUrl = `${baseUrl}/resources/fonts/${encodeURIComponent(def.nid)}.png`;
+  const idxUrl = `${baseUrl}/resources/fonts/${encodeURIComponent(def.nid)}.idx`;
 
   // Fetch PNG and IDX in parallel
   const [imgResp, idxResp] = await Promise.all([
@@ -485,6 +486,9 @@ const CSS_TO_FONT_COLOR: Record<string, string> = {
   'rgba(220, 220, 220, 1)': 'grey',
   '#90D0FF': 'blue',
   'rgba(80, 80, 140, 0.7)': 'blue',
+  'rgba(140,140,180,1)': 'grey',
+  'rgba(255,255,255,1)': 'white',
+  'rgba(220,220,255,1)': 'white',
 };
 
 /**
@@ -522,5 +526,36 @@ function bmpDrawText(surf: Surface, text: string, x: number, y: number, color: s
   const paletteColor = CSS_TO_FONT_COLOR[color] ?? 'white';
 
   font.blit(surf, text, x, y, paletteColor);
+  return true;
+}
+
+/**
+ * Right-aligned BMP font draw callback for Surface.drawTextRight.
+ * Text ends at x (x is the right edge).
+ */
+function bmpDrawTextRight(surf: Surface, text: string, x: number, y: number, color: string, fontStr: string): boolean {
+  if (!fontsReady) return false;
+
+  if (FONT[fontStr]) {
+    FONT[fontStr].blitRight(surf, text, x, y);
+    return true;
+  }
+
+  const sizeMatch = fontStr.match(/(\d+(?:\.\d+)?)px/);
+  if (!sizeMatch) return false;
+
+  const size = parseFloat(sizeMatch[1]);
+  let fontNid: string;
+  if (size <= 7) {
+    fontNid = 'small';
+  } else {
+    fontNid = 'text';
+  }
+
+  const font = FONT[fontNid];
+  if (!font) return false;
+
+  const paletteColor = CSS_TO_FONT_COLOR[color] ?? 'white';
+  font.blitRight(surf, text, x, y, paletteColor);
   return true;
 }

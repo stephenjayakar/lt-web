@@ -341,6 +341,21 @@ export class Surface {
     this._ctx.textBaseline = 'top';
     this._ctx.fillText(text, Math.round(x * s), Math.round(y * s));
   }
+
+  /** Draw text right-aligned so the text ends at x. */
+  drawTextRight(text: string, x: number, y: number, color: string = 'white', font: string = '8px monospace'): void {
+    if (_bmpDrawTextRight && _bmpDrawTextRight(this, text, x, y, color, font)) {
+      return;
+    }
+    // Fallback: measure and offset
+    const s = this.scale;
+    const scaledFont = font.replace(/(\d+(?:\.\d+)?)px/, (_, size) => `${parseFloat(size) * s}px`);
+    this._ctx.font = scaledFont;
+    const w = this._ctx.measureText(text).width;
+    this._ctx.fillStyle = color;
+    this._ctx.textBaseline = 'top';
+    this._ctx.fillText(text, Math.round(x * s) - w, Math.round(y * s));
+  }
 }
 
 /**
@@ -349,10 +364,16 @@ export class Surface {
  */
 type BmpDrawTextFn = (surf: Surface, text: string, x: number, y: number, color: string, font: string) => boolean;
 let _bmpDrawText: BmpDrawTextFn | null = null;
+let _bmpDrawTextRight: BmpDrawTextFn | null = null;
 
 /** Register the BMP font draw callback (called by bmp-font.ts after init) */
 export function registerBmpDrawText(fn: BmpDrawTextFn): void {
   _bmpDrawText = fn;
+}
+
+/** Register the BMP font right-aligned draw callback */
+export function registerBmpDrawTextRight(fn: BmpDrawTextFn): void {
+  _bmpDrawTextRight = fn;
 }
 
 /** Create a surface from an HTMLImageElement */
