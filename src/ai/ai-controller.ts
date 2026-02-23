@@ -79,11 +79,18 @@ export class AIController {
       // Skip view_range 0 (disabled)
       if (behaviour.view_range === 0) continue;
 
-      // Check condition (basic support -- empty string = always true)
+      // Check condition (empty string = always true)
       if (behaviour.condition && behaviour.condition.trim() !== '') {
-        // TODO: evaluate condition expression against game state
-        // For now, skip conditional behaviours
-        continue;
+        const ctx: ConditionContext = {
+          game: this.gameRef,
+          unit1: unit,
+          position: unit.position ?? undefined,
+          gameVars: this.gameRef?.gameVars,
+          levelVars: this.gameRef?.levelVars,
+        };
+        if (!evaluateCondition(behaviour.condition, ctx)) {
+          continue;
+        }
       }
 
       // Compute valid moves (guard mode restricts to current position)

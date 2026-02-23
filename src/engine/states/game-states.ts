@@ -4131,9 +4131,19 @@ export class AIState extends MapState {
   private beginAICombat(
     attacker: UnitObject,
     defender: UnitObject,
-    _weapon: ItemObject,
+    weapon: ItemObject,
   ): void {
     const game = getGame();
+
+    // Equip the AI's chosen weapon by moving it to the front of inventory.
+    // CombatState.begin() calls getEquippedWeapon() which returns the first
+    // weapon in the unit's inventory, so we must ensure the chosen weapon
+    // is at the front. Matches Python's action.EquipItem in ai_controller.py.
+    const weaponIdx = attacker.items.indexOf(weapon);
+    if (weaponIdx > 0) {
+      attacker.items.splice(weaponIdx, 1);
+      attacker.items.unshift(weapon);
+    }
 
     // CombatState.begin() reads these to set up the MapCombat instance
     game.selectedUnit = attacker;
