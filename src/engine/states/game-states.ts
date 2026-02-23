@@ -1586,20 +1586,21 @@ export class MenuState extends State {
         const regionNid = value.slice('region_'.length);
         const region = this.validRegions.find((r) => r.nid === regionNid);
         const subNid = region?.sub_nid || '';
+        const levelNid = game.currentLevel?.nid ?? '';
         const ctx = { game, unit1: unit, position: unit.position, region, gameVars: game.gameVars, levelVars: game.levelVars };
         let didTrigger = false;
         if (game.eventManager) {
           // Try region sub_nid as trigger type first (e.g., 'Visit', 'Seize', 'Armory')
           if (subNid) {
             didTrigger = game.eventManager.trigger(
-              { type: subNid, regionNid, unitNid: unit.nid, unit1: unit, region },
+              { type: subNid, levelNid, regionNid, unitNid: unit.nid, unit1: unit, region },
               ctx,
             );
           }
           // Fallback to generic on_region_interact
           if (!didTrigger) {
             didTrigger = game.eventManager.trigger(
-              { type: 'on_region_interact', regionNid, unitNid: unit.nid, unit1: unit, region },
+              { type: 'on_region_interact', levelNid, regionNid, unitNid: unit.nid, unit1: unit, region },
               ctx,
             );
           }
@@ -1645,10 +1646,12 @@ export class MenuState extends State {
         });
         if (adjacentTalkTargets.length > 0 && game.eventManager) {
           const target = adjacentTalkTargets[0];
+          const talkLevelNid = game.currentLevel?.nid ?? '';
           const ctx = { game, unit1: unit, unit2: target, gameVars: game.gameVars, levelVars: game.levelVars };
           game.eventManager.trigger(
             {
               type: 'on_talk',
+              levelNid: talkLevelNid,
               unitA: unit.nid,
               unitB: target.nid,
               unit1: unit,
@@ -4903,6 +4906,11 @@ export class EventState extends State {
   // Prevents update() from processing commands while the load is in progress.
   private levelTransitionInProgress: boolean = false;
 
+  // When true, begin() starts with a black screen (transitionAlpha = 1)
+  // instead of clearing it. Set by levelEnd() so that chapter_title +
+  // transition;Open work correctly after level transitions.
+  private startWithBlackScreen: boolean = false;
+
   // Blocking-command state
   private dialog: Dialog | null = null;
   private banner: Banner | null = null;
@@ -4974,7 +4982,14 @@ export class EventState extends State {
       this.bannerIsAlert = false;
       this.waitTimer = 0;
       this.waiting = false;
-      this.transitionAlpha = 0;
+      // If starting from a level transition, keep the screen black so
+      // chapter_title + transition;Open work as expected. Otherwise reset.
+      if (!this.startWithBlackScreen) {
+        this.transitionAlpha = 0;
+      } else {
+        this.transitionAlpha = 1;
+        this.startWithBlackScreen = false;
+      }
       this.transitionFadingIn = false;
       this.transitionFadingOut = false;
       this.transitionHoldBlack = false;
@@ -4991,6 +5006,8 @@ export class EventState extends State {
       this.chapterTitleTimer = 0;
       this.chapterTitleText = '';
       this.locationCard = null;
+      this.isHandlingLevelEnd = false;
+      this.levelTransitionInProgress = false;
     }
   }
 
@@ -5594,6 +5611,9 @@ export class EventState extends State {
       game.state.change('free');
       // If level_start triggered events, push EventState
       if (game.eventManager?.hasActiveEvents()) {
+        // Start the new level's events with a black screen so that
+        // chapter_title + transition;Open work as expected
+        this.startWithBlackScreen = true;
         game.state.change('event');
       }
     }).catch((err: unknown) => {
