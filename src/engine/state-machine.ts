@@ -77,7 +77,7 @@ export class StateMachine {
         // No state on the stack AND nothing queued — the game loop will
         // spin forever doing nothing. This indicates a bootstrap error
         // (e.g. gameState.state.change('title') was never called).
-        console.warn('StateMachine.update: empty stack with no pending transitions');
+        console.warn('StateMachine.update: empty stack with no pending transitions — this is a bug; the stack was drained by too many back() calls');
         return [surf, false];
       }
       // Even with an empty stack, process deferred transitions so that
