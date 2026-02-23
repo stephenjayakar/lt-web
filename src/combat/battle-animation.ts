@@ -308,6 +308,8 @@ export class BattleAnimation {
     if (value === -1) {
       this.deathFlash = true;
       this.opacity = 0;
+      // Python: battle_animation.py plays 'CombatDeath' SFX on the flash frame
+      this.owner?.playSound?.('CombatDeath');
     } else {
       this.opacity = value;
     }
