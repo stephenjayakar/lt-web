@@ -5527,7 +5527,6 @@ export class EventState extends State {
     // --- Check win/lose flags (matches Python end_event logic) ---
 
     if (game.levelVars.get('_win_game') || this.isHandlingLevelEnd) {
-      console.log('Player wins! Processing level end...');
       game.levelVars.set('_win_game', false);
       this.isHandlingLevelEnd = true;
 
@@ -5660,22 +5659,20 @@ export class EventState extends State {
 
     console.log(`Level transition: ${currentLevelNid} -> ${nextLevelNid}`);
 
-    // Lock event processing while the async load is in progress
+    // Lock event processing while the async load is in progress.
+    // Also null out currentEvent so the burst loop doesn't try to
+    // finishAndDequeue the old event (which would dequeue the new
+    // level's events from the new EventManager's queue).
     this.levelTransitionInProgress = true;
+    this.currentEvent = null;
 
     // Load the next level and transition to gameplay
     game.loadLevel(nextLevelNid).then(() => {
-      this.levelTransitionInProgress = false;
-      const queueBefore = game.eventManager?.eventQueue.length ?? -1;
-      const hasEventsBefore = game.eventManager?.hasActiveEvents() ?? false;
-      console.log(`levelEnd .then(): queueBefore=${queueBefore}, hasEvents=${hasEventsBefore}`);
-      if (hasEventsBefore) {
-        const ev = game.eventManager!.getCurrentEvent();
-        console.log(`levelEnd .then(): first event="${ev?.nid}" with ${ev?.commands.length} cmds`);
-      }
+      // DON'T clear levelTransitionInProgress here — it will be reset
+      // in begin() when EventState is re-pushed after the deferred ops.
+      // If we clear it now, update() would run the burst loop with stale
+      // state before processTempState flushes the clear/change ops.
       game.state.clear();
-      const queueAfterClear = game.eventManager?.eventQueue.length ?? -1;
-      console.log(`levelEnd .then(): queueAfterClear=${queueAfterClear}`);
       game.state.change('free');
       // If level_start triggered events, push EventState
       if (game.eventManager?.hasActiveEvents()) {
@@ -5683,9 +5680,6 @@ export class EventState extends State {
         // chapter_title + transition;Open work as expected
         this.startWithBlackScreen = true;
         game.state.change('event');
-        console.log(`levelEnd .then(): pushed EventState with startWithBlackScreen`);
-      } else {
-        console.log(`levelEnd .then(): NO events after clear!`);
       }
     }).catch((err: unknown) => {
       this.levelTransitionInProgress = false;

@@ -64,7 +64,8 @@ export interface AnimationCombatOwner {
   castSpell(anim: BattleAnimation, effectNid: string | null): void;
   shake(intensity: number): void;
   platformShake(): void;
-  pan(): void;
+  panAway(): void;
+  panBack(): void;
   playSound(name: string): void;
   showHitSpark(anim: BattleAnimation): void;
   showCritSpark(anim: BattleAnimation): void;
@@ -233,6 +234,7 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- Frame timing accumulator (ensures animations run at 60fps rate) ------
   animFrameAccumulator: number = 0;
+  panFrameAccumulator: number = 0;
   private static readonly FRAME_MS = 1000 / 60; // ~16.67ms per frame
 
   // -- Skip mode (START/ESC toggles 4x speed) --------------------------------
@@ -384,8 +386,13 @@ export class AnimationCombat implements AnimationCombatOwner {
     }
     this.sparks = this.sparks.filter(s => s.elapsed < s.duration);
 
-    // Advance pan
-    this.advancePan();
+    // Advance pan (once per logical 60fps tick, matching Python's draw_ui)
+    // Use separate accumulator to avoid consuming animation ticks.
+    this.panFrameAccumulator += effectiveMs;
+    while (this.panFrameAccumulator >= AnimationCombat.FRAME_MS) {
+      this.panFrameAccumulator -= AnimationCombat.FRAME_MS;
+      this.advancePan();
+    }
 
     switch (this.state) {
       case 'init':        return this.updateInit();
@@ -485,6 +492,14 @@ export class AnimationCombat implements AnimationCombatOwner {
     // Set defender to standing pose (ranged or melee)
     const defPose = this.atRange > 0 ? 'RangedStand' : 'Stand';
     defAnim.setPose(defPose);
+
+    // Pan camera to focus on the attacking unit (Python: set_up_combat_animation -> move_camera)
+    if (this.panConfig.max > 0) {
+      const attackerIsRight = !isLeftAttacking;
+      // Python: focus_right = (current_battle_anim is right_battle_anim)
+      this.panFocusLeft = !attackerIsRight;
+      this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
+    }
 
     this.animFrameCounter = 0; // Reset safety timeout
     this.transition('anim');
@@ -774,11 +789,33 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.platformShakeIndex = 0;
   }
 
-  pan(): void {
+  /** Python: pan_away() — toggle focus and move camera. Called on first `pan` command. */
+  panAway(): void {
     if (this.panConfig.max === 0) return;
     this.panFocusLeft = !this.panFocusLeft;
-    // Python: focus_right -> pan_target = -pan_max; !focus_right -> pan_target = +pan_max
-    // panFocusLeft is the inverse of Python's focus_right
+    this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
+  }
+
+  /** Python: pan_back() — look at the next strike to determine focus, then move camera.
+   *  Called on second `pan` command (returning from spell) and as safety in endCurrentPose. */
+  panBack(): void {
+    if (this.panConfig.max === 0) return;
+    // Determine who attacks next (Python: state_machine.get_next_state())
+    const nextStrike = this.currentStrikeIndex < this.strikes.length
+      ? this.strikes[this.currentStrikeIndex]
+      : null;
+    if (nextStrike) {
+      const nextAttackerIsLeft = this.isLeftUnit(nextStrike.attacker);
+      // Python: focus_right = (attacker is self.right) for attacker phase
+      //         focus_right = (defender is self.right) for defender phase
+      // Since our strikes already resolve who the attacker is, just focus on them.
+      // panFocusLeft = !focus_right
+      this.panFocusLeft = nextAttackerIsLeft;
+    } else {
+      // No more strikes — focus_exp: focus on the player's unit (Python: focus_exp)
+      // Python defaults to focus_right = True for exp display
+      this.panFocusLeft = !this.leftIsAttacker;
+    }
     this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
   }
 
