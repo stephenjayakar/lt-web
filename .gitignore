@@ -31,6 +31,11 @@ twa/*.apk
 twa/*.aab
 twa/*.jks
 
+# Test artifacts
+test-results/
+test-screenshots/
+test-snapshots/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

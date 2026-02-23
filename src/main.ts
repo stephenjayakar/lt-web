@@ -107,6 +107,7 @@ import { AssetBundle, installBundleFetchInterceptor, installBundleImageIntercept
 import { initNativePlatform, onAppPause, onAppResume } from './native';
 import { PerfMonitor } from './engine/perf-monitor';
 import { SurfacePool } from './engine/surface-pool';
+import { installHarness } from './harness';
 
 // ---------------------------------------------------------------------------
 // Display helpers
@@ -226,6 +227,9 @@ async function main(): Promise<void> {
   const projectPath = params.get('project') ?? 'default.ltproj';
   const baseUrl = `/game-data/${projectPath}`;
   const useBundle = params.get('bundle') !== 'false'; // opt-out with ?bundle=false
+  const harnessMode = params.get('harness') === 'true';
+  const harnessLevel = params.get('level') ?? 'DEBUG';
+  const harnessClean = params.get('clean') !== 'false'; // default: skip events
 
   // --- Try loading asset bundle (single zip instead of hundreds of requests) ---
   if (useBundle) {
@@ -261,8 +265,11 @@ async function main(): Promise<void> {
 
   // --- Icons, Fonts & UI resources ---
   initIcons(baseUrl);
-  initBaseSurf(baseUrl);
-  initSpriteLoader(baseUrl);
+  // Engine-level shared assets (sprites/menus, platforms) live at /game-data/,
+  // not inside the .ltproj directory.
+  const engineBaseUrl = '/game-data';
+  initBaseSurf(engineBaseUrl);
+  initSpriteLoader(engineBaseUrl);
   // Load bitmap fonts (async, text rendering falls back to Canvas until ready)
   initFonts(baseUrl);
 
@@ -368,6 +375,26 @@ async function main(): Promise<void> {
     inputManager.setDisplayScale(viewport.cssScale);
     refreshSurface();
   });
+
+  // --- Harness mode: skip rAF loop, expose programmatic API ---
+  if (harnessMode) {
+    installHarness(gameState, gameSurface, display.canvas, display.ctx);
+    // Load the requested level directly
+    try {
+      const h = (window as any).__harness;
+      if (harnessClean) {
+        await h.loadLevelClean(harnessLevel);
+      } else {
+        await h.loadLevel(harnessLevel);
+      }
+      console.info(`[Harness] Level "${harnessLevel}" loaded (clean=${harnessClean}). Use window.__harness to drive the game.`);
+    } catch (err) {
+      console.error('[Harness] Failed to load level:', err);
+      (window as any).__harness.ready = false;
+    }
+    // Don't start the rAF loop -- Playwright will drive frames via __harness.stepFrames()
+    return;
+  }
 
   // --- Game loop ---
   let lastTimestamp = 0;
