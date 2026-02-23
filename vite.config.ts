@@ -86,9 +86,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    // Disable automatic file watching and HMR (use /refresh to reload manually)
-    watch: null,
-    hmr: false,
+    host: true,
     fs: {
       // Allow serving files from lt-maker/ (game assets, not committed)
       allow: ['..'],

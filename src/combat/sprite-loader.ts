@@ -400,12 +400,12 @@ export function selectWeaponAnim(
 // Platform image loading
 // -----------------------------------------------------------------------
 
-/** Base URL for game data (set once at init). */
-let spriteLoaderBaseUrl: string = '/game-data/default.ltproj';
+/** Base URL for engine-level shared assets (set once at init). */
+let engineBaseUrl: string = '/game-data';
 
-/** Initialize the sprite-loader system with the project base URL. */
+/** Initialize the sprite-loader system with the engine base URL (parent of .ltproj dirs). */
 export function initSpriteLoader(url: string): void {
-  spriteLoaderBaseUrl = url.replace(/\/$/, '');
+  engineBaseUrl = url.replace(/\/$/, '');
 }
 
 /** Cached platform images: key is "{TerrainType}-{Melee|Ranged}" */
@@ -433,7 +433,7 @@ export async function loadPlatformImage(
   const cached = platformCache.get(key);
   if (cached) return cached;
 
-  const url = `${spriteLoaderBaseUrl}/resources/platforms/${key}.png`;
+  const url = `${engineBaseUrl}/resources/platforms/${encodeURIComponent(key)}.png`;
 
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {

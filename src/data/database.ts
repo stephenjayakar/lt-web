@@ -416,7 +416,8 @@ export class Database {
       `game_data/${type}/.orderkeys`,
     );
     if (!orderKeys) {
-      console.warn(`Database: no .orderkeys for chunked type "${type}"`);
+      // Fall back to non-chunked format: a single game_data/{type}.json array
+      await this.loadNonChunkedArray<T>(resources, type, target);
       return;
     }
 
@@ -448,6 +449,28 @@ export class Database {
     }
   }
 
+  /**
+   * Load non-chunked data: a single game_data/{type}.json file containing
+   * a flat JSON array of objects, each with a `nid` field.
+   */
+  private async loadNonChunkedArray<T extends { nid: NID }>(
+    resources: ResourceManager,
+    type: string,
+    target: Map<NID, T>,
+  ): Promise<void> {
+    const data = await resources.tryLoadJson<T[]>(`game_data/${type}.json`);
+    if (!data || !Array.isArray(data)) {
+      console.warn(`Database: no chunked or non-chunked data for "${type}"`);
+      return;
+    }
+    for (const entry of data) {
+      if (entry && (entry as any).nid !== undefined) {
+        target.set((entry as any).nid, entry);
+      }
+    }
+    console.info(`Database: loaded ${data.length} ${type} from non-chunked format`);
+  }
+
   // -------------------------------------------------------------------
   // Tilemap & Tileset loaders
   // -------------------------------------------------------------------
@@ -467,9 +490,28 @@ export class Database {
 
     if (tilemapNids.size === 0) return;
 
+    // Try loading the single-file tilemaps.json first (non-chunked format).
+    // If it exists, index all tilemaps by NID so we can look them up directly.
+    const allTilemaps = new Map<string, TilemapData>();
+    const bulkData = await resources.tryLoadJsonSilent<TilemapData[]>(
+      'resources/tilemaps/tilemap_data/tilemaps.json',
+    );
+    if (bulkData && Array.isArray(bulkData)) {
+      for (const tm of bulkData) {
+        if (tm && tm.nid) {
+          allTilemaps.set(tm.nid, tm);
+        }
+      }
+      console.info(`Database: loaded ${allTilemaps.size} tilemaps from non-chunked tilemaps.json`);
+    }
+
     const results = await Promise.all(
       [...tilemapNids].map(async (nid) => {
-        // LT stores tilemap data at resources/tilemaps/tilemap_data/<nid>.json
+        // Check the bulk-loaded map first
+        const fromBulk = allTilemaps.get(nid);
+        if (fromBulk) return { nid, data: fromBulk };
+
+        // Fall back to individual file loading (chunked format)
         // NIDs may contain spaces but filenames use underscores.
         const fileNid = nid.replace(/ /g, '_');
 

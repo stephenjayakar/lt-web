@@ -42,7 +42,7 @@ export async function loadIconSheet(
   if (pending) return pending;
 
   const folder = `icons${size}`;
-  const url = `${baseUrl}/resources/${folder}/${nid}.png`;
+  const url = `${baseUrl}/resources/${folder}/${encodeURIComponent(nid)}.png`;
 
   const promise = new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image();
