@@ -516,3 +516,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `main.ts` | ~496 | Bootstrap, canvas, game loop, state registration |
 | `pwa.ts` | ~310 | Service worker, install prompt, connectivity |
 | `native.ts` | ~210 | Capacitor/TWA platform detection, lifecycle |
+
+---
+
+## 10. Testing
+
+See [TESTING.md](./TESTING.md) for the full testing guide.
