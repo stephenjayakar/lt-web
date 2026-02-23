@@ -647,6 +647,26 @@ export class AnimationCombat implements AnimationCombatOwner {
       // Recoil offset
       defAnim.lrOffset = [-1, -2, -3, -2, -1];
 
+      // --- Hit/Crit/Kill sounds (Python: _handle_playback + item_system_base) ---
+      const defenderHp = isLeftDefending ? this.leftTargetHp : this.rightTargetHp;
+      const isLethal = defenderHp <= 0;
+      if (strike.damage === 0) {
+        this.playSound('No Damage');
+      } else if (strike.crit) {
+        // Crit: play critical hit sound (+ final hit if lethal)
+        if (isLethal) {
+          this.playSound('Final Hit');
+        }
+        this.playSound('Critical Hit ' + (1 + Math.floor(Math.random() * 2)));
+      } else {
+        // Normal hit
+        if (isLethal) {
+          this.playSound('Final Hit');
+        } else {
+          this.playSound('Attack Hit ' + (1 + Math.floor(Math.random() * 5)));
+        }
+      }
+
       // Spawn damage popup
       const defUnit = strike.defender;
       if (defUnit.position) {
@@ -660,7 +680,8 @@ export class AnimationCombat implements AnimationCombatOwner {
         });
       }
     } else {
-      // Miss
+      // Miss — Python replaces 'Attack Miss 2' with 'Miss' in animation combat
+      this.playSound('Miss');
       this.hpDrainFrames = HP_DRAIN_MIN_FRAMES;
       defAnim.setPose('Dodge');
 
@@ -682,6 +703,7 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   handleMiss(anim: BattleAnimation): void {
+    this.playSound('Miss');
     const defAnim = (anim === this.leftAnim) ? this.rightAnim : this.leftAnim;
     defAnim.setPose('Dodge');
   }
