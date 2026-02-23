@@ -2594,10 +2594,11 @@ export class CombatState extends State {
     this.deathFadeProgress = 0;
     this.levelUpGains = null;
 
-    // Clear all highlights and hide cursor before combat starts
+    // Clear all highlights and hide cursor/HUD before combat starts
     // (Python does this in interaction.py and the red_cursor state)
     game.highlight.clear();
     game.cursor.visible = false;
+    game.hud.visible = false;
 
     // Play battle music (push current phase music onto the stack)
     const levelMusic = game.currentLevel?.music;
@@ -2997,8 +2998,9 @@ export class CombatState extends State {
         // Restore phase music (pop battle music from the stack)
         void game.audioManager.popMusic();
 
-        // Restore cursor visibility (hidden at combat start)
+        // Restore cursor and HUD visibility (hidden at combat start)
         game.cursor.visible = true;
+        game.hud.visible = true;
 
         // Clear combat animation offsets
         setActiveCombatOffsets(null);

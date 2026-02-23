@@ -41,6 +41,9 @@ function hudScale(screenW: number, screenH: number): number {
  * so it doesn't scale with map zoom.
  */
 export class HUD {
+  /** Whether the HUD is visible. Set to false during combat, events, etc. */
+  visible: boolean;
+
   private hoveredUnit: UnitObject | null;
   private terrainName: string;
   private terrainDefense: number;
@@ -54,6 +57,7 @@ export class HUD {
   private resourceManager: ResourceManager | null = null;
 
   constructor() {
+    this.visible = true;
     this.hoveredUnit = null;
     this.terrainName = '';
     this.terrainDefense = 0;
@@ -91,6 +95,8 @@ export class HUD {
    * All sizes are in CSS pixels scaled by DPR and hudScale.
    */
   drawScreen(ctx: CanvasRenderingContext2D, screenW: number, screenH: number, _db: Database): void {
+    if (!this.visible) return;
+
     const dpr = window.devicePixelRatio || 1;
     const hs = hudScale(screenW, screenH);
 
