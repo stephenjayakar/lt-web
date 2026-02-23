@@ -4897,6 +4897,10 @@ export class EventState extends State {
   // Active event pulled from the EventManager queue
   private currentEvent: GameEvent | null = null;
 
+  // Level transition lock: set when levelEnd() kicks off an async loadLevel.
+  // Prevents update() from processing commands while the load is in progress.
+  private levelTransitionInProgress: boolean = false;
+
   // Blocking-command state
   private dialog: Dialog | null = null;
   private banner: Banner | null = null;
@@ -5093,6 +5097,11 @@ export class EventState extends State {
 
   override update(): StateResult {
     const game = getGame();
+
+    // Block while a level transition is loading asynchronously
+    if (this.levelTransitionInProgress) {
+      return;
+    }
 
     // --- Handle active blocking UI elements first ---
 
@@ -5414,9 +5423,15 @@ export class EventState extends State {
     }
   }
 
+  /** Track whether we are in the middle of handling a level end sequence. */
+  private isHandlingLevelEnd: boolean = false;
+
   /**
    * Finish the current event, dequeue it, and either load the next queued
    * event or pop the state.
+   *
+   * Matches Python EventState.end_event(): after dequeuing, checks _win_game
+   * and _lose_game level variables to trigger level transitions.
    */
   private finishAndDequeue(): void {
     const game = getGame();
@@ -5431,7 +5446,56 @@ export class EventState extends State {
       this.speakingPortrait = null;
     }
 
-    // Check for more events in the queue
+    // --- Check win/lose flags (matches Python end_event logic) ---
+
+    if (game.levelVars.get('_win_game') || this.isHandlingLevelEnd) {
+      console.log('Player wins! Processing level end...');
+      game.levelVars.set('_win_game', false);
+      this.isHandlingLevelEnd = true;
+
+      // Check if LevelEnd event was already triggered
+      if (game.levelVars.get('_level_end_triggered')) {
+        // LevelEnd event has run — proceed with actual level transition
+        this.levelEnd(game);
+        return;
+      }
+
+      // Try to trigger a LevelEnd event for outro cutscenes
+      const levelNid = game.currentLevel?.nid ?? '';
+      const didTrigger = game.eventManager?.trigger(
+        { type: 'level_end', levelNid },
+        { game, gameVars: game.gameVars, levelVars: game.levelVars },
+      ) ?? false;
+
+      if (didTrigger) {
+        // Mark so we know to call levelEnd() after it finishes
+        game.levelVars.set('_level_end_triggered', true);
+        // The next event in the queue is the LevelEnd event — load it
+        this.loadNextEvent(game);
+        return;
+      }
+
+      // No LevelEnd event exists — proceed directly
+      this.levelEnd(game);
+      return;
+    }
+
+    if (game.levelVars.get('_lose_game')) {
+      game.levelVars.set('_lose_game', false);
+      console.warn('GAME OVER — loss condition met via lose_game flag');
+      game.state.clear();
+      game.state.change('title');
+      return;
+    }
+
+    // --- Normal event completion (no win/lose) ---
+    this.loadNextEvent(game);
+  }
+
+  /**
+   * Try to load the next queued event, or pop the state if none remain.
+   */
+  private loadNextEvent(game: any): void {
     const next = game.eventManager?.getCurrentEvent() ?? null;
     if (next) {
       this.currentEvent = next;
@@ -5456,6 +5520,86 @@ export class EventState extends State {
       this.locationCard = null;
       game.state.back();
     }
+  }
+
+  /**
+   * Handle level transition after win_game.
+   * Matches Python EventState.level_end():
+   *   1. Clean up the current level (persist player units, heal, etc.)
+   *   2. Determine the next level (via _goto_level override or sequential)
+   *   3. Load the next level and transition to free state
+   */
+  private levelEnd(game: any): void {
+    const currentLevelNid = game.currentLevel?.nid ?? '';
+    game.gameVars.set('_prev_level_nid', currentLevelNid);
+
+    // Find current level index in the ordered db.levels map
+    const levelNids = Array.from(game.db.levels.keys()) as string[];
+    const currentIndex = levelNids.indexOf(currentLevelNid);
+
+    // Clean up current level state (persist player units)
+    game.cleanUpLevel();
+
+    // Determine the next level
+    let nextLevelNid: string | null = null;
+    const gotoLevel = game.gameVars.get('_goto_level') ?? null;
+
+    if (gotoLevel !== null) {
+      if (gotoLevel === '_force_quit') {
+        // Force quit to title
+        game.state.clear();
+        game.state.change('title');
+        this.isHandlingLevelEnd = false;
+        return;
+      }
+      nextLevelNid = gotoLevel as string;
+      game.gameVars.delete('_goto_level');
+    } else if (currentIndex >= 0 && currentIndex < levelNids.length - 1) {
+      // Sequential: next level in order
+      const candidateNid = levelNids[currentIndex + 1];
+      // Skip debug levels (matching Python: 'debug' in next_level.nid.lower())
+      if (candidateNid.toLowerCase().includes('debug')) {
+        console.log('No more levels (next is debug). Returning to title.');
+        game.state.clear();
+        game.state.change('title');
+        this.isHandlingLevelEnd = false;
+        return;
+      }
+      nextLevelNid = candidateNid;
+    }
+
+    if (!nextLevelNid) {
+      console.log('No more levels! Returning to title.');
+      game.state.clear();
+      game.state.change('title');
+      this.isHandlingLevelEnd = false;
+      return;
+    }
+
+    // Store next level NID for reference
+    game.gameVars.set('_next_level_nid', nextLevelNid);
+    this.isHandlingLevelEnd = false;
+
+    console.log(`Level transition: ${currentLevelNid} -> ${nextLevelNid}`);
+
+    // Lock event processing while the async load is in progress
+    this.levelTransitionInProgress = true;
+
+    // Load the next level and transition to gameplay
+    game.loadLevel(nextLevelNid).then(() => {
+      this.levelTransitionInProgress = false;
+      game.state.clear();
+      game.state.change('free');
+      // If level_start triggered events, push EventState
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+      }
+    }).catch((err: unknown) => {
+      this.levelTransitionInProgress = false;
+      console.error('Failed to load next level:', err);
+      game.state.clear();
+      game.state.change('title');
+    });
   }
 
   /**
@@ -6282,6 +6426,21 @@ export class EventState extends State {
         return false;
       }
 
+      case 'set_next_chapter': {
+        // Override sequential level progression: set _goto_level to a specific chapter NID.
+        // Matches Python: action.do(action.SetGameVar("_goto_level", chapter))
+        const chapterNid = args[0] ?? '';
+        if (chapterNid) {
+          if (!game.db.levels.has(chapterNid)) {
+            console.warn(`set_next_chapter: "${chapterNid}" is not a valid chapter nid`);
+          } else {
+            game.gameVars.set('_goto_level', chapterNid);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'level_var': {
         const varName = args[0] ?? '';
         const value = args[1] ?? 'true';
@@ -6341,19 +6500,18 @@ export class EventState extends State {
       // ----- Win / Lose (instant — they change the state machine) -----
 
       case 'win_game': {
-        if (this.currentEvent) this.currentEvent.finish();
-        game.eventManager?.dequeueCurrentEvent();
-        game.state.clear();
-        game.state.change('title');
-        return true; // stop burst
+        // Matches Python: just set the flag — the actual level transition
+        // happens in finishAndDequeue() after the event completes, allowing
+        // remaining event commands (e.g., dialog, transitions) to run first.
+        game.levelVars.set('_win_game', true);
+        this.advancePointer();
+        return false;
       }
 
       case 'lose_game': {
-        if (this.currentEvent) this.currentEvent.finish();
-        game.eventManager?.dequeueCurrentEvent();
-        game.state.clear();
-        game.state.change('title');
-        return true;
+        game.levelVars.set('_lose_game', true);
+        this.advancePointer();
+        return false;
       }
 
       // ----- Turn management -----

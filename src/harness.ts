@@ -41,6 +41,10 @@ export interface HarnessAPI {
   settle: (maxFrames: number) => void;
   /** Give an item (by DB NID) to a unit (by NID). Returns true if successful. */
   giveItem: (unitNid: string, itemNid: string) => boolean;
+  /** Kill a unit by NID (set HP to 0, mark dead). For testing win conditions. */
+  killUnit: (unitNid: string) => boolean;
+  /** Trigger a game event by firing a trigger. Returns true if events were queued. */
+  triggerEvent: (triggerType: string) => boolean;
 }
 
 export interface HarnessState {
@@ -229,6 +233,30 @@ export function installHarness(
           stepOneFrame('SELECT');
         }
       }
+    },
+
+    killUnit(unitNid: string): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit) {
+        console.warn(`[Harness] Unit "${unitNid}" not found`);
+        return false;
+      }
+      unit.currentHp = 0;
+      unit.dead = true;
+      // Remove from board if present
+      if (unit.position && game.board) {
+        game.board.removeUnit(unit);
+      }
+      return true;
+    },
+
+    triggerEvent(triggerType: string): boolean {
+      if (!game.eventManager) return false;
+      const levelNid = game.currentLevel?.nid ?? '';
+      return game.eventManager.trigger(
+        { type: triggerType, levelNid },
+        { game, gameVars: game.gameVars, levelVars: game.levelVars },
+      );
     },
   };
 

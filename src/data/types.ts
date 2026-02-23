@@ -249,6 +249,8 @@ export interface LevelPrefab {
   units: (UniqueUnitData | GenericUnitData)[];
   regions: RegionData[];
   unit_groups: UnitGroupData[];
+  /** Whether to go to the overworld map after completing this level (FE8-style). */
+  go_to_overworld?: boolean;
 }
 
 // ------------------------------------------------------------------
