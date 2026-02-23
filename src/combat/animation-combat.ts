@@ -224,6 +224,11 @@ export class AnimationCombat implements AnimationCombatOwner {
   // -- Skip mode (START/ESC toggles 4x speed) --------------------------------
   skipMode: boolean = false;
 
+  /** Instantly skip to the end of combat (no more animation). */
+  skipToEnd(): void {
+    this.state = 'done';
+  }
+
   // -- Effect sprite cache ---------------------------------------------------
   effectFrameCache: Map<string, Map<string, ImageBitmap | HTMLCanvasElement>> = new Map();
   effectLoadingSet: Set<string> = new Set();
