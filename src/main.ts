@@ -206,24 +206,19 @@ function setupAudioInit(audioManager: AudioManager): void {
 // Project selection screen
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch available .ltproj projects from the server and display a selection
- * screen. Returns a Promise that resolves to the chosen project name
- * (e.g. "rekka.ltproj"). If only one project exists, it is auto-selected.
- */
-async function showProjectPicker(): Promise<string> {
-  let projects: string[];
-  try {
-    const res = await fetch('/api/projects');
-    projects = await res.json();
-  } catch {
-    // Fallback: if the endpoint doesn't exist (e.g. production static build),
-    // just proceed with default.
-    return 'default.ltproj';
-  }
+/** Compile-time constant injected by Vite — list of .ltproj directory names. */
+declare const __AVAILABLE_PROJECTS__: string[];
 
-  if (projects.length === 0) return 'default.ltproj';
-  if (projects.length === 1) return projects[0];
+/**
+ * Show a project selection screen. The list is baked in at build time via
+ * Vite's `define` (no runtime API call needed).
+ * If only one project exists, it is auto-selected.
+ */
+function showProjectPicker(): Promise<string> {
+  const projects: string[] = __AVAILABLE_PROJECTS__;
+
+  if (projects.length === 0) return Promise.resolve('default.ltproj');
+  if (projects.length === 1) return Promise.resolve(projects[0]);
 
   // Build a simple DOM-based picker overlay
   return new Promise<string>((resolve) => {
