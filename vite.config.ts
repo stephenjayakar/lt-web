@@ -1,7 +1,30 @@
 import { defineConfig } from 'vite';
 import { resolve, join, extname } from 'path';
-import { createReadStream, stat, writeFileSync, readdirSync, statSync } from 'fs';
+import { createReadStream, stat, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import type { Plugin, ResolvedConfig } from 'vite';
+
+/**
+ * Scan lt-maker/ and public/game-data/ for .ltproj directories at startup.
+ * The result is injected as a compile-time constant via Vite's `define`.
+ */
+function discoverProjects(): string[] {
+  const projects = new Set<string>();
+  const dirs = [
+    resolve(__dirname, 'lt-maker'),
+    resolve(__dirname, 'public/game-data'),
+  ];
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    try {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory() && entry.name.endsWith('.ltproj')) {
+          projects.add(entry.name);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  return [...projects].sort();
+}
 
 // MIME types for game assets
 const MIME: Record<string, string> = {
@@ -133,6 +156,9 @@ export default defineConfig({
     // Generate precache manifest for the service worker
     swPrecacheManifest(),
   ],
+  define: {
+    __AVAILABLE_PROJECTS__: JSON.stringify(discoverProjects()),
+  },
   build: {
     target: 'es2022',
   },
