@@ -2535,6 +2535,9 @@ export class CombatState extends State {
    */
   private eventCombat: boolean = false;
 
+  /** Whether we successfully pushed battle music (guards popMusic). */
+  private didPushBattleMusic: boolean = false;
+
   // EXP state machine (faithful port of Python ExpState)
   private expBar: ExpBarClass | null = null;
   private expOldExp: number = 0;
@@ -2635,12 +2638,14 @@ export class CombatState extends State {
     game.hud.visible = false;
 
     // Play battle music (push current phase music onto the stack)
+    this.didPushBattleMusic = false;
     const levelMusic = game.currentLevel?.music;
     if (levelMusic) {
       const battleTrack = attacker.team === 'player'
         ? levelMusic.player_battle
         : levelMusic.enemy_battle;
       if (battleTrack) {
+        this.didPushBattleMusic = true;
         void game.audioManager.pushMusic(battleTrack);
       }
     }
@@ -2664,13 +2669,17 @@ export class CombatState extends State {
       const db = game.db;
       if (!db.combatAnims || db.combatAnims.size === 0) return false;
 
-      // Look up combat anim NIDs from unit classes
+      // Look up combat anim NIDs from unit classes.
+      // Fallback chain: combat_anim_nid -> class nid (handles projects
+      // where combat_anim_nid is null or references a missing animation).
       const atkKlass = db.classes.get(attacker.klass);
       const defKlass = db.classes.get(defender.klass);
-      if (!atkKlass?.combat_anim_nid || !defKlass?.combat_anim_nid) return false;
+      if (!atkKlass || !defKlass) return false;
 
-      const atkAnimData = db.combatAnims.get(atkKlass.combat_anim_nid);
-      const defAnimData = db.combatAnims.get(defKlass.combat_anim_nid);
+      const atkAnimData = db.combatAnims.get(atkKlass.combat_anim_nid ?? '')
+        ?? db.combatAnims.get(atkKlass.nid);
+      const defAnimData = db.combatAnims.get(defKlass.combat_anim_nid ?? '')
+        ?? db.combatAnims.get(defKlass.nid);
       if (!atkAnimData || !defAnimData) return false;
 
       // Determine weapon type for selecting the weapon animation.
@@ -3165,7 +3174,10 @@ export class CombatState extends State {
         }
 
         // Restore phase music (pop battle music from the stack)
-        void game.audioManager.popMusic();
+        if (this.didPushBattleMusic) {
+          void game.audioManager.popMusic();
+          this.didPushBattleMusic = false;
+        }
 
         // Restore cursor and HUD visibility (hidden at combat start)
         game.cursor.visible = true;
