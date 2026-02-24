@@ -224,7 +224,7 @@ async function main(): Promise<void> {
 
   // --- Determine project URL ---
   const params = new URLSearchParams(window.location.search);
-  const projectPath = params.get('project') ?? 'default.ltproj';
+  const projectPath = params.get('project') ?? 'rekka.ltproj';
   const baseUrl = `/game-data/${projectPath}`;
   const useBundle = params.get('bundle') !== 'false'; // opt-out with ?bundle=false
   const harnessMode = params.get('harness') === 'true';
