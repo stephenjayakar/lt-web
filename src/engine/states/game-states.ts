@@ -40,6 +40,7 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { Banner } from '../../ui/banner';
 import { Dialog } from '../../ui/dialog';
+import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../../ui/exp-display';
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
@@ -2512,7 +2513,7 @@ export class TargetingState extends MapState {
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'death' | 'exp' | 'levelup' | 'cleanup';
+type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'cleanup';
 
 export class CombatState extends State {
   readonly name = 'combat';
@@ -2534,13 +2535,20 @@ export class CombatState extends State {
    */
   private eventCombat: boolean = false;
 
-  // EXP bar animation
-  private expDisplayStart: number = 0;
-  private expDisplayTarget: number = 0;
-  private expDisplayCurrent: number = 0;
+  // EXP state machine (faithful port of Python ExpState)
+  private expBar: ExpBarClass | null = null;
+  private expOldExp: number = 0;
+  private expGainAmount: number = 0;
+  private expTotalTime: number = 0;    // ms to fill bar (1 frame per EXP point at 60fps)
+  private expStartTime: number = 0;    // timestamp when current sub-phase started
+  private expNeedLevelUp: boolean = false;
 
   // Level-up display
   private levelUpGains: Record<string, number> | null = null;
+  private levelUpScreen: LevelUpScreenClass | null = null;
+  private levelUpSoundPlayed: boolean = false;
+  private darkFuzzAlpha: number = 0.34; // 66% translucent = 34% opaque black overlay
+  private portraitImg: HTMLImageElement | null = null;
 
   // Death fade
   private deathFadeProgress: number = 0;
@@ -2615,6 +2623,10 @@ export class CombatState extends State {
     this.phaseTimer = 0;
     this.deathFadeProgress = 0;
     this.levelUpGains = null;
+    this.levelUpScreen = null;
+    this.levelUpSoundPlayed = false;
+    this.expBar = null;
+    this.portraitImg = null;
 
     // Clear all highlights and hide cursor/HUD before combat starts
     // (Python does this in interaction.py and the red_cursor state)
@@ -2845,8 +2857,11 @@ export class CombatState extends State {
         if (activeCombat) {
           activeCombat.skipToEnd();
         }
-      } else if (this.phase === 'death' || this.phase === 'exp' || this.phase === 'levelup') {
-        // Skip post-combat phases too — jump straight to cleanup
+      } else if (this.phase === 'death' || this.phase === 'exp_init' || this.phase === 'exp_wait' ||
+                 this.phase === 'exp0' || this.phase === 'exp100' || this.phase === 'exp_leave' ||
+                 this.phase === 'level_up' || this.phase === 'level_screen') {
+        // Skip post-combat phases — stop looping SFX and jump straight to cleanup
+        game.audioManager?.stopSfx?.('Experience Gain');
         this.phase = 'cleanup';
         this.phaseTimer = 0;
       }
@@ -2928,18 +2943,112 @@ export class CombatState extends State {
         break;
       }
 
-      case 'exp': {
-        // Animate EXP bar fill over 350ms. SELECT skips to end.
-        const expSkip = game.input?.isPressed('SELECT') ?? false;
-        this.phaseTimer += expSkip ? realDelta * 4 : realDelta;
-        const t = Math.min(1, this.phaseTimer / 350);
-        this.expDisplayCurrent = this.expDisplayStart + (this.expDisplayTarget - this.expDisplayStart) * t;
+      // ---------------------------------------------------------------
+      // EXP state machine — faithful port of Python ExpState
+      // Phases: exp_init → exp_wait → exp0 → [exp100 →] exp_leave → [level_up → level_screen →] cleanup
+      // ---------------------------------------------------------------
 
-        if (t >= 1) {
-          // Check for level-ups
+      case 'exp_init': {
+        // Create the ExpBar, start fade-in
+        const isCombatContext = !!this.getActiveCombat();
+        this.expBar = new ExpBarClass(this.expOldExp, !isCombatContext);
+        this.expStartTime = this.phaseTimer; // Use phaseTimer as accumulated time
+        this.phase = 'exp_wait';
+        this.phaseTimer = 0;
+        break;
+      }
+
+      case 'exp_wait': {
+        // 466ms pause before bar starts filling. Bar fades in during this time.
+        this.phaseTimer += realDelta;
+        if (this.expBar) this.expBar.update(this.expOldExp);
+        if (this.phaseTimer > 466) {
+          this.phase = 'exp0';
+          this.phaseTimer = 0;
+          // Start looping "Experience Gain" SFX
+          game.audioManager?.playSfxLoop?.('Experience Gain');
+        }
+        break;
+      }
+
+      case 'exp0': {
+        // Fill bar at 1 frame per EXP point. Linear interpolation.
+        this.phaseTimer += realDelta;
+        const progress = Math.min(1, this.phaseTimer / this.expTotalTime);
+        const expSet = this.expOldExp + progress * this.expGainAmount;
+        if (this.expBar) this.expBar.update(expSet);
+
+        // Stop SFX when fill reaches target
+        if (Math.floor(expSet) >= this.expOldExp + this.expGainAmount) {
+          game.audioManager?.stopSfx?.('Experience Gain');
+        }
+
+        // Check if bar reaches 100 (level-up threshold)
+        if (Math.floor(expSet) >= 100 && this.expNeedLevelUp) {
+          this.phase = 'exp100';
+          // Don't reset phaseTimer — continue from current time for smooth animation
+          break;
+        }
+
+        // Wait extra 500ms after fill completes, then fade out
+        if (this.phaseTimer >= this.expTotalTime + 500) {
+          game.audioManager?.stopSfx?.('Experience Gain');
+          if (this.expBar) this.expBar.fadeOut();
+          this.phase = 'exp_leave';
+          this.phaseTimer = 0;
+        }
+        break;
+      }
+
+      case 'exp100': {
+        // Bar wraps past 100, continues filling from 0 with remaining EXP
+        this.phaseTimer += realDelta;
+        const progress100 = Math.min(1, this.phaseTimer / this.expTotalTime);
+        // Wrap: subtract 100 from the running total
+        const expSet100 = this.expOldExp + (this.expGainAmount * progress100) - 100;
+        const clampedExp = Math.min(this.expOldExp + this.expGainAmount - 100, expSet100);
+        if (this.expBar) this.expBar.update(clampedExp);
+
+        // Stop SFX when fill reaches wrapped target
+        if (Math.floor(clampedExp) >= this.expOldExp + this.expGainAmount - 100) {
+          game.audioManager?.stopSfx?.('Experience Gain');
+        }
+
+        // Wait extra 333ms after fill, then trigger level-up
+        if (this.phaseTimer >= this.expTotalTime + 333) {
+          // Level-up gains were already computed by applyResults
           if (this.results!.levelUps.length > 0) {
             this.levelUpGains = this.results!.levelUps[0];
-            this.phase = 'levelup';
+          }
+          // Fade out the EXP bar
+          if (this.expBar) this.expBar.fadeOut();
+          // Chain: exp_leave → level_up → level_screen
+          this.expNeedLevelUp = true;
+          this.phase = 'exp_leave';
+          this.phaseTimer = 0;
+        }
+        break;
+      }
+
+      case 'exp_leave': {
+        // Fade out the EXP bar (iris close animation)
+        if (this.expBar) {
+          const fadeDone = this.expBar.update();
+          if (fadeDone) {
+            // If level-up pending, continue to level_up phase
+            if (this.levelUpGains && Object.values(this.levelUpGains).some(v => v !== 0)) {
+              this.phase = 'level_up';
+              this.phaseTimer = 0;
+              this.levelUpSoundPlayed = false;
+            } else {
+              this.phase = 'cleanup';
+              this.phaseTimer = 0;
+            }
+          }
+        } else {
+          // No bar — skip directly
+          if (this.levelUpGains) {
+            this.phase = 'level_up';
             this.phaseTimer = 0;
           } else {
             this.phase = 'cleanup';
@@ -2949,11 +3058,49 @@ export class CombatState extends State {
         break;
       }
 
-      case 'levelup': {
-        // Show level-up stats for 1200ms. SELECT skips.
-        const lvlSkip = game.input?.isPressed('SELECT') ?? false;
-        this.phaseTimer += lvlSkip ? realDelta * 4 : realDelta;
-        if (this.phaseTimer >= 1200) {
+      case 'level_up': {
+        // Play level-up SFX once, then show dark overlay briefly before going to stat screen
+        if (!this.levelUpSoundPlayed) {
+          game.audioManager?.playSfx?.('Level Up');
+          this.levelUpSoundPlayed = true;
+          this.phaseTimer = 0;
+        }
+        this.phaseTimer += realDelta;
+        // Brief pause (500ms) to show the "Level Up" moment with dark overlay,
+        // then transition to level_screen
+        if (this.phaseTimer >= 500) {
+          this.phase = 'level_screen';
+          this.phaseTimer = 0;
+          // Create the LevelUpScreen
+          const activeCombat = this.getActiveCombat();
+          const unit = activeCombat?.attacker;
+          if (unit && this.levelUpGains) {
+            const statDefs = game.db?.stats ?? [];
+            this.levelUpScreen = new LevelUpScreenClass(
+              unit,
+              this.levelUpGains,
+              (unit.level - 1), // old level (before the level-up that already happened)
+              unit.level,       // new level
+              statDefs,
+              game.audioManager,
+              this.portraitImg,
+            );
+          }
+        }
+        break;
+      }
+
+      case 'level_screen': {
+        // Update the LevelUpScreen animation
+        const now = performance.now();
+        if (this.levelUpScreen) {
+          const done = this.levelUpScreen.update(now);
+          if (done) {
+            this.phase = 'cleanup';
+            this.phaseTimer = 0;
+          }
+        } else {
+          // No screen object — skip
           this.phase = 'cleanup';
           this.phaseTimer = 0;
         }
@@ -3060,27 +3207,51 @@ export class CombatState extends State {
   }
 
   private startExpPhase(): void {
-    // EXP bar starts at the attacker's current EXP before gain
-    // (applyResults already applied it, so we calculate backwards)
+    const game = getGame();
+    // Calculate EXP bar parameters (faithful to Python ExpState.start)
     const totalExp = this.results!.expGained;
     const activeCombat = this.getActiveCombat();
     const currentExp = activeCombat!.attacker.exp;
-    // If level-ups happened, the bar wraps around 100
-    if (this.results!.levelUps.length > 0) {
-      this.expDisplayStart = 0;
-      this.expDisplayTarget = currentExp;
+    const hasLevelUp = this.results!.levelUps.length > 0;
+
+    // Calculate old EXP (before gain was applied by applyResults)
+    if (hasLevelUp) {
+      // Bar wraps around 100: old_exp = currentExp + 100 - totalExp
+      // e.g. had 70 EXP, gained 50 → leveled → now has 20, old was 70
+      this.expOldExp = currentExp + 100 - totalExp;
     } else {
-      this.expDisplayStart = currentExp - totalExp;
-      this.expDisplayTarget = currentExp;
+      this.expOldExp = currentExp - totalExp;
     }
-    this.expDisplayCurrent = this.expDisplayStart;
-    this.phase = 'exp';
+    this.expGainAmount = totalExp;
+    this.expNeedLevelUp = hasLevelUp;
+
+    // 1 frame per EXP point at 60fps = ~16.67ms per point
+    this.expTotalTime = Math.max(1, Math.abs(totalExp) * FRAMETIME);
+
+    this.levelUpGains = null;
+    this.levelUpScreen = null;
+    this.levelUpSoundPlayed = false;
+    this.expBar = null;
+
+    // Start loading portrait for potential level-up screen
+    if (hasLevelUp && activeCombat?.attacker) {
+      const unit = activeCombat.attacker;
+      const portraitNid = (unit as any).portraitNid ?? unit.nid;
+      game.resources?.loadPortrait?.(portraitNid)?.then?.((img: HTMLImageElement) => {
+        this.portraitImg = img;
+      })?.catch?.(() => {});
+    }
+
+    this.phase = 'exp_init';
     this.phaseTimer = 0;
   }
 
   override end(): StateResult {
     // Always clear combat animation offsets when this state exits
     setActiveCombatOffsets(null);
+    // Stop looping EXP SFX if still playing
+    const game = getGame();
+    game.audioManager?.stopSfx?.('Experience Gain');
   }
 
   override draw(surf: Surface): Surface {
@@ -3665,11 +3836,22 @@ export class CombatState extends State {
 
   /** Draw EXP bar and level-up stats (shared between map and animation combat). */
   private drawExpAndLevelUp(surf: Surface): void {
-    if (this.phase === 'exp' || this.phase === 'levelup') {
-      this.drawExpBar(surf);
+    // Draw EXP bar during all exp sub-phases
+    const expPhases = ['exp_init', 'exp_wait', 'exp0', 'exp100', 'exp_leave'];
+    if (expPhases.includes(this.phase)) {
+      if (this.expBar) {
+        this.expBar.draw(surf);
+      }
     }
-    if (this.phase === 'levelup' && this.levelUpGains) {
-      this.drawLevelUpStats(surf);
+
+    // Dark overlay during level_up phase (before stat screen)
+    if (this.phase === 'level_up') {
+      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, `rgba(0,0,0,${this.darkFuzzAlpha.toFixed(2)})`);
+    }
+
+    // Level-up stat screen
+    if (this.phase === 'level_screen' && this.levelUpScreen) {
+      this.levelUpScreen.draw(surf, performance.now());
     }
   }
 
@@ -3746,54 +3928,6 @@ export class CombatState extends State {
     surf.drawRect(x, y, width, height, 'rgba(120,120,120,0.8)');
   }
 
-  private drawExpBar(surf: Surface): void {
-    const barX = 4;
-    const barY = viewport.height - 14;
-    const barW = viewport.width - 8;
-    const barH = 10;
-
-    // Background
-    surf.fillRect(barX, barY, barW, barH, 'rgba(16,16,48,0.9)');
-
-    // EXP fill
-    const ratio = this.expDisplayCurrent / 100;
-    const fillW = Math.round(barW * Math.max(0, Math.min(1, ratio)));
-    if (fillW > 0) {
-      surf.fillRect(barX, barY, fillW, barH, 'rgba(64,160,255,1)');
-    }
-
-    // Border
-    surf.drawRect(barX, barY, barW, barH, 'rgba(120,120,180,1)');
-
-    // Text
-    const expText = `EXP ${Math.round(this.expDisplayCurrent)}`;
-    surf.drawText(expText, barX + 2, barY + 1, 'white', '8px monospace');
-  }
-
-  private drawLevelUpStats(surf: Surface): void {
-    if (!this.levelUpGains) return;
-
-    const boxW = 80;
-    const boxH = 10 + Object.keys(this.levelUpGains).length * 10;
-    const boxX = Math.floor((viewport.width - boxW) / 2);
-    const boxY = Math.floor((viewport.height - boxH) / 2) - 20;
-
-    // Background
-    surf.fillRect(boxX, boxY, boxW, boxH, 'rgba(16,16,48,0.95)');
-    surf.drawRect(boxX, boxY, boxW, boxH, 'rgba(200,200,255,0.8)');
-
-    // Title
-    surf.drawText('LEVEL UP!', boxX + 4, boxY + 2, 'rgba(255,255,128,1)', '8px monospace');
-
-    // Stat gains
-    let y = boxY + 12;
-    for (const [stat, gain] of Object.entries(this.levelUpGains)) {
-      const color = gain > 0 ? 'rgba(128,255,128,1)' : 'rgba(160,160,160,1)';
-      const text = gain > 0 ? `${stat} +${gain}` : `${stat} --`;
-      surf.drawText(text, boxX + 8, y, color, '7px monospace');
-      y += 10;
-    }
-  }
 }
 
 // ============================================================================

@@ -20,6 +20,7 @@ import { initBaseSurf } from './ui/base-surf';
 import { setMenuAudioManager } from './ui/menu';
 import { initFonts } from './rendering/bmp-font';
 import { initSpriteLoader } from './combat/sprite-loader';
+import { loadExpDisplaySprites } from './ui/exp-display';
 import {
   setGameRef,
   TitleState,
@@ -202,6 +203,72 @@ function setupAudioInit(audioManager: AudioManager): void {
 }
 
 // ---------------------------------------------------------------------------
+// Project selection screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch available .ltproj projects from the server and display a selection
+ * screen. Returns a Promise that resolves to the chosen project name
+ * (e.g. "rekka.ltproj"). If only one project exists, it is auto-selected.
+ */
+async function showProjectPicker(): Promise<string> {
+  let projects: string[];
+  try {
+    const res = await fetch('/api/projects');
+    projects = await res.json();
+  } catch {
+    // Fallback: if the endpoint doesn't exist (e.g. production static build),
+    // just proceed with default.
+    return 'default.ltproj';
+  }
+
+  if (projects.length === 0) return 'default.ltproj';
+  if (projects.length === 1) return projects[0];
+
+  // Build a simple DOM-based picker overlay
+  return new Promise<string>((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; inset: 0; z-index: 9999;
+      background: #101020; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; font-family: monospace;
+    `;
+
+    const title = document.createElement('div');
+    title.textContent = 'Select Project';
+    title.style.cssText = 'color: #aaaacc; font-size: 24px; margin-bottom: 32px;';
+    overlay.appendChild(title);
+
+    for (const proj of projects) {
+      const btn = document.createElement('button');
+      // Display name: strip .ltproj suffix, replace underscores with spaces
+      const displayName = proj.replace(/\.ltproj$/, '').replace(/_/g, ' ');
+      btn.textContent = displayName;
+      btn.style.cssText = `
+        background: #1a1a30; color: #ccccee; border: 1px solid #333355;
+        padding: 12px 32px; margin: 6px; font-size: 16px; font-family: monospace;
+        cursor: pointer; border-radius: 4px; min-width: 240px; text-align: center;
+      `;
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = '#2a2a50';
+        btn.style.borderColor = '#5555aa';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = '#1a1a30';
+        btn.style.borderColor = '#333355';
+      });
+      btn.addEventListener('click', () => {
+        overlay.remove();
+        resolve(proj);
+      });
+      overlay.appendChild(btn);
+    }
+
+    document.body.appendChild(overlay);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 
@@ -220,11 +287,21 @@ async function main(): Promise<void> {
 
   // Initial viewport calculation
   applySize(display);
-  drawLoadingScreen(ctx, 'Loading...');
 
   // --- Determine project URL ---
   const params = new URLSearchParams(window.location.search);
-  const projectPath = params.get('project') ?? 'rekka.ltproj';
+  let projectPath = params.get('project');
+
+  // If no project specified, show the picker and redirect with ?project= param
+  if (!projectPath) {
+    const chosen = await showProjectPicker();
+    const url = new URL(window.location.href);
+    url.searchParams.set('project', chosen);
+    window.location.href = url.toString();
+    return;
+  }
+
+  drawLoadingScreen(ctx, 'Loading...');
   const baseUrl = `/game-data/${projectPath}`;
   const useBundle = params.get('bundle') !== 'false'; // opt-out with ?bundle=false
   const harnessMode = params.get('harness') === 'true';
@@ -280,6 +357,8 @@ async function main(): Promise<void> {
   initSpriteLoader(engineBaseUrl);
   // Load bitmap fonts (async, text rendering falls back to Canvas until ready)
   initFonts(baseUrl);
+  // Load EXP display sprites (async, falls back to canvas primitives until ready)
+  loadExpDisplaySprites();
 
   // --- Audio ---
   const audioManager = new AudioManager(baseUrl);
