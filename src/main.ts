@@ -71,6 +71,10 @@ import {
   setVictoryGameRef,
 } from './engine/states/victory-state';
 import {
+  GameOverState,
+  setGameOverGameRef,
+} from './engine/states/game-over-state';
+import {
   CreditState,
   setCreditGameRef,
 } from './engine/states/credit-state';
@@ -371,6 +375,7 @@ async function main(): Promise<void> {
   setSettingsGameRef(gameState);
   setMinimapGameRef(gameState);
   setVictoryGameRef(gameState);
+  setGameOverGameRef(gameState);
   setCreditGameRef(gameState);
   setTurnwheelGameRef(gameState);
   setOverworldGameRef(gameState);
@@ -415,6 +420,7 @@ async function main(): Promise<void> {
     new SettingsMenuState(),
     new MinimapState(),
     new VictoryState(),
+    new GameOverState(),
     new CreditState(),
     new TurnwheelState(),
     new OverworldFreeState(),

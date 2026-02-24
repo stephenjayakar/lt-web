@@ -3165,9 +3165,13 @@ export class CombatState extends State {
         }
 
         // Check win/loss conditions
+        // Note: In the original Python engine, loss conditions are handled
+        // through the event system (combat_death triggers → lose_game command).
+        // This auto-detect is a fallback for cases where events don't fire.
         if (game.checkLossCondition()) {
           console.warn('GAME OVER — loss condition met');
-          // TODO: push a GameOverState
+          game.state.clear();
+          game.state.change('game_over');
         } else if (game.checkWinCondition()) {
           console.warn('VICTORY — win condition met');
           // TODO: push a VictoryState / trigger level_end event
@@ -5729,7 +5733,7 @@ export class EventState extends State {
       game.levelVars.set('_lose_game', false);
       console.warn('GAME OVER — loss condition met via lose_game flag');
       game.state.clear();
-      game.state.change('title');
+      game.state.change('game_over');
       return;
     }
 
