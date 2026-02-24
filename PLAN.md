@@ -38,28 +38,53 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Known Bugs
 
-- [ ] **First dialogue still renders over the portrait.** The dialogue box
-  appears on top of the portrait sprite instead of being positioned to avoid it.
-- [ ] **Combat animations at half speed sometimes.** Battle animations
-  occasionally play at roughly half their normal speed.
-- [ ] **Enemies leave blue rectangle at start position when attacking.** When
-  an enemy unit initiates combat, a blue highlight rectangle remains at their
-  original tile during the attack.
-- [ ] **Lose cursor control after combat.** After combat resolves, the player
-  cannot move the cursor or interact with the map.
-- [ ] **Red rectangle randomly appears during magic attack.** A stray red
-  rectangle/highlight flashes on screen during magic combat animations.
+- [x] **First dialogue still renders over the portrait.** *(Fixed)* Dialog now
+  auto-sizes to text content width and uses `get_desired_center()` mapping for
+  portrait-aware horizontal positioning (matching Python).
+- [x] **Combat animations at half speed sometimes.** *(Fixed)* Removed
+  `Math.max(1, ticks)` override that tied animation speed to browser refresh
+  rate. Animation ticking is now unconditional at the top of `update()`,
+  matching Python's `update_anims()` pattern.
+- [x] **Enemies leave blue rectangle at start position when attacking.** *(Fixed)*
+  Added `highlight.clear()` in `FreeState.begin()`, `FreeState.end()`, and
+  `TurnChangeState.begin()` to match Python's highlight cleanup lifecycle.
+- [x] **Lose cursor control after combat.** *(Fixed)* Added finished-unit
+  check to `WeaponChoiceState.begin()` with `'repeat'` return, plus added
+  `'repeat'` to all dead-unit early-exit paths in MoveState, MenuState, and
+  TargetingState for instant state cascade.
+- [x] **Red rectangle randomly appears during magic attack.** *(Fixed)* Cleared
+  `this.targets` in `TargetingState.end()` to prevent stale red rectangle
+  draw when CombatState (transparent) draws on top.
 - [x] **Terrain platforms swap/move and sprites float in ranged/magic combat.**
   *(Fixed)* Three related bugs in combat animation platform/sprite positioning:
   1. `at_range` off-by-one — now computes `atRange = distance - 1` matching Python
   2. Sprites now receive `range_offset` and `pan_offset` so they track with platforms
   3. Shake direction negated for sprites (`-totalShakeX`) matching Python behavior
-- [ ] **Combat UI layout is wrong.** The combat UI (name tags, HP bars, weapon
-  info) during GBA-style battle animations does not match the original Pygame
-  engine's layout.
+- [x] **Combat UI layout is wrong.** *(Fixed)* Corrected name tag dimensions
+  (66x16, matching Python sprites), centered name text, fixed HP bar height
+  (56→40px), adjusted Y positioning, and removed always-shown CRT row.
+- [x] **Reinforcements arrive too early in Ch.1.** *(Fixed)* Changed event
+  condition fallback from `true` to `false` — events with un-evaluable
+  conditions are now skipped instead of fired. Added error logging to JS
+  fallback evaluator.
 
 ### Recent Changes
 
+- **Seven bug fixes across combat, UI, events, and state management:**
+  1. **Dialog over portrait:** Auto-sized dialog width to text content, ported
+     Python's `get_desired_center()` mapping for portrait-relative positioning.
+  2. **Combat animation speed:** Made `tickAnims` unconditional in top-level
+     `update()` (matching Python), removed `Math.max(1, ticks)` from 5 call sites.
+  3. **Blue highlight rectangle:** Added `highlight.clear()` to FreeState begin/end
+     and TurnChangeState (matching Python's cleanup lifecycle).
+  4. **Cursor loss after combat:** Added finished-unit guard to WeaponChoiceState,
+     added `'repeat'` returns to all dead-unit early-exit paths for instant cascade.
+  5. **Red rectangle during magic combat:** Cleared targets in TargetingState.end()
+     to prevent stale draw under transparent CombatState.
+  6. **Combat UI layout:** Fixed name tag size (80→66x16), centered name text,
+     fixed HP bar height (56→40px), adjusted stat layout to fit.
+  7. **Early reinforcements:** Changed event condition fallback from `true` to
+     `false` in event-manager.ts, added error logging to JS fallback evaluator.
 - **Combat animation platform/sprite positioning fix (two passes).** Fixed six
   bugs causing terrain pillars to move around and sprites to float during
   ranged/magic combat animations:

@@ -21,6 +21,7 @@
 
 import { Surface } from '../engine/surface';
 import { FRAMETIME, COLORKEY } from '../engine/constants';
+import { viewport } from '../engine/viewport';
 
 // Helper: convert frame count to milliseconds
 function frames2ms(frames: number): number {
@@ -263,10 +264,21 @@ export class EventPortrait {
     return this.transitioning;
   }
 
-  /** Get the center X of the portrait face (for dialog positioning). */
+  /** Get the center X of the portrait face (for dialog positioning).
+   *  Maps the raw portrait center to predefined dialog center positions,
+   *  matching Python's screen_positions.get_desired_center(). */
   getDesiredCenter(): number {
     const faceWidth = MAIN_FACE.w;
-    return this.position[0] + faceWidth / 2;
+    const rawCenter = this.position[0] + faceWidth / 2;
+    const W = viewport.width;
+    // Python: screen_positions.get_desired_center()
+    if (rawCenter < 48) return 8;               // FarLeft
+    if (rawCenter < 72) return 80;              // Left
+    if (rawCenter < 104) return 104;            // MidLeft
+    if (rawCenter > W - 48) return W - 8;       // FarRight
+    if (rawCenter > W - 72) return W - 88;      // Right
+    if (rawCenter > W - 144) return W - 112;    // MidRight
+    return Math.floor(W / 2);                   // Center
   }
 
   // ------------------------------------------------------------------
