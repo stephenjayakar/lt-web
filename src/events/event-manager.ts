@@ -607,9 +607,10 @@ export function evaluateCondition(
     // Fall through to default
   }
 
-  // Unknown condition — warn and default to true (safer than blocking events)
-  console.warn(`EventCondition: cannot evaluate "${trimmed}", defaulting to true`);
-  return true;
+  // Unknown condition — warn and default to false (skip events with un-evaluable conditions;
+  // firing them would cause reinforcements/etc. to trigger at wrong times)
+  console.warn(`EventCondition: cannot evaluate "${trimmed}", defaulting to false`);
+  return false;
 }
 
 /** Context object for condition evaluation. */
@@ -1096,7 +1097,8 @@ function evaluateWithJsFallback(
       _queryFuncs,
     );
   } catch (e) {
-    // Expression evaluation failed
+    // Expression evaluation failed — log the error for debugging
+    console.warn(`EventCondition JS eval failed for "${condition}":`, e);
     return undefined;
   }
 }

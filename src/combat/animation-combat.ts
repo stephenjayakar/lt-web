@@ -394,6 +394,14 @@ export class AnimationCombat implements AnimationCombatOwner {
       this.advancePan();
     }
 
+    // Tick battle animations unconditionally (matches Python's update_anims()
+    // which runs at the end of every update() call regardless of state).
+    // This ensures consistent animation speed independent of browser refresh rate.
+    const animTicks = this.computeAnimTicks(deltaMs);
+    if (animTicks > 0) {
+      this.tickAnims(animTicks);
+    }
+
     switch (this.state) {
       case 'init':        return this.updateInit();
       case 'fade_in':     return this.updateFadeIn();
@@ -447,10 +455,6 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.nameTagProgress = t;
     this.hpBarProgress = Math.min(1, Math.max(0, (t - 0.3) / 0.7));
 
-    // Update both anims at fixed 60fps rate
-    const ticks = this.computeAnimTicks(this.currentDeltaMs);
-    this.tickAnims(Math.max(1, ticks));
-
     if (t >= 1) {
       this.nameTagProgress = 1;
       this.hpBarProgress = 1;
@@ -462,8 +466,6 @@ export class AnimationCombat implements AnimationCombatOwner {
   private updateInitPause(): boolean {
     // stateTimer is ms-based; compare against INIT_PAUSE_FRAMES in ms
     const pauseMs = INIT_PAUSE_FRAMES * AnimationCombat.FRAME_MS;
-    const ticks = this.computeAnimTicks(this.currentDeltaMs);
-    this.tickAnims(Math.max(1, ticks));
     if (this.stateTimer >= pauseMs) {
       this.transition('begin_phase');
     }
@@ -507,9 +509,8 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateAnim(): boolean {
-    const ticks = this.computeAnimTicks(this.currentDeltaMs);
-    this.tickAnims(Math.max(1, ticks));
-    this.animFrameCounter += Math.max(1, ticks);
+    // animFrameCounter tracks total calls for safety timeout
+    this.animFrameCounter++;
 
     // The hit is processed via the startHit callback when the animation
     // fires the start_hit command. Once both anims return to idle/done,
@@ -560,9 +561,6 @@ export class AnimationCombat implements AnimationCombatOwner {
       }
     }
 
-    const ticks = this.computeAnimTicks(this.currentDeltaMs);
-    this.tickAnims(Math.max(1, ticks));
-
     if (t >= 1) {
       // Snap HP
       this.leftDisplayHp = this.leftTargetHp;
@@ -599,8 +597,6 @@ export class AnimationCombat implements AnimationCombatOwner {
     // Set both anims to Stand
     this.leftAnim.setPose('Stand');
     this.rightAnim.setPose('Stand');
-    const ticks = this.computeAnimTicks(this.currentDeltaMs);
-    this.tickAnims(Math.max(1, ticks));
 
     // Wait for both to settle
     const leftIdle = this.leftAnim.isIdle() || this.leftAnim.isDone();

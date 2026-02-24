@@ -976,6 +976,9 @@ export class FreeState extends MapState {
     const game = getGame();
     const board = getBoard();
 
+    // Clear any stale highlights from previous states (matching Python's FreeState.begin)
+    game.highlight.clear();
+
     // Check for free roam mode
     const roamInfo = game.roamInfo;
     if (roamInfo && roamInfo.roam && roamInfo.roamUnitNid) {
@@ -1010,6 +1013,12 @@ export class FreeState extends MapState {
         game.camera.focusTile(available.position[0], available.position[1]);
       }
     }
+  }
+
+  override end(): StateResult {
+    // Clear highlights when leaving FreeState (matching Python's FreeState.end)
+    const game = getGame();
+    game.highlight.clear();
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -1247,7 +1256,7 @@ export class MoveState extends MapState {
     const unit: UnitObject = game.selectedUnit;
     if (!unit || !unit.position) {
       game.state.back();
-      return;
+      return 'repeat';
     }
 
     // If the unit already finished (e.g. returned from menu after Wait/Attack),
@@ -1411,7 +1420,7 @@ export class MenuState extends State {
     const unit: UnitObject = game.selectedUnit;
     if (!unit || !unit.position) {
       game.state.back();
-      return;
+      return 'repeat';
     }
 
     // If the unit already finished (returned from a sub-state like ItemUse/Trade),
@@ -2147,7 +2156,14 @@ export class WeaponChoiceState extends State {
     const unit: UnitObject = game.selectedUnit;
     if (!unit || !unit.position) {
       game.state.back();
-      return;
+      return 'repeat';
+    }
+
+    // If the unit already finished (returned from combat), pop back.
+    if (unit.finished || !unit.canStillAct()) {
+      this.menu = null;
+      game.state.back();
+      return 'repeat';
     }
 
     // Gather all usable weapons (has uses remaining, is a weapon)
@@ -2314,7 +2330,7 @@ export class TargetingState extends MapState {
     const unit: UnitObject = game.selectedUnit;
     if (!unit || !unit.position) {
       game.state.back();
-      return;
+      return 'repeat';
     }
 
     // If the unit already finished (returned from combat), pop back.
@@ -2478,6 +2494,9 @@ export class TargetingState extends MapState {
   override end(): StateResult {
     const game = getGame();
     game.highlight.clear();
+    // Clear targets to prevent stale draw (red rectangle) when CombatState
+    // draws on top of this transparent state
+    this.targets = [];
   }
 }
 
@@ -3383,24 +3402,30 @@ export class CombatState extends State {
     // --- Name tags (top of screen, matching Python layout) ---
     // Python: name tags slide in from y=-60, visible at y=0.
     // Left name tag at x=-3, right name tag right-aligned.
+    // Python sprite is ~66x16 pixels.
     const nameSlide = rs.nameTagProgress;
     if (nameSlide > 0) {
-      const NAME_TAG_W = 80;
-      const NAME_TAG_H = 14;
-      // Slide in from above: fully visible at y=0, hidden at y=-NAME_TAG_H-60
-      const nameY = -NAME_TAG_H - 60 + nameSlide * (NAME_TAG_H + 60) + shakeY;
+      const NAME_TAG_W = 66;
+      const NAME_TAG_H = 16;
+      // Slide in from above: Python uses top = -60 + name_offset * 60
+      const nameY = -60 + nameSlide * 60 + shakeY;
       const leftNameX = -3 + shakeX;
       const rightNameX = WINWIDTH + 3 - NAME_TAG_W + shakeX;
 
       // Left name tag background (blue tint for player/left)
       surf.fillRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(32,32,64,0.9)');
       surf.drawRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(100,100,160,0.7)');
-      surf.drawText(rs.leftHp.name, leftNameX + 4, nameY + 3, 'white', '8px monospace');
+      // Center name text within tag (Python: HAlignment.CENTER at (30,8)/(36,8))
+      // Use approximate char width for monospace font centering
+      const charW = 5; // ~5px per char for 8px monospace
+      const leftNameW = rs.leftHp.name.length * charW;
+      surf.drawText(rs.leftHp.name, leftNameX + Math.floor((NAME_TAG_W - leftNameW) / 2), nameY + 4, 'white', '8px monospace');
 
       // Right name tag background (red tint for enemy/right)
       surf.fillRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(64,32,32,0.9)');
       surf.drawRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(160,100,100,0.7)');
-      surf.drawText(rs.rightHp.name, rightNameX + 4, nameY + 3, 'white', '8px monospace');
+      const rightNameW = rs.rightHp.name.length * charW;
+      surf.drawText(rs.rightHp.name, rightNameX + Math.floor((NAME_TAG_W - rightNameW) / 2), nameY + 4, 'white', '8px monospace');
     }
 
     // --- HP bars (bottom of screen, matching Python layout) ---
@@ -3410,7 +3435,7 @@ export class CombatState extends State {
     const hpSlide = rs.hpBarProgress;
     if (hpSlide > 0) {
       const HP_BAR_W = WINWIDTH / 2 + 3; // Each bar covers half the screen
-      const HP_BAR_H = 56; // Weapon(16px) + HIT/DMG/CRT(8px each) + HP bar + padding
+      const HP_BAR_H = 40; // Matching Python's combat_main sprite height (no crit)
       // Bottom anchor: slide up from below screen
       const hpY = WINHEIGHT + (1 - hpSlide) * 52 - HP_BAR_H + shakeY;
       const leftHpX = -3 + shakeX;
@@ -3547,10 +3572,10 @@ export class CombatState extends State {
   }
 
   /** Draw a battle-scene HP bar (used in animation combat).
-   *  Vertical layout matching GBA Python reference (with crit row):
-   *  Row 0: Weapon name (centered)
-   *  Row 1-3: HIT / DMG / CRT labels (left) + values (right-aligned)
-   *  Row 4: HP number (left) + HP bar (right) */
+   *  Compact layout matching GBA Python reference (40px height):
+   *  Row 0: Weapon name (centered, y+2)
+   *  Row 1-2: HIT / DMG labels + values (y+12, y+19)
+   *  Row 3: HP number (left) + HP bar (right, y+28) */
   private drawBattleHpBar(
     surf: Surface,
     x: number,
@@ -3564,46 +3589,39 @@ export class CombatState extends State {
     surf.drawRect(x, y, width, height, 'rgba(100,100,160,0.8)');
 
     // Inset the content area to avoid drawing at the panel edges
-    const pad = 4;
+    const pad = 3;
     const innerX = x + pad;
     const innerW = width - pad * 2;
     const valueRightX = x + width - pad;
 
-    // --- Row 0: Weapon name (top) ---
-    // 'text' font (~16px tall glyphs): y+2 to y+18
+    // --- Row 0: Weapon name (top, centered) ---
     const weaponFont = '7px monospace';
-    surf.drawText(hp.weapon, innerX + Math.floor((innerW - hp.weapon.length * 7) / 2), y + 2, 'rgba(220,220,255,1)', weaponFont);
+    const weaponCharW = 4; // approximate char width for 7px monospace
+    const weaponW = hp.weapon.length * weaponCharW;
+    surf.drawText(hp.weapon, innerX + Math.floor((innerW - weaponW) / 2), y + 2, 'rgba(220,220,255,1)', weaponFont);
 
-    // --- Rows 1-3: Combat stats (HIT / DMG / CRT) ---
-    // 'small' font (~8px tall glyphs): start at y+12, right below weapon
+    // --- Rows 1-2: Combat stats (HIT / DMG) ---
     const statFont = '6px monospace';
     const statLabelColor = 'rgba(140,140,180,1)';
     const statValueColor = 'rgba(255,255,255,1)';
-    let statY = y + 12;
+    let statY = y + 11;
 
     // HIT
     surf.drawText('HIT', innerX, statY, statLabelColor, statFont);
     const hitStr = hp.hit !== null ? `${hp.hit}` : '--';
     surf.drawTextRight(hitStr, valueRightX, statY, statValueColor, statFont);
-    statY += 8;
+    statY += 7;
 
     // DMG
     surf.drawText('DMG', innerX, statY, statLabelColor, statFont);
     const dmgStr = hp.damage !== null ? `${hp.damage}` : '--';
     surf.drawTextRight(dmgStr, valueRightX, statY, statValueColor, statFont);
-    statY += 8;
 
-    // CRT
-    surf.drawText('CRT', innerX, statY, statLabelColor, statFont);
-    const crtStr = hp.crit !== null ? `${hp.crit}` : '--';
-    surf.drawTextRight(crtStr, valueRightX, statY, statValueColor, statFont);
-
-    // --- Row 4: HP number (left) + HP bar (right) ---
-    // Positioned at bottom of panel with padding
-    const barX = innerX + 20;
-    const barY = y + height - 8;
-    const barW = innerW - 20;
-    const barH = 4;
+    // --- Row 3: HP number (left) + HP bar (right) ---
+    const barX = innerX + 16;
+    const barY = y + height - 9;
+    const barW = innerW - 16;
+    const barH = 5; // Matching Python's blip height
     const ratio = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
 
     // HP number to the left of the bar
@@ -4308,6 +4326,10 @@ export class TurnChangeState extends State {
     const currentTeam = game.phase.getCurrent();
     const turnCount = game.phase.turnCount;
     const levelNid = game.currentLevel?.nid;
+
+    // Clear highlights before clearing the state stack (the clear() calls
+    // finish() not end(), so FreeState.end() won't run to clean up highlights)
+    game.highlight.clear();
 
     // Clear the entire state stack to prevent unbounded growth,
     // then push the appropriate states fresh.

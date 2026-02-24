@@ -282,15 +282,34 @@ export class Dialog {
     let boxW: number;
     let tailX: number | null = null; // Speech bubble tail X position
 
+    // Compute text width first to determine box size (matching Python's auto-sizing)
+    // We need a preliminary wrap at max width to know the actual text extent.
+    const maxBoxW = viewport.width - 8;
+    const prelimAvailW = maxBoxW - INNER_PAD * 2;
+    const wrappedLines = wordWrap(this.displayedText, prelimAvailW, FONT);
+
+    // Count how many lines we need (speaker + text lines)
+    const speakerLines = this.speaker ? 1 : 0;
+    const totalLines = speakerLines + wrappedLines.length;
+    const boxH = Math.max(MIN_BOX_HEIGHT, totalLines * LINE_HEIGHT + INNER_PAD * 2);
+
     if (this.portrait) {
-      // Position dialog relative to portrait, matching Python's layout.
-      // Python uses: pos_x centered on portrait with width from text measurement.
-      // Wide dialog (>= viewport - 8) gets fixed at x=4.
+      // Auto-size width to text content (matching Python's determine_size())
+      const speakerW = this.speaker ? measureTextWidth(this.speaker, SPEAKER_FONT) : 0;
+      const maxLineW = wrappedLines.reduce(
+        (max, line) => Math.max(max, measureTextWidth(line, FONT)),
+        0,
+      );
+      const contentW = Math.max(speakerW, maxLineW) + INNER_PAD * 2 + 8;
+      // Minimum 80px wide for short lines, maximum full viewport width
+      boxW = Math.min(maxBoxW, Math.max(80, contentW));
+
       const portraitCenter = this.portrait.getDesiredCenter();
-      boxW = viewport.width - 8; // Full width for readability (matching Python)
       if (boxW >= viewport.width - 8) {
+        // Wide dialog: fixed at x=4 (matching Python)
         boxX = 4;
       } else {
+        // Center dialog on portrait's desired center
         boxX = Math.max(8, Math.min(portraitCenter - boxW / 2, viewport.width - 8 - boxW));
       }
       tailX = Math.max(boxX + 6, Math.min(portraitCenter, boxX + boxW - 6));
@@ -300,14 +319,11 @@ export class Dialog {
       boxW = viewport.width - BOX_MARGIN * 2;
     }
 
-    // Word-wrap displayed text to fit within box
+    // Re-wrap at actual box width if it differs from preliminary width
     const availableTextW = boxW - INNER_PAD * 2;
-    const wrappedLines = wordWrap(this.displayedText, availableTextW, FONT);
-
-    // Count how many lines we need (speaker + text lines)
-    const speakerLines = this.speaker ? 1 : 0;
-    const totalLines = speakerLines + wrappedLines.length;
-    const boxH = Math.max(MIN_BOX_HEIGHT, totalLines * LINE_HEIGHT + INNER_PAD * 2);
+    const finalLines = (availableTextW < prelimAvailW)
+      ? wordWrap(this.displayedText, availableTextW, FONT)
+      : wrappedLines;
 
     // Compute Y position (depends on box height)
     // Python formula: pos_y = WINHEIGHT - height - portrait_height(80) - 4
@@ -365,7 +381,7 @@ export class Dialog {
     }
 
     // Render word-wrapped text lines
-    for (const line of wrappedLines) {
+    for (const line of finalLines) {
       surf.drawText(line, textX, textY, TEXT_COLOR, FONT);
       textY += LINE_HEIGHT;
     }
