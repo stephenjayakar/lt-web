@@ -19,6 +19,8 @@ export class AudioManager {
   private audioBufferCache: Map<string, AudioBuffer>;
   private baseUrl: string;
   private musicStack: string[];
+  /** Active looping SFX sources, keyed by NID. */
+  private loopingSfx: Map<string, AudioBufferSourceNode> = new Map();
 
   constructor(baseUrl: string) {
     this.audioContext = null;
@@ -166,6 +168,53 @@ export class AudioManager {
     source.loop = false;
     source.connect(this.sfxGain);
     source.start(0);
+  }
+
+  /**
+   * Play a sound effect in a loop until stopped.
+   * If the same SFX is already looping, this is a no-op.
+   */
+  async playSfxLoop(nid: string): Promise<void> {
+    if (!this.audioContext || !this.sfxGain) {
+      return;
+    }
+
+    // Already looping — skip
+    if (this.loopingSfx.has(nid)) {
+      return;
+    }
+
+    const buffer = await this.loadSfxBuffer(nid);
+    if (!buffer || !this.audioContext || !this.sfxGain) {
+      return;
+    }
+
+    const source = this.audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(this.sfxGain);
+    source.start(0);
+    this.loopingSfx.set(nid, source);
+
+    // Clean up reference if it ends for any reason
+    source.onended = () => {
+      this.loopingSfx.delete(nid);
+    };
+  }
+
+  /**
+   * Stop a looping sound effect by NID.
+   */
+  stopSfx(nid: string): void {
+    const source = this.loopingSfx.get(nid);
+    if (source) {
+      try {
+        source.stop();
+      } catch {
+        // Already stopped
+      }
+      this.loopingSfx.delete(nid);
+    }
   }
 
   /** Set music volume (0-1) */

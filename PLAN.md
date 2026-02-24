@@ -141,6 +141,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 - **Non-chunked data format support.** `loadChunked()` now falls back to loading
   single `game_data/{type}.json` array files when `.orderkeys` directories don't exist.
   `loadTilemaps()` now tries `tilemaps.json` bulk file before individual tilemap files.
+- **EXP bar and level-up display overhaul.** Replaced placeholder canvas-primitive EXP
+  bar and stat box with a faithful port of the original Python engine:
+  - New `ExpBar` class using the original `expbar.png` sprite sheet (144x24 background,
+    3x7 begin cap, 1x7 middle fill, 2x7 end cap). Iris fade in/out animation.
+  - New `LevelUpScreen` class with scroll-in/out animation, sequential stat spark
+    reveals, color-cycling underlines (sine wave blend), BMP font rendering, portrait.
+  - CombatState now uses a 7-phase EXP state machine matching the original:
+    `exp_init → exp_wait (466ms) → exp0 (1 frame/EXP) → exp100 (wrap) → exp_leave → level_up → level_screen`.
+  - Added `playSfxLoop` / `stopSfx` to AudioManager for looping "Experience Gain" SFX.
+  - Uses the original `level_screen.png` and `stat_underline.png` sprites.
+  - Sound effects: "Experience Gain" (loop), "Level Up", "Level_Up_Level", "Stat Up".
 
 ---
 
@@ -160,7 +171,6 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 - Initiative bar rendering UI (visual bar showing unit order)
 - Non-silent promotion choice UI (visual class selection)
-- Level-up display after promotion
 - Supply menu state UI
 - Aura propagation, charge/cooldown, conditional activation, proc skills
 - RNG mode integration into combat solver
