@@ -736,6 +736,78 @@ test.describe('Event command parity', () => {
     expect(roundTrip).toEqual({ loaded: true, children: result.changed });
   });
 
+  test('item target hooks union enemy, ally, unit, and tile positions with range filtering', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Eirika');
+      if (!unit?.position || !game.targetSystem || !game.board) return null;
+
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const maxRange = game.board.width + game.board.height;
+      const positions = (values: [number, number][]) => values.map(([x, y]) => `${x},${y}`).sort();
+      const liveUnits = game.board.getAllUnits().filter((other: any) => other.position && !other.isDead());
+      const allies = liveUnits.filter((other: any) => game.db.areAllied(unit.team, other.team));
+      const enemies = liveUnits.filter((other: any) => !game.db.areAllied(unit.team, other.team));
+
+      const enemyItem = makeItem('_TargetEnemy', [
+        ['target_enemy', null], ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const allyItem = makeItem('_TargetAlly', [
+        ['target_ally', null], ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const unitItem = makeItem('_TargetUnit', [
+        ['target_unit', null], ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const tileItem = makeItem('_TargetTile', [
+        ['target_tile', null], ['min_range', 1], ['max_range', 2],
+      ]);
+      const unionItem = makeItem('_TargetUnion', [
+        ['target_enemy', null], ['target_ally', null], ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const parent = makeItem('_TargetMulti', [['multi_item', []]]);
+      parent.subitems = [enemyItem, allyItem];
+      for (const child of parent.subitems) child.parentItem = parent;
+
+      const [ux, uy] = unit.position;
+      const expectedTiles: [number, number][] = [];
+      for (let x = 0; x < game.board.width; x++) {
+        for (let y = 0; y < game.board.height; y++) {
+          const distance = Math.abs(x - ux) + Math.abs(y - uy);
+          if (distance >= 1 && distance <= 2) expectedTiles.push([x, y]);
+        }
+      }
+
+      return {
+        enemy: positions(game.targetSystem.getValidTargets(unit, enemyItem)),
+        expectedEnemy: positions(enemies.map((other: any) => other.position)),
+        ally: positions(game.targetSystem.getValidTargets(unit, allyItem)),
+        expectedAlly: positions(allies.map((other: any) => other.position)),
+        selfPosition: `${ux},${uy}`,
+        allUnits: positions(game.targetSystem.getValidTargets(unit, unitItem)),
+        expectedAllUnits: positions(liveUnits.map((other: any) => other.position)),
+        tiles: positions(game.targetSystem.getValidTargets(unit, tileItem)),
+        expectedTiles: positions(expectedTiles),
+        union: positions(game.targetSystem.getValidTargets(unit, unionItem)),
+        recursive: positions(game.targetSystem.getValidTargetsRecursive(unit, parent)),
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.enemy).toEqual(result!.expectedEnemy);
+    expect(result!.ally).toEqual(result!.expectedAlly);
+    expect(result!.ally).toContain(result!.selfPosition);
+    expect(result!.allUnits).toEqual(result!.expectedAllUnits);
+    expect(result!.tiles).toEqual(result!.expectedTiles);
+    expect(result!.union).toEqual(result!.expectedAllUnits);
+    expect(result!.recursive).toEqual(result!.expectedAllUnits);
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 38 exact string references; 23 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 41 exact string references; 31 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 88 files, 48,248 lines | Builds |
-| Browser regression suite | n/a | 62 Playwright tests | 62/62 passing |
+| TypeScript runtime | n/a | 89 files, 48,367 lines | Builds |
+| Browser regression suite | n/a | 63 Playwright tests | 63/63 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,21 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Item valid-target hook slice:**
+  - Added a Python-shaped `TargetSystem` and the union-resolved `validTargets`
+    component hook for `target_tile`, `target_unit`, `target_enemy`, and
+    `target_ally`, followed by Manhattan item-range intersection.
+  - Routed player weapon discovery through the target system instead of a
+    hard-coded enemy scan, and added recursive multi/sequence target discovery;
+    sequence children must each have at least one valid target.
+  - Added a fixture regression covering ally/enemy/unit/tile sets, self-targeting,
+    component union policy, map-edge range filtering, and recursive child unions.
+    Item coverage advanced to **41/201 exact references** and **31/201 matching
+    hook surfaces**; full harness result: **63/63 passing**.
+  - Remaining target-system work is explicit: expression/special-range and
+    empty/traversable restrictions, fog/LOS, splash, target counts, and the
+    interactive non-weapon/sequence selection flow.
 
 - **Recursive multi/sequence item runtime slice:**
   - Added recursive `ItemObject.subitems`/`parentItem` graphs and ownership
@@ -601,8 +616,10 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 
 ### P3 — Item and Skill Component System
 
-- [ ] Map all Python item component NIDs to web hooks and identify generated aliases
-- [ ] Map all Python skill component NIDs to web hooks and identify generated aliases
+- [x] Map all Python item component NIDs to web hooks and identify generated aliases
+- [x] Map all Python skill component NIDs to web hooks and identify generated aliases
+- [x] Implement basic item `valid_targets` union hooks (`target_tile`, `target_unit`,
+  `target_enemy`, `target_ally`), range intersection, and recursive child discovery
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -667,6 +684,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Map and implement the first high-usage item target/use hook family.
-2. Integrate multi/sequence child selection into targeting and item-use flows.
+1. Implement target restrictions, special/equation range, fog/LOS, splash, and
+   target-count policies in `TargetSystem`.
+2. Integrate staff/item and multi/sequence child selection into the interactive
+   targeting and item-use flows.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
