@@ -80,6 +80,8 @@ export interface ItemSaveData {
   iconNid: string;
   iconIndex: [number, number];
   components: [string, any][];
+  /** Optional for saves written before runtime item-data persistence. */
+  data?: [string, any][];
   uses: number;
   maxUses: number;
   droppable: boolean;
@@ -412,6 +414,7 @@ function serializeItem(item: ItemObject, mapKey: string): ItemSaveData {
     iconNid: item.iconNid,
     iconIndex: [item.iconIndex[0], item.iconIndex[1]],
     components,
+    data: Array.from(item.data.entries()),
     uses: item.uses,
     maxUses: item.maxUses,
     droppable: item.droppable,
@@ -819,9 +822,18 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       const item = new ItemCtor(prefab);
 
       // Override runtime state from save
+      item.name = itemData.name;
+      item.desc = itemData.desc;
       item.uses = itemData.uses;
       item.maxUses = itemData.maxUses;
       item.droppable = itemData.droppable;
+      item.data.clear();
+      for (const [k, v] of itemData.data ?? []) item.data.set(k, v);
+      if (!itemData.data) {
+        const chapterUses = item.components.has('c_uses') && !item.components.has('uses');
+        if (item.maxUses > 0) item.data.set(chapterUses ? 'starting_c_uses' : 'starting_uses', item.maxUses);
+        if (item.maxUses > 0) item.data.set(chapterUses ? 'c_uses' : 'uses', item.uses);
+      }
 
       // Override component values from save (they may have been modified at runtime)
       (item as any).components = new Map<string, any>();

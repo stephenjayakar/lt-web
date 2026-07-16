@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 195,
-    "dispatcherPythonNids": 184,
-    "itemReferencedComponentNids": 34,
+    "parserRecognizedPythonNids": 201,
+    "dispatcherPythonNids": 190,
+    "itemReferencedComponentNids": 35,
     "itemHookMappedComponentNids": 23,
     "skillReferencedComponentNids": 29,
     "skillHookMappedComponentNids": 55,
     "structuralStatuses": {
-      "dispatched-unverified": 172,
+      "dispatched-unverified": 178,
       "missing-dispatch": 11,
-      "missing-parser": 60,
+      "missing-parser": 54,
       "stub-hint": 12
     }
   },
@@ -2618,12 +2618,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1727
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_item_data",
@@ -2643,12 +2643,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1749
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_item_droppable",
@@ -2667,12 +2667,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1761
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "break_item",
@@ -2692,12 +2692,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1771
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "change_item_name",
@@ -2716,12 +2716,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1797
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "change_item_desc",
@@ -2740,12 +2740,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1804
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "add_item_to_multiitem",

@@ -808,7 +808,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7482
+          "line": 7556
         },
         {
           "source": "src/native.ts",
@@ -901,11 +901,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9362
+          "line": 9436
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9385
+          "line": 9459
         }
       ],
       "matchingWebHooks": [],
@@ -1158,19 +1158,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6884
+          "line": 6958
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 83
+          "line": 85
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 176
+          "line": 180
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 250
+          "line": 254
         },
         {
           "source": "src/events/python-events.ts",
@@ -2751,7 +2751,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 73
+          "line": 100
         }
       ],
       "matchingWebHooks": [
@@ -2858,7 +2858,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3703
+          "line": 3707
         },
         {
           "source": "src/objects/item.ts",
@@ -2866,7 +2866,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 77
+          "line": 104
         }
       ],
       "matchingWebHooks": [
@@ -3010,7 +3010,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3715
+          "line": 3719
         }
       ],
       "matchingWebHooks": [
@@ -4062,7 +4062,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9554
+          "line": 9628
         }
       ],
       "matchingWebHooks": [

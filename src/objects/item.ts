@@ -11,13 +11,16 @@ import type { UnitObject } from './unit';
  */
 export class ItemObject {
   readonly nid: NID;
-  readonly name: string;
-  readonly desc: string;
+  name: string;
+  desc: string;
   readonly iconNid: NID;
   readonly iconIndex: [number, number];
 
   /** Component store keyed by component NID. */
   readonly components: Map<string, any>;
+
+  /** Mutable runtime data populated by item components (uses, counters, event fields). */
+  readonly data: Map<string, any>;
 
   /** The unit currently holding this item (null if unowned / convoy). */
   owner: UnitObject | null = null;
@@ -36,15 +39,26 @@ export class ItemObject {
     for (const [compNid, value] of prefab.components) {
       this.components.set(compNid, value);
     }
+    this.data = new Map<string, any>();
 
     // Derive uses from the "uses" component if present.
     const usesValue = this.components.get('uses');
     if (usesValue != null) {
       this.maxUses = typeof usesValue === 'number' ? usesValue : Number(usesValue);
       this.uses = this.maxUses;
+      this.data.set('starting_uses', this.maxUses);
+      this.data.set('uses', this.uses);
     } else {
-      this.maxUses = 0;
-      this.uses = 0;
+      const cUsesValue = this.components.get('c_uses');
+      if (cUsesValue != null) {
+        this.maxUses = typeof cUsesValue === 'number' ? cUsesValue : Number(cUsesValue);
+        this.uses = this.maxUses;
+        this.data.set('starting_c_uses', this.maxUses);
+        this.data.set('c_uses', this.uses);
+      } else {
+        this.maxUses = 0;
+        this.uses = 0;
+      }
     }
   }
 
@@ -58,6 +72,19 @@ export class ItemObject {
 
   getComponent<T = any>(name: string): T | undefined {
     return this.components.get(name) as T | undefined;
+  }
+
+  /** Update runtime data while keeping the web uses fields synchronized. */
+  setData(key: string, value: any): void {
+    this.data.set(key, value);
+    if (key === 'uses' || key === 'c_uses') this.uses = Number(value);
+    if (key === 'starting_uses' || key === 'starting_c_uses') this.maxUses = Number(value);
+  }
+
+  setUses(value: number): void {
+    this.uses = value;
+    if (this.data.has('uses')) this.data.set('uses', value);
+    if (this.data.has('c_uses')) this.data.set('c_uses', value);
   }
 
   // ------------------------------------------------------------------
@@ -183,7 +210,7 @@ export class ItemObject {
   /** Decrement uses by 1. Returns true if the item is now broken (0 uses). */
   decrementUses(): boolean {
     if (this.maxUses > 0) {
-      this.uses = Math.max(0, this.uses - 1);
+      this.setUses(Math.max(0, this.uses - 1));
       return this.uses <= 0;
     }
     return false;
