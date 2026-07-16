@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 78 exact string references; 72 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 36 exact string references; 60 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 81 exact string references; 74 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 37 exact string references; 60 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 90 files, 49,596 lines | Builds |
-| Browser regression suite | n/a | 73 Playwright tests | 73/73 passing |
+| TypeScript runtime | n/a | 90 files, 49,873 lines | Builds |
+| Browser regression suite | n/a | 74 Playwright tests | 74/74 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,26 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Steal item/ability/AI parity slice:**
+  - Implemented shared `steal` and `gba_steal` legality: STEAL_ATK/STEAL_DEF
+    equations, separate accessory/non-accessory capacity, locked/unstealable
+    exclusion, generic Steal's unequipped-item rule, and GBA Steal's
+    non-weapon/non-spell rule.
+  - Skill-provided Steal now appears as an action-menu ability backed by the
+    project's `Steal` item prefab; inventory Steal items use the Item menu. Both
+    route through map target selection, an exact defender-inventory choice, and
+    one-sided auto-hit combat. Utility combat items without a damage hook no
+    longer inherit STR/MAG damage.
+  - Successful Steal queues a reversible item transfer and steal record, marks
+    AI-stolen items droppable, grants component EXP/durability, and shows a
+    post-combat stole-item banner. AI Steal behavior now chooses the most
+    valuable legal item instead of falling through to weapon attacks.
+  - Added equation, capacity, generic/GBA, AI choice, player UI, zero-damage,
+    undo/redo, records, and save/load coverage. Item coverage advanced to
+    **81/201 exact references / 74 hook surfaces** and skill coverage to
+    **37/241 exact references / 60 hook surfaces**; harness inventory is now
+    **74 tests**, all passing in the full serial gate.
 
 - **Hit-resolved hostile status-staff combat slice:**
   - Routed non-weapon status spells such as Berserk, Sleep, and Silence from the
@@ -756,6 +776,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Apply core-item fixed EXP/WEXP and multiplier policies through reversible actions
 - [x] Route hostile hit-resolved status staves through alternate accuracy/avoid,
   one-sided combat playback, hit-gated status/durability, fixed EXP/WEXP, and rank-up UI
+- [x] Implement generic/GBA Steal target and inventory choice, equation/capacity
+  restrictions, reversible transfer/records, player ability UI, and value-based AI selection
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -820,8 +842,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement Steal's enemy/inventory target flow, item eligibility/capacity rules,
-   reversible transfer, AI use, and save/turnwheel regression coverage.
-2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
+1. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
    splash empowerment/alternate-splash hooks.
-3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
+2. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
+3. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
+   and fully reversible HP/EXP/death result actions.

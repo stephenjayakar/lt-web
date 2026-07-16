@@ -32,6 +32,8 @@ export interface CombatResults {
   attackerWexpGained: number;
   /** Weapon rank crossed by the initiating unit, if any. */
   attackerRankUp: WeaponRankUp | null;
+  /** Item selected by a successful Steal hook, pending reversible transfer. */
+  stolenItem: import('../objects/item').ItemObject | null;
 }
 
 /** Duration constants (milliseconds) */
@@ -321,6 +323,7 @@ export class MapCombat {
       droppedItem,
       attackerWexpGained: componentResults.attackerWexpGained,
       attackerRankUp: componentResults.attackerRankUp,
+      stolenItem: componentResults.stolenItem,
     };
   }
 

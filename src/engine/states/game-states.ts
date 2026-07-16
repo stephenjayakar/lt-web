@@ -49,6 +49,7 @@ import {
   ChangeUnitNoteAction,
   ChangeItemTextAction,
   SetItemDroppableAction,
+  UpdateRecordsAction,
   SetItemDataAction,
   SetItemUsesAction,
   StoreItemAction,
@@ -87,6 +88,7 @@ import {
   numTargets,
   allowSameTarget,
   allowLessThanMaxTargets,
+  stealItemRestrict,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -1444,6 +1446,7 @@ export class MenuState extends State {
   private menu: ChoiceMenu | null = null;
   private previousPosition: [number, number] | null = null;
   private validRegions: RegionData[] = [];
+  private stealAbilityItem: ItemObject | null = null;
 
   override begin(): StateResult {
     const game = getGame();
@@ -1471,6 +1474,21 @@ export class MenuState extends State {
     const targets = getTargetsInRange(unit, ux, uy);
     if (targets.length > 0) {
       options.push({ label: 'Attack', value: 'attack', enabled: true });
+    }
+
+    // Skill abilities are backed by item prefabs in LT. The Steal class skill
+    // resolves to the project's `Steal` item and uses ordinary item targeting.
+    this.stealAbilityItem = null;
+    if (unit.skills.some((skill: SkillObject) => skill.getComponent<string>('ability') === 'Steal')) {
+      const prefab = game.db.items.get('Steal');
+      if (prefab) {
+        const abilityItem = new ItemObjectClass(prefab);
+        abilityItem.owner = unit;
+        if ((game.targetSystem?.getValidTargets(unit, abilityItem).length ?? 0) > 0) {
+          this.stealAbilityItem = abilityItem;
+          options.push({ label: 'Steal', value: 'steal', enabled: true });
+        }
+      }
     }
 
     // Item option — if unit has usable healing/consumable items
@@ -1613,6 +1631,10 @@ export class MenuState extends State {
       } else if (value === 'item') {
         this.menu = null;
         game.state.change('item_use');
+      } else if (value === 'steal' && this.stealAbilityItem) {
+        game.memory.set('item_use_item', this.stealAbilityItem);
+        this.menu = null;
+        game.state.change('item_targeting');
       } else if (value === 'trade') {
         this.menu = null;
         game.state.change('trade');
@@ -2107,7 +2129,13 @@ export class ItemTargetingState extends MapState {
   private selectedTargets: [number, number][][] = [];
   private targetItemMenu: ChoiceMenu | null = null;
   private pendingTarget: [number, number] | null = null;
-  private repairableItems: ItemObject[] = [];
+  private selectableTargetItems: ItemObject[] = [];
+  private targetItemMode: 'repair' | 'steal' | null = null;
+
+  /** Kept as a read-only runtime alias for repair-menu diagnostics/tests. */
+  private get repairableItems(): ItemObject[] {
+    return this.targetItemMode === 'repair' ? this.selectableTargetItems : [];
+  }
 
   override begin(): StateResult {
     const game = getGame();
@@ -2133,7 +2161,8 @@ export class ItemTargetingState extends MapState {
     this.selectedTargets = [[]];
     this.targetItemMenu = null;
     this.pendingTarget = null;
-    this.repairableItems = [];
+    this.selectableTargetItems = [];
+    this.targetItemMode = null;
     if (!this.configureTargets(unit)) {
       game.memory.delete('item_use_item');
       game.state.back();
@@ -2195,12 +2224,34 @@ export class ItemTargetingState extends MapState {
 
     if (activeItem === this.item && activeItem.hasComponent('repair')) {
       const defender = game.board.getUnit(target[0], target[1]);
-      this.repairableItems = defender?.items.filter(isRepairableItem) ?? [];
-      if (this.repairableItems.length === 0) return;
+      this.selectableTargetItems = defender?.items.filter(isRepairableItem) ?? [];
+      if (this.selectableTargetItems.length === 0) return;
       this.pendingTarget = target;
-      const options: MenuOption[] = this.repairableItems.map((candidate, itemIndex) => ({
+      this.targetItemMode = 'repair';
+      const options: MenuOption[] = this.selectableTargetItems.map((candidate, itemIndex) => ({
         label: `${candidate.name} ${candidate.uses}/${candidate.maxUses}`,
         value: `repair_${itemIndex}`,
+        enabled: true,
+      }));
+      const [cameraX, cameraY] = game.camera.getOffset();
+      const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
+      const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
+      this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      return;
+    }
+
+    if (activeItem === this.item &&
+        (activeItem.hasComponent('steal') || activeItem.hasComponent('gba_steal'))) {
+      const defender = game.board.getUnit(target[0], target[1]);
+      this.selectableTargetItems = defender?.items.filter((candidate: ItemObject) =>
+        stealItemRestrict(unit, activeItem, defender, candidate, game.db),
+      ) ?? [];
+      if (!defender || this.selectableTargetItems.length === 0) return;
+      this.pendingTarget = target;
+      this.targetItemMode = 'steal';
+      const options: MenuOption[] = this.selectableTargetItems.map((candidate, itemIndex) => ({
+        label: candidate.name,
+        value: `steal_${itemIndex}`,
         enabled: true,
       }));
       const [cameraX, cameraY] = game.camera.getOffset();
@@ -2266,19 +2317,36 @@ export class ItemTargetingState extends MapState {
       if ('back' in menuResult) {
         this.targetItemMenu = null;
         this.pendingTarget = null;
-        this.repairableItems = [];
+        this.selectableTargetItems = [];
+        this.targetItemMode = null;
         return;
       }
-      const itemIndex = Number.parseInt(menuResult.selected.replace('repair_', ''), 10);
+      const itemIndex = Number.parseInt(menuResult.selected.replace(/^(repair|steal)_/, ''), 10);
       const unit: UnitObject | null = game.selectedUnit;
-      const targetItem = this.repairableItems[itemIndex];
-      if (unit && this.item && this.pendingTarget && targetItem &&
+      const targetItem = this.selectableTargetItems[itemIndex];
+      if (this.targetItemMode === 'steal' && unit && this.item && this.pendingTarget && targetItem) {
+        const defender = game.board.getUnit(this.pendingTarget[0], this.pendingTarget[1]);
+        if (defender) {
+          this.item.data.set('target_item', targetItem);
+          game.memory.set('combat_item', this.item);
+          game.combatTarget = defender;
+          game.highlight.clear();
+          this.targetItemMenu = null;
+          this.pendingTarget = null;
+          this.selectableTargetItems = [];
+          this.targetItemMode = null;
+          game.state.change('combat');
+        }
+        return;
+      }
+      if (this.targetItemMode === 'repair' && unit && this.item && this.pendingTarget && targetItem &&
           applyCoreTargetedItem(unit, this.item, this.pendingTarget, targetItem)) {
         game.memory.delete('item_use_item');
         game.highlight.clear();
         this.targetItemMenu = null;
         this.pendingTarget = null;
-        this.repairableItems = [];
+        this.selectableTargetItems = [];
+        this.targetItemMode = null;
         game.state.back();
       }
       return;
@@ -2327,7 +2395,8 @@ export class ItemTargetingState extends MapState {
   override end(): StateResult {
     this.targetItemMenu = null;
     this.pendingTarget = null;
-    this.repairableItems = [];
+    this.selectableTargetItems = [];
+    this.targetItemMode = null;
     this.sequenceIndex = 0;
     this.selectedTargets = [];
     getGame().highlight.clear();
@@ -3049,7 +3118,7 @@ export class TargetingState extends MapState {
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'rank_up' | 'cleanup';
+type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'cleanup';
 
 export class CombatState extends State {
   readonly name = 'combat';
@@ -3099,6 +3168,8 @@ export class CombatState extends State {
   // Battle background panorama image
   private battleBackgroundImg: HTMLImageElement | null = null;
   private rankUpBanner: Banner | null = null;
+  private stoleBanner: Banner | null = null;
+  private stoleBannerShown: boolean = false;
 
   /** Get whichever combat controller is active (AnimationCombat or MapCombat). */
   private getActiveCombat(): MapCombat | AnimationCombat | null {
@@ -3171,6 +3242,8 @@ export class CombatState extends State {
     this.expBar = null;
     this.portraitImg = null;
     this.rankUpBanner = null;
+    this.stoleBanner = null;
+    this.stoleBannerShown = false;
 
     // Clear all highlights and hide cursor/HUD before combat starts
     // (Python does this in interaction.py and the red_cursor state)
@@ -3437,6 +3510,23 @@ export class CombatState extends State {
         const done = activeCombat.update(realDelta);
         if (done) {
           this.results = activeCombat.applyResults();
+          if (this.results.stolenItem) {
+            const stolenItem = this.results.stolenItem;
+            game.actionLog.doAction(new MoveItemBetweenUnitsAction(
+              activeCombat.defender,
+              activeCombat.attacker,
+              stolenItem,
+            ));
+            if (activeCombat.attacker.team !== 'player') {
+              game.actionLog.doAction(new SetItemDroppableAction(stolenItem, true));
+            }
+            game.actionLog.doAction(new UpdateRecordsAction(
+              'steal',
+              activeCombat.attacker.nid,
+              activeCombat.defender.nid,
+              stolenItem.nid,
+            ));
+          }
           if (this.results.attackerRankUp) {
             const rankUp = this.results.attackerRankUp;
             const weaponType = activeCombat.attackItem.getComponent<string>('weapon_type');
@@ -3684,6 +3774,15 @@ export class CombatState extends State {
         break;
       }
 
+      case 'stole': {
+        if (!this.stoleBanner || this.stoleBanner.update(realDelta)) {
+          this.stoleBanner = null;
+          this.stoleBannerShown = true;
+          this.startRankUpOrCleanup();
+        }
+        break;
+      }
+
       case 'cleanup': {
         const attacker = activeCombat!.attacker;
         const defender = activeCombat!.defender;
@@ -3832,6 +3931,16 @@ export class CombatState extends State {
 
   private startRankUpOrCleanup(): void {
     const activeCombat = this.getActiveCombat();
+    if (this.results?.stolenItem && activeCombat && !this.stoleBannerShown) {
+      this.stoleBanner = new Banner(
+        `${activeCombat.attacker.name} stole ${this.results.stolenItem.name}.`,
+        undefined,
+        1800,
+      );
+      this.phase = 'stole';
+      this.phaseTimer = 0;
+      return;
+    }
     const rankUp = this.results?.attackerRankUp;
     const weaponType = activeCombat?.attackItem.getComponent<string>('weapon_type');
     if (rankUp && activeCombat && weaponType) {
@@ -4458,6 +4567,9 @@ export class CombatState extends State {
     if (this.phase === 'rank_up' && this.rankUpBanner) {
       this.rankUpBanner.draw(surf);
     }
+    if (this.phase === 'stole' && this.stoleBanner) {
+      this.stoleBanner.draw(surf);
+    }
   }
 
   /**
@@ -4656,8 +4768,12 @@ export class AIState extends MapState {
     const action = game.aiController.getAction(unit);
 
     switch (action.type) {
-      case 'attack': {
+      case 'attack':
+      case 'steal': {
         if (action.targetPosition && action.targetUnit) {
+          if (action.type === 'steal' && action.item && action.targetItem) {
+            action.item.data.set('target_item', action.targetItem);
+          }
           // Move unit to attack position
           const prevPos: [number, number] | null = unit.position
             ? [unit.position[0], unit.position[1]]
@@ -4986,6 +5102,7 @@ export class AIState extends MapState {
       attacker.items.splice(weaponIdx, 1);
       attacker.items.unshift(weapon);
     }
+    if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
 
     // CombatState.begin() reads these to set up the MapCombat instance
     game.selectedUnit = attacker;

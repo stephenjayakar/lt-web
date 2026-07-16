@@ -76,6 +76,10 @@ export class TargetSystem {
         board: this.board,
         db: this.db,
         game: this.game,
+        evaluateEquation: (equationNid, equationUnit, equationItem) => {
+          const expression = this.db.getEquation(equationNid) ?? equationNid;
+          return evaluateEquation(expression, equationUnit, { db: this.db, item: equationItem });
+        },
       });
     });
 

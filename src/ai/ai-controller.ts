@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import type { UnitObject } from '../objects/unit';
-import type { ItemObject } from '../objects/item';
+import { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import type { PathSystem } from '../pathfinding/path-system';
@@ -19,16 +19,19 @@ import {
   computeCrit,
   canDouble,
   getEquippedWeapon,
+  evaluateEquation,
 } from '../combat/combat-calcs';
+import { stealItemRestrict } from '../combat/item-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 
 export interface AIAction {
-  type: 'attack' | 'move' | 'wait' | 'use_item' | 'interact';
+  type: 'attack' | 'steal' | 'move' | 'wait' | 'use_item' | 'interact';
   unit: UnitObject;
   targetPosition?: [number, number]; // position to move to
   targetUnit?: UnitObject; // unit to attack/heal
   item?: ItemObject; // weapon or item to use
+  targetItem?: ItemObject; // exact defender inventory item selected for Steal
   movePath?: [number, number][]; // path to follow
   regionNid?: string; // region NID for interact actions
   regionSubNid?: string; // region sub_nid for interact actions (e.g., 'Destructible')
@@ -172,11 +175,9 @@ export class AIController {
     }
 
     if (action === 'Steal') {
-      // Steal behaves like Attack but uses steal ability
-      // For now, fall through to attack logic
       const targets = this.getTargets(unit, behaviour);
       const enemies = this.filterByViewRange(unit, targets, behaviour.view_range);
-      const primaryAction = this.primaryAI(unit, validMoves, enemies, offenseBias);
+      const primaryAction = this.stealPrimaryAI(unit, validMoves, enemies);
       if (primaryAction) return primaryAction;
       const secondaryAction = this.secondaryAI(unit, validMoves, enemies, behaviour.view_range);
       return secondaryAction;
@@ -517,7 +518,69 @@ export class AIController {
         maxRange = Math.max(maxRange, item.getMaxRange());
       }
     }
+    for (const item of this.getStealItems(unit)) maxRange = Math.max(maxRange, item.getMaxRange());
     return maxRange;
+  }
+
+  private getStealItems(unit: UnitObject): ItemObject[] {
+    const items = unit.items.filter((item) =>
+      (item.hasComponent('steal') || item.hasComponent('gba_steal')) && item.hasUsesRemaining(),
+    );
+    if (unit.skills.some((skill) => skill.getComponent<string>('ability') === 'Steal')) {
+      const prefab = this.db.items.get('Steal');
+      if (prefab) {
+        const ability = new ItemObject(prefab);
+        ability.owner = unit;
+        items.push(ability);
+      }
+    }
+    return items;
+  }
+
+  /** Choose the highest-value legal inventory item, matching Python Steal AI. */
+  private stealPrimaryAI(
+    unit: UnitObject,
+    validMoves: [number, number][],
+    enemies: UnitObject[],
+  ): AIAction | null {
+    let best: AIAction | null = null;
+    let bestValue = -Infinity;
+    const stealItems = this.getStealItems(unit);
+    const atkExpr = this.db.getEquation('STEAL_ATK') ?? 'SPD';
+    const stealAtk = evaluateEquation(atkExpr, unit, { db: this.db });
+
+    for (const stealItem of stealItems) {
+      for (const enemy of enemies) {
+        if (!enemy.position || enemy.isDead()) continue;
+        const defExpr = this.db.getEquation('STEAL_DEF') ?? 'SPD';
+        if (stealAtk < evaluateEquation(defExpr, enemy, { db: this.db })) continue;
+        const legal = enemy.items.filter((candidate) =>
+          stealItemRestrict(unit, stealItem, enemy, candidate, this.db),
+        );
+        if (legal.length === 0) continue;
+        const targetItem = legal.reduce((most, candidate) =>
+          candidate.getValue() >= most.getValue() ? candidate : most,
+        );
+        for (const pos of this.getAttackPositions(validMoves, enemy, stealItem)) {
+          const value = targetItem.getValue();
+          if (value < bestValue) continue;
+          bestValue = value;
+          const path = unit.position
+            ? this.pathSystem.getPath(unit, pos[0], pos[1], this.board)
+            : null;
+          best = {
+            type: 'steal',
+            unit,
+            targetPosition: pos,
+            targetUnit: enemy,
+            targetItem,
+            item: stealItem,
+            movePath: path ?? [pos],
+          };
+        }
+      }
+    }
+    return best;
   }
 
   // ====================================================================

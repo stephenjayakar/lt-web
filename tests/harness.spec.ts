@@ -1219,6 +1219,7 @@ test.describe('Event command parity', () => {
       const oldWexp = attacker.wexp.Staff;
       attacker.exp = 0;
       attacker.wexp.Staff = 29;
+      const defenderHp = defender.currentHp;
 
       const formulaHit = computeHit(attacker, item, defender, game.db, game.board, game);
       const expectedHit = Math.max(0, Math.min(100,
@@ -1238,6 +1239,7 @@ test.describe('Event command parity', () => {
         resultExp: hitResults.expGained,
         resultWexp: hitResults.attackerWexpGained,
         rank: hitResults.attackerRankUp?.rank ?? null,
+        hp: defender.currentHp,
       };
 
       defender.skills = defender.skills.filter((skill: any) => skill.nid !== 'Sleep');
@@ -1253,6 +1255,7 @@ test.describe('Event command parity', () => {
         wexp: attacker.wexp.Staff,
         resultExp: missResults.expGained,
         resultWexp: missResults.attackerWexpGained,
+        hp: defender.currentHp,
       };
 
       attacker.items.splice(attacker.items.indexOf(item), 1);
@@ -1270,6 +1273,7 @@ test.describe('Event command parity', () => {
       return {
         formulaHit,
         expectedHit,
+        defenderHp,
         spellSemantics: {
           canBeCountered: canBeCountered(attacker, item),
           canDouble: canDouble(attacker, item),
@@ -1290,6 +1294,7 @@ test.describe('Event command parity', () => {
       resultExp: 35,
       resultWexp: 5,
       rank: 'D',
+      hp: result!.defenderHp,
     });
     expect(result!.afterMiss).toEqual({
       hasStatus: false,
@@ -1298,6 +1303,7 @@ test.describe('Event command parity', () => {
       wexp: 34,
       resultExp: 0,
       resultWexp: 0,
+      hp: result!.defenderHp,
     });
   });
 
@@ -1365,6 +1371,193 @@ test.describe('Event command parity', () => {
       return snapshot;
     }, setup!);
     expect(applied).toEqual({ state: 'free', finished: true, hasStatus: true, uses: 1 });
+  });
+
+  test('Steal enforces LT eligibility and flows through item choice, combat, rewind, AI, and save', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { stealItemRestrict } = await import('/src/combat/item-system.ts');
+      const caster = game.units.get('Eirika');
+      const target = game.board.getAllUnits().find((unit: any) =>
+        unit.position && !game.db.areAllied(caster.team, unit.team));
+      const stealSkill = game.db.skills.get('Steal');
+      const stealPrefab = game.db.items.get('Steal');
+      if (!caster?.position || !target?.position || !stealSkill || !stealPrefab) return null;
+
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      let weapon = caster.items.find((item: any) => item.isWeapon());
+      if (!weapon) weapon = makeItem('_CasterWeapon', [
+        ['weapon', null], ['target_enemy', null], ['damage', 1], ['hit', 100],
+        ['min_range', 1], ['max_range', 1],
+      ]);
+      caster.items = [weapon];
+      weapon.owner = caster;
+      caster.skills = caster.skills.filter((skill: any) => skill.nid !== 'Steal');
+      caster.skills.push(new SkillObject(stealSkill));
+      caster.stats.SPD = 30;
+      caster.finished = false;
+      caster.hasAttacked = false;
+      caster.exp = 0;
+
+      const targetWeapon = makeItem('_EquippedWeapon', [
+        ['weapon', null], ['target_enemy', null], ['damage', 1], ['hit', 100],
+        ['min_range', 1], ['max_range', 1], ['value', 500],
+      ]);
+      const gem = makeItem('_StealGem', [['value', 1000]]);
+      const expensive = makeItem('_StealExpensive', [['value', 3000]]);
+      const locked = makeItem('_StealLocked', [['locked', null], ['value', 9000]]);
+      const spareWeapon = makeItem('_SpareWeapon', [['weapon', null], ['value', 4000]]);
+      target.items = [targetWeapon, gem, expensive, locked, spareWeapon];
+      target.items.forEach((item: any) => { item.owner = target; });
+      target.stats.SPD = 5;
+
+      const adjacent = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => [caster.position[0] + dx, caster.position[1] + dy])
+        .find(([x, y]) => game.board.inBounds(x, y) && !game.board.getUnit(x, y));
+      if (!adjacent) return null;
+      game.board.moveUnit(target, adjacent[0], adjacent[1]);
+
+      const ability = new ItemObject(stealPrefab);
+      ability.owner = caster;
+      const generic = makeItem('_GenericSteal', [
+        ['spell', null], ['steal', null], ['target_enemy', null], ['min_range', 1], ['max_range', 1],
+      ]);
+      const restrictions = {
+        gem: stealItemRestrict(caster, ability, target, gem, game.db),
+        equippedWeapon: stealItemRestrict(caster, ability, target, targetWeapon, game.db),
+        spareWeapon: stealItemRestrict(caster, ability, target, spareWeapon, game.db),
+        locked: stealItemRestrict(caster, ability, target, locked, game.db),
+        genericSpareWeapon: stealItemRestrict(caster, generic, target, spareWeapon, game.db),
+      };
+      const highSpeedValid = game.targetSystem.getValidTargets(caster, ability)
+        .some(([x, y]: [number, number]) => x === adjacent[0] && y === adjacent[1]);
+      caster.stats.SPD = 0;
+      const lowSpeedValid = game.targetSystem.getValidTargets(caster, ability)
+        .some(([x, y]: [number, number]) => x === adjacent[0] && y === adjacent[1]);
+      caster.stats.SPD = 30;
+
+      const filler = Array.from({ length: Number(game.db.getConstant('num_items', 5)) - 1 }, (_, i) =>
+        makeItem(`_StealFiller${i}`, [['value', 1]]));
+      caster.items = [weapon, ...filler];
+      caster.items.forEach((item: any) => { item.owner = caster; });
+      const fullBlocks = !stealItemRestrict(caster, ability, target, gem, game.db);
+      caster.items = [weapon];
+      weapon.owner = caster;
+
+      const aiAction = (game.aiController as any).stealPrimaryAI(
+        caster,
+        [caster.position],
+        [target],
+      );
+      const aiChoice = {
+        type: aiAction?.type ?? null,
+        item: aiAction?.targetItem?.nid ?? null,
+      };
+
+      game.selectedUnit = caster;
+      game.cursor.setPos(caster.position[0], caster.position[1]);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const hpBefore = target.currentHp;
+      game.state.change('menu');
+      return {
+        casterNid: caster.nid,
+        targetNid: target.nid,
+        beforeActionIndex,
+        hpBefore,
+        restrictions,
+        highSpeedValid,
+        lowSpeedValid,
+        fullBlocks,
+        aiChoice,
+      };
+    });
+    expect(setup).not.toBeNull();
+    expect(setup!.restrictions).toEqual({
+      gem: true,
+      equippedWeapon: false,
+      spareWeapon: false,
+      locked: false,
+      genericSpareWeapon: true,
+    });
+    expect(setup!.highSpeedValid).toBe(true);
+    expect(setup!.lowSpeedValid).toBe(false);
+    expect(setup!.fullBlocks).toBe(true);
+    expect(setup!.aiChoice).toEqual({ type: 'steal', item: '_StealExpensive' });
+
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('menu');
+    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_targeting');
+    await stepFrames(page, 1, 'SELECT'); // enemy
+    await stepFrames(page, 1, 'SELECT'); // first legal inventory item (gem)
+    await stepFrames(page, 3);
+    expect((await getState(page)).currentStateName).toBe('combat');
+    await stepFrames(page, 360);
+
+    const result = await page.evaluate(async ({ casterNid, targetNid, beforeActionIndex, hpBefore }) => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const snapshot = () => ({
+        casterHasGem: caster.items.some((item: any) => item.nid === '_StealGem'),
+        targetHasGem: target.items.some((item: any) => item.nid === '_StealGem'),
+        records: game.records.steal.length,
+      });
+      const applied = {
+        ...snapshot(),
+        state: game.state.getCurrentState()?.name,
+        hp: target.currentHp,
+        exp: caster.exp,
+        finished: caster.finished,
+      };
+      const actionLog = game.actionLog as any;
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = snapshot();
+
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 91, 'battle');
+      const gem = caster.items.find((item: any) => item.nid === '_StealGem');
+      caster.items.splice(caster.items.indexOf(gem), 1);
+      target.items.push(gem);
+      gem.owner = target;
+      game.records.steal = [];
+      const loaded = await loadGame(game, 91);
+      const loadedCaster = game.units.get(casterNid);
+      const loadedTarget = game.units.get(targetNid);
+      const persisted = {
+        casterHasGem: loadedCaster.items.some((item: any) => item.nid === '_StealGem'),
+        targetHasGem: loadedTarget.items.some((item: any) => item.nid === '_StealGem'),
+        records: game.records.steal.length,
+      };
+      await deleteSave(gameNid, 91);
+      return { applied, reversed, redone, loaded, persisted, hpBefore };
+    }, setup!);
+
+    expect(result.applied).toEqual({
+      casterHasGem: true,
+      targetHasGem: false,
+      records: 1,
+      state: 'free',
+      hp: setup!.hpBefore,
+      exp: 11,
+      finished: true,
+    });
+    expect(result.reversed).toEqual({ casterHasGem: false, targetHasGem: true, records: 0 });
+    expect(result.redone).toEqual({ casterHasGem: true, targetHasGem: false, records: 1 });
+    expect(result.loaded).toBe(true);
+    expect(result.persisted).toEqual({ casterHasGem: true, targetHasGem: false, records: 1 });
   });
 
   test('healing staff flows through item menu, mouse targeting, and reversible actions', async ({ page }) => {

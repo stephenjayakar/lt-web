@@ -1115,6 +1115,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       droppedItem,
       attackerWexpGained: componentResults.attackerWexpGained,
       attackerRankUp: componentResults.attackerRankUp,
+      stolenItem: componentResults.stolenItem,
     };
   }
 
