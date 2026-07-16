@@ -47,6 +47,7 @@ import type { OverworldMovementManager } from './overworld/overworld-movement';
 import { RoamInfo } from './roam-info';
 import { Recordkeeper } from './records';
 import { GameQueryEngine } from './query-engine';
+import { TargetSystem } from './target-system';
 
 /**
  * GameState — The god object holding references to every major subsystem
@@ -58,6 +59,7 @@ export class GameState {
   resources: ResourceManager;
   state: StateMachine;
   board: GameBoard | null;
+  targetSystem: TargetSystem | null;
   camera: Camera;
   cursor: Cursor;
   phase: PhaseController | null;
@@ -183,6 +185,7 @@ export class GameState {
 
     // Subsystems that depend on level data — null until loadLevel()
     this.board = null;
+    this.targetSystem = null;
     this.phase = null;
     this.pathSystem = null;
     this.eventManager = null;
@@ -345,6 +348,7 @@ export class GameState {
     this.currentLevel = null;
     this.tilemap = null;
     this.board = null;
+    this.targetSystem = null;
     this.pathSystem = null;
     this.eventManager = null;
     this.aiController = null;
@@ -471,6 +475,7 @@ export class GameState {
 
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
+    this.targetSystem = new TargetSystem(this.db, this.board);
     this.board.initFromTilemap(this.tilemap);
 
     // c2. Initialize fog of war grids and opacity grid --------------------
@@ -656,6 +661,7 @@ export class GameState {
 
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
+    this.targetSystem = new TargetSystem(this.db, this.board);
     this.board.initFromTilemap(this.tilemap);
 
     // Reinitialize fog of war grids and opacity

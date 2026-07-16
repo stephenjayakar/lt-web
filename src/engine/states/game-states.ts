@@ -285,7 +285,7 @@ function getUnitUnderCursor(): UnitObject | null {
   return getBoard().getUnit(pos.x, pos.y);
 }
 
-/** Get all enemies of a unit within weapon range from a specific position. */
+/** Get all component-valid unit targets within weapon range from a position. */
 function getTargetsInRange(
   unit: UnitObject,
   fromX: number,
@@ -293,24 +293,8 @@ function getTargetsInRange(
 ): UnitObject[] {
   const game = getGame();
   const weapon = getEquippedWeapon(unit);
-  if (!weapon) return [];
-  const minRange = weapon.getMinRange();
-  const maxRange = weapon.getMaxRange();
-  const allUnits: UnitObject[] = getBoard().getAllUnits();
-  const targets: UnitObject[] = [];
-
-  for (const other of allUnits) {
-    if (other === unit) continue;
-    if (other.isDead() || !other.position) continue;
-    if (game.db.areAllied(unit.team, other.team)) continue;
-    const dist =
-      Math.abs(other.position[0] - fromX) +
-      Math.abs(other.position[1] - fromY);
-    if (dist >= minRange && dist <= maxRange) {
-      targets.push(other);
-    }
-  }
-  return targets;
+  if (!weapon || !game.targetSystem) return [];
+  return game.targetSystem.getValidUnitTargets(unit, weapon, [fromX, fromY]);
 }
 
 /** Get all adjacent allied units to a unit at a specific position. */

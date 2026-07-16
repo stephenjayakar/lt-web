@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~47,400 lines of TypeScript across 88
+systems. The engine currently spans **~48,400 lines of TypeScript across 89
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -432,7 +432,8 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Core Engine (`src/engine/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-state.ts` | ~1450 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
+| `game-state.ts` | ~1470 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
+| `target-system.ts` | ~85 | Component target union, item-range filtering, recursive multi/sequence target discovery |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
 | `action.ts` | ~2455 | All game actions (Move, Damage, Heal, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
@@ -471,7 +472,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
 | `map-combat.ts` | ~555 | Map-mode combat (no animations) |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~247 | Item component dispatch |
+| `item-system.ts` | ~310 | Item component dispatch, including basic valid-target union hooks |
 | `skill-system.ts` | ~398 | Skill component dispatch |
 
 ### Events (`src/events/`)

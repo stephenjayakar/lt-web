@@ -11,6 +11,51 @@
 
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
+import type { GameBoard } from '../objects/game-board';
+import type { Database } from '../data/database';
+
+export type TargetPosition = [number, number];
+
+/**
+ * Union the positions contributed by LT's basic target components.
+ *
+ * Mirrors item_system_base.valid_targets(): every component that defines the
+ * hook contributes positions to one shared set. Range, fog, line-of-sight,
+ * splash, and target-restriction filtering belong to TargetSystem.
+ */
+export function validTargets(
+  unit: UnitObject,
+  item: ItemObject,
+  board: GameBoard,
+  db: Database,
+): TargetPosition[] {
+  const targets = new Map<string, TargetPosition>();
+  const add = (position: TargetPosition): void => {
+    targets.set(`${position[0]},${position[1]}`, position);
+  };
+
+  if (item.hasComponent('target_tile')) {
+    for (let x = 0; x < board.width; x++) {
+      for (let y = 0; y < board.height; y++) add([x, y]);
+    }
+  }
+
+  const targetUnits = item.hasComponent('target_unit');
+  const targetEnemies = item.hasComponent('target_enemy');
+  const targetAllies = item.hasComponent('target_ally');
+  if (targetUnits || targetEnemies || targetAllies) {
+    for (const other of board.getAllUnits()) {
+      if (!other.position || other.isDead()) continue;
+      if (targetUnits ||
+          (targetEnemies && !db.areAllied(unit.team, other.team)) ||
+          (targetAllies && db.areAllied(unit.team, other.team))) {
+        add([other.position[0], other.position[1]]);
+      }
+    }
+  }
+
+  return [...targets.values()];
+}
 
 // ============================================================
 // Value hooks (UNIQUE — return the first/only defined value)
