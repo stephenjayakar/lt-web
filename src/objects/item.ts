@@ -22,8 +22,17 @@ export class ItemObject {
   /** Mutable runtime data populated by item components (uses, counters, event fields). */
   readonly data: Map<string, any>;
 
-  /** The unit currently holding this item (null if unowned / convoy). */
-  owner: UnitObject | null = null;
+  private _owner: UnitObject | null = null;
+  /** Child instances for multi_item/sequence_item components. */
+  subitems: ItemObject[] = [];
+  parentItem: ItemObject | null = null;
+
+  /** Ownership propagates through the complete subitem tree like LT change_owner(). */
+  get owner(): UnitObject | null { return this._owner; }
+  set owner(value: UnitObject | null) {
+    this._owner = value;
+    for (const subitem of this.subitems) subitem.owner = value;
+  }
 
   uses: number;
   maxUses: number;
@@ -220,4 +229,26 @@ export class ItemObject {
   hasUsesRemaining(): boolean {
     return this.maxUses === 0 || this.uses > 0;
   }
+}
+
+/** Instantiate a prefab and its recursive multi/sequence children. */
+export function createItemTree(
+  prefab: ItemPrefab,
+  resolvePrefab: (nid: NID) => ItemPrefab | undefined,
+  ancestry: Set<NID> = new Set(),
+): ItemObject {
+  const item = new ItemObject(prefab);
+  if (ancestry.has(prefab.nid)) return item;
+  const childNids = item.getComponent<NID[]>('multi_item')
+    ?? item.getComponent<NID[]>('sequence_item')
+    ?? [];
+  const nextAncestry = new Set(ancestry).add(prefab.nid);
+  for (const childNid of childNids) {
+    const childPrefab = resolvePrefab(childNid);
+    if (!childPrefab) continue;
+    const child = createItemTree(childPrefab, resolvePrefab, nextAncestry);
+    child.parentItem = item;
+    item.subitems.push(child);
+  }
+  return item;
 }

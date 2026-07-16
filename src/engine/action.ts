@@ -1993,6 +1993,58 @@ export class SetItemUsesAction extends Action {
   reverse(): void { this.item.setUses(this.oldValue); }
 }
 
+/** Attach a child item tree to a multi/sequence parent. */
+export class AddSubItemAction extends Action {
+  private parent: ItemObject;
+  private child: ItemObject;
+
+  constructor(parent: ItemObject, child: ItemObject) {
+    super();
+    this.parent = parent;
+    this.child = child;
+  }
+
+  execute(): void {
+    if (!this.parent.subitems.includes(this.child)) this.parent.subitems.push(this.child);
+    this.child.parentItem = this.parent;
+    this.child.owner = this.parent.owner;
+  }
+
+  reverse(): void {
+    const index = this.parent.subitems.indexOf(this.child);
+    if (index >= 0) this.parent.subitems.splice(index, 1);
+    this.child.parentItem = null;
+    this.child.owner = null;
+  }
+}
+
+/** Detach a child item while preserving its original position for turnwheel reversal. */
+export class RemoveSubItemAction extends Action {
+  private parent: ItemObject;
+  private child: ItemObject;
+  private index: number;
+
+  constructor(parent: ItemObject, child: ItemObject) {
+    super();
+    this.parent = parent;
+    this.child = child;
+    this.index = parent.subitems.indexOf(child);
+  }
+
+  execute(): void {
+    const index = this.parent.subitems.indexOf(this.child);
+    if (index >= 0) this.parent.subitems.splice(index, 1);
+    this.child.parentItem = null;
+    this.child.owner = null;
+  }
+
+  reverse(): void {
+    this.parent.subitems.splice(Math.max(0, this.index), 0, this.child);
+    this.child.parentItem = this.parent;
+    this.child.owner = this.parent.owner;
+  }
+}
+
 /** Mark a dead unit alive again. Placement is intentionally unchanged. */
 export class ResurrectAction extends Action {
   private unit: UnitObject;
