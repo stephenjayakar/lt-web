@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 201,
-    "dispatcherPythonNids": 190,
-    "itemReferencedComponentNids": 35,
+    "parserRecognizedPythonNids": 202,
+    "dispatcherPythonNids": 192,
+    "itemReferencedComponentNids": 36,
     "itemHookMappedComponentNids": 23,
     "skillReferencedComponentNids": 29,
     "skillHookMappedComponentNids": 55,
     "structuralStatuses": {
-      "dispatched-unverified": 178,
-      "missing-dispatch": 11,
-      "missing-parser": 54,
+      "dispatched-unverified": 180,
+      "missing-dispatch": 10,
+      "missing-parser": 53,
       "stub-hint": 12
     }
   },
@@ -2522,7 +2522,7 @@
       "nicknameRecognized": null,
       "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "dispatched-unverified"
     },
     {
@@ -2545,10 +2545,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "move_item_between_convoys",
@@ -2567,12 +2567,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1692
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_convoy",

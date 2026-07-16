@@ -47,12 +47,12 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
-| Event command NIDs | 255 | 201 recognized; 190 matching case labels | Partial |
-| Item component NIDs | 201 | 35 exact string references; 23 with matching hook surfaces | Partial/Unknown |
+| Event command NIDs | 255 | 202 recognized; 192 matching case labels | Partial |
+| Item component NIDs | 201 | 36 exact string references; 23 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 88 files, 47,925 lines | Builds |
-| Browser regression suite | n/a | 60 Playwright tests | 60/60 passing |
+| TypeScript runtime | n/a | 88 files, 48,087 lines | Builds |
+| Browser regression suite | n/a | 61 Playwright tests | 61/61 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -157,6 +157,19 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Reversible inventory/convoy movement and canonical save identity:**
+  - Implemented `move_item` across unit→unit, unit→convoy, and convoy→unit
+    routes, plus `move_item_between_convoys` for named parties. Capacity checks
+    distinguish normal items from accessories using project constants.
+  - Routed `remove_item` through reversible unit/convoy actions instead of direct
+    array mutation, preserving original inventory slots and owner references.
+  - Fixed a save-system identity bug exposed by movement tests: item references
+    are now assigned canonical keys from their current unit/convoy container by
+    object identity, rather than reconstructing stale owner-derived registry keys.
+  - Added a five-route turnwheel and multi-party save/load regression. Command
+    coverage advanced to **202/255 parsed** and **192/255 dispatched**; full
+    harness result: **61/61 passing**.
+
 - **Reversible item-property event slice:**
   - Implemented `change_item_name`, `change_item_desc`, `set_item_data`,
     `set_item_uses` (including `additive`), `set_item_droppable`, and
@@ -179,7 +192,7 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     `docs/parity/item-components.{json,md}` and
     `docs/parity/skill-components.{json,md}`; the existing audit/CI drift guard
     now validates all six generated parity artifacts.
-  - Established the first actionable structural baseline: 35 item and 29 skill
+  - Established the first actionable structural baseline: 36 item and 29 skill
     NIDs have exact web references, while 23 item and 55 skill component classes
     expose at least one Python hook with a matching web hook surface. These are
     discovery counts, not semantic parity claims.
@@ -543,10 +556,12 @@ passes; record newly discovered work here immediately.
   and categorized-note event mutations with save/load persistence
 - [x] Implement reversible item name/description/data/uses/droppable/break commands
   with runtime-data save persistence
+- [x] Implement reversible unit/convoy item movement and removal with canonical
+  object-identity save references
 - [ ] Implement deterministic selection for the special generic `Feat` learned-skill entry
 - [ ] Implement parser-recognized commands with no dispatcher case (currently includes
   item movement, dialog variants, special music, save deletion, and others)
-- [ ] Implement the 54 Python commands still absent from the parser, prioritized by
+- [ ] Implement the 53 Python commands still absent from the parser, prioritized by
   project usage: unit/item mutation, party transfer/pair-up, scripts, overlays, and UI
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
@@ -636,6 +651,6 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Port reversible item movement between units/convoys and multi-item mutation commands.
+1. Add multi/sub-item runtime representation and reversible add/remove commands.
 2. Map the first high-usage item-component hook family from the generated manifest.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

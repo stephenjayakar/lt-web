@@ -565,6 +565,93 @@ test.describe('Event command parity', () => {
     });
   });
 
+  test('move_item covers unit and convoy routes with reversible ownership and save persistence', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const { PartyObject } = await import('/src/engine/party.ts');
+      const eirika = game.units.get('Eirika');
+      const seth = game.units.get('Seth');
+      const currentParty = game.getParty();
+      if (!eirika || !seth || !currentParty) return null;
+      const removedItemNid = seth.items[0]?.nid;
+      if (!removedItemNid) return null;
+      const secondaryNid = '_test_secondary';
+      game.parties.set(secondaryNid, new PartyObject(secondaryNid, 'Secondary', 'Seth'));
+
+      const snapshot = () => ({
+        eirika: eirika.items.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+        seth: seth.items.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+        current: currentParty.convoy.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+        secondary: game.getParty(secondaryNid).convoy.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+      });
+      const initial = snapshot();
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(new GameEvent({
+        nid: '_test_move_item_routes', name: 'Move Item Routes', trigger: 'test',
+        level_nid: '0', condition: '', only_once: false, priority: 0,
+        _source: [
+          'move_item;Eirika;Seth;Rapier',
+          'move_item;Seth;convoy',
+          'move_item;convoy;Eirika;Rapier',
+          'move_item;Eirika;convoy;Vulnerary',
+          `move_item_between_convoys;Vulnerary;${currentParty.nid};${secondaryNid}`,
+          `remove_item;Seth;${removedItemNid};no_banner`,
+        ],
+      }, { type: 'test', levelNid: '0', unit1: eirika }));
+      game.state.change('event');
+      return { initial, beforeActionIndex, currentPartyNid: currentParty.nid, secondaryNid, removedItemNid };
+    });
+
+    expect(setup).not.toBeNull();
+    await settle(page, 300);
+    const result = await page.evaluate(({ beforeActionIndex, currentPartyNid, secondaryNid }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const snapshot = () => ({
+        eirika: game.units.get('Eirika').items.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+        seth: game.units.get('Seth').items.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+        current: game.getParty(currentPartyNid).convoy.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+        secondary: game.getParty(secondaryNid).convoy.map((item: any) => [item.nid, item.owner?.nid ?? null]),
+      });
+      const changed = snapshot();
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { changed, reversed, redone: snapshot() };
+    }, setup!);
+
+    expect(result.changed.eirika).toContainEqual(['Rapier', 'Eirika']);
+    expect(result.changed.eirika.some(([nid]) => nid === 'Vulnerary')).toBe(false);
+    expect(result.changed.seth.some(([nid]) => nid === 'Rapier')).toBe(false);
+    expect(result.changed.seth.some(([nid]) => nid === setup!.removedItemNid)).toBe(false);
+    expect(result.changed.current.some(([nid]) => nid === 'Vulnerary')).toBe(false);
+    expect(result.changed.secondary).toContainEqual(['Vulnerary', null]);
+    expect(result.reversed).toEqual(setup!.initial);
+    expect(result.redone).toEqual(result.changed);
+
+    const roundTrip = await page.evaluate(async ({ secondaryNid }) => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 95, 'battle');
+      game.getParty(secondaryNid).convoy.length = 0;
+      const loaded = await loadGame(game, 95);
+      const secondary = game.getParty(secondaryNid).convoy.map((item: any) => [item.nid, item.owner?.nid ?? null]);
+      const eirika = game.units.get('Eirika').items.map((item: any) => [item.nid, item.owner?.nid ?? null]);
+      const seth = game.units.get('Seth').items.map((item: any) => [item.nid, item.owner?.nid ?? null]);
+      await deleteSave(gameNid, 95);
+      return { loaded, secondary, eirika, seth };
+    }, setup!);
+    expect(roundTrip.loaded).toBe(true);
+    expect(roundTrip.secondary).toContainEqual(['Vulnerary', null]);
+    expect(roundTrip.eirika).toContainEqual(['Rapier', 'Eirika']);
+    expect(roundTrip.seth.some(([nid]) => nid === setup!.removedItemNid)).toBe(false);
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
