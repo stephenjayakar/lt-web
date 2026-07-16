@@ -532,11 +532,13 @@ See [TESTING.md](./TESTING.md) for the full testing guide.
 
 `PLAN.md` is organized around behavioral parity with the checked-in Python
 runtime. Run `npm run audit:parity:write` after changing event parsing or dispatch;
-it regenerates `docs/parity/event-commands.json` and `.md`. Run
-`npm run audit:parity` to check those artifacts, inventory counts, and monotonic
-coverage thresholds. The parity-audit GitHub workflow runs the same guard. These
-counts are discovery aids, not semantic coverage percentages; each mapped behavior
-still requires comparison with the corresponding Python source and a regression test.
+it regenerates the event-command, item-component, and skill-component JSON/Markdown
+manifests under `docs/parity/`. Run `npm run audit:parity` to check those artifacts,
+inventory counts, and monotonic coverage thresholds. The parity-audit GitHub workflow
+runs the same guard. Component manifests record Python source/hooks, matching web hook
+surfaces, and exact TypeScript string references. These counts are discovery aids,
+not semantic coverage percentages; each mapped behavior still requires comparison
+with the corresponding Python source and a regression test.
 
 Event-driven persistent mutations should use `Action` subclasses so turnwheel
 reversal remains possible. The event runtime currently includes reversible WEXP,

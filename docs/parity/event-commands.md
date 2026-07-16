@@ -205,7 +205,7 @@ Summary: 195/255 parser-recognized; 184/255 with dispatcher cases.
 | remove_table | RemoveTable | remove_table:3273 | MISCELLANEOUS | rmtable | Nid |  | yes | yes | no |  | stub-hint |
 | text_entry | TextEntry | text_entry:3276 | MISCELLANEOUS |  | Nid, String, CharacterLimit?, IllegalCharacterList?, DefaultString?, MinimumCharacterLimit? | force_entry | no | no | no |  | missing-parser |
 | chapter_title | ChapterTitle | chapter_title:3298 | MISCELLANEOUS |  | Music?, String? |  | yes | yes | no |  | dispatched-unverified |
-| draw_overlay_sprite | DrawOverlaySprite | draw_overlay_sprite:3308 | MISCELLANEOUS | draw_overlay | Nid, SpriteID |  | yes | yes | no |  | stub-hint |
+| draw_overlay_sprite | DrawOverlaySprite | draw_overlay_sprite:3308 | MISCELLANEOUS | draw_overlay | Nid, SpriteID, Position?, ZLevel?, Animation?, Speed? | no_block, foreground | yes | yes | no |  | stub-hint |
 | remove_overlay_sprite | RemoveOverlaySprite | remove_overlay_sprite:3361 | MISCELLANEOUS | delete_overlay | Nid, Animation?, Speed? | no_block, foreground | yes | yes | no |  | stub-hint |
 | alert | Alert | alert:3408 | DIALOGUE_TEXT |  | String, Item?, Skill?, Icon? |  | yes | yes | yes |  | dispatched-unverified |
 | victory_screen | VictoryScreen | victory_screen:3422 | MISCELLANEOUS |  | Sound? |  | yes | yes | no |  | dispatched-unverified |

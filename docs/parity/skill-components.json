@@ -1,0 +1,5427 @@
+{
+  "sources": [
+    "lt-maker/app/engine/skill_components",
+    "src/combat/skill-system.ts",
+    "src/**/*.ts"
+  ],
+  "summary": {
+    "pythonComponentNids": 241,
+    "webHookExports": 41,
+    "referencedComponentNids": 29,
+    "hookMappedComponentNids": 55,
+    "unreferencedComponentNids": 212,
+    "structuralStatuses": {
+      "hook-and-reference": 26,
+      "hook-only": 29,
+      "reference-only": 3,
+      "unreferenced": 183
+    }
+  },
+  "webHookExports": [
+    "vantage",
+    "desperation",
+    "noDouble",
+    "defDouble",
+    "critAnyway",
+    "ignoreTerrain",
+    "distantCounter",
+    "closeCounter",
+    "noAttackAfterMove",
+    "passThrough",
+    "disvantage",
+    "ignoreDyingInCombat",
+    "canCounter",
+    "hasCanto",
+    "statChange",
+    "growthChange",
+    "modifyDamage",
+    "modifyResist",
+    "modifyAccuracy",
+    "modifyAvoid",
+    "modifyCritAccuracy",
+    "modifyCritAvoid",
+    "modifyCritDamage",
+    "modifyAttackSpeed",
+    "modifyDefenseSpeed",
+    "dynamicDamage",
+    "dynamicResist",
+    "dynamicAccuracy",
+    "dynamicAvoid",
+    "dynamicMultiattacks",
+    "damageMultiplier",
+    "resistMultiplier",
+    "damageFormula",
+    "resistFormula",
+    "accuracyFormula",
+    "avoidFormula",
+    "attackSpeedFormula",
+    "defenseSpeedFormula",
+    "expMultiplier",
+    "wexpMultiplier",
+    "sightRange"
+  ],
+  "components": [
+    {
+      "nid": "multi_skill",
+      "pythonClass": "MultiSkill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "before_add",
+        "after_remove"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 15,
+      "methods": [
+        "before_add",
+        "after_remove"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "parent_condition",
+      "pythonClass": "ParentCondition",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "HIDDEN",
+      "directMethods": [
+        "condition"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 24,
+      "methods": [
+        "condition"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "ability",
+      "pythonClass": "Ability",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "extra_ability",
+        "end_combat_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 59,
+      "methods": [
+        "extra_ability",
+        "end_combat_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_art",
+      "pythonClass": "CombatArt",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "init",
+        "combat_art",
+        "start_combat",
+        "on_activation",
+        "on_deactivation",
+        "end_combat_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 80,
+      "methods": [
+        "init",
+        "combat_art",
+        "start_combat",
+        "on_activation",
+        "on_deactivation",
+        "end_combat_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "menu_category",
+      "pythonClass": "MenuCategory",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "menu_category"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 119,
+      "methods": [
+        "menu_category"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "automatic_combat_art",
+      "pythonClass": "AutomaticCombatArt",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "on_upkeep",
+        "on_endstep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 129,
+      "methods": [
+        "on_upkeep",
+        "on_endstep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "allowed_weapons",
+      "pythonClass": "AllowedWeapons",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "weapon_filter"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 144,
+      "methods": [
+        "weapon_filter"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "proc_turn_skill",
+      "pythonClass": "ProcGainSkillForTurn",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "on_upkeep",
+        "on_endstep_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 174,
+      "methods": [
+        "on_upkeep",
+        "on_endstep_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "attack_proc",
+      "pythonClass": "AttackProc",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "start_sub_combat",
+        "end_sub_combat_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 194,
+      "methods": [
+        "start_sub_combat",
+        "end_sub_combat_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "defense_proc",
+      "pythonClass": "DefenseProc",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "start_sub_combat",
+        "end_sub_combat_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 221,
+      "methods": [
+        "start_sub_combat",
+        "end_sub_combat_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "attack_pre_proc",
+      "pythonClass": "AttackPreProc",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "start_combat",
+        "end_combat_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 248,
+      "methods": [
+        "start_combat",
+        "end_combat_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "defense_pre_proc",
+      "pythonClass": "DefensePreProc",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "start_combat",
+        "end_combat_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 275,
+      "methods": [
+        "start_combat",
+        "end_combat_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "proc_rate",
+      "pythonClass": "ProcRate",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "proc_rate"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 302,
+      "methods": [
+        "proc_rate"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "astra_proc",
+      "pythonClass": "AstraProc",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CUSTOM",
+      "directMethods": [
+        "start_sub_combat",
+        "dynamic_multiattacks",
+        "damage_multiplier",
+        "after_strike",
+        "cleanup_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 313,
+      "methods": [
+        "start_sub_combat",
+        "dynamic_multiattacks",
+        "damage_multiplier",
+        "after_strike",
+        "cleanup_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "dynamicMultiattacks",
+        "damageMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "item_override",
+      "pythonClass": "ItemOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "get_components"
+      ],
+      "source": "lt-maker/app/engine/skill_components/advanced_components.py",
+      "line": 380,
+      "methods": [
+        "get_components"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "unit_anim",
+      "pythonClass": "UnitAnim",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "after_add",
+        "after_add_from_restore",
+        "after_remove",
+        "should_draw_anim"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 8,
+      "methods": [
+        "after_add",
+        "after_add_from_restore",
+        "after_remove",
+        "should_draw_anim"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "unit_alpha_tint",
+      "pythonClass": "UnitAlphaTint",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "unit_sprite_alpha_tint"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 27,
+      "methods": [
+        "unit_sprite_alpha_tint"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "unit_tint",
+      "pythonClass": "UnitTint",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "unit_sprite_flicker_tint"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 38,
+      "methods": [
+        "unit_sprite_flicker_tint"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "unit_flickering_tint",
+      "pythonClass": "UnitFlickeringTint",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "unit_sprite_flicker_tint"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 49,
+      "methods": [
+        "unit_sprite_flicker_tint"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_tint",
+      "pythonClass": "CombatTint",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "combat_sprite_flicker_tint"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 60,
+      "methods": [
+        "combat_sprite_flicker_tint"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_flickering_tint",
+      "pythonClass": "CombatFlickeringTint",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "combat_sprite_flicker_tint"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 71,
+      "methods": [
+        "combat_sprite_flicker_tint"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "upkeep_animation",
+      "pythonClass": "UpkeepAnimation",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 82,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "upkeep_sound",
+      "pythonClass": "UpkeepSound",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 92,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "display_skill_icon_in_combat",
+      "pythonClass": "DisplaySkillIconInCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "show_skill_icon"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 102,
+      "methods": [
+        "show_skill_icon"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "hide_skill_icon_in_combat",
+      "pythonClass": "HideSkillIconInCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "hide_skill_icon"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 110,
+      "methods": [
+        "hide_skill_icon"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "steal_icon",
+      "pythonClass": "StealIcon",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "target_icon"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 122,
+      "methods": [
+        "target_icon"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gba_steal_icon",
+      "pythonClass": "GBAStealIcon",
+      "bases": [
+        "StealIcon"
+      ],
+      "tag": null,
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 146,
+      "methods": [
+        "target_icon"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_battle_anim",
+      "pythonClass": "AlternateBattleAnim",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "after_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 158,
+      "methods": [
+        "after_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "change_variant",
+      "pythonClass": "ChangeVariant",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "after_add",
+        "after_add_from_restore",
+        "after_remove",
+        "change_variant"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 170,
+      "methods": [
+        "after_add",
+        "after_add_from_restore",
+        "after_remove",
+        "change_variant"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "change_map_palette",
+      "pythonClass": "ChangeMapPalette",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "after_add",
+        "after_add_from_restore",
+        "after_remove",
+        "change_map_palette"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 190,
+      "methods": [
+        "after_add",
+        "after_add_from_restore",
+        "after_remove",
+        "change_map_palette"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "change_animation",
+      "pythonClass": "ChangeAnimation",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "change_animation"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 210,
+      "methods": [
+        "change_animation"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "map_cast_anim",
+      "pythonClass": "MapCastAnim",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "start_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 220,
+      "methods": [
+        "start_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "battle_animation_music",
+      "pythonClass": "BattleAnimMusic",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "AESTHETIC",
+      "directMethods": [
+        "battle_music"
+      ],
+      "source": "lt-maker/app/engine/skill_components/aesthetic_components.py",
+      "line": 230,
+      "methods": [
+        "battle_music"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "modify_ai_priority",
+      "pythonClass": "ModifyAIPriority",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "ai_priority_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/ai_components.py",
+      "line": 14,
+      "methods": [
+        "ai_priority_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "hidden",
+      "pythonClass": "Hidden",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 5,
+      "methods": [],
+      "webReferences": [
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 7482
+        },
+        {
+          "source": "src/native.ts",
+          "line": 166
+        }
+      ],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "reference-only"
+    },
+    {
+      "nid": "hidden_if_inactive",
+      "pythonClass": "HiddenIfInactive",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 10,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "grey_if_inactive",
+      "pythonClass": "GreyIfInactive",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 15,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "is_terrain",
+      "pythonClass": "TerrainSkill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [
+        "condition"
+      ],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 20,
+      "methods": [
+        "condition"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "class_skill",
+      "pythonClass": "ClassSkill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 30,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "stack",
+      "pythonClass": "Stack",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 35,
+      "methods": [],
+      "webReferences": [
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 9362
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 9385
+        }
+      ],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "reference-only"
+    },
+    {
+      "nid": "feat",
+      "pythonClass": "Feat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 44,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "negative",
+      "pythonClass": "Negative",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [
+        "condition"
+      ],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 49,
+      "methods": [
+        "condition"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "global",
+      "pythonClass": "Global",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 57,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "negate",
+      "pythonClass": "Negate",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 62,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "negate_tags",
+      "pythonClass": "NegateTags",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 67,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "has_tags",
+      "pythonClass": "HasTags",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ATTRIBUTE",
+      "directMethods": [
+        "additional_tags"
+      ],
+      "source": "lt-maker/app/engine/skill_components/attribute_components.py",
+      "line": 74,
+      "methods": [
+        "additional_tags"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "unselectable",
+      "pythonClass": "Unselectable",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "can_select"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 8,
+      "methods": [
+        "can_select"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "cannot_use_items",
+      "pythonClass": "CannotUseItems",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "available"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 16,
+      "methods": [
+        "available"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "cannot_use_magic_items",
+      "pythonClass": "CannotUseMagicItems",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "available"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 24,
+      "methods": [
+        "available"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "cannot_trade",
+      "pythonClass": "CannotTrade",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "no_trade"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 32,
+      "methods": [
+        "no_trade"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "additional_accessories",
+      "pythonClass": "AdditionalAccessories",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "num_items_offset",
+        "num_accessories_offset"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 40,
+      "methods": [
+        "num_items_offset",
+        "num_accessories_offset"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "ignore_alliances",
+      "pythonClass": "IgnoreAlliances",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "check_ally",
+        "check_enemy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 54,
+      "methods": [
+        "check_ally",
+        "check_enemy"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "change_ai",
+      "pythonClass": "ChangeAI",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "change_ai"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 65,
+      "methods": [
+        "change_ai"
+      ],
+      "webReferences": [
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 6884
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 83
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 176
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 250
+        },
+        {
+          "source": "src/events/python-events.ts",
+          "line": 980
+        }
+      ],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "reference-only"
+    },
+    {
+      "nid": "change_buy_price",
+      "pythonClass": "ChangeBuyPrice",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "modify_buy_price"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 75,
+      "methods": [
+        "modify_buy_price"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "exp_multiplier",
+      "pythonClass": "ExpMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "exp_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 85,
+      "methods": [
+        "exp_multiplier"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 393
+        }
+      ],
+      "matchingWebHooks": [
+        "expMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "enemy_exp_multiplier",
+      "pythonClass": "EnemyExpMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "enemy_exp_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 95,
+      "methods": [
+        "enemy_exp_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "wexp_multiplier",
+      "pythonClass": "WexpMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "wexp_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 105,
+      "methods": [
+        "wexp_multiplier"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 397
+        }
+      ],
+      "matchingWebHooks": [
+        "wexpMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "wexp_usable_skill",
+      "pythonClass": "CanUseWeaponType",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "usable_wtypes"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 115,
+      "methods": [
+        "usable_wtypes"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "wexp_unusable_skill",
+      "pythonClass": "CannotUseWeaponType",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "forbidden_wtypes"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 125,
+      "methods": [
+        "forbidden_wtypes"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "enemy_wexp_multiplier",
+      "pythonClass": "EnemyWexpMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "enemy_wexp_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 135,
+      "methods": [
+        "enemy_wexp_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "locktouch",
+      "pythonClass": "Locktouch",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "can_unlock"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 145,
+      "methods": [
+        "can_unlock"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "sight_range_bonus",
+      "pythonClass": "SightRangeBonus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "sight_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 153,
+      "methods": [
+        "sight_range"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 407
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 417
+        }
+      ],
+      "matchingWebHooks": [
+        "sightRange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "decreasing_sight_range_bonus",
+      "pythonClass": "DecreasingSightRangeBonus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "init",
+        "sight_range",
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 164,
+      "methods": [
+        "init",
+        "sight_range",
+        "on_upkeep"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 408
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 423
+        }
+      ],
+      "matchingWebHooks": [
+        "sightRange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "ignore_fatigue",
+      "pythonClass": "IgnoreFatigue",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [
+        "ignore_fatigue"
+      ],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 184,
+      "methods": [
+        "ignore_fatigue"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "skill_tags",
+      "pythonClass": "SkillTag",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "BASE",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/base_components.py",
+      "line": 192,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "build_charge",
+      "pythonClass": "BuildCharge",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "init",
+        "condition",
+        "on_end_chapter",
+        "trigger_charge",
+        "text",
+        "cooldown"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 7,
+      "methods": [
+        "init",
+        "condition",
+        "on_end_chapter",
+        "trigger_charge",
+        "text",
+        "cooldown"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "drain_charge",
+      "pythonClass": "DrainCharge",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "init",
+        "condition",
+        "on_end_chapter",
+        "trigger_charge",
+        "text",
+        "cooldown"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 39,
+      "methods": [
+        "init",
+        "condition",
+        "on_end_chapter",
+        "trigger_charge",
+        "text",
+        "cooldown"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "charges_per_turn",
+      "pythonClass": "ChargesPerTurn",
+      "bases": [
+        "DrainCharge"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "on_endstep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 69,
+      "methods": [
+        "init",
+        "condition",
+        "on_end_chapter",
+        "trigger_charge",
+        "text",
+        "cooldown",
+        "on_endstep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "upkeep_charge_increase",
+      "pythonClass": "UpkeepChargeIncrease",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 83,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_charge_increase",
+      "pythonClass": "CombatChargeIncrease",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 107,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_charge_increase_by_stat",
+      "pythonClass": "CombatChargeIncreaseByStat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 124,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_mana",
+      "pythonClass": "GainMana",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "start_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 141,
+      "methods": [
+        "start_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "cost_mana",
+      "pythonClass": "CostMana",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "condition",
+        "start_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 159,
+      "methods": [
+        "condition",
+        "start_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "check_mana",
+      "pythonClass": "CheckMana",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CHARGE",
+      "directMethods": [
+        "condition"
+      ],
+      "source": "lt-maker/app/engine/skill_components/charge_components.py",
+      "line": 177,
+      "methods": [
+        "condition"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "miracle",
+      "pythonClass": "Miracle",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "cleanup_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 15,
+      "methods": [
+        "cleanup_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "TrueMiracle",
+      "pythonClass": "TrueMiracle",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_take_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 27,
+      "methods": [
+        "after_take_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "ignore_damage",
+      "pythonClass": "IgnoreDamage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_take_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 44,
+      "methods": [
+        "after_take_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "live_to_serve",
+      "pythonClass": "LiveToServe",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 61,
+      "methods": [
+        "after_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lifetaker",
+      "pythonClass": "Lifetaker",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 84,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lifelink",
+      "pythonClass": "Lifelink",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 108,
+      "methods": [
+        "after_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "ally_lifelink",
+      "pythonClass": "AllyLifelink",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 132,
+      "methods": [
+        "after_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "armsthrift",
+      "pythonClass": "Armsthrift",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike",
+        "post_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 164,
+      "methods": [
+        "after_strike",
+        "post_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "limit_maximum_range",
+      "pythonClass": "LimitMaximumRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "limit_maximum_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 233,
+      "methods": [
+        "limit_maximum_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "modify_maximum_range",
+      "pythonClass": "ModifyMaximumRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "modify_maximum_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 245,
+      "methods": [
+        "modify_maximum_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "modify_minimum_range",
+      "pythonClass": "ModifyMinimumRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "modify_minimum_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 257,
+      "methods": [
+        "modify_minimum_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "eval_max_range",
+      "pythonClass": "EvalMaximumRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "modify_maximum_range",
+        "has_dynamic_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 269,
+      "methods": [
+        "modify_maximum_range",
+        "has_dynamic_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "eval_min_range",
+      "pythonClass": "EvalMinimumRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "modify_minimum_range",
+        "has_dynamic_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 288,
+      "methods": [
+        "modify_minimum_range",
+        "has_dynamic_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "cannot_double",
+      "pythonClass": "CannotDouble",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "no_double"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 307,
+      "methods": [
+        "no_double"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 89
+        }
+      ],
+      "matchingWebHooks": [
+        "noDouble"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "can_double_on_defense",
+      "pythonClass": "CanDoubleOnDefense",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "def_double"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 316,
+      "methods": [
+        "def_double"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "defDouble"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "vantage",
+      "pythonClass": "Vantage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "vantage"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 324,
+      "methods": [
+        "vantage"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 61
+        }
+      ],
+      "matchingWebHooks": [
+        "vantage"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "desperation",
+      "pythonClass": "Desperation",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "desperation"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 333,
+      "methods": [
+        "desperation"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 66
+        }
+      ],
+      "matchingWebHooks": [
+        "desperation"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "guaranteed_crit",
+      "pythonClass": "GuaranteedCrit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "crit_anyway"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 342,
+      "methods": [
+        "crit_anyway"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "critAnyway"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "distant_counter",
+      "pythonClass": "DistantCounter",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "distant_counter"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 351,
+      "methods": [
+        "distant_counter"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 91
+        }
+      ],
+      "matchingWebHooks": [
+        "distantCounter"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "close_counter",
+      "pythonClass": "CloseCounter",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "close_counter"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 360,
+      "methods": [
+        "close_counter"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 96
+        }
+      ],
+      "matchingWebHooks": [
+        "closeCounter"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "cannot_counter",
+      "pythonClass": "CannotCounter",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "can_counter"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 368,
+      "methods": [
+        "can_counter"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 126
+        }
+      ],
+      "matchingWebHooks": [
+        "canCounter"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "Cleave",
+      "pythonClass": "Cleave",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "alternate_splash"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 377,
+      "methods": [
+        "alternate_splash"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "give_status_after_combat",
+      "pythonClass": "GiveStatusAfterCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 387,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "give_ally_status_after_combat",
+      "pythonClass": "GiveAllyStatusAfterCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 401,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "give_status_after_attack",
+      "pythonClass": "GiveStatusAfterAttack",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 415,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "give_status_after_combat_on_hit",
+      "pythonClass": "GiveStatusAfterCombatOnHit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 431,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "give_status_after_hit",
+      "pythonClass": "GiveStatusAfterHit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 447,
+      "methods": [
+        "after_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "skill_before_combat",
+      "pythonClass": "SkillBeforeCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "get_skill_nid",
+        "start_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 463,
+      "methods": [
+        "get_skill_nid",
+        "start_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_skill_after_kill",
+      "pythonClass": "GainSkillAfterKill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 515,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_skill_after_combat",
+      "pythonClass": "GainSkillAfterCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 528,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_skill_after_attack",
+      "pythonClass": "GainSkillAfterAttacking",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 540,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_skill_after_active_kill",
+      "pythonClass": "GainSkillAfterActiveKill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 556,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_skill_after_take_miss",
+      "pythonClass": "GainSkillAfterTakeMiss",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_take_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 571,
+      "methods": [
+        "after_take_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gain_skill_after_take_damage",
+      "pythonClass": "GainSkillAfterTakeDamage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_take_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 584,
+      "methods": [
+        "after_take_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "delay_initiative_order",
+      "pythonClass": "DelayInitiativeOrder",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 599,
+      "methods": [
+        "after_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "recoil",
+      "pythonClass": "Recoil",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 616,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "post_combat_damage",
+      "pythonClass": "PostCombatDamage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 632,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "post_combat_damage_percent",
+      "pythonClass": "PostCombatDamagePercent",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 648,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "post_combat_splash",
+      "pythonClass": "PostCombatSplash",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "post_combat_damage"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 665,
+      "methods": [
+        "post_combat_damage"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "post_combat_splash_aoe",
+      "pythonClass": "PostCombatSplashAOE",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 679,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "all_brave",
+      "pythonClass": "AllBrave",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "dynamic_multiattacks"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 710,
+      "methods": [
+        "dynamic_multiattacks"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "dynamicMultiattacks"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "devil_axe_gba",
+      "pythonClass": "DevilAxeGBA",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT2",
+      "directMethods": [
+        "after_strike",
+        "after_take_strike"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat2_components.py",
+      "line": 719,
+      "methods": [
+        "after_strike",
+        "after_take_strike"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "stat_change",
+      "pythonClass": "StatChange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "stat_change",
+        "tile_def"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 8,
+      "methods": [
+        "stat_change",
+        "tile_def"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 146
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 151
+        },
+        {
+          "source": "src/combat/terrain-bonuses.ts",
+          "line": 27
+        }
+      ],
+      "matchingWebHooks": [
+        "statChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "stat_change_expression",
+      "pythonClass": "StatChangeExpression",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "stat_change"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 26,
+      "methods": [
+        "stat_change"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "statChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "stat_multiplier",
+      "pythonClass": "StatMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "stat_change"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 42,
+      "methods": [
+        "stat_change"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "statChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "subtle_stat_change",
+      "pythonClass": "SubtleStatChange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "stat_change",
+        "subtle_stat_change"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 53,
+      "methods": [
+        "stat_change",
+        "subtle_stat_change"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "statChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "growth_change",
+      "pythonClass": "GrowthChange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "growth_change"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 67,
+      "methods": [
+        "growth_change"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 169
+        }
+      ],
+      "matchingWebHooks": [
+        "growthChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "equation_growth_change",
+      "pythonClass": "EquationGrowthChange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "growth_change"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 78,
+      "methods": [
+        "growth_change"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "growthChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "damage",
+      "pythonClass": "Damage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_damage"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 89,
+      "methods": [
+        "modify_damage"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 26
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 207
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 334
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 9
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 73
+        }
+      ],
+      "matchingWebHooks": [
+        "modifyDamage"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "eval_damage",
+      "pythonClass": "EvalDamage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_damage"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 100,
+      "methods": [
+        "modify_damage"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyDamage"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "resist",
+      "pythonClass": "Resist",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_resist"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 115,
+      "methods": [
+        "modify_resist"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyResist"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "hit",
+      "pythonClass": "Hit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_accuracy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 126,
+      "methods": [
+        "modify_accuracy"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/animation-combat.ts",
+          "line": 115
+        },
+        {
+          "source": "src/combat/animation-combat.ts",
+          "line": 218
+        },
+        {
+          "source": "src/combat/animation-combat.ts",
+          "line": 853
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 31
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 31
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 51
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 256
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 263
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 344
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 3703
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 9
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 77
+        }
+      ],
+      "matchingWebHooks": [
+        "modifyAccuracy"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "eval_hit",
+      "pythonClass": "EvalHit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_accuracy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 137,
+      "methods": [
+        "modify_accuracy"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyAccuracy"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "avoid",
+      "pythonClass": "Avoid",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_avoid",
+        "tile_avoid"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 152,
+      "methods": [
+        "modify_avoid",
+        "tile_avoid"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/terrain-bonuses.ts",
+          "line": 25
+        }
+      ],
+      "matchingWebHooks": [
+        "modifyAvoid"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "eval_avoid",
+      "pythonClass": "EvalAvoid",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_avoid"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 166,
+      "methods": [
+        "modify_avoid"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyAvoid"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "crit",
+      "pythonClass": "Crit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_crit_accuracy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 181,
+      "methods": [
+        "modify_crit_accuracy"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/animation-combat.ts",
+          "line": 115
+        },
+        {
+          "source": "src/combat/animation-combat.ts",
+          "line": 218
+        },
+        {
+          "source": "src/combat/animation-combat.ts",
+          "line": 884
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 649
+        },
+        {
+          "source": "src/combat/combat-solver.ts",
+          "line": 119
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 36
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 31
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 51
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 278
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 285
+        },
+        {
+          "source": "src/engine/records.ts",
+          "line": 346
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 3715
+        }
+      ],
+      "matchingWebHooks": [
+        "modifyCritAccuracy"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "eval_crit",
+      "pythonClass": "EvalCrit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_crit_accuracy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 192,
+      "methods": [
+        "modify_crit_accuracy"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyCritAccuracy"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "crit_avoid",
+      "pythonClass": "CritAvoid",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_crit_avoid"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 207,
+      "methods": [
+        "modify_crit_avoid"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyCritAvoid"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "attack_speed",
+      "pythonClass": "AttackSpeed",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_attack_speed"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 218,
+      "methods": [
+        "modify_attack_speed"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyAttackSpeed"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "defense_speed",
+      "pythonClass": "DefenseSpeed",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "modify_defense_speed"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 229,
+      "methods": [
+        "modify_defense_speed"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "modifyDefenseSpeed"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "damage_multiplier",
+      "pythonClass": "DamageMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "damage_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 240,
+      "methods": [
+        "damage_multiplier"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 338
+        }
+      ],
+      "matchingWebHooks": [
+        "damageMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "dynamic_damage_multiplier",
+      "pythonClass": "DynamicDamageMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "damage_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 251,
+      "methods": [
+        "damage_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "damageMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "resist_multiplier",
+      "pythonClass": "ResistMultiplier",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "resist_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 267,
+      "methods": [
+        "resist_multiplier"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 351
+        }
+      ],
+      "matchingWebHooks": [
+        "resistMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "pcc",
+      "pythonClass": "PCC",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "crit_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 278,
+      "methods": [
+        "crit_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "pcc_static",
+      "pythonClass": "PCCStatic",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "crit_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 289,
+      "methods": [
+        "crit_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "resist_follow_up",
+      "pythonClass": "ResistFollowUp",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "COMBAT",
+      "directMethods": [
+        "resist_multiplier"
+      ],
+      "source": "lt-maker/app/engine/skill_components/combat_components.py",
+      "line": 301,
+      "methods": [
+        "resist_multiplier"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "resistMultiplier"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "combat_condition",
+      "pythonClass": "CombatCondition",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "pre_combat",
+        "post_combat_unconditional",
+        "condition",
+        "test_on",
+        "test_off"
+      ],
+      "source": "lt-maker/app/engine/skill_components/conditional_components.py",
+      "line": 5,
+      "methods": [
+        "pre_combat",
+        "post_combat_unconditional",
+        "condition",
+        "test_on",
+        "test_off"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "condition",
+      "pythonClass": "Condition",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "condition"
+      ],
+      "source": "lt-maker/app/engine/skill_components/conditional_components.py",
+      "line": 44,
+      "methods": [
+        "condition"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lost_on_end_combat",
+      "pythonClass": "LostOnEndCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DEPRECATED",
+      "directMethods": [
+        "values",
+        "post_combat_unconditional",
+        "on_end_chapter"
+      ],
+      "source": "lt-maker/app/engine/skill_components/deprecated_components.py",
+      "line": 9,
+      "methods": [
+        "values",
+        "post_combat_unconditional",
+        "on_end_chapter"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_art_set_max_range",
+      "pythonClass": "CombatArtSetMaxRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DEPRECATED",
+      "directMethods": [
+        "combat_art_set_max_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/deprecated_components.py",
+      "line": 54,
+      "methods": [
+        "combat_art_set_max_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combat_art_modify_max_range",
+      "pythonClass": "CombatArtModifyMaxRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DEPRECATED",
+      "directMethods": [
+        "combat_art_modify_max_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/deprecated_components.py",
+      "line": 66,
+      "methods": [
+        "combat_art_modify_max_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "eval_range",
+      "pythonClass": "EvalMaximumRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DEPRECATED",
+      "directMethods": [
+        "modify_maximum_range",
+        "has_dynamic_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/deprecated_components.py",
+      "line": 78,
+      "methods": [
+        "modify_maximum_range",
+        "has_dynamic_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "galeforce",
+      "pythonClass": "Galeforce",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DEPRECATED",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/deprecated_components.py",
+      "line": 96,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "dynamic_damage",
+      "pythonClass": "DynamicDamage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_damage"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 6,
+      "methods": [
+        "dynamic_damage"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 246
+        }
+      ],
+      "matchingWebHooks": [
+        "dynamicDamage"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "dynamic_resist",
+      "pythonClass": "DynamicResist",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_resist"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 22,
+      "methods": [
+        "dynamic_resist"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 264
+        }
+      ],
+      "matchingWebHooks": [
+        "dynamicResist"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "dynamic_accuracy",
+      "pythonClass": "DynamicAccuracy",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_accuracy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 38,
+      "methods": [
+        "dynamic_accuracy"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 282
+        }
+      ],
+      "matchingWebHooks": [
+        "dynamicAccuracy"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "dynamic_avoid",
+      "pythonClass": "DynamicAvoid",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_avoid"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 54,
+      "methods": [
+        "dynamic_avoid"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 300
+        }
+      ],
+      "matchingWebHooks": [
+        "dynamicAvoid"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "dynamic_crit_accuracy",
+      "pythonClass": "DynamicCritAccuracy",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_crit_accuracy"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 70,
+      "methods": [
+        "dynamic_crit_accuracy"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "dynamic_crit_avoid",
+      "pythonClass": "DynamicCritAvoid",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_crit_avoid"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 86,
+      "methods": [
+        "dynamic_crit_avoid"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "dynamic_attack_speed",
+      "pythonClass": "DynamicAttackSpeed",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_attack_speed"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 102,
+      "methods": [
+        "dynamic_attack_speed"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "dynamic_defense_speed",
+      "pythonClass": "DynamicDefenseSpeed",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_defense_speed"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 118,
+      "methods": [
+        "dynamic_defense_speed"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "dynamic_attacks",
+      "pythonClass": "DynamicAttacks",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_attacks"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 134,
+      "methods": [
+        "dynamic_attacks"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "dynamic_multiattacks",
+      "pythonClass": "DynamicMultiattacks",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "DYNAMIC",
+      "directMethods": [
+        "dynamic_multiattacks"
+      ],
+      "source": "lt-maker/app/engine/skill_components/dynamic_components.py",
+      "line": 152,
+      "methods": [
+        "dynamic_multiattacks"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 318
+        }
+      ],
+      "matchingWebHooks": [
+        "dynamicMultiattacks"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "alternate_damage_formula",
+      "pythonClass": "AlternateDamageFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "damage_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 4,
+      "methods": [
+        "damage_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "damageFormula"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "damage_formula_override",
+      "pythonClass": "DamageFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "damage_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 15,
+      "methods": [
+        "damage_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_resist_formula",
+      "pythonClass": "AlternateResistFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "resist_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 26,
+      "methods": [
+        "resist_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "resistFormula"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "resist_formula_override",
+      "pythonClass": "ResistFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "resist_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 37,
+      "methods": [
+        "resist_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_accuracy_formula",
+      "pythonClass": "AlternateAccuracyFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "accuracy_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 48,
+      "methods": [
+        "accuracy_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "accuracyFormula"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "accuracy_formula_override",
+      "pythonClass": "AccuracyFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "accuracy_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 59,
+      "methods": [
+        "accuracy_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_avoid_formula",
+      "pythonClass": "AlternateAvoidFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "avoid_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 70,
+      "methods": [
+        "avoid_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "avoidFormula"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "avoid_formula_override",
+      "pythonClass": "AvoidFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "avoid_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 81,
+      "methods": [
+        "avoid_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_crit_accuracy_formula",
+      "pythonClass": "AlternateCritAccuracyFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "crit_accuracy_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 92,
+      "methods": [
+        "crit_accuracy_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "crit_accuracy_formula_override",
+      "pythonClass": "CritAccuracyFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "crit_accuracy_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 103,
+      "methods": [
+        "crit_accuracy_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_crit_avoid_formula",
+      "pythonClass": "AlternateCritAvoidFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "crit_avoid_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 114,
+      "methods": [
+        "crit_avoid_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "crit_avoid_formula_override",
+      "pythonClass": "CritAvoidFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "crit_avoid_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 125,
+      "methods": [
+        "crit_avoid_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_attack_speed_formula",
+      "pythonClass": "AlternateAttackSpeedFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "attack_speed_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 136,
+      "methods": [
+        "attack_speed_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "attackSpeedFormula"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "attack_speed_formula_override",
+      "pythonClass": "AttackSpeedFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "attack_speed_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 147,
+      "methods": [
+        "attack_speed_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_defense_speed_formula",
+      "pythonClass": "AlternateDefenseSpeedFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "defense_speed_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 158,
+      "methods": [
+        "defense_speed_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "defenseSpeedFormula"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "defense_speed_formula_override",
+      "pythonClass": "DefenseSpeedFormulaOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "defense_speed_formula_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 169,
+      "methods": [
+        "defense_speed_formula_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_critical_multiplier_formula",
+      "pythonClass": "AlternateCriticalMultiplierFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "critical_multiplier_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 180,
+      "methods": [
+        "critical_multiplier_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_critical_addition_formula",
+      "pythonClass": "AlternateCriticalAdditionFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "critical_addition_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 191,
+      "methods": [
+        "critical_addition_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "alternate_thracia_critical_addition_formula",
+      "pythonClass": "AlternateThraciaCriticalMultiplierFormula",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "FORMULA",
+      "directMethods": [
+        "thracia_critical_multiplier_formula"
+      ],
+      "source": "lt-maker/app/engine/skill_components/formula_components.py",
+      "line": 202,
+      "methods": [
+        "thracia_critical_multiplier_formula"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "canto",
+      "pythonClass": "Canto",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 13,
+      "methods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 137
+        },
+        {
+          "source": "src/engine/action.ts",
+          "line": 1656
+        },
+        {
+          "source": "src/engine/action.ts",
+          "line": 1664
+        },
+        {
+          "source": "src/engine/game-state.ts",
+          "line": 1070
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 9554
+        }
+      ],
+      "matchingWebHooks": [
+        "hasCanto"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "canto_plus",
+      "pythonClass": "CantoPlus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 27,
+      "methods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "hasCanto"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "canto_sharp",
+      "pythonClass": "CantoSharp",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 38,
+      "methods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "hasCanto"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "canter",
+      "pythonClass": "Canter",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 49,
+      "methods": [
+        "canto_movement",
+        "has_canto"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "hasCanto"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "movement_type",
+      "pythonClass": "MovementType",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "movement_type"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 66,
+      "methods": [
+        "movement_type"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "pass",
+      "pythonClass": "Pass",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "pass_through"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 76,
+      "methods": [
+        "pass_through"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "passThrough"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "ignore_terrain",
+      "pythonClass": "IgnoreTerrain",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "ignore_terrain",
+        "ignore_region_status",
+        "ignore_terrain_traversal"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 84,
+      "methods": [
+        "ignore_terrain",
+        "ignore_region_status",
+        "ignore_terrain_traversal"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 86
+        }
+      ],
+      "matchingWebHooks": [
+        "ignoreTerrain"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "ignore_terrain_traversal",
+      "pythonClass": "IgnoreTerrainTraversal",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "ignore_terrain_traversal"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 98,
+      "methods": [
+        "ignore_terrain_traversal"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "ignore_rescue_penalty",
+      "pythonClass": "IgnoreRescuePenalty",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "ignore_rescue_penalty"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 106,
+      "methods": [
+        "ignore_rescue_penalty"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "grounded",
+      "pythonClass": "Grounded",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "ignore_forced_movement"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 114,
+      "methods": [
+        "ignore_forced_movement"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "no_attack_after_move",
+      "pythonClass": "NoAttackAfterMove",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "no_attack_after_move"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 122,
+      "methods": [
+        "no_attack_after_move"
+      ],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 101
+        }
+      ],
+      "matchingWebHooks": [
+        "noAttackAfterMove"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-and-reference"
+    },
+    {
+      "nid": "witch_warp",
+      "pythonClass": "WitchWarp",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "witch_warp"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 130,
+      "methods": [
+        "witch_warp"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "specific_witch_warp",
+      "pythonClass": "SpecificWitchWarp",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "witch_warp"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 149,
+      "methods": [
+        "witch_warp"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "witch_warp_expression",
+      "pythonClass": "WitchWarpExpression",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "witch_warp"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 172,
+      "methods": [
+        "witch_warp"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "simple_galeforce",
+      "pythonClass": "SimpleGaleforce",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "on_wait"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 198,
+      "methods": [
+        "on_wait"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "modern_galeforce",
+      "pythonClass": "ModernGaleforce",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "end_combat",
+        "on_wait"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 208,
+      "methods": [
+        "end_combat",
+        "on_wait"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "xcom_movement",
+      "pythonClass": "XCOMMovement",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "xcom_movement"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 229,
+      "methods": [
+        "xcom_movement"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "eval_xcom_movement",
+      "pythonClass": "EvalXCOMMovement",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "xcom_movement"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 242,
+      "methods": [
+        "xcom_movement"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "damage_terrain",
+      "pythonClass": "DamageTerrain",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "terrain_move_effect"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 262,
+      "methods": [
+        "terrain_move_effect"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "status_inflict_terrain",
+      "pythonClass": "StatusInflictTerrain",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MOVEMENT",
+      "directMethods": [
+        "terrain_move_effect"
+      ],
+      "source": "lt-maker/app/engine/skill_components/movement_components.py",
+      "line": 279,
+      "methods": [
+        "terrain_move_effect"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_skill",
+      "pythonClass": "MultiDescSkill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 14,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_item",
+      "pythonClass": "MultiDescItem",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 25,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_lore",
+      "pythonClass": "MultiDescLore",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 37,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_affinity",
+      "pythonClass": "MultiDescAffinity",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 49,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_klass",
+      "pythonClass": "MultiDescKlass",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 61,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_unit",
+      "pythonClass": "MultiDescUnit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 73,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "eval_multi_desc_skill",
+      "pythonClass": "EvalMultiDescSkill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 85,
+      "methods": [
+        "multi_desc"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "multi_desc_name_override",
+      "pythonClass": "MultiDescNameOverride",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "MULTI_DESC",
+      "directMethods": [
+        "multi_desc_name_override"
+      ],
+      "source": "lt-maker/app/engine/skill_components/multi_desc_components.py",
+      "line": 105,
+      "methods": [
+        "multi_desc_name_override"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "death_tether",
+      "pythonClass": "DeathTether",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "on_death"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 8,
+      "methods": [
+        "on_death"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "oversplash",
+      "pythonClass": "Oversplash",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "empower_splash",
+        "alternate_splash"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 19,
+      "methods": [
+        "empower_splash",
+        "alternate_splash"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "enemy_oversplash",
+      "pythonClass": "EnemyOversplash",
+      "bases": [
+        "Oversplash"
+      ],
+      "tag": null,
+      "directMethods": [
+        "alternate_splash"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 34,
+      "methods": [
+        "empower_splash",
+        "alternate_splash"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "smart_oversplash",
+      "pythonClass": "SmartOversplash",
+      "bases": [
+        "Oversplash"
+      ],
+      "tag": null,
+      "directMethods": [
+        "alternate_splash"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 42,
+      "methods": [
+        "empower_splash",
+        "alternate_splash"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "empower_heal",
+      "pythonClass": "EmpowerHeal",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "empower_heal"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 53,
+      "methods": [
+        "empower_heal"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "empower_heal_received",
+      "pythonClass": "EmpowerHealReceived",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "empower_heal_received"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 68,
+      "methods": [
+        "empower_heal_received"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "mana_on_hit",
+      "pythonClass": "ManaOnHit",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "mana"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 83,
+      "methods": [
+        "mana"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "mana_on_kill",
+      "pythonClass": "ManaOnKill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "mana"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 98,
+      "methods": [
+        "mana"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "event_after_initiated_combat",
+      "pythonClass": "EventAfterInitiatedCombat",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "ADVANCED",
+      "directMethods": [
+        "end_combat"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 111,
+      "methods": [
+        "end_combat"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "nihil",
+      "pythonClass": "Nihil",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "CUSTOM",
+      "directMethods": [
+        "pre_combat",
+        "post_combat_unconditional",
+        "condition",
+        "test_on",
+        "test_off"
+      ],
+      "source": "lt-maker/app/engine/skill_components/special_components.py",
+      "line": 123,
+      "methods": [
+        "pre_combat",
+        "post_combat_unconditional",
+        "condition",
+        "test_on",
+        "test_off"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "aura",
+      "pythonClass": "Aura",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 13,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "aura_range",
+      "pythonClass": "AuraRange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 21,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "aura_target",
+      "pythonClass": "AuraTarget",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 30,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "show_aura",
+      "pythonClass": "AuraShow",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 40,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "hide_aura",
+      "pythonClass": "HideAura",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 49,
+      "methods": [],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "aura_shape",
+      "pythonClass": "AuraShape",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "get_shape",
+        "get_max_shape_range"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 55,
+      "methods": [
+        "get_shape",
+        "get_max_shape_range"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "pairup_bonus",
+      "pythonClass": "PairUpBonus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "on_pairup",
+        "on_separate"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 78,
+      "methods": [
+        "on_pairup",
+        "on_separate"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "regeneration",
+      "pythonClass": "Regeneration",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 92,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "mana_regeneration",
+      "pythonClass": "ManaRegeneration",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 116,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "upkeep_damage",
+      "pythonClass": "UpkeepDamage",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 126,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "endstep_damage",
+      "pythonClass": "EndstepDamage",
+      "bases": [
+        "UpkeepDamage"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "on_upkeep",
+        "on_endstep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 158,
+      "methods": [
+        "on_upkeep",
+        "on_endstep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "gba_poison",
+      "pythonClass": "GBAPoison",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 176,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "resist_status",
+      "pythonClass": "ResistStatus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "before_gain_skill"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 191,
+      "methods": [
+        "before_gain_skill"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "immune_status",
+      "pythonClass": "ImmuneStatus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "has_immune",
+        "after_gain_skill"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 201,
+      "methods": [
+        "has_immune",
+        "after_gain_skill"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "reflect_status",
+      "pythonClass": "ReflectStatus",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "STATUS",
+      "directMethods": [
+        "after_gain_skill"
+      ],
+      "source": "lt-maker/app/engine/skill_components/status_components.py",
+      "line": 213,
+      "methods": [
+        "after_gain_skill"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "time",
+      "pythonClass": "Time",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "init",
+        "on_upkeep_unconditional",
+        "text",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 11,
+      "methods": [
+        "init",
+        "on_upkeep_unconditional",
+        "text",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "end_time",
+      "pythonClass": "EndTime",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "init",
+        "on_endstep_unconditional",
+        "text",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 36,
+      "methods": [
+        "init",
+        "on_endstep_unconditional",
+        "text",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "combined_time",
+      "pythonClass": "CombinedTime",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "init",
+        "on_upkeep_unconditional",
+        "on_endstep_unconditional",
+        "text",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 61,
+      "methods": [
+        "init",
+        "on_upkeep_unconditional",
+        "on_endstep_unconditional",
+        "text",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "upkeep_stat_change",
+      "pythonClass": "UpkeepStatChange",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "init",
+        "stat_change",
+        "on_upkeep",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 92,
+      "methods": [
+        "init",
+        "stat_change",
+        "on_upkeep",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [
+        "statChange"
+      ],
+      "lexicalTestMention": false,
+      "status": "hook-only"
+    },
+    {
+      "nid": "lost_on_endstep",
+      "pythonClass": "LostOnEndstep",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "on_endstep_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 114,
+      "methods": [
+        "on_endstep_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lost_on_upkeep",
+      "pythonClass": "LostOnUpkeep",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "on_upkeep_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 126,
+      "methods": [
+        "on_upkeep_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lost_on_end_combat2",
+      "pythonClass": "LostOnEndCombat2",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "cleanup_combat_unconditional",
+        "post_combat_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 138,
+      "methods": [
+        "cleanup_combat_unconditional",
+        "post_combat_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lost_on_kill",
+      "pythonClass": "LostOnKill",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "post_combat_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 201,
+      "methods": [
+        "post_combat_unconditional",
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "lost_on_end_chapter",
+      "pythonClass": "LostOnEndChapter",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "on_end_chapter_unconditional"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 214,
+      "methods": [
+        "on_end_chapter_unconditional"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "event_on_remove",
+      "pythonClass": "EventOnRemove",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "after_true_remove"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 223,
+      "methods": [
+        "after_true_remove"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "event_on_wait",
+      "pythonClass": "EventOnWait",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "on_wait"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 235,
+      "methods": [
+        "on_wait"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    },
+    {
+      "nid": "upkeep_event",
+      "pythonClass": "UpkeepEvent",
+      "bases": [
+        "SkillComponent"
+      ],
+      "tag": "TIME",
+      "directMethods": [
+        "on_upkeep"
+      ],
+      "source": "lt-maker/app/engine/skill_components/time_components.py",
+      "line": 247,
+      "methods": [
+        "on_upkeep"
+      ],
+      "webReferences": [],
+      "matchingWebHooks": [],
+      "lexicalTestMention": false,
+      "status": "unreferenced"
+    }
+  ]
+}
