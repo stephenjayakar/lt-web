@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 41 exact string references; 31 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 47 exact string references; 48 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 48,367 lines | Builds |
-| Browser regression suite | n/a | 63 Playwright tests | 63/63 passing |
+| TypeScript runtime | n/a | 89 files, 48,479 lines | Builds |
+| Browser regression suite | n/a | 64 Playwright tests | 64/64 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,20 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Item range and target-restriction slice:**
+  - Added `max_equation_range` and `global_range` resolution plus
+    `eval_special_range` relative-coordinate filtering to `TargetSystem`; the
+    bundled `MAGIC_RANGE` equation now gives staves their calculated reach.
+  - Implemented ALL-policy target restrictions for `eval_target_restrict_2`,
+    `empty_tile_target_restrict`, and `traversable_tile_target_restrict`, using
+    class movement groups and the unit's movement value like Python.
+  - Extended expression context with `target`, `target.wexp`, `target_pos`,
+    `item`, and `game.get_region_under_pos`, covering all thirteen restriction
+    expressions used by the bundled project.
+  - Added equation, special range, level/tag/vision expression, empty tile, and
+    terrain-cost fixtures. Item coverage advanced to **47/201 exact references**
+    and **48/201 matching hook surfaces**; full harness result: **64/64 passing**.
 
 - **Item valid-target hook slice:**
   - Added a Python-shaped `TargetSystem` and the union-resolved `validTargets`
@@ -620,6 +634,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Map all Python skill component NIDs to web hooks and identify generated aliases
 - [x] Implement basic item `valid_targets` union hooks (`target_tile`, `target_unit`,
   `target_enemy`, `target_ally`), range intersection, and recursive child discovery
+- [x] Implement equation/special ranges and expression/empty/traversable target restrictions
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -684,8 +699,7 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement target restrictions, special/equation range, fog/LOS, splash, and
-   target-count policies in `TargetSystem`.
+1. Implement fog/LOS, splash, and target-count policies in `TargetSystem`.
 2. Integrate staff/item and multi/sequence child selection into the interactive
    targeting and item-use flows.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

@@ -740,6 +740,11 @@ function resolvePath(path: string, ctx: ConditionContext): any {
     return resolveObject(ctx.unit2, parts.slice(1));
   }
 
+  // target is the item-component alias for unit2.
+  if (parts[0] === 'target' && ctx.unit2) {
+    return resolveObject(ctx.unit2, parts.slice(1));
+  }
+
   // region.nid, region.region_type, etc.
   if (parts[0] === 'region' && ctx.region) {
     return resolveObject(ctx.region, parts.slice(1));
@@ -1018,6 +1023,14 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       }
       return units;
     },
+    get_region_under_pos(pos: [number, number] | null, regionType?: string) {
+      if (!pos) return null;
+      const region = regions.find((candidate: any) => {
+        if (regionType && candidate.region_type !== regionType) return false;
+        return wrapRegion(candidate)?.contains(pos) ?? false;
+      });
+      return wrapRegion(region);
+    },
     check_dead(nid: string) {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
       if (!u) return true;
@@ -1120,7 +1133,7 @@ function evaluateWithJsFallback(
     nid: unit2.nid, name: unit2.name, team: unit2.team,
     position: unit2.position, tags: unit2.tags ?? [],
     klass: unit2.klass, level: unit2.level, exp: unit2.exp,
-    stats: unit2.stats, growths: unit2.growths,
+    stats: unit2.stats, growths: unit2.growths, wexp: unit2.wexp ?? {},
     dead: unit2.isDead?.() ?? false,
   } : null;
   const region = ctx.region ? {
@@ -1136,6 +1149,8 @@ function evaluateWithJsFallback(
     },
   } : null;
   const position = ctx.position;
+  const target_pos = ctx.localArgs?.get('target_pos') ?? target?.position ?? null;
+  const item = ctx.item ?? null;
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
@@ -1147,7 +1162,7 @@ function evaluateWithJsFallback(
   try {
     // eslint-disable-next-line no-new-func
     const fn = new Function(
-      'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
+      'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
       'check_pair', 'check_default', '__len__', 'v', 'cf', 'support_rank_nid',
       '_qf',
       `"use strict";
@@ -1172,7 +1187,7 @@ function evaluateWithJsFallback(
        return (${jsExpr});`,
     );
     return fn(
-      gameProxy, unit, unit, target, target, region, position,
+      gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, v, cf, support_rank_nid,
       _queryFuncs,
     );
