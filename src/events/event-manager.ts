@@ -95,7 +95,7 @@ export type EventCommandType =
   // Fog of war
   | 'enable_fog_of_war' | 'set_fog_of_war'
   // Misc advanced
-  | 'add_lore' | 'add_base_convo' | 'ignore_base_convo' | 'remove_base_convo'
+  | 'add_lore' | 'remove_lore' | 'add_base_convo' | 'ignore_base_convo' | 'remove_base_convo'
   | 'clear_market_items'
   // Victory / credits
   | 'victory_screen' | 'credit'
@@ -176,7 +176,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'has_visited', 'unlock', 'find_unlock', 'spend_unlock',
   // Base screen
   'add_base_convo', 'ignore_base_convo', 'remove_base_convo',
-  'clear_market_items',
+  'clear_market_items', 'add_lore', 'remove_lore',
   // Support system
   'increment_support_points', 'unlock_support_rank', 'disable_support_rank',
   // Fog of war
@@ -187,6 +187,8 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'victory_screen', 'credit',
   // Overworld
   'create_overworld_entity', 'disable_overworld_entity',
+  'overworld_cinematic', 'reveal_overworld_node', 'reveal_overworld_road',
+  'overworld_move_unit', 'set_overworld_position',
   'set_overworld_menu_option_enabled', 'set_overworld_menu_option_visible',
   'enter_level_from_overworld',
   // Persistent records & achievements
@@ -195,6 +197,10 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'add_achievement', 'complete_achievement',
   // Save/load
   'battle_save', 'battle_save_prompt', 'skip_save', 'suspend',
+  // Roam mode
+  'set_roam', 'set_roam_unit',
+  // Overlay commands are recognized even while their visual implementations remain pending
+  'draw_overlay_sprite', 'remove_overlay_sprite', 'table', 'remove_table', 'textbox',
   // Legacy/aliases from our old code
   'set_game_var', 'change_objective',
 ]);

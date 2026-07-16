@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~43,300 lines of TypeScript across 84
+systems. The engine currently spans **~46,800 lines of TypeScript across 87
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -434,12 +434,12 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 |------|------:|---------|
 | `game-state.ts` | ~1450 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~1720 | All game actions (Move, Damage, Heal, Promote, Convoy, etc.) |
+| `action.ts` | ~1980 | All game actions (Move, Damage, Heal, WEXP, lore, Promote, Convoy, etc.) |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
 | `difficulty.ts` | ~135 | Difficulty mode runtime class |
-| `save.ts` | ~1474 | IndexedDB save/load with full serialization |
+| `save.ts` | ~1440 | IndexedDB save/load with full serialization |
 | `records.ts` | ~903 | Recordkeeper, persistent records, achievements |
 | `query-engine.ts` | ~874 | 28 Python-compatible query functions |
 | `support-system.ts` | ~500 | Support pairs, ranks, affinity bonuses |
@@ -449,7 +449,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~8050 | 21+ states, ~84 event commands, all gameplay logic |
+| `game-states.ts` | ~9290 | Core states, event-command dispatch, and gameplay logic |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -476,7 +476,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Events (`src/events/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `event-manager.ts` | ~1265 | Event queue, condition evaluator, JS fallback eval |
+| `event-manager.ts` | ~1320 | Event parser/queue, condition evaluator, JS fallback eval |
 | `event-portrait.ts` | ~700 | Portrait compositing, blinking, talking, expressions |
 | `python-events.ts` | ~995 | PYEV1 Python-syntax event interpreter |
 | `screen-positions.ts` | ~117 | Named screen position resolver |
@@ -517,7 +517,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Platform (`src/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `main.ts` | ~496 | Bootstrap, canvas, game loop, state registration |
+| `main.ts` | ~670 | Bootstrap, canvas, game loop, state registration |
 | `pwa.ts` | ~310 | Service worker, install prompt, connectivity |
 | `native.ts` | ~210 | Capacitor/TWA platform detection, lifecycle |
 
@@ -526,3 +526,17 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ## 10. Testing
 
 See [TESTING.md](./TESTING.md) for the full testing guide.
+
+## 11. Runtime Parity Workflow
+
+`PLAN.md` is organized around behavioral parity with the checked-in Python
+runtime. Run `npm run audit:parity` to regenerate inventory counts for event
+commands, registered web states, and item/skill component surfaces. These counts
+are discovery aids, not semantic coverage percentages; each mapped behavior still
+requires comparison with the corresponding Python source and a regression test.
+
+Event-driven persistent mutations should use `Action` subclasses so turnwheel
+reversal remains possible. The event runtime currently includes reversible WEXP,
+displayed-level, resurrection, and lore mutations. `GameState.unlockedLore` is
+serialized with an optional save field so saves created before lore persistence
+continue to load.

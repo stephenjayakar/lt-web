@@ -34,6 +34,12 @@ import {
   MessageAction,
   PromoteAction,
   ClassChangeAction,
+  GainWexpAction,
+  SetWexpAction,
+  SetUnitLevelAction,
+  ResurrectAction,
+  AddLoreAction,
+  RemoveLoreAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -6761,6 +6767,32 @@ export class EventState extends State {
         return false;
       }
 
+      case 'give_wexp': {
+        const unit = game.units.get(args[0]);
+        const weaponType = args[1];
+        const amount = parseInt(args[2] ?? '', 10);
+        if (unit && weaponType && Number.isFinite(amount)) {
+          game.actionLog.doAction(new GainWexpAction(unit, weaponType, amount));
+        } else {
+          console.warn(`Event give_wexp: invalid unit, weapon type, or amount (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_wexp': {
+        const unit = game.units.get(args[0]);
+        const weaponType = args[1];
+        const value = parseInt(args[2] ?? '', 10);
+        if (unit && weaponType && Number.isFinite(value)) {
+          game.actionLog.doAction(new SetWexpAction(unit, weaponType, value));
+        } else {
+          console.warn(`Event set_wexp: invalid unit, weapon type, or value (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'change_ai': {
         const unitNid = args[0] ?? '';
         const aiNid = args[1] ?? 'None';
@@ -7244,6 +7276,18 @@ export class EventState extends State {
         const unit5 = this.findUnit(unitNid5);
         if (unit5 && !isNaN(expVal)) {
           unit5.exp = Math.max(0, Math.min(99, expVal));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_unit_level': {
+        const unit = game.units.get(args[0]);
+        const level = parseInt(args[1] ?? '', 10);
+        if (unit && Number.isFinite(level) && level >= 1) {
+          game.actionLog.doAction(new SetUnitLevelAction(unit, level));
+        } else {
+          console.warn(`Event set_unit_level: invalid unit or level (${args.join(';')})`);
         }
         this.advancePointer();
         return false;
@@ -8740,11 +8784,33 @@ export class EventState extends State {
       case 'table':
       case 'remove_table':
       case 'textbox':
-      case 'set_wexp':
-      case 'resurrect':
-      case 'autolevel_to':
-      case 'add_lore': {
+      case 'autolevel_to': {
         // Advanced features not yet implemented — skip
+        this.advancePointer();
+        return false;
+      }
+
+      case 'resurrect': {
+        const unit = game.units.get(args[0]);
+        if (unit) {
+          game.actionLog.doAction(new ResurrectAction(unit));
+        } else {
+          console.warn(`Event resurrect: unit not found (${args[0] ?? ''})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_lore': {
+        const loreNid = args[0];
+        if (loreNid) game.actionLog.doAction(new AddLoreAction(loreNid));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_lore': {
+        const loreNid = args[0];
+        if (loreNid) game.actionLog.doAction(new RemoveLoreAction(loreNid));
         this.advancePointer();
         return false;
       }

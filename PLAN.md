@@ -1,18 +1,70 @@
-# lt-web: Lex Talionis Web Engine -- Development Plan
+# lt-web: Lex Talionis Runtime Parity Plan
 
-This document tracks what has been built, what is partially complete, and what
-remains to bring the TypeScript web port to feature parity with the original
-Lex Talionis Python/Pygame engine.
+This is the source of truth for bringing the TypeScript web runtime to behavioral
+parity with the checked-in Python Lex Talionis engine under `lt-maker/`. It records
+evidence, gaps, ordering, and completion gates. A feature is not considered at
+parity merely because a similarly named class, command, or UI exists.
 
----
+## Parity Contract
+
+### In scope
+
+- Runtime loading and execution of supported `.ltproj` projects
+- Database/resource formats, runtime objects, actions, saves, and turnwheel
+- State-machine flows, events (EVNT and PYEV1), queries, and triggers
+- Item and skill component behavior used by runtime projects
+- Movement, pathfinding, combat, AI, supports, fog, initiative, roam, and overworld
+- Player-facing rendering, animation, audio, menus, settings, and input
+- Browser-specific distribution features, provided they do not change game behavior
+
+### Out of scope
+
+- The Qt project editor and its editor-only validation/authoring UI
+- Python packaging, launcher, and desktop-only developer tooling
+- Pixel-identical behavior where browser platform constraints make it impossible;
+  any accepted deviation must be documented and covered by a behavioral test
+
+### Status vocabulary
+
+- **Verified**: compared with the Python source and covered by an automated parity test
+- **Implemented**: code path exists but has not passed the full parity gate
+- **Partial**: important behavior, variants, hooks, or UI are missing
+- **Missing**: reference behavior has no functional web implementation
+- **Unknown**: not yet inventoried deeply enough to classify
+
+### Completion gate
+
+Runtime parity is complete only when all in-scope inventory rows are classified,
+all Missing/Partial rows are resolved or explicitly accepted as deviations, the
+default Sacred Stones project passes chapter/event soak tests, at least one
+non-default representative `.ltproj` passes the compatibility suite, save/restore
+and turnwheel reversibility tests pass, and `npm run build`, `npm run audit:parity`,
+and the full Playwright suite are green.
+
+## Evidence Baseline (2026-07-16)
+
+Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
+
+| Domain | Python reference | Web inventory | Current classification |
+|---|---:|---:|---|
+| Event command NIDs | 255 | 196 parser names; 171 matching case labels | Partial |
+| Item component NIDs / hook exports | 201 | 25 hook exports | Unknown; mapping audit required |
+| Skill component NIDs / hook exports | 241 | 41 hook exports | Partial/Unknown |
+| Registered runtime states | broad Python state catalog | 40 web states | Partial |
+| TypeScript runtime | n/a | 87 files, ~46,800 lines | Builds |
+| Browser regression suite | n/a | 54 Playwright tests | 54/54 passing |
+
+Counts are inventories, not equivalence percentages: one generated hook can cover
+many components, while one switch case can still omit flags or blocking behavior.
 
 ## Current State
 
-**84 source files, ~44,400 lines of TypeScript.**
-Builds cleanly with zero type errors. All four development phases (Foundation,
-Playable, Visual Polish, Mobile/Distribution) are complete. The engine loads
-`.ltproj` game data over HTTP and runs at 60 fps on Canvas 2D with dynamic
-viewport scaling for mobile and desktop.
+The engine is playable through the current Sacred Stones coverage and has strong
+foundations: Canvas rendering, a stack state machine, combat/AI/movement, EVNT and
+PYEV1 interpreters, save/load, turnwheel, supports, fog, initiative, overworld,
+roam, PWA/native wrappers, and a deterministic Playwright harness. It is **not yet
+feature-complete relative to the Python runtime**. The roadmap below replaces the
+older broad “phase complete” assessment.
 
 ### Multi-Project Support
 
@@ -104,6 +156,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Parity plan and event mutation slice:**
+  - Added `npm run audit:parity`, which inventories Python event commands and
+    item/skill components against web parser/dispatcher/hook surfaces.
+  - Synchronized parser registration for already-implemented overworld and roam
+    commands that EVNT scripts previously dropped before dispatch.
+  - Implemented reversible `give_wexp`, `set_wexp`, `set_unit_level`, `resurrect`,
+    `add_lore`, and `remove_lore` event mutations following the Python source.
+  - Added per-save lore persistence with backward compatibility for older saves.
+  - Added a focused Playwright regression for parsing, mutation semantics, and lore
+    save/load round trips; full harness result: **54/54 passing**.
 
 - **Process docs update (agent commit/push policy clarified):**
   - Updated `AGENTS.md` commit policy section to explicitly state the
@@ -390,27 +453,125 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ---
 
-## Remaining Work
+## Execution Roadmap
 
-### Multi-Project Compatibility (Active)
+Work proceeds in this order because later systems depend on earlier dispatch,
+mutation, and lifecycle correctness. Check an item only after its verification gate
+passes; record newly discovered work here immediately.
 
-1. **Combat palette path fix** — Non-chunked palettes at `palette_data/combat_palettes.json`
-   not found because engine looks one directory level up.
-2. **URL encoding for resource NIDs** — Tilesets, portraits, icons, panoramas, and music
-   with spaces/special characters in NIDs fail to load. Need `encodeURIComponent()` or
-   `encodeURI()` on URL path segments.
-3. **Animated title panoramas** — Projects with numbered frames (`title_background0.png`
-   through `title_background32.png`) instead of single `title_background.png`.
+### P0 — Reproducible Inventory and Parity Harness
 
-### Still Missing (Lower Priority)
+- [x] Define runtime parity scope, status vocabulary, and completion gate
+- [x] Add a reproducible source inventory (`npm run audit:parity`)
+- [ ] Emit machine-readable audit JSON and fail CI on accidental coverage regressions
+- [ ] Build a command manifest mapping all 255 Python NIDs to web status, flags,
+  blocking semantics, aliases, source function, and regression test
+- [ ] Build item/skill component manifests mapping component NIDs to generated hooks
+- [ ] Inventory Python triggers, query functions, equations, and save fields
+- [ ] Add representative non-default project fixtures to CI
 
-- Initiative bar rendering UI (visual bar showing unit order)
-- Non-silent promotion choice UI (visual class selection)
-- Supply menu state UI
-- Aura propagation, charge/cooldown, conditional activation, proc skills
-- RNG mode integration into combat solver
-- Difficulty selection UI
-- Roam AI for NPCs, shop/talk menu in roam mode
-- Rescue icon, status effect icons, movement arrows on map
-- Growth rates display, support list, weapon rank letters in info menu
-- Base screen sub-menus (supports, codex, BEXP, sound room, achievements)
+**Gate:** every in-scope reference surface has an owner, status, and test target.
+
+### P1 — Event Runtime and Reversible Mutations
+
+- [x] Repair parser/dispatcher drift for implemented overworld and roam commands
+- [x] Implement reversible WEXP, level-set, resurrect, and lore commands
+- [ ] Implement WEXP rank-up alerts and `unit_weapon_rank_up` triggers
+- [ ] Implement `autolevel_to`, including fixed/random/dynamic methods, hidden mode,
+  difficulty growth bonuses, level-up triggers, and learned skills
+- [ ] Implement parser-recognized commands with no dispatcher case (currently includes
+  `change_faction`, growth/portrait changes, item movement, dialog variants, and others)
+- [ ] Implement the 69 Python commands still absent from the parser, prioritized by
+  project usage: unit/item mutation, party transfer/pair-up, scripts, overlays, and UI
+- [ ] Implement overlay/table/textbox commands instead of silently advancing
+- [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
+- [ ] Audit all trigger payloads and EVNT/PYEV1 parity, including nested flow control
+
+**Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
+by parser plus behavioral tests; unsupported commands fail loudly in development.
+
+### P2 — Actions, Save/Restore, and Turnwheel
+
+- [ ] Route all event and gameplay mutations through reversible actions
+- [ ] Inventory every Python save field and restoration-order dependency
+- [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
+  initiative, roam, overworld, records, achievements, and in-progress events
+- [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults
+- [ ] Verify turnwheel undo/redo across combat, death/resurrection, recruitment,
+  inventory/convoy, class change, support, fog, initiative, and event mutations
+
+**Gate:** save round trips are lossless for in-scope state and every logged mutation
+returns to byte-equivalent state after reverse/redo where the Python action does.
+
+### P3 — Item and Skill Component System
+
+- [ ] Map all Python item component NIDs to web hooks and identify generated aliases
+- [ ] Map all Python skill component NIDs to web hooks and identify generated aliases
+- [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
+- [ ] Implement aura propagation and cleanup
+- [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
+- [ ] Verify component resolve policies (all/any/sum/unique/default) against Python
+- [ ] Add fixture-driven component tests, including interactions between components
+
+**Gate:** every runtime component is verified or documented as editor-only; combat and
+item-use fixture matrices match Python outputs and side effects.
+
+### P4 — Core Gameplay, Combat, AI, and RNG
+
+- [ ] Compare combat strike ordering, playback, EXP/WEXP, death, and post-combat events
+- [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
+- [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
+- [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
+- [ ] Verify pathfinding, movement costs, LOS/fog, rescue/pair-up, canto, and initiative
+- [ ] Add deterministic golden scenarios for weapon triangle, brave, vantage,
+  desperation, miracle, effective damage, status, and scripted combat
+
+**Gate:** deterministic scenario outputs and action/playback order match Python.
+
+### P5 — State Machine and Player-Facing UI
+
+- [ ] Inventory Python state names and map them to web states or documented mergers
+- [ ] Implement supply/convoy, repair shop, trade variants, item discard/targeting,
+  promotion/class choice, formation, text entry, and objective/dialog-log flows
+- [ ] Implement difficulty/mode selection and complete title Extras flows
+- [ ] Complete base submenus: supports, codex/library/guide, BEXP, records,
+  achievements, sound room, and unit management
+- [ ] Complete roam talk/shop interaction and overworld option menus
+- [ ] Add initiative bar, rescue/status icons, movement arrows, growth/support/WEXP info
+- [ ] Remove remaining placeholder portraits/sprites where resources exist
+
+**Gate:** every in-scope Python state has an equivalent reachable flow with keyboard,
+mouse, touch, cancel/back, transition, and resume tests.
+
+### P6 — Rendering, Animation, Audio, and Resources
+
+- [ ] Compare tile layers, autotiles, weather, map animations, fog, and camera effects
+- [ ] Complete combat-animation fallback behavior without debug placeholder art
+- [ ] Verify portrait expressions, dialog controls, transitions, overlays, and text layout
+- [ ] Verify music-stack, phase/battle music overrides, SFX loops, and audio settings
+- [ ] Build resource-path fixtures for spaces, Unicode, chunked/non-chunked data,
+  animated panoramas, palette layouts, missing optional assets, and bundles
+- [ ] Add screenshot/golden tolerances for representative maps and combat scenes
+
+**Gate:** required assets load across fixture projects and visual/audio state transitions
+match the reference within documented browser tolerances.
+
+### P7 — Project Compatibility and Release Gate
+
+- [ ] Expand Sacred Stones coverage from the current chapter/event matrix to a complete
+  campaign smoke path with branch, recruitment, shop, convoy, save, and ending coverage
+- [ ] Run repeated soak tests with deterministic seeds and archive first-failure state
+- [ ] Validate at least one component-heavy and one PYEV1-heavy external project
+- [ ] Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle
+- [ ] Remove silent skips for known commands/components in production builds
+- [ ] Publish a final parity report listing verified domains and accepted deviations
+
+**Gate:** all completion-gate commands pass, compatibility fixtures are green, and no
+unclassified runtime gaps remain.
+
+## Active Next Slice
+
+1. Generate the event-command manifest from Python metadata and web dispatch.
+2. Implement `autolevel_to` and the related level/growth action primitives.
+3. Add WEXP rank-up notification/trigger behavior.
+4. Convert parser-recognized no-op/missing unit mutation commands into reversible actions.
