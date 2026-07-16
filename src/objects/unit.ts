@@ -49,6 +49,8 @@ export class UnitObject {
   stats: Record<string, number>;
   currentHp: number;
   growths: Record<string, number>;
+  /** Dynamic-leveling pity values, keyed by stat NID. */
+  growthPoints: Record<string, number>;
 
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;
@@ -130,8 +132,10 @@ export class UnitObject {
     // The class has a separate `growth_bonus` field used during leveling,
     // NOT added at construction time (unless `unit_stats_as_bonus` is true).
     this.growths = {};
+    this.growthPoints = {};
     for (const key of Object.keys(prefab.growths)) {
       this.growths[key] = prefab.growths[key] ?? 0;
+      this.growthPoints[key] = 0;
     }
 
     // --- Max stat caps from class ---

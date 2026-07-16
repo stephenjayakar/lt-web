@@ -51,8 +51,8 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Item component NIDs / hook exports | 201 | 25 hook exports | Unknown; mapping audit required |
 | Skill component NIDs / hook exports | 241 | 41 hook exports | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 87 files, ~46,800 lines | Builds |
-| Browser regression suite | n/a | 54 Playwright tests | 54/54 passing |
+| TypeScript runtime | n/a | 88 files, ~47,400 lines | Builds |
+| Browser regression suite | n/a | 58 Playwright tests | 58/58 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,23 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Autolevel and WEXP rank-up parity slice:**
+  - Added `src/engine/leveling.ts`, a faithful autolevel implementation for
+    Fixed, Random, Dynamic, Lucky, and BEXP growth methods, including LT's
+    MD5-seeded LCG, level-down behavior, class/difficulty/skill growth bonuses,
+    negative growths, stat caps, and dynamic growth points.
+  - Added reversible `AutoLevelAction` and `AddSkillAction`; `autolevel_to` now
+    supports explicit/default growth methods, `hidden`, `unit_level_up` triggers,
+    personal/class learned skills, and promotion-skill inheritance.
+  - Persisted dynamic growth points with backward-compatible save defaults.
+  - Added EVNT `{e:...}`/`{eval:...}` argument evaluation and game/level-variable
+    substitution, required by real default and Rekka autolevel scripts.
+  - WEXP crossings now emit `unit_weapon_rank_up` with trigger metadata and show
+    a dismissible rank banner unless `no_banner` is present.
+  - Added Python-derived fixed/random/dynamic golden tests, trigger/banner tests,
+    dynamic-growth save round-trip coverage, and turnwheel undo/redo checks;
+    full harness result: **58/58 passing**.
 
 - **Parity plan and event mutation slice:**
   - Added `npm run audit:parity`, which inventories Python event commands and
@@ -476,9 +493,10 @@ passes; record newly discovered work here immediately.
 
 - [x] Repair parser/dispatcher drift for implemented overworld and roam commands
 - [x] Implement reversible WEXP, level-set, resurrect, and lore commands
-- [ ] Implement WEXP rank-up alerts and `unit_weapon_rank_up` triggers
-- [ ] Implement `autolevel_to`, including fixed/random/dynamic methods, hidden mode,
+- [x] Implement WEXP rank-up alerts and `unit_weapon_rank_up` triggers
+- [x] Implement `autolevel_to`, including fixed/random/dynamic methods, hidden mode,
   difficulty growth bonuses, level-up triggers, and learned skills
+- [ ] Implement deterministic selection for the special generic `Feat` learned-skill entry
 - [ ] Implement parser-recognized commands with no dispatcher case (currently includes
   `change_faction`, growth/portrait changes, item movement, dialog variants, and others)
 - [ ] Implement the 69 Python commands still absent from the parser, prioritized by
@@ -572,6 +590,5 @@ unclassified runtime gaps remain.
 ## Active Next Slice
 
 1. Generate the event-command manifest from Python metadata and web dispatch.
-2. Implement `autolevel_to` and the related level/growth action primitives.
-3. Add WEXP rank-up notification/trigger behavior.
-4. Convert parser-recognized no-op/missing unit mutation commands into reversible actions.
+2. Convert parser-recognized no-op/missing unit mutation commands into reversible actions.
+3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

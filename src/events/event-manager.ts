@@ -30,6 +30,11 @@ export interface EventTrigger {
   position?: [number, number];
   region?: any;          // RegionData reference
   item?: any;            // ItemObject reference
+  statChanges?: Record<string, number>;
+  source?: string;
+  weaponType?: NID;
+  oldWexp?: number;
+  rank?: string;
 }
 
 export type EventCommandType =
@@ -678,6 +683,13 @@ export interface ConditionContext {
   localArgs?: Map<string, any>;  // Trigger-specific extra args
 }
 
+/** Evaluate a non-boolean event expression for {e:...}/{eval:...} arguments. */
+export function evaluateExpression(expression: string, context: ConditionContext): any {
+  const direct = resolvePath(expression, context);
+  if (direct !== undefined) return direct;
+  return evaluateWithJsFallback(expression, context);
+}
+
 /** Resolve a dotted path like "game.turncount", "unit.nid", "region.nid" to a value. */
 function resolvePath(path: string, ctx: ConditionContext): any {
   const trimmed = path.trim();
@@ -1088,12 +1100,16 @@ function evaluateWithJsFallback(
   const unit = unit1 ? {
     nid: unit1.nid, name: unit1.name, team: unit1.team,
     position: unit1.position, tags: unit1.tags ?? [],
-    klass: unit1.klass, dead: unit1.isDead?.() ?? false,
+    klass: unit1.klass, level: unit1.level, exp: unit1.exp,
+    stats: unit1.stats, growths: unit1.growths,
+    dead: unit1.isDead?.() ?? false,
   } : null;
   const target = unit2 ? {
     nid: unit2.nid, name: unit2.name, team: unit2.team,
     position: unit2.position, tags: unit2.tags ?? [],
-    klass: unit2.klass, dead: unit2.isDead?.() ?? false,
+    klass: unit2.klass, level: unit2.level, exp: unit2.exp,
+    stats: unit2.stats, growths: unit2.growths,
+    dead: unit2.isDead?.() ?? false,
   } : null;
   const region = ctx.region ? {
     nid: ctx.region.nid, position: ctx.region.position,
@@ -1209,6 +1225,14 @@ export class EventManager {
         position: trigger.position ?? context.position,
         region: trigger.region ?? context.region,
         item: trigger.item ?? context.item,
+        localArgs: new Map<string, any>([
+          ...(context.localArgs?.entries() ?? []),
+          ['stat_changes', trigger.statChanges],
+          ['source', trigger.source],
+          ['weapon_type', trigger.weaponType],
+          ['old_wexp', trigger.oldWexp],
+          ['rank', trigger.rank],
+        ]),
       };
 
       // Evaluate the condition

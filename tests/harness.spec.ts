@@ -298,6 +298,227 @@ test.describe('Event command parity', () => {
 
     expect(saveRoundTrip).toEqual({ loaded: true, unlockedLore: ['Guide'] });
   });
+
+  test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const unit = game.units.get('Eirika');
+      const klass = game.db.classes.get(unit.klass);
+      if (!unit || !klass) return null;
+
+      if (game.db.skills.has('Canto') && !klass.learned_skills.some((entry: any[]) => entry[1] === 'Canto')) {
+        klass.learned_skills.push([3, 'Canto']);
+      }
+      game.db.events.set('_test_unit_level_up', {
+        nid: '_test_unit_level_up',
+        name: 'Unit Level Up Trigger',
+        trigger: 'unit_level_up',
+        level_nid: '0',
+        condition: "source == 'event'",
+        only_once: false,
+        priority: 0,
+        _source: ['level_var;_autolevel_triggered;{e:source}'],
+      });
+
+      const initialStats = { ...unit.stats };
+      const event = new GameEvent({
+        nid: '_test_autolevel',
+        name: 'Autolevel Parity',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: [
+          'autolevel_to;Eirika;{e:unit.level + 4};fixed',
+          'autolevel_to;Eirika;7;fixed;hidden',
+        ],
+      }, { type: 'test', levelNid: '0', unit1: unit });
+      game.eventManager.eventQueue.push(event);
+      game.state.change('event');
+      return { initialStats, hasCantoPrefab: game.db.skills.has('Canto') };
+    });
+
+    expect(setup).not.toBeNull();
+    await settle(page, 300);
+
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      return {
+        level: unit.level,
+        stats: { ...unit.stats },
+        hp: unit.currentHp,
+        maxHp: unit.maxHp,
+        triggerSource: game.levelVars.get('_autolevel_triggered'),
+        hasCanto: unit.skills.some((skill: any) => skill.nid === 'Canto'),
+      };
+    });
+    const deltas = Object.fromEntries(
+      Object.entries(result.stats).map(([stat, value]) => [stat, (value as number) - setup!.initialStats[stat]]),
+    );
+
+    expect(result.level).toBe(5);
+    expect(result.hp).toBe(result.maxHp);
+    expect(result.triggerSource).toBe('event');
+    expect(deltas).toMatchObject({
+      HP: 4, STR: 2, MAG: 3, SKL: 4, SPD: 4,
+      LCK: 4, DEF: 2, RES: 2, CON: 0, MOV: 0,
+    });
+    if (setup!.hasCantoPrefab) expect(result.hasCanto).toBe(true);
+  });
+
+  for (const growthCase of [
+    {
+      method: 'random',
+      gains: { HP: 3, STR: 2, MAG: 3, SKL: 2, SPD: 1, LCK: 2, DEF: 0, RES: 1 },
+      growthPoints: null,
+    },
+    {
+      method: 'dynamic',
+      gains: { HP: 3, STR: 2, MAG: 3, SKL: 2, SPD: 1, LCK: 2, DEF: 1, RES: 1 },
+      growthPoints: { HP: -2, STR: -4, MAG: -8, SKL: 4, SPD: 14, LCK: 4, DEF: 2, RES: 2 },
+    },
+  ]) {
+    test(`autolevel_to ${growthCase.method} uses LT deterministic level RNG`, async ({ page }) => {
+      await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+      await waitForHarness(page);
+
+      const initialStats = await page.evaluate(async (method: string) => {
+        const game = (window as any).__gameRef;
+        const { GameEvent } = await import('/src/events/event-manager.ts');
+        const unit = game.units.get('Eirika');
+        game.gameVars.set('_random_seed', 0);
+        const stats = { ...unit.stats };
+        game.eventManager.eventQueue.push(new GameEvent({
+          nid: `_test_${method}_autolevel`, name: 'RNG Autolevel', trigger: 'test',
+          level_nid: '0', condition: '', only_once: false, priority: 0,
+          _source: [`autolevel_to;Eirika;5;${method};hidden`],
+        }, { type: 'test', levelNid: '0', unit1: unit }));
+        game.state.change('event');
+        return stats;
+      }, growthCase.method);
+
+      await settle(page, 300);
+      const result = await page.evaluate(() => {
+        const unit = (window as any).__gameRef.units.get('Eirika');
+        return { stats: { ...unit.stats }, growthPoints: { ...unit.growthPoints }, level: unit.level };
+      });
+      const deltas = Object.fromEntries(
+        Object.entries(result.stats).map(([stat, value]) => [stat, (value as number) - initialStats[stat]]),
+      );
+      expect(result.level).toBe(1);
+      expect(deltas).toMatchObject(growthCase.gains);
+
+      const turnwheel = await page.evaluate(() => {
+        const game = (window as any).__gameRef;
+        const actionLog = game.actionLog as any;
+        actionLog.runActionBackward();
+        const reversedUnit = game.units.get('Eirika');
+        const reversed = {
+          stats: { ...reversedUnit.stats },
+          growthPoints: { ...reversedUnit.growthPoints },
+        };
+        actionLog.runActionForward();
+        const redoneUnit = game.units.get('Eirika');
+        const redone = {
+          stats: { ...redoneUnit.stats },
+          growthPoints: { ...redoneUnit.growthPoints },
+        };
+        return { reversed, redone };
+      });
+      expect(turnwheel.reversed.stats).toEqual(initialStats);
+      expect(Object.values(turnwheel.reversed.growthPoints).every((value) => value === 0)).toBe(true);
+      expect(turnwheel.redone.stats).toEqual(result.stats);
+      expect(turnwheel.redone.growthPoints).toEqual(result.growthPoints);
+
+      if (growthCase.growthPoints) {
+        expect(result.growthPoints).toMatchObject(growthCase.growthPoints);
+        const roundTrip = await page.evaluate(async () => {
+          const game = (window as any).__gameRef;
+          const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+          const gameNid = game.db.getConstant('game_nid', 'default');
+          await saveGame(game, 98, 'battle');
+          game.units.get('Eirika').growthPoints = {};
+          const loaded = await loadGame(game, 98);
+          const growthPoints = { ...game.units.get('Eirika').growthPoints };
+          await deleteSave(gameNid, 98);
+          return { loaded, growthPoints };
+        });
+        expect(roundTrip.loaded).toBe(true);
+        expect(roundTrip.growthPoints).toMatchObject(growthCase.growthPoints);
+      }
+    });
+  }
+
+  test('WEXP rank crossings emit triggers and show a dismissible banner', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const queueWexp = async (source: string) => page.evaluate(async (sourceLine: string) => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const unit = game.units.get('Eirika');
+      if (!game.db.events.has('_test_weapon_rank_up')) {
+        game.db.events.set('_test_weapon_rank_up', {
+          nid: '_test_weapon_rank_up',
+          name: 'Weapon Rank Trigger',
+          trigger: 'unit_weapon_rank_up',
+          level_nid: '0',
+          condition: "weapon_type == 'Sword'",
+          only_once: false,
+          priority: 0,
+          _source: ['level_var;_weapon_rank_triggered;{e:rank}'],
+        });
+      }
+      const event = new GameEvent({
+        nid: '_test_wexp_command', name: 'WEXP Command', trigger: 'test', level_nid: '0',
+        condition: '', only_once: false, priority: 0, _source: [sourceLine],
+      }, { type: 'test', levelNid: '0', unit1: unit });
+      game.eventManager.eventQueue.push(event);
+      game.state.change('event');
+    }, source);
+
+    await queueWexp('set_wexp;Eirika;Sword;31;no_banner');
+    await settle(page, 300);
+    let result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return { wexp: game.units.get('Eirika').wexp.Sword, rank: game.levelVars.get('_weapon_rank_triggered') };
+    });
+    expect(result).toEqual({ wexp: 31, rank: 'D' });
+
+    const rewind = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      actionLog.runActionBackward();
+      const reversed = game.units.get('Eirika').wexp.Sword;
+      actionLog.runActionForward();
+      const redone = game.units.get('Eirika').wexp.Sword;
+      return { reversed, redone };
+    });
+    expect(rewind).toEqual({ reversed: 1, redone: 31 });
+
+    await queueWexp('set_wexp;Eirika;Sword;71');
+    await stepFrames(page, 2);
+    const bannerState = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      return { state: state?.name, hasBanner: !!state?.banner };
+    });
+    expect(bannerState).toEqual({ state: 'event', hasBanner: true });
+
+    await stepFrames(page, 25);
+    await stepFrames(page, 1, 'SELECT');
+    await settle(page, 300);
+    result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return { wexp: game.units.get('Eirika').wexp.Sword, rank: game.levelVars.get('_weapon_rank_triggered') };
+    });
+    expect(result).toEqual({ wexp: 71, rank: 'C' });
+  });
 });
 
 // ---------------------------------------------------------------------------
