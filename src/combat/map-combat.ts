@@ -5,6 +5,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
 import { usesConsumedByStrikes } from './item-system';
+import { applyCombatComponents, type WeaponRankUp } from './combat-components';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -27,6 +28,10 @@ export interface CombatResults {
   defenseWeaponBroke: boolean;
   /** Item dropped by the defender on death, or null. */
   droppedItem: import('../objects/item').ItemObject | null;
+  /** WEXP granted to the initiating unit. */
+  attackerWexpGained: number;
+  /** Weapon rank crossed by the initiating unit, if any. */
+  attackerRankUp: WeaponRankUp | null;
 }
 
 /** Duration constants (milliseconds) */
@@ -268,8 +273,19 @@ export class MapCombat {
       }
     }
 
-    // Calculate EXP
-    const expGained = this.calculateExp(attackerDead, defenderDead);
+    const componentResults = applyCombatComponents(
+      this.attacker,
+      this.attackItem,
+      this.defender,
+      this.defenseItem,
+      this.strikes,
+      attackerDead,
+      defenderDead,
+      this.db,
+    );
+
+    // Fixed staff EXP replaces the ordinary level-difference combat formula.
+    const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, defenderDead);
 
     // Grant EXP and perform level-ups with growth rolls
     let levelUps: Record<string, number>[] = [];
@@ -303,6 +319,8 @@ export class MapCombat {
       attackWeaponBroke,
       defenseWeaponBroke,
       droppedItem,
+      attackerWexpGained: componentResults.attackerWexpGained,
+      attackerRankUp: componentResults.attackerRankUp,
     };
   }
 

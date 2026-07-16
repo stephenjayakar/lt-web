@@ -9,6 +9,7 @@ import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
 import { convertSpritesheetToFrames } from './sprite-loader';
 import { computeHit, computeDamage, computeCrit } from './combat-calcs';
 import { usesConsumedByStrikes } from './item-system';
+import { applyCombatComponents } from './combat-components';
 
 
 // ============================================================
@@ -1068,8 +1069,19 @@ export class AnimationCombat implements AnimationCombatOwner {
       }
     }
 
-    // EXP
-    const expGained = this.calculateExp(attackerDead, defenderDead);
+    const componentResults = applyCombatComponents(
+      this.attacker,
+      this.attackItem,
+      this.defender,
+      this.defenseItem,
+      this.strikes,
+      attackerDead,
+      defenderDead,
+      this.db,
+    );
+
+    // Fixed staff EXP replaces the ordinary level-difference combat formula.
+    const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, defenderDead);
 
     let levelUps: Record<string, number>[] = [];
     const growthMode = (this.db.getConstant?.('growths_choice', 'random') as string) || 'random';
@@ -1101,6 +1113,8 @@ export class AnimationCombat implements AnimationCombatOwner {
       attackWeaponBroke,
       defenseWeaponBroke,
       droppedItem,
+      attackerWexpGained: componentResults.attackerWexpGained,
+      attackerRankUp: componentResults.attackerRankUp,
     };
   }
 

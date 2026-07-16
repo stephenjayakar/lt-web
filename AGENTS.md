@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~49,300 lines of TypeScript across 89
+systems. The engine currently spans **~49,600 lines of TypeScript across 90
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -451,7 +451,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10220 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence targeting, and item-use rewards |
+| `game-states.ts` | ~10290 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence targeting, combat-routed status spells, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -466,14 +466,15 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Combat (`src/combat/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `combat-calcs.ts` | ~722 | Hit, damage, crit, avoid, weapon triangle, component dispatch |
+| `combat-calcs.ts` | ~733 | Hit, damage, crit, avoid, weapon triangle, and Python-priority alternate/override item/skill formulas |
 | `combat-solver.ts` | ~409 | Strike sequencing, vantage/desperation/miracle |
-| `animation-combat.ts` | ~1290 | GBA-style animation combat state machine and shared per-strike durability lifecycle |
+| `combat-components.ts` | ~124 | Shared on-hit status, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
+| `animation-combat.ts` | ~1303 | GBA-style animation combat state machine and shared per-strike durability/component lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
-| `map-combat.ts` | ~580 | Map-mode combat (no animations), including per-strike durability lifecycle |
+| `map-combat.ts` | ~596 | Map-mode combat, including per-strike durability, status, fixed reward, and rank-up results |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~580 | Item dispatch, targeting/AOE/utility/repair/unload restrictions, and uses-options durability resolution |
-| `skill-system.ts` | ~445 | Skill dispatch, including forced-movement and EXP/WEXP multiplier hooks |
+| `item-system.ts` | ~600 | Item dispatch, targeting/AOE/utility/repair/unload restrictions, spell combat rules, formula hooks, and uses-options durability resolution |
+| `skill-system.ts` | ~453 | Skill dispatch, including formula priority, forced-movement, and EXP/WEXP multiplier hooks |
 
 ### Events (`src/events/`)
 | File | Lines | Purpose |
