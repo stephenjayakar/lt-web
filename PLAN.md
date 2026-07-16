@@ -47,12 +47,12 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
-| Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
+| Event command NIDs | 255 | 206 recognized; 196 matching case labels | Partial |
 | Item component NIDs | 201 | 110 exact string references; 92 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 67 exact string references; 65 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 69 exact string references; 67 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 95 files, 51,983 lines | Builds |
-| Browser regression suite | n/a | 87 Playwright tests | 87/87 passing |
+| TypeScript runtime | n/a | 95 files, 52,476 lines | Builds |
+| Browser regression suite | n/a | 89 Playwright tests | 89/89 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,28 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Pair-up, Rescue fallback, and separation parity slice:**
+  - Used an OMP Luna medium research audit against the Python runtime and bundled
+    projects to identify `pair_up`/`rescue` and `separate`/`drop` as the next
+    project-used command gap. Rekka's disabled-pairup configuration established the
+    required Rescue fallback and non-spatial `RemovePartner` semantics.
+  - Added parser aliases and event dispatch for both commands, with Python-shaped
+    missing-unit/traveler guards, same-team player targeting, true pair-up versus
+    Rescue fallback selection, and event separation that does not place the traveler.
+  - Added reversible Rescue, PairUp, Separate, Drop, and RemovePartner relationship
+    state: lead/traveler roles, guard-gauge merge/split and clamping, follower turn
+    reset, sourced Pair Up/Rescue skills, exact skill-index restoration, board
+    placement, and wait/drop flags all survive undo/redo.
+  - Persisted relationship roles, guard state, rescue action flags, and per-instance
+    skill source metadata with backward-compatible defaults. Level cleanup now removes
+    sourced traveler effects without deleting natural same-NID skills.
+  - Switched player menus and Rescue/Drop states between Pair Up/Separate and classic
+    Rescue/Drop according to project constants. Added regressions for the Rekka-style
+    fallback, real player-state selection, true guard stance, sourced duplicate skills,
+    save/load, cleanup, and turnwheel. Inventory advanced to **206/255 recognized
+    commands / 196 case labels** and **69/241 skill exact references / 67 hook
+    surfaces**; the full serial gate is **89/89 passing**.
 
 - **Item availability, combat EXP, and weapon-triangle parity slice:**
   - Added Python-shaped item availability for uses/chapter uses, HP and mana costs,
@@ -863,8 +885,10 @@ passes; record newly discovered work here immediately.
 - [x] Implement deterministic selection for the special generic `Feat` learned-skill entry
 - [ ] Implement parser-recognized commands with no dispatcher case (currently includes
   item movement, dialog variants, special music, save deletion, and others)
-- [ ] Implement the 51 Python commands still absent from the parser, prioritized by
-  project usage: unit/item mutation, party transfer/pair-up, scripts, overlays, and UI
+- [x] Implement project-used `pair_up`/`rescue` and `separate`/`drop` commands with
+  Pair Up versus classic Rescue fallback semantics
+- [ ] Implement the 49 Python commands still absent from the parser, prioritized by
+  project usage: unit/item mutation, party transfer, scripts, overlays, and UI
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
 - [ ] Audit all trigger payloads and EVNT/PYEV1 parity, including nested flow control
@@ -883,6 +907,8 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 - [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults
 - [ ] Verify turnwheel undo/redo across combat, death/resurrection, recruitment,
   inventory/convoy, class change, support, fog, initiative, and event mutations
+- [x] Round-trip and rewind Rescue/Pair Up relationships, roles, guard gauges,
+  sourced skills, follower flags, separation placement, and legacy save defaults
 
 **Gate:** save round trips are lossless for in-scope state and every logged mutation
 returns to byte-equivalent state after reverse/redo where the Python action does.
@@ -921,7 +947,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement `unlock_staff` event-region targeting without inherited AOE splash
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
-- [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
+- [x] Implement sourced `pairup_bonus` and hidden Rescue penalty add/remove lifecycles
+- [ ] Implement remaining charge/cooldown, conditional activation, proc, and status hooks
 - [ ] Verify component resolve policies (all/any/sum/unique/default) against Python
 - [ ] Add fixture-driven component tests, including interactions between components
 
@@ -943,6 +970,8 @@ item-use fixture matrices match Python outputs and side effects.
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
 - [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
 - [ ] Verify pathfinding, movement costs, LOS/fog, rescue/pair-up, canto, and initiative
+- [x] Verify player and event Pair Up/Separate plus classic Rescue fallback behavior,
+  including board placement and guard-gauge transitions
 - [ ] Add deterministic golden scenarios for weapon triangle, brave, vantage,
   desperation, miracle, effective damage, status, and scripted combat
 
@@ -957,6 +986,7 @@ item-use fixture matrices match Python outputs and side effects.
 - [ ] Complete base submenus: supports, codex/library/guide, BEXP, records,
   achievements, sound room, and unit management
 - [ ] Complete roam talk/shop interaction and overworld option menus
+- [x] Switch Rescue/Drop menus and targeting states to Pair Up/Separate when enabled
 - [ ] Add initiative bar, rescue/status icons, movement arrows, growth/support/WEXP info
 - [ ] Remove remaining placeholder portraits/sprites where resources exist
 
@@ -992,9 +1022,10 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement the next project-used parser-recognized event commands that still lack
-   dispatcher cases, with reversible mutations and blocking/flag coverage.
+1. Implement the project-used achievement create/update commands from the bundled
+   testing project, with persistent records and behavioral coverage.
 2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
    the generated component manifest and add interaction fixtures.
-3. Extend skill lifecycle parity beyond combat procs: upkeep/endstep charge reset,
-   combat arts, post-strike/status hooks, pair-up hooks, and proc icon presentation.
+3. Complete the remaining pair-up surface (`Switch`, `Transfer`, attack stance), then
+   extend skill lifecycles through upkeep/endstep, combat arts, post-strike/status
+   hooks, and proc icon presentation.

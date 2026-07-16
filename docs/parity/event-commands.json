@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 204,
-    "dispatcherPythonNids": 194,
+    "parserRecognizedPythonNids": 206,
+    "dispatcherPythonNids": 196,
     "itemReferencedComponentNids": 110,
     "itemHookMappedComponentNids": 92,
-    "skillReferencedComponentNids": 67,
-    "skillHookMappedComponentNids": 65,
+    "skillReferencedComponentNids": 69,
+    "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 182,
+      "dispatched-unverified": 184,
       "missing-dispatch": 10,
-      "missing-parser": 51,
+      "missing-parser": 49,
       "stub-hint": 12
     }
   },
@@ -5586,12 +5586,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3816
       },
-      "parserRecognized": false,
-      "nicknameRecognized": false,
-      "dispatcherCase": false,
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "separate",
@@ -5608,12 +5608,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3838
       },
-      "parserRecognized": false,
-      "nicknameRecognized": false,
-      "dispatcherCase": false,
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "overworld_cinematic",

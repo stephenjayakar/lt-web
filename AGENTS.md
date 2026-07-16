@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~52,000 lines of TypeScript across 95
+systems. The engine currently spans **52,476 lines of TypeScript across 95
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -392,6 +392,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
   navigation UI, lock mechanism, recording control
 - **Initiative turn system**: Speed-based per-unit turn order as alternative
   to standard phase cycle, auto-insert/remove on spawn/death
+- **Pair-up / Rescue**: Project-constant-aware Pair Up versus classic Rescue,
+  reversible Pair Up/Separate/Rescue/Drop/RemovePartner actions, guard-gauge
+  merge/split, sourced bonuses/penalties, player menus, events, and save restoration
 - **Overworld map**: FE8-style world map with nodes, roads, Dijkstra pathfinding,
   animated entity movement, level entry, 11 event commands
 - **Free roam mode**: ARPG-style direct unit control with physics-based
@@ -437,7 +440,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `game-state.ts` | ~1480 | Singleton hub: subsystem refs, level loading/cleanup, generic learned skills, win/loss, difficulty, unit persistence |
 | `target-system.ts` | ~181 | Availability-gated target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~2585 | All game actions (Move/Warp, Damage, Heal, reversible board/initiative death, Steal records, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
+| `action.ts` | ~2856 | All game actions, including reversible board/initiative death, inventory, metadata, Pair Up/Separate/Rescue/Drop, guard gauges, and sourced traveler effects |
 | `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
 | `learned-skills.ts` | ~80 | Class/inherited learned-skill traversal and generic Feat selection |
 | `static-random.ts` | ~99 | LT LCG plus persisted combat and shared growth-random streams |
@@ -445,7 +448,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
 | `difficulty.ts` | ~135 | Difficulty mode runtime class |
-| `save.ts` | ~1495 | IndexedDB save/load with canonical item identities and recursive subitem graphs |
+| `save.ts` | ~1510 | IndexedDB save/load with canonical item identities, recursive subitem graphs, pair roles/gauges, and per-skill source metadata |
 | `records.ts` | ~903 | Recordkeeper, persistent records, achievements |
 | `query-engine.ts` | ~876 | 28 Python-compatible query functions, including runtime subitem lookup |
 | `support-system.ts` | ~500 | Support pairs, ranks, affinity bonuses |
@@ -455,7 +458,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10591 | Core states, event dispatch, gameplay logic, availability-gated item/weapon menus, interactive unit/inventory/multi/sequence/Steal targeting, learned-skill actions, grouped AOE combat routing, persistent RNG wiring, reversible combat lifecycle triggers/results, combat-routed utility spells, and item-use rewards |
+| `game-states.ts` | ~10662 | Core states, event dispatch, Pair Up/Separate versus Rescue/Drop menus and targeting, availability-gated items, grouped combat, persistent RNG, and reversible combat/item rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -481,12 +484,12 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `combat-skill-lifecycle.ts` | ~371 | Combat RNG transition records, skill conditions, temporary attack/defense/pre-procs, item overrides, grouped sharing, and charge cleanup |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
 | `item-system.ts` | ~1068 | Item availability/cost/rank/prf/condition/override/parent dispatch, unlock-region targeting, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, spell combat rules, triangle modifiers, and uses-options durability resolution |
-| `skill-system.ts` | ~491 | Skill dispatch, including proc modifier aliases, Oversplash/Cleave alternate AOE, formula priority, forced-movement, and EXP/WEXP multiplier hooks |
+| `skill-system.ts` | ~567 | Skill dispatch, including sourced Pair Up/Rescue lifecycles, proc modifiers, alternate AOE, formula priority, forced movement, and EXP/WEXP hooks |
 
 ### Events (`src/events/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `event-manager.ts` | ~1394 | Event parser/queue, condition evaluator, combat-local payload context, specific-event dispatch, item-target expressions, and JS fallback eval |
+| `event-manager.ts` | ~1398 | Event parser/queue, Pair Up/Rescue aliases, condition evaluator, combat-local payload context, specific-event dispatch, and item-target expressions |
 | `event-portrait.ts` | ~700 | Portrait compositing, blinking, talking, expressions |
 | `python-events.ts` | ~995 | PYEV1 Python-syntax event interpreter |
 | `screen-positions.ts` | ~117 | Named screen position resolver |

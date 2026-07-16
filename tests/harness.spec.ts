@@ -299,6 +299,373 @@ test.describe('Event command parity', () => {
     expect(saveRoundTrip).toEqual({ loaded: true, unlockedLore: ['Guide'] });
   });
 
+  test('pair_up aliases use Rekka-compatible rescue fallback and non-spatial separation', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const template = game.db.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const makeUnit = (nid: string) => {
+        const unit = new UnitObject({ ...template, nid, name: nid, starting_items: [] }, klass);
+        unit.team = 'player';
+        return unit;
+      };
+      const follower = makeUnit('_RescueFallbackFollower');
+      const leader = makeUnit('_RescueFallbackLeader');
+      let positions: [[number, number], [number, number]] | null = null;
+      for (let y = 0; y < game.board.height && !positions; y++) {
+        for (let x = 0; x + 1 < game.board.width; x++) {
+          if (!game.board.isOccupied(x, y) && !game.board.isOccupied(x + 1, y)) {
+            positions = [[x, y], [x + 1, y]];
+            break;
+          }
+        }
+      }
+      if (!positions) return null;
+      game.units.set(follower.nid, follower);
+      game.units.set(leader.nid, leader);
+      game.board.setUnit(...positions[0], follower);
+      game.board.setUnit(...positions[1], leader);
+      // A natural same-NID skill must survive removal of the sourced penalty.
+      const rescuePrefab = game.db.skills.get('Rescue');
+      if (rescuePrefab) leader.skills.push(new SkillObject(rescuePrefab));
+      const hadPairup = game.db.constants.has('pairup');
+      const oldPairup = game.db.constants.get('pairup');
+      game.db.constants.set('pairup', false);
+      (window as any).__rescueFallbackOld = { hadPairup, oldPairup };
+      const parsed = [
+        GameEvent.parseCommand('pair_up;A;B')?.type,
+        GameEvent.parseCommand('rescue;A;B')?.type,
+        GameEvent.parseCommand('separate;B')?.type,
+        GameEvent.parseCommand('drop;B')?.type,
+      ];
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(new GameEvent({
+        nid: '_test_rescue_fallback', name: 'Rescue Fallback', trigger: 'test',
+        level_nid: '0', condition: '', only_once: false, priority: 0,
+        _source: [`rescue;${follower.nid};${leader.nid}`],
+      }, { type: 'test', levelNid: '0' }));
+      game.state.change('event');
+      return { parsed, beforeActionIndex, followerPos: positions[0], naturalRescue: !!rescuePrefab };
+    });
+    expect(setup).not.toBeNull();
+    expect(setup!.parsed).toEqual(['pair_up', 'pair_up', 'separate', 'separate']);
+    await settle(page, 300);
+
+    const rescueState = await page.evaluate(({ beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const log = game.actionLog as any;
+      const snapshot = () => {
+        const follower = game.units.get('_RescueFallbackFollower');
+        const leader = game.units.get('_RescueFallbackLeader');
+        return {
+          traveler: leader.traveler,
+          rescuing: leader.rescuing?.nid ?? null,
+          rescuedBy: follower.rescuedBy?.nid ?? null,
+          followerPos: follower.position,
+          hasRescued: leader.hasRescued,
+          rescueSkills: leader.skills.filter((skill: any) => skill.nid === 'Rescue').map((skill: any) =>
+            skill.data.get('rescueSource') ?? null),
+        };
+      };
+      const afterActionIndex = log.actionIndex;
+      const rescued = snapshot();
+      while (log.actionIndex > beforeActionIndex) log.runActionBackward();
+      const reversed = snapshot();
+      while (log.actionIndex < afterActionIndex) log.runActionForward();
+      return { rescued, reversed, redone: snapshot() };
+    }, setup!);
+    expect(rescueState.rescued).toMatchObject({
+      traveler: '_RescueFallbackFollower',
+      rescuing: '_RescueFallbackFollower',
+      rescuedBy: '_RescueFallbackLeader',
+      followerPos: null,
+      hasRescued: true,
+    });
+    expect(rescueState.rescued.rescueSkills).toEqual(
+      setup!.naturalRescue ? [null, '_RescueFallbackFollower'] : ['_RescueFallbackFollower'],
+    );
+    expect(rescueState.reversed).toMatchObject({
+      traveler: null, rescuing: null, rescuedBy: null,
+      followerPos: setup!.followerPos, hasRescued: false,
+    });
+    expect(rescueState.redone).toEqual(rescueState.rescued);
+
+    const loaded = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame } = await import('/src/engine/save.ts');
+      await saveGame(game, 84, 'battle');
+      const leader = game.units.get('_RescueFallbackLeader');
+      const follower = game.units.get('_RescueFallbackFollower');
+      leader.traveler = null;
+      leader.rescuing = null;
+      follower.rescuedBy = null;
+      leader.skills = leader.skills.filter((skill: any) => skill.data.get('rescueSource') !== follower.nid);
+      const ok = await loadGame(game, 84);
+      const restoredLeader = game.units.get('_RescueFallbackLeader');
+      const restoredFollower = game.units.get('_RescueFallbackFollower');
+      return {
+        ok,
+        traveler: restoredLeader.traveler,
+        rescuing: restoredLeader.rescuing?.nid ?? null,
+        rescuedBy: restoredFollower.rescuedBy?.nid ?? null,
+        followerPos: restoredFollower.position,
+        rescueSources: restoredLeader.skills.filter((skill: any) => skill.nid === 'Rescue')
+          .map((skill: any) => skill.data.get('rescueSource') ?? null),
+      };
+    });
+    expect(loaded).toMatchObject({
+      ok: true,
+      traveler: '_RescueFallbackFollower',
+      rescuing: '_RescueFallbackFollower',
+      rescuedBy: '_RescueFallbackLeader',
+      followerPos: null,
+    });
+    expect(loaded.rescueSources).toEqual(
+      setup!.naturalRescue ? [null, '_RescueFallbackFollower'] : ['_RescueFallbackFollower'],
+    );
+
+    const separateSetup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(new GameEvent({
+        nid: '_test_remove_partner', name: 'Remove Partner', trigger: 'test',
+        level_nid: '0', condition: '', only_once: false, priority: 0,
+        _source: ['drop;_RescueFallbackLeader'],
+      }, { type: 'test', levelNid: '0' }));
+      game.state.change('event');
+      return { beforeActionIndex };
+    });
+    await settle(page, 300);
+    const separated = await page.evaluate(async ({ beforeActionIndex, naturalRescue }) => {
+      const game = (window as any).__gameRef;
+      const { deleteSave } = await import('/src/engine/save.ts');
+      const log = game.actionLog as any;
+      const snapshot = () => {
+        const follower = game.units.get('_RescueFallbackFollower');
+        const leader = game.units.get('_RescueFallbackLeader');
+        return {
+          traveler: leader.traveler,
+          rescuing: leader.rescuing?.nid ?? null,
+          rescuedBy: follower.rescuedBy?.nid ?? null,
+          followerPos: follower.position,
+          rescueSources: leader.skills.filter((skill: any) => skill.nid === 'Rescue')
+            .map((skill: any) => skill.data.get('rescueSource') ?? null),
+        };
+      };
+      const afterActionIndex = log.actionIndex;
+      const removed = snapshot();
+      while (log.actionIndex > beforeActionIndex) log.runActionBackward();
+      const reversed = snapshot();
+      while (log.actionIndex < afterActionIndex) log.runActionForward();
+      const redone = snapshot();
+      await deleteSave(game.db.getConstant('game_nid', 'default'), 84);
+      const old = (window as any).__rescueFallbackOld;
+      if (old.hadPairup) game.db.constants.set('pairup', old.oldPairup);
+      else game.db.constants.delete('pairup');
+      for (const nid of ['_RescueFallbackFollower', '_RescueFallbackLeader']) {
+        const unit = game.units.get(nid);
+        if (unit?.position) game.board.removeUnit(unit);
+        game.units.delete(nid);
+      }
+      return { removed, reversed, redone, naturalRescue };
+    }, { ...separateSetup, naturalRescue: setup!.naturalRescue });
+    expect(separated.removed).toEqual({
+      traveler: null, rescuing: null, rescuedBy: null, followerPos: null,
+      rescueSources: setup!.naturalRescue ? [null] : [],
+    });
+    expect(separated.reversed).toEqual(loaded.ok ? {
+      traveler: '_RescueFallbackFollower', rescuing: '_RescueFallbackFollower',
+      rescuedBy: '_RescueFallbackLeader', followerPos: null,
+      rescueSources: setup!.naturalRescue ? [null, '_RescueFallbackFollower'] : ['_RescueFallbackFollower'],
+    } : separated.reversed);
+    expect(separated.redone).toEqual(separated.removed);
+  });
+
+  test('guard-stance pair-up preserves gauges, sourced bonuses, menus, saves, and rewind', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { MenuState, RescueState, DropState } = await import('/src/engine/states/game-states.ts');
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const template = game.db.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const sourcePrefab = {
+        nid: '_PairBonusSource', name: 'Pair Bonus Source', desc: '', icon_nid: '', icon_index: [0, 0] as [number, number],
+        components: [['pairup_bonus', '_PairBonusChild']] as [string, any][],
+      };
+      const childPrefab = {
+        nid: '_PairBonusChild', name: 'Pair Bonus Child', desc: '', icon_nid: '', icon_index: [0, 0] as [number, number],
+        components: [['damage', 2]] as [string, any][],
+      };
+      game.db.skills.set(sourcePrefab.nid, sourcePrefab);
+      game.db.skills.set(childPrefab.nid, childPrefab);
+      const makeUnit = (nid: string) => {
+        const unit = new UnitObject({ ...template, nid, name: nid, starting_items: [] }, klass);
+        unit.team = 'player';
+        return unit;
+      };
+      const follower = makeUnit('_PairFollower');
+      const leader = makeUnit('_PairLeader');
+      follower.skills.push(new SkillObject(sourcePrefab));
+      leader.skills.push(new SkillObject(childPrefab));
+      follower.setGuardGauge(4, 99);
+      leader.setGuardGauge(9, 99);
+      follower.hasAttacked = true;
+      follower.hasMoved = true;
+      follower.hasTraded = true;
+      follower.finished = true;
+      follower.hasRescued = true;
+      follower.hasDropped = true;
+      let positions: [[number, number], [number, number]] | null = null;
+      const movementGroup = klass.movement_group ?? 'Infantry';
+      for (let y = 0; y < game.board.height && !positions; y++) {
+        for (let x = 0; x + 1 < game.board.width; x++) {
+          if (!game.board.isOccupied(x, y) && !game.board.isOccupied(x + 1, y) &&
+              game.board.getMovementCost(x, y, movementGroup, game.db) < 99 &&
+              game.board.getMovementCost(x + 1, y, movementGroup, game.db) < 99 &&
+              [[0, -1], [0, 1], [-1, 0]].every(([dx, dy]) =>
+                !game.board.inBounds(x + dx, y + dy) || !game.board.isOccupied(x + dx, y + dy))) {
+            positions = [[x, y], [x + 1, y]];
+            break;
+          }
+        }
+      }
+      if (!positions) return null;
+      game.units.set(follower.nid, follower);
+      game.units.set(leader.nid, leader);
+      game.board.setUnit(...positions[0], follower);
+      game.board.setUnit(...positions[1], leader);
+      const oldConstants = ['pairup', 'attack_stance_only', 'player_pairup_only'].map((nid) =>
+        [nid, game.db.constants.has(nid), game.db.constants.get(nid)] as [string, boolean, any]);
+      game.db.constants.set('pairup', true);
+      game.db.constants.set('attack_stance_only', false);
+      game.db.constants.set('player_pairup_only', false);
+
+      const menuLabels = (unit: any) => {
+        const oldSelected = game.selectedUnit;
+        const oldFinished = unit.finished;
+        const oldHasAttacked = unit.hasAttacked;
+        unit.finished = false;
+        unit.hasAttacked = false;
+        game.selectedUnit = unit;
+        const state = new MenuState();
+        state.begin();
+        const labels = ((state as any).menu?.options ?? []).map((option: any) => option.label);
+        game.selectedUnit = oldSelected;
+        unit.finished = oldFinished;
+        unit.hasAttacked = oldHasAttacked;
+        return labels;
+      };
+      const snapshot = (currentFollower: any, currentLeader: any) => ({
+        traveler: currentLeader.traveler,
+        rescuing: currentLeader.rescuing?.nid ?? null,
+        rescuedBy: currentFollower.rescuedBy?.nid ?? null,
+        followerPos: currentFollower.position,
+        leaderPos: currentLeader.position,
+        lead: [currentFollower.leadUnit, currentLeader.leadUnit],
+        gauges: [currentFollower.getGuardGauge(), currentLeader.getGuardGauge()],
+        followerFlags: [
+          currentFollower.hasAttacked, currentFollower.hasMoved, currentFollower.hasTraded,
+          currentFollower.finished, currentFollower.hasRescued, currentFollower.hasDropped,
+        ],
+        childSources: currentLeader.skills.filter((skill: any) => skill.nid === '_PairBonusChild')
+          .map((skill: any) => skill.data.get('pairupSource') ?? null),
+      });
+
+      const beforeMenu = menuLabels(follower);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.selectedUnit = follower;
+      const rescueState = new RescueState();
+      rescueState.begin();
+      rescueState.takeInput('SELECT');
+      const afterActionIndex = game.actionLog.actionIndex;
+      const paired = snapshot(follower, leader);
+      const pairedMenu = menuLabels(leader);
+      while ((game.actionLog as any).actionIndex > beforeActionIndex) game.actionLog.runActionBackward();
+      const reversed = snapshot(follower, leader);
+      while ((game.actionLog as any).actionIndex < afterActionIndex) game.actionLog.runActionForward();
+      const redone = snapshot(follower, leader);
+
+      await saveGame(game, 83, 'battle');
+      const loadedOk = await loadGame(game, 83);
+      const loadedFollower = game.units.get('_PairFollower');
+      const loadedLeader = game.units.get('_PairLeader');
+      const loaded = snapshot(loadedFollower, loadedLeader);
+      const loadedMenu = menuLabels(loadedLeader);
+      game.selectedUnit = loadedLeader;
+      const dropState = new DropState();
+      dropState.begin();
+      const hover = game.cursor.getHover();
+      const dropPos: [number, number] = [hover.x, hover.y];
+      const beforeSeparateIndex = game.actionLog.actionIndex;
+      dropState.takeInput('SELECT');
+      const afterSeparateIndex = game.actionLog.actionIndex;
+      const separated = snapshot(loadedFollower, loadedLeader);
+      while ((game.actionLog as any).actionIndex > beforeSeparateIndex) game.actionLog.runActionBackward();
+      const separateReversed = snapshot(loadedFollower, loadedLeader);
+      while ((game.actionLog as any).actionIndex < afterSeparateIndex) game.actionLog.runActionForward();
+      const separateRedone = snapshot(loadedFollower, loadedLeader);
+
+      await deleteSave(game.db.getConstant('game_nid', 'default'), 83);
+      for (const [nid, existed, value] of oldConstants) {
+        if (existed) game.db.constants.set(nid, value);
+        else game.db.constants.delete(nid);
+      }
+      for (const nid of ['_PairFollower', '_PairLeader']) {
+        const unit = game.units.get(nid);
+        if (unit?.position) game.board.removeUnit(unit);
+        game.units.delete(nid);
+      }
+      game.db.skills.delete(sourcePrefab.nid);
+      game.db.skills.delete(childPrefab.nid);
+      return {
+        positions, dropPos, beforeMenu, pairedMenu, loadedMenu, loadedOk,
+        paired, reversed, redone, loaded, separated, separateReversed, separateRedone,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.beforeMenu).toContain('Pair Up');
+    expect(result!.beforeMenu).not.toContain('Rescue');
+    expect(result!.pairedMenu).toContain('Separate');
+    expect(result!.pairedMenu).not.toContain('Drop');
+    expect(result!.loadedMenu).toContain('Separate');
+    expect(result!.loadedOk).toBe(true);
+    expect(result!.paired).toMatchObject({
+      traveler: '_PairFollower', rescuing: '_PairFollower', rescuedBy: '_PairLeader',
+      followerPos: null, lead: [false, true], gauges: [0, 10],
+      followerFlags: [false, false, false, false, false, false],
+      childSources: [null, '_PairFollower'],
+    });
+    expect(result!.reversed).toMatchObject({
+      traveler: null, rescuing: null, rescuedBy: null,
+      followerPos: result!.positions[0], lead: [false, false], gauges: [4, 9],
+      followerFlags: [true, true, true, true, true, true], childSources: [null],
+    });
+    expect(result!.redone).toEqual(result!.paired);
+    expect(result!.loaded).toEqual(result!.paired);
+    expect(result!.separated).toMatchObject({
+      traveler: null, rescuing: null, rescuedBy: null,
+      followerPos: result!.dropPos, lead: [false, false], gauges: [5, 5],
+      followerFlags: [false, false, false, true, false, false], childSources: [null],
+    });
+    expect(result!.separateReversed).toEqual(result!.loaded);
+    expect(result!.separateRedone).toEqual(result!.separated);
+  });
+
   test('unit metadata, growth, cap, field, and note commands undo, redo, and persist', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
