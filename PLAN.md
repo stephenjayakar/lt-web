@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 71 exact string references; 68 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 30 exact string references; 55 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 74 exact string references; 68 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 32 exact string references; 58 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 49,072 lines | Builds |
-| Browser regression suite | n/a | 69 Playwright tests | 69/69 passing |
+| TypeScript runtime | n/a | 89 files, 49,316 lines | Builds |
+| Browser regression suite | n/a | 71 Playwright tests | 71/71 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -157,6 +157,27 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Sequence/multi-target movement and reward slice:**
+  - Replaced the recursive-target union shortcut in interactive item use with
+    Python-shaped target collection: target counts are enforced per item/child,
+    prior positions are excluded unless allowed, flexible counts can confirm
+    early, and sequence children advance in declared order.
+  - Implemented `store_unit` → `unload_unit` for the bundled Warp and Rescue
+    staffs, including empty/simple-traversable destination filtering,
+    `ignore_forced_movement`, a reversible warp action that preserves the moved
+    unit's turn flags, and one durability loss on the sequence parent.
+  - Core item use now grants reversible fixed EXP and WEXP with self/enemy skill
+    multipliers and `double_wexp` policy. Rank-up/EXP presentation playback is
+    still open; state changes are no longer silently omitted.
+  - Added interactive sequence and ordinary multi-target regressions covering
+    mouse selection, distinct-target enforcement, parent durability, EXP/WEXP,
+    undo/redo, and sequence save/load. Item coverage advanced to **74/201 exact
+    references** and skill coverage to **32/241 exact references / 58 hook
+    surfaces**; full harness result: **71/71 passing**.
+  - Corrected the Light Brand regression to honor `lose_uses_on_miss = false`:
+    a hit consumes one use while an RNG miss preserves durability. The scenario
+    passed five repeated runs before the full-suite gate.
+
 - **Hammerne inventory-targeting slice:**
   - Added Python-shaped repair discovery: a repair staff can target only units
     carrying a finite-use damaged item, while `unrepairable` items are excluded.
@@ -177,9 +198,8 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     actions. Target discovery now excludes restore targets without matching
     statuses and refresh targets that have not finished their turn.
   - Added an end-to-end validity → apply → undo → redo → save/load regression.
-    Hit-resolved hostile status staves, repair/item targets, movement sequences,
-    staff EXP/WEXP, and presentation playback remain open rather than being
-    approximated with guaranteed effects.
+    Hit-resolved hostile status staves and presentation playback remain open
+    rather than being approximated with guaranteed effects.
   - Item coverage advanced to **69/201 exact references**; skill coverage to
     **30/241 exact references**; full harness result: **68/68 passing**.
 
@@ -195,9 +215,8 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     now use reversible actions. Added an end-to-end item menu → mouse-selected
     ally → equation heal → undo/redo regression; full harness result: **67/67
     passing** and registered state coverage advanced to **41 states**.
-  - Remaining interactive item work includes sequence/multi-target collection,
-    item-targeting (repair/steal), non-heal utility/status hooks, staff EXP/WEXP,
-    and presentation playback.
+  - Remaining interactive item work includes hostile hit-resolved effects,
+    additional item-target hooks such as steal, and presentation playback.
 
 - **Per-strike durability and `uses_options` slice:**
   - Replaced unconditional once-per-combat weapon durability loss with Python's
@@ -713,6 +732,9 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   reversible skill/turn-state mutations and valid-target restrictions
 - [x] Implement Hammerne unit/item targeting with `unrepairable` filtering and
   reversible exact-instance repair
+- [x] Implement interactive multi/sequence target collection and bundled
+  `store_unit`/`unload_unit` Warp/Rescue movement with reversible parent use
+- [x] Apply core-item fixed EXP/WEXP and multiplier policies through reversible actions
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -777,9 +799,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Extend interactive item targeting to multi/sequence target collection,
-   movement/other item-target flows, and hit-resolved hostile status staves,
-   including staff EXP/WEXP and playback.
+1. Route hit-resolved hostile status staves through combat accuracy/playback and
+   add EXP/WEXP/rank-up presentation; extend other item-target flows such as steal.
 2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
    splash empowerment/alternate-splash hooks.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

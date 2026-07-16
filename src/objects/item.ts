@@ -185,9 +185,11 @@ export class ItemObject {
   hasCoreUseEffect(): boolean {
     const deterministicStatus = !this.hasComponent('hit') &&
       (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
-    return this.hasComponent('heal') || this.hasComponent('equation_heal') ||
+    const directEffect = this.hasComponent('heal') || this.hasComponent('equation_heal') ||
       this.hasComponent('permanent_stat_change') || deterministicStatus || this.hasComponent('restore') ||
-      this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair');
+      this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair') ||
+      this.hasComponent('store_unit') || this.hasComponent('unload_unit');
+    return directEffect || this.subitems.some((subitem) => subitem.hasCoreUseEffect());
   }
 
   /**

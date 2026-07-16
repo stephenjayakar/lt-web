@@ -78,7 +78,7 @@ Summary: 204/255 parser-recognized; 194/255 with dispatcher cases.
 | change_bg_tilemap | ChangeBgTilemap | change_bg_tilemap:884 | TILEMAP |  | Tilemap? |  | no | no | no |  | missing-parser |
 | set_game_board_bounds | SetGameBoardBounds | set_game_board_bounds:890 | TILEMAP |  | MinX, MinY, MaxX, MaxY |  | no | no | no |  | missing-parser |
 | remove_game_board_bounds | RemoveGameBoardBounds | remove_game_board_bounds:901 | TILEMAP |  |  |  | no | no | no |  | missing-parser |
-| load_unit | LoadUnit | load_unit:908 | ADD_REMOVE_INTERACT_WITH_UNITS |  | UniqueUnit, Team?, AI? |  | yes | yes | no |  | dispatched-unverified |
+| load_unit | LoadUnit | load_unit:908 | ADD_REMOVE_INTERACT_WITH_UNITS |  | UniqueUnit, Team?, AI? |  | yes | yes | no | mention | dispatched-unverified |
 | make_generic | MakeGeneric | make_generic:926 | ADD_REMOVE_INTERACT_WITH_UNITS |  | Nid, Klass, Level, Team, AI?, Faction?, AnimationVariant?, ItemList? |  | yes | yes | no |  | stub-hint |
 | create_unit | CreateUnit | create_unit:955 | ADD_REMOVE_INTERACT_WITH_UNITS |  | Unit, Nid?, Level?, Position?, EntryType?, Placement? | copy_stats | yes | no | no |  | missing-dispatch |
 | add_unit | AddUnit | add_unit:1005 | ADD_REMOVE_INTERACT_WITH_UNITS | add | Unit, Position?, EntryType?, Placement?, AnimationType? |  | yes | yes | no |  | dispatched-unverified |

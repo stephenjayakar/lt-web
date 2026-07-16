@@ -7,10 +7,10 @@
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 204,
     "dispatcherPythonNids": 194,
-    "itemReferencedComponentNids": 71,
+    "itemReferencedComponentNids": 74,
     "itemHookMappedComponentNids": 68,
-    "skillReferencedComponentNids": 30,
-    "skillHookMappedComponentNids": 55,
+    "skillReferencedComponentNids": 32,
+    "skillHookMappedComponentNids": 58,
     "structuralStatuses": {
       "dispatched-unverified": 182,
       "missing-dispatch": 10,
@@ -1714,7 +1714,7 @@
       "nicknameRecognized": null,
       "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "dispatched-unverified"
     },
     {

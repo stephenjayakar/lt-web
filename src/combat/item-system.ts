@@ -260,6 +260,13 @@ export function targetRestrict(
     if (!defender || !defender.items.some(isRepairableItem)) return false;
   }
 
+  if (item.hasComponent('unload_unit')) {
+    if (context.board.getUnit(defPos[0], defPos[1])) return false;
+    const defaultClass = context.db.classes.values().next().value;
+    const movementGroup = defaultClass?.movement_group ?? 'Infantry';
+    if (context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db) > 5) return false;
+  }
+
   if (item.hasComponent('empty_tile_target_restrict') &&
       context.board.getUnit(defPos[0], defPos[1])) {
     return false;
