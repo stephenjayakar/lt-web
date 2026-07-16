@@ -1397,6 +1397,134 @@ test.describe('Event command parity', () => {
     expect(result!.persisted).toEqual({ skills: ['ResistPlus'], finished: false, uses: [1, 1, 1] });
   });
 
+  test('Hammerne selects an exact repairable inventory item and rewinds cleanly', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const caster = game.units.get('Eirika');
+      const target = game.units.get('Seth');
+      if (!caster?.position || !target?.position) return null;
+
+      for (const unit of game.units.values()) {
+        for (const existing of unit.items) {
+          if (existing.maxUses > 0) existing.setUses(existing.maxUses);
+        }
+      }
+      const makeItem = (nid: string, name: string, uses: number, unrepairable = false) => {
+        const components: any[] = [['weapon', null], ['uses', uses]];
+        if (unrepairable) components.push(['unrepairable', null]);
+        return new ItemObject({ nid, name, desc: '', icon_nid: '', icon_index: [0, 0], components });
+      };
+      const first = makeItem('_RepairFirst', 'First Blade', 5);
+      const second = makeItem('_RepairSecond', 'Second Blade', 3);
+      const blocked = makeItem('_RepairBlocked', 'Blocked Blade', 4, true);
+      first.setUses(2);
+      second.setUses(1);
+      blocked.setUses(0);
+      for (const targetItem of [first, second, blocked]) targetItem.owner = target;
+      target.items.unshift(first, second, blocked);
+
+      const staff = new ItemObject({
+        nid: '_RepairStaff', name: 'Repair Staff', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_ally', null], ['min_range', 1], ['max_range', 99],
+          ['uses', 2], ['repair', null],
+        ],
+      });
+      staff.owner = caster;
+      caster.items.unshift(staff);
+      caster.finished = false;
+      caster.hasAttacked = false;
+      game.selectedUnit = caster;
+      game.cursor.setPos(caster.position[0], caster.position[1]);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const validTargets = game.targetSystem.getValidTargets(caster, staff)
+        .map((position: [number, number]) => `${position[0]},${position[1]}`);
+      game.state.change('item_use');
+      return {
+        casterNid: caster.nid,
+        targetNid: target.nid,
+        targetPosition: [...target.position],
+        targetKey: `${target.position[0]},${target.position[1]}`,
+        casterKey: `${caster.position[0]},${caster.position[1]}`,
+        validTargets,
+        beforeActionIndex,
+      };
+    });
+    expect(setup).not.toBeNull();
+    expect(setup!.validTargets).toContain(setup!.targetKey);
+    expect(setup!.validTargets).not.toContain(setup!.casterKey);
+
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_use');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_targeting');
+
+    await page.evaluate(([tx, ty]) => {
+      const game = (window as any).__gameRef;
+      const [cameraX, cameraY] = game.camera.getOffset();
+      const scaleX = game.input.displayScaleX ?? 1;
+      const scaleY = game.input.displayScaleY ?? 1;
+      const offsetX = game.input.displayOffsetX ?? 0;
+      const offsetY = game.input.displayOffsetY ?? 0;
+      game.input.mouseX = (tx * 16 - cameraX + 8) * scaleX + offsetX;
+      game.input.mouseY = (ty * 16 - cameraY + 8) * scaleY + offsetY;
+      game.input.mouseClick = 'SELECT';
+      (window as any).__harness.stepFrames(1);
+      game.input.mouseClick = null;
+    }, setup!.targetPosition);
+    await stepFrames(page, 1);
+    const choices = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      return state.repairableItems.map((item: any) => item.nid);
+    });
+    expect(choices).toEqual(['_RepairFirst', '_RepairSecond']);
+
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+    const applied = await page.evaluate(({ casterNid, targetNid }) => {
+      const game = (window as any).__gameRef;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const uses = (nid: string) => target.items.find((item: any) => item.nid === nid)?.uses;
+      return {
+        state: game.state.getCurrentState()?.name,
+        first: uses('_RepairFirst'),
+        second: uses('_RepairSecond'),
+        blocked: uses('_RepairBlocked'),
+        staff: caster.items.find((item: any) => item.nid === '_RepairStaff')?.uses,
+        finished: caster.finished,
+      };
+    }, setup!);
+    expect(applied).toEqual({
+      state: 'free', first: 5, second: 1, blocked: 0, staff: 1, finished: true,
+    });
+
+    const turnwheel = await page.evaluate(({ casterNid, targetNid, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const snapshot = () => ({
+        first: target.items.find((item: any) => item.nid === '_RepairFirst')?.uses,
+        second: target.items.find((item: any) => item.nid === '_RepairSecond')?.uses,
+        staff: caster.items.find((item: any) => item.nid === '_RepairStaff')?.uses,
+        finished: caster.finished,
+      });
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = snapshot();
+      return { reversed, redone };
+    }, setup!);
+    expect(turnwheel.reversed).toEqual({ first: 2, second: 1, staff: 2, finished: false });
+    expect(turnwheel.redone).toEqual({ first: 5, second: 1, staff: 1, finished: true });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
