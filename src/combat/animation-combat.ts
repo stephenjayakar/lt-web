@@ -12,6 +12,11 @@ import { usesConsumedByStrikes } from './item-system';
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
+import {
+  CombatLifecycleRecord,
+  type CombatProcMark,
+} from './combat-skill-lifecycle';
+import { getCombatRandom, type RandomGameState } from '../engine/static-random';
 
 
 // ============================================================
@@ -164,6 +169,7 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- Solver / strikes ------------------------------------------------------
   strikes: CombatStrike[];
+  procPlayback: CombatProcMark[];
   currentStrikeIndex: number = 0;
 
   // -- State machine ---------------------------------------------------------
@@ -231,6 +237,8 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- Results cache ---------------------------------------------------------
   cachedResults: CombatResults | null = null;
+  private lifecycleRecord: CombatLifecycleRecord;
+  private lifecycleRecorded: boolean = false;
 
   // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
@@ -269,6 +277,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     leftIsAttacker: boolean,
     board?: any,
     script?: string[] | null,
+    randomGame?: RandomGameState | null,
   ) {
     this.attacker = attacker;
     this.defender = defender;
@@ -300,9 +309,19 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.leftAnim.setPose(standPose);
     this.rightAnim.setPose(standPose);
 
-    // Solve strikes
-    const solver = new CombatPhaseSolver();
+    // Solve strikes and retain the already-applied RNG/proc/charge transition
+    // as a reversible setup action.
+    this.lifecycleRecord = new CombatLifecycleRecord(
+      [attacker, defender],
+      randomGame ?? null,
+    );
+    const solver = new CombatPhaseSolver(
+      randomGame ? () => getCombatRandom(randomGame) : undefined,
+      randomGame,
+    );
     this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board, script);
+    this.procPlayback = [...solver.procPlayback];
+    this.lifecycleRecord.finish();
 
     // HP init
     const leftUnit = leftIsAttacker ? attacker : defender;
@@ -1014,6 +1033,10 @@ export class AnimationCombat implements AnimationCombatOwner {
       return this.cachedResults;
     }
     if (actionLog) {
+      if (!this.lifecycleRecorded) {
+        actionLog.doAction(this.lifecycleRecord);
+        this.lifecycleRecorded = true;
+      }
       const action = new CombatResultAction<CombatResults>(
         [this.attacker, this.defender],
         [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],

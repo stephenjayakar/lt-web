@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 92 exact string references; 74 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 42 exact string references; 64 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 95 exact string references; 77 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 63 exact string references; 65 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 94 files, 51,061 lines | Builds |
-| Browser regression suite | n/a | 83 Playwright tests | 83/83 passing |
+| TypeScript runtime | n/a | 95 files, 51,696 lines | Builds |
+| Browser regression suite | n/a | 85 Playwright tests | 85/85 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,32 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Persistent combat RNG and skill-proc lifecycle slice:**
+  - Replaced gameplay `Math.random()` hit/crit rolls with LT's persisted 31-bit
+    combat LCG. Classic, integer two-RN True Hit, three-RN True Hit Plus, Fates
+    Hit, and Grandmaster modes now consume the Python-shaped stream; its seed and
+    state round-trip through existing game-variable saves.
+  - Added a reversible combat-setup record alongside combat results. Turnwheel
+    reverse/redo restores the exact pre/post RNG state, skill list, and per-skill
+    charge data without rerolling or leaving a temporary proc skill installed.
+  - Ported `attack_proc`, `defense_proc`, `attack_pre_proc`, and
+    `defense_pre_proc` lifecycle scopes, including multiple simultaneous procs,
+    enemy checks, equation proc rates, allowed-weapon and ordinary/combat
+    conditions, `build_charge`/`drain_charge`/`charges_per_turn` consumption, and
+    combat charge increases. Main+splash attacks share attacker procs and charge
+    once while each defender evaluates its own defense proc.
+  - Temporary skill modifiers now contribute their Python component aliases
+    (`damage`, `resist`, `hit`, `avoid`, crit, and speed). Proc item overrides are
+    scoped and restored around calculations, enabling the bundled Luna,
+    Lethality, Sure Strike, and Pavise effect shapes. Exact `(attack, subattack)`
+    tuples now flow from the solver into item-combat events.
+  - Added deterministic regressions for the literal Python LCG sequence,
+    turnwheel and save/load restoration, charge consumption, conditional
+    suppression, grouped proc sharing, defense/pre-proc cleanup, and bundled
+    proc prefabs. Item inventory advanced to **95/201 exact references / 77 hook
+    surfaces** and skill inventory to **63/241 exact references / 65 hook
+    surfaces**; the full serial gate is **85/85 passing**.
 
 - **Reversible combat-result and event lifecycle slice:**
   - Added one snapshot-backed `CombatResultAction` shared by map and full-animation
@@ -866,6 +892,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   groups with splash-mode counter/reward/durability semantics
 - [x] Dispatch specific on-hit and after-combat item events in Python component order
   with combat-local target/mode/item arguments
+- [x] Implement attack/defense/pre-proc temporary-skill scopes with proc equations,
+  conditions, item overrides, reversible charge consumption, and grouped sharing
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -880,6 +908,8 @@ item-use fixture matrices match Python outputs and side effects.
 - [ ] Compare combat strike ordering, playback, EXP/WEXP, death, and post-combat events
 - [x] Make combat start/end/death/unit-death triggers preserve Python ordering,
   killer identity, death position, playback, animation mode, and event blocking
+- [x] Persist LT's combat LCG and make classic/True Hit/True Hit Plus/Fates Hit/
+  Grandmaster hit and crit rolls reversible across turnwheel and save/load
 - [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
 - [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
@@ -908,6 +938,7 @@ mouse, touch, cancel/back, transition, and resume tests.
 
 - [ ] Compare tile layers, autotiles, weather, map animations, fog, and camera effects
 - [ ] Complete combat-animation fallback behavior without debug placeholder art
+- [ ] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
 - [ ] Verify portrait expressions, dialog controls, transitions, overlays, and text layout
 - [ ] Verify music-stack, phase/battle music overrides, SFX loops, and audio settings
 - [ ] Build resource-path fixtures for spaces, Unicode, chunked/non-chunked data,
@@ -932,9 +963,9 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Add persistent combat RNG plus attack/defense/pre-proc skill lifecycle, including
-   temporary proc skills, charge/cooldown consumption, cleanup, and deterministic replay.
-2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
+1. Port the next high-usage unresolved item target/use/end-combat hook cluster from
    the generated component manifest and add interaction fixtures.
-3. Implement the next project-used parser-recognized event commands that still lack
+2. Implement the next project-used parser-recognized event commands that still lack
    dispatcher cases, with reversible mutations and blocking/flag coverage.
+3. Extend skill lifecycle parity beyond combat procs: upkeep/endstep charge reset,
+   combat arts, post-strike/status hooks, pair-up hooks, and proc icon presentation.

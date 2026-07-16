@@ -221,32 +221,32 @@ export function growthChange(unit: UnitObject, statNid: string): number {
 
 /** Bonus damage from skills. */
 export function modifyDamage(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_damage');
+  return sumSkillValues(unit, 'modify_damage') + sumSkillValues(unit, 'damage');
 }
 
 /** Bonus resist from skills. */
 export function modifyResist(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_resist');
+  return sumSkillValues(unit, 'modify_resist') + sumSkillValues(unit, 'resist');
 }
 
 /** Bonus accuracy from skills. */
 export function modifyAccuracy(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_accuracy');
+  return sumSkillValues(unit, 'modify_accuracy') + sumSkillValues(unit, 'hit');
 }
 
 /** Bonus avoid from skills. */
 export function modifyAvoid(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_avoid');
+  return sumSkillValues(unit, 'modify_avoid') + sumSkillValues(unit, 'avoid');
 }
 
 /** Bonus crit accuracy from skills. */
 export function modifyCritAccuracy(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_crit_accuracy');
+  return sumSkillValues(unit, 'modify_crit_accuracy') + sumSkillValues(unit, 'crit');
 }
 
 /** Bonus crit avoid from skills. */
 export function modifyCritAvoid(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_crit_avoid');
+  return sumSkillValues(unit, 'modify_crit_avoid') + sumSkillValues(unit, 'crit_avoid');
 }
 
 /** Bonus crit damage from skills. */
@@ -256,12 +256,12 @@ export function modifyCritDamage(unit: UnitObject, _item: ItemObject | null): nu
 
 /** Attack speed modifier from skills. */
 export function modifyAttackSpeed(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_attack_speed');
+  return sumSkillValues(unit, 'modify_attack_speed') + sumSkillValues(unit, 'attack_speed');
 }
 
 /** Defense speed modifier from skills. */
 export function modifyDefenseSpeed(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_defense_speed');
+  return sumSkillValues(unit, 'modify_defense_speed') + sumSkillValues(unit, 'defense_speed');
 }
 
 // ============================================================
@@ -394,12 +394,18 @@ export function resistMultiplier(
 
 /** Override the damage formula name. Default: null (use standard). */
 export function damageFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'damage_formula');
+  return getSkillValue<string>(unit, 'damage_formula') ??
+    getSkillValue<string>(unit, 'alternate_damage_formula');
 }
 
 /** Override the resist formula name. */
 export function resistFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'resist_formula');
+  return getSkillValue<string>(unit, 'resist_formula') ??
+    getSkillValue<string>(unit, 'alternate_resist_formula');
+}
+
+export function resistFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'resist_formula_override');
 }
 
 /** Override the accuracy formula name. */

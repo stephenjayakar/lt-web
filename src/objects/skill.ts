@@ -32,6 +32,20 @@ export class SkillObject {
     }
 
     this.data = new Map<string, any>();
+
+    // Python runs each component's init hook when a skill instance is created.
+    // Charge components are stateful and must have their counters before their
+    // condition or proc hook is queried.
+    const buildCharge = this.components.get('build_charge');
+    const drainCharge = this.components.get('drain_charge') ??
+      this.components.get('charges_per_turn');
+    if (typeof buildCharge === 'number') {
+      this.data.set('charge', 0);
+      this.data.set('total_charge', buildCharge);
+    } else if (typeof drainCharge === 'number') {
+      this.data.set('charge', drainCharge);
+      this.data.set('total_charge', drainCharge);
+    }
   }
 
   // ------------------------------------------------------------------

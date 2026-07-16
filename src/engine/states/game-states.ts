@@ -3292,6 +3292,7 @@ export class CombatState extends State {
         game.board,
         script,
         groupedCombat ? { mainDefender: primaryDefender, splashDefenders } : undefined,
+        game,
       );
       // Wire audio manager for combat sound effects
       if (game.audioManager) {
@@ -3440,6 +3441,7 @@ export class CombatState extends State {
         leftIsAttacker,
         game.board,
         script,
+        game,
       );
 
       // Wire audio manager for combat sound effects
@@ -9520,6 +9522,7 @@ export class EventState extends State {
                 mainDefender: targetGroup.mainDefender,
                 splashDefenders: targetGroup.splashDefenders,
               } : undefined,
+              game,
             );
             // Run combat to completion instantly
             while (mc.state !== 'done') {

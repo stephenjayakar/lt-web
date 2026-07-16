@@ -4,6 +4,10 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
+import {
+  CombatSkillLifecycle,
+  type CombatProcMark,
+} from './combat-skill-lifecycle';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
@@ -12,7 +16,7 @@ import * as skillSystem from './skill-system';
 // Now with vantage, desperation, and full skill dispatch.
 // ============================================================
 
-export type RngMode = 'classic' | 'true_hit' | 'true_hit_plus' | 'grandmaster';
+export type RngMode = 'classic' | 'true_hit' | 'true_hit_plus' | 'fates_hit' | 'grandmaster';
 export type CombatMode = 'attack' | 'defense' | 'splash';
 
 export interface CombatStrike {
@@ -24,6 +28,9 @@ export interface CombatStrike {
   damage: number;
   isCounter: boolean;
   mode?: CombatMode;
+  attackInfo: [number, number];
+  attackProcs?: CombatProcMark[];
+  defenseProcs?: CombatProcMark[];
 }
 
 /** Valid CombatScript tokens for interact_unit. */
@@ -31,9 +38,43 @@ export type ScriptToken = 'hit1' | 'hit2' | 'crit1' | 'crit2' | 'miss1' | 'miss2
 
 export class CombatPhaseSolver {
   private strikes: CombatStrike[];
+  private randomRoll: () => number;
+  private lifecycle: CombatSkillLifecycle | null = null;
+  private phaseCounts: Map<UnitObject, number> = new Map();
+  readonly procPlayback: CombatProcMark[] = [];
 
-  constructor() {
+  constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
+    this.randomRoll = randomRoll ?? (() => Math.floor(Math.random() * 100));
+    this.game = game;
+  }
+
+  private game: any;
+
+  private beginLifecycle(
+    db: Database,
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    defenders: UnitObject[],
+    defenseItems: Map<UnitObject, ItemObject | null>,
+  ): void {
+    this.phaseCounts.clear();
+    this.procPlayback.length = 0;
+    this.lifecycle = new CombatSkillLifecycle(db, this.randomRoll, this.game);
+    this.lifecycle.beginCombat(attacker, attackItem, defenders, defenseItems);
+  }
+
+  private finishLifecycle(strikes: CombatStrike[]): void {
+    if (!this.lifecycle) return;
+    this.lifecycle.endCombat(strikes);
+    this.procPlayback.push(...this.lifecycle.marks);
+    this.lifecycle = null;
+  }
+
+  private nextPhase(unit: UnitObject): number {
+    const phase = this.phaseCounts.get(unit) ?? 0;
+    this.phaseCounts.set(unit, phase + 1);
+    return phase;
   }
 
   /**
@@ -51,7 +92,7 @@ export class CombatPhaseSolver {
    * When the script is exhausted, remaining natural strikes play out
    * if there are any.
    */
-  resolveScripted(
+  private resolveScripted(
     attacker: UnitObject,
     attackItem: ItemObject,
     defender: UnitObject,
@@ -67,6 +108,7 @@ export class CombatPhaseSolver {
     const atkHp = { hp: attackerHp };
     const defHp = { hp: defenderHp };
 
+    const phases = new Map<UnitObject, number>();
     // Process each script token
     for (const rawToken of script) {
       const token = rawToken.toLowerCase().trim();
@@ -78,21 +120,29 @@ export class CombatPhaseSolver {
         // For simplicity, default to attacker if no script context.
         // (In Python this falls through to the state machine's normal logic,
         // but for our pre-computed approach we just do one attacker strike.)
-        const strike = this.resolveStrike(attacker, attackItem, defender, db, rngMode, false, board);
+        const phase = phases.get(attacker) ?? 0;
+        phases.set(attacker, phase + 1);
+        const strike = this.resolveStrike(
+          attacker, attackItem, defender, db, rngMode, false, board, 'attack', [phase, 0],
+        );
         this.strikes.push(strike);
         if (strike.hit) defHp.hp -= strike.damage;
       } else if (token === 'hit1' || token === 'crit1' || token === 'miss1') {
         // Attacker strikes with forced outcome
+        const phase = phases.get(attacker) ?? 0;
+        phases.set(attacker, phase + 1);
         const strike = this.resolveScriptedStrike(
-          attacker, attackItem, defender, db, false, token, board,
+          attacker, attackItem, defender, db, false, token, board, 'attack', [phase, 0],
         );
         this.strikes.push(strike);
         if (strike.hit) defHp.hp -= strike.damage;
       } else if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
         // Defender strikes with forced outcome
         if (!defenseItem) continue; // Defender can't strike without a weapon
+        const phase = phases.get(defender) ?? 0;
+        phases.set(defender, phase + 1);
         const strike = this.resolveScriptedStrike(
-          defender, defenseItem, attacker, db, true, token, board,
+          defender, defenseItem, attacker, db, true, token, board, 'defense', [phase, 0],
         );
         this.strikes.push(strike);
         if (strike.hit) atkHp.hp -= strike.damage;
@@ -114,7 +164,11 @@ export class CombatPhaseSolver {
     token: string,
     board?: GameBoard | null,
     mode: CombatMode = isCounter ? 'defense' : 'attack',
+    attackInfo: [number, number] = [0, 0],
+    forcedAttackProcs?: CombatProcMark[],
   ): CombatStrike {
+    const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
+      { attack: [], defense: [] };
     const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
 
@@ -135,7 +189,21 @@ export class CombatPhaseSolver {
       dmg = Math.max(0, dmg);
     }
 
-    return { attacker: striker, defender: target, item, hit, crit, damage: dmg, isCounter, mode };
+    const strike: CombatStrike = {
+      attacker: striker,
+      defender: target,
+      item,
+      hit,
+      crit,
+      damage: dmg,
+      isCounter,
+      mode,
+      attackInfo,
+      ...(procs.attack.length ? { attackProcs: procs.attack } : {}),
+      ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
+    };
+    this.lifecycle?.endStrike(procs);
+    return strike;
   }
 
   /**
@@ -167,17 +235,40 @@ export class CombatPhaseSolver {
     const result: CombatStrike[] = [];
     let propagatedAttacks = 0;
 
-    const appendSplash = (forcedToken?: string): void => {
+    this.beginLifecycle(
+      db,
+      attacker,
+      attackItem,
+      [...(mainDefender ? [mainDefender] : []), ...splash],
+      new Map([
+        ...(mainDefender ? [[mainDefender, defenseItem] as [UnitObject, ItemObject | null]] : []),
+        ...splash.map((unit) => [unit, null] as [UnitObject, ItemObject | null]),
+      ]),
+    );
+
+    const appendSplash = (
+      forcedToken?: string,
+      sourceStrike?: CombatStrike,
+      explicitAttackInfo?: [number, number],
+    ): void => {
       if (!doubleSplash && propagatedAttacks > 0) return;
+      let sharedAttackProcs = sourceStrike?.attackProcs;
       for (const target of splash) {
         const hp = splashHp.get(target) ?? 0;
         if (hp <= 0 && !skillSystem.ignoreDyingInCombat(target)) continue;
         const strike = forcedToken
           ? this.resolveScriptedStrike(
             attacker, attackItem, target, db, false, forcedToken, board, 'splash',
+            sourceStrike?.attackInfo ?? explicitAttackInfo ?? [propagatedAttacks, 0],
+            sharedAttackProcs,
           )
-          : this.resolveStrike(attacker, attackItem, target, db, rngMode, false, board, 'splash');
+          : this.resolveStrike(
+            attacker, attackItem, target, db, rngMode, false, board, 'splash',
+            sourceStrike?.attackInfo ?? explicitAttackInfo ?? [propagatedAttacks, 0],
+            sharedAttackProcs,
+          );
         result.push(strike);
+        sharedAttackProcs ??= strike.attackProcs;
         if (strike.hit) {
           const nextHp = hp - strike.damage;
           splashHp.set(target, skillSystem.ignoreDyingInCombat(target) && nextHp <= 0 ? 1 : nextHp);
@@ -194,8 +285,9 @@ export class CombatPhaseSolver {
         if (token === 'end' || attackerHp <= 0 || (mainDefender && defenderHp <= 0)) break;
         if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
           if (!mainDefender || !defenseItem) continue;
+          const phase = this.nextPhase(mainDefender);
           const strike = this.resolveScriptedStrike(
-            mainDefender, defenseItem, attacker, db, true, token, board, 'defense',
+            mainDefender, defenseItem, attacker, db, true, token, board, 'defense', [phase, 0],
           );
           result.push(strike);
           if (strike.hit) attackerHp -= strike.damage;
@@ -203,27 +295,33 @@ export class CombatPhaseSolver {
         }
         const forcedToken = token === '--' ? undefined : token;
         if (mainDefender) {
+          const phase = this.nextPhase(attacker);
           const strike = forcedToken
             ? this.resolveScriptedStrike(
-              attacker, attackItem, mainDefender, db, false, forcedToken, board, 'attack',
+              attacker, attackItem, mainDefender, db, false, forcedToken, board, 'attack', [phase, 0],
             )
-            : this.resolveStrike(attacker, attackItem, mainDefender, db, rngMode, false, board, 'attack');
+            : this.resolveStrike(
+              attacker, attackItem, mainDefender, db, rngMode, false, board, 'attack', [phase, 0],
+            );
           result.push(strike);
           if (strike.hit) defenderHp -= strike.damage;
+          appendSplash(forcedToken, strike);
+        } else {
+          appendSplash(forcedToken, undefined, [this.nextPhase(attacker), 0]);
         }
-        appendSplash(forcedToken);
       }
       this.strikes = result;
+      this.finishLifecycle(result);
       return result;
     }
 
     if (mainDefender) {
-      const mainStrikes = [...this.resolve(
+      const mainStrikes = [...this.resolveCore(
         attacker, attackItem, mainDefender, defenseItem, db, rngMode, board,
       )];
       for (const strike of mainStrikes) {
         result.push(strike);
-        if (strike.attacker === attacker) appendSplash();
+        if (strike.attacker === attacker) appendSplash(undefined, strike);
       }
     } else {
       const reference = splash[0];
@@ -231,12 +329,38 @@ export class CombatPhaseSolver {
         const strikeCount = doubleSplash
           ? calcs.computeStrikeCount(attacker, attackItem, reference, null)
           : 1;
-        for (let idx = 0; idx < strikeCount; idx++) appendSplash();
+        const phase = this.nextPhase(attacker);
+        for (let idx = 0; idx < strikeCount; idx++) appendSplash(undefined, undefined, [phase, idx]);
       }
     }
 
     this.strikes = result;
+    this.finishLifecycle(result);
     return result;
+  }
+
+  resolve(
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    defender: UnitObject,
+    defenseItem: ItemObject | null,
+    db: Database,
+    rngMode: RngMode,
+    board?: GameBoard | null,
+    script?: string[] | null,
+  ): CombatStrike[] {
+    this.beginLifecycle(
+      db,
+      attacker,
+      attackItem,
+      [defender],
+      new Map([[defender, defenseItem]]),
+    );
+    const strikes = this.resolveCore(
+      attacker, attackItem, defender, defenseItem, db, rngMode, board, script,
+    );
+    this.finishLifecycle(strikes);
+    return strikes;
   }
 
   /**
@@ -257,7 +381,7 @@ export class CombatPhaseSolver {
    * If `script` is provided, uses resolveScripted() instead of
    * the normal combat flow.
    */
-  resolve(
+  private resolveCore(
     attacker: UnitObject,
     attackItem: ItemObject,
     defender: UnitObject,
@@ -315,10 +439,14 @@ export class CombatPhaseSolver {
       targetHpRef: { hp: number },
       targetMiracle: boolean,
     ) => {
+      const phase = this.phaseCounts.get(striker) ?? 0;
       for (let i = 0; i < count; i++) {
         if (targetHpRef.hp <= 0) break;
         if (strikerHpRef.hp <= 0) break;
-        const strike = this.resolveStrike(striker, item, target, db, rngMode, isCounter, board);
+        const strike = this.resolveStrike(
+          striker, item, target, db, rngMode, isCounter, board,
+          isCounter ? 'defense' : 'attack', [phase, i],
+        );
         this.strikes.push(strike);
         if (strike.hit) {
           targetHpRef.hp -= strike.damage;
@@ -328,6 +456,7 @@ export class CombatPhaseSolver {
           }
         }
       }
+      this.phaseCounts.set(striker, phase + 1);
     };
 
     const atkHp = { hp: attackerHp };
@@ -432,21 +561,30 @@ export class CombatPhaseSolver {
         return true;
 
       case 'true_hit': {
-        const r1 = Math.floor(Math.random() * 100);
-        const r2 = Math.floor(Math.random() * 100);
-        return (r1 + r2) / 2 < hitChance;
+        const r1 = this.randomRoll();
+        const r2 = this.randomRoll();
+        return Math.floor((r1 + r2) / 2) < hitChance;
       }
 
       case 'true_hit_plus': {
-        const r1 = Math.floor(Math.random() * 100);
-        const r2 = Math.floor(Math.random() * 100);
-        const r3 = Math.floor(Math.random() * 100);
-        return (r1 + r2 + r3) / 3 < hitChance;
+        const r1 = this.randomRoll();
+        const r2 = this.randomRoll();
+        const r3 = this.randomRoll();
+        return Math.floor((r1 + r2 + r3) / 3) < hitChance;
+      }
+
+      case 'fates_hit': {
+        const clamped = Math.max(0, Math.min(100, hitChance));
+        const adjusted = Math.round(
+          clamped + (40 / 3) * (clamped / 100) *
+          Math.sin((0.02 * clamped - 1) * Math.PI),
+        );
+        return this.randomRoll() < adjusted;
       }
 
       case 'classic':
       default: {
-        return Math.floor(Math.random() * 100) < hitChance;
+        return this.randomRoll() < hitChance;
       }
     }
   }
@@ -464,7 +602,11 @@ export class CombatPhaseSolver {
     isCounter: boolean,
     board?: GameBoard | null,
     mode: CombatMode = isCounter ? 'defense' : 'attack',
+    attackInfo: [number, number] = [0, 0],
+    forcedAttackProcs?: CombatProcMark[],
   ): CombatStrike {
+    const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
+      { attack: [], defense: [] };
     // Compute hit chance with weapon triangle bonus
     const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
     const baseHit = calcs.computeHit(striker, item, target, db, board, undefined, mode);
@@ -484,7 +626,7 @@ export class CombatPhaseSolver {
     const hit = item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true;
 
     // Roll for crit (only if hit lands)
-    const crit = hit ? Math.floor(Math.random() * 100) < critChance : false;
+    const crit = hit ? this.randomRoll() < critChance : false;
 
     // Compute damage (0 on miss)
     let dmg = 0;
@@ -502,7 +644,7 @@ export class CombatPhaseSolver {
       dmg = Math.max(0, dmg);
     }
 
-    return {
+    const strike: CombatStrike = {
       attacker: striker,
       defender: target,
       item,
@@ -511,6 +653,11 @@ export class CombatPhaseSolver {
       damage: dmg,
       isCounter,
       mode,
+      attackInfo,
+      ...(procs.attack.length ? { attackProcs: procs.attack } : {}),
+      ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
+    this.lifecycle?.endStrike(procs);
+    return strike;
   }
 }

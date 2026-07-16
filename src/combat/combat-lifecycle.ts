@@ -13,7 +13,7 @@ function eventNid(item: ItemObject, component: string): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function triggerForStrike(strike: CombatStrike, attackIndex: number): EventTrigger {
+function triggerForStrike(strike: CombatStrike, _attackIndex: number): EventTrigger {
   const targetPosition = strike.defender.position
     ? [...strike.defender.position] as [number, number]
     : null;
@@ -30,7 +30,7 @@ function triggerForStrike(strike: CombatStrike, attackIndex: number): EventTrigg
     localArgs: new Map<string, any>([
       ['target_pos', targetPosition],
       ['mode', strike.mode ?? (strike.isCounter ? 'defense' : 'attack')],
-      ['attack_info', [attackIndex, 0]],
+      ['attack_info', [...strike.attackInfo]],
       ['item', strike.item],
       ['item2', item2],
     ]),

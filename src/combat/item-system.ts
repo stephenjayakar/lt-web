@@ -723,6 +723,14 @@ export function avoidFormulaOverride(_unit: UnitObject, item: ItemObject): strin
   return item.getComponent<string>('avoid_formula_override');
 }
 
+export function resistFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_resist_formula');
+}
+
+export function resistFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('resist_formula_override');
+}
+
 /** Does this item ignore weapon advantage? */
 export function ignoreWeaponAdvantage(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('ignore_weapon_advantage');

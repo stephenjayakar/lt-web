@@ -1,5 +1,5 @@
 /** Minimal game surface needed by LT's persistent random streams. */
-interface RandomGameState {
+export interface RandomGameState {
   gameVars: Map<string, any>;
 }
 
@@ -27,6 +27,8 @@ export class Lcg {
 
 const GROWTH_RANDOM_SEED = '_growth_random_seed';
 const GROWTH_RANDOM_STATE = '_growth_random_state';
+const COMBAT_RANDOM_SEED = '_combat_random_seed';
+const COMBAT_RANDOM_STATE = '_combat_random_state';
 
 function normalizedSeed(game: RandomGameState): number {
   const raw = Number(game.gameVars.get('_random_seed') ?? 0);
@@ -61,4 +63,37 @@ export function getGrowthRandom(
 export function getGrowthRandomState(game: RandomGameState): number | null {
   const state = Number(game.gameVars.get(GROWTH_RANDOM_STATE));
   return Number.isInteger(state) ? state : null;
+}
+
+/** Draw from LT's persistent combat stream (seeded directly by `_random_seed`). */
+export function getCombatRandom(
+  game: RandomGameState,
+  minimum: number = 0,
+  maximum: number = 99,
+): number {
+  const seed = normalizedSeed(game);
+  const storedSeed = Number(game.gameVars.get(COMBAT_RANDOM_SEED));
+  const storedState = Number(game.gameVars.get(COMBAT_RANDOM_STATE));
+  const state = storedSeed === seed && Number.isInteger(storedState)
+    ? storedState
+    : seed;
+  const rng = new Lcg(state);
+  const value = rng.randint(minimum, maximum);
+  game.gameVars.set(COMBAT_RANDOM_SEED, seed);
+  game.gameVars.set(COMBAT_RANDOM_STATE, rng.getState());
+  return value;
+}
+
+/** Current effective combat-stream state, including the uninitialized seed state. */
+export function getCombatRandomState(game: RandomGameState): number {
+  const seed = normalizedSeed(game);
+  const storedSeed = Number(game.gameVars.get(COMBAT_RANDOM_SEED));
+  const storedState = Number(game.gameVars.get(COMBAT_RANDOM_STATE));
+  return storedSeed === seed && Number.isInteger(storedState) ? storedState : seed;
+}
+
+/** Restore the combat stream exactly for turnwheel replay. */
+export function setCombatRandomState(game: RandomGameState, state: number): void {
+  game.gameVars.set(COMBAT_RANDOM_SEED, normalizedSeed(game));
+  game.gameVars.set(COMBAT_RANDOM_STATE, Math.trunc(state) & 0x7fffffff);
 }

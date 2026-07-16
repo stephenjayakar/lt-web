@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~51,100 lines of TypeScript across 94
+systems. The engine currently spans **~51,700 lines of TypeScript across 95
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -314,6 +314,7 @@ All foundation and core gameplay systems are complete:
 - **Combat**: Full combat calcs with weapon triangle, terrain bonuses, support
   bonuses, component dispatch, scripted combat (`interact_unit`), both
   MapCombat and AnimationCombat paths, action-backed deterministic result replay,
+  persistent LT combat RNG, scoped attack/defense/pre-proc skills and charges,
   and Python-ordered start/end/death/item-event lifecycle payloads
 - **AI**: Behaviour iteration with primary/secondary fallback, all view_range
   modes, target_spec filtering, guard/defend/retreat, group activation,
@@ -439,7 +440,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `action.ts` | ~2585 | All game actions (Move/Warp, Damage, Heal, reversible board/initiative death, Steal records, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
 | `learned-skills.ts` | ~80 | Class/inherited learned-skill traversal and generic Feat selection |
-| `static-random.ts` | ~65 | LT LCG and persisted shared growth-random stream |
+| `static-random.ts` | ~99 | LT LCG plus persisted combat and shared growth-random streams |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
@@ -454,7 +455,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10573 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, learned-skill actions, grouped AOE combat routing, reversible combat lifecycle triggers/results, combat-routed utility spells, and item-use rewards |
+| `game-states.ts` | ~10576 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, learned-skill actions, grouped AOE combat routing, persistent RNG wiring, reversible combat lifecycle triggers/results, combat-routed utility spells, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -469,17 +470,18 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Combat (`src/combat/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `combat-calcs.ts` | ~739 | Hit, damage, crit, avoid, weapon triangle, splash combat mode, and Python-priority alternate/override item/skill formulas |
-| `combat-solver.ts` | ~516 | Single/grouped strike sequencing, main-only counters, splash propagation, vantage/desperation/miracle |
+| `combat-calcs.ts` | ~743 | Hit, damage, crit, avoid, weapon triangle, splash combat mode, and Python-priority alternate/override item/skill formulas |
+| `combat-solver.ts` | ~663 | Single/grouped strike sequencing, exact attack-info tuples, persistent RNG modes, scoped procs, main-only counters, splash propagation, vantage/desperation/miracle |
 | `combat-components.ts` | ~236 | Shared grouped on-hit status, Steal selection, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
-| `animation-combat.ts` | ~1319 | GBA-style animation combat state machine with deferred, action-backed result commit and shared per-strike durability/component lifecycle |
+| `animation-combat.ts` | ~1342 | GBA-style animation combat state machine with reversible RNG/proc setup, deferred result commit, and shared per-strike durability/component lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
-| `map-combat.ts` | ~706 | Map-mode single/grouped combat with per-defender HP/animation state and action-backed durability, status, reward, death/drop, and rank-up results |
+| `map-combat.ts` | ~729 | Map-mode single/grouped combat with proc playback, reversible RNG setup, per-defender HP/animation state, and action-backed result effects |
 | `combat-lifecycle.ts` | ~87 | Python-ordered specific item combat events with target, mode, attack-info, and item payloads |
 | `combat-result-action.ts` | ~132 | Exact before/after combat mutation snapshots for deterministic turnwheel undo/redo |
+| `combat-skill-lifecycle.ts` | ~371 | Combat RNG transition records, skill conditions, temporary attack/defense/pre-procs, item overrides, grouped sharing, and charge cleanup |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~898 | Item dispatch, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, inventory capacity, spell combat rules, formula hooks, and uses-options durability resolution |
-| `skill-system.ts` | ~485 | Skill dispatch, including Oversplash/Cleave alternate AOE, formula priority, forced-movement, and EXP/WEXP multiplier hooks |
+| `item-system.ts` | ~906 | Item dispatch, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, inventory capacity, spell combat rules, resist/item-override formulas, and uses-options durability resolution |
+| `skill-system.ts` | ~491 | Skill dispatch, including proc modifier aliases, Oversplash/Cleave alternate AOE, formula priority, forced-movement, and EXP/WEXP multiplier hooks |
 
 ### Events (`src/events/`)
 | File | Lines | Purpose |
