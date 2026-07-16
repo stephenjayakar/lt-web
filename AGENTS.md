@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~48,500 lines of TypeScript across 89
+systems. The engine currently spans **~48,700 lines of TypeScript across 89
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -433,7 +433,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | File | Lines | Purpose |
 |------|------:|---------|
 | `game-state.ts` | ~1470 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
-| `target-system.ts` | ~110 | Component target union, equation/special range and restriction filtering, recursive child discovery |
+| `target-system.ts` | ~170 | Target union, range/LOS/fog/restriction/count filtering, splash expansion, recursive child discovery |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
 | `action.ts` | ~2455 | All game actions (Move, Damage, Heal, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
@@ -472,7 +472,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
 | `map-combat.ts` | ~555 | Map-mode combat (no animations) |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~385 | Item component dispatch, valid-target union, range and target-restriction hooks |
+| `item-system.ts` | ~510 | Item dispatch, valid-target/range/restriction hooks, target policies, bundled-project AOE behavior |
 | `skill-system.ts` | ~398 | Skill component dispatch |
 
 ### Events (`src/events/`)

@@ -64,6 +64,133 @@ export interface TargetRestrictionContext {
   game?: any;
 }
 
+export interface SplashContext {
+  board: GameBoard;
+  db: Database;
+  evaluateRangeEquation?: (equationNid: string) => number;
+}
+
+export interface SplashResult {
+  mainTarget: TargetPosition | null;
+  splash: TargetPosition[];
+}
+
+function positionsInRadius(
+  center: TargetPosition,
+  radius: number,
+  board: GameBoard,
+): TargetPosition[] {
+  const positions: TargetPosition[] = [];
+  for (let x = center[0] - radius; x <= center[0] + radius; x++) {
+    for (let y = center[1] - radius; y <= center[1] + radius; y++) {
+      if (board.inBounds(x, y) && Math.abs(x - center[0]) + Math.abs(y - center[1]) <= radius) {
+        positions.push([x, y]);
+      }
+    }
+  }
+  return positions;
+}
+
+/** Resolve the item's main target and affected splash positions. */
+export function splash(
+  unit: UnitObject,
+  item: ItemObject,
+  position: TargetPosition,
+  context: SplashContext,
+): SplashResult {
+  const board = context.board;
+  const spell = isSpell(unit, item);
+  const blastValue = item.getComponent<number>('blast_aoe')
+    ?? item.getComponent<number>('enemy_blast_aoe')
+    ?? item.getComponent<number>('ally_blast_aoe')
+    ?? item.getComponent<number>('smart_blast_aoe');
+  const equationBlast = item.getComponent<string>('equation_blast_aoe')
+    ?? item.getComponent<string>('ally_equation_blast_aoe');
+
+  if (blastValue !== undefined || equationBlast) {
+    const radius = equationBlast
+      ? Math.max(0, context.evaluateRangeEquation?.(equationBlast) ?? 0)
+      : Math.max(0, Number(blastValue));
+    const positions = positionsInRadius(position, radius, board);
+    const enemyOnly = item.hasComponent('enemy_blast_aoe') ||
+      (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_enemy'));
+    const allyOnly = item.hasComponent('ally_blast_aoe') || item.hasComponent('ally_equation_blast_aoe') ||
+      (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_ally'));
+    const affected = positions.filter((candidate) => {
+      const target = board.getUnit(candidate[0], candidate[1]);
+      if (!target) return false;
+      if (enemyOnly) return !context.db.areAllied(unit.team, target.team);
+      if (allyOnly) return context.db.areAllied(unit.team, target.team);
+      return true;
+    });
+    if (spell) return { mainTarget: null, splash: affected };
+    const mainTarget = board.getUnit(position[0], position[1]) ? position : null;
+    return {
+      mainTarget,
+      splash: affected.filter((candidate) => candidate[0] !== position[0] || candidate[1] !== position[1]),
+    };
+  }
+
+  if (item.hasComponent('all_allies_aoe') || item.hasComponent('all_allies_except_self_aoe')) {
+    const excludeSelf = item.hasComponent('all_allies_except_self_aoe');
+    return {
+      mainTarget: null,
+      splash: board.getAllUnits()
+        .filter((target) => target.position && context.db.areAllied(unit.team, target.team) && (!excludeSelf || target !== unit))
+        .map((target) => [target.position![0], target.position![1]] as TargetPosition),
+    };
+  }
+
+  if (item.hasComponent('all_enemies_aoe')) {
+    const affected = board.getAllUnits()
+      .filter((target) => target.position && !context.db.areAllied(unit.team, target.team))
+      .map((target) => [target.position![0], target.position![1]] as TargetPosition);
+    return spell
+      ? { mainTarget: null, splash: affected }
+      : { mainTarget: board.getUnit(position[0], position[1]) ? position : null, splash: affected };
+  }
+
+  return { mainTarget: position, splash: [] };
+}
+
+/** Positions highlighted by splash preview; defaults to the selected position. */
+export function splashPositions(
+  unit: UnitObject,
+  item: ItemObject,
+  position: TargetPosition,
+  context: SplashContext,
+): TargetPosition[] {
+  const result = splash(unit, item, position, context);
+  const positions = new Map<string, TargetPosition>();
+  if (result.mainTarget) positions.set(`${result.mainTarget[0]},${result.mainTarget[1]}`, result.mainTarget);
+  for (const candidate of result.splash) positions.set(`${candidate[0]},${candidate[1]}`, candidate);
+  return positions.size > 0 ? [...positions.values()] : [position];
+}
+
+export function numTargets(_unit: UnitObject, item: ItemObject): number {
+  return Math.max(1, Number(item.getComponent<number>('multi_target') ?? 1));
+}
+
+export function allowSameTarget(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('allow_same_target');
+}
+
+export function allowLessThanMaxTargets(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('allow_less_than_max_targets');
+}
+
+export function ignoreLineOfSight(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('ignore_line_of_sight');
+}
+
+export function allowTargetInFogOfWar(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('target_fog_of_war');
+}
+
+export function ignoreFogOfWar(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('ignore_fog_of_war');
+}
+
 /** Apply every component target restriction (ALL policy). */
 export function targetRestrict(
   unit: UnitObject,
