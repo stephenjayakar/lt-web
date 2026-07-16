@@ -295,12 +295,12 @@ export class UnitObject {
     return this.items.find((item) => item.isWeapon() && (!item.maxUses || item.uses > 0)) ?? null;
   }
 
-  /** Get all healing/consumable items that can be used. */
+  /** Get core usable consumables and non-weapon healing spells/staves. */
   getUsableItems(): ItemObject[] {
     return this.items.filter(
       (item) =>
         !item.isWeapon() &&
-        item.hasComponent('heal') &&
+        (item.hasComponent('heal') || item.hasComponent('equation_heal') || item.isStatBooster()) &&
         (!item.maxUses || item.uses > 0),
     );
   }

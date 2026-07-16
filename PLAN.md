@@ -50,9 +50,9 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
 | Item component NIDs | 201 | 64 exact string references; 68 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
-| Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 48,700 lines | Builds |
-| Browser regression suite | n/a | 66 Playwright tests | 66/66 passing |
+| Registered runtime states | broad Python state catalog | 41 web states | Partial |
+| TypeScript runtime | n/a | 89 files, 48,858 lines | Builds |
+| Browser regression suite | n/a | 67 Playwright tests | 67/67 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,22 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Interactive healing-item targeting slice:**
+  - Added the `item_targeting` map state and routed ranged healing staves/spells
+    from the item menu through `TargetSystem` instead of applying every item to
+    the user. Full-HP targets are excluded by the Python `Heal.target_restrict`
+    rule; zero-range consumables still resolve immediately on self.
+  - Corrected missing range defaults from 1 to Python's 0, admitted equation-heal
+    staves and stat boosters into core item-use discovery, and added keyboard,
+    mouse/touch-coordinate, cancel, cycling, and range-highlight handling.
+  - Core heal/equation-heal effects, durability, break removal, and turn finish
+    now use reversible actions. Added an end-to-end item menu → mouse-selected
+    ally → equation heal → undo/redo regression; full harness result: **67/67
+    passing** and registered state coverage advanced to **41 states**.
+  - Remaining interactive item work includes sequence/multi-target collection,
+    item-targeting (repair/steal), non-heal utility/status hooks, staff EXP/WEXP,
+    and presentation playback.
 
 - **Per-strike durability and `uses_options` slice:**
   - Replaced unconditional once-per-combat weapon durability loss with Python's
@@ -666,6 +682,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement equation/special ranges and expression/empty/traversable target restrictions
 - [x] Implement targeting fog/LOS, target counts, and bundled-project AOE components
 - [x] Implement `uses_options` per-hit/miss/per-combat durability semantics in both combat modes
+- [x] Implement interactive core heal/equation-heal targeting with reversible effects
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -730,8 +747,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Integrate staff/item and multi/sequence child selection into the interactive
-   targeting and item-use flows.
+1. Extend interactive item targeting to multi/sequence target collection and
+   utility/status/item-target effects, including staff EXP/WEXP and playback.
 2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
    splash empowerment/alternate-splash hooks.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
