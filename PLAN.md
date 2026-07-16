@@ -49,10 +49,10 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
 | Item component NIDs | 201 | 86 exact string references; 74 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 41 exact string references; 64 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 42 exact string references; 64 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 90 files, 50,545 lines | Builds |
-| Browser regression suite | n/a | 77 Playwright tests | 77/77 passing |
+| TypeScript runtime | n/a | 92 files, 50,675 lines | Builds |
+| Browser regression suite | n/a | 79 Playwright tests | 79/79 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,22 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Deterministic generic Feat learned-skill slice:**
+  - Added LT's seed+1 growth LCG as a shared engine random stream. Its seed and
+    current state live in persisted game variables, reset when `_random_seed`
+    changes, and round-trip through existing save/load serialization.
+  - Ported `unit_funcs.get_starting_skills` class traversal into one resolver,
+    including promotion-skill inheritance order, starting-level boundaries,
+    ordinary-skill deduplication, database-ordered `feat` discovery, and exclusion
+    of already-owned or already-selected Feats.
+  - Generic creation now grants eligible class skills before stat autoleveling;
+    `autolevel_to` uses the same resolver and reversible `AddSkillAction`s. Each
+    eligible `Feat` consumes exactly one LT growth roll when `generic_feats` is on.
+  - Added end-to-end regressions for disabled selection, exact sequential LCG
+    choices, distinct multi-Feat selection, turnwheel undo/redo, and RNG-state
+    save/restore. Harness inventory is now **79 tests**; the full serial gate is
+    **79/79 passing**.
 
 - **Multi-defender AOE combat execution slice:**
   - Added Python-shaped grouped strike resolution: the main defender follows
@@ -772,7 +788,7 @@ passes; record newly discovered work here immediately.
   object-identity save references
 - [x] Implement recursive multi/sequence item graphs and reversible child add/remove
   commands with save/load persistence
-- [ ] Implement deterministic selection for the special generic `Feat` learned-skill entry
+- [x] Implement deterministic selection for the special generic `Feat` learned-skill entry
 - [ ] Implement parser-recognized commands with no dispatcher case (currently includes
   item movement, dialog variants, special music, save deletion, and others)
 - [ ] Implement the 51 Python commands still absent from the parser, prioritized by
@@ -886,8 +902,9 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement generic `Feat` selection using the shared persistent growth RNG.
-2. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
+1. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
    and fully reversible HP/EXP/death result actions.
-3. Port the next high-usage unresolved item target/use/end-combat hook cluster from
+2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
    the generated component manifest and add interaction fixtures.
+3. Implement the next project-used parser-recognized event commands that still lack
+   dispatcher cases, with reversible mutations and blocking/flag coverage.

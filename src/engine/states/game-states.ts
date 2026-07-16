@@ -101,6 +101,7 @@ import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWea
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
 import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots } from '../save';
+import { getStartingClassSkillNids } from '../learned-skills';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — set once at bootstrap to break circular deps.
@@ -10435,33 +10436,22 @@ export class EventState extends State {
 
   /** Grant personal/class skills crossed by autolevel_to, using actions. */
   private grantAutolevelSkills(unit: UnitObject, startingLevel: number, game: any): void {
-    const skillNids: string[] = [];
     const personalPrefab = game.db.units.get(unit.nid);
     if (personalPrefab?.learned_skills) {
       for (const [level, skillNid] of personalPrefab.learned_skills) {
-        if (startingLevel < level && level <= unit.level) skillNids.push(skillNid);
-      }
-    }
-
-    const currentKlass = game.db.classes.get(unit.klass);
-    const classes: any[] = currentKlass ? [currentKlass] : [];
-    if (currentKlass && game.db.getConstant?.('promote_skill_inheritance', false)) {
-      let parent = currentKlass;
-      for (let depth = 0; depth < 5 && parent?.tier > 1 && parent.promotes_from; depth++) {
-        parent = game.db.classes.get(parent.promotes_from);
-        if (parent) classes.unshift(parent);
-      }
-    }
-    for (const klass of classes) {
-      for (const [level, skillNid] of klass.learned_skills ?? []) {
-        if (klass !== currentKlass || (startingLevel < level && level <= unit.level)) {
-          skillNids.push(skillNid);
+        if (
+          startingLevel < level &&
+          level <= unit.level &&
+          skillNid !== 'Feat' &&
+          !unit.skills.some((skill: any) => skill.nid === skillNid)
+        ) {
+          const prefab = game.db.skills.get(skillNid);
+          if (prefab) game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(prefab)));
         }
       }
     }
 
-    for (const skillNid of skillNids) {
-      if (skillNid === 'Feat' || unit.skills.some((skill: any) => skill.nid === skillNid)) continue;
+    for (const skillNid of getStartingClassSkillNids(unit, startingLevel, game)) {
       const prefab = game.db.skills.get(skillNid);
       if (prefab) game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(prefab)));
     }
