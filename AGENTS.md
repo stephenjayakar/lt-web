@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~50,100 lines of TypeScript across 90
+systems. The engine currently spans **~50,500 lines of TypeScript across 90
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -451,7 +451,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10408 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, combat-routed utility spells, and item-use rewards |
+| `game-states.ts` | ~10503 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, grouped AOE combat routing, combat-routed utility spells, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -466,12 +466,12 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Combat (`src/combat/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `combat-calcs.ts` | ~733 | Hit, damage, crit, avoid, weapon triangle, and Python-priority alternate/override item/skill formulas |
-| `combat-solver.ts` | ~409 | Strike sequencing, vantage/desperation/miracle |
-| `combat-components.ts` | ~140 | Shared on-hit status, Steal selection, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
+| `combat-calcs.ts` | ~739 | Hit, damage, crit, avoid, weapon triangle, splash combat mode, and Python-priority alternate/override item/skill formulas |
+| `combat-solver.ts` | ~516 | Single/grouped strike sequencing, main-only counters, splash propagation, vantage/desperation/miracle |
+| `combat-components.ts` | ~236 | Shared grouped on-hit status, Steal selection, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
 | `animation-combat.ts` | ~1303 | GBA-style animation combat state machine and shared per-strike durability/component lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
-| `map-combat.ts` | ~596 | Map-mode combat, including per-strike durability, status, fixed reward, and rank-up results |
+| `map-combat.ts` | ~681 | Map-mode single/grouped combat with per-defender HP/animation state, durability, status, rewards, deaths/drops, and rank-up results |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
 | `item-system.ts` | ~898 | Item dispatch, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, inventory capacity, spell combat rules, formula hooks, and uses-options durability resolution |
 | `skill-system.ts` | ~485 | Skill dispatch, including Oversplash/Cleave alternate AOE, formula priority, forced-movement, and EXP/WEXP multiplier hooks |

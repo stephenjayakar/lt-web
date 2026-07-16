@@ -1183,6 +1183,281 @@ test.describe('Event command parity', () => {
     expect(result.cleaveSplash).toEqual(['3,2', '4,4']);
   });
 
+  test('group map combat propagates splash once, counters only from main, and aggregates rewards', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameBoard } = await import('/src/objects/game-board.ts');
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+
+      const makeUnit = (nid: string, team: string) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 40, STR: 0, MAG: 0, SKL: 10, SPD: 10, LCK: 0, DEF: 5, RES: 5, CON: 10, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = 40;
+        return unit;
+      };
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const weapon = (nid: string, extra: [string, any][] = []) => makeItem(nid, [
+        ['weapon', null], ['target_enemy', null], ['damage', 0], ['hit', 100],
+        ['uses', 10], ['min_range', 1], ['max_range', 1], ...extra,
+      ]);
+      const oldDoubleSplash = game.db.constants.get('double_splash');
+      const oldDoubleWexp = game.db.constants.get('double_wexp');
+      game.db.constants.set('double_splash', false);
+      game.db.constants.set('double_wexp', false);
+
+      const board = new GameBoard(8, 8);
+      const attacker = makeUnit('_GroupAttacker', 'player');
+      const main = makeUnit('_GroupMain', 'enemy');
+      const splash = makeUnit('_GroupSplash', 'enemy');
+      board.setUnit(2, 2, attacker);
+      board.setUnit(3, 2, main);
+      board.setUnit(3, 3, splash);
+      const attackItem = weapon('_GroupBrave', [['brave', null], ['enemy_blast_aoe', 1]]);
+      const mainWeapon = weapon('_MainCounter');
+      const splashWeapon = weapon('_SplashCounter');
+      attacker.items.push(attackItem);
+      main.items.push(mainWeapon);
+      splash.items.push(splashWeapon);
+      const combat = new MapCombat(
+        attacker, attackItem, main, mainWeapon, game.db, 'grandmaster', board, null,
+        { mainDefender: main, splashDefenders: [splash] },
+      );
+      const strikeOrder = combat.strikes.map((strike: any) =>
+        `${strike.attacker.nid}->${strike.defender.nid}:${strike.mode}`,
+      );
+      const firstResults = combat.applyResults();
+
+      const pureBoard = new GameBoard(8, 8);
+      const caster = makeUnit('_PureCaster', 'player');
+      const splashA = makeUnit('_PureA', 'enemy');
+      const splashB = makeUnit('_PureB', 'enemy');
+      pureBoard.setUnit(2, 2, caster);
+      pureBoard.setUnit(4, 2, splashA);
+      pureBoard.setUnit(4, 3, splashB);
+      const spell = makeItem('_PureSplash', [
+        ['spell', null], ['target_enemy', null], ['damage', 0], ['hit', 100],
+        ['uses', 10], ['wexp', 1], ['weapon_type', 'Staff'], ['exp', 10],
+        ['enemy_blast_aoe', 1], ['min_range', 1], ['max_range', 3],
+      ]);
+      caster.items.push(spell);
+      splashA.items.push(weapon('_PureCounterA'));
+      splashB.items.push(weapon('_PureCounterB'));
+      const pureCombat = new MapCombat(
+        caster, spell, splashA, null, game.db, 'grandmaster', pureBoard, null,
+        { mainDefender: null, splashDefenders: [splashA, splashB] },
+      );
+      const pureOrder = pureCombat.strikes.map((strike: any) =>
+        `${strike.attacker.nid}->${strike.defender.nid}:${strike.mode}`,
+      );
+      const pureResults = pureCombat.applyResults();
+
+      game.db.constants.set('double_splash', true);
+      const doubleBoard = new GameBoard(8, 8);
+      const doubleAttacker = makeUnit('_DoubleAttacker', 'player');
+      const doubleMain = makeUnit('_DoubleMain', 'enemy');
+      const doubleTarget = makeUnit('_DoubleSplash', 'enemy');
+      doubleBoard.setUnit(2, 2, doubleAttacker);
+      doubleBoard.setUnit(3, 2, doubleMain);
+      doubleBoard.setUnit(3, 3, doubleTarget);
+      const doubleItem = weapon('_DoubleBrave', [['brave', null], ['enemy_blast_aoe', 1]]);
+      const doubleMainWeapon = weapon('_DoubleMainCounter');
+      doubleAttacker.items.push(doubleItem);
+      doubleMain.items.push(doubleMainWeapon);
+      const doubleCombat = new MapCombat(
+        doubleAttacker, doubleItem, doubleMain, doubleMainWeapon,
+        game.db, 'grandmaster', doubleBoard, null,
+        { mainDefender: doubleMain, splashDefenders: [doubleTarget] },
+      );
+      const doubleSplashHits = doubleCombat.strikes.filter((strike: any) => strike.mode === 'splash').length;
+
+      const deathBoard = new GameBoard(8, 8);
+      const deathCaster = makeUnit('_DeathCaster', 'player');
+      const deathA = makeUnit('_DeathA', 'enemy');
+      const deathB = makeUnit('_DeathB', 'enemy');
+      deathBoard.setUnit(2, 2, deathCaster);
+      deathBoard.setUnit(4, 2, deathA);
+      deathBoard.setUnit(4, 3, deathB);
+      deathA.currentHp = 1;
+      deathB.currentHp = 1;
+      const dropA = weapon('_DropA');
+      const dropB = weapon('_DropB');
+      dropA.droppable = true;
+      dropB.droppable = true;
+      deathA.items.push(dropA);
+      deathB.items.push(dropB);
+      const deathSpell = makeItem('_DeathSplash', [
+        ['spell', null], ['target_enemy', null], ['damage', 100], ['hit', 100],
+        ['uses', 10], ['enemy_blast_aoe', 1], ['min_range', 1], ['max_range', 3],
+      ]);
+      const deathCombat = new MapCombat(
+        deathCaster, deathSpell, deathA, null, game.db, 'grandmaster', deathBoard, null,
+        { mainDefender: null, splashDefenders: [deathA, deathB] },
+      );
+      const deathResults = deathCombat.applyResults();
+
+      if (oldDoubleSplash === undefined) game.db.constants.delete('double_splash');
+      else game.db.constants.set('double_splash', oldDoubleSplash);
+      if (oldDoubleWexp === undefined) game.db.constants.delete('double_wexp');
+      else game.db.constants.set('double_wexp', oldDoubleWexp);
+
+      return {
+        strikeOrder,
+        attackUses: attackItem.uses,
+        mainUses: mainWeapon.uses,
+        splashUses: splashWeapon.uses,
+        firstDeaths: firstResults.defenderDeaths?.map((unit: any) => unit.nid) ?? [],
+        pureOrder,
+        pureUses: spell.uses,
+        pureExp: pureResults.expGained,
+        pureWexp: pureResults.attackerWexpGained,
+        doubleSplashHits,
+        deaths: deathResults.defenderDeaths?.map((unit: any) => unit.nid).sort() ?? [],
+        droppedOwners: deathResults.droppedItems?.map((entry: any) => entry.unit.nid).sort() ?? [],
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.strikeOrder).toEqual([
+      '_GroupAttacker->_GroupMain:attack',
+      '_GroupAttacker->_GroupSplash:splash',
+      '_GroupAttacker->_GroupMain:attack',
+      '_GroupMain->_GroupAttacker:defense',
+    ]);
+    expect(result!.attackUses).toBe(7);
+    expect(result!.mainUses).toBe(9);
+    expect(result!.splashUses).toBe(10);
+    expect(result!.firstDeaths).toEqual([]);
+    expect(result!.pureOrder).toEqual([
+      '_PureCaster->_PureA:splash',
+      '_PureCaster->_PureB:splash',
+    ]);
+    expect(result!.pureUses).toBe(8);
+    expect(result!.pureExp).toBe(20);
+    expect(result!.pureWexp).toBe(1);
+    expect(result!.doubleSplashHits).toBe(2);
+    expect(result!.deaths).toEqual(['_DeathA', '_DeathB']);
+    expect(result!.droppedOwners).toEqual(['_DeathA', '_DeathB']);
+  });
+
+  test('CombatState routes pure AOE through one map-only defender group', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return false;
+      let origin: [number, number] | null = null;
+      for (let y = 1; y < game.board.height - 1 && !origin; y++) {
+        for (let x = 1; x < game.board.width - 2; x++) {
+          if (!game.board.getUnit(x, y) && !game.board.getUnit(x + 2, y) &&
+              !game.board.getUnit(x + 2, y + 1)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return false;
+      const makeUnit = (nid: string, team: string) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 40, STR: 0, MAG: 0, SKL: 10, SPD: 10, LCK: 0, DEF: 5, RES: 5, CON: 10, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = 40;
+        return unit;
+      };
+      const caster = makeUnit('_StateAOECaster', 'player');
+      const targetA = makeUnit('_StateAOEA', 'enemy');
+      const targetB = makeUnit('_StateAOEB', 'enemy');
+      const spell = new ItemObject({
+        nid: '_StateAOESpell', name: '_StateAOESpell', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['magic', null], ['target_enemy', null], ['damage', 0], ['hit', 100],
+          ['uses', 10], ['enemy_blast_aoe', 1], ['min_range', 1], ['max_range', 3],
+        ],
+      });
+      caster.items.push(spell);
+      game.board.setUnit(origin[0], origin[1], caster);
+      game.board.setUnit(origin[0] + 2, origin[1], targetA);
+      game.board.setUnit(origin[0] + 2, origin[1] + 1, targetB);
+      game.selectedUnit = caster;
+      game.combatTarget = targetA;
+      game.memory.set('combat_item', spell);
+      (window as any).__aoeStateTest = { caster, targetA, targetB, spell };
+      game.state.change('combat');
+      return true;
+    });
+    expect(setup).toBe(true);
+    await stepFrames(page, 3);
+
+    const active = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState();
+      return {
+        state: state?.name,
+        mapOnly: state?.isAnimationCombat === false,
+        primary: state?.combat?.primaryDefender?.nid ?? null,
+        defenders: state?.combat?.defenders?.map((unit: any) => unit.nid).sort() ?? [],
+        modes: state?.combat?.strikes?.map((strike: any) => strike.mode) ?? [],
+      };
+    });
+    expect(active).toEqual({
+      state: 'combat',
+      mapOnly: true,
+      primary: null,
+      defenders: ['_StateAOEA', '_StateAOEB'],
+      modes: ['splash', 'splash'],
+    });
+
+    await settle(page, 1200);
+    const completed = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const { caster, targetA, targetB, spell } = (window as any).__aoeStateTest;
+      const result = {
+        state: game.state.getCurrentState()?.name,
+        uses: spell.uses,
+        casterHp: caster.currentHp,
+        targetAHp: targetA.currentHp,
+        targetBHp: targetB.currentHp,
+        casterFinished: caster.finished,
+      };
+      game.board.removeUnit(caster);
+      game.board.removeUnit(targetA);
+      game.board.removeUnit(targetB);
+      delete (window as any).__aoeStateTest;
+      return result;
+    });
+    expect(completed).toEqual({
+      state: 'free',
+      uses: 8,
+      casterHp: 40,
+      targetAHp: 40,
+      targetBHp: 40,
+      casterFinished: true,
+    });
+  });
+
   test('uses_options consumes durability per hit, miss policy, and per-combat policy', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

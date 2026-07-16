@@ -5,7 +5,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
 import { usesConsumedByStrikes } from './item-system';
-import { applyCombatComponents, type WeaponRankUp } from './combat-components';
+import { applyGroupCombatComponents, type WeaponRankUp } from './combat-components';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -34,6 +34,16 @@ export interface CombatResults {
   attackerRankUp: WeaponRankUp | null;
   /** Item selected by a successful Steal hook, pending reversible transfer. */
   stolenItem: import('../objects/item').ItemObject | null;
+  /** Every defender killed by this encounter, including splash targets. */
+  defenderDeaths?: UnitObject[];
+  /** Droppable items found on dead defenders, paired with their owners. */
+  droppedItems?: { unit: UnitObject; item: import('../objects/item').ItemObject }[];
+}
+
+export interface MapCombatGroup {
+  /** Null for spell-style AOE where every affected unit is splash. */
+  mainDefender: UnitObject | null;
+  splashDefenders: UnitObject[];
 }
 
 /** Duration constants (milliseconds) */
@@ -73,7 +83,12 @@ export interface CombatAnimState {
 
 export class MapCombat {
   attacker: UnitObject;
+  /** Representative defender retained for single-combat UI compatibility. */
   defender: UnitObject;
+  /** Python's main defender; only this unit can counter. */
+  primaryDefender: UnitObject | null;
+  splashDefenders: UnitObject[];
+  defenders: UnitObject[];
   attackItem: ItemObject;
   defenseItem: ItemObject | null;
   strikes: CombatStrike[];
@@ -88,14 +103,11 @@ export class MapCombat {
 
   // Internal targets for HP animation
   private attackerTargetHp: number;
-  private defenderTargetHp: number;
   private hpDrainElapsed: number;
   private hpDrainStartAttacker: number;
-  private hpDrainStartDefender: number;
 
   // Snapshot of real HP before combat (for result calculation)
   private attackerStartHp: number;
-  private defenderStartHp: number;
 
   // Reference to DB for exp calculation
   private db: Database;
@@ -103,7 +115,13 @@ export class MapCombat {
   // Animation state for rendering
   attackerAnim: CombatAnimState;
   defenderAnim: CombatAnimState;
+  defenderAnims: Map<UnitObject, CombatAnimState>;
   damagePopups: DamagePopup[];
+
+  private defenderStartHps: Map<UnitObject, number>;
+  private defenderTargetHps: Map<UnitObject, number>;
+  private defenderDisplayHps: Map<UnitObject, number>;
+  private defenderDrainStartHps: Map<UnitObject, number>;
 
   // Audio (optional, set after construction to enable combat SFX)
   audioManager: { playSfx(name: string): void } | null = null;
@@ -118,16 +136,37 @@ export class MapCombat {
     rngMode: RngMode,
     board?: GameBoard | null,
     script?: string[] | null,
+    group?: MapCombatGroup,
   ) {
     this.attacker = attacker;
     this.attackItem = attackItem;
     this.defender = defender;
-    this.defenseItem = defenseItem;
+    this.primaryDefender = group ? group.mainDefender : defender;
+    this.splashDefenders = [...new Set(group?.splashDefenders ?? [])]
+      .filter((unit) => unit !== this.primaryDefender);
+    this.defenders = [...new Set([
+      ...(this.primaryDefender ? [this.primaryDefender] : []),
+      ...this.splashDefenders,
+    ])];
+    if (this.defenders.length === 0) this.defenders = [defender];
+    this.defenseItem = this.primaryDefender ? defenseItem : null;
     this.db = db;
 
     // Solve the combat to get the strike sequence
     const solver = new CombatPhaseSolver();
-    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
+    this.strikes = group
+      ? solver.resolveGroup(
+        attacker,
+        attackItem,
+        this.primaryDefender,
+        this.defenseItem,
+        this.splashDefenders,
+        db,
+        rngMode,
+        board,
+        script,
+      )
+      : solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
 
     this.state = 'init';
     this.currentStrikeIndex = 0;
@@ -137,17 +176,27 @@ export class MapCombat {
     this.attackerDisplayHp = attacker.currentHp;
     this.defenderDisplayHp = defender.currentHp;
     this.attackerTargetHp = attacker.currentHp;
-    this.defenderTargetHp = defender.currentHp;
     this.hpDrainElapsed = 0;
     this.hpDrainStartAttacker = attacker.currentHp;
-    this.hpDrainStartDefender = defender.currentHp;
 
     this.attackerStartHp = attacker.currentHp;
-    this.defenderStartHp = defender.currentHp;
+
+    this.defenderStartHps = new Map(this.defenders.map((unit) => [unit, unit.currentHp]));
+    this.defenderTargetHps = new Map(this.defenderStartHps);
+    this.defenderDisplayHps = new Map(this.defenderStartHps);
+    this.defenderDrainStartHps = new Map(this.defenderStartHps);
 
     // Animation state
     this.attackerAnim = { lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0 };
-    this.defenderAnim = { lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0 };
+    this.defenderAnims = new Map(this.defenders.map((unit) => [unit, {
+      lungeOffset: [0, 0] as [number, number],
+      shakeOffset: [0, 0] as [number, number],
+      flashAlpha: 0,
+    }]));
+    this.defenderAnim = this.defenderAnims.get(defender) ?? {
+      lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0,
+    };
+    if (!this.defenderAnims.has(defender)) this.defenderAnims.set(defender, this.defenderAnim);
     this.damagePopups = [];
   }
 
@@ -187,6 +236,7 @@ export class MapCombat {
     defenderMaxHp: number;
     attackerAnim: CombatAnimState;
     defenderAnim: CombatAnimState;
+    defenders: { unit: UnitObject; hp: number; maxHp: number; anim: CombatAnimState }[];
     damagePopups: DamagePopup[];
   } {
     const strike =
@@ -203,6 +253,12 @@ export class MapCombat {
       defenderMaxHp: this.defender.maxHp,
       attackerAnim: this.attackerAnim,
       defenderAnim: this.defenderAnim,
+      defenders: this.defenders.map((unit) => ({
+        unit,
+        hp: Math.max(0, Math.round(this.defenderDisplayHps.get(unit) ?? unit.currentHp)),
+        maxHp: unit.maxHp,
+        anim: this.defenderAnims.get(unit) ?? this.defenderAnim,
+      })),
       damagePopups: this.damagePopups,
     };
   }
@@ -217,35 +273,36 @@ export class MapCombat {
   applyResults(): CombatResults {
     // Walk through all strikes and apply HP changes to actual units
     let atkHp = this.attackerStartHp;
-    let defHp = this.defenderStartHp;
+    const defenderHps = new Map(this.defenderStartHps);
 
     for (const strike of this.strikes) {
       if (!strike.hit) continue;
-
-      if (strike.attacker === this.attacker) {
-        defHp -= strike.damage;
-      } else {
+      if (strike.defender === this.attacker) {
         atkHp -= strike.damage;
+      } else if (defenderHps.has(strike.defender)) {
+        defenderHps.set(
+          strike.defender,
+          (defenderHps.get(strike.defender) ?? strike.defender.currentHp) - strike.damage,
+        );
       }
     }
 
     // Clamp HP
     atkHp = Math.max(0, atkHp);
-    defHp = Math.max(0, defHp);
 
     // Apply to units
     this.attacker.currentHp = atkHp;
-    this.defender.currentHp = defHp;
+    for (const [unit, hp] of defenderHps) unit.currentHp = Math.max(0, hp);
 
     const attackerDead = atkHp <= 0;
-    const defenderDead = defHp <= 0;
+    const defenderDeaths = this.defenders.filter((unit) => unit.currentHp <= 0);
+    const deadDefenders = new Set(defenderDeaths);
+    const defenderDead = deadDefenders.has(this.defender);
 
     if (attackerDead) {
       this.attacker.dead = true;
     }
-    if (defenderDead) {
-      this.defender.dead = true;
-    }
+    for (const unit of defenderDeaths) unit.dead = true;
 
     // Decrement weapon uses
     let attackWeaponBroke = false;
@@ -262,32 +319,32 @@ export class MapCombat {
       }
     }
 
-    const defenderUses = this.defenseItem
-      ? usesConsumedByStrikes(this.defender, this.defenseItem, this.strikes)
+    const defenderUses = this.primaryDefender && this.defenseItem
+      ? usesConsumedByStrikes(this.primaryDefender, this.defenseItem, this.strikes)
       : 0;
-    if (defenderUses > 0 && this.defenseItem && this.defenseItem.maxUses > 0) {
+    if (defenderUses > 0 && this.primaryDefender && this.defenseItem && this.defenseItem.maxUses > 0) {
       for (let i = 0; i < defenderUses && this.defenseItem.uses > 0; i++) {
         defenseWeaponBroke = this.defenseItem.decrementUses() || defenseWeaponBroke;
       }
       if (defenseWeaponBroke && !this.defenseItem.hasComponent('no_break_out_of_uses')) {
-        const idx = this.defender.items.indexOf(this.defenseItem);
-        if (idx !== -1) this.defender.items.splice(idx, 1);
+        const idx = this.primaryDefender.items.indexOf(this.defenseItem);
+        if (idx !== -1) this.primaryDefender.items.splice(idx, 1);
       }
     }
 
-    const componentResults = applyCombatComponents(
+    const componentResults = applyGroupCombatComponents(
       this.attacker,
       this.attackItem,
-      this.defender,
+      this.primaryDefender,
       this.defenseItem,
       this.strikes,
       attackerDead,
-      defenderDead,
+      deadDefenders,
       this.db,
     );
 
     // Fixed staff EXP replaces the ordinary level-difference combat formula.
-    const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, defenderDead);
+    const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, deadDefenders);
 
     // Grant EXP and perform level-ups with growth rolls
     let levelUps: Record<string, number>[] = [];
@@ -302,16 +359,14 @@ export class MapCombat {
       }
     }
 
-    // Check for droppable items from dead defender
-    let droppedItem: import('../objects/item').ItemObject | null = null;
-    if (defenderDead && !attackerDead) {
-      for (const item of this.defender.items) {
-        if (item.droppable) {
-          droppedItem = item;
-          break;
-        }
+    const droppedItems: { unit: UnitObject; item: import('../objects/item').ItemObject }[] = [];
+    if (!attackerDead) {
+      for (const unit of defenderDeaths) {
+        const item = unit.items.find((candidate) => candidate.droppable);
+        if (item) droppedItems.push({ unit, item });
       }
     }
+    const droppedItem = droppedItems[0]?.item ?? null;
 
     return {
       attackerDead,
@@ -324,6 +379,8 @@ export class MapCombat {
       attackerWexpGained: componentResults.attackerWexpGained,
       attackerRankUp: componentResults.attackerRankUp,
       stolenItem: componentResults.stolenItem,
+      defenderDeaths,
+      droppedItems,
     };
   }
 
@@ -351,9 +408,12 @@ export class MapCombat {
     // Compute lunge animation: attacker moves toward defender
     const strike = this.strikes[this.currentStrikeIndex];
     if (strike) {
-      const isAttackerStriking = (strike.attacker === this.attacker);
-      const strikerAnim = isAttackerStriking ? this.attackerAnim : this.defenderAnim;
-      const targetAnim = isAttackerStriking ? this.defenderAnim : this.attackerAnim;
+      const strikerAnim = strike.attacker === this.attacker
+        ? this.attackerAnim
+        : this.defenderAnims.get(strike.attacker) ?? this.defenderAnim;
+      const targetAnim = strike.defender === this.attacker
+        ? this.attackerAnim
+        : this.defenderAnims.get(strike.defender) ?? this.defenderAnim;
 
       // Compute direction from striker to target (in tile coords)
       const strikerUnit = strike.attacker;
@@ -408,18 +468,22 @@ export class MapCombat {
 
       // Reset lunge offsets
       this.attackerAnim.lungeOffset = [0, 0];
-      this.defenderAnim.lungeOffset = [0, 0];
+      for (const anim of this.defenderAnims.values()) anim.lungeOffset = [0, 0];
 
       // Apply this strike's damage to display HP targets
+      for (const [unit, hp] of this.defenderDisplayHps) {
+        this.defenderDrainStartHps.set(unit, hp);
+      }
       if (strike && strike.hit) {
         // Record drain animation start points
         this.hpDrainStartAttacker = this.attackerTargetHp;
-        this.hpDrainStartDefender = this.defenderTargetHp;
-
-        if (strike.attacker === this.attacker) {
-          this.defenderTargetHp = Math.max(0, this.defenderTargetHp - strike.damage);
-        } else {
+        if (strike.defender === this.attacker) {
           this.attackerTargetHp = Math.max(0, this.attackerTargetHp - strike.damage);
+        } else if (this.defenderTargetHps.has(strike.defender)) {
+          this.defenderTargetHps.set(
+            strike.defender,
+            Math.max(0, (this.defenderTargetHps.get(strike.defender) ?? 0) - strike.damage),
+          );
         }
 
         // Spawn damage popup on the defender
@@ -437,7 +501,6 @@ export class MapCombat {
       } else if (strike && !strike.hit) {
         // Miss - still need drain start points for the (no-op) animation
         this.hpDrainStartAttacker = this.attackerTargetHp;
-        this.hpDrainStartDefender = this.defenderTargetHp;
 
         // Spawn "MISS" popup
         const targetUnit = strike.defender;
@@ -453,7 +516,6 @@ export class MapCombat {
         }
       } else {
         this.hpDrainStartAttacker = this.attackerTargetHp;
-        this.hpDrainStartDefender = this.defenderTargetHp;
       }
 
       this.hpDrainElapsed = 0;
@@ -468,7 +530,17 @@ export class MapCombat {
 
     // Linearly interpolate display HP toward target
     this.attackerDisplayHp = lerp(this.hpDrainStartAttacker, this.attackerTargetHp, t);
-    this.defenderDisplayHp = lerp(this.hpDrainStartDefender, this.defenderTargetHp, t);
+    for (const unit of this.defenders) {
+      this.defenderDisplayHps.set(
+        unit,
+        lerp(
+          this.defenderDrainStartHps.get(unit) ?? unit.currentHp,
+          this.defenderTargetHps.get(unit) ?? unit.currentHp,
+          t,
+        ),
+      );
+    }
+    this.defenderDisplayHp = this.defenderDisplayHps.get(this.defender) ?? this.defenderDisplayHp;
 
     // Hit-shake on the unit that took damage
     const strike = this.currentStrikeIndex < this.strikes.length
@@ -480,18 +552,21 @@ export class MapCombat {
       const decay = 1 - t / 0.6; // fade shake out over first 60% of drain
       const shakeX = Math.round(Math.sin(shakeT * Math.PI * 2) * SHAKE_AMPLITUDE * decay);
 
-      const isAttackerStriking = (strike.attacker === this.attacker);
-      const targetAnim = isAttackerStriking ? this.defenderAnim : this.attackerAnim;
+      const targetAnim = strike.defender === this.attacker
+        ? this.attackerAnim
+        : this.defenderAnims.get(strike.defender) ?? this.defenderAnim;
       targetAnim.shakeOffset = [shakeX, 0];
     } else {
       // Reset shakes
       this.attackerAnim.shakeOffset = [0, 0];
-      this.defenderAnim.shakeOffset = [0, 0];
+      for (const anim of this.defenderAnims.values()) anim.shakeOffset = [0, 0];
     }
 
     // Decay flash alpha
     this.attackerAnim.flashAlpha = Math.max(0, this.attackerAnim.flashAlpha - deltaMs * 0.004);
-    this.defenderAnim.flashAlpha = Math.max(0, this.defenderAnim.flashAlpha - deltaMs * 0.004);
+    for (const anim of this.defenderAnims.values()) {
+      anim.flashAlpha = Math.max(0, anim.flashAlpha - deltaMs * 0.004);
+    }
 
     // Update damage popups
     this.updateDamagePopups(deltaMs);
@@ -499,20 +574,20 @@ export class MapCombat {
     if (t >= 1) {
       // Snap to target
       this.attackerDisplayHp = this.attackerTargetHp;
-      this.defenderDisplayHp = this.defenderTargetHp;
+      for (const unit of this.defenders) {
+        this.defenderDisplayHps.set(unit, this.defenderTargetHps.get(unit) ?? unit.currentHp);
+      }
+      this.defenderDisplayHp = this.defenderDisplayHps.get(this.defender) ?? this.defenderDisplayHp;
 
       // Reset shakes
       this.attackerAnim.shakeOffset = [0, 0];
-      this.defenderAnim.shakeOffset = [0, 0];
+      for (const anim of this.defenderAnims.values()) anim.shakeOffset = [0, 0];
 
       // Move to next strike or cleanup
       this.currentStrikeIndex++;
       this.frameTimer = 0;
 
       if (this.currentStrikeIndex >= this.strikes.length) {
-        this.state = 'cleanup';
-      } else if (this.attackerTargetHp <= 0 || this.defenderTargetHp <= 0) {
-        // Someone died - end combat
         this.state = 'cleanup';
       } else {
         this.state = 'waiting';
@@ -539,10 +614,12 @@ export class MapCombat {
     // Reset all animation offsets during cleanup
     this.attackerAnim.lungeOffset = [0, 0];
     this.attackerAnim.shakeOffset = [0, 0];
-    this.defenderAnim.lungeOffset = [0, 0];
-    this.defenderAnim.shakeOffset = [0, 0];
     this.attackerAnim.flashAlpha = 0;
-    this.defenderAnim.flashAlpha = 0;
+    for (const anim of this.defenderAnims.values()) {
+      anim.lungeOffset = [0, 0];
+      anim.shakeOffset = [0, 0];
+      anim.flashAlpha = 0;
+    }
     if (this.frameTimer >= CLEANUP_DURATION_MS) {
       this.frameTimer = 0;
       this.state = 'done';
@@ -568,25 +645,30 @@ export class MapCombat {
    * Base 30 exp for combat, +50 bonus for kill.
    * Scaled by level difference between attacker and defender.
    */
-  private calculateExp(attackerDead: boolean, defenderDead: boolean): number {
+  private calculateExp(attackerDead: boolean, deadDefenders: Set<UnitObject>): number {
     if (attackerDead) return 0;
 
     const BASE_EXP = 30;
     const KILL_BONUS = 50;
 
-    // Level difference scaling: higher-level enemies give more exp
-    const levelDiff = this.defender.level - this.attacker.level;
-    // Scale factor: +/- 5 exp per level difference, clamped so exp doesn't go negative
-    const levelScale = Math.max(0.1, 1 + levelDiff * 0.1);
-
-    let exp = Math.round(BASE_EXP * levelScale);
-
-    if (defenderDead) {
-      exp += Math.round(KILL_BONUS * levelScale);
+    const damagedDefenders = new Set(this.strikes
+      .filter((strike) =>
+        strike.attacker === this.attacker && strike.hit && strike.damage > 0 &&
+        !strike.defender.tags.includes('Tile'),
+      )
+      .map((strike) => strike.defender));
+    let exp = 0;
+    for (const defender of damagedDefenders) {
+      // Level difference scaling: higher-level enemies give more exp
+      const levelDiff = defender.level - this.attacker.level;
+      const levelScale = Math.max(0.1, 1 + levelDiff * 0.1);
+      let defenderExp = Math.round(BASE_EXP * levelScale);
+      if (deadDefenders.has(defender)) defenderExp += Math.round(KILL_BONUS * levelScale);
+      exp += defenderExp;
     }
 
-    // Clamp to 1..100
-    return Math.max(1, Math.min(100, exp));
+    // Python aggregates unique damaged defenders, then clamps the encounter.
+    return damagedDefenders.size > 0 ? Math.max(1, Math.min(100, exp)) : 0;
   }
 }
 

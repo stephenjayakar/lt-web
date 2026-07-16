@@ -439,15 +439,16 @@ export function computeHit(
   db: Database,
   board?: GameBoard | null,
   game?: any,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
 ): number {
   const acc = accuracy(attacker, attackItem, db);
   const avo = avoid(defender, db, board, attackItem);
 
   // Dynamic modifiers from items and skills (combat context)
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
-  const itemDynAcc = itemSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, 'attack', null, acc);
-  const skillDynAcc = skillSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, 'attack', null, acc);
-  const skillDynAvo = skillSystem.dynamicAvoid(defender, defWeapon, attacker, attackItem, 'defense', null, avo);
+  const itemDynAcc = itemSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, mode, null, acc);
+  const skillDynAcc = skillSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, mode, null, acc);
+  const skillDynAvo = skillSystem.dynamicAvoid(defender, defWeapon, attacker, attackItem, mode, null, avo);
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
@@ -468,6 +469,7 @@ export function computeDamage(
   db: Database,
   board?: GameBoard | null,
   game?: any,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
 ): number {
   const atk = damage(attacker, attackItem, db);
   const def = defense(defender, attackItem, db, board);
@@ -476,9 +478,9 @@ export function computeDamage(
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
   const baseDmg = atk - def;
 
-  const itemDynDmg = itemSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, 'attack', null, baseDmg);
-  const skillDynDmg = skillSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, 'attack', null, baseDmg);
-  const skillDynResist = skillSystem.dynamicResist(defender, defWeapon, attacker, attackItem, 'defense', null, def);
+  const itemDynDmg = itemSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, mode, null, baseDmg);
+  const skillDynDmg = skillSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, mode, null, baseDmg);
+  const skillDynResist = skillSystem.dynamicResist(defender, defWeapon, attacker, attackItem, mode, null, def);
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
@@ -487,11 +489,11 @@ export function computeDamage(
   let finalDmg = baseDmg + itemDynDmg + skillDynDmg - skillDynResist + atkSupport.damage - defSupport.resist;
 
   // Apply damage multiplier from attacker skills
-  const dmgMult = skillSystem.damageMultiplier(attacker, attackItem, defender, defWeapon, 'attack', null, finalDmg);
+  const dmgMult = skillSystem.damageMultiplier(attacker, attackItem, defender, defWeapon, mode, null, finalDmg);
   finalDmg = Math.floor(finalDmg * dmgMult);
 
   // Apply resist multiplier from defender skills
-  const resMult = skillSystem.resistMultiplier(defender, defWeapon, attacker, attackItem, 'defense', null, finalDmg);
+  const resMult = skillSystem.resistMultiplier(defender, defWeapon, attacker, attackItem, mode, null, finalDmg);
   if (resMult !== 1) {
     finalDmg = Math.floor(finalDmg / resMult);
   }
@@ -658,6 +660,7 @@ export function computeCrit(
   defender: UnitObject,
   db: Database,
   game?: any,
+  _mode: 'attack' | 'defense' | 'splash' = 'attack',
 ): number {
   const baseCrit = resolveEquation(db, 'CRIT', 'SKL // 2', attacker);
   const itemCrit = attackItem.getComponent<number>('crit') ?? 0;

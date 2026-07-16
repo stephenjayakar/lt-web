@@ -13,6 +13,7 @@ import * as skillSystem from './skill-system';
 // ============================================================
 
 export type RngMode = 'classic' | 'true_hit' | 'true_hit_plus' | 'grandmaster';
+export type CombatMode = 'attack' | 'defense' | 'splash';
 
 export interface CombatStrike {
   attacker: UnitObject;
@@ -22,6 +23,7 @@ export interface CombatStrike {
   crit: boolean;
   damage: number;
   isCounter: boolean;
+  mode?: CombatMode;
 }
 
 /** Valid CombatScript tokens for interact_unit. */
@@ -111,6 +113,7 @@ export class CombatPhaseSolver {
     isCounter: boolean,
     token: string,
     board?: GameBoard | null,
+    mode: CombatMode = isCounter ? 'defense' : 'attack',
   ): CombatStrike {
     const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
@@ -122,7 +125,7 @@ export class CombatPhaseSolver {
 
     let dmg = 0;
     if (hit) {
-      const baseDmg = calcs.computeDamage(striker, item, target, db, board);
+      const baseDmg = calcs.computeDamage(striker, item, target, db, board, undefined, mode);
       dmg = baseDmg + wt.damageBonus;
       if (crit) {
         const critDmgMod = skillSystem.modifyCritDamage(striker, item);
@@ -132,7 +135,108 @@ export class CombatPhaseSolver {
       dmg = Math.max(0, dmg);
     }
 
-    return { attacker: striker, defender: target, item, hit, crit, damage: dmg, isCounter };
+    return { attacker: striker, defender: target, item, hit, crit, damage: dmg, isCounter, mode };
+  }
+
+  /**
+   * Resolve one Python-shaped main+splash encounter.
+   *
+   * The main defender follows normal combat ordering and is the only target
+   * that can counter. Splash targets are processed immediately after each
+   * propagated attacker strike. Unless double_splash is enabled, only the
+   * first attacker subattack reaches splash targets.
+   */
+  resolveGroup(
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    mainDefender: UnitObject | null,
+    defenseItem: ItemObject | null,
+    splashDefenders: UnitObject[],
+    db: Database,
+    rngMode: RngMode,
+    board?: GameBoard | null,
+    script?: string[] | null,
+  ): CombatStrike[] {
+    const splash = [...new Set(splashDefenders)].filter((unit) => unit !== mainDefender);
+    if (splash.length === 0 && mainDefender) {
+      return this.resolve(attacker, attackItem, mainDefender, defenseItem, db, rngMode, board, script);
+    }
+
+    const doubleSplash = !!db.getConstant('double_splash', false);
+    const splashHp = new Map(splash.map((unit) => [unit, unit.currentHp]));
+    const result: CombatStrike[] = [];
+    let propagatedAttacks = 0;
+
+    const appendSplash = (forcedToken?: string): void => {
+      if (!doubleSplash && propagatedAttacks > 0) return;
+      for (const target of splash) {
+        const hp = splashHp.get(target) ?? 0;
+        if (hp <= 0 && !skillSystem.ignoreDyingInCombat(target)) continue;
+        const strike = forcedToken
+          ? this.resolveScriptedStrike(
+            attacker, attackItem, target, db, false, forcedToken, board, 'splash',
+          )
+          : this.resolveStrike(attacker, attackItem, target, db, rngMode, false, board, 'splash');
+        result.push(strike);
+        if (strike.hit) {
+          const nextHp = hp - strike.damage;
+          splashHp.set(target, skillSystem.ignoreDyingInCombat(target) && nextHp <= 0 ? 1 : nextHp);
+        }
+      }
+      propagatedAttacks++;
+    };
+
+    if (script && script.length > 0) {
+      let attackerHp = attacker.currentHp;
+      let defenderHp = mainDefender?.currentHp ?? 0;
+      for (const rawToken of script) {
+        const token = rawToken.toLowerCase().trim();
+        if (token === 'end' || attackerHp <= 0 || (mainDefender && defenderHp <= 0)) break;
+        if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
+          if (!mainDefender || !defenseItem) continue;
+          const strike = this.resolveScriptedStrike(
+            mainDefender, defenseItem, attacker, db, true, token, board, 'defense',
+          );
+          result.push(strike);
+          if (strike.hit) attackerHp -= strike.damage;
+          continue;
+        }
+        const forcedToken = token === '--' ? undefined : token;
+        if (mainDefender) {
+          const strike = forcedToken
+            ? this.resolveScriptedStrike(
+              attacker, attackItem, mainDefender, db, false, forcedToken, board, 'attack',
+            )
+            : this.resolveStrike(attacker, attackItem, mainDefender, db, rngMode, false, board, 'attack');
+          result.push(strike);
+          if (strike.hit) defenderHp -= strike.damage;
+        }
+        appendSplash(forcedToken);
+      }
+      this.strikes = result;
+      return result;
+    }
+
+    if (mainDefender) {
+      const mainStrikes = [...this.resolve(
+        attacker, attackItem, mainDefender, defenseItem, db, rngMode, board,
+      )];
+      for (const strike of mainStrikes) {
+        result.push(strike);
+        if (strike.attacker === attacker) appendSplash();
+      }
+    } else {
+      const reference = splash[0];
+      if (reference) {
+        const strikeCount = doubleSplash
+          ? calcs.computeStrikeCount(attacker, attackItem, reference, null)
+          : 1;
+        for (let idx = 0; idx < strikeCount; idx++) appendSplash();
+      }
+    }
+
+    this.strikes = result;
+    return result;
   }
 
   /**
@@ -359,15 +463,16 @@ export class CombatPhaseSolver {
     rngMode: RngMode,
     isCounter: boolean,
     board?: GameBoard | null,
+    mode: CombatMode = isCounter ? 'defense' : 'attack',
   ): CombatStrike {
     // Compute hit chance with weapon triangle bonus
     const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
-    const baseHit = calcs.computeHit(striker, item, target, db, board);
+    const baseHit = calcs.computeHit(striker, item, target, db, board, undefined, mode);
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
     const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
     // Compute crit chance
-    let critChance = calcs.computeCrit(striker, item, target, db);
+    let critChance = calcs.computeCrit(striker, item, target, db, undefined, mode);
 
     // critAnyway skill: ensure at least some crit chance
     if (skillSystem.critAnyway(striker) && critChance <= 0) {
@@ -384,7 +489,7 @@ export class CombatPhaseSolver {
     // Compute damage (0 on miss)
     let dmg = 0;
     if (hit) {
-      const baseDmg = calcs.computeDamage(striker, item, target, db, board);
+      const baseDmg = calcs.computeDamage(striker, item, target, db, board, undefined, mode);
       dmg = baseDmg + wt.damageBonus;
 
       // Crit damage
@@ -405,6 +510,7 @@ export class CombatPhaseSolver {
       crit,
       damage: dmg,
       isCounter,
+      mode,
     };
   }
 }
