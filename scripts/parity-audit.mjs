@@ -26,14 +26,6 @@ function matches(text, expression) {
   return [...text.matchAll(expression)].map((match) => match[1]);
 }
 
-function explicitPythonNids(relativePath) {
-  const nids = [];
-  for (const file of walk(relativePath, '.py')) {
-    nids.push(...matches(fs.readFileSync(file, 'utf8'), /^\s+nid\s*=\s*['"]([^'"]+)['"]/gm));
-  }
-  return new Set(nids);
-}
-
 const eventCommands = read('lt-maker/app/events/event_commands.py');
 const eventFunctions = read('lt-maker/app/events/event_functions.py');
 const eventManager = read('src/events/event-manager.ts');
@@ -60,7 +52,8 @@ function parsePythonStringList(body, field) {
 
 function parseEventCommandMetadata(source) {
   const commands = [];
-  const blocks = source.matchAll(/^class\s+(\w+)\(EventCommand\):\n([\s\S]*?)(?=^class\s|\Z)/gm);
+  const normalized = source.replace(/\r\n/g, '\n');
+  const blocks = normalized.matchAll(/^class\s+(\w+)\(EventCommand\):\n([\s\S]*?)(?=^class\s|(?![\s\S]))/gm);
   for (const match of blocks) {
     const body = match[2];
     const nid = body.match(/^\s+nid\s*=\s*['"]([^'"]+)['"]/m)?.[1];
@@ -124,10 +117,6 @@ const commandManifest = commandMetadata.map((command) => ({
   status: commandStatus(command),
 }));
 
-const pythonItemNids = explicitPythonNids('lt-maker/app/engine/item_components');
-const pythonSkillNids = explicitPythonNids('lt-maker/app/engine/skill_components');
-const itemHooks = matches(read('src/combat/item-system.ts'), /^export function\s+(\w+)/gm);
-const skillHooks = matches(read('src/combat/skill-system.ts'), /^export function\s+(\w+)/gm);
 const registeredStates = new Set(matches(main, /new\s+(\w+State)\s*\(/g));
 
 const tsFiles = walk('src', '.ts');
@@ -136,12 +125,130 @@ const tsLines = tsFiles.reduce(
   0,
 );
 
+function camelToSnake(value) {
+  return value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+function parsePythonComponents(relativePath) {
+  const components = [];
+  for (const file of walk(relativePath, '.py').sort()) {
+    const source = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+    const classes = [...source.matchAll(/^([ \t]*)class\s+(\w+)\(([^)]*)\):\n/gm)];
+    for (let index = 0; index < classes.length; index += 1) {
+      const match = classes[index];
+      const indent = match[1].length;
+      const nextPeer = classes.slice(index + 1).find((candidate) => candidate[1].length <= indent);
+      const body = source.slice(match.index + match[0].length, nextPeer?.index ?? source.length);
+      const memberIndent = ' '.repeat(indent + 4);
+      const nid = body.match(new RegExp(`^${memberIndent}nid\\s*=\\s*['"]([^'"]+)['"]`, 'm'))?.[1];
+      if (!nid) continue;
+      components.push({
+        nid,
+        pythonClass: match[2],
+        bases: match[3].split(',').map((base) => base.trim()).filter(Boolean),
+        tag: body.match(new RegExp(`^${memberIndent}tag\\s*=\\s*(?:ItemTags|SkillTags)\\.(\\w+)`, 'm'))?.[1] ?? null,
+        directMethods: [...new Set(matches(body, new RegExp(`^${memberIndent}def\\s+(\\w+)\\s*\\(`, 'gm')))]
+          .filter((method) => !method.startsWith('_')),
+        source: path.relative(root, file),
+        line: source.slice(0, match.index).split('\n').length,
+      });
+    }
+  }
+  const byClass = new Map(components.map((component) => [component.pythonClass, component]));
+  const resolveMethods = (component, seen = new Set()) => {
+    if (component.methods) return component.methods;
+    if (seen.has(component.pythonClass)) return component.directMethods;
+    const nextSeen = new Set(seen).add(component.pythonClass);
+    const inherited = component.bases.flatMap((base) => {
+      const parent = byClass.get(base);
+      return parent ? resolveMethods(parent, nextSeen) : [];
+    });
+    component.methods = [...new Set([...inherited, ...component.directMethods])];
+    return component.methods;
+  };
+  for (const component of components) resolveMethods(component);
+  return components;
+}
+
+function exactLiteralLocations(nid) {
+  const escaped = nid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const expression = new RegExp(`['"]${escaped}['"]`, 'g');
+  const locations = [];
+  for (const file of tsFiles) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const match of source.matchAll(expression)) {
+      const prefix = source.slice(0, match.index);
+      locations.push({
+        source: path.relative(root, file),
+        line: prefix.split('\n').length,
+      });
+    }
+  }
+  return locations;
+}
+
+function hasExactLiteral(source, nid) {
+  const escaped = nid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`['"]${escaped}['"]`).test(source);
+}
+
+function buildComponentManifest(kind, relativePath, webSystemPath) {
+  const components = parsePythonComponents(relativePath);
+  const webHooks = matches(read(webSystemPath), /^export function\s+(\w+)/gm);
+  const hooksBySnake = new Map(webHooks.map((hook) => [camelToSnake(hook), hook]));
+  const rows = components.map((component) => {
+    const webReferences = exactLiteralLocations(component.nid);
+    const matchingWebHooks = [...new Set(component.methods
+      .map((method) => hooksBySnake.get(method))
+      .filter(Boolean))];
+    let status = 'unreferenced';
+    if (webReferences.length > 0 && matchingWebHooks.length > 0) status = 'hook-and-reference';
+    else if (matchingWebHooks.length > 0) status = 'hook-only';
+    else if (webReferences.length > 0) status = 'reference-only';
+    return {
+      ...component,
+      webReferences,
+      matchingWebHooks,
+      lexicalTestMention: hasExactLiteral(testSource, component.nid),
+      status,
+    };
+  });
+  const componentSummary = {
+    pythonComponentNids: rows.length,
+    webHookExports: webHooks.length,
+    referencedComponentNids: rows.filter((row) => row.webReferences.length > 0).length,
+    hookMappedComponentNids: rows.filter((row) => row.matchingWebHooks.length > 0).length,
+    unreferencedComponentNids: rows.filter((row) => row.webReferences.length === 0).length,
+    structuralStatuses: Object.fromEntries(
+      [...new Set(rows.map((row) => row.status))]
+        .sort()
+        .map((status) => [status, rows.filter((row) => row.status === status).length]),
+    ),
+  };
+  return { kind, relativePath, webSystemPath, webHooks, rows, summary: componentSummary };
+}
+
+const itemComponents = buildComponentManifest(
+  'item',
+  'lt-maker/app/engine/item_components',
+  'src/combat/item-system.ts',
+);
+const skillComponents = buildComponentManifest(
+  'skill',
+  'lt-maker/app/engine/skill_components',
+  'src/combat/skill-system.ts',
+);
+
 const missingFromParser = [...pythonEventNids].filter((nid) => !validCommands.has(nid)).sort();
 const missingFromDispatcher = [...pythonEventNids].filter((nid) => !eventCases.has(nid)).sort();
 const summary = {
   pythonEventNids: pythonEventNids.size,
   parserRecognizedPythonNids: pythonEventNids.size - missingFromParser.length,
   dispatcherPythonNids: pythonEventNids.size - missingFromDispatcher.length,
+  itemReferencedComponentNids: itemComponents.summary.referencedComponentNids,
+  itemHookMappedComponentNids: itemComponents.summary.hookMappedComponentNids,
+  skillReferencedComponentNids: skillComponents.summary.referencedComponentNids,
+  skillHookMappedComponentNids: skillComponents.summary.hookMappedComponentNids,
   structuralStatuses: Object.fromEntries(
     [...new Set(commandManifest.map((command) => command.status))]
       .sort()
@@ -149,7 +256,7 @@ const summary = {
   ),
 };
 
-const manifestJson = `${JSON.stringify({
+const eventManifestJson = `${JSON.stringify({
   sources: [
     'lt-maker/app/events/event_commands.py',
     'lt-maker/app/events/event_functions.py',
@@ -190,22 +297,75 @@ const manifestMarkdown = [
   '',
 ].join('\n');
 
+function componentManifestJson(manifest) {
+  return `${JSON.stringify({
+    sources: [manifest.relativePath, manifest.webSystemPath, 'src/**/*.ts'],
+    summary: manifest.summary,
+    webHookExports: manifest.webHooks,
+    components: manifest.rows,
+  }, null, 2)}\n`;
+}
+
+function componentManifestMarkdown(manifest) {
+  const title = manifest.kind === 'item' ? 'Item' : 'Skill';
+  const rows = manifest.rows.map((component) => {
+    const references = component.webReferences
+      .slice(0, 3)
+      .map((reference) => `${reference.source}:${reference.line}`);
+    if (component.webReferences.length > 3) references.push(`+${component.webReferences.length - 3} more`);
+    return [
+      component.nid,
+      component.pythonClass,
+      `${component.source}:${component.line}`,
+      component.tag ?? '',
+      component.methods.join(', '),
+      component.matchingWebHooks.join(', '),
+      references.join('<br>'),
+      component.lexicalTestMention ? 'mention' : '',
+      component.status,
+    ].map(md);
+  });
+  return [
+    `# ${title} Component Parity Manifest`,
+    '',
+    'Generated by `npm run audit:parity:write` from Python component classes and exact TypeScript string references.',
+    'Hook/reference status is structural discovery evidence, not a semantic parity claim.',
+    '',
+    `Summary: ${manifest.summary.referencedComponentNids}/${manifest.summary.pythonComponentNids} referenced in web source; ${manifest.summary.hookMappedComponentNids}/${manifest.summary.pythonComponentNids} expose at least one matching web hook.`,
+    '',
+    '| NID | Python class | Python source | Tag | Python hooks | Matching web hooks | Exact web references | Test | Structural status |',
+    '|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((row) => `| ${row.join(' | ')} |`),
+    '',
+  ].join('\n');
+}
+
 const jsonPath = path.join(root, 'docs/parity/event-commands.json');
 const markdownPath = path.join(root, 'docs/parity/event-commands.md');
+const itemJsonPath = path.join(root, 'docs/parity/item-components.json');
+const itemMarkdownPath = path.join(root, 'docs/parity/item-components.md');
+const skillJsonPath = path.join(root, 'docs/parity/skill-components.json');
+const skillMarkdownPath = path.join(root, 'docs/parity/skill-components.md');
+const generatedFiles = new Map([
+  [jsonPath, eventManifestJson],
+  [markdownPath, manifestMarkdown],
+  [itemJsonPath, componentManifestJson(itemComponents)],
+  [itemMarkdownPath, componentManifestMarkdown(itemComponents)],
+  [skillJsonPath, componentManifestJson(skillComponents)],
+  [skillMarkdownPath, componentManifestMarkdown(skillComponents)],
+]);
 
 if (args.has('--write')) {
   fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
-  fs.writeFileSync(jsonPath, manifestJson);
-  fs.writeFileSync(markdownPath, manifestMarkdown);
+  for (const [file, contents] of generatedFiles) fs.writeFileSync(file, contents);
 }
 
 if (args.has('--check')) {
   const failures = [];
-  if (!fs.existsSync(jsonPath) || fs.readFileSync(jsonPath, 'utf8') !== manifestJson) {
-    failures.push('docs/parity/event-commands.json is stale; run npm run audit:parity:write');
-  }
-  if (!fs.existsSync(markdownPath) || fs.readFileSync(markdownPath, 'utf8') !== manifestMarkdown) {
-    failures.push('docs/parity/event-commands.md is stale; run npm run audit:parity:write');
+  for (const [file, contents] of generatedFiles) {
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== contents) {
+      failures.push(`${path.relative(root, file)} is stale; run npm run audit:parity:write`);
+    }
   }
   const baseline = JSON.parse(read('scripts/parity-baseline.json'));
   for (const [key, minimum] of Object.entries(baseline.minimums)) {
@@ -225,8 +385,8 @@ console.log(`- Python event-command NIDs: ${pythonEventNids.size}`);
 console.log(`- Parser-recognized command names: ${validCommands.size}`);
 console.log(`- Python commands recognized by parser: ${pythonEventNids.size - missingFromParser.length}/${pythonEventNids.size}`);
 console.log(`- Python commands with EventState case labels: ${pythonEventNids.size - missingFromDispatcher.length}/${pythonEventNids.size}`);
-console.log(`- Python item component NIDs: ${pythonItemNids.size}; web item hook exports: ${itemHooks.length}`);
-console.log(`- Python skill component NIDs: ${pythonSkillNids.size}; web skill hook exports: ${skillHooks.length}`);
+console.log(`- Python item component NIDs: ${itemComponents.summary.pythonComponentNids}; exact web references: ${itemComponents.summary.referencedComponentNids}; matching hook surfaces: ${itemComponents.summary.hookMappedComponentNids}`);
+console.log(`- Python skill component NIDs: ${skillComponents.summary.pythonComponentNids}; exact web references: ${skillComponents.summary.referencedComponentNids}; matching hook surfaces: ${skillComponents.summary.hookMappedComponentNids}`);
 console.log('');
 console.log('## Event commands not recognized by the parser');
 console.log(missingFromParser.join(', ') || '(none)');

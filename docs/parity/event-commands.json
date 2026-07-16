@@ -7,6 +7,10 @@
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 195,
     "dispatcherPythonNids": 184,
+    "itemReferencedComponentNids": 34,
+    "itemHookMappedComponentNids": 23,
+    "skillReferencedComponentNids": 29,
+    "skillHookMappedComponentNids": 55,
     "structuralStatuses": {
       "dispatched-unverified": 172,
       "missing-dispatch": 11,
@@ -4868,8 +4872,16 @@
         "Nid",
         "SpriteID"
       ],
-      "optionalKeywords": [],
-      "flags": [],
+      "optionalKeywords": [
+        "Position",
+        "ZLevel",
+        "Animation",
+        "Speed"
+      ],
+      "flags": [
+        "no_block",
+        "foreground"
+      ],
       "pythonHandler": {
         "function": "draw_overlay_sprite",
         "source": "lt-maker/app/events/event_functions.py",

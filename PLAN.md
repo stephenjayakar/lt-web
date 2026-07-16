@@ -48,8 +48,8 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 195 recognized; 184 matching case labels | Partial |
-| Item component NIDs / hook exports | 201 | 25 hook exports | Unknown; mapping audit required |
-| Skill component NIDs / hook exports | 241 | 41 hook exports | Partial/Unknown |
+| Item component NIDs | 201 | 34 exact string references; 23 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
 | TypeScript runtime | n/a | 88 files, 47,729 lines | Builds |
 | Browser regression suite | n/a | 59 Playwright tests | 59/59 passing |
@@ -156,6 +156,20 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Generated item/skill component manifests:**
+  - Extended the parity audit to inventory all 201 Python item components and
+    241 skill components, including nested classes, source line, tag, direct
+    Python hook methods, matching camelCase web hook exports, exact TypeScript
+    string-reference locations, test mentions, and structural status.
+  - Added machine-readable and review-friendly manifests at
+    `docs/parity/item-components.{json,md}` and
+    `docs/parity/skill-components.{json,md}`; the existing audit/CI drift guard
+    now validates all six generated parity artifacts.
+  - Established the first actionable structural baseline: 34 item and 29 skill
+    NIDs have exact web references, while 23 item and 55 skill component classes
+    expose at least one Python hook with a matching web hook surface. These are
+    discovery counts, not semantic parity claims.
 
 - **Generated command manifest and reversible unit-mutation slice:**
   - `npm run audit:parity:write` now generates JSON and Markdown manifests for all
@@ -499,7 +513,7 @@ passes; record newly discovered work here immediately.
 - [x] Emit machine-readable audit JSON and fail CI on accidental coverage regressions
 - [x] Build a command manifest mapping all 255 Python NIDs to web status, flags,
   blocking semantics, aliases, source function, and regression test
-- [ ] Build item/skill component manifests mapping component NIDs to generated hooks
+- [x] Build item/skill component manifests mapping component NIDs to generated hooks
 - [ ] Inventory Python triggers, query functions, equations, and save fields
 - [ ] Add representative non-default project fixtures to CI
 
@@ -607,6 +621,6 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Generate item and skill component manifests with explicit hook/status mappings.
-2. Port the next coherent event batch: item identity/data/uses/droppable mutations.
+1. Port the next coherent event batch: item identity/data/uses/droppable mutations.
+2. Add reversible item actions and save/turnwheel regression coverage for that batch.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
