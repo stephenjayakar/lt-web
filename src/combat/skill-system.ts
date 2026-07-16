@@ -116,6 +116,11 @@ export function ignoreDyingInCombat(unit: UnitObject): boolean {
   return hasAnySkill(unit, 'ignore_dying_in_combat');
 }
 
+/** Unit cannot be displaced by shove, swap, warp, rescue, or related item hooks. */
+export function ignoreForcedMovement(unit: UnitObject): boolean {
+  return hasAnySkill(unit, 'ignore_forced_movement');
+}
+
 // ============================================================
 // Boolean hooks (ALL_DEFAULT_TRUE)
 // ============================================================
@@ -393,8 +398,16 @@ export function expMultiplier(unit: UnitObject, _target: UnitObject): number {
   return getSkillValue<number>(unit, 'exp_multiplier') ?? 1;
 }
 
+export function enemyExpMultiplier(unit: UnitObject, _target: UnitObject): number {
+  return getSkillValue<number>(unit, 'enemy_exp_multiplier') ?? 1;
+}
+
 export function wexpMultiplier(unit: UnitObject, _target: UnitObject): number {
   return getSkillValue<number>(unit, 'wexp_multiplier') ?? 1;
+}
+
+export function enemyWexpMultiplier(unit: UnitObject, _target: UnitObject): number {
+  return getSkillValue<number>(unit, 'enemy_wexp_multiplier') ?? 1;
 }
 
 // ============================================================

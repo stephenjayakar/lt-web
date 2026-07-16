@@ -1525,6 +1525,294 @@ test.describe('Event command parity', () => {
     expect(turnwheel.redone).toEqual({ first: 5, second: 1, staff: 1, finished: true });
   });
 
+  test('sequence item collects store and unload targets then warps reversibly', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { createItemTree } = await import('/src/objects/item.ts');
+      const caster = game.units.get('Eirika');
+      const target = game.units.get('Seth');
+      if (!caster?.position || !target?.position) return null;
+
+      const parentNid = '_SequenceWarp';
+      const childOneNid = '_SequenceWarpStore';
+      const childTwoNid = '_SequenceWarpUnload';
+      const prefabs = [
+        {
+          nid: parentNid, name: 'Sequence Warp', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [
+            ['spell', null], ['uses', 2], ['weapon_type', 'Sword'], ['wexp', 3], ['exp', 7],
+            ['sequence_item', [childOneNid, childTwoNid]],
+          ],
+        },
+        {
+          nid: childOneNid, name: 'Store Target', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['spell', null], ['target_ally', null], ['min_range', 1], ['max_range', 99], ['store_unit', null]],
+        },
+        {
+          nid: childTwoNid, name: 'Unload Target', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['spell', null], ['target_tile', null], ['min_range', 1], ['max_range', 99], ['unload_unit', null]],
+        },
+      ] as any[];
+      for (const prefab of prefabs) game.db.items.set(prefab.nid, prefab);
+      const item = createItemTree(game.db.items.get(parentNid), (nid: string) => game.db.items.get(nid));
+      item.owner = caster;
+      caster.items.unshift(item);
+      const register = (runtimeItem: any, key: string) => {
+        game.items.set(key, runtimeItem);
+        runtimeItem.subitems.forEach((child: any, index: number) => register(child, `${key}_${index}`));
+      };
+      register(item, '_test_sequence_warp');
+
+      caster.finished = false;
+      caster.exp = 10;
+      caster.wexp.Sword = 1;
+      target.finished = false;
+      target.hasMoved = true;
+      game.selectedUnit = caster;
+      game.cursor.setPos(caster.position[0], caster.position[1]);
+      const destinationCandidates = game.targetSystem.getValidTargets(caster, item.subitems[1])
+        .filter((position: [number, number]) =>
+          position[0] !== target.position[0] || position[1] !== target.position[1]);
+      destinationCandidates.sort((a: [number, number], b: [number, number]) => {
+        const distance = (position: [number, number]) =>
+          Math.abs(position[0] - caster.position[0]) + Math.abs(position[1] - caster.position[1]);
+        return distance(a) - distance(b);
+      });
+      const destination = destinationCandidates[0];
+      if (!destination) return null;
+      const originalPosition = [...target.position];
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.state.change('item_use');
+      return {
+        casterNid: caster.nid,
+        targetNid: target.nid,
+        targetPosition: originalPosition,
+        destination: [...destination],
+        beforeActionIndex,
+        parentNid,
+        expBefore: caster.exp,
+        wexpBefore: caster.wexp.Sword,
+      };
+    });
+    expect(setup).not.toBeNull();
+
+    const clickTile = async (position: number[]) => {
+      await page.evaluate(([tx, ty]) => {
+        const game = (window as any).__gameRef;
+        const [cameraX, cameraY] = game.camera.getOffset();
+        const scaleX = game.input.displayScaleX ?? 1;
+        const scaleY = game.input.displayScaleY ?? 1;
+        const offsetX = game.input.displayOffsetX ?? 0;
+        const offsetY = game.input.displayOffsetY ?? 0;
+        game.input.mouseX = (tx * 16 - cameraX + 8) * scaleX + offsetX;
+        game.input.mouseY = (ty * 16 - cameraY + 8) * scaleY + offsetY;
+        game.input.mouseClick = 'SELECT';
+        (window as any).__harness.stepFrames(1);
+        game.input.mouseClick = null;
+      }, position);
+      await stepFrames(page, 1);
+    };
+
+    await stepFrames(page, 2);
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_targeting');
+    await clickTile(setup!.targetPosition);
+    const secondStep = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      return {
+        name: state.name,
+        sequenceIndex: state.sequenceIndex,
+        selectedTargets: state.selectedTargets,
+        validDestinations: state.targets,
+      };
+    });
+    expect(secondStep.name).toBe('item_targeting');
+    expect(secondStep.sequenceIndex).toBe(1);
+    expect(secondStep.selectedTargets[0]).toEqual([setup!.targetPosition]);
+    expect(secondStep.validDestinations).toContainEqual(setup!.destination);
+    expect(secondStep.validDestinations).not.toContainEqual(setup!.targetPosition);
+
+    await clickTile(setup!.destination);
+    await stepFrames(page, 3);
+    const applied = await page.evaluate(({ casterNid, targetNid, parentNid }) => {
+      const game = (window as any).__gameRef;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      return {
+        state: game.state.getCurrentState()?.name,
+        position: target.position,
+        targetFlags: [target.hasMoved, target.finished],
+        uses: caster.items.find((candidate: any) => candidate.nid === parentNid)?.uses,
+        exp: caster.exp,
+        wexp: caster.wexp.Sword,
+        casterFinished: caster.finished,
+      };
+    }, setup!);
+    expect(applied).toEqual({
+      state: 'free', position: setup!.destination, targetFlags: [true, false], uses: 1,
+      exp: setup!.expBefore + 7, wexp: setup!.wexpBefore + 3, casterFinished: true,
+    });
+
+    const turnwheel = await page.evaluate(({ casterNid, targetNid, parentNid, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const snapshot = () => ({
+        position: target.position ? [...target.position] : null,
+        targetFlags: [target.hasMoved, target.finished],
+        uses: caster.items.find((candidate: any) => candidate.nid === parentNid)?.uses,
+        exp: caster.exp,
+        wexp: caster.wexp.Sword,
+        casterFinished: caster.finished,
+      });
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { reversed, redone: snapshot() };
+    }, setup!);
+    expect(turnwheel.reversed).toEqual({
+      position: setup!.targetPosition, targetFlags: [true, false], uses: 2,
+      exp: setup!.expBefore, wexp: setup!.wexpBefore, casterFinished: false,
+    });
+    expect(turnwheel.redone).toEqual({
+      position: setup!.destination, targetFlags: [true, false], uses: 1,
+      exp: setup!.expBefore + 7, wexp: setup!.wexpBefore + 3, casterFinished: true,
+    });
+
+    const roundTrip = await page.evaluate(async ({ casterNid, targetNid, parentNid, targetPosition }) => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 92, 'battle');
+      game.board.moveUnit(game.units.get(targetNid), targetPosition[0], targetPosition[1]);
+      game.units.get(casterNid).items.find((item: any) => item.nid === parentNid).setUses(0);
+      const loaded = await loadGame(game, 92);
+      const loadedTarget = game.units.get(targetNid);
+      const loadedCaster = game.units.get(casterNid);
+      const result = {
+        loaded,
+        position: loadedTarget.position,
+        uses: loadedCaster.items.find((item: any) => item.nid === parentNid)?.uses,
+        children: loadedCaster.items.find((item: any) => item.nid === parentNid)?.subitems.map((item: any) => item.nid),
+      };
+      await deleteSave(gameNid, 92);
+      return result;
+    }, setup!);
+    expect(roundTrip).toEqual({
+      loaded: true, position: setup!.destination, uses: 1,
+      children: ['_SequenceWarpStore', '_SequenceWarpUnload'],
+    });
+  });
+
+  test('multi-target item collects distinct targets and consumes durability once', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const caster = game.units.get('Eirika');
+      const ally = game.units.get('Seth');
+      if (!caster?.position || !ally?.position) return null;
+      const targets = [caster, ally];
+      caster.finished = false;
+      for (const target of targets) {
+        target.currentHp = Math.max(1, target.maxHp - 10);
+        target.finished = false;
+      }
+      const item = new ItemObject({
+        nid: '_MultiHeal', name: 'Multi Heal', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_ally', null], ['min_range', 0], ['max_range', 99],
+          ['multi_target', 2], ['heal', 4], ['uses', 2],
+        ],
+      });
+      item.owner = caster;
+      caster.items.unshift(item);
+      game.items.set('_test_multi_heal', item);
+      game.selectedUnit = caster;
+      game.cursor.setPos(caster.position[0], caster.position[1]);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.state.change('item_use');
+      return {
+        casterNid: caster.nid,
+        targetNids: targets.map((target) => target.nid),
+        positions: targets.map((target) => [...target.position]),
+        hpBefore: targets.map((target) => target.currentHp),
+        beforeActionIndex,
+      };
+    });
+    expect(setup).not.toBeNull();
+
+    const clickTile = async (position: number[]) => {
+      await page.evaluate(([tx, ty]) => {
+        const game = (window as any).__gameRef;
+        const [cameraX, cameraY] = game.camera.getOffset();
+        const scaleX = game.input.displayScaleX ?? 1;
+        const scaleY = game.input.displayScaleY ?? 1;
+        const offsetX = game.input.displayOffsetX ?? 0;
+        const offsetY = game.input.displayOffsetY ?? 0;
+        game.input.mouseX = (tx * 16 - cameraX + 8) * scaleX + offsetX;
+        game.input.mouseY = (ty * 16 - cameraY + 8) * scaleY + offsetY;
+        game.input.mouseClick = 'SELECT';
+        (window as any).__harness.stepFrames(1);
+        game.input.mouseClick = null;
+      }, position);
+      await stepFrames(page, 1);
+    };
+
+    await stepFrames(page, 2);
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    await clickTile(setup!.positions[0]);
+    const halfway = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      return { name: state.name, selectedTargets: state.selectedTargets, targets: state.targets };
+    });
+    expect(halfway.name).toBe('item_targeting');
+    expect(halfway.selectedTargets).toEqual([[setup!.positions[0]]]);
+    expect(halfway.targets).not.toContainEqual(setup!.positions[0]);
+    expect(halfway.targets).toContainEqual(setup!.positions[1]);
+
+    await clickTile(setup!.positions[1]);
+    await stepFrames(page, 3);
+    const applied = await page.evaluate(({ casterNid, targetNids }) => {
+      const game = (window as any).__gameRef;
+      const caster = game.units.get(casterNid);
+      return {
+        state: game.state.getCurrentState()?.name,
+        hp: targetNids.map((nid: string) => game.units.get(nid).currentHp),
+        uses: caster.items.find((item: any) => item.nid === '_MultiHeal')?.uses,
+        finished: caster.finished,
+      };
+    }, setup!);
+    expect(applied).toEqual({
+      state: 'free', hp: setup!.hpBefore.map((hp) => hp + 4), uses: 1, finished: true,
+    });
+
+    const turnwheel = await page.evaluate(({ casterNid, targetNids, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const caster = game.units.get(casterNid);
+      const snapshot = () => ({
+        hp: targetNids.map((nid: string) => game.units.get(nid).currentHp),
+        uses: caster.items.find((item: any) => item.nid === '_MultiHeal')?.uses,
+        finished: caster.finished,
+      });
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { reversed, redone: snapshot() };
+    }, setup!);
+    expect(turnwheel.reversed).toEqual({ hp: setup!.hpBefore, uses: 2, finished: false });
+    expect(turnwheel.redone).toEqual({ hp: applied.hp, uses: 1, finished: true });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -1955,12 +2243,17 @@ test.describe('Magic Sword Combat', () => {
     console.log(`Bone HP after combat: ${boneAfter?.hp}/${boneAfter?.maxHp}`);
     console.log(`Light Brand uses: ${lightBrandUsesBefore} -> ${lightBrandUsesAfter}`);
 
-    // Combat can miss based on RNG, so HP damage is non-deterministic.
-    // The deterministic check is that the attack consumed one weapon use.
-    expect(lightBrandUsesAfter).toBe(lightBrandUsesBefore - 1);
+    // Combat can miss based on RNG. Light Brand uses Python's default
+    // uses_options policy, so a hit consumes one use and a miss consumes none.
+    expect([lightBrandUsesBefore, lightBrandUsesBefore - 1]).toContain(lightBrandUsesAfter);
 
-    // If the attack hit, Bone HP should drop. If it missed, HP is unchanged.
+    // If the attack hit, Bone HP drops and one use is consumed. A miss preserves both.
     expect(boneAfter!.hp).toBeLessThanOrEqual(boneAfter!.maxHp);
+    if (boneAfter!.hp < boneAfter!.maxHp) {
+      expect(lightBrandUsesAfter).toBe(lightBrandUsesBefore - 1);
+    } else {
+      expect(lightBrandUsesAfter).toBe(lightBrandUsesBefore);
+    }
   });
   test('combat HP bar and weapon info do not overlap', async ({ page }) => {
     // Load the DEBUG level cleanly and initiate combat to verify

@@ -138,10 +138,19 @@ export class TargetSystem {
     if (item.subitems.length === 0) return this.getValidTargets(unit, item, origin);
 
     const merged = new Map<string, TargetPosition>();
+    let requiredTargets = 0;
     for (const subitem of item.subitems) {
       const childTargets = this.getValidTargetsRecursive(unit, subitem, origin);
       if (item.hasComponent('sequence_item') && childTargets.length === 0) return [];
+      if (item.hasComponent('sequence_item')) {
+        requiredTargets += allowLessThanMaxTargets(unit, subitem) ? 1 : numTargets(unit, subitem);
+      }
       for (const position of childTargets) merged.set(positionKey(position), position);
+    }
+
+    if (item.hasComponent('sequence_item') && !allowSameTarget(unit, item) &&
+        merged.size < requiredTargets) {
+      return [];
     }
 
     // Parent components such as Rescue's target_tile also contribute.

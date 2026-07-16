@@ -735,6 +735,31 @@ export class MoveAction extends Action {
   }
 }
 
+/** Script/item-directed warp that preserves the moved unit's turn flags. */
+export class WarpUnitAction extends Action {
+  private unit: UnitObject;
+  private oldPos: [number, number];
+  private newPos: [number, number];
+  private board: GameBoard;
+
+  constructor(unit: UnitObject, newPos: [number, number], board: GameBoard) {
+    super();
+    if (!unit.position) throw new Error(`Cannot warp off-map unit ${unit.nid}`);
+    this.unit = unit;
+    this.oldPos = [unit.position[0], unit.position[1]];
+    this.newPos = [newPos[0], newPos[1]];
+    this.board = board;
+  }
+
+  execute(): void {
+    this.board.moveUnit(this.unit, this.newPos[0], this.newPos[1]);
+  }
+
+  reverse(): void {
+    this.board.moveUnit(this.unit, this.oldPos[0], this.oldPos[1]);
+  }
+}
+
 /**
  * DamageAction - Apply damage to a unit (reduce currentHp).
  * Clamps HP to a minimum of 0.

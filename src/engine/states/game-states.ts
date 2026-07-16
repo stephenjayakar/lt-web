@@ -60,10 +60,12 @@ import {
   AddSubItemAction,
   RemoveSubItemAction,
   HealAction,
+  GainExpAction,
   WaitAction,
   UseItemAction,
   RemoveSkillAction,
   RefreshUnitAction,
+  WarpUnitAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -80,7 +82,19 @@ import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { evaluateEquation, getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
-import { isRepairableItem } from '../../combat/item-system';
+import {
+  isRepairableItem,
+  numTargets,
+  allowSameTarget,
+  allowLessThanMaxTargets,
+} from '../../combat/item-system';
+import {
+  ignoreForcedMovement,
+  expMultiplier,
+  enemyExpMultiplier,
+  wexpMultiplier,
+  enemyWexpMultiplier,
+} from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
@@ -1757,7 +1771,7 @@ export class MenuState extends State {
 // 4b. ItemUseState - Select and use a consumable item
 // ============================================================================
 
-export function applyCoreTargetedItem(
+function applyCoreTargetedEffects(
   unit: UnitObject,
   item: ItemObject,
   position: [number, number],
@@ -1841,7 +1855,54 @@ export function applyCoreTargetedItem(
       applied = true;
     }
   }
-  if (!applied) return false;
+  return applied;
+}
+
+function effectUnits(
+  unit: UnitObject,
+  item: ItemObject,
+  position: [number, number],
+): UnitObject[] {
+  const game = getGame();
+  const resolved = game.targetSystem.getTargetFromPosition(unit, item, position);
+  const units = new Map<string, UnitObject>();
+  for (const targetPosition of [resolved.mainTarget, ...resolved.splash]) {
+    if (!targetPosition) continue;
+    const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+    if (target && !target.tags.includes('Tile')) units.set(target.nid, target);
+  }
+  return [...units.values()];
+}
+
+function finishCoreItemUse(unit: UnitObject, item: ItemObject, targets: UnitObject[] = []): void {
+  const game = getGame();
+  const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
+  const weaponType = item.getComponent<string>('weapon_type');
+  const wexpValue = weaponType ? Number(item.getComponent<number>('wexp') ?? 1) : 0;
+  if (weaponType && wexpValue > 0 && uniqueTargets.length > 0) {
+    const rewardTargets = game.db.getConstant('double_wexp', false)
+      ? uniqueTargets
+      : [uniqueTargets[0]];
+    for (const target of rewardTargets) {
+      const amount = Math.floor(
+        wexpValue * wexpMultiplier(unit, target) * enemyWexpMultiplier(target, unit),
+      );
+      if (amount > 0) game.actionLog.doAction(new GainWexpAction(unit, weaponType, amount));
+    }
+  }
+
+  const expValue = Number(item.getComponent<number>('exp') ?? 0);
+  if (unit.team === 'player' && expValue !== 0 && uniqueTargets.length > 0) {
+    let amount = 0;
+    for (const target of uniqueTargets) {
+      amount += expValue * expMultiplier(unit, target) * enemyExpMultiplier(target, unit);
+    }
+    const minExp = Number(game.db.getConstant('min_exp', 0));
+    amount = Math.max(minExp, Math.min(100, Math.floor(amount)));
+    if (amount !== 0) {
+      game.actionLog.doAction(new GainExpAction(unit, amount, game.currentMode?.growths ?? 'random'));
+    }
+  }
 
   if (item.maxUses > 0) {
     const nextUses = Math.max(0, item.uses - 1);
@@ -1852,6 +1913,70 @@ export function applyCoreTargetedItem(
   }
   game.actionLog.doAction(new WaitAction(unit));
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+}
+
+export function applyCoreTargetedItem(
+  unit: UnitObject,
+  item: ItemObject,
+  position: [number, number],
+  targetItem: ItemObject | null = null,
+): boolean {
+  const targets = effectUnits(unit, item, position);
+  if (!applyCoreTargetedEffects(unit, item, position, targetItem)) return false;
+  finishCoreItemUse(unit, item, targets);
+  return true;
+}
+
+/** Apply one multi-target item's effects to each selected main position, consuming it once. */
+export function applyCoreMultiTargetedItem(
+  unit: UnitObject,
+  item: ItemObject,
+  positions: [number, number][],
+): boolean {
+  let applied = false;
+  const targets = new Map<string, UnitObject>();
+  for (const position of positions) {
+    for (const target of effectUnits(unit, item, position)) targets.set(target.nid, target);
+    applied = applyCoreTargetedEffects(unit, item, position) || applied;
+  }
+  if (!applied) return false;
+  finishCoreItemUse(unit, item, [...targets.values()]);
+  return true;
+}
+
+/** Resolve sequence children in order, including LT's store_unit → unload_unit warp pair. */
+export function applyCoreSequenceItem(
+  unit: UnitObject,
+  item: ItemObject,
+  targetsByItem: [number, number][][],
+): boolean {
+  const game = getGame();
+  if (!item.hasComponent('sequence_item') || item.subitems.length === 0) return false;
+  let storedUnit: UnitObject | null = null;
+  let applied = false;
+  const targets = new Map<string, UnitObject>();
+
+  for (let childIndex = 0; childIndex < item.subitems.length; childIndex++) {
+    const child = item.subitems[childIndex];
+    for (const position of targetsByItem[childIndex] ?? []) {
+      for (const target of effectUnits(unit, child, position)) targets.set(target.nid, target);
+      const resolved = game.targetSystem.getTargetFromPosition(unit, child, position);
+      if (child.hasComponent('store_unit') && resolved.mainTarget) {
+        const target = game.board.getUnit(resolved.mainTarget[0], resolved.mainTarget[1]);
+        if (target && !ignoreForcedMovement(target)) storedUnit = target;
+      }
+      if (child.hasComponent('unload_unit') && storedUnit &&
+          !game.board.getUnit(position[0], position[1])) {
+        game.actionLog.doAction(new WarpUnitAction(storedUnit, position, game.board));
+        applied = true;
+        storedUnit = null;
+      }
+      applied = applyCoreTargetedEffects(unit, child, position) || applied;
+    }
+  }
+
+  if (!applied) return false;
+  finishCoreItemUse(unit, item, [...targets.values()]);
   return true;
 }
 
@@ -1942,7 +2067,7 @@ export class ItemUseState extends State {
         }
 
         const targets = game.targetSystem?.getValidTargetsRecursive(unit, item) ?? [];
-        if (targets.length === 1 && unit.position &&
+        if (!item.hasComponent('sequence_item') && targets.length === 1 && unit.position &&
             targets[0][0] === unit.position[0] && targets[0][1] === unit.position[1]) {
           applyCoreTargetedItem(unit, item, targets[0]);
           this.menu = null;
@@ -1977,6 +2102,8 @@ export class ItemTargetingState extends MapState {
   private item: ItemObject | null = null;
   private targets: [number, number][] = [];
   private targetIndex = 0;
+  private sequenceIndex = 0;
+  private selectedTargets: [number, number][][] = [];
   private targetItemMenu: ChoiceMenu | null = null;
   private pendingTarget: [number, number] | null = null;
   private repairableItems: ItemObject[] = [];
@@ -1989,19 +2116,46 @@ export class ItemTargetingState extends MapState {
       game.state.back();
       return 'repeat';
     }
-    this.targets = game.targetSystem.getValidTargetsRecursive(unit, this.item);
-    if (this.targets.length === 0) {
+    if (this.item.hasComponent('sequence_item') && this.item.subitems.length === 0) {
       game.memory.delete('item_use_item');
       game.state.back();
       return 'repeat';
     }
-    this.targetIndex = 0;
+    this.sequenceIndex = 0;
+    this.selectedTargets = [[]];
     this.targetItemMenu = null;
     this.pendingTarget = null;
     this.repairableItems = [];
+    if (!this.configureTargets(unit)) {
+      game.memory.delete('item_use_item');
+      game.state.back();
+      return 'repeat';
+    }
+  }
+
+  private activeItem(): ItemObject | null {
+    if (!this.item) return null;
+    return this.item.hasComponent('sequence_item')
+      ? this.item.subitems[this.sequenceIndex] ?? null
+      : this.item;
+  }
+
+  private configureTargets(unit: UnitObject): boolean {
+    const game = getGame();
+    const activeItem = this.activeItem();
+    if (!activeItem || !game.targetSystem) return false;
+    let targets = game.targetSystem.getValidTargets(unit, activeItem);
+    const sameTargetPolicy = this.item?.hasComponent('sequence_item') ? this.item : activeItem;
+    if (sameTargetPolicy && !allowSameTarget(unit, sameTargetPolicy)) {
+      const used = new Set(this.selectedTargets.flat().map((position) => `${position[0]},${position[1]}`));
+      targets = targets.filter((position: [number, number]) => !used.has(`${position[0]},${position[1]}`));
+    }
+    this.targets = targets;
+    this.targetIndex = 0;
     game.highlight.clear();
     game.highlight.setAttackHighlights(this.targets);
-    this.focusTarget();
+    if (this.targets.length > 0) this.focusTarget();
+    return this.targets.length > 0;
   }
 
   private focusTarget(): void {
@@ -2016,9 +2170,10 @@ export class ItemTargetingState extends MapState {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
     const target = this.targets[index];
-    if (!unit || !this.item || !target) return;
+    const activeItem = this.activeItem();
+    if (!unit || !this.item || !activeItem || !target) return;
 
-    if (this.item.hasComponent('repair')) {
+    if (activeItem === this.item && activeItem.hasComponent('repair')) {
       const defender = game.board.getUnit(target[0], target[1]);
       this.repairableItems = defender?.items.filter(isRepairableItem) ?? [];
       if (this.repairableItems.length === 0) return;
@@ -2035,11 +2190,39 @@ export class ItemTargetingState extends MapState {
       return;
     }
 
-    if (applyCoreTargetedItem(unit, this.item, target)) {
+    this.selectedTargets[this.sequenceIndex].push(target);
+    if (this.selectedTargets[this.sequenceIndex].length < numTargets(unit, activeItem)) {
+      if (!this.configureTargets(unit)) this.cancelTargeting();
+      return;
+    }
+    this.completeTargetGroup(unit);
+  }
+
+  private completeTargetGroup(unit: UnitObject): void {
+    const game = getGame();
+    if (!this.item) return;
+    if (this.item.hasComponent('sequence_item') && this.sequenceIndex < this.item.subitems.length - 1) {
+      this.sequenceIndex += 1;
+      this.selectedTargets.push([]);
+      if (!this.configureTargets(unit)) this.cancelTargeting();
+      return;
+    }
+
+    const applied = this.item.hasComponent('sequence_item')
+      ? applyCoreSequenceItem(unit, this.item, this.selectedTargets)
+      : applyCoreMultiTargetedItem(unit, this.item, this.selectedTargets[0]);
+    if (applied) {
       game.memory.delete('item_use_item');
       game.highlight.clear();
       game.state.back();
     }
+  }
+
+  private cancelTargeting(): void {
+    const game = getGame();
+    game.memory.delete('item_use_item');
+    game.highlight.clear();
+    game.state.back();
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -2089,9 +2272,7 @@ export class ItemTargetingState extends MapState {
       }
     }
     if (game.input?.mouseClick === 'BACK') {
-      game.memory.delete('item_use_item');
-      game.highlight.clear();
-      game.state.back();
+      this.cancelTargeting();
       return;
     }
     if (event === null) return;
@@ -2103,10 +2284,15 @@ export class ItemTargetingState extends MapState {
       this.focusTarget();
     } else if (event === 'SELECT') {
       this.selectTarget(this.targetIndex);
+    } else if (event === 'START') {
+      const unit: UnitObject | null = game.selectedUnit;
+      const activeItem = this.activeItem();
+      if (unit && activeItem && this.selectedTargets[this.sequenceIndex].length > 0 &&
+          allowLessThanMaxTargets(unit, activeItem)) {
+        this.completeTargetGroup(unit);
+      }
     } else if (event === 'BACK') {
-      game.memory.delete('item_use_item');
-      game.highlight.clear();
-      game.state.back();
+      this.cancelTargeting();
     }
   }
 
@@ -2122,6 +2308,8 @@ export class ItemTargetingState extends MapState {
     this.targetItemMenu = null;
     this.pendingTarget = null;
     this.repairableItems = [];
+    this.sequenceIndex = 0;
+    this.selectedTargets = [];
     getGame().highlight.clear();
   }
 }

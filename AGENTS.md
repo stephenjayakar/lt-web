@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~49,100 lines of TypeScript across 89
+systems. The engine currently spans **~49,300 lines of TypeScript across 89
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -433,9 +433,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | File | Lines | Purpose |
 |------|------:|---------|
 | `game-state.ts` | ~1470 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
-| `target-system.ts` | ~170 | Target union, range/LOS/fog/restriction/count filtering, splash expansion, recursive child discovery |
+| `target-system.ts` | ~175 | Target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~2510 | All game actions (Move, Damage, Heal, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
+| `action.ts` | ~2535 | All game actions (Move/Warp, Damage, Heal, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
@@ -451,7 +451,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10030 | Core states, event dispatch, gameplay logic, and interactive unit/inventory item targeting |
+| `game-states.ts` | ~10220 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence targeting, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -472,8 +472,8 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
 | `map-combat.ts` | ~580 | Map-mode combat (no animations), including per-strike durability lifecycle |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~570 | Item dispatch, targeting/AOE/utility/repair restrictions, and uses-options durability resolution |
-| `skill-system.ts` | ~398 | Skill component dispatch |
+| `item-system.ts` | ~580 | Item dispatch, targeting/AOE/utility/repair/unload restrictions, and uses-options durability resolution |
+| `skill-system.ts` | ~445 | Skill dispatch, including forced-movement and EXP/WEXP multiplier hooks |
 
 ### Events (`src/events/`)
 | File | Lines | Purpose |
