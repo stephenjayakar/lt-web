@@ -118,11 +118,11 @@ export class ItemObject {
   }
 
   getMinRange(): number {
-    return this.getComponent<number>('min_range') ?? 1;
+    return this.getComponent<number>('min_range') ?? 0;
   }
 
   getMaxRange(): number {
-    return this.getComponent<number>('max_range') ?? 1;
+    return this.getComponent<number>('max_range') ?? 0;
   }
 
   getWeaponType(): NID | undefined {

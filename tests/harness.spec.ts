@@ -1179,6 +1179,123 @@ test.describe('Event command parity', () => {
     });
   });
 
+  test('healing staff flows through item menu, mouse targeting, and reversible actions', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { evaluateEquation } = await import('/src/combat/combat-calcs.ts');
+      const caster = game.units.get('Eirika');
+      const target = game.units.get('Seth');
+      if (!caster?.position || !target?.position) return null;
+      caster.finished = false;
+      caster.hasAttacked = false;
+      caster.currentHp = caster.maxHp;
+      target.currentHp = Math.max(1, target.maxHp - 12);
+      const item = new ItemObject({
+        nid: '_TargetedHealStaff', name: 'Targeted Heal Staff', desc: '',
+        icon_nid: '', icon_index: [0, 0], components: [
+          ['spell', null], ['target_ally', null], ['min_range', 1], ['max_range', 99],
+          ['uses', 2], ['uses_options', { lose_uses_on_miss: false, one_loss_per_combat: false }],
+          ['equation_heal', 'HEAL'], ['magic', null],
+        ],
+      });
+      item.owner = caster;
+      const zeroRangeItem = new ItemObject({
+        nid: '_ZeroRangeHeal', name: 'Zero Range Heal', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['usable', null], ['target_ally', null], ['heal', 1], ['uses', 1]],
+      });
+      caster.currentHp = caster.maxHp - 1;
+      const zeroRangeTargets = game.targetSystem.getValidTargets(caster, zeroRangeItem)
+        .map((position: [number, number]) => `${position[0]},${position[1]}`);
+      caster.currentHp = caster.maxHp;
+      caster.items.unshift(item);
+      game.items.set('_test_targeted_heal', item);
+      game.selectedUnit = caster;
+      game.cursor.setPos(caster.position[0], caster.position[1]);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const expectedHeal = evaluateEquation(game.db.getEquation('HEAL'), caster, { db: game.db, item });
+      game.state.change('item_use');
+      return {
+        casterNid: caster.nid,
+        targetNid: target.nid,
+        targetPosition: [...target.position],
+        hpBefore: target.currentHp,
+        expectedHeal,
+        beforeActionIndex,
+        casterPosition: `${caster.position[0]},${caster.position[1]}`,
+        zeroRangeTargets,
+      };
+    });
+    expect(setup).not.toBeNull();
+    expect(setup!.zeroRangeTargets).toEqual([setup!.casterPosition]);
+
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_use');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_targeting');
+
+    await page.evaluate(([tx, ty]) => {
+      const game = (window as any).__gameRef;
+      const [cameraX, cameraY] = game.camera.getOffset();
+      const scaleX = game.input.displayScaleX ?? 1;
+      const scaleY = game.input.displayScaleY ?? 1;
+      const offsetX = game.input.displayOffsetX ?? 0;
+      const offsetY = game.input.displayOffsetY ?? 0;
+      game.input.mouseX = (tx * 16 - cameraX + 8) * scaleX + offsetX;
+      game.input.mouseY = (ty * 16 - cameraY + 8) * scaleY + offsetY;
+      game.input.mouseClick = 'SELECT';
+      (window as any).__harness.stepFrames(1);
+      game.input.mouseClick = null;
+    }, setup!.targetPosition);
+    await stepFrames(page, 3);
+
+    const applied = await page.evaluate(({ casterNid, targetNid }) => {
+      const game = (window as any).__gameRef;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const item = caster.items.find((candidate: any) => candidate.nid === '_TargetedHealStaff');
+      return {
+        state: game.state.getCurrentState()?.name,
+        hp: target.currentHp,
+        uses: item?.uses,
+        finished: caster.finished,
+      };
+    }, setup!);
+    expect(applied.state).toBe('free');
+    expect(applied.hp).toBe(Math.min(
+      setup!.hpBefore + setup!.expectedHeal,
+      setup!.hpBefore + 12,
+    ));
+    expect(applied.uses).toBe(1);
+    expect(applied.finished).toBe(true);
+
+    const turnwheel = await page.evaluate(({ casterNid, targetNid, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const snapshot = () => ({
+        hp: target.currentHp,
+        uses: caster.items.find((candidate: any) => candidate.nid === '_TargetedHealStaff')?.uses,
+        finished: caster.finished,
+      });
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = snapshot();
+      const itemIndex = caster.items.findIndex((candidate: any) => candidate.nid === '_TargetedHealStaff');
+      if (itemIndex >= 0) caster.items.splice(itemIndex, 1);
+      game.items.delete('_test_targeted_heal');
+      return { reversed, redone };
+    }, setup!);
+    expect(turnwheel.reversed).toEqual({ hp: setup!.hpBefore, uses: 2, finished: false });
+    expect(turnwheel.redone).toEqual({ hp: applied.hp, uses: 1, finished: true });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

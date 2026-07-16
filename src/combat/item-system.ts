@@ -230,6 +230,13 @@ export function targetRestrict(
   splash: TargetPosition[],
   context: TargetRestrictionContext,
 ): boolean {
+  if (item.hasComponent('heal') || item.hasComponent('equation_heal')) {
+    const affected = [defPos, ...splash]
+      .map((position) => context.board.getUnit(position[0], position[1]))
+      .filter((target): target is UnitObject => !!target);
+    if (!affected.some((target) => target.currentHp < target.maxHp)) return false;
+  }
+
   if (item.hasComponent('empty_tile_target_restrict') &&
       context.board.getUnit(defPos[0], defPos[1])) {
     return false;

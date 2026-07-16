@@ -59,6 +59,9 @@ import {
   RemoveItemFromConvoy,
   AddSubItemAction,
   RemoveSubItemAction,
+  HealAction,
+  WaitAction,
+  UseItemAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -74,7 +77,7 @@ import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
-import { getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
+import { evaluateEquation, getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
@@ -1751,6 +1754,46 @@ export class MenuState extends State {
 // 4b. ItemUseState - Select and use a consumable item
 // ============================================================================
 
+function applyCoreTargetedItem(unit: UnitObject, item: ItemObject, position: [number, number]): boolean {
+  const game = getGame();
+  if (!game.targetSystem) return false;
+  const resolved = game.targetSystem.getTargetFromPosition(unit, item, position);
+  const positions = new Map<string, [number, number]>();
+  if (resolved.mainTarget) positions.set(`${resolved.mainTarget[0]},${resolved.mainTarget[1]}`, resolved.mainTarget);
+  for (const splashPosition of resolved.splash) {
+    positions.set(`${splashPosition[0]},${splashPosition[1]}`, splashPosition);
+  }
+
+  let applied = false;
+  if (item.hasComponent('heal') || item.hasComponent('equation_heal')) {
+    let healAmount = item.getComponent<number>('heal') ?? 0;
+    const equationNid = item.getComponent<string>('equation_heal');
+    if (equationNid) {
+      const expression = game.db.getEquation(equationNid) ?? equationNid;
+      healAmount = evaluateEquation(expression, unit, { db: game.db, item });
+    }
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      if (target && target.currentHp < target.maxHp) {
+        game.actionLog.doAction(new HealAction(target, healAmount));
+        applied = true;
+      }
+    }
+  }
+  if (!applied) return false;
+
+  if (item.maxUses > 0) {
+    const nextUses = Math.max(0, item.uses - 1);
+    game.actionLog.doAction(new SetItemUsesAction(item, nextUses));
+    if (nextUses === 0 && !item.hasComponent('no_break_out_of_uses') && unit.items.includes(item)) {
+      game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+    }
+  }
+  game.actionLog.doAction(new WaitAction(unit));
+  game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+  return true;
+}
+
 export class ItemUseState extends State {
   readonly name = 'item_use';
   override readonly transparent = true;
@@ -1766,7 +1809,14 @@ export class ItemUseState extends State {
       return;
     }
 
-    this.usableItems = unit.getUsableItems();
+    if (unit.finished) {
+      game.state.back();
+      return 'repeat';
+    }
+
+    this.usableItems = unit.getUsableItems().filter((item) =>
+      item.isStatBooster() || (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
+    );
     if (this.usableItems.length === 0) {
       game.state.back();
       return;
@@ -1794,10 +1844,19 @@ export class ItemUseState extends State {
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (!this.menu || event === null) return;
+    if (!this.menu) return;
     const game = getGame();
 
-    const result = this.menu.handleInput(event);
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
     if (!result) return;
 
     if ('back' in result) {
@@ -1812,33 +1871,30 @@ export class ItemUseState extends State {
       const unit: UnitObject = game.selectedUnit;
 
       if (item && unit) {
-        // Apply item effect
-        if (item.isHealing()) {
-          const healAmount = item.getHealAmount();
-          unit.currentHp = Math.min(unit.maxHp, unit.currentHp + healAmount);
-        }
         if (item.isStatBooster()) {
-          const changes = item.getStatChanges();
-          for (const [stat, amount] of Object.entries(changes)) {
-            if (unit.stats[stat] !== undefined) {
-              unit.stats[stat] += amount;
-            }
-          }
+          game.actionLog.doAction(new UseItemAction(unit, item));
+          game.actionLog.doAction(new WaitAction(unit));
+          game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+          this.menu = null;
+          game.state.back();
+          return;
         }
 
-        // Decrement uses
-        const broken = item.decrementUses();
-        if (broken) {
-          const itemIdx = unit.items.indexOf(item);
-          if (itemIdx !== -1) unit.items.splice(itemIdx, 1);
+        const targets = game.targetSystem?.getValidTargetsRecursive(unit, item) ?? [];
+        if (targets.length === 1 && unit.position &&
+            targets[0][0] === unit.position[0] && targets[0][1] === unit.position[1]) {
+          applyCoreTargetedItem(unit, item, targets[0]);
+          this.menu = null;
+          game.state.back();
+          return;
         }
-
-        // Using an item finishes the unit's turn
-        unit.finished = true;
+        if (targets.length > 0) {
+          game.memory.set('item_use_item', item);
+          this.menu = null;
+          game.state.change('item_targeting');
+          return;
+        }
       }
-
-      this.menu = null;
-      game.state.back();
     }
   }
 
@@ -1851,7 +1907,100 @@ export class ItemUseState extends State {
 }
 
 // ============================================================================
-// 4c. TradeState - Trade items between adjacent allied units
+// 4c. ItemTargetingState - Select a component-valid tile for a usable item
+// ============================================================================
+
+export class ItemTargetingState extends MapState {
+  readonly name = 'item_targeting';
+
+  private item: ItemObject | null = null;
+  private targets: [number, number][] = [];
+  private targetIndex = 0;
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    this.item = game.memory.get('item_use_item') ?? null;
+    if (!unit || !this.item || !game.targetSystem) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.targets = game.targetSystem.getValidTargetsRecursive(unit, this.item);
+    if (this.targets.length === 0) {
+      game.memory.delete('item_use_item');
+      game.state.back();
+      return 'repeat';
+    }
+    this.targetIndex = 0;
+    game.highlight.clear();
+    game.highlight.setAttackHighlights(this.targets);
+    this.focusTarget();
+  }
+
+  private focusTarget(): void {
+    const game = getGame();
+    const target = this.targets[this.targetIndex];
+    if (!target) return;
+    game.cursor.setPos(target[0], target[1]);
+    if (isSmallScreen()) game.camera.focusTile(target[0], target[1]);
+  }
+
+  private selectTarget(index: number): void {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    const target = this.targets[index];
+    if (!unit || !this.item || !target) return;
+    if (applyCoreTargetedItem(unit, this.item, target)) {
+      game.memory.delete('item_use_item');
+      game.highlight.clear();
+      game.state.back();
+    }
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (game.input?.mouseClick === 'SELECT') {
+      const tile = getMouseTile();
+      if (tile) {
+        const index = this.targets.findIndex((target) => target[0] === tile[0] && target[1] === tile[1]);
+        if (index >= 0) { this.selectTarget(index); return; }
+      }
+    }
+    if (game.input?.mouseClick === 'BACK') {
+      game.memory.delete('item_use_item');
+      game.highlight.clear();
+      game.state.back();
+      return;
+    }
+    if (event === null) return;
+    if (event === 'UP' || event === 'LEFT') {
+      this.targetIndex = (this.targetIndex - 1 + this.targets.length) % this.targets.length;
+      this.focusTarget();
+    } else if (event === 'DOWN' || event === 'RIGHT') {
+      this.targetIndex = (this.targetIndex + 1) % this.targets.length;
+      this.focusTarget();
+    } else if (event === 'SELECT') {
+      this.selectTarget(this.targetIndex);
+    } else if (event === 'BACK') {
+      game.memory.delete('item_use_item');
+      game.highlight.clear();
+      game.state.back();
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    game.highlight.update();
+    return drawMap(surf, true);
+  }
+
+  override end(): StateResult {
+    getGame().highlight.clear();
+  }
+}
+
+// ============================================================================
+// 4d. TradeState - Trade items between adjacent allied units
 // ============================================================================
 
 export class TradeState extends State {
