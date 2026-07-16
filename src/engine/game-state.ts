@@ -126,6 +126,8 @@ export class GameState {
   baseConvos: Map<string, boolean>;
   /** Market items for base screen: key=item NID, value=stock (-1=infinite). */
   marketItems: Map<string, number>;
+  /** Lore entries unlocked in the current playthrough, in unlock order. */
+  unlockedLore: string[];
 
   // -- Difficulty mode -------------------------------------------------------
   /** Runtime difficulty mode for the current session. Null until initialized. */
@@ -219,6 +221,7 @@ export class GameState {
     // Base screen data
     this.baseConvos = new Map();
     this.marketItems = new Map();
+    this.unlockedLore = [];
 
     // Difficulty mode
     this.currentMode = null;

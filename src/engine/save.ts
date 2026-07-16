@@ -140,6 +140,8 @@ export interface SaveDict {
   supports: SupportPairSaveData[] | null;
   marketItems: [string, number][];
   baseConvos: [string, boolean][];
+  /** Optional for compatibility with saves written before lore persistence. */
+  unlockedLore?: string[];
   talkOptions: [string, string][];
   fogState: any | null;
   roamInfo: { roam: boolean; roamUnitNid: string | null };
@@ -637,6 +639,7 @@ function buildSaveDict(game: any): SaveDict {
     supports,
     marketItems: Array.from((game.marketItems as Map<string, number>).entries()),
     baseConvos: Array.from((game.baseConvos as Map<string, boolean>).entries()),
+    unlockedLore: [...(game.unlockedLore ?? [])],
     talkOptions,
     fogState,
     roamInfo: {
@@ -992,6 +995,7 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   // 9. Restore market/base
   game.marketItems = new Map(s.marketItems);
   game.baseConvos = new Map(s.baseConvos);
+  game.unlockedLore = [...(s.unlockedLore ?? [])];
 
   // 9b. Restore talk options if game supports them
   if ((game as any).talkOptions !== undefined) {

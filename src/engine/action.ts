@@ -1482,6 +1482,183 @@ export class GiveBexpAction extends Action {
 }
 
 // ------------------------------------------------------------------
+// Event-driven unit and campaign mutations
+// ------------------------------------------------------------------
+
+/** Return the class-defined WEXP cap for a unit/weapon pair. */
+function getWeaponExpCap(unit: UnitObject, weaponType: string): number {
+  const game = _getGame?.();
+  const klass = game?.db?.classes?.get?.(unit.klass);
+  const entry = klass?.wexp_gain?.[weaponType];
+  if (Array.isArray(entry) && Number.isFinite(entry[2])) {
+    return Math.max(0, Number(entry[2]));
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+/** Add WEXP, clamped to the class cap, with full turnwheel reversal. */
+export class GainWexpAction extends Action {
+  private unit: UnitObject;
+  private weaponType: string;
+  private amount: number;
+  private oldWexp: number = 0;
+
+  constructor(unit: UnitObject, weaponType: string, amount: number) {
+    super();
+    this.unit = unit;
+    this.weaponType = weaponType;
+    this.amount = amount;
+  }
+
+  execute(): void {
+    this.oldWexp = this.unit.wexp[this.weaponType] ?? 0;
+    const cap = getWeaponExpCap(this.unit, this.weaponType);
+    this.unit.wexp[this.weaponType] = Math.max(
+      0,
+      Math.min(cap, this.oldWexp + this.amount),
+    );
+  }
+
+  reverse(): void {
+    this.unit.wexp[this.weaponType] = this.oldWexp;
+  }
+}
+
+/** Set WEXP, clamped to the class cap, with full turnwheel reversal. */
+export class SetWexpAction extends Action {
+  private unit: UnitObject;
+  private weaponType: string;
+  private value: number;
+  private oldWexp: number = 0;
+
+  constructor(unit: UnitObject, weaponType: string, value: number) {
+    super();
+    this.unit = unit;
+    this.weaponType = weaponType;
+    this.value = value;
+  }
+
+  execute(): void {
+    this.oldWexp = this.unit.wexp[this.weaponType] ?? 0;
+    const cap = getWeaponExpCap(this.unit, this.weaponType);
+    this.unit.wexp[this.weaponType] = Math.max(0, Math.min(cap, this.value));
+  }
+
+  reverse(): void {
+    this.unit.wexp[this.weaponType] = this.oldWexp;
+  }
+}
+
+/** Set displayed unit level without applying stat growths. */
+export class SetUnitLevelAction extends Action {
+  private unit: UnitObject;
+  private level: number;
+  private oldLevel: number = 1;
+
+  constructor(unit: UnitObject, level: number) {
+    super();
+    this.unit = unit;
+    this.level = Math.max(1, level);
+  }
+
+  execute(): void {
+    this.oldLevel = this.unit.level;
+    this.unit.level = this.level;
+  }
+
+  reverse(): void {
+    this.unit.level = this.oldLevel;
+  }
+}
+
+/** Mark a dead unit alive again. Placement is intentionally unchanged. */
+export class ResurrectAction extends Action {
+  private unit: UnitObject;
+  private oldDead: boolean = false;
+  private oldHp: number = 0;
+  private oldHasAttacked: boolean = false;
+  private oldHasMoved: boolean = false;
+  private oldHasTraded: boolean = false;
+  private oldFinished: boolean = false;
+
+  constructor(unit: UnitObject) {
+    super();
+    this.unit = unit;
+  }
+
+  execute(): void {
+    this.oldDead = this.unit.dead;
+    this.oldHp = this.unit.currentHp;
+    this.oldHasAttacked = this.unit.hasAttacked;
+    this.oldHasMoved = this.unit.hasMoved;
+    this.oldHasTraded = this.unit.hasTraded;
+    this.oldFinished = this.unit.finished;
+    this.unit.dead = false;
+    this.unit.currentHp = this.unit.maxHp;
+    this.unit.resetTurnState();
+  }
+
+  reverse(): void {
+    this.unit.dead = this.oldDead;
+    this.unit.currentHp = this.oldHp;
+    this.unit.hasAttacked = this.oldHasAttacked;
+    this.unit.hasMoved = this.oldHasMoved;
+    this.unit.hasTraded = this.oldHasTraded;
+    this.unit.finished = this.oldFinished;
+  }
+}
+
+/** Unlock a lore entry for the current playthrough. */
+export class AddLoreAction extends Action {
+  private loreNid: string;
+  private added: boolean = false;
+
+  constructor(loreNid: string) {
+    super();
+    this.loreNid = loreNid;
+  }
+
+  execute(): void {
+    const game = _getGame?.();
+    if (!game?.unlockedLore) return;
+    this.added = !game.unlockedLore.includes(this.loreNid);
+    if (this.added) game.unlockedLore.push(this.loreNid);
+  }
+
+  reverse(): void {
+    if (!this.added) return;
+    const game = _getGame?.();
+    const index = game?.unlockedLore?.indexOf?.(this.loreNid) ?? -1;
+    if (index >= 0) game.unlockedLore.splice(index, 1);
+  }
+}
+
+/** Lock a previously unlocked lore entry. */
+export class RemoveLoreAction extends Action {
+  private loreNid: string;
+  private oldIndex: number = -1;
+
+  constructor(loreNid: string) {
+    super();
+    this.loreNid = loreNid;
+  }
+
+  execute(): void {
+    const game = _getGame?.();
+    this.oldIndex = game?.unlockedLore?.indexOf?.(this.loreNid) ?? -1;
+    if (this.oldIndex >= 0) game.unlockedLore.splice(this.oldIndex, 1);
+  }
+
+  reverse(): void {
+    if (this.oldIndex < 0) return;
+    const game = _getGame?.();
+    if (!game?.unlockedLore?.includes?.(this.loreNid)) {
+      game.unlockedLore.splice(this.oldIndex, 0, this.loreNid);
+    }
+  }
+}
+
+// ------------------------------------------------------------------
 // Promotion / Class Change actions
 // ------------------------------------------------------------------
 

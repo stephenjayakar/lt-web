@@ -194,6 +194,112 @@ test.describe('DEBUG Level (clean)', () => {
   });
 });
 
+test.describe('Event command parity', () => {
+  test('parser dispatch and reversible scalar mutations match LT commands', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const unit = game?.units?.get?.('Eirika');
+      if (!game || !unit) return null;
+
+      const parserCommands = [
+        'overworld_cinematic',
+        'reveal_overworld_node;Node1',
+        'reveal_overworld_road;Node1;Node2',
+        'overworld_move_unit;Eirika;Node2',
+        'set_overworld_position;Eirika;Node1',
+        'set_roam;true',
+        'set_roam_unit;Eirika',
+        'add_lore;Guide',
+        'remove_lore;Guide',
+      ];
+      const parsedTypes = parserCommands.map((line) => GameEvent.parseCommand(line)?.type ?? null);
+
+      unit.dead = true;
+      unit.currentHp = 0;
+      unit.hasAttacked = true;
+      unit.hasMoved = true;
+      unit.hasTraded = true;
+      unit.finished = true;
+
+      const prefab = {
+        nid: '_test_scalar_commands',
+        name: 'Scalar Command Parity',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: [
+          'set_wexp;Eirika;Sword;70;no_banner',
+          'give_wexp;Eirika;Sword;7;no_banner',
+          'set_unit_level;Eirika;5',
+          'resurrect;Eirika',
+          'add_lore;Guide',
+          'add_lore;Guide',
+        ],
+      };
+      const event = new GameEvent(prefab, { type: 'test', levelNid: '0' });
+      game.eventManager.eventQueue.push(event);
+      game.state.change('event');
+      return { parsedTypes, commandCount: event.commands.length };
+    });
+
+    expect(setup).not.toBeNull();
+    expect(setup!.parsedTypes).not.toContain(null);
+    expect(setup!.commandCount).toBe(6);
+
+    await stepFrames(page, 5);
+
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      return {
+        wexp: unit.wexp.Sword,
+        level: unit.level,
+        dead: unit.dead,
+        hp: unit.currentHp,
+        maxHp: unit.maxHp,
+        hasAttacked: unit.hasAttacked,
+        hasMoved: unit.hasMoved,
+        hasTraded: unit.hasTraded,
+        finished: unit.finished,
+        unlockedLore: [...game.unlockedLore],
+      };
+    });
+
+    expect(result).toEqual({
+      wexp: 77,
+      level: 5,
+      dead: false,
+      hp: result.maxHp,
+      maxHp: result.maxHp,
+      hasAttacked: false,
+      hasMoved: false,
+      hasTraded: false,
+      finished: false,
+      unlockedLore: ['Guide'],
+    });
+
+    const saveRoundTrip = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 99, 'battle');
+      game.unlockedLore = [];
+      const loaded = await loadGame(game, 99);
+      const unlockedLore = [...game.unlockedLore];
+      await deleteSave(gameNid, 99);
+      return { loaded, unlockedLore };
+    });
+
+    expect(saveRoundTrip).toEqual({ loaded: true, unlockedLore: ['Guide'] });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Prologue Tests (clean mode)
 // ---------------------------------------------------------------------------
