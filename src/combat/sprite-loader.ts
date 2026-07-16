@@ -290,7 +290,7 @@ export async function loadAndConvertWeaponAnim(
  */
 export function selectPalette(
   combatAnim: CombatAnimData,
-  unit: { name: string; nid: string; variant?: string; team: string },
+  unit: { name: string; nid: string; variant?: string | null; team: string },
   allPalettes: Map<string, PaletteData>,
 ): PaletteData | null {
   if (combatAnim.palettes.length === 0) return null;

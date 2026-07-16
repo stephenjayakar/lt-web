@@ -185,7 +185,7 @@ function calculateLevel(
 
   if (method === 'Bexp') {
     const weights = statNids.map((nid: string) => {
-      const cap = unit.maxStats[nid] ?? 99;
+      const cap = unit.getStatCap(nid);
       return (unit.stats[nid] ?? 0) < cap && (unit.growths[nid] ?? 0) !== 0
         ? Math.max(growthRate(nid), 0)
         : 0;
@@ -195,7 +195,7 @@ function calculateLevel(
       const nid = statNids[index];
       changes[nid] += 1;
       weights[index] = Math.max(0, weights[index] - 100);
-      if ((unit.stats[nid] ?? 0) + changes[nid] >= (unit.maxStats[nid] ?? 99)) {
+      if ((unit.stats[nid] ?? 0) + changes[nid] >= unit.getStatCap(nid)) {
         weights[index] = 0;
       }
     }
@@ -258,7 +258,7 @@ function calculateLevel(
       changes[nid] = clamp(
         change,
         -(unit.stats[nid] ?? 0),
-        (unit.maxStats[nid] ?? 99) - (unit.stats[nid] ?? 0),
+        unit.getStatCap(nid) - (unit.stats[nid] ?? 0),
       );
     }
   }
@@ -295,7 +295,7 @@ export function autoLevelUnit(
     statChanges[nid] = clamp(
       statChanges[nid],
       -(unit.stats[nid] ?? 0),
-      (unit.maxStats[nid] ?? 99) - (unit.stats[nid] ?? 0),
+      unit.getStatCap(nid) - (unit.stats[nid] ?? 0),
     );
   }
   return { statChanges, growthPoints };

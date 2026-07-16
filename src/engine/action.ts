@@ -1665,6 +1665,163 @@ export class AddSkillAction extends Action {
   }
 }
 
+type MutableUnitAttribute =
+  | 'name' | 'desc' | 'variant' | 'aiGroup' | 'portraitNid' | 'affinity';
+
+/** Reversibly set a scalar UnitObject property used by event commands. */
+export class SetUnitAttributeAction extends Action {
+  private unit: UnitObject;
+  private attribute: MutableUnitAttribute;
+  private value: string | null;
+  private oldValue: string | null;
+
+  constructor(unit: UnitObject, attribute: MutableUnitAttribute, value: string | null) {
+    super();
+    this.unit = unit;
+    this.attribute = attribute;
+    this.value = value;
+    this.oldValue = unit[attribute] as string | null;
+  }
+
+  execute(): void {
+    (this.unit as any)[this.attribute] = this.value;
+  }
+
+  reverse(): void {
+    (this.unit as any)[this.attribute] = this.oldValue;
+  }
+}
+
+/** Change faction and update generic display text like the Python action. */
+export class ChangeFactionAction extends Action {
+  private unit: UnitObject;
+  private factionNid: string;
+  private oldFaction: string | null;
+  private oldName: string;
+  private oldDesc: string;
+
+  constructor(unit: UnitObject, factionNid: string) {
+    super();
+    this.unit = unit;
+    this.factionNid = factionNid;
+    this.oldFaction = unit.faction;
+    this.oldName = unit.name;
+    this.oldDesc = unit.desc;
+  }
+
+  execute(): void {
+    this.unit.faction = this.factionNid;
+    const faction = _getGame?.()?.db?.factions?.get?.(this.factionNid);
+    if (this.unit.generic && faction) {
+      this.unit.name = faction.name;
+      this.unit.desc = faction.desc;
+    }
+  }
+
+  reverse(): void {
+    this.unit.faction = this.oldFaction;
+    this.unit.name = this.oldName;
+    this.unit.desc = this.oldDesc;
+  }
+}
+
+/** Add to or set a unit numeric record such as growths or cap modifiers. */
+export class ChangeUnitRecordAction extends Action {
+  private unit: UnitObject;
+  private recordName: 'growths' | 'statCapModifiers';
+  private values: Record<string, number>;
+  private mode: 'add' | 'set';
+  private oldRecord: Record<string, number>;
+
+  constructor(
+    unit: UnitObject,
+    recordName: 'growths' | 'statCapModifiers',
+    values: Record<string, number>,
+    mode: 'add' | 'set',
+  ) {
+    super();
+    this.unit = unit;
+    this.recordName = recordName;
+    this.values = { ...values };
+    this.mode = mode;
+    this.oldRecord = { ...unit[recordName] };
+  }
+
+  execute(): void {
+    const record = { ...this.oldRecord };
+    for (const [key, value] of Object.entries(this.values)) {
+      record[key] = this.mode === 'add' ? (record[key] ?? 0) + value : value;
+    }
+    this.unit[this.recordName] = record;
+  }
+
+  reverse(): void {
+    this.unit[this.recordName] = { ...this.oldRecord };
+  }
+}
+
+/** Set or increment a persistent custom unit field. */
+export class SetUnitFieldAction extends Action {
+  private unit: UnitObject;
+  private key: string;
+  private value: any;
+  private increment: boolean;
+  private oldValue: any;
+
+  constructor(unit: UnitObject, key: string, value: any, increment: boolean = false) {
+    super();
+    this.unit = unit;
+    this.key = key;
+    this.value = value;
+    this.increment = increment;
+    this.oldValue = unit.fields.get(key) ?? '';
+  }
+
+  execute(): void {
+    if (this.increment && typeof this.value === 'number' && typeof this.oldValue === 'number') {
+      this.unit.fields.set(this.key, this.oldValue + this.value);
+    } else {
+      this.unit.fields.set(this.key, this.value);
+    }
+  }
+
+  reverse(): void {
+    this.unit.fields.set(this.key, this.oldValue);
+  }
+}
+
+/** Add, replace, or remove a categorized unit note reversibly. */
+export class ChangeUnitNoteAction extends Action {
+  private unit: UnitObject;
+  private key: string;
+  private value: string | null;
+  private oldNotes: [string, string][];
+
+  constructor(unit: UnitObject, key: string, value: string | null) {
+    super();
+    this.unit = unit;
+    this.key = key;
+    this.value = value;
+    this.oldNotes = unit.notes.map(([category, note]) => [category, note]);
+  }
+
+  execute(): void {
+    this.unit.notes = this.oldNotes.map(([category, note]) => [category, note]);
+    const index = this.unit.notes.findIndex(([category]) => category === this.key);
+    if (this.value === null) {
+      if (index >= 0) this.unit.notes.splice(index, 1);
+    } else if (index >= 0) {
+      this.unit.notes[index] = [this.key, this.value];
+    } else {
+      this.unit.notes.push([this.key, this.value]);
+    }
+  }
+
+  reverse(): void {
+    this.unit.notes = this.oldNotes.map(([category, note]) => [category, note]);
+  }
+}
+
 /** Mark a dead unit alive again. Placement is intentionally unchanged. */
 export class ResurrectAction extends Action {
   private unit: UnitObject;

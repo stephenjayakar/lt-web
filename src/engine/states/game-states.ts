@@ -42,6 +42,11 @@ import {
   RemoveLoreAction,
   AutoLevelAction,
   AddSkillAction,
+  SetUnitAttributeAction,
+  ChangeFactionAction,
+  ChangeUnitRecordAction,
+  SetUnitFieldAction,
+  ChangeUnitNoteAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -6058,6 +6063,27 @@ export class EventState extends State {
     return null;
   }
 
+  /** Parse LT's comma-delimited key/value number records (for example HP,5,STR,-1). */
+  private parseNumberRecord(source: string): Record<string, number> {
+    const record: Record<string, number> = {};
+    const parts = source.split(',');
+    const context = this.buildConditionContext();
+    for (let index = 0; index + 1 < parts.length; index += 2) {
+      const key = parts[index].trim();
+      const rawValue = parts[index + 1].trim();
+      if (!key) continue;
+      let evaluated: any;
+      try {
+        evaluated = evaluateExpression(rawValue, context);
+      } catch {
+        evaluated = rawValue;
+      }
+      const value = Number(evaluated);
+      if (Number.isFinite(value)) record[key] = value;
+    }
+    return record;
+  }
+
   /**
    * Build a ConditionContext from the current game state and event trigger.
    */
@@ -6866,6 +6892,57 @@ export class EventState extends State {
         return false;
       }
 
+      case 'change_ai_group': {
+        const unit = this.findUnit(args[0] ?? '');
+        if (unit) {
+          game.actionLog.doAction(new SetUnitAttributeAction(unit, 'aiGroup', args[1] ?? ''));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_faction': {
+        const unit = this.findUnit(args[0] ?? '');
+        const factionNid = args[1] ?? '';
+        if (unit && game.db.factions.has(factionNid)) {
+          game.actionLog.doAction(new ChangeFactionAction(unit, factionNid));
+        } else {
+          console.warn(`Event change_faction: invalid unit or faction (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_portrait': {
+        const unit = this.findUnit(args[0] ?? '');
+        const portraitNid = args[1] || null;
+        const portraitExists = !portraitNid || !game.db.portraits?.size || game.db.portraits.has(portraitNid);
+        if (unit && portraitExists) {
+          game.actionLog.doAction(new SetUnitAttributeAction(unit, 'portraitNid', portraitNid));
+        } else {
+          console.warn(`Event change_portrait: invalid unit or portrait (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_unit_desc': {
+        const unit = this.findUnit(args[0] ?? '');
+        if (unit) game.actionLog.doAction(new SetUnitAttributeAction(unit, 'desc', args[1] ?? ''));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_affinity': {
+        const unit = this.findUnit(args[0] ?? '');
+        const affinityNid = args[1] ?? '';
+        if (unit) {
+          game.actionLog.doAction(new SetUnitAttributeAction(unit, 'affinity', affinityNid));
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'change_team': {
         const unitNid = args[0] ?? '';
         const team = args[1] ?? 'player';
@@ -7292,7 +7369,48 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const newName = args[1] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) unit.name = newName;
+        if (unit) game.actionLog.doAction(new SetUnitAttributeAction(unit, 'name', newName));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_variant': {
+        const unit = this.findUnit(args[0] ?? '');
+        if (unit) game.actionLog.doAction(new SetUnitAttributeAction(unit, 'variant', args[1] || null));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_unit_field': {
+        const unit = this.findUnit(args[0] ?? '');
+        const key = args[1] ?? '';
+        const rawValue = args[2] ?? '';
+        const value = args.includes('from_python')
+          ? rawValue
+          : evaluateExpression(rawValue, this.buildConditionContext());
+        if (unit && key && value !== undefined) {
+          game.actionLog.doAction(new SetUnitFieldAction(unit, key, value, args.includes('increment_mode')));
+        } else if (unit && key) {
+          console.warn(`Event set_unit_field: could not evaluate ${rawValue}`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_unit_note': {
+        const unit = this.findUnit(args[0] ?? '');
+        const category = args[1] ?? '';
+        if (unit && category) {
+          game.actionLog.doAction(new ChangeUnitNoteAction(unit, category, args[2] ?? ''));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_unit_note': {
+        const unit = this.findUnit(args[0] ?? '');
+        const category = args[1] ?? '';
+        if (unit && category) game.actionLog.doAction(new ChangeUnitNoteAction(unit, category, null));
         this.advancePointer();
         return false;
       }
@@ -7410,6 +7528,30 @@ export class EventState extends State {
           }
           // Clamp HP
           if (unit6.currentHp > unit6.maxHp) unit6.currentHp = unit6.maxHp;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_growths':
+      case 'set_growths': {
+        const unit = this.findUnit(args[0] ?? '');
+        const values = this.parseNumberRecord(args[1] ?? '');
+        if (unit && Object.keys(values).length > 0) {
+          const mode = cmd.type === 'change_growths' ? 'add' : 'set';
+          game.actionLog.doAction(new ChangeUnitRecordAction(unit, 'growths', values, mode));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_stat_cap_modifiers':
+      case 'set_stat_cap_modifiers': {
+        const unit = this.findUnit(args[0] ?? '');
+        const values = this.parseNumberRecord(args[1] ?? '');
+        if (unit && Object.keys(values).length > 0) {
+          const mode = cmd.type === 'change_stat_cap_modifiers' ? 'add' : 'set';
+          game.actionLog.doAction(new ChangeUnitRecordAction(unit, 'statCapModifiers', values, mode));
         }
         this.advancePointer();
         return false;

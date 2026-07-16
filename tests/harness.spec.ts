@@ -299,6 +299,165 @@ test.describe('Event command parity', () => {
     expect(saveRoundTrip).toEqual({ loaded: true, unlockedLore: ['Guide'] });
   });
 
+  test('unit metadata, growth, cap, field, and note commands undo, redo, and persist', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const unit = game.units.get('Eirika');
+      if (!unit) return null;
+
+      const faction = [...game.db.factions.keys()][0] ?? 'None';
+      const portrait = [...game.db.portraits.keys()].find((nid: string) => nid !== unit.portraitNid)
+        ?? unit.portraitNid;
+      const affinity = [...game.db.affinities.keys()].find((nid: string) => nid !== unit.affinity)
+        ?? unit.affinity;
+      unit.fields.set('score', 1);
+      const initial = {
+        name: unit.name,
+        desc: unit.desc,
+        variant: unit.variant,
+        aiGroup: unit.aiGroup,
+        faction: unit.faction,
+        portraitNid: unit.portraitNid,
+        affinity: unit.affinity,
+        growths: { ...unit.growths },
+        statCapModifiers: { ...unit.statCapModifiers },
+        fields: [...unit.fields.entries()],
+        notes: unit.notes.map((entry: [string, string]) => [...entry]),
+      };
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const event = new GameEvent({
+        nid: '_test_unit_metadata_commands',
+        name: 'Unit Metadata Commands',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: [
+          'set_name;Eirika;Lady Eirika',
+          'set_variant;Eirika;Cerulean',
+          'change_ai_group;Eirika;SecondWave',
+          `change_faction;Eirika;${faction}`,
+          `change_portrait;Eirika;${portrait}`,
+          'change_unit_desc;Eirika;Renais commander',
+          `change_affinity;Eirika;${affinity}`,
+          'change_growths;Eirika;HP,5,STR,-10',
+          'set_growths;Eirika;MAG,88',
+          'change_stat_cap_modifiers;Eirika;STR,2',
+          'set_stat_cap_modifiers;Eirika;MAG,4',
+          'set_unit_field;Eirika;score;5',
+          'set_unit_field;Eirika;score;3;increment_mode',
+          'set_unit_note;Eirika;Role;Scout',
+          'set_unit_note;Eirika;Role;Leader',
+          'set_unit_note;Eirika;Temporary;Remove me',
+          'remove_unit_note;Eirika;Temporary',
+        ],
+      }, { type: 'test', levelNid: '0', unit1: unit });
+      game.eventManager.eventQueue.push(event);
+      game.state.change('event');
+      return { initial, beforeActionIndex, faction, portrait, affinity };
+    });
+
+    expect(setup).not.toBeNull();
+    await settle(page, 300);
+
+    const mutation = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      const snapshot = () => ({
+        name: unit.name,
+        desc: unit.desc,
+        variant: unit.variant,
+        aiGroup: unit.aiGroup,
+        faction: unit.faction,
+        portraitNid: unit.portraitNid,
+        affinity: unit.affinity,
+        growths: { ...unit.growths },
+        statCapModifiers: { ...unit.statCapModifiers },
+        fields: [...unit.fields.entries()],
+        notes: unit.notes.map((entry: [string, string]) => [...entry]),
+      });
+      const changed = snapshot();
+      const afterActionIndex = game.actionLog.actionIndex;
+      return { changed, afterActionIndex };
+    });
+
+    const turnwheel = await page.evaluate((beforeActionIndex: number) => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      const actionLog = game.actionLog as any;
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = {
+        name: unit.name, desc: unit.desc, variant: unit.variant, aiGroup: unit.aiGroup,
+        faction: unit.faction, portraitNid: unit.portraitNid, affinity: unit.affinity,
+        growths: { ...unit.growths }, statCapModifiers: { ...unit.statCapModifiers },
+        fields: [...unit.fields.entries()], notes: unit.notes.map((entry: [string, string]) => [...entry]),
+      };
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = {
+        name: unit.name, desc: unit.desc, variant: unit.variant, aiGroup: unit.aiGroup,
+        faction: unit.faction, portraitNid: unit.portraitNid, affinity: unit.affinity,
+        growths: { ...unit.growths }, statCapModifiers: { ...unit.statCapModifiers },
+        fields: [...unit.fields.entries()], notes: unit.notes.map((entry: [string, string]) => [...entry]),
+      };
+      return { reversed, redone };
+    }, setup!.beforeActionIndex);
+
+    expect(mutation.changed).toMatchObject({
+      name: 'Lady Eirika',
+      desc: 'Renais commander',
+      variant: 'Cerulean',
+      aiGroup: 'SecondWave',
+      faction: setup!.faction,
+      portraitNid: setup!.portrait,
+      affinity: setup!.affinity,
+      fields: [['score', 8]],
+      notes: [['Role', 'Leader']],
+    });
+    expect(mutation.changed.growths).toMatchObject({
+      HP: setup!.initial.growths.HP + 5,
+      STR: setup!.initial.growths.STR - 10,
+      MAG: 88,
+    });
+    expect(mutation.changed.statCapModifiers).toMatchObject({ STR: 2, MAG: 4 });
+    expect(turnwheel.reversed).toEqual(setup!.initial);
+    expect(turnwheel.redone).toEqual(mutation.changed);
+
+    const roundTrip = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 97, 'battle');
+      const unit = game.units.get('Eirika');
+      unit.fields.clear();
+      unit.notes = [];
+      unit.variant = null;
+      const loaded = await loadGame(game, 97);
+      const restored = game.units.get('Eirika');
+      const result = {
+        fields: [...restored.fields.entries()],
+        notes: restored.notes.map((entry: [string, string]) => [...entry]),
+        variant: restored.variant,
+        faction: restored.faction,
+        statCapModifiers: { ...restored.statCapModifiers },
+      };
+      await deleteSave(gameNid, 97);
+      return { loaded, result };
+    });
+    expect(roundTrip.loaded).toBe(true);
+    expect(roundTrip.result).toMatchObject({
+      fields: [['score', 8]],
+      notes: [['Role', 'Leader']],
+      variant: 'Cerulean',
+      faction: setup!.faction,
+      statCapModifiers: { STR: 2, MAG: 4 },
+    });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

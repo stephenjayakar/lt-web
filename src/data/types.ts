@@ -135,11 +135,15 @@ export interface UnitPrefab {
   nid: NID;
   name: string;
   desc: string;
+  variant?: string | null;
   level: number;
   klass: NID;
   tags: string[];
   bases: Record<string, number>;
   growths: Record<string, number>;
+  stat_cap_modifiers?: Record<string, number>;
+  unit_notes?: [string, string][];
+  fields?: [string, any][];
   /** [item_nid, is_droppable] */
   starting_items: [NID, boolean][];
   /** [level, skill_nid] */
