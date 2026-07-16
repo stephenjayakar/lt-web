@@ -652,6 +652,90 @@ test.describe('Event command parity', () => {
     expect(roundTrip.seth.some(([nid]) => nid === setup!.removedItemNid)).toBe(false);
   });
 
+  test('multi-item trees create recursively and event add/remove survives turnwheel and saves', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const { createItemTree } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Eirika');
+      if (!unit || !game.db.items.has('Vulnerary') || !game.db.items.has('Iron_Sword')) return null;
+      const parentNid = '_TestMultiItem';
+      game.db.items.set(parentNid, {
+        nid: parentNid, name: 'Test Multi', desc: 'Runtime multi-item fixture',
+        icon_nid: '', icon_index: [0, 0], components: [['multi_item', ['Vulnerary']]],
+      });
+      const parent = createItemTree(game.db.items.get(parentNid), (nid: string) => game.db.items.get(nid));
+      parent.owner = unit;
+      unit.items.push(parent);
+      const register = (item: any, key: string) => {
+        game.items.set(key, item);
+        item.subitems.forEach((child: any, index: number) => register(child, `${key}_${index}`));
+      };
+      register(parent, `_test_multi_${unit.nid}`);
+      const rescuePrefab = game.db.items.get('Rescue');
+      const sequenceChildren = rescuePrefab
+        ? createItemTree(rescuePrefab, (nid: string) => game.db.items.get(nid)).subitems.map((item: any) => item.nid)
+        : [];
+      const snapshot = () => parent.subitems.map((item: any) => ({
+        nid: item.nid, uses: item.uses, owner: item.owner?.nid ?? null, parent: item.parentItem?.nid ?? null,
+      }));
+      const initial = snapshot();
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(new GameEvent({
+        nid: '_test_multi_item_events', name: 'Multi Item Events', trigger: 'test',
+        level_nid: '0', condition: '', only_once: false, priority: 0,
+        _source: [
+          `add_item_to_multiitem;Eirika;${parentNid};Iron_Sword;no_duplicate`,
+          `add_item_to_multiitem;Eirika;${parentNid};Iron_Sword;no_duplicate`,
+          'set_item_uses;Eirika;Iron_Sword;5;recursive',
+          `remove_item_from_multiitem;Eirika;${parentNid};Vulnerary`,
+        ],
+      }, { type: 'test', levelNid: '0', unit1: unit }));
+      game.state.change('event');
+      return { parentNid, initial, beforeActionIndex, sequenceChildren };
+    });
+
+    expect(setup).not.toBeNull();
+    expect(setup!.sequenceChildren).toEqual(['Rescue1', 'Rescue2']);
+    await settle(page, 300);
+
+    const result = await page.evaluate(({ parentNid, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const parent = game.units.get('Eirika').items.find((item: any) => item.nid === parentNid);
+      const snapshot = () => parent.subitems.map((item: any) => ({
+        nid: item.nid, uses: item.uses, owner: item.owner?.nid ?? null, parent: item.parentItem?.nid ?? null,
+      }));
+      const changed = snapshot();
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { changed, reversed, redone: snapshot() };
+    }, setup!);
+    expect(result.changed).toEqual([{ nid: 'Iron_Sword', uses: 5, owner: 'Eirika', parent: setup!.parentNid }]);
+    expect(result.reversed).toEqual(setup!.initial);
+    expect(result.redone).toEqual(result.changed);
+
+    const roundTrip = await page.evaluate(async ({ parentNid }) => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 94, 'battle');
+      game.units.get('Eirika').items.find((item: any) => item.nid === parentNid).subitems = [];
+      const loaded = await loadGame(game, 94);
+      const parent = game.units.get('Eirika').items.find((item: any) => item.nid === parentNid);
+      const children = parent.subitems.map((item: any) => ({
+        nid: item.nid, uses: item.uses, owner: item.owner?.nid ?? null, parent: item.parentItem?.nid ?? null,
+      }));
+      await deleteSave(gameNid, 94);
+      return { loaded, children };
+    }, setup!);
+    expect(roundTrip).toEqual({ loaded: true, children: result.changed });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

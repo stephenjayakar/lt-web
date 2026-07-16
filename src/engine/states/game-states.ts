@@ -22,7 +22,7 @@ import { viewport, isSmallScreen } from '../viewport';
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
 import type { RegionData } from '../../data/types';
-import { ItemObject as ItemObjectClass } from '../../objects/item';
+import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
 import { evaluateCondition, evaluateExpression, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
 import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
@@ -57,6 +57,8 @@ import {
   MoveItemBetweenConvoysAction,
   RemoveItemFromUnitAction,
   RemoveItemFromConvoy,
+  AddSubItemAction,
+  RemoveSubItemAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -6055,12 +6057,21 @@ export class EventState extends State {
   }
 
   /** Resolve an item by NID from a unit inventory or the current party convoy. */
-  private findInventoryItem(ownerOrConvoy: string, itemNid: string): ItemObject | undefined {
+  private findInventoryItem(ownerOrConvoy: string, itemNid: string, recursive: boolean = false): ItemObject | undefined {
     const game = getGame();
     const items: ItemObject[] | undefined = ownerOrConvoy.toLowerCase() === 'convoy'
       ? game.getParty()?.convoy
       : this.findUnit(ownerOrConvoy)?.items;
-    return items?.find((item) => item.nid === itemNid);
+    if (!recursive) return items?.find((item) => item.nid === itemNid);
+    const find = (candidates: ItemObject[]): ItemObject | undefined => {
+      for (const item of candidates) {
+        if (item.nid === itemNid) return item;
+        const nested = find(item.subitems);
+        if (nested) return nested;
+      }
+      return undefined;
+    };
+    return items ? find(items) : undefined;
   }
 
   /** Match LT's item/accessory inventory capacity check (skill offsets remain a P3 hook gap). */
@@ -6746,21 +6757,25 @@ export class EventState extends State {
         const giItemNid = args[1] ?? '';
         const giItemPrefab = game.db.items.get(giItemNid);
         if (giItemPrefab) {
-          const giItem = new ItemObjectClass(giItemPrefab);
+          const giItem = createItemTree(giItemPrefab, (nid) => game.db.items.get(nid));
+          const registerTree = (node: ItemObject, key: string) => {
+            game.items.set(key, node);
+            node.subitems.forEach((child, index) => registerTree(child, `${key}_sub_${index}_${child.nid}`));
+          };
           if (giUnitNid.toLowerCase() === 'convoy') {
             // Put directly in convoy
             const giParty = game.getParty();
             if (giParty) {
               giItem.owner = null;
               giParty.convoy.push(giItem);
-              game.items.set(`convoy_${giItem.nid}_${giParty.convoy.length}`, giItem);
+              registerTree(giItem, `convoy_${giItem.nid}_${giParty.convoy.length}`);
             }
           } else {
             const giUnit = this.findUnit(giUnitNid);
             if (giUnit) {
               giItem.owner = giUnit;
               giUnit.items.push(giItem);
-              game.items.set(`${giUnit.nid}_${giItem.nid}_${giUnit.items.length}`, giItem);
+              registerTree(giItem, `${giUnit.nid}_${giItem.nid}_${giUnit.items.length}`);
             }
           }
         }
@@ -6852,6 +6867,46 @@ export class EventState extends State {
         return false;
       }
 
+      case 'add_item_to_multiitem': {
+        const parent = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        const childNid = args[2] ?? '';
+        const childPrefab = game.db.items.get(childNid);
+        const duplicate = parent?.subitems.some((child) => child.nid === childNid) ?? false;
+        if (parent?.hasComponent('multi_item') && childPrefab && !(duplicate && args.includes('no_duplicate'))) {
+          const child = createItemTree(childPrefab, (nid) => game.db.items.get(nid));
+          const key = `event_sub_${parent.nid}_${child.nid}_${game.items.size}`;
+          const registerTree = (node: ItemObject, nodeKey: string) => {
+            game.items.set(nodeKey, node);
+            node.subitems.forEach((nested, index) => registerTree(nested, `${nodeKey}_sub_${index}_${nested.nid}`));
+          };
+          registerTree(child, key);
+          game.actionLog.doAction(new AddSubItemAction(parent, child));
+          if (args.includes('equip')) {
+            console.warn('Event add_item_to_multiitem: equip flag awaits multi-item selection UI parity');
+          }
+        } else if (!duplicate || !args.includes('no_duplicate')) {
+          console.warn(`Event add_item_to_multiitem: invalid parent or child (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_item_from_multiitem': {
+        const parent = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        if (parent?.hasComponent('multi_item')) {
+          const children = args[2]
+            ? parent.subitems.filter((child) => child.nid === args[2]).slice(0, 1)
+            : [...parent.subitems];
+          for (const child of children) {
+            game.actionLog.doAction(new RemoveSubItemAction(parent, child));
+          }
+        } else {
+          console.warn(`Event remove_item_from_multiitem: invalid parent (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'set_item_droppable': {
         const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
         const value = (args[2] ?? '').toLowerCase();
@@ -6879,7 +6934,7 @@ export class EventState extends State {
       }
 
       case 'set_item_uses': {
-        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '', args.includes('recursive'));
         const requested = Number(evaluateExpression(args[2] ?? '', this.buildConditionContext()));
         if (item && item.maxUses > 0 && Number.isFinite(requested)) {
           const value = args.includes('additive') ? item.uses + requested : requested;

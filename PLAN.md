@@ -47,12 +47,12 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
-| Event command NIDs | 255 | 202 recognized; 192 matching case labels | Partial |
-| Item component NIDs | 201 | 36 exact string references; 23 with matching hook surfaces | Partial/Unknown |
+| Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
+| Item component NIDs | 201 | 38 exact string references; 23 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 88 files, 48,087 lines | Builds |
-| Browser regression suite | n/a | 61 Playwright tests | 61/61 passing |
+| TypeScript runtime | n/a | 88 files, 48,248 lines | Builds |
+| Browser regression suite | n/a | 62 Playwright tests | 62/62 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -157,6 +157,20 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Recursive multi/sequence item runtime slice:**
+  - Added recursive `ItemObject.subitems`/`parentItem` graphs and ownership
+    propagation; starting items and event-granted items now instantiate children
+    declared by `multi_item` and `sequence_item` components.
+  - Implemented reversible `add_item_to_multiitem` and
+    `remove_item_from_multiitem`, including `no_duplicate`, remove-all, recursive
+    item lookup, nested tree registration, and recursive `set_item_uses` support.
+  - Extended canonical item serialization with child-key graphs and two-pass
+    restoration, preserving child identity, uses, parent links, and propagated
+    ownership across save/load. The query engine now reads the runtime graph.
+  - Added real Rescue sequence construction plus event add/remove, undo/redo, and
+    save round-trip coverage. Command coverage advanced to **204/255 parsed** and
+    **194/255 dispatched**; full harness result: **62/62 passing**.
+
 - **Reversible inventory/convoy movement and canonical save identity:**
   - Implemented `move_item` across unit→unit, unit→convoy, and convoy→unit
     routes, plus `move_item_between_convoys` for named parties. Capacity checks
@@ -192,7 +206,7 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     `docs/parity/item-components.{json,md}` and
     `docs/parity/skill-components.{json,md}`; the existing audit/CI drift guard
     now validates all six generated parity artifacts.
-  - Established the first actionable structural baseline: 36 item and 29 skill
+  - Established the first actionable structural baseline: 38 item and 29 skill
     NIDs have exact web references, while 23 item and 55 skill component classes
     expose at least one Python hook with a matching web hook surface. These are
     discovery counts, not semantic parity claims.
@@ -558,10 +572,12 @@ passes; record newly discovered work here immediately.
   with runtime-data save persistence
 - [x] Implement reversible unit/convoy item movement and removal with canonical
   object-identity save references
+- [x] Implement recursive multi/sequence item graphs and reversible child add/remove
+  commands with save/load persistence
 - [ ] Implement deterministic selection for the special generic `Feat` learned-skill entry
 - [ ] Implement parser-recognized commands with no dispatcher case (currently includes
   item movement, dialog variants, special music, save deletion, and others)
-- [ ] Implement the 53 Python commands still absent from the parser, prioritized by
+- [ ] Implement the 51 Python commands still absent from the parser, prioritized by
   project usage: unit/item mutation, party transfer/pair-up, scripts, overlays, and UI
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
@@ -651,6 +667,6 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Add multi/sub-item runtime representation and reversible add/remove commands.
-2. Map the first high-usage item-component hook family from the generated manifest.
+1. Map and implement the first high-usage item target/use hook family.
+2. Integrate multi/sequence child selection into targeting and item-use flows.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

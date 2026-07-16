@@ -1,9 +1,9 @@
 {
   "minimums": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 202,
-    "dispatcherPythonNids": 192,
-    "itemReferencedComponentNids": 36,
+    "parserRecognizedPythonNids": 204,
+    "dispatcherPythonNids": 194,
+    "itemReferencedComponentNids": 38,
     "itemHookMappedComponentNids": 23,
     "skillReferencedComponentNids": 29,
     "skillHookMappedComponentNids": 55

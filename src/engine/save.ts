@@ -88,6 +88,8 @@ export interface ItemSaveData {
   ownerNid: string | null;
   /** Key used in game.items map for lookup during restore. */
   mapKey: string;
+  /** Optional for saves written before recursive subitem persistence. */
+  subitemKeys?: string[];
 }
 
 export interface SkillSaveData {
@@ -397,7 +399,7 @@ function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string
   };
 }
 
-function serializeItem(item: ItemObject, mapKey: string): ItemSaveData {
+function serializeItem(item: ItemObject, mapKey: string, itemKeyByObject: Map<ItemObject, string>): ItemSaveData {
   const components: [string, any][] = [];
   for (const [k, v] of item.components) {
     components.push([k, v]);
@@ -416,6 +418,9 @@ function serializeItem(item: ItemObject, mapKey: string): ItemSaveData {
     droppable: item.droppable,
     ownerNid: item.owner ? item.owner.nid : null,
     mapKey,
+    subitemKeys: item.subitems
+      .map((subitem) => itemKeyByObject.get(subitem))
+      .filter((key): key is string => !!key),
   };
 }
 
@@ -516,7 +521,6 @@ function serializeSupportPair(pair: SupportPair): SupportPairSaveData {
 function buildSaveDict(game: any): SaveDict {
   // Assign canonical save keys from the item's current container. Runtime registry
   // keys may describe an old owner after event/trade movement and cannot be trusted.
-  const items: ItemSaveData[] = [];
   const itemKeyByObject = new Map<ItemObject, string>();
   const usedItemKeys = new Set<string>();
   const registerItem = (item: ItemObject, preferredKey: string) => {
@@ -526,7 +530,7 @@ function buildSaveDict(game: any): SaveDict {
     while (usedItemKeys.has(key)) key = `${preferredKey}_${suffix++}`;
     usedItemKeys.add(key);
     itemKeyByObject.set(item, key);
-    items.push(serializeItem(item, key));
+    item.subitems.forEach((subitem, index) => registerItem(subitem, `${key}_sub_${index}_${subitem.nid}`));
   };
   for (const unit of (game.units as Map<string, UnitObject>).values()) {
     unit.items.forEach((item, index) => registerItem(item, `unit_${unit.nid}_${index}_${item.nid}`));
@@ -538,6 +542,8 @@ function buildSaveDict(game: any): SaveDict {
   for (const [key, item] of game.items as Map<string, ItemObject>) {
     registerItem(item, key);
   }
+  const items = [...itemKeyByObject.entries()]
+    .map(([item, key]) => serializeItem(item, key, itemKeyByObject));
 
   // Serialize all units
   const units: UnitSaveData[] = [];
@@ -842,6 +848,15 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
     } catch (err) {
       console.warn(`Failed to restore item "${itemData.nid}" (key: ${itemData.mapKey}):`, err);
     }
+  }
+  // Reconnect recursive item graphs only after every saved item exists.
+  for (const itemData of s.items) {
+    const parent = itemsByKey.get(itemData.mapKey);
+    if (!parent) continue;
+    parent.subitems = (itemData.subitemKeys ?? [])
+      .map((key) => itemsByKey.get(key))
+      .filter((item): item is ItemObject => !!item);
+    for (const child of parent.subitems) child.parentItem = parent;
   }
 
   // 6. Restore skills (build a lookup by NID for unit restoration)

@@ -24,7 +24,7 @@ import { PhaseController } from './phase';
 import { ActionLog } from './action';
 import { GameBoard } from '../objects/game-board';
 import { UnitObject } from '../objects/unit';
-import { ItemObject } from '../objects/item';
+import { ItemObject, createItemTree } from '../objects/item';
 import { TileMapObject } from '../rendering/tilemap';
 import { HighlightManager } from '../rendering/highlight';
 import { MapView } from '../rendering/map-view';
@@ -1048,11 +1048,15 @@ export class GameState {
       const isDroppable = entry[1] ?? false;
       const itemPrefab = this.db.items.get(itemNid);
       if (itemPrefab) {
-        const item = new ItemObject(itemPrefab);
+        const item = createItemTree(itemPrefab, (nid) => this.db.items.get(nid));
         item.owner = unit;
         item.droppable = isDroppable;
         unit.items.push(item);
-        this.items.set(`${unit.nid}_${item.nid}_${unit.items.length}`, item);
+        const registerTree = (node: ItemObject, key: string) => {
+          this.items.set(key, node);
+          node.subitems.forEach((child, index) => registerTree(child, `${key}_sub_${index}_${child.nid}`));
+        };
+        registerTree(item, `${unit.nid}_${item.nid}_${unit.items.length}`);
       }
     }
 

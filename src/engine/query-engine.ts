@@ -613,10 +613,12 @@ export class GameQueryEngine {
       if (item.nid === childItemNid) return item;
     }
 
-    // Then check the parent item's subitems component
+    // Then check the runtime subitem graph (with legacy component fallback).
     const parentItem = this.getItem(resolved, parentItemNid);
     if (parentItem) {
-      const subitems = parentItem.getComponent<ItemObject[]>('subitems');
+      const subitems = parentItem.subitems.length > 0
+        ? parentItem.subitems
+        : parentItem.getComponent<ItemObject[]>('subitems');
       if (subitems && Array.isArray(subitems)) {
         for (const sub of subitems) {
           if (sub.nid === childItemNid) return sub;
