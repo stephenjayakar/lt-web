@@ -53,7 +53,7 @@ Summary: 204/255 parser-recognized; 194/255 with dispatcher cases.
 | inc_game_var | IncGameVar | inc_game_var:598 | GAME_VARS | ginc | Nid, Expression? |  | yes | yes | no |  | dispatched-unverified |
 | modify_game_var | ModifyGameVar | modify_game_var:608 | GAME_VARS | mgvar | Nid, Expression |  | yes | yes | no |  | dispatched-unverified |
 | level_var | LevelVar | level_var:638 | LEVEL_VARS | lvar | Nid, Expression |  | yes | yes | no | mention | dispatched-unverified |
-| inc_level_var | IncLevelVar | inc_level_var:645 | LEVEL_VARS | linc | Nid, Expression? |  | yes | yes | no |  | dispatched-unverified |
+| inc_level_var | IncLevelVar | inc_level_var:645 | LEVEL_VARS | linc | Nid, Expression? |  | yes | yes | no | mention | dispatched-unverified |
 | modify_level_var | ModifyLevelVar | modify_level_var:655 | LEVEL_VARS | mlvar | Nid, Expression |  | yes | yes | no |  | dispatched-unverified |
 | set_next_chapter | SetNextChapter | set_next_chapter:685 | GAME_VARS |  | Chapter |  | yes | yes | no |  | dispatched-unverified |
 | enable_convoy | EnableConvoy | enable_convoy:691 | GAME_VARS |  | Activated |  | yes | yes | no |  | dispatched-unverified |

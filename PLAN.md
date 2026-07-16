@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 86 exact string references; 74 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 92 exact string references; 74 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 42 exact string references; 64 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 92 files, 50,675 lines | Builds |
-| Browser regression suite | n/a | 79 Playwright tests | 79/79 passing |
+| TypeScript runtime | n/a | 94 files, 51,061 lines | Builds |
+| Browser regression suite | n/a | 83 Playwright tests | 83/83 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,30 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Reversible combat-result and event lifecycle slice:**
+  - Added one snapshot-backed `CombatResultAction` shared by map and full-animation
+    combat. HP, EXP, level/stat/growth-point rolls, WEXP, skills/statuses, item
+    ownership/data/uses, and canto now undo exactly and redo from the captured
+    result without rerolling.
+  - Made combat death removal reversible across the board and initiative tracker,
+    preserving exact initiative lines/index on rewind. Combat turn completion now
+    records attacked/wait state through actions as well.
+  - Matched the Python lifecycle ordering and payload shape for `combat_start`,
+    `combat_death`, `combat_end`, and `unit_death`, including pre-combat event
+    blocking, captured death positions, playback, animation mode, and the actual
+    last-strike killer.
+  - Added specific-event dispatch for item `event_on_use`, `event_on_hit`,
+    `event_after_use`, `event_after_combat`, `event_after_combat_on_hit`, and
+    `event_after_combat_even_miss`. These bypass prefab conditions like Python and
+    expose target, target position, mode, attack-info tuple, and both items. Their
+    queue order is verified; pausing inside strike playback remains part of the
+    deeper proc/sub-combat lifecycle work.
+  - Added four regressions covering direct grouped result undo/redo, item-event
+    ordering/local arguments, `CombatState` start/end blocking payloads, and a
+    lethal real encounter's death ordering/killer/board/initiative rewind. Item
+    inventory advanced to **92/201 exact references / 74 hook surfaces**; the full
+    serial gate is **83/83 passing**.
 
 - **Deterministic generic Feat learned-skill slice:**
   - Added LT's seed+1 growth LCG as a shared engine random stream. Its seed and
@@ -803,6 +827,8 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 ### P2 — Actions, Save/Restore, and Turnwheel
 
 - [ ] Route all event and gameplay mutations through reversible actions
+- [x] Route map/full-animation combat outcomes and death removal through deterministic
+  reversible actions, including HP/EXP/level/WEXP/status/item and initiative state
 - [ ] Inventory every Python save field and restoration-order dependency
 - [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
   initiative, roam, overworld, records, achievements, and in-progress events
@@ -838,6 +864,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   skill-driven empowerment/replacement, including Python-shaped previews
 - [x] Extend combat execution from one defender to resolved main+splash defender
   groups with splash-mode counter/reward/durability semantics
+- [x] Dispatch specific on-hit and after-combat item events in Python component order
+  with combat-local target/mode/item arguments
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -850,6 +878,8 @@ item-use fixture matrices match Python outputs and side effects.
 ### P4 — Core Gameplay, Combat, AI, and RNG
 
 - [ ] Compare combat strike ordering, playback, EXP/WEXP, death, and post-combat events
+- [x] Make combat start/end/death/unit-death triggers preserve Python ordering,
+  killer identity, death position, playback, animation mode, and event blocking
 - [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
 - [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
@@ -902,8 +932,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
-   and fully reversible HP/EXP/death result actions.
+1. Add persistent combat RNG plus attack/defense/pre-proc skill lifecycle, including
+   temporary proc skills, charge/cooldown consumption, cleanup, and deterministic replay.
 2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
    the generated component manifest and add interaction fixtures.
 3. Implement the next project-used parser-recognized event commands that still lack

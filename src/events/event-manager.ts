@@ -35,6 +35,10 @@ export interface EventTrigger {
   weaponType?: NID;
   oldWexp?: number;
   rank?: string;
+  isAnimationCombat?: boolean;
+  playback?: any[];
+  /** Extra component/trigger arguments exposed to event expressions. */
+  localArgs?: Map<string, any>;
 }
 
 export type EventCommandType =
@@ -1254,11 +1258,14 @@ export class EventManager {
         item: trigger.item ?? context.item,
         localArgs: new Map<string, any>([
           ...(context.localArgs?.entries() ?? []),
+          ...(trigger.localArgs?.entries() ?? []),
           ['stat_changes', trigger.statChanges],
           ['source', trigger.source],
           ['weapon_type', trigger.weaponType],
           ['old_wexp', trigger.oldWexp],
           ['rank', trigger.rank],
+          ['is_animation_combat', trigger.isAnimationCombat],
+          ['playback', trigger.playback],
         ]),
       };
 
@@ -1282,6 +1289,23 @@ export class EventManager {
     }
 
     return triggered;
+  }
+
+  /** Queue one event by NID, matching Python's trigger_specific_event. */
+  triggerSpecific(
+    eventNid: NID,
+    trigger: EventTrigger,
+    force: boolean = false,
+  ): boolean {
+    const prefab = this.allEvents.get(eventNid);
+    if (!prefab) return false;
+    if (!force && prefab.only_once && this.onceTriggered.has(prefab.nid)) return false;
+    if (prefab.only_once) this.onceTriggered.add(prefab.nid);
+    const event = new GameEvent(prefab, trigger);
+    if (event.isDone()) return false;
+    this.eventQueue.push(event);
+    console.log(`EventManager: specifically triggered "${prefab.nid}"`);
+    return true;
   }
 
   /** Get the current event being processed (front of queue). */

@@ -1458,6 +1458,444 @@ test.describe('Event command parity', () => {
     });
   });
 
+  test('combat result and death actions restore HP, EXP, skills, uses, WEXP, board, and initiative', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameBoard } = await import('/src/objects/game-board.ts');
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { DeathAction, HasAttackedAction, WaitAction } = await import('/src/engine/action.ts');
+      const { InitiativeTracker } = await import('/src/engine/initiative.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const makeUnit = (nid: string, team: string, hp: number) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 20, STR: 5, MAG: 5, SKL: 5, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: { HP: 100, STR: 100 }, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = hp;
+        return unit;
+      };
+      game.db.skills.set('_CombatResultStatus', {
+        nid: '_CombatResultStatus', name: 'Result Status', desc: '',
+        icon_nid: '', icon_index: [0, 0], components: [],
+      });
+      const attacker = makeUnit('_ResultAttacker', 'player', 20);
+      const defender = makeUnit('_ResultDefender', 'enemy', 1);
+      attacker.exp = 90;
+      attacker.wexp.Sword = 0;
+      const item = new ItemObject({
+        nid: '_ResultSpell', name: '_ResultSpell', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_enemy', null], ['damage', 20], ['hit', 100],
+          ['uses', 2], ['weapon_type', 'Sword'], ['wexp', 1], ['exp', 20],
+          ['status_on_hit', '_CombatResultStatus'], ['min_range', 1], ['max_range', 2],
+        ],
+      });
+      attacker.items.push(item);
+      const board = new GameBoard(8, 8);
+      board.setUnit(2, 2, attacker);
+      board.setUnit(3, 2, defender);
+      const initiative = new InitiativeTracker();
+      initiative.unitLine = [attacker.nid, defender.nid];
+      initiative.initiativeLine = [10, 5];
+      initiative.currentIdx = 1;
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const combat = new MapCombat(
+        attacker, item, defender, null, game.db, 'grandmaster', board, ['hit1'],
+      );
+      combat.applyResults(game.actionLog);
+      game.actionLog.doAction(new DeathAction(defender, board, initiative));
+      game.actionLog.doAction(new HasAttackedAction(attacker));
+      game.actionLog.doAction(new WaitAction(attacker));
+
+      const snapshot = () => ({
+        attacker: {
+          hp: attacker.currentHp, exp: attacker.exp, level: attacker.level,
+          stats: { ...attacker.stats }, wexp: { ...attacker.wexp },
+          uses: item.uses, hasAttacked: attacker.hasAttacked, finished: attacker.finished,
+        },
+        defender: {
+          hp: defender.currentHp, dead: defender.dead, position: defender.position,
+          status: defender.skills.some((skill: any) => skill.nid === '_CombatResultStatus'),
+        },
+        boardDefender: board.getUnit(3, 2)?.nid ?? null,
+        initiative: {
+          units: [...initiative.unitLine], values: [...initiative.initiativeLine],
+          index: initiative.currentIdx,
+        },
+      });
+      const applied = snapshot();
+      const actionLog = game.actionLog as any;
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { applied, reversed, redone: snapshot() };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.applied.attacker).toMatchObject({
+      exp: 50, level: 2, wexp: { Sword: 2 }, uses: 1,
+      hasAttacked: true, finished: true,
+    });
+    expect(result!.applied.defender).toEqual({ hp: 0, dead: true, position: null, status: true });
+    expect(result!.applied.boardDefender).toBeNull();
+    expect(result!.applied.initiative).toEqual({ units: ['_ResultAttacker'], values: [10], index: 0 });
+    expect(result!.reversed.attacker).toMatchObject({
+      hp: 20, exp: 90, level: 1, wexp: { Sword: 0 }, uses: 2,
+      hasAttacked: false, finished: false,
+    });
+    expect(result!.reversed.defender).toEqual({
+      hp: 1, dead: false, position: [3, 2], status: false,
+    });
+    expect(result!.reversed.boardDefender).toBe('_ResultDefender');
+    expect(result!.reversed.initiative).toEqual({
+      units: ['_ResultAttacker', '_ResultDefender'], values: [10, 5], index: 1,
+    });
+    expect(result!.redone).toEqual(result!.applied);
+  });
+
+  test('item combat events queue hit and end hooks in Python order with local args', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const queued = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { queueCombatItemEvents } = await import('/src/combat/combat-lifecycle.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const makeUnit = (nid: string, team: string) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 0, MAG: 0, SKL: 5, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = 30;
+        return unit;
+      };
+      const eventNids = [
+        '_EventOnUse', '_EventOnHit', '_EventAfterUse',
+        '_EventAfterCombat', '_EventAfterHit', '_EventAfterAny',
+      ];
+      for (const nid of eventNids) {
+        game.db.events.set(nid, {
+          nid, name: nid, trigger: 'never', level_nid: '0', condition: 'False',
+          only_once: false, priority: 0,
+          _source: [
+            'inc_level_var;_item_lifecycle_count',
+            `level_var;_item_lifecycle_last;${nid}`,
+            'level_var;_item_lifecycle_mode;{e:mode}',
+            'level_var;_item_lifecycle_target;{e:target.nid}',
+          ],
+        });
+      }
+      const attacker = makeUnit('_LifecycleAttacker', 'player');
+      const defender = makeUnit('_LifecycleDefender', 'enemy');
+      attacker.position = [2, 2];
+      defender.position = [3, 2];
+      const item = new ItemObject({
+        nid: '_LifecycleEvents', name: '_LifecycleEvents', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_enemy', null], ['damage', 0], ['hit', 100], ['uses', 5],
+          ['event_on_use', eventNids[0]], ['event_on_hit', eventNids[1]],
+          ['event_after_use', eventNids[2]], ['event_after_combat', eventNids[3]],
+          ['event_after_combat_on_hit', eventNids[4]],
+          ['event_after_combat_even_miss', eventNids[5]],
+        ],
+      });
+      attacker.items.push(item);
+      const combat = new MapCombat(
+        attacker, item, defender, null, game.db, 'grandmaster', null, ['hit1', 'miss1'],
+      );
+      combat.applyResults(game.actionLog);
+      const count = queueCombatItemEvents(game, combat.strikes);
+      const order = game.eventManager.eventQueue.map((event: any) => event.nid);
+      const payloads = game.eventManager.eventQueue.map((event: any) => ({
+        mode: event.trigger.localArgs.get('mode'),
+        target: event.trigger.unit2?.nid,
+        targetPos: event.trigger.localArgs.get('target_pos'),
+      }));
+      game.state.change('event');
+      return { count, order, payloads };
+    });
+    expect(queued).not.toBeNull();
+    expect(queued!.count).toBe(6);
+    expect(queued!.order).toEqual([
+      '_EventOnUse', '_EventOnHit', '_EventAfterUse',
+      '_EventAfterCombat', '_EventAfterHit', '_EventAfterAny',
+    ]);
+    expect(queued!.payloads.every((payload: any) =>
+      payload.mode === 'attack' && payload.target === '_LifecycleDefender' &&
+      payload.targetPos[0] === 3 && payload.targetPos[1] === 2,
+    )).toBe(true);
+
+    await settle(page, 300);
+    const processed = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        count: game.levelVars.get('_item_lifecycle_count'),
+        last: game.levelVars.get('_item_lifecycle_last'),
+        mode: game.levelVars.get('_item_lifecycle_mode'),
+        target: game.levelVars.get('_item_lifecycle_target'),
+      };
+    });
+    expect(processed).toEqual({
+      count: 6, last: '_EventAfterAny', mode: 'attack', target: '_LifecycleDefender',
+    });
+  });
+
+  test('CombatState pauses for combat_start and supplies full combat_end payloads', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return false;
+      let origin: [number, number] | null = null;
+      for (let y = 1; y < game.board.height - 1 && !origin; y++) {
+        for (let x = 1; x < game.board.width - 1; x++) {
+          if (!game.board.getUnit(x, y) && !game.board.getUnit(x + 1, y)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return false;
+      const makeUnit = (nid: string, team: string) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 0, MAG: 0, SKL: 5, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = 30;
+        return unit;
+      };
+      game.db.events.set('_CombatStartPayload', {
+        nid: '_CombatStartPayload', name: 'Combat Start Payload', trigger: 'combat_start',
+        level_nid: '0', condition: "item.nid == '_LifecycleSpell'", only_once: false, priority: 0,
+        _source: [
+          'inc_level_var;_combat_start_count',
+          'level_var;_combat_start_item;{e:item.nid}',
+          'level_var;_combat_start_target;{unit2}',
+          'level_var;_combat_start_animation;{e:is_animation_combat}',
+        ],
+      });
+      game.db.events.set('_CombatEndPayload', {
+        nid: '_CombatEndPayload', name: 'Combat End Payload', trigger: 'combat_end',
+        level_nid: '0', condition: "item.nid == '_LifecycleSpell'", only_once: false, priority: 0,
+        _source: [
+          'inc_level_var;_combat_end_count',
+          'level_var;_combat_end_item;{e:item.nid}',
+          'level_var;_combat_end_target;{unit2}',
+          'level_var;_combat_end_animation;{e:is_animation_combat}',
+        ],
+      });
+      const attacker = makeUnit('_PayloadAttacker', 'player');
+      const defender = makeUnit('_PayloadDefender', 'enemy');
+      const item = new ItemObject({
+        nid: '_LifecycleSpell', name: '_LifecycleSpell', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_enemy', null], ['damage', 0], ['hit', 100],
+          ['uses', 2], ['min_range', 1], ['max_range', 2],
+        ],
+      });
+      attacker.items.push(item);
+      game.board.setUnit(origin[0], origin[1], attacker);
+      game.board.setUnit(origin[0] + 1, origin[1], defender);
+      game.units.set(attacker.nid, attacker);
+      game.units.set(defender.nid, defender);
+      game.selectedUnit = attacker;
+      game.combatTarget = defender;
+      game.combatScript = ['hit1'];
+      game.memory.set('combat_item', item);
+      (window as any).__combatPayloadTest = { attacker, defender, item };
+      game.state.change('combat');
+      return true;
+    });
+    expect(setup).toBe(true);
+    await stepFrames(page, 2);
+    const paused = await page.evaluate(() => ({
+      state: (window as any).__gameRef.state.getCurrentState()?.name,
+      startCount: (window as any).__gameRef.levelVars.get('_combat_start_count'),
+    }));
+    expect(paused.state).toBe('event');
+
+    await settle(page, 1200);
+    const completed = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const { attacker, defender, item } = (window as any).__combatPayloadTest;
+      const result = {
+        state: game.state.getCurrentState()?.name,
+        startCount: game.levelVars.get('_combat_start_count'),
+        startItem: game.levelVars.get('_combat_start_item'),
+        startTarget: game.levelVars.get('_combat_start_target'),
+        startAnimation: game.levelVars.get('_combat_start_animation'),
+        endCount: game.levelVars.get('_combat_end_count'),
+        endItem: game.levelVars.get('_combat_end_item'),
+        endTarget: game.levelVars.get('_combat_end_target'),
+        endAnimation: game.levelVars.get('_combat_end_animation'),
+        uses: item.uses,
+      };
+      game.board.removeUnit(attacker);
+      game.board.removeUnit(defender);
+      game.units.delete(attacker.nid);
+      game.units.delete(defender.nid);
+      delete (window as any).__combatPayloadTest;
+      return result;
+    });
+    expect(completed).toEqual({
+      state: 'free',
+      startCount: 1, startItem: '_LifecycleSpell', startTarget: '_PayloadDefender',
+      startAnimation: 'false',
+      endCount: 1, endItem: '_LifecycleSpell', endTarget: '_PayloadDefender',
+      endAnimation: 'false', uses: 1,
+    });
+  });
+
+  test('CombatState orders death events and rewinds an actual lethal encounter', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      let origin: [number, number] | null = null;
+      for (let y = 1; y < game.board.height - 1 && !origin; y++) {
+        for (let x = 1; x < game.board.width - 1; x++) {
+          if (!game.board.getUnit(x, y) && !game.board.getUnit(x + 1, y)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return null;
+      const makeUnit = (nid: string, team: string, hp: number) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 0, MAG: 0, SKL: 5, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = hp;
+        return unit;
+      };
+      const eventDefs = [
+        ['_OrderedCombatDeath', 'combat_death', 'combat_death'],
+        ['_OrderedCombatEnd', 'combat_end', 'combat_end'],
+        ['_OrderedUnitDeath', 'unit_death', 'unit_death'],
+      ];
+      for (const [nid, trigger, label] of eventDefs) {
+        game.db.events.set(nid, {
+          nid, name: nid, trigger, level_nid: '0',
+          condition: trigger === 'combat_end'
+            ? "unit2.nid == '_OrderedDefender'"
+            : "unit1.nid == '_OrderedDefender'",
+          only_once: false, priority: 0,
+          _source: [
+            `level_var;_ordered_death_events;{_ordered_death_events}>${label}`,
+            ...(trigger === 'combat_death'
+              ? ['level_var;_ordered_killer;{unit2}', 'level_var;_ordered_position;{e:position}']
+              : []),
+          ],
+        });
+      }
+      game.levelVars.set('_ordered_death_events', '');
+      const attacker = makeUnit('_OrderedAttacker', 'player', 30);
+      const defender = makeUnit('_OrderedDefender', 'enemy', 1);
+      const item = new ItemObject({
+        nid: '_OrderedLethalSpell', name: '_OrderedLethalSpell', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_enemy', null], ['damage', 99], ['hit', 100],
+          ['uses', 2], ['min_range', 1], ['max_range', 2],
+        ],
+      });
+      attacker.items.push(item);
+      game.board.setUnit(origin[0], origin[1], attacker);
+      game.board.setUnit(origin[0] + 1, origin[1], defender);
+      game.units.set(attacker.nid, attacker);
+      game.units.set(defender.nid, defender);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.selectedUnit = attacker;
+      game.combatTarget = defender;
+      game.combatScript = ['hit1'];
+      game.memory.set('combat_item', item);
+      (window as any).__orderedDeathTest = { attacker, defender, item, origin };
+      game.state.change('combat');
+      return { beforeActionIndex, origin };
+    });
+    expect(setup).not.toBeNull();
+    await settle(page, 1600);
+
+    const result = await page.evaluate(({ beforeActionIndex, origin }) => {
+      const game = (window as any).__gameRef;
+      const { attacker, defender, item } = (window as any).__orderedDeathTest;
+      const actionLog = game.actionLog as any;
+      const snapshot = () => ({
+        hp: defender.currentHp,
+        dead: defender.dead,
+        position: defender.position,
+        board: game.board.getUnit(origin[0] + 1, origin[1])?.nid ?? null,
+        uses: item.uses,
+        attackerFinished: attacker.finished,
+      });
+      const applied = snapshot();
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = snapshot();
+      const eventData = {
+        order: game.levelVars.get('_ordered_death_events'),
+        killer: game.levelVars.get('_ordered_killer'),
+        position: game.levelVars.get('_ordered_position'),
+      };
+      game.board.removeUnit(attacker);
+      game.board.removeUnit(defender);
+      game.units.delete(attacker.nid);
+      game.units.delete(defender.nid);
+      delete (window as any).__orderedDeathTest;
+      return { applied, reversed, redone, eventData };
+    }, setup!);
+
+    expect(result.applied).toEqual({
+      hp: 0, dead: true, position: null, board: null, uses: 1, attackerFinished: true,
+    });
+    expect(result.reversed).toEqual({
+      hp: 1, dead: false, position: [setup!.origin[0] + 1, setup!.origin[1]],
+      board: '_OrderedDefender', uses: 2, attackerFinished: false,
+    });
+    expect(result.redone).toEqual(result.applied);
+    expect(result.eventData).toEqual({
+      order: '>combat_death>combat_end>unit_death',
+      killer: '_OrderedAttacker',
+      position: `${setup!.origin[0] + 1},${setup!.origin[1]}`,
+    });
+  });
+
   test('uses_options consumes durability per hit, miss policy, and per-combat policy', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
