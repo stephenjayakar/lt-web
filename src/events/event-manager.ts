@@ -75,12 +75,15 @@ export type EventCommandType =
   | 'interact_unit' | 'resurrect'
   // Modify unit properties
   | 'set_name' | 'set_current_hp' | 'set_current_mana'
+  | 'set_variant' | 'set_unit_field' | 'set_unit_note' | 'remove_unit_note'
   | 'reset' | 'has_attacked' | 'has_traded' | 'has_finished'
   | 'give_item' | 'equip_item' | 'remove_item' | 'move_item'
   | 'give_exp' | 'set_exp' | 'give_wexp' | 'set_wexp'
   | 'give_skill' | 'remove_skill'
   | 'change_ai' | 'change_party' | 'change_faction' | 'change_team'
-  | 'change_portrait' | 'change_stats' | 'set_stats' | 'change_growths' | 'set_growths'
+  | 'change_ai_group' | 'change_portrait' | 'change_unit_desc' | 'change_affinity'
+  | 'change_stats' | 'set_stats' | 'change_growths' | 'set_growths'
+  | 'change_stat_cap_modifiers' | 'set_stat_cap_modifiers'
   | 'set_unit_level' | 'autolevel_to' | 'promote' | 'change_class'
   | 'add_tag' | 'remove_tag'
   // Unit groups
@@ -164,13 +167,16 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
   'interact_unit', 'resurrect',
   // Modify unit properties
-  'set_name', 'set_current_hp', 'set_current_mana',
+  'set_name', 'set_variant', 'set_current_hp', 'set_current_mana',
+  'set_unit_field', 'set_unit_note', 'remove_unit_note',
   'reset', 'has_attacked', 'has_traded', 'has_finished',
   'give_item', 'equip_item', 'remove_item', 'move_item',
   'give_exp', 'set_exp', 'give_wexp', 'set_wexp',
   'give_skill', 'remove_skill',
-  'change_ai', 'change_party', 'change_faction', 'change_team',
-  'change_portrait', 'change_stats', 'set_stats', 'change_growths', 'set_growths',
+  'change_ai', 'change_ai_group', 'change_party', 'change_faction', 'change_team',
+  'change_portrait', 'change_unit_desc', 'change_affinity',
+  'change_stats', 'set_stats', 'change_growths', 'set_growths',
+  'change_stat_cap_modifiers', 'set_stat_cap_modifiers',
   'set_unit_level', 'autolevel_to', 'promote', 'change_class',
   'add_tag', 'remove_tag',
   // Unit groups

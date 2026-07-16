@@ -1184,6 +1184,11 @@ export class GameState {
     };
 
     const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
+    unit.generic = true;
+    unit.variant = data.variant ?? null;
+    unit.faction = data.faction || null;
+    const unitFaction = data.faction ? this.db.factions.get(data.faction) : null;
+    if (unitFaction) unit.desc = unitFaction.desc ?? '';
     if (data.ai_group) unit.aiGroup = data.ai_group;
 
     // Generic units are NOT persistent across levels (Python: self.persistent = False)
@@ -1241,7 +1246,7 @@ export class GameState {
 
     for (const [stat, bonus] of Object.entries(baseBonus)) {
       if (bonus !== 0 && unit.stats[stat] !== undefined) {
-        const maxStat = unit.maxStats[stat] ?? 99;
+        const maxStat = unit.getStatCap(stat);
         unit.stats[stat] = Math.min(maxStat, Math.max(0, unit.stats[stat] + bonus));
       }
     }
@@ -1405,7 +1410,7 @@ function autoLevelFixed(
 
   // Apply gains, clamped to [0, max_stats]
   for (const stat of Object.keys(totalGains)) {
-    const maxStat = klassDef.max_stats?.[stat] ?? unit.maxStats[stat] ?? 99;
+    const maxStat = unit.getStatCap(stat);
     const currentVal = unit.stats[stat] ?? 0;
     const maxGain = Math.max(0, maxStat - currentVal);
     const gain = Math.min(totalGains[stat], maxGain);

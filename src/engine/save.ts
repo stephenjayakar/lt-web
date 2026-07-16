@@ -33,6 +33,12 @@ import { RoamInfo } from './roam-info';
 export interface UnitSaveData {
   nid: string;
   name: string;
+  desc?: string;
+  variant?: string | null;
+  faction?: string | null;
+  generic?: boolean;
+  notes?: [string, string][];
+  fields?: [string, any][];
   position: [number, number] | null;
   team: string;
   klass: string;
@@ -44,6 +50,7 @@ export interface UnitSaveData {
   /** Optional for saves written before dynamic growth-point persistence. */
   growthPoints?: Record<string, number>;
   maxStats: Record<string, number>;
+  statCapModifiers?: Record<string, number>;
   items: string[];        // item key references into items map
   skills: string[];       // skill NIDs
   tags: string[];
@@ -350,6 +357,12 @@ function serializeUnit(unit: UnitObject): UnitSaveData {
   return {
     nid: unit.nid,
     name: unit.name,
+    desc: unit.desc,
+    variant: unit.variant,
+    faction: unit.faction,
+    generic: unit.generic,
+    notes: unit.notes.map(([key, value]) => [key, value]),
+    fields: Array.from(unit.fields.entries()),
     position: unit.position ? [unit.position[0], unit.position[1]] : null,
     team: unit.team,
     klass: unit.klass,
@@ -360,6 +373,7 @@ function serializeUnit(unit: UnitObject): UnitSaveData {
     growths: { ...unit.growths },
     growthPoints: { ...unit.growthPoints },
     maxStats: { ...unit.maxStats },
+    statCapModifiers: { ...unit.statCapModifiers },
     items: itemKeys,
     skills: skillNids,
     tags: [...unit.tags],
@@ -843,7 +857,8 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       const syntheticPrefab = {
         nid: unitData.nid,
         name: unitData.name,
-        desc: '',
+        desc: unitData.desc ?? '',
+        variant: unitData.variant ?? null,
         level: unitData.level,
         klass: unitData.klass,
         tags: unitData.tags,
@@ -859,6 +874,12 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       const unit = new UnitCtor(syntheticPrefab, klassDef);
 
       // Override all fields from saved data
+      unit.desc = unitData.desc ?? unit.desc;
+      unit.variant = unitData.variant ?? null;
+      unit.faction = unitData.faction ?? null;
+      unit.generic = unitData.generic ?? false;
+      unit.notes = (unitData.notes ?? []).map(([key, value]) => [key, value]);
+      unit.fields = new Map(unitData.fields ?? []);
       unit.position = unitData.position;
       unit.team = unitData.team;
       unit.level = unitData.level;
@@ -871,6 +892,10 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
         if (unit.growthPoints[stat] === undefined) unit.growthPoints[stat] = 0;
       }
       unit.maxStats = { ...unitData.maxStats };
+      unit.statCapModifiers = { ...(unitData.statCapModifiers ?? {}) };
+      for (const stat of Object.keys(unit.maxStats)) {
+        if (unit.statCapModifiers[stat] === undefined) unit.statCapModifiers[stat] = 0;
+      }
       unit.tags = [...unitData.tags];
       unit.ai = unitData.ai;
       unit.wexp = { ...unitData.wexp };

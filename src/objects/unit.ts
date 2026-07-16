@@ -38,6 +38,12 @@ export interface StatusEffect {
 export class UnitObject {
   readonly nid: NID;
   name: string;
+  desc: string;
+  variant: string | null;
+  faction: NID | null;
+  generic: boolean;
+  notes: [string, string][];
+  fields: Map<string, any>;
 
   position: [number, number] | null;
   team: string;
@@ -54,6 +60,7 @@ export class UnitObject {
 
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;
+  statCapModifiers: Record<string, number>;
 
   items: ItemObject[];
   skills: SkillObject[];
@@ -107,6 +114,12 @@ export class UnitObject {
   constructor(prefab: UnitPrefab, klass: KlassDef) {
     this.nid = prefab.nid;
     this.name = prefab.name;
+    this.desc = prefab.desc ?? '';
+    this.variant = prefab.variant ?? null;
+    this.faction = null;
+    this.generic = false;
+    this.notes = (prefab.unit_notes ?? []).map(([key, value]) => [key, value]);
+    this.fields = new Map(prefab.fields ?? []);
     this.position = null;
     this.team = 'player'; // caller should set the real team
     this.klass = prefab.klass;
@@ -140,6 +153,10 @@ export class UnitObject {
 
     // --- Max stat caps from class ---
     this.maxStats = { ...klass.max_stats };
+    this.statCapModifiers = {};
+    for (const stat of Object.keys(this.maxStats)) {
+      this.statCapModifiers[stat] = prefab.stat_cap_modifiers?.[stat] ?? 0;
+    }
 
     // Items and skills are populated externally after construction
     // (they require their own prefab look-ups).
@@ -196,6 +213,10 @@ export class UnitObject {
     return this.stats[stat] ?? 0;
   }
 
+  getStatCap(stat: string): number {
+    return (this.maxStats[stat] ?? 99) + (this.statCapModifiers[stat] ?? 0);
+  }
+
   /**
    * Get the movement stat for this unit.
    * Returns the MOV stat from the stats record.
@@ -225,7 +246,7 @@ export class UnitObject {
 
     for (const [stat, growth] of Object.entries(this.growths)) {
       let gained = 0;
-      const cap = this.maxStats[stat] ?? 99;
+      const cap = this.getStatCap(stat);
 
       if (mode === 'fixed') {
         // Fixed mode: growth / 100 determines guaranteed gain, remainder accumulates

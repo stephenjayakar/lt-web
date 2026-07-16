@@ -1,0 +1,7 @@
+{
+  "minimums": {
+    "pythonEventNids": 255,
+    "parserRecognizedPythonNids": 195,
+    "dispatcherPythonNids": 184
+  }
+}

@@ -1,0 +1,6165 @@
+{
+  "sources": [
+    "lt-maker/app/events/event_commands.py",
+    "lt-maker/app/events/event_functions.py"
+  ],
+  "summary": {
+    "pythonEventNids": 255,
+    "parserRecognizedPythonNids": 195,
+    "dispatcherPythonNids": 184,
+    "structuralStatuses": {
+      "dispatched-unverified": 172,
+      "missing-dispatch": 11,
+      "missing-parser": 60,
+      "stub-hint": 12
+    }
+  },
+  "commands": [
+    {
+      "nid": "comment",
+      "pythonClass": "Comment",
+      "nickname": "#",
+      "tag": "FLOW_CONTROL",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "comment",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 54
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": false,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "if",
+      "pythonClass": "If",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "elif",
+      "pythonClass": "Elif",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "else",
+      "pythonClass": "Else",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "end",
+      "pythonClass": "End",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "for",
+      "pythonClass": "For",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "endf",
+      "pythonClass": "Endf",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "finish",
+      "pythonClass": "Finish",
+      "nickname": "break",
+      "tag": "FLOW_CONTROL",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "finish",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 57
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "wait",
+      "pythonClass": "Wait",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [
+        "Time"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "wait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 60
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "end_skip",
+      "pythonClass": "EndSkip",
+      "nickname": null,
+      "tag": "FLOW_CONTROL",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "end_skip",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 65
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "music",
+      "pythonClass": "Music",
+      "nickname": "m",
+      "tag": "MUSIC_SOUND",
+      "keywords": [
+        "Music"
+      ],
+      "optionalKeywords": [
+        "FadeIn"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "music",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 69
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "music_fade_back",
+      "pythonClass": "MusicFadeBack",
+      "nickname": "mf",
+      "tag": "MUSIC_SOUND",
+      "keywords": [],
+      "optionalKeywords": [
+        "FadeOut"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "music_fade_back",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 78
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "music_clear",
+      "pythonClass": "MusicClear",
+      "nickname": null,
+      "tag": "MUSIC_SOUND",
+      "keywords": [],
+      "optionalKeywords": [
+        "FadeOut"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "music_clear",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 83
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "sound",
+      "pythonClass": "Sound",
+      "nickname": null,
+      "tag": "MUSIC_SOUND",
+      "keywords": [
+        "Sound"
+      ],
+      "optionalKeywords": [
+        "Volume"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "sound",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 91
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "stop_sound",
+      "pythonClass": "StopSound",
+      "nickname": null,
+      "tag": "MUSIC_SOUND",
+      "keywords": [
+        "Sound"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "stop_sound",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 95
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_music",
+      "pythonClass": "ChangeMusic",
+      "nickname": null,
+      "tag": "MUSIC_SOUND",
+      "keywords": [
+        "Phase",
+        "Music"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_music",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 99
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_special_music",
+      "pythonClass": "ChangeSpecialMusic",
+      "nickname": null,
+      "tag": "MUSIC_SOUND",
+      "keywords": [
+        "SpecialMusicType",
+        "Music"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_special_music",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 106
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "add_portrait",
+      "pythonClass": "AddPortrait",
+      "nickname": "u",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait",
+        "ScreenPosition"
+      ],
+      "optionalKeywords": [
+        "Slide",
+        "ExpressionList",
+        "SpeedMult"
+      ],
+      "flags": [
+        "mirror",
+        "low_priority",
+        "immediate",
+        "no_block",
+        "low_saturation"
+      ],
+      "pythonHandler": {
+        "function": "add_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 118
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "multi_add_portrait",
+      "pythonClass": "MultiAddPortrait",
+      "nickname": "uu",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait1",
+        "ScreenPosition1",
+        "Portrait2",
+        "ScreenPosition2"
+      ],
+      "optionalKeywords": [
+        "Portrait3",
+        "ScreenPosition3",
+        "Portrait4",
+        "ScreenPosition4"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "multi_add_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 162
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_portrait",
+      "pythonClass": "RemovePortrait",
+      "nickname": "r",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait"
+      ],
+      "optionalKeywords": [
+        "SpeedMult",
+        "Slide"
+      ],
+      "flags": [
+        "immediate",
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "remove_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 177
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "multi_remove_portrait",
+      "pythonClass": "MultiRemovePortrait",
+      "nickname": "rr",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait1",
+        "Portrait2"
+      ],
+      "optionalKeywords": [
+        "Portrait3",
+        "Portrait4"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "multi_remove_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 198
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_all_portraits",
+      "pythonClass": "RemoveAllPortraits",
+      "nickname": "rrr",
+      "tag": "PORTRAIT",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_all_portraits",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 210
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "move_portrait",
+      "pythonClass": "MovePortrait",
+      "nickname": null,
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait",
+        "ScreenPosition"
+      ],
+      "optionalKeywords": [
+        "SpeedMult"
+      ],
+      "flags": [
+        "immediate",
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "move_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 222
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "bop_portrait",
+      "pythonClass": "BopPortrait",
+      "nickname": "bop",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait"
+      ],
+      "optionalKeywords": [
+        "NumBops",
+        "Time"
+      ],
+      "flags": [
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "bop_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 287
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "mirror_portrait",
+      "pythonClass": "MirrorPortrait",
+      "nickname": "mirror",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait"
+      ],
+      "optionalKeywords": [
+        "SpeedMult"
+      ],
+      "flags": [
+        "no_block",
+        "fade"
+      ],
+      "pythonHandler": {
+        "function": "mirror_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 243
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "expression",
+      "pythonClass": "Expression",
+      "nickname": "e",
+      "tag": "PORTRAIT",
+      "keywords": [
+        "Portrait",
+        "ExpressionList"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "expression",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 304
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "speak_style",
+      "pythonClass": "SpeakStyle",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "Style"
+      ],
+      "optionalKeywords": [
+        "Speaker",
+        "Position",
+        "Width",
+        "Speed",
+        "FontColor",
+        "FontType",
+        "Background",
+        "NumLines",
+        "DrawCursor",
+        "MessageTail",
+        "Transparency",
+        "NameTagBg",
+        "BoopSound"
+      ],
+      "flags": [
+        "low_priority",
+        "hold",
+        "no_popup",
+        "fit",
+        "no_talk",
+        "no_sound",
+        "autogray"
+      ],
+      "pythonHandler": {
+        "function": "speak_style",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 311
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "speak",
+      "pythonClass": "Speak",
+      "nickname": "s",
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "SpeakerOrStyle",
+        "Text"
+      ],
+      "optionalKeywords": [
+        "TextPosition",
+        "Width",
+        "StyleNid",
+        "TextSpeed",
+        "FontColor",
+        "FontType",
+        "DialogBox",
+        "NumLines",
+        "DrawCursor",
+        "MessageTail",
+        "Transparency",
+        "NameTagBg",
+        "BoopSound"
+      ],
+      "flags": [
+        "low_priority",
+        "hold",
+        "no_popup",
+        "fit",
+        "no_block",
+        "no_talk",
+        "no_sound",
+        "autogray"
+      ],
+      "pythonHandler": {
+        "function": "speak",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 329
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "say",
+      "pythonClass": "Say",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "SpeakerOrStyle",
+        "*Text"
+      ],
+      "optionalKeywords": [
+        "TextPosition",
+        "Width",
+        "StyleNid",
+        "TextSpeed",
+        "FontColor",
+        "FontType",
+        "DialogBox",
+        "NumLines",
+        "DrawCursor",
+        "MessageTail",
+        "Transparency",
+        "NameTagBg",
+        "BoopSound"
+      ],
+      "flags": [
+        "low_priority",
+        "hold",
+        "no_popup",
+        "fit",
+        "no_block",
+        "no_talk",
+        "no_sound",
+        "autogray"
+      ],
+      "pythonHandler": {
+        "function": "say",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 322
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "unhold",
+      "pythonClass": "Unhold",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unhold",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 411
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "unpause",
+      "pythonClass": "Unpause",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [],
+      "optionalKeywords": [
+        "Nid"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unpause",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 416
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "narrate",
+      "pythonClass": "Narrate",
+      "nickname": null,
+      "tag": "HIDDEN",
+      "keywords": [
+        "Speaker",
+        "String"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_block"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "transition",
+      "pythonClass": "Transition",
+      "nickname": "t",
+      "tag": "BG_FG",
+      "keywords": [],
+      "optionalKeywords": [
+        "Direction",
+        "Speed",
+        "Color3",
+        "Panorama"
+      ],
+      "flags": [
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "transition",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 435
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_background",
+      "pythonClass": "ChangeBackground",
+      "nickname": "b",
+      "tag": "BG_FG",
+      "keywords": [],
+      "optionalKeywords": [
+        "Panorama",
+        "Speed"
+      ],
+      "flags": [
+        "keep_portraits",
+        "scroll"
+      ],
+      "pythonHandler": {
+        "function": "change_background",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 460
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "pause_background",
+      "pythonClass": "PauseBackground",
+      "nickname": null,
+      "tag": "BG_FG",
+      "keywords": [],
+      "optionalKeywords": [
+        "PauseAt"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "pause_background",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 476
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "unpause_background",
+      "pythonClass": "UnpauseBackground",
+      "nickname": null,
+      "tag": "BG_FG",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unpause_background",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 482
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "disp_cursor",
+      "pythonClass": "DispCursor",
+      "nickname": null,
+      "tag": "CURSOR_CAMERA",
+      "keywords": [
+        "ShowCursor"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "disp_cursor",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 488
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "move_cursor",
+      "pythonClass": "MoveCursor",
+      "nickname": "set_cursor",
+      "tag": "CURSOR_CAMERA",
+      "keywords": [
+        "Position"
+      ],
+      "optionalKeywords": [
+        "Speed"
+      ],
+      "flags": [
+        "immediate",
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "move_cursor",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 494
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "center_cursor",
+      "pythonClass": "CenterCursor",
+      "nickname": null,
+      "tag": "CURSOR_CAMERA",
+      "keywords": [
+        "Position"
+      ],
+      "optionalKeywords": [
+        "Speed"
+      ],
+      "flags": [
+        "immediate",
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "center_cursor",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 518
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "flicker_cursor",
+      "pythonClass": "FlickerCursor",
+      "nickname": "highlight",
+      "tag": "CURSOR_CAMERA",
+      "keywords": [
+        "Position"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "flicker_cursor",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 542
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "screen_shake",
+      "pythonClass": "ScreenShake",
+      "nickname": null,
+      "tag": "CURSOR_CAMERA",
+      "keywords": [
+        "Duration"
+      ],
+      "optionalKeywords": [
+        "ShakeType"
+      ],
+      "flags": [
+        "no_block"
+      ],
+      "pythonHandler": {
+        "function": "screen_shake",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 555
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "screen_shake_end",
+      "pythonClass": "ScreenShakeEnd",
+      "nickname": null,
+      "tag": "CURSOR_CAMERA",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "screen_shake_end",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 585
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "game_var",
+      "pythonClass": "GameVar",
+      "nickname": "gvar",
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "game_var",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 591
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "inc_game_var",
+      "pythonClass": "IncGameVar",
+      "nickname": "ginc",
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [
+        "Expression"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "inc_game_var",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 598
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "modify_game_var",
+      "pythonClass": "ModifyGameVar",
+      "nickname": "mgvar",
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "modify_game_var",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 608
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "level_var",
+      "pythonClass": "LevelVar",
+      "nickname": "lvar",
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "level_var",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 638
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "inc_level_var",
+      "pythonClass": "IncLevelVar",
+      "nickname": "linc",
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [
+        "Expression"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "inc_level_var",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 645
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "modify_level_var",
+      "pythonClass": "ModifyLevelVar",
+      "nickname": "mlvar",
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "modify_level_var",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 655
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_next_chapter",
+      "pythonClass": "SetNextChapter",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Chapter"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_next_chapter",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 685
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "enable_convoy",
+      "pythonClass": "EnableConvoy",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Activated"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "enable_convoy",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 691
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "enable_repair_shop",
+      "pythonClass": "EnableRepairShop",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Activated"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "enable_repair_shop",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 694
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "enable_supports",
+      "pythonClass": "EnableSupports",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Activated"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "enable_supports",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 697
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "enable_turnwheel",
+      "pythonClass": "EnableTurnwheel",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Activated"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "enable_turnwheel",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 700
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "enable_fog_of_war",
+      "pythonClass": "EnableFogOfWar",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Activated"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "enable_fog_of_war",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 703
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_fog_of_war",
+      "pythonClass": "SetFogOfWar",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "FogOfWarType",
+        "Radius"
+      ],
+      "optionalKeywords": [
+        "AIRadius",
+        "OtherRadius"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_fog_of_war",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 706
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "end_turn",
+      "pythonClass": "EndTurn",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Team"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "end_turn",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 723
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "win_game",
+      "pythonClass": "WinGame",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "win_game",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 739
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "lose_game",
+      "pythonClass": "LoseGame",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "lose_game",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 742
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "main_menu",
+      "pythonClass": "MainMenu",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "main_menu",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 745
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "force_chapter_clean_up",
+      "pythonClass": "ForceChapterCleanUp",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "force_chapter_clean_up",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 748
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "skip_save",
+      "pythonClass": "SkipSave",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "TrueOrFalse"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "skip_save",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 751
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "activate_turnwheel",
+      "pythonClass": "ActivateTurnwheel",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Force"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "activate_turnwheel",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 754
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "battle_save",
+      "pythonClass": "BattleSave",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "SaveName"
+      ],
+      "flags": [
+        "immediately"
+      ],
+      "pythonHandler": {
+        "function": "battle_save",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 757
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "delete_save",
+      "pythonClass": "DeleteSave",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "SaveSlot"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "delete_save",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 769
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "clear_turnwheel",
+      "pythonClass": "ClearTurnwheel",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "clear_turnwheel",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 775
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "stop_turnwheel_recording",
+      "pythonClass": "StopTurnwheelRecording",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "stop_turnwheel_recording",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 778
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "start_turnwheel_recording",
+      "pythonClass": "StartTurnwheelRecording",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "start_turnwheel_recording",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 781
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_tilemap",
+      "pythonClass": "ChangeTilemap",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "Tilemap"
+      ],
+      "optionalKeywords": [
+        "PositionOffset",
+        "LoadTilemap"
+      ],
+      "flags": [
+        "reload"
+      ],
+      "pythonHandler": {
+        "function": "change_tilemap",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 784
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_bg_tilemap",
+      "pythonClass": "ChangeBgTilemap",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [],
+      "optionalKeywords": [
+        "Tilemap"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_bg_tilemap",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 884
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "set_game_board_bounds",
+      "pythonClass": "SetGameBoardBounds",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "MinX",
+        "MinY",
+        "MaxX",
+        "MaxY"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_game_board_bounds",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 890
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "remove_game_board_bounds",
+      "pythonClass": "RemoveGameBoardBounds",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_game_board_bounds",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 901
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "load_unit",
+      "pythonClass": "LoadUnit",
+      "nickname": null,
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "UniqueUnit"
+      ],
+      "optionalKeywords": [
+        "Team",
+        "AI"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "load_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 908
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "make_generic",
+      "pythonClass": "MakeGeneric",
+      "nickname": null,
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Nid",
+        "Klass",
+        "Level",
+        "Team"
+      ],
+      "optionalKeywords": [
+        "AI",
+        "Faction",
+        "AnimationVariant",
+        "ItemList"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "make_generic",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 926
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "create_unit",
+      "pythonClass": "CreateUnit",
+      "nickname": null,
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [
+        "Nid",
+        "Level",
+        "Position",
+        "EntryType",
+        "Placement"
+      ],
+      "flags": [
+        "copy_stats"
+      ],
+      "pythonHandler": {
+        "function": "create_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 955
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "add_unit",
+      "pythonClass": "AddUnit",
+      "nickname": "add",
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [
+        "Position",
+        "EntryType",
+        "Placement",
+        "AnimationType"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1005
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "move_unit",
+      "pythonClass": "MoveUnit",
+      "nickname": "move",
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [
+        "Position",
+        "MovementType",
+        "Placement",
+        "Speed"
+      ],
+      "flags": [
+        "no_block",
+        "no_follow",
+        "silent"
+      ],
+      "pythonHandler": {
+        "function": "move_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1052
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_unit",
+      "pythonClass": "RemoveUnit",
+      "nickname": "remove",
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [
+        "RemoveType",
+        "AnimationType"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1113
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "kill_unit",
+      "pythonClass": "KillUnit",
+      "nickname": "kill",
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "kill_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1142
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_all_units",
+      "pythonClass": "RemoveAllUnits",
+      "nickname": null,
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_all_units",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1171
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_all_enemies",
+      "pythonClass": "RemoveAllEnemies",
+      "nickname": null,
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_all_enemies",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1176
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "interact_unit",
+      "pythonClass": "InteractUnit",
+      "nickname": "interact",
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit",
+        "Position"
+      ],
+      "optionalKeywords": [
+        "CombatScript",
+        "Ability",
+        "Rounds"
+      ],
+      "flags": [
+        "arena",
+        "force_animation",
+        "force_no_animation",
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "interact_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1181
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "pose_unit",
+      "pythonClass": "PoseUnit",
+      "nickname": null,
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "Unit",
+        "Pose"
+      ],
+      "optionalKeywords": [
+        "Direction"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "pose_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1231
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "set_name",
+      "pythonClass": "SetName",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "String"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_name",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1270
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_variant",
+      "pythonClass": "SetVariant",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [
+        "String"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_variant",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1277
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_current_hp",
+      "pythonClass": "SetCurrentHP",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "HP"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "damage_numbers"
+      ],
+      "pythonHandler": {
+        "function": "set_current_hp",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1284
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_current_mana",
+      "pythonClass": "SetCurrentMana",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "Mana"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_current_mana",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1298
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_fatigue",
+      "pythonClass": "AddFatigue",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "Fatigue"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_fatigue",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1305
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "set_unit_field",
+      "pythonClass": "SetUnitField",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Key",
+        "Value"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "increment_mode"
+      ],
+      "pythonHandler": {
+        "function": "set_unit_field",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1312
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_unit_note",
+      "pythonClass": "SetUnitNote",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "Key",
+        "Value"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_unit_note",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1329
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_unit_note",
+      "pythonClass": "RemoveUnitNote",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "Key"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_unit_note",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1337
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "resurrect",
+      "pythonClass": "Resurrect",
+      "nickname": "resurrect_unit",
+      "tag": "ADD_REMOVE_INTERACT_WITH_UNITS",
+      "keywords": [
+        "GlobalUnit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "resurrect",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1349
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "reset",
+      "pythonClass": "Reset",
+      "nickname": "reset_unit",
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "reset",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1361
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "has_attacked",
+      "pythonClass": "HasAttacked",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "has_attacked",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1368
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "has_traded",
+      "pythonClass": "HasTraded",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "has_traded",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1375
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "has_visited",
+      "pythonClass": "HasVisited",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "attacked"
+      ],
+      "pythonHandler": {
+        "function": "has_visited",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1382
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "has_finished",
+      "pythonClass": "HasFinished",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "has_finished",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1402
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "recruit_generic",
+      "pythonClass": "RecruitGeneric",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit",
+        "Nid"
+      ],
+      "optionalKeywords": [
+        "Name"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "recruit_generic",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1255
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "add_group",
+      "pythonClass": "AddGroup",
+      "nickname": null,
+      "tag": "UNIT_GROUPS",
+      "keywords": [
+        "Group"
+      ],
+      "optionalKeywords": [
+        "StartingGroup",
+        "EntryType",
+        "Placement"
+      ],
+      "flags": [
+        "create"
+      ],
+      "pythonHandler": {
+        "function": "add_group",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1408
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "spawn_group",
+      "pythonClass": "SpawnGroup",
+      "nickname": null,
+      "tag": "UNIT_GROUPS",
+      "keywords": [
+        "Group",
+        "CardinalDirection",
+        "StartingGroup"
+      ],
+      "optionalKeywords": [
+        "MovementType",
+        "Placement"
+      ],
+      "flags": [
+        "create",
+        "no_block",
+        "no_follow"
+      ],
+      "pythonHandler": {
+        "function": "spawn_group",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1442
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "move_group",
+      "pythonClass": "MoveGroup",
+      "nickname": "morph_group",
+      "tag": "UNIT_GROUPS",
+      "keywords": [
+        "Group",
+        "StartingGroup"
+      ],
+      "optionalKeywords": [
+        "MovementType",
+        "Placement"
+      ],
+      "flags": [
+        "no_block",
+        "no_follow"
+      ],
+      "pythonHandler": {
+        "function": "move_group",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1488
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_group",
+      "pythonClass": "RemoveGroup",
+      "nickname": null,
+      "tag": "UNIT_GROUPS",
+      "keywords": [
+        "Group"
+      ],
+      "optionalKeywords": [
+        "RemoveType"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_group",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1518
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "give_item",
+      "pythonClass": "GiveItem",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item"
+      ],
+      "optionalKeywords": [
+        "Party"
+      ],
+      "flags": [
+        "no_banner",
+        "no_choice",
+        "force_give",
+        "droppable"
+      ],
+      "pythonHandler": {
+        "function": "give_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1540
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "equip_item",
+      "pythonClass": "EquipItem",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Item"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "recursive"
+      ],
+      "pythonHandler": {
+        "function": "equip_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1594
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_item",
+      "pythonClass": "RemoveItem",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item"
+      ],
+      "optionalKeywords": [
+        "Party"
+      ],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "remove_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1619
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "move_item",
+      "pythonClass": "MoveItem",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Giver",
+        "Receiver"
+      ],
+      "optionalKeywords": [
+        "Item"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "move_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1640
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "move_item_between_convoys",
+      "pythonClass": "MoveItemBetweenConvoys",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Item",
+        "Party1",
+        "Party2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "move_item_between_convoys",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1692
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_convoy",
+      "pythonClass": "OpenConvoy",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "GlobalUnit"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "include_other_units"
+      ],
+      "pythonHandler": {
+        "function": "open_convoy",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1714
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "set_item_uses",
+      "pythonClass": "SetItemUses",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "Uses"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "additive",
+        "recursive"
+      ],
+      "pythonHandler": {
+        "function": "set_item_uses",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1727
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "set_item_data",
+      "pythonClass": "SetItemData",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_item_data",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1749
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "set_item_droppable",
+      "pythonClass": "SetItemDroppable",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Item",
+        "Droppable"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_item_droppable",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1761
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "break_item",
+      "pythonClass": "BreakItem",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "break_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1771
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_item_name",
+      "pythonClass": "ChangeItemName",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "String"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_item_name",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1797
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_item_desc",
+      "pythonClass": "ChangeItemDesc",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "String"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_item_desc",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1804
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "add_item_to_multiitem",
+      "pythonClass": "AddItemToMultiitem",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "MultiItem",
+        "ChildItem"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_duplicate",
+        "equip"
+      ],
+      "pythonHandler": {
+        "function": "add_item_to_multiitem",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1811
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "remove_item_from_multiitem",
+      "pythonClass": "RemoveItemFromMultiitem",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "MultiItem"
+      ],
+      "optionalKeywords": [
+        "ChildItem"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_item_from_multiitem",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1854
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "add_item_component",
+      "pythonClass": "AddItemComponent",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "ItemComponent"
+      ],
+      "optionalKeywords": [
+        "Expression"
+      ],
+      "flags": [
+        "recursive"
+      ],
+      "pythonHandler": {
+        "function": "add_item_component",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1891
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "modify_item_component",
+      "pythonClass": "ModifyItemComponent",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "ItemComponent",
+        "Expression"
+      ],
+      "optionalKeywords": [
+        "ComponentProperty"
+      ],
+      "flags": [
+        "additive",
+        "recursive"
+      ],
+      "pythonHandler": {
+        "function": "modify_item_component",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1908
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "remove_item_component",
+      "pythonClass": "RemoveItemComponent",
+      "nickname": null,
+      "tag": "MODIFY_ITEM_PROPERTIES",
+      "keywords": [
+        "GlobalUnitOrConvoy",
+        "Item",
+        "ItemComponent"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "recursive"
+      ],
+      "pythonHandler": {
+        "function": "remove_item_component",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1922
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "add_skill_component",
+      "pythonClass": "AddSkillComponent",
+      "nickname": null,
+      "tag": "MODIFY_SKILL_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Skill",
+        "SkillComponent"
+      ],
+      "optionalKeywords": [
+        "Expression"
+      ],
+      "flags": [
+        "stack"
+      ],
+      "pythonHandler": {
+        "function": "add_skill_component",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1934
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "modify_skill_component",
+      "pythonClass": "ModifySkillComponent",
+      "nickname": null,
+      "tag": "MODIFY_SKILL_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Skill",
+        "SkillComponent",
+        "Expression"
+      ],
+      "optionalKeywords": [
+        "ComponentProperty"
+      ],
+      "flags": [
+        "additive",
+        "stack"
+      ],
+      "pythonHandler": {
+        "function": "modify_skill_component",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1955
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "remove_skill_component",
+      "pythonClass": "RemoveSkillComponent",
+      "nickname": null,
+      "tag": "MODIFY_SKILL_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Skill",
+        "SkillComponent"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "stack"
+      ],
+      "pythonHandler": {
+        "function": "remove_skill_component",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1974
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "give_money",
+      "pythonClass": "GiveMoney",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Money"
+      ],
+      "optionalKeywords": [
+        "Party"
+      ],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "give_money",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 1989
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "give_bexp",
+      "pythonClass": "GiveBexp",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Bexp"
+      ],
+      "optionalKeywords": [
+        "Party",
+        "String"
+      ],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "give_bexp",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2009
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "give_exp",
+      "pythonClass": "GiveExp",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Experience"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "silent"
+      ],
+      "pythonHandler": {
+        "function": "give_exp",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2029
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_exp",
+      "pythonClass": "SetExp",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Experience"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_exp",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2072
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "give_wexp",
+      "pythonClass": "GiveWexp",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "WeaponType",
+        "Integer"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "give_wexp",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2080
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_wexp",
+      "pythonClass": "SetWexp",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "WeaponType",
+        "WholeNumber"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "set_wexp",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2094
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "give_skill",
+      "pythonClass": "GiveSkill",
+      "nickname": "add_skill",
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Skill"
+      ],
+      "optionalKeywords": [
+        "Initiator"
+      ],
+      "flags": [
+        "no_banner",
+        "persistent"
+      ],
+      "pythonHandler": {
+        "function": "give_skill",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2108
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_skill",
+      "pythonClass": "RemoveSkill",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Skill"
+      ],
+      "optionalKeywords": [
+        "Count"
+      ],
+      "flags": [
+        "no_banner"
+      ],
+      "pythonHandler": {
+        "function": "remove_skill",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2137
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_skill_data",
+      "pythonClass": "SetSkillData",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Skill",
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_skill_data",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2158
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_ai",
+      "pythonClass": "ChangeAI",
+      "nickname": "set_ai",
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "AI"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_ai",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2169
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_roam_ai",
+      "pythonClass": "ChangeRoamAI",
+      "nickname": "set_roam_ai",
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "AI"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_roam_ai",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2180
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": true,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_ai_group",
+      "pythonClass": "ChangeAIGroup",
+      "nickname": "set_ai_group",
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "AIGroup"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_ai_group",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2191
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_party",
+      "pythonClass": "ChangeParty",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Party"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_party",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2198
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_faction",
+      "pythonClass": "ChangeFaction",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Faction"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_faction",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2209
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_team",
+      "pythonClass": "ChangeTeam",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Team"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_team",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2220
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_portrait",
+      "pythonClass": "ChangePortrait",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "PortraitNid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_portrait",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2231
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_unit_desc",
+      "pythonClass": "ChangeUnitDesc",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "String"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_unit_desc",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2242
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_affinity",
+      "pythonClass": "ChangeAffinity",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Affinity"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_affinity",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2249
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_stats",
+      "pythonClass": "ChangeStats",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "StatList"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "change_stats",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2256
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_stats",
+      "pythonClass": "SetStats",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "StatList"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "set_stats",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2266
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_growths",
+      "pythonClass": "ChangeGrowths",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "StatList"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_growths",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2281
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_growths",
+      "pythonClass": "SetGrowths",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "StatList"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_growths",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2289
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_stat_cap_modifiers",
+      "pythonClass": "ChangeStatCapModifiers",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "StatList"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_stat_cap_modifiers",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2302
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_stat_cap_modifiers",
+      "pythonClass": "SetStatCapModifiers",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "StatList"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_stat_cap_modifiers",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2310
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_unit_level",
+      "pythonClass": "SetUnitLevel",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Level"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_unit_level",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2323
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "autolevel_to",
+      "pythonClass": "AutolevelTo",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Level"
+      ],
+      "optionalKeywords": [
+        "GrowthMethod"
+      ],
+      "flags": [
+        "hidden"
+      ],
+      "pythonHandler": {
+        "function": "autolevel_to",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2333
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_mode_autolevels",
+      "pythonClass": "SetModeAutolevels",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Level"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "hidden",
+        "boss"
+      ],
+      "pythonHandler": {
+        "function": "set_mode_autolevels",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2367
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "set_mode_rng",
+      "pythonClass": "SetModeRNG",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "rng"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_mode_rng",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2382
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "promote",
+      "pythonClass": "Promote",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit"
+      ],
+      "optionalKeywords": [
+        "KlassList"
+      ],
+      "flags": [
+        "silent"
+      ],
+      "pythonHandler": {
+        "function": "promote",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2391
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_class",
+      "pythonClass": "ChangeClass",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit"
+      ],
+      "optionalKeywords": [
+        "KlassList"
+      ],
+      "flags": [
+        "silent"
+      ],
+      "pythonHandler": {
+        "function": "change_class",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2453
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_tag",
+      "pythonClass": "AddTag",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Tag"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_tag",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2517
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_tag",
+      "pythonClass": "RemoveTag",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "GlobalUnit",
+        "Tag"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_tag",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2525
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_talk",
+      "pythonClass": "AddTalk",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_talk",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2533
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_talk",
+      "pythonClass": "RemoveTalk",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_talk",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2544
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "hide_talk",
+      "pythonClass": "HideTalk",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "hide_talk",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2555
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "unhide_talk",
+      "pythonClass": "UnhideTalk",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unhide_talk",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2566
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_lore",
+      "pythonClass": "AddLore",
+      "nickname": "unlock_lore",
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Lore"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_lore",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2577
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_lore",
+      "pythonClass": "RemoveLore",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Lore"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_lore",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2580
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_base_convo",
+      "pythonClass": "AddBaseConvo",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_base_convo",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2583
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "ignore_base_convo",
+      "pythonClass": "IgnoreBaseConvo",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [
+        "Ignore"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "ignore_base_convo",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2586
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_base_convo",
+      "pythonClass": "RemoveBaseConvo",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_base_convo",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2590
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "increment_support_points",
+      "pythonClass": "IncrementSupportPoints",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit1",
+        "Unit2",
+        "SupportPoints"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "increment_support_points",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2594
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "unlock_support_rank",
+      "pythonClass": "UnlockSupportRank",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit1",
+        "Unit2",
+        "SupportRank"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unlock_support_rank",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2618
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "disable_support_rank",
+      "pythonClass": "DisableSupportRank",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "Unit1",
+        "Unit2",
+        "SupportRank"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "disable_support_rank",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2643
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_market_item",
+      "pythonClass": "AddMarketItem",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Item"
+      ],
+      "optionalKeywords": [
+        "Stock"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_market_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2668
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_market_item",
+      "pythonClass": "RemoveMarketItem",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [
+        "Item"
+      ],
+      "optionalKeywords": [
+        "Stock"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_market_item",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2680
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "clear_market_items",
+      "pythonClass": "ClearMarketItems",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "clear_market_items",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2691
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "dump_vars",
+      "pythonClass": "DumpVars",
+      "nickname": null,
+      "tag": "GAME_VARS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "dump_vars",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3996
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "add_region",
+      "pythonClass": "AddRegion",
+      "nickname": null,
+      "tag": "REGION",
+      "keywords": [
+        "Region",
+        "Position",
+        "Size",
+        "RegionType"
+      ],
+      "optionalKeywords": [
+        "String",
+        "TimeLeft",
+        "HideTime"
+      ],
+      "flags": [
+        "only_once",
+        "interrupt_move"
+      ],
+      "pythonHandler": {
+        "function": "add_region",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2694
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "region_condition",
+      "pythonClass": "RegionCondition",
+      "nickname": null,
+      "tag": "REGION",
+      "keywords": [
+        "Region",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "region_condition",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2721
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_region",
+      "pythonClass": "RemoveRegion",
+      "nickname": null,
+      "tag": "REGION",
+      "keywords": [
+        "Region"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_region",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2728
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_generics_from_region",
+      "pythonClass": "RemoveGenericsFromRegion",
+      "nickname": null,
+      "tag": "REGION",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_generics_from_region",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2735
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "show_layer",
+      "pythonClass": "ShowLayer",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "Layer"
+      ],
+      "optionalKeywords": [
+        "LayerTransition"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "show_layer",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2745
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "hide_layer",
+      "pythonClass": "HideLayer",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "Layer"
+      ],
+      "optionalKeywords": [
+        "LayerTransition"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "hide_layer",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2757
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_weather",
+      "pythonClass": "AddWeather",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "Weather"
+      ],
+      "optionalKeywords": [
+        "Position"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_weather",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2769
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_weather",
+      "pythonClass": "RemoveWeather",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "Weather"
+      ],
+      "optionalKeywords": [
+        "Position"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_weather",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2774
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_objective_simple",
+      "pythonClass": "ChangeObjectiveSimple",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "EvaluableString"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_objective_simple",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2779
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_objective_win",
+      "pythonClass": "ChangeObjectiveWin",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "EvaluableString"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_objective_win",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2782
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "change_objective_loss",
+      "pythonClass": "ChangeObjectiveLoss",
+      "nickname": null,
+      "tag": "LEVEL_VARS",
+      "keywords": [
+        "EvaluableString"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_objective_loss",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2785
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_position",
+      "pythonClass": "SetPosition",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Position"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_position",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2788
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "map_anim",
+      "pythonClass": "MapAnim",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "MapAnim",
+        "FloatPosition"
+      ],
+      "optionalKeywords": [
+        "Speed"
+      ],
+      "flags": [
+        "no_block",
+        "permanent",
+        "blend",
+        "multiply",
+        "overlay"
+      ],
+      "pythonHandler": {
+        "function": "map_anim",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2794
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "remove_map_anim",
+      "pythonClass": "RemoveMapAnim",
+      "nickname": null,
+      "tag": "TILEMAP",
+      "keywords": [
+        "MapAnim",
+        "FloatPosition"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "overlay"
+      ],
+      "pythonHandler": {
+        "function": "remove_map_anim",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2822
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "add_unit_map_anim",
+      "pythonClass": "AddUnitMapAnim",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "MapAnim",
+        "Unit"
+      ],
+      "optionalKeywords": [
+        "Speed"
+      ],
+      "flags": [
+        "no_block",
+        "permanent",
+        "blend"
+      ],
+      "pythonHandler": {
+        "function": "add_unit_map_anim",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2830
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "remove_unit_map_anim",
+      "pythonClass": "RemoveUnitMapAnim",
+      "nickname": null,
+      "tag": "MODIFY_UNIT_PROPERTIES",
+      "keywords": [
+        "MapAnim",
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_unit_map_anim",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2857
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "merge_parties",
+      "pythonClass": "MergeParties",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Party1",
+        "Party2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "merge_parties",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2864
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "arrange_formation",
+      "pythonClass": "ArrangeFormation",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "arrange_formation",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2888
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "prep",
+      "pythonClass": "Prep",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "PickUnitsEnabled",
+        "Music",
+        "OtherOptions",
+        "OtherOptionsEnabled",
+        "OtherOptionsOnSelect",
+        "OtherOptionsDescription"
+      ],
+      "flags": [
+        "gba",
+        "no_chap_disp",
+        "no_obj_disp"
+      ],
+      "pythonHandler": {
+        "function": "prep",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2913
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "base",
+      "pythonClass": "Base",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Background"
+      ],
+      "optionalKeywords": [
+        "Music",
+        "OtherOptions",
+        "OtherOptionsEnabled",
+        "OtherOptionsOnSelect"
+      ],
+      "flags": [
+        "show_map"
+      ],
+      "pythonHandler": {
+        "function": "base",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 2962
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_custom_options",
+      "pythonClass": "SetCustomOptions",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "CustomOptions"
+      ],
+      "optionalKeywords": [
+        "CustomOptionsEnabled",
+        "CustomOptionsDesc",
+        "CustomOptionsOnSelect"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "set_custom_options",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3005
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "shop",
+      "pythonClass": "Shop",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit",
+        "ItemList"
+      ],
+      "optionalKeywords": [
+        "ShopFlavor",
+        "StockList",
+        "ShopId"
+      ],
+      "flags": [
+        "preview"
+      ],
+      "pythonHandler": {
+        "function": "shop",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3038
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "choice",
+      "pythonClass": "Choice",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Nid",
+        "Title",
+        "Choices"
+      ],
+      "optionalKeywords": [
+        "RowWidth",
+        "Orientation",
+        "Alignment",
+        "BG",
+        "EventNid",
+        "EntryType",
+        "Dimensions",
+        "TextAlign"
+      ],
+      "flags": [
+        "persist",
+        "expression",
+        "no_bg",
+        "no_cursor",
+        "arrows",
+        "no_arrows",
+        "scroll_bar",
+        "no_scroll_bar",
+        "backable"
+      ],
+      "pythonHandler": {
+        "function": "choice",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3077
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "unchoice",
+      "pythonClass": "Unchoice",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unchoice",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3133
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "textbox",
+      "pythonClass": "Textbox",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "NID",
+        "Text"
+      ],
+      "optionalKeywords": [
+        "BoxPosition",
+        "Width",
+        "NumLines",
+        "StyleNid",
+        "TextSpeed",
+        "FontColor",
+        "FontType",
+        "BG"
+      ],
+      "flags": [
+        "expression"
+      ],
+      "pythonHandler": {
+        "function": "textbox",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3144
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "table",
+      "pythonClass": "Table",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Nid",
+        "TableData"
+      ],
+      "optionalKeywords": [
+        "Title",
+        "Dimensions",
+        "RowWidth",
+        "Alignment",
+        "BG",
+        "EntryType",
+        "TextAlign"
+      ],
+      "flags": [
+        "expression",
+        "no_bg"
+      ],
+      "pythonHandler": {
+        "function": "table",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3251
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "remove_table",
+      "pythonClass": "RemoveTable",
+      "nickname": "rmtable",
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "remove_table",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3273
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": false,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "text_entry",
+      "pythonClass": "TextEntry",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Nid",
+        "String"
+      ],
+      "optionalKeywords": [
+        "CharacterLimit",
+        "IllegalCharacterList",
+        "DefaultString",
+        "MinimumCharacterLimit"
+      ],
+      "flags": [
+        "force_entry"
+      ],
+      "pythonHandler": {
+        "function": "text_entry",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3276
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "chapter_title",
+      "pythonClass": "ChapterTitle",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Music",
+        "String"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "chapter_title",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3298
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "draw_overlay_sprite",
+      "pythonClass": "DrawOverlaySprite",
+      "nickname": "draw_overlay",
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Nid",
+        "SpriteID"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "draw_overlay_sprite",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3308
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": false,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "remove_overlay_sprite",
+      "pythonClass": "RemoveOverlaySprite",
+      "nickname": "delete_overlay",
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [
+        "Animation",
+        "Speed"
+      ],
+      "flags": [
+        "no_block",
+        "foreground"
+      ],
+      "pythonHandler": {
+        "function": "remove_overlay_sprite",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3361
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": false,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "alert",
+      "pythonClass": "Alert",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "String"
+      ],
+      "optionalKeywords": [
+        "Item",
+        "Skill",
+        "Icon"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "alert",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3408
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": true,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "victory_screen",
+      "pythonClass": "VictoryScreen",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Sound"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "victory_screen",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3422
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "records_screen",
+      "pythonClass": "RecordsScreen",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "records_screen",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3427
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_library",
+      "pythonClass": "OpenLibrary",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "open_library",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3431
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_guide",
+      "pythonClass": "OpenGuide",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "open_guide",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3444
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_credits",
+      "pythonClass": "OpenCredits",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Panorama"
+      ],
+      "flags": [
+        "immediate",
+        "scroll",
+        "show_map"
+      ],
+      "pythonHandler": {
+        "function": "open_credits",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3457
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_unit_management",
+      "pythonClass": "OpenUnitManagement",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Panorama"
+      ],
+      "flags": [
+        "scroll",
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "open_unit_management",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3481
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_trade",
+      "pythonClass": "OpenTrade",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "open_trade",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3496
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_bexp_menu",
+      "pythonClass": "OpenBexpMenu",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Panorama",
+        "Music"
+      ],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "open_bexp_menu",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3517
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "show_minimap",
+      "pythonClass": "ShowMinimap",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "show_minimap",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3532
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "open_achievements",
+      "pythonClass": "OpenAchievements",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Background"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "open_achievements",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3545
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "soundroom",
+      "pythonClass": "Soundroom",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [
+        "Panorama"
+      ],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": {
+        "function": "soundroom",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3554
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "location_card",
+      "pythonClass": "LocationCard",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "String"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "location_card",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3566
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "credits",
+      "pythonClass": "Credits",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "Role",
+        "Credits"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "wait",
+        "center",
+        "no_split"
+      ],
+      "pythonHandler": {
+        "function": "credits",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3573
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "ending",
+      "pythonClass": "Ending",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "Portrait",
+        "Title",
+        "Text"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "wait_for_input"
+      ],
+      "pythonHandler": {
+        "function": "ending",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3587
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "paired_ending",
+      "pythonClass": "PairedEnding",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "LeftPortrait",
+        "RightPortrait",
+        "LeftTitle",
+        "RightTitle",
+        "Text"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "wait_for_input"
+      ],
+      "pythonHandler": {
+        "function": "paired_ending",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3607
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "pop_dialog",
+      "pythonClass": "PopDialog",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "pop_dialog",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3644
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-dispatch"
+    },
+    {
+      "nid": "unlock",
+      "pythonClass": "Unlock",
+      "nickname": null,
+      "tag": "REGION",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unlock",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3648
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "find_unlock",
+      "pythonClass": "FindUnlock",
+      "nickname": null,
+      "tag": "HIDDEN",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "find_unlock",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3655
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "spend_unlock",
+      "pythonClass": "SpendUnlock",
+      "nickname": null,
+      "tag": "HIDDEN",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "spend_unlock",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3689
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "trigger_script",
+      "pythonClass": "TriggerScript",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Event"
+      ],
+      "optionalKeywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "trigger_script",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3722
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "trigger_script_with_args",
+      "pythonClass": "TriggerScriptWithArgs",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Event"
+      ],
+      "optionalKeywords": [
+        "ArgList"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "trigger_script_with_args",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3741
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "loop_units",
+      "pythonClass": "LoopUnits",
+      "nickname": null,
+      "tag": "HIDDEN",
+      "keywords": [
+        "Expression",
+        "Event"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "loop_units",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3755
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_roaming",
+      "pythonClass": "ChangeRoaming",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "FreeRoamEnabled"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_roaming",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3774
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_roaming_unit",
+      "pythonClass": "ChangeRoamingUnit",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_roaming_unit",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3778
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "clean_up_roaming",
+      "pythonClass": "CleanUpRoaming",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "clean_up_roaming",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3785
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "add_to_initiative",
+      "pythonClass": "AddToInitiative",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit",
+        "Integer"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "add_to_initiative",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3795
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "move_in_initiative",
+      "pythonClass": "MoveInInitiative",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit",
+        "Integer"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "move_in_initiative",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3807
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "pair_up",
+      "pythonClass": "PairUp",
+      "nickname": "rescue",
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit1",
+        "Unit2"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "pair_up",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3816
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": false,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "separate",
+      "pythonClass": "Separate",
+      "nickname": "drop",
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Unit"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "separate",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3838
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": false,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "overworld_cinematic",
+      "pythonClass": "OverworldCinematic",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [],
+      "optionalKeywords": [
+        "OverworldNID"
+      ],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_overworld_position",
+      "pythonClass": "SetOverworldPosition",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "OverworldEntity",
+        "OverworldLocation"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_animate"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "overworld_move_unit",
+      "pythonClass": "OverworldMoveUnit",
+      "nickname": "omove",
+      "tag": "OVERWORLD",
+      "keywords": [
+        "OverworldEntity"
+      ],
+      "optionalKeywords": [
+        "OverworldLocation",
+        "Speed",
+        "PointList"
+      ],
+      "flags": [
+        "no_block",
+        "no_follow",
+        "disable_after",
+        "no_sound"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": true,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "reveal_overworld_node",
+      "pythonClass": "RevealOverworldNode",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "OverworldNodeNid"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "reveal_overworld_road",
+      "pythonClass": "RevealOverworldRoad",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "Node1",
+        "Node2"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "immediate"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "create_overworld_entity",
+      "pythonClass": "CreateOverworldEntity",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [
+        "Unit",
+        "Team"
+      ],
+      "flags": [
+        "delete"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "disable_overworld_entity",
+      "pythonClass": "DisableOverworldEntity",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "no_animate"
+      ],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "toggle_narration_mode",
+      "pythonClass": "ToggleNarrationMode",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [
+        "Direction"
+      ],
+      "optionalKeywords": [
+        "Speed"
+      ],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "hide_combat_ui",
+      "pythonClass": "HideCombatUI",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "hide_combat_ui",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3954
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "show_combat_ui",
+      "pythonClass": "ShowCombatUI",
+      "nickname": null,
+      "tag": "DIALOGUE_TEXT",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "show_combat_ui",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3957
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "stub-hint"
+    },
+    {
+      "nid": "set_overworld_menu_option_enabled",
+      "pythonClass": "SetOverworldMenuOptionEnabled",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "OverworldNID",
+        "OverworldNodeNid",
+        "OverworldNodeMenuOption",
+        "Setting"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "set_overworld_menu_option_visible",
+      "pythonClass": "SetOverworldMenuOptionVisible",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "OverworldNID",
+        "OverworldNodeNID",
+        "OverworldNodeMenuOption",
+        "Setting"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "enter_level_from_overworld",
+      "pythonClass": "EnterLevelFromOverworld",
+      "nickname": null,
+      "tag": "OVERWORLD",
+      "keywords": [
+        "LevelNid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": null,
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "create_achievement",
+      "pythonClass": "CreateAchievement",
+      "nickname": null,
+      "tag": "ACHIEVEMENT",
+      "keywords": [
+        "Nid",
+        "Name",
+        "Description"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "completed",
+        "hidden"
+      ],
+      "pythonHandler": {
+        "function": "create_achievement",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3852
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "update_achievement",
+      "pythonClass": "UpdateAchievement",
+      "nickname": null,
+      "tag": "ACHIEVEMENT",
+      "keywords": [
+        "Achievement",
+        "Name",
+        "Description"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "hidden"
+      ],
+      "pythonHandler": {
+        "function": "update_achievement",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3859
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "complete_achievement",
+      "pythonClass": "CompleteAchievement",
+      "nickname": null,
+      "tag": "ACHIEVEMENT",
+      "keywords": [
+        "Achievement",
+        "Completed"
+      ],
+      "optionalKeywords": [],
+      "flags": [
+        "banner"
+      ],
+      "pythonHandler": {
+        "function": "complete_achievement",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3865
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "clear_achievements",
+      "pythonClass": "ClearAchievements",
+      "nickname": null,
+      "tag": "ACHIEVEMENT",
+      "keywords": [],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "clear_achievements",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3921
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "create_record",
+      "pythonClass": "CreateRecord",
+      "nickname": null,
+      "tag": "PERSISTENT_RECORDS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "create_record",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3924
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "update_record",
+      "pythonClass": "UpdateRecord",
+      "nickname": null,
+      "tag": "PERSISTENT_RECORDS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "update_record",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3931
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "replace_record",
+      "pythonClass": "ReplaceRecord",
+      "nickname": null,
+      "tag": "PERSISTENT_RECORDS",
+      "keywords": [
+        "Nid",
+        "Expression"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "replace_record",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3938
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "delete_record",
+      "pythonClass": "DeleteRecord",
+      "nickname": null,
+      "tag": "PERSISTENT_RECORDS",
+      "keywords": [
+        "Nid"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "delete_record",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3945
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "unlock_difficulty",
+      "pythonClass": "UnlockDifficulty",
+      "nickname": null,
+      "tag": "PERSISTENT_RECORDS",
+      "keywords": [
+        "DifficultyMode"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unlock_difficulty",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3948
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "unlock_song",
+      "pythonClass": "UnlockSong",
+      "nickname": null,
+      "tag": "PERSISTENT_RECORDS",
+      "keywords": [
+        "Music"
+      ],
+      "optionalKeywords": [],
+      "flags": [],
+      "pythonHandler": {
+        "function": "unlock_song",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3951
+      },
+      "parserRecognized": true,
+      "nicknameRecognized": null,
+      "dispatcherCase": true,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "dispatched-unverified"
+    },
+    {
+      "nid": "party_transfer",
+      "pythonClass": "PartyTransfer",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Party1",
+        "Party2"
+      ],
+      "optionalKeywords": [
+        "FixedUnits",
+        "Party1Name",
+        "Party2Name",
+        "Party1Limit",
+        "Party2Limit"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "party_transfer",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3960
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    },
+    {
+      "nid": "change_team_palette",
+      "pythonClass": "ChangeTeamPalette",
+      "nickname": null,
+      "tag": "MISCELLANEOUS",
+      "keywords": [
+        "Team"
+      ],
+      "optionalKeywords": [
+        "MapSpritePalette",
+        "CombatVariantPalette",
+        "CombatColor"
+      ],
+      "flags": [],
+      "pythonHandler": {
+        "function": "change_team_palette",
+        "source": "lt-maker/app/events/event_functions.py",
+        "line": 3985
+      },
+      "parserRecognized": false,
+      "nicknameRecognized": null,
+      "dispatcherCase": false,
+      "webBlocking": false,
+      "lexicalTestMention": false,
+      "status": "missing-parser"
+    }
+  ]
+}

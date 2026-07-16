@@ -47,12 +47,12 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
-| Event command NIDs | 255 | 196 parser names; 171 matching case labels | Partial |
+| Event command NIDs | 255 | 195 recognized; 184 matching case labels | Partial |
 | Item component NIDs / hook exports | 201 | 25 hook exports | Unknown; mapping audit required |
 | Skill component NIDs / hook exports | 241 | 41 hook exports | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 88 files, ~47,400 lines | Builds |
-| Browser regression suite | n/a | 58 Playwright tests | 58/58 passing |
+| TypeScript runtime | n/a | 88 files, 47,729 lines | Builds |
+| Browser regression suite | n/a | 59 Playwright tests | 59/59 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,22 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Generated command manifest and reversible unit-mutation slice:**
+  - `npm run audit:parity:write` now generates JSON and Markdown manifests for all
+    255 Python event-command NIDs, including Python class/tag/arguments/flags,
+    nickname aliases, parser and dispatcher presence, web blocking classification,
+    lexical test mentions, and structural status.
+  - `npm run audit:parity` checks generated files for drift and enforces monotonic
+    parser/dispatcher minimums; a GitHub Actions workflow runs the guard on pushes
+    and pull requests.
+  - Added persistent unit variant, faction, generic identity, description, notes,
+    custom fields, and stat-cap modifiers, with backward-compatible save defaults.
+  - Implemented reversible actions and event dispatch for unit name/variant/AI group,
+    faction/portrait/description/affinity, growth and cap modifiers, custom fields,
+    and categorized unit notes. Generic faction changes also update display text.
+  - Added turnwheel undo/redo and save/load coverage for the complete slice; full
+    harness result: **59/59 passing**.
 
 - **Autolevel and WEXP rank-up parity slice:**
   - Added `src/engine/leveling.ts`, a faithful autolevel implementation for
@@ -480,8 +496,8 @@ passes; record newly discovered work here immediately.
 
 - [x] Define runtime parity scope, status vocabulary, and completion gate
 - [x] Add a reproducible source inventory (`npm run audit:parity`)
-- [ ] Emit machine-readable audit JSON and fail CI on accidental coverage regressions
-- [ ] Build a command manifest mapping all 255 Python NIDs to web status, flags,
+- [x] Emit machine-readable audit JSON and fail CI on accidental coverage regressions
+- [x] Build a command manifest mapping all 255 Python NIDs to web status, flags,
   blocking semantics, aliases, source function, and regression test
 - [ ] Build item/skill component manifests mapping component NIDs to generated hooks
 - [ ] Inventory Python triggers, query functions, equations, and save fields
@@ -496,10 +512,12 @@ passes; record newly discovered work here immediately.
 - [x] Implement WEXP rank-up alerts and `unit_weapon_rank_up` triggers
 - [x] Implement `autolevel_to`, including fixed/random/dynamic methods, hidden mode,
   difficulty growth bonuses, level-up triggers, and learned skills
+- [x] Implement reversible unit metadata, faction, growth, stat-cap, custom-field,
+  and categorized-note event mutations with save/load persistence
 - [ ] Implement deterministic selection for the special generic `Feat` learned-skill entry
 - [ ] Implement parser-recognized commands with no dispatcher case (currently includes
-  `change_faction`, growth/portrait changes, item movement, dialog variants, and others)
-- [ ] Implement the 69 Python commands still absent from the parser, prioritized by
+  item movement, dialog variants, special music, save deletion, and others)
+- [ ] Implement the 60 Python commands still absent from the parser, prioritized by
   project usage: unit/item mutation, party transfer/pair-up, scripts, overlays, and UI
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
@@ -589,6 +607,6 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Generate the event-command manifest from Python metadata and web dispatch.
-2. Convert parser-recognized no-op/missing unit mutation commands into reversible actions.
+1. Generate item and skill component manifests with explicit hook/status mappings.
+2. Port the next coherent event batch: item identity/data/uses/droppable mutations.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
