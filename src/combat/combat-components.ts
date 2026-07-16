@@ -131,6 +131,21 @@ function grantGroupWexp(
   return { amount: unit.wexp[weaponType] - oldWexp, rankUp };
 }
 
+/** Grant WEXP to an attack-stance participant using the partner's combat item. */
+export function grantPartnerCombatWexp(
+  partner: UnitObject,
+  item: ItemObject,
+  mainTarget: UnitObject | null,
+  strikes: CombatStrike[],
+  partnerDead: boolean,
+  deadTargets: Set<UnitObject>,
+  db: Database,
+): WeaponRankUp | null {
+  return grantGroupWexp(
+    partner, item, mainTarget, strikes, partnerDead, deadTargets, db,
+  ).rankUp;
+}
+
 function internalLevel(unit: UnitObject, db: Database): number {
   let klass = db.classes.get(unit.klass);
   if (!klass) return unit.level;

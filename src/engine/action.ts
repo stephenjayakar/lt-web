@@ -867,6 +867,26 @@ export class HasAttackedAction extends Action {
   }
 }
 
+/** Mark a unit as having traded/given this turn. */
+export class HasTradedAction extends Action {
+  private unit: UnitObject;
+  private previous: boolean = false;
+
+  constructor(unit: UnitObject) {
+    super();
+    this.unit = unit;
+  }
+
+  execute(): void {
+    this.previous = this.unit.hasTraded;
+    this.unit.hasTraded = true;
+  }
+
+  reverse(): void {
+    this.unit.hasTraded = this.previous;
+  }
+}
+
 /**
  * WaitAction - Mark a unit as finished for the turn.
  */
@@ -1308,6 +1328,227 @@ export class PairUpAction extends Action {
     if (this.oldPos) this.board.setUnit(this.oldPos[0], this.oldPos[1], this.unit);
     restorePairState(this.unit, this.oldUnit);
     restorePairState(this.leader, this.oldLeader);
+  }
+}
+
+/** Swap the visible leader and off-board follower of a guard-stance pair. */
+export class SwitchPairUpAction extends Action {
+  private leader: UnitObject;
+  private follower: UnitObject;
+  private board: GameBoard;
+  private db?: Database;
+  private oldLeader: PairState;
+  private oldFollower: PairState;
+  private leaderPos: [number, number] | null;
+  private followerPos: [number, number] | null;
+  private removedLeaderSkills: IndexedSkill[] = [];
+  private addedFollowerSkills: SkillObject[] = [];
+  private initialized = false;
+
+  constructor(leader: UnitObject, follower: UnitObject, board: GameBoard, db?: Database) {
+    super();
+    this.leader = leader;
+    this.follower = follower;
+    this.board = board;
+    this.db = db;
+    this.oldLeader = pairState(leader);
+    this.oldFollower = pairState(follower);
+    this.leaderPos = leader.position ? [...leader.position] as [number, number] : null;
+    this.followerPos = follower.position ? [...follower.position] as [number, number] : null;
+  }
+
+  execute(): void {
+    if (!this.initialized) {
+      const indices = new Map(this.leader.skills.map((skill, index) => [skill, index]));
+      this.removedLeaderSkills = onSeparate(this.follower, this.leader)
+        .map((skill) => ({ skill, index: indices.get(skill) ?? this.leader.skills.length }));
+      this.addedFollowerSkills = onPairup(this.leader, this.follower, makeSkillForAction);
+      this.initialized = true;
+    } else {
+      for (const { skill } of this.removedLeaderSkills) {
+        const index = this.leader.skills.indexOf(skill);
+        if (index >= 0) this.leader.skills.splice(index, 1);
+      }
+      for (const skill of this.addedFollowerSkills) {
+        if (!this.follower.skills.includes(skill)) this.follower.skills.push(skill);
+      }
+    }
+
+    this.leader.traveler = null;
+    this.leader.rescuing = null;
+    this.leader.rescuedBy = this.follower;
+    this.leader.leadUnit = false;
+    this.follower.traveler = this.leader.nid;
+    this.follower.rescuing = this.leader;
+    this.follower.rescuedBy = null;
+    this.follower.leadUnit = true;
+    this.follower.setGuardGauge(this.oldLeader.gauge, getMaxGuardGauge(this.follower, this.db));
+    this.leader.setGuardGauge(0, getMaxGuardGauge(this.leader, this.db));
+
+    if (this.leader.position) this.board.removeUnit(this.leader);
+    if (this.leaderPos) this.board.setUnit(this.leaderPos[0], this.leaderPos[1], this.follower);
+    if (!this.oldFollower.leadUnit) this.follower.hasMoved = true;
+  }
+
+  reverse(): void {
+    for (const skill of this.addedFollowerSkills) {
+      const index = this.follower.skills.indexOf(skill);
+      if (index >= 0) this.follower.skills.splice(index, 1);
+    }
+    restoreIndexedSkills(this.leader, this.removedLeaderSkills);
+    if (this.follower.position) this.board.removeUnit(this.follower);
+    restorePairState(this.leader, this.oldLeader);
+    restorePairState(this.follower, this.oldFollower);
+    if (this.leaderPos) this.board.setUnit(this.leaderPos[0], this.leaderPos[1], this.leader);
+    if (this.followerPos) this.board.setUnit(this.followerPos[0], this.followerPos[1], this.follower);
+  }
+}
+
+/** Exchange one or two travelers between adjacent visible leaders. */
+export class TransferPairUpAction extends Action {
+  private unit: UnitObject;
+  private other: UnitObject;
+  private db?: Database;
+  private unitFollower: UnitObject | null;
+  private otherFollower: UnitObject | null;
+  private oldUnit: PairState;
+  private oldOther: PairState;
+  private oldUnitFollower: PairState | null;
+  private oldOtherFollower: PairState | null;
+  private removedUnitSkills: IndexedSkill[] = [];
+  private removedOtherSkills: IndexedSkill[] = [];
+  private addedUnitSkills: SkillObject[] = [];
+  private addedOtherSkills: SkillObject[] = [];
+  private initialized = false;
+
+  constructor(unit: UnitObject, other: UnitObject, db?: Database) {
+    super();
+    this.unit = unit;
+    this.other = other;
+    this.db = db;
+    const game = _getGame?.();
+    this.unitFollower = unit.rescuing ?? (unit.traveler ? game?.getUnit?.(unit.traveler) ?? null : null);
+    this.otherFollower = other.rescuing ?? (other.traveler ? game?.getUnit?.(other.traveler) ?? null : null);
+    this.oldUnit = pairState(unit);
+    this.oldOther = pairState(other);
+    this.oldUnitFollower = this.unitFollower ? pairState(this.unitFollower) : null;
+    this.oldOtherFollower = this.otherFollower ? pairState(this.otherFollower) : null;
+  }
+
+  execute(): void {
+    if (!this.initialized) {
+      if (this.unitFollower) {
+        const indices = new Map(this.unit.skills.map((skill, index) => [skill, index]));
+        this.removedUnitSkills = onSeparate(this.unitFollower, this.unit)
+          .map((skill) => ({ skill, index: indices.get(skill) ?? this.unit.skills.length }));
+      }
+      if (this.otherFollower) {
+        const indices = new Map(this.other.skills.map((skill, index) => [skill, index]));
+        this.removedOtherSkills = onSeparate(this.otherFollower, this.other)
+          .map((skill) => ({ skill, index: indices.get(skill) ?? this.other.skills.length }));
+      }
+      if (this.otherFollower) {
+        this.addedUnitSkills = onPairup(this.otherFollower, this.unit, makeSkillForAction);
+      }
+      if (this.unitFollower) {
+        this.addedOtherSkills = onPairup(this.unitFollower, this.other, makeSkillForAction);
+      }
+      this.initialized = true;
+    } else {
+      for (const { skill } of [...this.removedUnitSkills, ...this.removedOtherSkills]) {
+        const owner = this.removedUnitSkills.some((entry) => entry.skill === skill) ? this.unit : this.other;
+        const index = owner.skills.indexOf(skill);
+        if (index >= 0) owner.skills.splice(index, 1);
+      }
+      for (const skill of this.addedUnitSkills) if (!this.unit.skills.includes(skill)) this.unit.skills.push(skill);
+      for (const skill of this.addedOtherSkills) if (!this.other.skills.includes(skill)) this.other.skills.push(skill);
+    }
+
+    if (this.oldUnit.traveler && this.oldOther.traveler) {
+      const merged = Math.floor(this.oldUnit.gauge / 2) + Math.floor(this.oldOther.gauge / 2);
+      this.unit.setGuardGauge(merged, getMaxGuardGauge(this.unit, this.db));
+      this.other.setGuardGauge(merged, getMaxGuardGauge(this.other, this.db));
+    } else if (this.oldUnit.traveler) {
+      const value = Math.floor(this.oldUnit.gauge / 2);
+      this.unit.setGuardGauge(value, getMaxGuardGauge(this.unit, this.db));
+      this.other.setGuardGauge(this.oldOther.gauge + value, getMaxGuardGauge(this.other, this.db));
+    } else if (this.oldOther.traveler) {
+      const value = Math.floor(this.oldOther.gauge / 2);
+      this.other.setGuardGauge(value, getMaxGuardGauge(this.other, this.db));
+      this.unit.setGuardGauge(this.oldUnit.gauge + value, getMaxGuardGauge(this.unit, this.db));
+    }
+
+    this.unit.traveler = this.oldOther.traveler;
+    this.unit.rescuing = this.otherFollower;
+    this.unit.leadUnit = !!this.otherFollower;
+    this.other.traveler = this.oldUnit.traveler;
+    this.other.rescuing = this.unitFollower;
+    this.other.leadUnit = !!this.unitFollower;
+    if (this.unitFollower) {
+      this.unitFollower.rescuedBy = this.other;
+      this.unitFollower.leadUnit = false;
+    }
+    if (this.otherFollower) {
+      this.otherFollower.rescuedBy = this.unit;
+      this.otherFollower.leadUnit = false;
+    }
+    this.unit.hasGiven = true;
+  }
+
+  reverse(): void {
+    for (const skill of this.addedUnitSkills) {
+      const index = this.unit.skills.indexOf(skill);
+      if (index >= 0) this.unit.skills.splice(index, 1);
+    }
+    for (const skill of this.addedOtherSkills) {
+      const index = this.other.skills.indexOf(skill);
+      if (index >= 0) this.other.skills.splice(index, 1);
+    }
+    restoreIndexedSkills(this.unit, this.removedUnitSkills);
+    restoreIndexedSkills(this.other, this.removedOtherSkills);
+    restorePairState(this.unit, this.oldUnit);
+    restorePairState(this.other, this.oldOther);
+    if (this.unitFollower && this.oldUnitFollower) restorePairState(this.unitFollower, this.oldUnitFollower);
+    if (this.otherFollower && this.oldOtherFollower) restorePairState(this.otherFollower, this.oldOtherFollower);
+  }
+}
+
+/** Player-turn guard-pair normalization and idle gauge decay. */
+export class GuardPairUpkeepAction extends Action {
+  private leader: UnitObject;
+  private follower: UnitObject;
+  private db?: Database;
+  private oldLeader: PairState;
+  private oldFollower: PairState;
+
+  constructor(leader: UnitObject, follower: UnitObject, db?: Database) {
+    super();
+    this.leader = leader;
+    this.follower = follower;
+    this.db = db;
+    this.oldLeader = pairState(leader);
+    this.oldFollower = pairState(follower);
+  }
+
+  execute(): void {
+    this.leader.leadUnit = true;
+    this.follower.leadUnit = false;
+    if (!this.leader.builtGuard) {
+      const expression = this.db?.getEquation('GAUGE_INCREASE');
+      const amount = expression
+        ? Math.trunc(evaluateEquation(expression, this.leader, { db: this.db }))
+        : 2;
+      this.leader.setGuardGauge(
+        this.leader.getGuardGauge() - amount,
+        getMaxGuardGauge(this.leader, this.db),
+      );
+    }
+    this.leader.builtGuard = false;
+  }
+
+  reverse(): void {
+    restorePairState(this.leader, this.oldLeader);
+    restorePairState(this.follower, this.oldFollower);
   }
 }
 

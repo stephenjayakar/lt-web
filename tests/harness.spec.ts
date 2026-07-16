@@ -1077,6 +1077,507 @@ test.describe('Event command parity', () => {
     expect(result!.separateRedone).toEqual(result!.separated);
   });
 
+  test('Pair Up Switch and Transfer preserve leaders, gauges, sourced skills, saves, and turnwheel', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const {
+        PairUpAction,
+        SwitchPairUpAction,
+      } = await import('/src/engine/action.ts');
+      const { MenuState, TransferState } = await import('/src/engine/states/game-states.ts');
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const template = game.db.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      const weaponPrefab = game.db.items.get('Iron_Sword') ?? game.db.items.get('Iron Sword');
+      if (!template || !klass || !weaponPrefab) return null;
+
+      const sourcePrefab = {
+        nid: '_SwitchTransferSource', name: 'Pair Source', desc: '', icon_nid: '', icon_index: [0, 0] as [number, number],
+        components: [['pairup_bonus', '_SwitchTransferChild']] as [string, any][],
+      };
+      const childPrefab = {
+        nid: '_SwitchTransferChild', name: 'Pair Child', desc: '', icon_nid: '', icon_index: [0, 0] as [number, number],
+        components: [['damage', 1]] as [string, any][],
+      };
+      game.db.skills.set(sourcePrefab.nid, sourcePrefab);
+      game.db.skills.set(childPrefab.nid, childPrefab);
+      const makeUnit = (nid: string) => {
+        const unit = new UnitObject({ ...template, nid, name: nid, starting_items: [] }, klass);
+        unit.team = 'player';
+        unit.items = [];
+        return unit;
+      };
+      // Importing the concrete item constructor is more reliable than the
+      // runtime map's first value when a clean fixture has no items yet.
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const equip = (unit: any) => {
+        const item = new ItemObject(weaponPrefab);
+        item.owner = unit;
+        unit.items = [item];
+      };
+      const leaderA = makeUnit('_SwitchLeaderA');
+      const followerA = makeUnit('_SwitchFollowerA');
+      const leaderB = makeUnit('_SwitchLeaderB');
+      const followerB = makeUnit('_SwitchFollowerB');
+      for (const unit of [leaderA, followerA, leaderB, followerB]) equip(unit);
+      followerA.skills.push(new SkillObject(sourcePrefab));
+      followerB.skills.push(new SkillObject(sourcePrefab));
+
+      const movementGroup = klass.movement_group ?? 'Infantry';
+      let positions: [[number, number], [number, number]] | null = null;
+      for (let y = 0; y < game.board.height && !positions; y++) {
+        for (let x = 0; x + 1 < game.board.width; x++) {
+          if (!game.board.isOccupied(x, y) && !game.board.isOccupied(x + 1, y) &&
+              game.board.getMovementCost(x, y, movementGroup, game.db) < 99 &&
+              game.board.getMovementCost(x + 1, y, movementGroup, game.db) < 99) {
+            positions = [[x, y], [x + 1, y]];
+            break;
+          }
+        }
+      }
+      if (!positions) return null;
+      for (const unit of [leaderA, followerA, leaderB, followerB]) game.units.set(unit.nid, unit);
+      game.board.setUnit(...positions[0], leaderA);
+      game.board.setUnit(...positions[1], leaderB);
+      leaderA.setGuardGauge(8, 99);
+      followerA.setGuardGauge(2, 99);
+      leaderB.setGuardGauge(6, 99);
+      followerB.setGuardGauge(2, 99);
+      const oldConstants = ['pairup', 'attack_stance_only', 'player_pairup_only'].map((nid) =>
+        [nid, game.db.constants.has(nid), game.db.constants.get(nid)] as [string, boolean, any]);
+      game.db.constants.set('pairup', true);
+      game.db.constants.set('attack_stance_only', false);
+      game.db.constants.set('player_pairup_only', false);
+
+      game.actionLog.doAction(new PairUpAction(followerA, leaderA, game.board, game.db));
+      game.actionLog.doAction(new PairUpAction(followerB, leaderB, game.board, game.db));
+      const pairedIndex = game.actionLog.actionIndex;
+      const menuLabels = (unit: any) => {
+        const oldSelected = game.selectedUnit;
+        game.selectedUnit = unit;
+        const state = new MenuState();
+        state.begin();
+        const labels = ((state as any).menu.options as any[]).map((option) => option.label);
+        game.selectedUnit = oldSelected;
+        return labels;
+      };
+      const snapshot = () => ({
+        selected: game.selectedUnit?.nid ?? null,
+        board: [game.board.getUnit(...positions![0])?.nid ?? null, game.board.getUnit(...positions![1])?.nid ?? null],
+        leaders: [leaderA.traveler, leaderB.traveler],
+        rescuing: [leaderA.rescuing?.nid ?? null, leaderB.rescuing?.nid ?? null],
+        followers: [followerA.rescuedBy?.nid ?? null, followerB.rescuedBy?.nid ?? null],
+        lead: [leaderA.leadUnit, followerA.leadUnit, leaderB.leadUnit, followerB.leadUnit],
+        gauges: [leaderA.getGuardGauge(), followerA.getGuardGauge(), leaderB.getGuardGauge(), followerB.getGuardGauge()],
+        flags: [leaderA.hasGiven, leaderA.hasTraded],
+        childOwners: [leaderA, followerA, leaderB, followerB].map((unit) =>
+          unit.skills.filter((skill: any) => skill.nid === '_SwitchTransferChild')
+            .map((skill: any) => skill.data.get('pairupSource'))),
+      });
+
+      const initialMenus = { a: menuLabels(leaderA), b: menuLabels(leaderB) };
+      game.selectedUnit = leaderA;
+      game.actionLog.doAction(new SwitchPairUpAction(leaderA, followerA, game.board, game.db));
+      game.selectedUnit = followerA;
+      const switchedIndex = game.actionLog.actionIndex;
+      const switched = snapshot();
+      const switchedMenu = menuLabels(followerA);
+      while (game.actionLog.actionIndex > pairedIndex) game.actionLog.runActionBackward();
+      const switchReversed = snapshot();
+      while (game.actionLog.actionIndex < switchedIndex) game.actionLog.runActionForward();
+      const switchRedone = snapshot();
+
+      // Return to the original two-leader layout, then exercise the real
+      // Transfer targeting state and its separate HasTraded action.
+      while (game.actionLog.actionIndex > pairedIndex) game.actionLog.runActionBackward();
+      game.actionLog.finalize();
+      game.selectedUnit = leaderA;
+      const transfer = new TransferState();
+      transfer.begin();
+      transfer.takeInput('SELECT');
+      const transferredIndex = game.actionLog.actionIndex;
+      const transferred = snapshot();
+      while (game.actionLog.actionIndex > pairedIndex) game.actionLog.runActionBackward();
+      const transferReversed = snapshot();
+      while (game.actionLog.actionIndex < transferredIndex) game.actionLog.runActionForward();
+      const transferRedone = snapshot();
+
+      await saveGame(game, 84, 'battle');
+      const loadedOk = await loadGame(game, 84);
+      const loadedA = game.units.get('_SwitchLeaderA');
+      const loadedB = game.units.get('_SwitchLeaderB');
+      const loadedFollowerA = game.units.get('_SwitchFollowerA');
+      const loadedFollowerB = game.units.get('_SwitchFollowerB');
+      const loaded = {
+        leaders: [loadedA?.traveler ?? null, loadedB?.traveler ?? null],
+        followers: [loadedFollowerA?.rescuedBy?.nid ?? null, loadedFollowerB?.rescuedBy?.nid ?? null],
+        gauges: [loadedA?.getGuardGauge(), loadedB?.getGuardGauge()],
+        flags: [loadedA?.hasGiven, loadedA?.hasTraded],
+      };
+      await deleteSave(game.db.getConstant('game_nid', 'default'), 84);
+
+      for (const [nid, existed, value] of oldConstants) {
+        if (existed) game.db.constants.set(nid, value);
+        else game.db.constants.delete(nid);
+      }
+      for (const nid of ['_SwitchLeaderA', '_SwitchFollowerA', '_SwitchLeaderB', '_SwitchFollowerB']) {
+        const unit = game.units.get(nid);
+        if (unit?.position) game.board.removeUnit(unit);
+        game.units.delete(nid);
+      }
+      game.db.skills.delete(sourcePrefab.nid);
+      game.db.skills.delete(childPrefab.nid);
+      return {
+        initialMenus, switchedMenu, switched, switchReversed, switchRedone,
+        transferred, transferReversed, transferRedone, loadedOk, loaded,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.initialMenus.a).toEqual(expect.arrayContaining(['Separate', 'Switch', 'Transfer']));
+    expect(result!.initialMenus.b).toEqual(expect.arrayContaining(['Separate', 'Switch', 'Transfer']));
+    expect(result!.switchedMenu).toEqual(expect.arrayContaining(['Separate', 'Switch', 'Transfer']));
+    expect(result!.switched).toMatchObject({
+      selected: '_SwitchFollowerA',
+      board: ['_SwitchFollowerA', '_SwitchLeaderB'],
+      leaders: [null, '_SwitchFollowerB'],
+      followers: [null, '_SwitchLeaderB'],
+      lead: [false, true, true, false],
+      gauges: [0, 10, 8, 0],
+    });
+    expect(result!.switchReversed).toMatchObject({
+      board: ['_SwitchLeaderA', '_SwitchLeaderB'],
+      leaders: ['_SwitchFollowerA', '_SwitchFollowerB'],
+      followers: ['_SwitchLeaderA', '_SwitchLeaderB'],
+      lead: [true, false, true, false],
+      gauges: [10, 0, 8, 0],
+    });
+    expect(result!.switchRedone).toEqual(result!.switched);
+    expect(result!.transferred).toMatchObject({
+      board: ['_SwitchLeaderA', '_SwitchLeaderB'],
+      leaders: ['_SwitchFollowerB', '_SwitchFollowerA'],
+      followers: ['_SwitchLeaderB', '_SwitchLeaderA'],
+      lead: [true, false, true, false],
+      gauges: [9, 0, 9, 0],
+      flags: [true, true],
+      childOwners: [['_SwitchFollowerB'], [], ['_SwitchFollowerA'], []],
+    });
+    expect(result!.transferReversed).toMatchObject({
+      leaders: ['_SwitchFollowerA', '_SwitchFollowerB'],
+      gauges: [10, 0, 8, 0], flags: [false, false],
+    });
+    expect(result!.transferRedone).toEqual(result!.transferred);
+    expect(result!.loadedOk).toBe(true);
+    expect(result!.loaded).toEqual({
+      leaders: ['_SwitchFollowerB', '_SwitchFollowerA'],
+      followers: ['_SwitchLeaderB', '_SwitchLeaderA'],
+      gauges: [9, 9], flags: [true, true],
+    });
+  });
+
+  test('attack stance selects and cycles partners, inserts half-damage phases, and guards reversibly', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { TargetingState } = await import('/src/engine/states/game-states.ts');
+      const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { AnimationCombat } = await import('/src/combat/animation-combat.ts');
+      const { computeDamage } = await import('/src/combat/combat-calcs.ts');
+      const { GuardPairUpkeepAction } = await import('/src/engine/action.ts');
+      const template = game.db.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      const weaponPrefab = game.db.items.get('Iron_Sword') ?? game.db.items.get('Iron Sword');
+      if (!template || !klass || !weaponPrefab) return null;
+      const makeUnit = (nid: string, team: string) => {
+        const unit = new UnitObject({ ...template, nid, name: nid, starting_items: [] }, klass);
+        unit.team = team;
+        unit.maxStats.HP = 200;
+        unit.stats.HP = 100;
+        unit.currentHp = 100;
+        const item = new ItemObject(weaponPrefab);
+        item.owner = unit;
+        unit.items = [item];
+        return unit;
+      };
+      const attacker = makeUnit('_StanceAttacker', 'player');
+      const assistA = makeUnit('_StanceAssistA', 'player');
+      const assistB = makeUnit('_StanceAssistB', 'player');
+      const defender = makeUnit('_StanceDefender', 'enemy');
+      const defenseAssist = makeUnit('_StanceDefenseAssist', 'enemy');
+      const guardFollower = makeUnit('_StanceGuardFollower', 'enemy');
+      const assistWeapon = new ItemObject(weaponPrefab);
+      assistWeapon.components.set('damage', assistWeapon.getDamage() + 7);
+      assistWeapon.owner = assistA;
+      assistA.items = [assistWeapon];
+      const units = [attacker, assistA, assistB, defender, defenseAssist, guardFollower];
+      const movementGroup = klass.movement_group ?? 'Infantry';
+      let origin: [number, number] | null = null;
+      for (let y = 1; y + 1 < game.board.height && !origin; y++) {
+        for (let x = 0; x + 2 < game.board.width; x++) {
+          const cells: [number, number][] = [[x, y], [x + 1, y], [x, y - 1], [x, y + 1], [x + 2, y]];
+          if (cells.every(([cx, cy]) => !game.board.isOccupied(cx, cy) &&
+              game.board.getMovementCost(cx, cy, movementGroup, game.db) < 99)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return null;
+      for (const unit of units) game.units.set(unit.nid, unit);
+      const [x, y] = origin;
+      game.board.setUnit(x, y, attacker);
+      game.board.setUnit(x + 1, y, defender);
+      game.board.setUnit(x, y - 1, assistA);
+      game.board.setUnit(x, y + 1, assistB);
+      game.board.setUnit(x + 2, y, defenseAssist);
+      const oldConstants = ['pairup', 'attack_stance_only', 'player_pairup_only', 'limit_attack_stance', 'rng_mode']
+        .map((nid) => [nid, game.db.constants.has(nid), game.db.constants.get(nid)] as [string, boolean, any]);
+      game.db.constants.set('pairup', true);
+      game.db.constants.set('attack_stance_only', false);
+      game.db.constants.set('player_pairup_only', false);
+      game.db.constants.set('limit_attack_stance', false);
+      game.db.constants.set('rng_mode', 'grandmaster');
+
+      const weapon = attacker.items[0];
+      const auto = game.targetSystem.findStrikePartners(attacker, defender, weapon)
+        .map((unit: any) => unit?.nid ?? null);
+      const targeting = new TargetingState();
+      game.selectedUnit = attacker;
+      (targeting as any).targets = [defender];
+      (targeting as any).targetIndex = 0;
+      (targeting as any).updateStrikePartners(defender);
+      const beforeAux = (targeting as any).attackerAssist?.nid ?? null;
+      targeting.takeInput('AUX');
+      const afterAux = (targeting as any).attackerAssist?.nid ?? null;
+
+      game.db.constants.set('player_pairup_only', true);
+      const playerOnly = game.targetSystem.findStrikePartners(attacker, defender, weapon)
+        .map((unit: any) => unit?.nid ?? null);
+      game.db.constants.set('player_pairup_only', false);
+      weapon.components.set('exempt_from_dual_strike', null);
+      const exempt = game.targetSystem.findStrikePartners(attacker, defender, weapon)
+        .map((unit: any) => unit?.nid ?? null);
+      weapon.components.delete('exempt_from_dual_strike');
+
+      attacker.stats.SPD = 20;
+      defender.stats.SPD = 5;
+      attacker.strikePartner = assistA;
+      defender.strikePartner = defenseAssist;
+      let animationRejected = false;
+      try {
+        new AnimationCombat(
+          attacker, weapon, defender, defender.items[0], game.db, 'grandmaster',
+          null as any, null as any, true, game.board, null, game,
+        );
+      } catch (error) {
+        animationRejected = String(error).includes('use MapCombat');
+      }
+      const unlimitedSolver = new CombatPhaseSolver(() => 0, game);
+      const unlimited = unlimitedSolver.resolve(
+        attacker, weapon, defender, defender.items[0], game.db, 'grandmaster', game.board,
+      ).map((strike: any) => ({
+        attacker: strike.attacker.nid,
+        assist: !!strike.assist,
+        damage: strike.damage,
+      }));
+      const expectedAssistDamage = Math.floor(
+        computeDamage(assistA, assistWeapon, defender, game.db, game.board, game, 'attack') / 2,
+      );
+      const expectedDefenseAssistDamage = Math.floor(
+        computeDamage(
+          defenseAssist, defenseAssist.items[0], attacker, game.db, game.board, game, 'defense',
+        ) / 2,
+      );
+      game.db.constants.set('limit_attack_stance', true);
+      const limitedSolver = new CombatPhaseSolver(() => 0, game);
+      const limited = limitedSolver.resolve(
+        attacker, weapon, defender, defender.items[0], game.db, 'grandmaster', game.board,
+      ).map((strike: any) => ({ attacker: strike.attacker.nid, assist: !!strike.assist }));
+      game.db.constants.set('limit_attack_stance', false);
+
+      attacker.stats.SPD = 5;
+      defender.stats.SPD = 5;
+      attacker.currentHp = defender.currentHp = 100;
+      attacker.strikePartner = assistA;
+      defender.strikePartner = defenseAssist;
+      const weaponType = weapon.getWeaponType()!;
+      const beforeRewards = {
+        exp: assistA.exp,
+        wexp: assistA.wexp[weaponType] ?? 0,
+        mainUses: weapon.uses,
+        assistUses: assistWeapon.uses,
+      };
+      const beforeCombatIndex = game.actionLog.actionIndex;
+      const combat = new MapCombat(
+        attacker, weapon, defender, defender.items[0], game.db, 'grandmaster', game.board,
+        null, undefined, game,
+      );
+      const combatOrder = combat.strikes.map((strike: any) => ({
+        attacker: strike.attacker.nid,
+        assist: !!strike.assist,
+        guarded: !!strike.guarded,
+      }));
+      combat.skipToEnd();
+      combat.applyResults(game.actionLog);
+      const afterCombatIndex = game.actionLog.actionIndex;
+      const combatAfter = {
+        hp: [attacker.currentHp, defender.currentHp],
+        built: [attacker.builtGuard, defender.builtGuard],
+        partners: [attacker.strikePartner?.nid ?? null, defender.strikePartner?.nid ?? null],
+        rewards: {
+          exp: assistA.exp,
+          wexp: assistA.wexp[weaponType] ?? 0,
+          mainUses: weapon.uses,
+          assistUses: assistWeapon.uses,
+        },
+      };
+      while (game.actionLog.actionIndex > beforeCombatIndex) game.actionLog.runActionBackward();
+      const combatReversed = {
+        hp: [attacker.currentHp, defender.currentHp],
+        built: [attacker.builtGuard, defender.builtGuard],
+        partners: [attacker.strikePartner?.nid ?? null, defender.strikePartner?.nid ?? null],
+        rewards: {
+          exp: assistA.exp,
+          wexp: assistA.wexp[weaponType] ?? 0,
+          mainUses: weapon.uses,
+          assistUses: assistWeapon.uses,
+        },
+      };
+      while (game.actionLog.actionIndex < afterCombatIndex) game.actionLog.runActionForward();
+      const combatRedone = {
+        hp: [attacker.currentHp, defender.currentHp],
+        built: [attacker.builtGuard, defender.builtGuard],
+        partners: [attacker.strikePartner?.nid ?? null, defender.strikePartner?.nid ?? null],
+        rewards: {
+          exp: assistA.exp,
+          wexp: assistA.wexp[weaponType] ?? 0,
+          mainUses: weapon.uses,
+          assistUses: assistWeapon.uses,
+        },
+      };
+
+      // A guard-stance traveler cancels both attack-stance partners. A full
+      // gauge forces a zero-damage guarded hit and resets to zero.
+      while (game.actionLog.actionIndex > beforeCombatIndex) game.actionLog.runActionBackward();
+      game.actionLog.finalize();
+      attacker.strikePartner = null;
+      defender.strikePartner = null;
+      defender.traveler = guardFollower.nid;
+      defender.rescuing = guardFollower;
+      defender.leadUnit = true;
+      guardFollower.rescuedBy = defender;
+      guardFollower.leadUnit = false;
+      defender.setGuardGauge(10, 10);
+      defender.builtGuard = false;
+      attacker.currentHp = defender.currentHp = 100;
+      const guardPartners = game.targetSystem.findStrikePartners(attacker, defender, weapon)
+        .map((unit: any) => unit?.nid ?? null);
+      const beforeGuardIndex = game.actionLog.actionIndex;
+      const guardedCombat = new MapCombat(
+        attacker, weapon, defender, defender.items[0], game.db, 'grandmaster', game.board,
+        null, undefined, game,
+      );
+      const guardedStrikes = guardedCombat.strikes.map((strike: any) => ({
+        attacker: strike.attacker.nid,
+        damage: strike.damage,
+        guarded: !!strike.guarded,
+      }));
+      guardedCombat.skipToEnd();
+      guardedCombat.applyResults(game.actionLog);
+      const afterGuardIndex = game.actionLog.actionIndex;
+      const guardAfter = { hp: defender.currentHp, gauge: defender.getGuardGauge(), built: defender.builtGuard };
+      while (game.actionLog.actionIndex > beforeGuardIndex) game.actionLog.runActionBackward();
+      const guardReversed = { hp: defender.currentHp, gauge: defender.getGuardGauge(), built: defender.builtGuard };
+      while (game.actionLog.actionIndex < afterGuardIndex) game.actionLog.runActionForward();
+      const guardRedone = { hp: defender.currentHp, gauge: defender.getGuardGauge(), built: defender.builtGuard };
+
+      // Combat this turn prevents decay; an idle following turn loses one
+      // GAUGE_INCREASE and both paths are reversible.
+      const upkeepBuilt = new GuardPairUpkeepAction(defender, guardFollower, game.db);
+      upkeepBuilt.execute();
+      const builtUpkeep = { gauge: defender.getGuardGauge(), built: defender.builtGuard };
+      upkeepBuilt.reverse();
+      defender.currentGuardGauge = 6;
+      defender.builtGuard = false;
+      const upkeepIdle = new GuardPairUpkeepAction(defender, guardFollower, game.db);
+      upkeepIdle.execute();
+      const idleUpkeep = { gauge: defender.getGuardGauge(), built: defender.builtGuard };
+      upkeepIdle.reverse();
+      const idleReversed = { gauge: defender.getGuardGauge(), built: defender.builtGuard };
+
+      for (const [nid, existed, value] of oldConstants) {
+        if (existed) game.db.constants.set(nid, value);
+        else game.db.constants.delete(nid);
+      }
+      for (const unit of units) {
+        if (unit.position) game.board.removeUnit(unit);
+        game.units.delete(unit.nid);
+      }
+      return {
+        auto, beforeAux, afterAux, playerOnly, exempt,
+        unlimited, limited, expectedAssistDamage, expectedDefenseAssistDamage, animationRejected,
+        beforeRewards,
+        combatOrder, combatAfter, combatReversed, combatRedone,
+        guardPartners, guardedStrikes, guardAfter, guardReversed, guardRedone,
+        builtUpkeep, idleUpkeep, idleReversed,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.auto).toEqual(['_StanceAssistA', '_StanceDefenseAssist']);
+    expect(result!.beforeAux).toBe('_StanceAssistA');
+    expect(result!.afterAux).toBe('_StanceAssistB');
+    expect(result!.playerOnly).toEqual(['_StanceAssistA', null]);
+    expect(result!.exempt).toEqual([null, '_StanceDefenseAssist']);
+    expect(result!.unlimited.map((strike: any) => strike.attacker)).toEqual([
+      '_StanceAttacker', '_StanceAssistA', '_StanceDefender', '_StanceDefenseAssist',
+      '_StanceAttacker', '_StanceAssistA',
+    ]);
+    expect(result!.unlimited.filter((strike: any) => strike.attacker === '_StanceAssistA').every(
+      (strike: any) => strike.assist && strike.damage === result!.expectedAssistDamage,
+    )).toBe(true);
+    expect(result!.unlimited.filter((strike: any) => strike.attacker === '_StanceDefenseAssist').every(
+      (strike: any) => strike.assist && strike.damage === result!.expectedDefenseAssistDamage,
+    )).toBe(true);
+    expect(result!.animationRejected).toBe(true);
+    expect(result!.limited.map((strike: any) => strike.attacker)).toEqual([
+      '_StanceAttacker', '_StanceAssistA', '_StanceDefender', '_StanceDefenseAssist', '_StanceAttacker',
+    ]);
+    expect(result!.combatOrder.map((strike: any) => strike.attacker)).toEqual([
+      '_StanceAttacker', '_StanceAssistA', '_StanceDefender', '_StanceDefenseAssist',
+    ]);
+    expect(result!.combatAfter.built).toEqual([true, true]);
+    expect(result!.combatAfter.partners).toEqual([null, null]);
+    expect(result!.combatAfter.rewards.exp).toBe(result!.beforeRewards.exp + 15);
+    expect(result!.combatAfter.rewards.wexp).toBeGreaterThan(result!.beforeRewards.wexp);
+    expect(result!.combatAfter.rewards.mainUses).toBe(result!.beforeRewards.mainUses - 1);
+    expect(result!.combatAfter.rewards.assistUses).toBe(result!.beforeRewards.assistUses - 1);
+    expect(result!.combatReversed).toEqual({
+      hp: [100, 100], built: [false, false],
+      partners: ['_StanceAssistA', '_StanceDefenseAssist'],
+      rewards: result!.beforeRewards,
+    });
+    expect(result!.combatRedone).toEqual(result!.combatAfter);
+    expect(result!.guardPartners).toEqual([null, null]);
+    expect(result!.guardedStrikes[0]).toEqual({ attacker: '_StanceAttacker', damage: 0, guarded: true });
+    expect(result!.guardAfter).toEqual({ hp: 100, gauge: 2, built: true });
+    expect(result!.guardReversed).toEqual({ hp: 100, gauge: 10, built: false });
+    expect(result!.guardRedone).toEqual(result!.guardAfter);
+    expect(result!.builtUpkeep).toEqual({ gauge: 2, built: false });
+    expect(result!.idleUpkeep).toEqual({ gauge: 4, built: false });
+    expect(result!.idleReversed).toEqual({ gauge: 6, built: false });
+  });
+
   test('unit metadata, growth, cap, field, and note commands undo, redo, and persist', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

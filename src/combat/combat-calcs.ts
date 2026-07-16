@@ -474,6 +474,7 @@ export function computeDamage(
   board?: GameBoard | null,
   game?: any,
   mode: 'attack' | 'defense' | 'splash' = 'attack',
+  assist: boolean = false,
 ): number {
   const atk = damage(attacker, attackItem, db);
   const def = defense(defender, attackItem, db, board);
@@ -492,6 +493,10 @@ export function computeDamage(
 
   let finalDmg = baseDmg + itemDynDmg + skillDynDmg - skillDynResist + atkSupport.damage - defSupport.resist;
 
+  // Attack-stance partners deal half damage after defense, matching LT's
+  // compute_assist_damage path. Multipliers are applied after the reduction.
+  if (assist) finalDmg = Math.floor(finalDmg / 2);
+
   // Apply damage multiplier from attacker skills
   const dmgMult = skillSystem.damageMultiplier(attacker, attackItem, defender, defWeapon, mode, null, finalDmg);
   finalDmg = Math.floor(finalDmg * dmgMult);
@@ -503,6 +508,18 @@ export function computeDamage(
   }
 
   return Math.max(0, finalDmg);
+}
+
+export function computeAssistDamage(
+  attacker: UnitObject,
+  attackItem: ItemObject,
+  defender: UnitObject,
+  db: Database,
+  board?: GameBoard | null,
+  game?: any,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+): number {
+  return computeDamage(attacker, attackItem, defender, db, board, game, mode, true);
 }
 
 /**

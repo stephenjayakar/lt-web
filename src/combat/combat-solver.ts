@@ -27,6 +27,10 @@ export interface CombatStrike {
   crit: boolean;
   damage: number;
   isCounter: boolean;
+  /** True for an attack-stance partner strike (half damage). */
+  assist?: boolean;
+  /** True when a full guard gauge negated this strike. */
+  guarded?: boolean;
   mode?: CombatMode;
   attackInfo: [number, number];
   attackProcs?: CombatProcMark[];
@@ -42,6 +46,7 @@ export class CombatPhaseSolver {
   private lifecycle: CombatSkillLifecycle | null = null;
   private phaseCounts: Map<UnitObject, number> = new Map();
   readonly procPlayback: CombatProcMark[] = [];
+  readonly guardGaugeResults: Map<UnitObject, number> = new Map();
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -60,6 +65,10 @@ export class CombatPhaseSolver {
   ): void {
     this.phaseCounts.clear();
     this.procPlayback.length = 0;
+    this.guardGaugeResults.clear();
+    for (const unit of [attacker, ...defenders]) {
+      this.guardGaugeResults.set(unit, unit.getGuardGauge());
+    }
     this.lifecycle = new CombatSkillLifecycle(db, this.randomRoll, this.game);
     this.lifecycle.beginCombat(attacker, attackItem, defenders, defenseItems);
   }
@@ -75,6 +84,46 @@ export class CombatPhaseSolver {
     const phase = this.phaseCounts.get(unit) ?? 0;
     this.phaseCounts.set(unit, phase + 1);
     return phase;
+  }
+
+  private maxGuardGauge(unit: UnitObject, db: Database): number {
+    const expression = db.getEquation('MAX_GUARD');
+    if (!expression) return 10;
+    const value = calcs.evaluateEquation(expression, unit, { db });
+    return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 10;
+  }
+
+  private gaugeIncrease(unit: UnitObject, db: Database): number {
+    const expression = db.getEquation('GAUGE_INCREASE');
+    if (!expression) return 2;
+    const value = calcs.evaluateEquation(expression, unit, { db });
+    return Number.isFinite(value) ? Math.trunc(value) : 2;
+  }
+
+  private guardGauge(unit: UnitObject): number {
+    return this.guardGaugeResults.get(unit) ?? unit.getGuardGauge();
+  }
+
+  private setGuardGauge(unit: UnitObject, value: number, db: Database): void {
+    this.guardGaugeResults.set(unit, Math.max(0, Math.min(value, this.maxGuardGauge(unit, db))));
+  }
+
+  private updateGuardGauges(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    db: Database,
+  ): void {
+    if (!db.getConstant('pairup', false) || !item.isWeapon() || db.areAllied(striker.team, target.team)) return;
+    const targetGauge = this.guardGauge(target);
+    if (targetGauge >= this.maxGuardGauge(target, db)) {
+      this.setGuardGauge(target, 0, db);
+    } else if (target.traveler) {
+      this.setGuardGauge(target, targetGauge + this.gaugeIncrease(target, db), db);
+    }
+    if (striker.traveler) {
+      this.setGuardGauge(striker, this.guardGauge(striker) + this.gaugeIncrease(striker, db), db);
+    }
   }
 
   /**
@@ -166,25 +215,33 @@ export class CombatPhaseSolver {
     mode: CombatMode = isCounter ? 'defense' : 'attack',
     attackInfo: [number, number] = [0, 0],
     forcedAttackProcs?: CombatProcMark[],
+    assist: boolean = false,
   ): CombatStrike {
     const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
       { attack: [], defense: [] };
     const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
 
+    const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
+      !db.areAllied(striker.team, target.team) && !!target.traveler &&
+      this.guardGauge(target) >= this.maxGuardGauge(target, db);
     const isMiss = token.startsWith('miss');
     const isCrit = token.startsWith('crit');
-    const hit = !isMiss;
-    const crit = isCrit;
+    const hit = guarded || !isMiss;
+    const crit = !guarded && isCrit;
 
     let dmg = 0;
     if (hit) {
-      const baseDmg = calcs.computeDamage(striker, item, target, db, board, undefined, mode);
-      dmg = baseDmg + wt.damageBonus;
-      if (crit) {
-        const critDmgMod = skillSystem.modifyCritDamage(striker, item);
-        const baseCritMult = 3;
-        dmg = dmg * baseCritMult + critDmgMod;
+      if (!guarded) {
+        const baseDmg = calcs.computeDamage(
+          striker, item, target, db, board, this.game, mode, assist,
+        );
+        dmg = baseDmg + wt.damageBonus;
+        if (crit) {
+          const critDmgMod = skillSystem.modifyCritDamage(striker, item);
+          const baseCritMult = 3;
+          dmg = dmg * baseCritMult + critDmgMod;
+        }
       }
       dmg = Math.max(0, dmg);
     }
@@ -197,12 +254,15 @@ export class CombatPhaseSolver {
       crit,
       damage: dmg,
       isCounter,
+      assist,
+      guarded,
       mode,
       attackInfo,
       ...(procs.attack.length ? { attackProcs: procs.attack } : {}),
       ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
     this.lifecycle?.endStrike(procs);
+    this.updateGuardGauges(striker, item, target, db);
     return strike;
   }
 
@@ -427,6 +487,39 @@ export class CombatPhaseSolver {
     // Check ignoreDyingInCombat (miracle)
     const attackerMiracle = skillSystem.ignoreDyingInCombat(attacker);
     const defenderMiracle = skillSystem.ignoreDyingInCombat(defender);
+    const partnerUsed = new Set<UnitObject>();
+    const limitAttackStance = !!db.getConstant('limit_attack_stance', false);
+
+    const doPartnerStrikes = (
+      leader: UnitObject,
+      item: ItemObject,
+      target: UnitObject,
+      isCounter: boolean,
+      targetHpRef: { hp: number },
+      targetMiracle: boolean,
+      phase: number,
+    ): void => {
+      const partner = leader.strikePartner;
+      if (!partner || partner.currentHp <= 0 || targetHpRef.hp <= 0) return;
+      if (limitAttackStance && partnerUsed.has(leader)) return;
+      const partnerWeapon = partner.items.find((candidate) => candidate.isWeapon());
+      if (!partnerWeapon) return;
+      const targetWeapon = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+      const count = calcs.computeStrikeCount(partner, partnerWeapon, target, targetWeapon);
+      for (let index = 0; index < count; index++) {
+        if (targetHpRef.hp <= 0) break;
+        const strike = this.resolveStrike(
+          partner, partnerWeapon, target, db, rngMode, isCounter, board,
+          isCounter ? 'defense' : 'attack', [phase, index], undefined, true,
+        );
+        this.strikes.push(strike);
+        if (strike.hit) {
+          targetHpRef.hp -= strike.damage;
+          if (targetMiracle && targetHpRef.hp <= 0) targetHpRef.hp = 1;
+        }
+      }
+      partnerUsed.add(leader);
+    };
 
     // Helper: execute a series of strikes for one side
     const doStrikes = (
@@ -457,6 +550,7 @@ export class CombatPhaseSolver {
         }
       }
       this.phaseCounts.set(striker, phase + 1);
+      doPartnerStrikes(striker, item, target, isCounter, targetHpRef, targetMiracle, phase);
     };
 
     const atkHp = { hp: attackerHp };
@@ -604,6 +698,7 @@ export class CombatPhaseSolver {
     mode: CombatMode = isCounter ? 'defense' : 'attack',
     attackInfo: [number, number] = [0, 0],
     forcedAttackProcs?: CombatProcMark[],
+    assist: boolean = false,
   ): CombatStrike {
     const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
       { attack: [], defense: [] };
@@ -621,24 +716,32 @@ export class CombatPhaseSolver {
       critChance = 1; // Minimal crit chance if skill is active
     }
 
+    const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
+      !db.areAllied(striker.team, target.team) && !!target.traveler &&
+      this.guardGauge(target) >= this.maxGuardGauge(target, db);
+
     // Roll for hit
     // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT.
-    const hit = item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true;
+    const hit = guarded || (item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true);
 
     // Roll for crit (only if hit lands)
-    const crit = hit ? this.randomRoll() < critChance : false;
+    const crit = hit && !guarded ? this.randomRoll() < critChance : false;
 
     // Compute damage (0 on miss)
     let dmg = 0;
     if (hit) {
-      const baseDmg = calcs.computeDamage(striker, item, target, db, board, undefined, mode);
-      dmg = baseDmg + wt.damageBonus;
+      if (!guarded) {
+        const baseDmg = calcs.computeDamage(
+          striker, item, target, db, board, this.game, mode, assist,
+        );
+        dmg = baseDmg + wt.damageBonus;
 
-      // Crit damage
-      if (crit) {
-        const critDmgMod = skillSystem.modifyCritDamage(striker, item);
-        const baseCritMult = 3; // LT default
-        dmg = dmg * baseCritMult + critDmgMod;
+        // Crit damage
+        if (crit) {
+          const critDmgMod = skillSystem.modifyCritDamage(striker, item);
+          const baseCritMult = 3; // LT default
+          dmg = dmg * baseCritMult + critDmgMod;
+        }
       }
 
       dmg = Math.max(0, dmg);
@@ -652,12 +755,15 @@ export class CombatPhaseSolver {
       crit,
       damage: dmg,
       isCounter,
+      assist,
+      guarded,
       mode,
       attackInfo,
       ...(procs.attack.length ? { attackProcs: procs.attack } : {}),
       ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
     this.lifecycle?.endStrike(procs);
+    this.updateGuardGauges(striker, item, target, db);
     return strike;
   }
 }

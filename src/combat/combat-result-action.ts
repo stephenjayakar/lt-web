@@ -15,6 +15,9 @@ interface UnitMutationSnapshot {
   statusEffects: StatusEffect[];
   items: ItemObject[];
   hasCanto: boolean;
+  currentGuardGauge: number;
+  builtGuard: boolean;
+  strikePartner: UnitObject | null;
 }
 
 interface ItemMutationSnapshot {
@@ -56,6 +59,9 @@ function capture(units: UnitObject[], explicitItems: ItemObject[]): CombatMutati
       statusEffects: copyStatusEffects(unit.statusEffects),
       items: [...unit.items],
       hasCanto: unit.hasCanto,
+      currentGuardGauge: unit.getGuardGauge(),
+      builtGuard: unit.builtGuard,
+      strikePartner: unit.strikePartner,
     }])),
     items: new Map([...allItems].map((item) => [item, {
       uses: item.uses,
@@ -80,6 +86,9 @@ function restore(snapshot: CombatMutationSnapshot): void {
     unit.statusEffects = copyStatusEffects(state.statusEffects);
     unit.items = [...state.items];
     unit.hasCanto = state.hasCanto;
+    unit.currentGuardGauge = state.currentGuardGauge;
+    unit.builtGuard = state.builtGuard;
+    unit.strikePartner = state.strikePartner;
   }
   for (const [item, state] of snapshot.items) {
     item.uses = state.uses;

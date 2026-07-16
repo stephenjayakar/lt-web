@@ -5,7 +5,11 @@ import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
 import { usesConsumedByStrikes } from './item-system';
-import { applyGroupCombatComponents, type WeaponRankUp } from './combat-components';
+import {
+  applyGroupCombatComponents,
+  grantPartnerCombatWexp,
+  type WeaponRankUp,
+} from './combat-components';
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import {
@@ -102,6 +106,7 @@ export class MapCombat {
   defenseItem: ItemObject | null;
   strikes: CombatStrike[];
   procPlayback: CombatProcMark[];
+  readonly participants: UnitObject[];
 
   state: MapCombatState;
   currentStrikeIndex: number;
@@ -139,6 +144,8 @@ export class MapCombat {
   private cachedResults: CombatResults | null = null;
   private lifecycleRecord: CombatLifecycleRecord;
   private lifecycleRecorded: boolean = false;
+  private guardGaugeResults: Map<UnitObject, number> = new Map();
+  private unitAnims: Map<UnitObject, CombatAnimState> = new Map();
 
   constructor(
     attacker: UnitObject,
@@ -165,11 +172,22 @@ export class MapCombat {
     if (this.defenders.length === 0) this.defenders = [defender];
     this.defenseItem = this.primaryDefender ? defenseItem : null;
     this.db = db;
+    const game = randomGame as any;
+    const travelers = [attacker, ...this.defenders]
+      .map((unit) => unit.traveler ? game?.getUnit?.(unit.traveler) ?? null : null)
+      .filter((unit): unit is UnitObject => !!unit);
+    this.participants = [...new Set([
+      attacker,
+      ...this.defenders,
+      ...(attacker.strikePartner ? [attacker.strikePartner] : []),
+      ...(this.primaryDefender?.strikePartner ? [this.primaryDefender.strikePartner] : []),
+      ...travelers,
+    ])];
 
     // Solve the combat to get the strike sequence. Proc/charge mutations and
     // the persistent combat RNG are captured before resolution for turnwheel.
     this.lifecycleRecord = new CombatLifecycleRecord(
-      [attacker, ...this.defenders],
+      this.participants,
       randomGame ?? null,
     );
     const solver = new CombatPhaseSolver(
@@ -190,6 +208,7 @@ export class MapCombat {
       )
       : solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
     this.procPlayback = [...solver.procPlayback];
+    this.guardGaugeResults = new Map(solver.guardGaugeResults);
     this.lifecycleRecord.finish();
 
     this.state = 'init';
@@ -212,6 +231,7 @@ export class MapCombat {
 
     // Animation state
     this.attackerAnim = { lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0 };
+    this.unitAnims.set(attacker, this.attackerAnim);
     this.defenderAnims = new Map(this.defenders.map((unit) => [unit, {
       lungeOffset: [0, 0] as [number, number],
       shakeOffset: [0, 0] as [number, number],
@@ -221,6 +241,13 @@ export class MapCombat {
       lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0,
     };
     if (!this.defenderAnims.has(defender)) this.defenderAnims.set(defender, this.defenderAnim);
+    for (const unit of this.participants) {
+      if (!this.unitAnims.has(unit)) {
+        this.unitAnims.set(unit, this.defenderAnims.get(unit) ?? {
+          lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0,
+        });
+      }
+    }
     this.damagePopups = [];
   }
 
@@ -261,6 +288,7 @@ export class MapCombat {
     attackerAnim: CombatAnimState;
     defenderAnim: CombatAnimState;
     defenders: { unit: UnitObject; hp: number; maxHp: number; anim: CombatAnimState }[];
+    assistants: { unit: UnitObject; anim: CombatAnimState }[];
     damagePopups: DamagePopup[];
   } {
     const strike =
@@ -283,6 +311,9 @@ export class MapCombat {
         maxHp: unit.maxHp,
         anim: this.defenderAnims.get(unit) ?? this.defenderAnim,
       })),
+      assistants: this.participants
+        .filter((unit) => unit !== this.attacker && !this.defenders.includes(unit) && !!unit.position)
+        .map((unit) => ({ unit, anim: this.unitAnims.get(unit)! })),
       damagePopups: this.damagePopups,
     };
   }
@@ -302,8 +333,12 @@ export class MapCombat {
         this.lifecycleRecorded = true;
       }
       const action = new CombatResultAction<CombatResults>(
-        [this.attacker, ...this.defenders],
-        [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],
+        this.participants,
+        [...new Set([
+          this.attackItem,
+          ...(this.defenseItem ? [this.defenseItem] : []),
+          ...this.strikes.map((strike) => strike.item),
+        ])],
         () => this.computeResults(),
       );
       actionLog.doAction(action);
@@ -337,6 +372,11 @@ export class MapCombat {
     // Apply to units
     this.attacker.currentHp = atkHp;
     for (const [unit, hp] of defenderHps) unit.currentHp = Math.max(0, hp);
+    for (const [unit, gauge] of this.guardGaugeResults) unit.currentGuardGauge = gauge;
+    if (this.db.getConstant('pairup', false)) {
+      this.attacker.builtGuard = true;
+      if (this.primaryDefender) this.primaryDefender.builtGuard = true;
+    }
 
     const attackerDead = atkHp <= 0;
     const defenderDeaths = this.defenders.filter((unit) => unit.currentHp <= 0);
@@ -348,33 +388,38 @@ export class MapCombat {
     }
     for (const unit of defenderDeaths) unit.dead = true;
 
-    // Decrement weapon uses
-    let attackWeaponBroke = false;
-    let defenseWeaponBroke = false;
-
-    const attackerUses = usesConsumedByStrikes(this.attacker, this.attackItem, this.strikes);
-    if (attackerUses > 0 && this.attackItem.maxUses > 0) {
-      for (let i = 0; i < attackerUses && this.attackItem.uses > 0; i++) {
-        attackWeaponBroke = this.attackItem.decrementUses() || attackWeaponBroke;
+    // Decrement each combatant's own weapon. Attack-stance partners can use
+    // a different item from their leader, so their uses and breakage must be
+    // tracked independently.
+    const consumeUses = (unit: UnitObject, item: ItemObject | null): boolean => {
+      if (!item) return false;
+      const uses = usesConsumedByStrikes(unit, item, this.strikes);
+      let broke = false;
+      if (uses > 0 && item.maxUses > 0) {
+        for (let index = 0; index < uses && item.uses > 0; index++) {
+          broke = item.decrementUses() || broke;
+        }
+        if (broke && !item.hasComponent('no_break_out_of_uses')) {
+          const inventoryIndex = unit.items.indexOf(item);
+          if (inventoryIndex !== -1) unit.items.splice(inventoryIndex, 1);
+        }
       }
-      if (attackWeaponBroke && !this.attackItem.hasComponent('no_break_out_of_uses')) {
-        const idx = this.attacker.items.indexOf(this.attackItem);
-        if (idx !== -1) this.attacker.items.splice(idx, 1);
-      }
-    }
-
-    const defenderUses = this.primaryDefender && this.defenseItem
-      ? usesConsumedByStrikes(this.primaryDefender, this.defenseItem, this.strikes)
-      : 0;
-    if (defenderUses > 0 && this.primaryDefender && this.defenseItem && this.defenseItem.maxUses > 0) {
-      for (let i = 0; i < defenderUses && this.defenseItem.uses > 0; i++) {
-        defenseWeaponBroke = this.defenseItem.decrementUses() || defenseWeaponBroke;
-      }
-      if (defenseWeaponBroke && !this.defenseItem.hasComponent('no_break_out_of_uses')) {
-        const idx = this.primaryDefender.items.indexOf(this.defenseItem);
-        if (idx !== -1) this.primaryDefender.items.splice(idx, 1);
-      }
-    }
+      return broke;
+    };
+    const attackerPartner = this.attacker.strikePartner;
+    const defenderPartner = this.primaryDefender?.strikePartner ?? null;
+    const attackerPartnerItem = attackerPartner
+      ? this.strikes.find((strike) => strike.attacker === attackerPartner && strike.assist)?.item ?? null
+      : null;
+    const defenderPartnerItem = defenderPartner
+      ? this.strikes.find((strike) => strike.attacker === defenderPartner && strike.assist)?.item ?? null
+      : null;
+    const attackWeaponBroke = consumeUses(this.attacker, this.attackItem);
+    const defenseWeaponBroke = this.primaryDefender
+      ? consumeUses(this.primaryDefender, this.defenseItem)
+      : false;
+    if (attackerPartner) consumeUses(attackerPartner, attackerPartnerItem);
+    if (defenderPartner) consumeUses(defenderPartner, defenderPartnerItem);
 
     const componentResults = applyGroupCombatComponents(
       this.attacker,
@@ -386,6 +431,28 @@ export class MapCombat {
       deadDefenders,
       this.db,
     );
+    if (attackerPartner && attackerPartnerItem) {
+      grantPartnerCombatWexp(
+        attackerPartner,
+        attackerPartnerItem,
+        this.primaryDefender,
+        this.strikes,
+        attackerPartner.isDead(),
+        deadDefenders,
+        this.db,
+      );
+    }
+    if (defenderPartner && defenderPartnerItem) {
+      grantPartnerCombatWexp(
+        defenderPartner,
+        defenderPartnerItem,
+        this.attacker,
+        this.strikes,
+        defenderPartner.isDead(),
+        new Set(attackerDead ? [this.attacker] : []),
+        this.db,
+      );
+    }
 
     // Fixed staff EXP replaces the ordinary level-difference combat formula.
     const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, deadDefenders);
@@ -402,6 +469,27 @@ export class MapCombat {
         levelUps.push(gains);
       }
     }
+    if (attackerPartner && !attackerPartner.isDead() && attackerPartner.team === 'player') {
+      this.grantPairedExp(
+        attackerPartner,
+        Math.floor(this.calculateExpFor(attackerPartner, deadDefenders) / 2),
+        growthMode,
+      );
+    } else if (this.attacker.rescuing && this.attacker.rescuing.team === 'player') {
+      this.grantGuardExp(this.attacker, this.attacker.rescuing, growthMode);
+    }
+    if (defenderPartner && defenderPartner.team === 'player') {
+      this.grantPairedExp(
+        defenderPartner,
+        Math.floor(this.calculateExpFor(
+          defenderPartner,
+          new Set(attackerDead ? [this.attacker] : []),
+        ) / 2),
+        growthMode,
+      );
+    } else if (this.primaryDefender?.rescuing && this.primaryDefender.rescuing.team === 'player') {
+      this.grantGuardExp(this.primaryDefender, this.primaryDefender.rescuing, growthMode);
+    }
 
     const droppedItems: { unit: UnitObject; item: import('../objects/item').ItemObject }[] = [];
     if (!attackerDead) {
@@ -411,6 +499,9 @@ export class MapCombat {
       }
     }
     const droppedItem = droppedItems[0]?.item ?? null;
+
+    this.attacker.strikePartner = null;
+    if (this.primaryDefender) this.primaryDefender.strikePartner = null;
 
     return {
       attackerDead,
@@ -458,10 +549,10 @@ export class MapCombat {
     if (strike) {
       const strikerAnim = strike.attacker === this.attacker
         ? this.attackerAnim
-        : this.defenderAnims.get(strike.attacker) ?? this.defenderAnim;
+        : this.unitAnims.get(strike.attacker) ?? this.defenderAnim;
       const targetAnim = strike.defender === this.attacker
         ? this.attackerAnim
-        : this.defenderAnims.get(strike.defender) ?? this.defenderAnim;
+        : this.unitAnims.get(strike.defender) ?? this.defenderAnim;
 
       // Compute direction from striker to target (in tile coords)
       const strikerUnit = strike.attacker;
@@ -516,7 +607,7 @@ export class MapCombat {
 
       // Reset lunge offsets
       this.attackerAnim.lungeOffset = [0, 0];
-      for (const anim of this.defenderAnims.values()) anim.lungeOffset = [0, 0];
+      for (const anim of this.unitAnims.values()) anim.lungeOffset = [0, 0];
 
       // Apply this strike's damage to display HP targets
       for (const [unit, hp] of this.defenderDisplayHps) {
@@ -602,17 +693,17 @@ export class MapCombat {
 
       const targetAnim = strike.defender === this.attacker
         ? this.attackerAnim
-        : this.defenderAnims.get(strike.defender) ?? this.defenderAnim;
+        : this.unitAnims.get(strike.defender) ?? this.defenderAnim;
       targetAnim.shakeOffset = [shakeX, 0];
     } else {
       // Reset shakes
       this.attackerAnim.shakeOffset = [0, 0];
-      for (const anim of this.defenderAnims.values()) anim.shakeOffset = [0, 0];
+      for (const anim of this.unitAnims.values()) anim.shakeOffset = [0, 0];
     }
 
     // Decay flash alpha
     this.attackerAnim.flashAlpha = Math.max(0, this.attackerAnim.flashAlpha - deltaMs * 0.004);
-    for (const anim of this.defenderAnims.values()) {
+    for (const anim of this.unitAnims.values()) {
       anim.flashAlpha = Math.max(0, anim.flashAlpha - deltaMs * 0.004);
     }
 
@@ -629,7 +720,7 @@ export class MapCombat {
 
       // Reset shakes
       this.attackerAnim.shakeOffset = [0, 0];
-      for (const anim of this.defenderAnims.values()) anim.shakeOffset = [0, 0];
+      for (const anim of this.unitAnims.values()) anim.shakeOffset = [0, 0];
 
       // Move to next strike or cleanup
       this.currentStrikeIndex++;
@@ -663,7 +754,7 @@ export class MapCombat {
     this.attackerAnim.lungeOffset = [0, 0];
     this.attackerAnim.shakeOffset = [0, 0];
     this.attackerAnim.flashAlpha = 0;
-    for (const anim of this.defenderAnims.values()) {
+    for (const anim of this.unitAnims.values()) {
       anim.lungeOffset = [0, 0];
       anim.shakeOffset = [0, 0];
       anim.flashAlpha = 0;
@@ -717,6 +808,37 @@ export class MapCombat {
 
     // Python aggregates unique damaged defenders, then clamps the encounter.
     return damagedDefenders.size > 0 ? Math.max(1, Math.min(100, exp)) : 0;
+  }
+
+  private calculateExpFor(unit: UnitObject, deadDefenders: Set<UnitObject>): number {
+    const damagedDefenders = new Set(this.strikes
+      .filter((strike) => strike.attacker === unit && strike.hit && strike.damage > 0 &&
+        !strike.defender.tags.includes('Tile'))
+      .map((strike) => strike.defender));
+    let exp = 0;
+    for (const defender of damagedDefenders) {
+      const levelScale = Math.max(0.1, 1 + (defender.level - unit.level) * 0.1);
+      exp += Math.round(30 * levelScale);
+      if (deadDefenders.has(defender)) exp += Math.round(50 * levelScale);
+    }
+    return damagedDefenders.size > 0 ? Math.max(1, Math.min(100, exp)) : 0;
+  }
+
+  private grantPairedExp(unit: UnitObject, amount: number, growthMode: string): void {
+    if (amount <= 0) return;
+    unit.exp += Math.max(0, Math.min(100, amount));
+    while (unit.exp >= 100) {
+      unit.exp -= 100;
+      unit.levelUp(growthMode);
+    }
+  }
+
+  private grantGuardExp(leader: UnitObject, follower: UnitObject, growthMode: string): void {
+    const guardedHits = this.strikes.filter((strike) => strike.guarded && strike.defender === leader).length;
+    const minExp = Number(this.db.getConstant('min_exp', 0));
+    const magnitude = Number(this.db.getConstant('exp_magnitude', 10));
+    const amount = Math.max(minExp, Math.min(100, guardedHits * magnitude));
+    this.grantPairedExp(follower, amount, growthMode);
   }
 }
 

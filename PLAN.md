@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 210 recognized; 200 matching case labels | Partial |
-| Item component NIDs | 201 | 110 exact string references; 92 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 111 exact string references; 92 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 69 exact string references; 67 with matching hook surfaces | Partial/Unknown |
-| Registered runtime states | broad Python state catalog | 43 web states | Partial |
-| TypeScript runtime | n/a | 95 files, 52,860 lines | Builds |
-| Browser regression suite | n/a | 92 Playwright tests | 92/92 passing |
+| Registered runtime states | broad Python state catalog | 44 web states | Partial |
+| TypeScript runtime | n/a | 95 files, 53,630 lines | Builds |
+| Browser regression suite | n/a | 94 Playwright tests | 94/94 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,33 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Pair Up Switch, Transfer, attack stance, and guard-gauge parity slice:**
+  - Used ChatGPT-backed OMP Luna medium plus direct Python-source comparison to audit
+    `SwitchPaired`, `Transfer`, ability eligibility, automatic/AUX dual-partner selection,
+    limited assist phases, guard negation, gauge upkeep, and reward/durability handling.
+    Bundled projects keep Pair Up disabled, so enabled mechanics use deterministic synthetic
+    fixtures while Rekka continues to cover the classic Rescue fallback.
+  - Added reversible `SwitchPairUpAction`, `TransferPairUpAction`, `HasTradedAction`, and
+    `GuardPairUpkeepAction`. Leader/traveler references, on-map ownership, lead flags,
+    movement/given/traded flags, sourced pair bonuses, exact skill slots, clamped merge/split
+    gauges, idle decay, save/load, undo, and redo now survive both one- and two-pair flows.
+  - Added reachable `Switch` and `Transfer` player-menu flows plus the `transfer` state.
+    Attack targeting now chooses the highest expected-damage allied partner on each side,
+    supports AUX cycling, honors `player_pairup_only` and `exempt_from_dual_strike`, cancels
+    dual strikes in guard stance, and uses map presentation for partner phases.
+  - Extended combat with Python-ordered attacker/defender assist phases, optional
+    `limit_attack_stance`, half assist damage, partner durability/WEXP/EXP, full-gauge
+    zero-damage guards, per-strike gauge gain/reset, built-guard upkeep, reversible combat
+    snapshots, visible partner lunges, and independent partner-weapon damage, hooks,
+    durability, breakage, and WEXP. Turnwheel finalization discards abandoned future
+    actions before a new timeline begins, matching the Python reference.
+  - Added regressions for menu eligibility, Switch/Transfer relationships and skills,
+    save/load, branch-aware turnwheel, automatic/AUX partner selection, component/constants
+    restrictions, strike order, half damage, rewards/durability, guards, gauge decay, and
+    combat undo/redo. Inventory is now **210/255 recognized commands / 200 case labels**,
+    **111/201 item exact references / 92 hook surfaces**, **44 registered states**, and
+    **53,630 TypeScript lines**; the full serial gate is **94/94 passing**.
 
 - **Persistent achievement commands and browser parity slice:**
   - Audited Python achievement commands, manager persistence, Boolean validators,
@@ -1004,6 +1031,10 @@ item-use fixture matrices match Python outputs and side effects.
 - [ ] Verify pathfinding, movement costs, LOS/fog, rescue/pair-up, canto, and initiative
 - [x] Verify player and event Pair Up/Separate plus classic Rescue fallback behavior,
   including board placement and guard-gauge transitions
+- [x] Implement and verify Pair Up Switch/Transfer, attack-stance partner selection and
+  assist ordering, guard negation/gauge upkeep, rewards, saves, and turnwheel replay
+- [ ] Extend Pair Up golden coverage to scripted-combat partner phases and guard-follower
+  rewards in the full battle-animation presentation
 - [ ] Add deterministic golden scenarios for weapon triangle, brave, vantage,
   desperation, miracle, effective damage, status, and scripted combat
 
@@ -1021,6 +1052,7 @@ item-use fixture matrices match Python outputs and side effects.
   completion progress, navigation, and event pause/resume
 - [ ] Complete roam talk/shop interaction and overworld option menus
 - [x] Switch Rescue/Drop menus and targeting states to Pair Up/Separate when enabled
+- [x] Add Switch/Transfer menus and attack-target AUX partner cycling for enabled Pair Up
 - [ ] Add initiative bar, rescue/status icons, movement arrows, growth/support/WEXP info
 - [ ] Remove remaining placeholder portraits/sprites where resources exist
 
@@ -1056,9 +1088,9 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Complete the remaining pair-up surface (`Switch`, `Transfer`, attack stance) with
-   player menus, actions, guard gauges, and deterministic tests.
-2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
+1. Port the next high-usage unresolved item target/use/end-combat hook cluster from
    the generated component manifest and add interaction fixtures.
-3. Implement the next project-used missing event command cluster after a fresh usage
+2. Implement the next project-used missing event command cluster after a fresh usage
    scan, preserving flags, blocking behavior, persistence, and UI reachability.
+3. Inventory Python triggers, query functions, equations, and save fields to close the
+   remaining P0 evidence gaps before selecting another broad gameplay subsystem.

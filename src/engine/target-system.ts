@@ -3,6 +3,7 @@ import type { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from '../combat/combat-calcs';
+import { computeAssistDamage, computeHit } from '../combat/combat-calcs';
 import { getLine } from './line-of-sight';
 import {
   validTargets,
@@ -177,5 +178,73 @@ export class TargetSystem {
       if (target && !targets.includes(target)) targets.push(target);
     }
     return targets;
+  }
+
+  /** Adjacent allies eligible to act as an attack-stance partner. */
+  getStrikePartnerCandidates(unit: UnitObject, target: UnitObject): UnitObject[] {
+    if (!unit.position) return [];
+    const result: UnitObject[] = [];
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]] as [number, number][]) {
+      const ally = this.board.getUnit(unit.position[0] + dx, unit.position[1] + dy);
+      if (!ally || ally === unit || ally.isDead() || !this.db.areAllied(unit.team, ally.team)) continue;
+      const weapon = ally.items.find((item) =>
+        item.isWeapon() && available(ally, item, this.db, this.game),
+      );
+      if (!weapon || weapon.hasComponent('exempt_from_dual_strike')) continue;
+      if (this.db.areAllied(ally.team, target.team)) continue;
+      result.push(ally);
+    }
+    return result;
+  }
+
+  private bestStrikePartner(unit: UnitObject, target: UnitObject, mode: 'attack' | 'defense'): UnitObject | null {
+    const candidates = this.getStrikePartnerCandidates(unit, target);
+    let best: UnitObject | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const candidate of candidates) {
+      const weapon = candidate.items.find((item) =>
+        item.isWeapon() && available(candidate, item, this.db, this.game),
+      );
+      if (!weapon) continue;
+      const damage = computeAssistDamage(candidate, weapon, target, this.db, this.board, this.game, mode);
+      const hit = Math.max(0, Math.min(100,
+        computeHit(candidate, weapon, target, this.db, this.board, this.game, mode),
+      ));
+      const score = damage * hit / 100;
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  /** Python-shaped automatic dual-strike selection for both combat sides. */
+  findStrikePartners(
+    attacker: UnitObject,
+    defender: UnitObject,
+    item: ItemObject,
+  ): [UnitObject | null, UnitObject | null] {
+    if (!this.db.getConstant('pairup', false) || !item.isWeapon()) return [null, null];
+    if (this.db.areAllied(attacker.team, defender.team)) return [null, null];
+    // Guard stance cancels attack stance for the whole encounter.
+    if (attacker.traveler || defender.traveler) return [null, null];
+
+    let attackerPartner = item.hasComponent('exempt_from_dual_strike')
+      ? null
+      : this.bestStrikePartner(attacker, defender, 'attack');
+    const defenseItem = defender.items.find((candidate) =>
+      candidate.isWeapon() && available(defender, candidate, this.db, this.game),
+    ) ?? null;
+    let defenderPartner = defenseItem?.hasComponent('exempt_from_dual_strike')
+      ? null
+      : this.bestStrikePartner(defender, attacker, 'defense');
+
+    if (this.db.getConstant('player_pairup_only', false)) {
+      if (attacker.team !== 'player') attackerPartner = null;
+      if (defender.team !== 'player') defenderPartner = null;
+    }
+    if (attackerPartner && attackerPartner === defenderPartner) return [null, null];
+    return [attackerPartner, defenderPartner];
   }
 }

@@ -65,6 +65,7 @@ import {
   GainExpAction,
   DeathAction,
   HasAttackedAction,
+  HasTradedAction,
   WaitAction,
   UseItemAction,
   RemoveSkillAction,
@@ -73,6 +74,9 @@ import {
   RescueAction,
   DropAction,
   PairUpAction,
+  SwitchPairUpAction,
+  TransferPairUpAction,
+  GuardPairUpkeepAction,
   SeparatePairUpAction,
   RemovePartnerAction,
 } from '../action';
@@ -399,6 +403,13 @@ function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | nul
     }
   }
   return tiles;
+}
+
+function canUnitStandAt(unit: UnitObject, x: number, y: number): boolean {
+  const game = getGame();
+  const movementGroup = game.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+  return game.board.inBounds(x, y) &&
+    game.board.getMovementCost(x, y, movementGroup, game.db) < 99;
 }
 
 // ---------------------------------------------------------------------------
@@ -1569,6 +1580,18 @@ export class MenuState extends State {
       }
     }
 
+    if (pairUpEnabled && unit.traveler && unit.rescuing &&
+        canUnitStandAt(unit.rescuing, ux, uy)) {
+      options.push({ label: 'Switch', value: 'switch', enabled: true });
+    }
+
+    const transferTargets = pairUpEnabled && !unit.hasGiven
+      ? getAdjacentAllies(unit, ux, uy).filter((ally) => !!ally.traveler || !!unit.traveler)
+      : [];
+    if (transferTargets.length > 0) {
+      options.push({ label: 'Transfer', value: 'transfer', enabled: true });
+    }
+
     // Region interactions (Visit, Seize, Shop, Armory, Chest, etc.)
     // Regions with region_type === 'event' show their sub_nid as the menu label.
     this.validRegions = [];
@@ -1693,6 +1716,18 @@ export class MenuState extends State {
       } else if (value === 'drop' || value === 'separate') {
         this.menu = null;
         game.state.change('drop');
+      } else if (value === 'switch') {
+        const follower = unit.rescuing;
+        if (follower && unit.position && canUnitStandAt(follower, unit.position[0], unit.position[1])) {
+          game.actionLog.doAction(new SwitchPairUpAction(unit, follower, game.board, game.db));
+          game.selectedUnit = follower;
+          game.cursor.setPos(follower.position![0], follower.position![1]);
+          this.menu = null;
+          return this.begin();
+        }
+      } else if (value === 'transfer') {
+        this.menu = null;
+        game.state.change('transfer');
       } else if (value.startsWith('region_')) {
         // Region interaction — triggered by sub_nid (Visit, Seize, Shop, Armory, Chest, etc.)
         const regionNid = value.slice('region_'.length);
@@ -2703,7 +2738,64 @@ export class RescueState extends State {
 }
 
 // ============================================================================
-// 4e. DropState - Select a tile to drop a rescued unit
+// 4e. TransferState - Exchange guard-stance travelers with an adjacent ally
+// ============================================================================
+
+export class TransferState extends State {
+  readonly name = 'transfer';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private targets: UnitObject[] = [];
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    if (!unit?.position || !game.db.getConstant('pairup', false) || unit.hasGiven) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.targets = getAdjacentAllies(unit, unit.position[0], unit.position[1])
+      .filter((ally) => !!ally.traveler || !!unit.traveler);
+    if (this.targets.length === 0) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.menu = new ChoiceMenu(this.targets.map((target) => ({
+      label: target.name,
+      value: target.nid,
+      enabled: true,
+    })), viewport.width / 2 - 30, viewport.height / 2 - 16);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu || event === null) return;
+    const game = getGame();
+    const result = this.menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result) {
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    const unit: UnitObject | null = game.selectedUnit;
+    const target = this.targets.find((candidate) => candidate.nid === result.selected);
+    if (unit && target) {
+      game.actionLog.doAction(new HasTradedAction(unit));
+      game.actionLog.doAction(new TransferPairUpAction(unit, target, game.db));
+    }
+    this.menu = null;
+    game.state.back();
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
+// ============================================================================
+// 4f. DropState - Select a tile to drop a rescued unit
 // ============================================================================
 
 export class DropState extends MapState {
@@ -2985,6 +3077,8 @@ export class TargetingState extends MapState {
 
   private targets: UnitObject[] = [];
   private targetIndex: number = 0;
+  private attackerAssist: UnitObject | null = null;
+  private defenderAssist: UnitObject | null = null;
 
   override begin(): StateResult {
     const game = getGame();
@@ -3008,6 +3102,8 @@ export class TargetingState extends MapState {
       unit.position[1],
     );
     this.targetIndex = 0;
+    this.attackerAssist = null;
+    this.defenderAssist = null;
 
     if (this.targets.length === 0) {
       game.state.back();
@@ -3051,7 +3147,33 @@ export class TargetingState extends MapState {
       if (isSmallScreen()) {
         game.camera.focusTile(target.position[0], target.position[1]);
       }
+      this.updateStrikePartners(target);
     }
+  }
+
+  private updateStrikePartners(target: UnitObject, preserveAttacker: boolean = false): void {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    const weapon = unit ? getEquippedWeapon(unit, game.db, game) : null;
+    if (!unit || !weapon || !game.targetSystem?.findStrikePartners) {
+      this.attackerAssist = null;
+      this.defenderAssist = null;
+      return;
+    }
+    const [attackerAssist, defenderAssist] = game.targetSystem.findStrikePartners(unit, target, weapon);
+    if (!preserveAttacker || !this.attackerAssist ||
+        !game.targetSystem.getStrikePartnerCandidates(unit, target).includes(this.attackerAssist)) {
+      this.attackerAssist = attackerAssist;
+    }
+    this.defenderAssist = defenderAssist;
+  }
+
+  private commitStrikePartners(target: UnitObject): void {
+    const game = getGame();
+    const unit: UnitObject = game.selectedUnit;
+    unit.strikePartner = this.attackerAssist;
+    target.strikePartner = this.defenderAssist;
+    game.memory.set('combat_strike_partners_selected', true);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -3067,6 +3189,7 @@ export class TargetingState extends MapState {
         if (clickedTargetIdx >= 0) {
           this.targetIndex = clickedTargetIdx;
           const target = this.targets[this.targetIndex];
+          this.commitStrikePartners(target);
           game.combatTarget = target;
           game.highlight.clear();
           game.state.change('combat');
@@ -3103,9 +3226,23 @@ export class TargetingState extends MapState {
         }
         break;
 
+      case 'AUX': {
+        const unit: UnitObject | null = game.selectedUnit;
+        const target = this.targets[this.targetIndex];
+        if (!unit || !target || !game.targetSystem?.getStrikePartnerCandidates) break;
+        const candidates: UnitObject[] = game.targetSystem.getStrikePartnerCandidates(unit, target);
+        if (candidates.length > 1 && this.attackerAssist) {
+          const current = candidates.indexOf(this.attackerAssist);
+          this.attackerAssist = candidates[(current + 1 + candidates.length) % candidates.length];
+          this.updateStrikePartners(target, true);
+        }
+        break;
+      }
+
       case 'SELECT': {
         const target = this.targets[this.targetIndex];
         if (target) {
+          this.commitStrikePartners(target);
           game.combatTarget = target;
           game.highlight.clear();
           game.state.change('combat');
@@ -3147,6 +3284,11 @@ export class TargetingState extends MapState {
           'white',
           '8px monospace',
         );
+        if (this.attackerAssist || this.defenderAssist) {
+          const left = this.attackerAssist?.name ?? '-';
+          const right = this.defenderAssist?.name ?? '-';
+          surf.drawText(`Dual: ${left} / ${right}`, 4, 13, 'rgba(245,222,148,1)', '6px monospace');
+        }
       }
     }
     return surf;
@@ -3310,13 +3452,29 @@ export class CombatState extends State {
     const defenseItem = primaryDefender ? getEquippedWeapon(primaryDefender, game.db, game) : null;
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
+    const playerSelectedPartners = !!game.memory.get('combat_strike_partners_selected');
+    game.memory.delete('combat_strike_partners_selected');
+    if (groupedCombat || !primaryDefender) {
+      attacker.strikePartner = null;
+      if (primaryDefender) primaryDefender.strikePartner = null;
+    } else if (!playerSelectedPartners && game.targetSystem?.findStrikePartners) {
+      const [attackerPartner, defenderPartner] = game.targetSystem.findStrikePartners(
+        attacker, primaryDefender, attackItem,
+      );
+      attacker.strikePartner = attackerPartner;
+      primaryDefender.strikePartner = defenderPartner;
+    }
+
     // Read and consume the combat script (set by interact_unit)
     const script = game.combatScript;
     game.combatScript = null;
 
     // Check if both units have battle animations available
     // Utility spells use the map presentation in LT and have no weapon pose.
-    const canAnimate = !groupedCombat && !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
+    // Dual-strike mechanics currently use the map presentation so every
+    // partner phase has an on-map actor and independent lunge/HP target.
+    const hasAttackStance = !!attacker.strikePartner || !!primaryDefender?.strikePartner;
+    const canAnimate = !groupedCombat && !hasAttackStance && !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
       attacker, attackItem, defender, defenseItem, rngMode, game, script,
     );
 
@@ -4161,6 +4319,12 @@ export class CombatState extends State {
     // Stop looping EXP SFX if still playing
     const game = getGame();
     game.audioManager?.stopSfx?.('Experience Gain');
+    game.memory.delete('combat_strike_partners_selected');
+    const active = this.getActiveCombat();
+    if (active) {
+      active.attacker.strikePartner = null;
+      active.defender.strikePartner = null;
+    }
   }
 
   override draw(surf: Surface): Surface {
@@ -4192,6 +4356,12 @@ export class CombatState extends State {
         entry.anim.lungeOffset[1] + entry.anim.shakeOffset[1],
       ],
     ]));
+    for (const entry of rs.assistants) {
+      defenderOffsets.set(entry.unit, [
+        entry.anim.lungeOffset[0] + entry.anim.shakeOffset[0],
+        entry.anim.lungeOffset[1] + entry.anim.shakeOffset[1],
+      ]);
+    }
     setActiveCombatOffsets({
       attacker: this.combat!.attacker,
       defender: this.combat!.defender,
@@ -5585,6 +5755,15 @@ export class PhaseChangeState extends State {
     // Turnwheel markers: lock during non-player phases, mark phase change
     game.actionLog.doAction(new LockTurnwheel(currentTeam !== 'player'));
     game.actionLog.doAction(new MarkPhase(currentTeam));
+
+    if (currentTeam === 'player' && game.db.getConstant('pairup', false)) {
+      for (const leader of game.getAllUnits() as UnitObject[]) {
+        const follower = leader.rescuing ?? (leader.traveler ? game.getUnit(leader.traveler) : null);
+        if (leader.traveler && follower) {
+          game.actionLog.doAction(new GuardPairUpkeepAction(leader, follower, game.db));
+        }
+      }
+    }
 
     let bannerText: string;
     let subText: string;
