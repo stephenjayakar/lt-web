@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **52,860 lines of TypeScript across 95
+systems. The engine currently spans **53,630 lines of TypeScript across 95
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -393,8 +393,10 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 - **Initiative turn system**: Speed-based per-unit turn order as alternative
   to standard phase cycle, auto-insert/remove on spawn/death
 - **Pair-up / Rescue**: Project-constant-aware Pair Up versus classic Rescue,
-  reversible Pair Up/Separate/Rescue/Drop/RemovePartner actions, guard-gauge
-  merge/split, sourced bonuses/penalties, player menus, events, and save restoration
+  reversible Pair Up/Separate/Switch/Transfer/Rescue/Drop/RemovePartner actions,
+  guard-gauge merge/split/build/decay, automatic and AUX-selected attack stance,
+  half-damage partner phases/rewards, sourced bonuses/penalties, player menus,
+  events, turnwheel branches, and save restoration
 - **Overworld map**: FE8-style world map with nodes, roads, Dijkstra pathfinding,
   animated entity movement, level entry, 11 event commands
 - **Free roam mode**: ARPG-style direct unit control with physics-based
@@ -441,9 +443,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | File | Lines | Purpose |
 |------|------:|---------|
 | `game-state.ts` | ~1480 | Singleton hub: subsystem refs, level loading/cleanup, generic learned skills, win/loss, difficulty, unit persistence |
-| `target-system.ts` | ~181 | Availability-gated target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
+| `target-system.ts` | ~250 | Availability-gated target union, range/LOS/fog/restriction/count filtering, splash expansion, recursive sequence guards, and automatic attack-stance partner scoring |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~2886 | All game actions, including reversible game variables, board/initiative death, inventory, metadata, Pair Up/Separate/Rescue/Drop, guard gauges, and sourced traveler effects |
+| `action.ts` | ~3127 | All game actions, including reversible game variables, board/initiative death, inventory, metadata, Pair Up/Switch/Transfer/Separate/Rescue/Drop, guard upkeep, and sourced traveler effects |
 | `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
 | `learned-skills.ts` | ~80 | Class/inherited learned-skill traversal and generic Feat selection |
 | `static-random.ts` | ~99 | LT LCG plus persisted combat and shared growth-random streams |
@@ -461,7 +463,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10720 | Core states and event dispatch, including persistent achievement commands/banners, Pair Up/Rescue menus, availability-gated items, grouped combat, and persistent RNG |
+| `game-states.ts` | ~10899 | Core states and event dispatch, including achievement commands, Pair Up/Switch/Transfer/Rescue menus, attack-partner cycling, availability-gated items, grouped combat, and persistent RNG |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~801 | Base hub/conversations, reachable Codex submenu, and the hidden-aware responsive persistent achievement browser |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -476,12 +478,12 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Combat (`src/combat/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `combat-calcs.ts` | ~777 | Hit, damage, crit, avoid, Python-shaped weapon-triangle ranks/reavers/overrides/defender bonuses, splash combat mode, and alternate/override item/skill formulas |
-| `combat-solver.ts` | ~663 | Single/grouped strike sequencing, exact attack-info tuples, persistent RNG modes, scoped procs, main-only counters, splash propagation, vantage/desperation/miracle |
-| `combat-components.ts` | ~304 | Shared grouped on-hit status, Steal selection, fixed and standard/Gompertz level EXP, WEXP, class-cap, and weapon-rank resolution |
-| `animation-combat.ts` | ~1342 | GBA-style animation combat state machine with reversible RNG/proc setup, deferred result commit, and shared per-strike durability/component lifecycle |
+| `combat-calcs.ts` | ~794 | Hit, normal/half-assist damage, crit, avoid, Python-shaped weapon-triangle ranks/reavers/overrides/defender bonuses, splash mode, and alternate formulas |
+| `combat-solver.ts` | ~769 | Single/grouped and attack-stance strike sequencing, exact attack-info tuples, guard gauges, persistent RNG, scoped procs, counters, splash, vantage/desperation/miracle |
+| `combat-components.ts` | ~319 | Shared grouped on-hit status, Steal selection, fixed and standard/Gompertz level EXP, main/partner WEXP, class-cap, and weapon-rank resolution |
+| `animation-combat.ts` | ~1352 | GBA-style animation combat state machine with reversible RNG/proc setup, guard gauges, deferred result commit, and shared per-strike durability/component lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
-| `map-combat.ts` | ~729 | Map-mode single/grouped combat with proc playback, reversible RNG setup, per-defender HP/animation state, and action-backed result effects |
+| `map-combat.ts` | ~851 | Map-mode single/grouped/attack-stance combat with partner animation/rewards, guard gauges, reversible RNG setup, per-defender HP state, and action-backed results |
 | `combat-lifecycle.ts` | ~87 | Python-ordered specific item combat events with target, mode, attack-info, and item payloads |
 | `combat-result-action.ts` | ~132 | Exact before/after combat mutation snapshots for deterministic turnwheel undo/redo |
 | `combat-skill-lifecycle.ts` | ~371 | Combat RNG transition records, skill conditions, temporary attack/defense/pre-procs, item overrides, grouped sharing, and charge cleanup |

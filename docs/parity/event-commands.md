@@ -98,7 +98,7 @@ Summary: 210/255 parser-recognized; 200/255 with dispatcher cases.
 | set_unit_note | SetUnitNote | set_unit_note:1329 | MODIFY_UNIT_PROPERTIES |  | Unit, Key, Value |  | yes | yes | no | mention | dispatched-unverified |
 | remove_unit_note | RemoveUnitNote | remove_unit_note:1337 | MODIFY_UNIT_PROPERTIES |  | Unit, Key |  | yes | yes | no | mention | dispatched-unverified |
 | resurrect | Resurrect | resurrect:1349 | ADD_REMOVE_INTERACT_WITH_UNITS | resurrect_unit | GlobalUnit |  | yes | yes | no | mention | dispatched-unverified |
-| reset | Reset | reset:1361 | MODIFY_UNIT_PROPERTIES | reset_unit | Unit |  | yes | yes | no |  | dispatched-unverified |
+| reset | Reset | reset:1361 | MODIFY_UNIT_PROPERTIES | reset_unit | Unit |  | yes | yes | no | mention | dispatched-unverified |
 | has_attacked | HasAttacked | has_attacked:1368 | MODIFY_UNIT_PROPERTIES |  | Unit |  | yes | yes | no |  | dispatched-unverified |
 | has_traded | HasTraded | has_traded:1375 | MODIFY_UNIT_PROPERTIES |  | Unit |  | yes | yes | no |  | dispatched-unverified |
 | has_visited | HasVisited | has_visited:1382 | MODIFY_UNIT_PROPERTIES |  | Unit | attacked | yes | yes | no |  | dispatched-unverified |

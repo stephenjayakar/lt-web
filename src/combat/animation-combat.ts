@@ -239,6 +239,7 @@ export class AnimationCombat implements AnimationCombatOwner {
   cachedResults: CombatResults | null = null;
   private lifecycleRecord: CombatLifecycleRecord;
   private lifecycleRecorded: boolean = false;
+  private guardGaugeResults: Map<UnitObject, number> = new Map();
 
   // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
@@ -279,6 +280,9 @@ export class AnimationCombat implements AnimationCombatOwner {
     script?: string[] | null,
     randomGame?: RandomGameState | null,
   ) {
+    if (attacker.strikePartner || defender.strikePartner) {
+      throw new Error('AnimationCombat does not support attack-stance partners; use MapCombat');
+    }
     this.attacker = attacker;
     this.defender = defender;
     this.attackItem = attackItem;
@@ -321,6 +325,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     );
     this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board, script);
     this.procPlayback = [...solver.procPlayback];
+    this.guardGaugeResults = new Map(solver.guardGaugeResults);
     this.lifecycleRecord.finish();
 
     // HP init
@@ -1068,6 +1073,11 @@ export class AnimationCombat implements AnimationCombatOwner {
 
     this.attacker.currentHp = atkHp;
     this.defender.currentHp = defHp;
+    for (const [unit, gauge] of this.guardGaugeResults) unit.currentGuardGauge = gauge;
+    if (this.db.getConstant('pairup', false)) {
+      this.attacker.builtGuard = true;
+      this.defender.builtGuard = true;
+    }
 
     const attackerDead = atkHp <= 0;
     const defenderDead = defHp <= 0;
