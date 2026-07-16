@@ -192,6 +192,13 @@ export class ItemObject {
     return directEffect || this.subitems.some((subitem) => subitem.hasCoreUseEffect());
   }
 
+  /** Effects that enter combat solely to resolve hit/miss (for example status staves). */
+  hasCombatUseEffect(): boolean {
+    const hitResolvedStatus = this.hasComponent('hit') &&
+      (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
+    return hitResolvedStatus || this.subitems.some((subitem) => subitem.hasCombatUseEffect());
+  }
+
   /**
    * Get the healing amount for a healing item.
    * The 'heal' component stores the HP to restore.

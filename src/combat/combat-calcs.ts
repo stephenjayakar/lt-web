@@ -282,9 +282,12 @@ export function isMagic(item: ItemObject): boolean {
 
 /** Calculate hit rate for an attacker. */
 export function accuracy(unit: UnitObject, item: ItemObject, db: Database): number {
-  // Check for skill formula override
-  const formulaOverride = skillSystem.accuracyFormula(unit);
-  const eqName = formulaOverride ?? 'HIT';
+  // Python precedence: skill override > item override > skill alternate > item alternate > default.
+  const eqName = skillSystem.accuracyFormulaOverride(unit) ??
+    itemSystem.accuracyFormulaOverride(unit, item) ??
+    skillSystem.accuracyFormula(unit) ??
+    itemSystem.accuracyFormula(unit, item) ??
+    'HIT';
 
   const baseHit = resolveEquation(db, eqName, 'SKL * 2 + LCK // 2', unit);
   const itemHit = item.getHit();
@@ -297,10 +300,18 @@ export function accuracy(unit: UnitObject, item: ItemObject, db: Database): numb
 }
 
 /** Calculate avoid for a defender. */
-export function avoid(unit: UnitObject, db: Database, board?: GameBoard | null): number {
-  // Check for skill formula override
-  const formulaOverride = skillSystem.avoidFormula(unit);
-  const eqName = formulaOverride ?? 'AVOID';
+export function avoid(
+  unit: UnitObject,
+  db: Database,
+  board?: GameBoard | null,
+  itemToAvoid?: ItemObject | null,
+): number {
+  // Defensive item formulas come from the attacking item in LT.
+  const eqName = skillSystem.avoidFormulaOverride(unit) ??
+    (itemToAvoid ? itemSystem.avoidFormulaOverride(unit, itemToAvoid) : undefined) ??
+    skillSystem.avoidFormula(unit) ??
+    (itemToAvoid ? itemSystem.avoidFormula(unit, itemToAvoid) : undefined) ??
+    'AVOID';
 
   // Avoid uses AS (attack speed), which factors in equipped weapon weight.
   const equippedWeapon = unit.items.find((i) => i.isWeapon()) ?? null;
@@ -427,7 +438,7 @@ export function computeHit(
   game?: any,
 ): number {
   const acc = accuracy(attacker, attackItem, db);
-  const avo = avoid(defender, db, board);
+  const avo = avoid(defender, db, board, attackItem);
 
   // Dynamic modifiers from items and skills (combat context)
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;

@@ -300,7 +300,7 @@ export class UnitObject {
     return this.items.filter(
       (item) =>
         !item.isWeapon() &&
-        item.hasCoreUseEffect() &&
+        (item.hasCoreUseEffect() || item.hasCombatUseEffect()) &&
         (!item.maxUses || item.uses > 0),
     );
   }

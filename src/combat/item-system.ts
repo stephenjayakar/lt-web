@@ -394,14 +394,36 @@ export function canCounter(_unit: UnitObject, item: ItemObject): boolean {
 
 /** Can this item be countered? */
 export function canBeCountered(_unit: UnitObject, item: ItemObject): boolean {
+  if (item.hasComponent('spell')) return false;
   if (item.hasComponent('cannot_be_countered')) return false;
   return true;
 }
 
 /** Can this weapon double? */
 export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
+  if (item.hasComponent('spell')) return false;
   if (item.hasComponent('cannot_double')) return false;
   return true;
+}
+
+// ============================================================
+// Formula hooks (UNIQUE)
+// ============================================================
+
+export function accuracyFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_accuracy_formula');
+}
+
+export function accuracyFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('accuracy_formula_override');
+}
+
+export function avoidFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_avoid_formula');
+}
+
+export function avoidFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('avoid_formula_override');
 }
 
 /** Does this item ignore weapon advantage? */

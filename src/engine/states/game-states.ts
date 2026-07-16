@@ -2067,7 +2067,8 @@ export class ItemUseState extends State {
         }
 
         const targets = game.targetSystem?.getValidTargetsRecursive(unit, item) ?? [];
-        if (!item.hasComponent('sequence_item') && targets.length === 1 && unit.position &&
+        if (item.hasCoreUseEffect() && !item.hasComponent('sequence_item') &&
+            targets.length === 1 && unit.position &&
             targets[0][0] === unit.position[0] && targets[0][1] === unit.position[1]) {
           applyCoreTargetedItem(unit, item, targets[0]);
           this.menu = null;
@@ -2112,6 +2113,13 @@ export class ItemTargetingState extends MapState {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
     this.item = game.memory.get('item_use_item') ?? null;
+    // Combat-routed spells finish the unit in CombatState. Unwind the item
+    // targeting/menu stack when this state resumes beneath combat.
+    if (unit?.finished) {
+      game.memory.delete('item_use_item');
+      game.state.back();
+      return 'repeat';
+    }
     if (!unit || !this.item || !game.targetSystem) {
       game.state.back();
       return 'repeat';
@@ -2172,6 +2180,18 @@ export class ItemTargetingState extends MapState {
     const target = this.targets[index];
     const activeItem = this.activeItem();
     if (!unit || !this.item || !activeItem || !target) return;
+
+    const combatStatus = activeItem.hasComponent('hit') &&
+      (activeItem.hasComponent('status_on_hit') || activeItem.hasComponent('status_after_combat_on_hit'));
+    if (activeItem === this.item && combatStatus) {
+      const defender = game.board.getUnit(target[0], target[1]);
+      if (!defender) return;
+      game.memory.set('combat_item', activeItem);
+      game.combatTarget = defender;
+      game.highlight.clear();
+      game.state.change('combat');
+      return;
+    }
 
     if (activeItem === this.item && activeItem.hasComponent('repair')) {
       const defender = game.board.getUnit(target[0], target[1]);
@@ -3029,7 +3049,7 @@ export class TargetingState extends MapState {
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'cleanup';
+type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'rank_up' | 'cleanup';
 
 export class CombatState extends State {
   readonly name = 'combat';
@@ -3078,6 +3098,7 @@ export class CombatState extends State {
 
   // Battle background panorama image
   private battleBackgroundImg: HTMLImageElement | null = null;
+  private rankUpBanner: Banner | null = null;
 
   /** Get whichever combat controller is active (AnimationCombat or MapCombat). */
   private getActiveCombat(): MapCombat | AnimationCombat | null {
@@ -3094,7 +3115,9 @@ export class CombatState extends State {
       return;
     }
 
-    const attackItem = getEquippedWeapon(attacker);
+    const selectedCombatItem = game.memory.get('combat_item') as ItemObject | undefined;
+    game.memory.delete('combat_item');
+    const attackItem = selectedCombatItem ?? getEquippedWeapon(attacker);
     if (!attackItem) {
       game.state.back();
       return;
@@ -3108,7 +3131,8 @@ export class CombatState extends State {
     game.combatScript = null;
 
     // Check if both units have battle animations available
-    const canAnimate = this.tryCreateAnimationCombat(
+    // Utility spells use the map presentation in LT and have no weapon pose.
+    const canAnimate = !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
       attacker, attackItem, defender, defenseItem, rngMode, game, script,
     );
 
@@ -3146,6 +3170,7 @@ export class CombatState extends State {
     this.levelUpSoundPlayed = false;
     this.expBar = null;
     this.portraitImg = null;
+    this.rankUpBanner = null;
 
     // Clear all highlights and hide cursor/HUD before combat starts
     // (Python does this in interaction.py and the red_cursor state)
@@ -3412,6 +3437,30 @@ export class CombatState extends State {
         const done = activeCombat.update(realDelta);
         if (done) {
           this.results = activeCombat.applyResults();
+          if (this.results.attackerRankUp) {
+            const rankUp = this.results.attackerRankUp;
+            const weaponType = activeCombat.attackItem.getComponent<string>('weapon_type');
+            if (weaponType) {
+              game.eventManager?.trigger(
+                {
+                  type: 'unit_weapon_rank_up',
+                  levelNid: game.currentLevel?.nid ?? '',
+                  unitNid: activeCombat.attacker.nid,
+                  unit1: activeCombat.attacker,
+                  weaponType,
+                  oldWexp: (activeCombat.attacker.wexp[weaponType] ?? 0) - this.results.attackerWexpGained,
+                  rank: rankUp.rank,
+                },
+                {
+                  game,
+                  unit1: activeCombat.attacker,
+                  unit2: activeCombat.defender,
+                  gameVars: game.gameVars,
+                  levelVars: game.levelVars,
+                },
+              );
+            }
+          }
           // Record combat message for turnwheel
           const atkName = activeCombat.attacker.name;
           const defName = activeCombat.defender.name;
@@ -3431,8 +3480,7 @@ export class CombatState extends State {
           } else if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
             this.startExpPhase();
           } else {
-            this.phase = 'cleanup';
-            this.phaseTimer = 0;
+            this.startRankUpOrCleanup();
           }
         }
         break;
@@ -3461,8 +3509,7 @@ export class CombatState extends State {
           ) {
             this.startExpPhase();
           } else {
-            this.phase = 'cleanup';
-            this.phaseTimer = 0;
+            this.startRankUpOrCleanup();
           }
         }
         break;
@@ -3566,8 +3613,7 @@ export class CombatState extends State {
               this.phaseTimer = 0;
               this.levelUpSoundPlayed = false;
             } else {
-              this.phase = 'cleanup';
-              this.phaseTimer = 0;
+              this.startRankUpOrCleanup();
             }
           }
         } else {
@@ -3576,8 +3622,7 @@ export class CombatState extends State {
             this.phase = 'level_up';
             this.phaseTimer = 0;
           } else {
-            this.phase = 'cleanup';
-            this.phaseTimer = 0;
+            this.startRankUpOrCleanup();
           }
         }
         break;
@@ -3621,11 +3666,18 @@ export class CombatState extends State {
         if (this.levelUpScreen) {
           const done = this.levelUpScreen.update(now);
           if (done) {
-            this.phase = 'cleanup';
-            this.phaseTimer = 0;
+            this.startRankUpOrCleanup();
           }
         } else {
           // No screen object — skip
+          this.startRankUpOrCleanup();
+        }
+        break;
+      }
+
+      case 'rank_up': {
+        if (!this.rankUpBanner || this.rankUpBanner.update(realDelta)) {
+          this.rankUpBanner = null;
           this.phase = 'cleanup';
           this.phaseTimer = 0;
         }
@@ -3775,6 +3827,23 @@ export class CombatState extends State {
     }
 
     this.phase = 'exp_init';
+    this.phaseTimer = 0;
+  }
+
+  private startRankUpOrCleanup(): void {
+    const activeCombat = this.getActiveCombat();
+    const rankUp = this.results?.attackerRankUp;
+    const weaponType = activeCombat?.attackItem.getComponent<string>('weapon_type');
+    if (rankUp && activeCombat && weaponType) {
+      this.rankUpBanner = new Banner(
+        `${activeCombat.attacker.name} reached rank ${rankUp.rank}.`,
+        weaponType,
+        1800,
+      );
+      this.phase = 'rank_up';
+    } else {
+      this.phase = 'cleanup';
+    }
     this.phaseTimer = 0;
   }
 
@@ -4384,6 +4453,10 @@ export class CombatState extends State {
     // Level-up stat screen
     if (this.phase === 'level_screen' && this.levelUpScreen) {
       this.levelUpScreen.draw(surf, performance.now());
+    }
+
+    if (this.phase === 'rank_up' && this.rankUpBanner) {
+      this.rankUpBanner.draw(surf);
     }
   }
 

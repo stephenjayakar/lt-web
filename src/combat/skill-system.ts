@@ -372,12 +372,22 @@ export function resistFormula(unit: UnitObject): string | undefined {
 
 /** Override the accuracy formula name. */
 export function accuracyFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'accuracy_formula');
+  return getSkillValue<string>(unit, 'accuracy_formula') ??
+    getSkillValue<string>(unit, 'alternate_accuracy_formula');
+}
+
+export function accuracyFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'accuracy_formula_override');
 }
 
 /** Override the avoid formula name. */
 export function avoidFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'avoid_formula');
+  return getSkillValue<string>(unit, 'avoid_formula') ??
+    getSkillValue<string>(unit, 'alternate_avoid_formula');
+}
+
+export function avoidFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'avoid_formula_override');
 }
 
 /** Override the attack speed formula name. */

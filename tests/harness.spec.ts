@@ -1179,6 +1179,194 @@ test.describe('Event command parity', () => {
     });
   });
 
+  test('hostile status staves use alternate hit formulas and hit-gated combat rewards', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { computeHit } = await import('/src/combat/combat-calcs.ts');
+      const { canBeCountered, canDouble } = await import('/src/combat/item-system.ts');
+      const attacker = game.units.get('Eirika');
+      const defender = game.board.getAllUnits().find((unit: any) =>
+        unit.position && !game.db.areAllied(attacker.team, unit.team));
+      const sleepPrefab = game.db.skills.get('Sleep');
+      if (!attacker || !defender || !sleepPrefab) return null;
+
+      const oldHit = game.db.equations.get('_STATUS_TEST_HIT');
+      const oldAvoid = game.db.equations.get('_STATUS_TEST_AVOID');
+      const oldMissWexp = game.db.constants.get('miss_wexp');
+      game.db.equations.set('_STATUS_TEST_HIT', 'MAG * 3 + SKL');
+      game.db.equations.set('_STATUS_TEST_AVOID', 'RES * 2');
+      game.db.constants.set('miss_wexp', false);
+      const item = new ItemObject({
+        nid: '_CombatSleep', name: 'Combat Sleep', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['weapon_type', 'Staff'], ['target_enemy', null],
+          ['status_on_hit', 'Sleep'], ['hit', 0], ['uses', 3], ['wexp', 5], ['exp', 35],
+          ['uses_options', { lose_uses_on_miss: false, one_loss_per_combat: false }],
+          ['alternate_accuracy_formula', '_STATUS_TEST_HIT'],
+          ['alternate_avoid_formula', '_STATUS_TEST_AVOID'],
+          ['min_range', 1], ['max_range', 99],
+        ],
+      });
+      item.owner = attacker;
+      attacker.items.push(item);
+      defender.skills = defender.skills.filter((skill: any) => skill.nid !== 'Sleep');
+      const oldExp = attacker.exp;
+      const oldWexp = attacker.wexp.Staff;
+      attacker.exp = 0;
+      attacker.wexp.Staff = 29;
+
+      const formulaHit = computeHit(attacker, item, defender, game.db, game.board, game);
+      const expectedHit = Math.max(0, Math.min(100,
+        attacker.getStatValue('MAG') * 3 + attacker.getStatValue('SKL') -
+        defender.getStatValue('RES') * 2,
+      ));
+      const hitCombat = new MapCombat(
+        attacker, item, defender, defender.getEquippedWeapon(), game.db, 'classic', game.board,
+        ['hit1', 'end'],
+      );
+      const hitResults = hitCombat.applyResults();
+      const afterHit = {
+        hasStatus: defender.skills.some((skill: any) => skill.nid === 'Sleep'),
+        uses: item.uses,
+        exp: attacker.exp,
+        wexp: attacker.wexp.Staff,
+        resultExp: hitResults.expGained,
+        resultWexp: hitResults.attackerWexpGained,
+        rank: hitResults.attackerRankUp?.rank ?? null,
+      };
+
+      defender.skills = defender.skills.filter((skill: any) => skill.nid !== 'Sleep');
+      const missCombat = new MapCombat(
+        attacker, item, defender, defender.getEquippedWeapon(), game.db, 'classic', game.board,
+        ['miss1', 'end'],
+      );
+      const missResults = missCombat.applyResults();
+      const afterMiss = {
+        hasStatus: defender.skills.some((skill: any) => skill.nid === 'Sleep'),
+        uses: item.uses,
+        exp: attacker.exp,
+        wexp: attacker.wexp.Staff,
+        resultExp: missResults.expGained,
+        resultWexp: missResults.attackerWexpGained,
+      };
+
+      attacker.items.splice(attacker.items.indexOf(item), 1);
+      attacker.exp = oldExp;
+      if (oldWexp === undefined) delete attacker.wexp.Staff;
+      else attacker.wexp.Staff = oldWexp;
+      if (oldHit === undefined) game.db.equations.delete('_STATUS_TEST_HIT');
+      else game.db.equations.set('_STATUS_TEST_HIT', oldHit);
+      if (oldAvoid === undefined) game.db.equations.delete('_STATUS_TEST_AVOID');
+      else game.db.equations.set('_STATUS_TEST_AVOID', oldAvoid);
+      if (oldMissWexp === undefined) game.db.constants.delete('miss_wexp');
+      else game.db.constants.set('miss_wexp', oldMissWexp);
+      defender.skills = defender.skills.filter((skill: any) => skill.nid !== 'Sleep');
+
+      return {
+        formulaHit,
+        expectedHit,
+        spellSemantics: {
+          canBeCountered: canBeCountered(attacker, item),
+          canDouble: canDouble(attacker, item),
+        },
+        afterHit,
+        afterMiss,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.formulaHit).toBe(result!.expectedHit);
+    expect(result!.spellSemantics).toEqual({ canBeCountered: false, canDouble: false });
+    expect(result!.afterHit).toEqual({
+      hasStatus: true,
+      uses: 2,
+      exp: 35,
+      wexp: 34,
+      resultExp: 35,
+      resultWexp: 5,
+      rank: 'D',
+    });
+    expect(result!.afterMiss).toEqual({
+      hasStatus: false,
+      uses: 2,
+      exp: 35,
+      wexp: 34,
+      resultExp: 0,
+      resultWexp: 0,
+    });
+  });
+
+  test('hostile status staff routes from the item menu through map combat', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const caster = game.units.get('Eirika');
+      if (!caster?.position || !game.db.skills.has('Sleep')) return null;
+      const item = new ItemObject({
+        nid: '_MenuSleep', name: 'Menu Sleep', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['weapon_type', 'Staff'], ['target_enemy', null],
+          ['status_on_hit', 'Sleep'], ['hit', 100], ['uses', 2], ['wexp', 1], ['exp', 1],
+          ['min_range', 1], ['max_range', 99],
+        ],
+      });
+      const target = game.targetSystem.getValidUnitTargets(caster, item)[0];
+      if (!target?.position) return null;
+      item.owner = caster;
+      caster.items.unshift(item);
+      caster.finished = false;
+      caster.hasAttacked = false;
+      target.skills = target.skills.filter((skill: any) => skill.nid !== 'Sleep');
+      game.selectedUnit = caster;
+      game.combatScript = ['hit1', 'end'];
+      game.state.change('item_use');
+      return { casterNid: caster.nid, targetNid: target.nid, targetPosition: [...target.position] };
+    });
+    expect(setup).not.toBeNull();
+
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_use');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_targeting');
+
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+
+    const enteredCombat = await page.evaluate(() => {
+      const state: any = (window as any).__gameRef.state.getCurrentState();
+      return { name: state?.name, isMapCombat: !!state?.combat, isAnimationCombat: !!state?.animCombat };
+    });
+    expect(enteredCombat).toEqual({ name: 'combat', isMapCombat: true, isAnimationCombat: false });
+
+    await stepFrames(page, 320);
+    const applied = await page.evaluate(({ casterNid, targetNid }) => {
+      const game = (window as any).__gameRef;
+      const caster = game.units.get(casterNid);
+      const target = game.units.get(targetNid);
+      const item = caster.items.find((candidate: any) => candidate.nid === '_MenuSleep');
+      const snapshot = {
+        state: game.state.getCurrentState()?.name,
+        finished: caster.finished,
+        hasStatus: target.skills.some((skill: any) => skill.nid === 'Sleep'),
+        uses: item?.uses,
+      };
+      target.skills = target.skills.filter((skill: any) => skill.nid !== 'Sleep');
+      const index = caster.items.indexOf(item);
+      if (index >= 0) caster.items.splice(index, 1);
+      return snapshot;
+    }, setup!);
+    expect(applied).toEqual({ state: 'free', finished: true, hasStatus: true, uses: 1 });
+  });
+
   test('healing staff flows through item menu, mouse targeting, and reversible actions', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

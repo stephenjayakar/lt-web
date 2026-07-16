@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 74 exact string references; 68 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 32 exact string references; 58 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 78 exact string references; 72 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 36 exact string references; 60 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 49,316 lines | Builds |
-| Browser regression suite | n/a | 71 Playwright tests | 71/71 passing |
+| TypeScript runtime | n/a | 90 files, 49,596 lines | Builds |
+| Browser regression suite | n/a | 73 Playwright tests | 73/73 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,25 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Hit-resolved hostile status-staff combat slice:**
+  - Routed non-weapon status spells such as Berserk, Sleep, and Silence from the
+    Item menu and component-valid map targeting into one-sided map combat. Spell
+    attacks now match Python by disabling counterattacks, counterability, doubling,
+    and unavailable full-battle-animation weapon poses.
+  - Added Python formula precedence for item/skill alternate and override accuracy
+    and avoid equations. Defensive status-staff avoid correctly comes from the
+    attacking item (`STATUS_STAFF_AVOID`) rather than the defender's weapon.
+  - Added shared map/full-animation combat component resolution for successful
+    `status_on_hit`/`status_after_combat_on_hit` hooks, fixed staff EXP, WEXP,
+    `miss_wexp`/`double_wexp`/`kill_wexp` policies, class caps, rank-crossing
+    detection, `unit_weapon_rank_up` triggers, and a post-combat rank banner.
+    Existing `uses_options` semantics preserve durability on misses unless opted in.
+  - Added deterministic forced-hit/miss formula/reward coverage plus an end-to-end
+    Item → target → map combat → turn-completion regression. Item coverage advanced
+    to **78/201 exact references / 72 hook surfaces** and skill coverage to
+    **36/241 exact references / 60 hook surfaces**; full harness result:
+    **73/73 passing**.
 
 - **Sequence/multi-target movement and reward slice:**
   - Replaced the recursive-target union shortcut in interactive item use with
@@ -735,6 +754,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement interactive multi/sequence target collection and bundled
   `store_unit`/`unload_unit` Warp/Rescue movement with reversible parent use
 - [x] Apply core-item fixed EXP/WEXP and multiplier policies through reversible actions
+- [x] Route hostile hit-resolved status staves through alternate accuracy/avoid,
+  one-sided combat playback, hit-gated status/durability, fixed EXP/WEXP, and rank-up UI
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -799,8 +820,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Route hit-resolved hostile status staves through combat accuracy/playback and
-   add EXP/WEXP/rank-up presentation; extend other item-target flows such as steal.
+1. Implement Steal's enemy/inventory target flow, item eligibility/capacity rules,
+   reversible transfer, AI use, and save/turnwheel regression coverage.
 2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
    splash empowerment/alternate-splash hooks.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
