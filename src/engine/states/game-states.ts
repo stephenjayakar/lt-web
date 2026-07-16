@@ -24,7 +24,7 @@ import type { ItemObject } from '../../objects/item';
 import type { RegionData } from '../../data/types';
 import { ItemObject as ItemObjectClass } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
-import { evaluateCondition, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
+import { evaluateCondition, evaluateExpression, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
 import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
 import {
   MarkActionGroupStart,
@@ -40,6 +40,8 @@ import {
   ResurrectAction,
   AddLoreAction,
   RemoveLoreAction,
+  AutoLevelAction,
+  AddSkillAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -6071,6 +6073,13 @@ export class EventState extends State {
       item: trigger?.item,
       gameVars: game.gameVars,
       levelVars: game.levelVars,
+      localArgs: new Map<string, any>([
+        ['stat_changes', trigger?.statChanges],
+        ['source', trigger?.source],
+        ['weapon_type', trigger?.weaponType],
+        ['old_wexp', trigger?.oldWexp],
+        ['rank', trigger?.rank],
+      ]),
     };
   }
 
@@ -6133,9 +6142,20 @@ export class EventState extends State {
     const trigger = this.currentEvent?.trigger;
     const unitNid = trigger?.unitNid ?? trigger?.unit1?.nid ?? '';
     const unit2Nid = trigger?.unitB ?? trigger?.unit2?.nid ?? '';
-    const args = rawArgs.map(a =>
-      a.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid)
-    );
+    const expressionContext = this.buildConditionContext();
+    const args = rawArgs.map((arg) => {
+      let value = arg.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid);
+      value = value.replace(/\{(?:e|eval):([^{}]+)\}/g, (_match, expression: string) => {
+        const result = evaluateExpression(expression, expressionContext);
+        return result === undefined || result === null ? '' : String(result);
+      });
+      value = value.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
+        if (game.levelVars?.has?.(key)) return String(game.levelVars.get(key));
+        if (game.gameVars?.has?.(key)) return String(game.gameVars.get(key));
+        return match;
+      });
+      return value;
+    });
 
     switch (cmd.type) {
       // ----- Flow control -----
@@ -6772,7 +6792,28 @@ export class EventState extends State {
         const weaponType = args[1];
         const amount = parseInt(args[2] ?? '', 10);
         if (unit && weaponType && Number.isFinite(amount)) {
-          game.actionLog.doAction(new GainWexpAction(unit, weaponType, amount));
+          const action = new GainWexpAction(unit, weaponType, amount);
+          game.actionLog.doAction(action);
+          const rankUp = action.getRankUp();
+          if (rankUp) {
+            game.eventManager?.trigger(
+              {
+                type: 'unit_weapon_rank_up',
+                levelNid: game.currentLevel?.nid ?? '',
+                unitNid: unit.nid,
+                unit1: unit,
+                weaponType,
+                oldWexp: action.getOldWexp(),
+                rank: rankUp.rank,
+              },
+              this.buildConditionContext(),
+            );
+            if (!args.includes('no_banner') && !this.skipMode) {
+              this.banner = new Banner(`${unit.name} reached rank ${rankUp.rank}.`, weaponType, 3000);
+              this.bannerIsAlert = true;
+              return true;
+            }
+          }
         } else {
           console.warn(`Event give_wexp: invalid unit, weapon type, or amount (${args.join(';')})`);
         }
@@ -6785,7 +6826,28 @@ export class EventState extends State {
         const weaponType = args[1];
         const value = parseInt(args[2] ?? '', 10);
         if (unit && weaponType && Number.isFinite(value)) {
-          game.actionLog.doAction(new SetWexpAction(unit, weaponType, value));
+          const action = new SetWexpAction(unit, weaponType, value);
+          game.actionLog.doAction(action);
+          const rankUp = action.getRankUp();
+          if (rankUp) {
+            game.eventManager?.trigger(
+              {
+                type: 'unit_weapon_rank_up',
+                levelNid: game.currentLevel?.nid ?? '',
+                unitNid: unit.nid,
+                unit1: unit,
+                weaponType,
+                oldWexp: action.getOldWexp(),
+                rank: rankUp.rank,
+              },
+              this.buildConditionContext(),
+            );
+            if (!args.includes('no_banner') && !this.skipMode) {
+              this.banner = new Banner(`${unit.name} reached rank ${rankUp.rank}.`, weaponType, 3000);
+              this.bannerIsAlert = true;
+              return true;
+            }
+          }
         } else {
           console.warn(`Event set_wexp: invalid unit, weapon type, or value (${args.join(';')})`);
         }
@@ -7289,6 +7351,46 @@ export class EventState extends State {
         } else {
           console.warn(`Event set_unit_level: invalid unit or level (${args.join(';')})`);
         }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'autolevel_to': {
+        const unit = game.units.get(args[0]);
+        const finalLevel = parseInt(args[1] ?? '', 10);
+        const optionalArgs = args.slice(2);
+        const growthMethods = new Set(['fixed', 'random', 'dynamic', 'lucky', 'bexp']);
+        const growthMethod = optionalArgs.find((arg: string) => growthMethods.has(arg.toLowerCase()));
+        const hidden = optionalArgs.some((arg: string) => arg.toLowerCase() === 'hidden');
+        if (!unit || !Number.isFinite(finalLevel)) {
+          console.warn(`Event autolevel_to: invalid unit or level (${args.join(';')})`);
+          this.advancePointer();
+          return false;
+        }
+        const currentLevel = unit.level;
+        const difference = finalLevel - currentLevel;
+        if (difference === 0) {
+          this.advancePointer();
+          return false;
+        }
+
+        const autoLevel = new AutoLevelAction(unit, difference, growthMethod);
+        game.actionLog.doAction(autoLevel);
+        if (!hidden) {
+          game.actionLog.doAction(new SetUnitLevelAction(unit, Math.max(1, finalLevel)));
+          game.eventManager?.trigger(
+            {
+              type: 'unit_level_up',
+              levelNid: game.currentLevel?.nid ?? '',
+              unitNid: unit.nid,
+              unit1: unit,
+              statChanges: { ...autoLevel.statChanges },
+              source: 'event',
+            },
+            this.buildConditionContext(),
+          );
+        }
+        this.grantAutolevelSkills(unit, currentLevel, game);
         this.advancePointer();
         return false;
       }
@@ -8783,8 +8885,7 @@ export class EventState extends State {
       case 'remove_overlay_sprite':
       case 'table':
       case 'remove_table':
-      case 'textbox':
-      case 'autolevel_to': {
+      case 'textbox': {
         // Advanced features not yet implemented — skip
         this.advancePointer();
         return false;
@@ -9253,6 +9354,40 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
   // Helper: grant skills from a new class after promotion/class change
   // -----------------------------------------------------------------------
+
+  /** Grant personal/class skills crossed by autolevel_to, using actions. */
+  private grantAutolevelSkills(unit: UnitObject, startingLevel: number, game: any): void {
+    const skillNids: string[] = [];
+    const personalPrefab = game.db.units.get(unit.nid);
+    if (personalPrefab?.learned_skills) {
+      for (const [level, skillNid] of personalPrefab.learned_skills) {
+        if (startingLevel < level && level <= unit.level) skillNids.push(skillNid);
+      }
+    }
+
+    const currentKlass = game.db.classes.get(unit.klass);
+    const classes: any[] = currentKlass ? [currentKlass] : [];
+    if (currentKlass && game.db.getConstant?.('promote_skill_inheritance', false)) {
+      let parent = currentKlass;
+      for (let depth = 0; depth < 5 && parent?.tier > 1 && parent.promotes_from; depth++) {
+        parent = game.db.classes.get(parent.promotes_from);
+        if (parent) classes.unshift(parent);
+      }
+    }
+    for (const klass of classes) {
+      for (const [level, skillNid] of klass.learned_skills ?? []) {
+        if (klass !== currentKlass || (startingLevel < level && level <= unit.level)) {
+          skillNids.push(skillNid);
+        }
+      }
+    }
+
+    for (const skillNid of skillNids) {
+      if (skillNid === 'Feat' || unit.skills.some((skill: any) => skill.nid === skillNid)) continue;
+      const prefab = game.db.skills.get(skillNid);
+      if (prefab) game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(prefab)));
+    }
+  }
 
   /**
    * Grant learned skills from the unit's current class.

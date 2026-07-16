@@ -41,6 +41,8 @@ export interface UnitSaveData {
   stats: Record<string, number>;
   currentHp: number;
   growths: Record<string, number>;
+  /** Optional for saves written before dynamic growth-point persistence. */
+  growthPoints?: Record<string, number>;
   maxStats: Record<string, number>;
   items: string[];        // item key references into items map
   skills: string[];       // skill NIDs
@@ -356,6 +358,7 @@ function serializeUnit(unit: UnitObject): UnitSaveData {
     stats: { ...unit.stats },
     currentHp: unit.currentHp,
     growths: { ...unit.growths },
+    growthPoints: { ...unit.growthPoints },
     maxStats: { ...unit.maxStats },
     items: itemKeys,
     skills: skillNids,
@@ -863,6 +866,10 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.stats = { ...unitData.stats };
       unit.currentHp = unitData.currentHp;
       unit.growths = { ...unitData.growths };
+      unit.growthPoints = { ...(unitData.growthPoints ?? {}) };
+      for (const stat of Object.keys(unit.growths)) {
+        if (unit.growthPoints[stat] === undefined) unit.growthPoints[stat] = 0;
+      }
       unit.maxStats = { ...unitData.maxStats };
       unit.tags = [...unitData.tags];
       unit.ai = unitData.ai;

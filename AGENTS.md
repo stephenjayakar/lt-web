@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~46,800 lines of TypeScript across 87
+systems. The engine currently spans **~47,400 lines of TypeScript across 88
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -434,7 +434,8 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 |------|------:|---------|
 | `game-state.ts` | ~1450 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~1980 | All game actions (Move, Damage, Heal, WEXP, lore, Promote, Convoy, etc.) |
+| `action.ts` | ~2075 | All game actions (Move, Damage, Heal, autolevel, WEXP, lore, Promote, Convoy, etc.) |
+| `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
@@ -449,7 +450,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~9290 | Core states, event-command dispatch, and gameplay logic |
+| `game-states.ts` | ~9430 | Core states, event-command dispatch, and gameplay logic |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -537,6 +538,7 @@ requires comparison with the corresponding Python source and a regression test.
 
 Event-driven persistent mutations should use `Action` subclasses so turnwheel
 reversal remains possible. The event runtime currently includes reversible WEXP,
-displayed-level, resurrection, and lore mutations. `GameState.unlockedLore` is
-serialized with an optional save field so saves created before lore persistence
-continue to load.
+displayed-level, autolevel, learned-skill, resurrection, and lore mutations.
+`leveling.ts` ports LT's deterministic level RNG and Fixed/Random/Dynamic/Lucky/BEXP
+autolevel methods. Dynamic `UnitObject.growthPoints` and `GameState.unlockedLore`
+are serialized with optional save fields so older saves continue to load.

@@ -1,6 +1,8 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
+import type { SkillObject } from '../objects/skill';
 import type { GameBoard } from '../objects/game-board';
+import { autoLevelUnit } from './leveling';
 
 // Forward declare — we need a getter function since game-state has circular deps
 let _getGame: (() => any) | null = null;
@@ -1502,6 +1504,7 @@ export class GainWexpAction extends Action {
   private weaponType: string;
   private amount: number;
   private oldWexp: number = 0;
+  private currentWexp: number = 0;
 
   constructor(unit: UnitObject, weaponType: string, amount: number) {
     super();
@@ -1517,11 +1520,22 @@ export class GainWexpAction extends Action {
       0,
       Math.min(cap, this.oldWexp + this.amount),
     );
+    this.currentWexp = this.unit.wexp[this.weaponType];
   }
 
   reverse(): void {
     this.unit.wexp[this.weaponType] = this.oldWexp;
   }
+
+  getRankUp(): { rank: string; requirement: number } | null {
+    const game = _getGame?.();
+    const ranks = [...(game?.db?.weaponRanks ?? [])].reverse();
+    return ranks.find((rank: { requirement: number }) =>
+      this.oldWexp < rank.requirement && this.currentWexp >= rank.requirement
+    ) ?? null;
+  }
+
+  getOldWexp(): number { return this.oldWexp; }
 }
 
 /** Set WEXP, clamped to the class cap, with full turnwheel reversal. */
@@ -1530,6 +1544,7 @@ export class SetWexpAction extends Action {
   private weaponType: string;
   private value: number;
   private oldWexp: number = 0;
+  private currentWexp: number = 0;
 
   constructor(unit: UnitObject, weaponType: string, value: number) {
     super();
@@ -1542,11 +1557,22 @@ export class SetWexpAction extends Action {
     this.oldWexp = this.unit.wexp[this.weaponType] ?? 0;
     const cap = getWeaponExpCap(this.unit, this.weaponType);
     this.unit.wexp[this.weaponType] = Math.max(0, Math.min(cap, this.value));
+    this.currentWexp = this.unit.wexp[this.weaponType];
   }
 
   reverse(): void {
     this.unit.wexp[this.weaponType] = this.oldWexp;
   }
+
+  getRankUp(): { rank: string; requirement: number } | null {
+    const game = _getGame?.();
+    const ranks = [...(game?.db?.weaponRanks ?? [])].reverse();
+    return ranks.find((rank: { requirement: number }) =>
+      this.oldWexp < rank.requirement && this.currentWexp >= rank.requirement
+    ) ?? null;
+  }
+
+  getOldWexp(): number { return this.oldWexp; }
 }
 
 /** Set displayed unit level without applying stat growths. */
@@ -1568,6 +1594,74 @@ export class SetUnitLevelAction extends Action {
 
   reverse(): void {
     this.unit.level = this.oldLevel;
+  }
+}
+
+/** Apply LT autolevel stat changes without changing displayed level. */
+export class AutoLevelAction extends Action {
+  private unit: UnitObject;
+  private levelDifference: number;
+  private growthMethod: string | undefined;
+  private oldStats: Record<string, number>;
+  private oldGrowthPoints: Record<string, number>;
+  private oldHp: number;
+  statChanges: Record<string, number> = {};
+
+  constructor(unit: UnitObject, levelDifference: number, growthMethod?: string) {
+    super();
+    this.unit = unit;
+    this.levelDifference = levelDifference;
+    this.growthMethod = growthMethod;
+    this.oldStats = { ...unit.stats };
+    this.oldGrowthPoints = { ...unit.growthPoints };
+    this.oldHp = unit.currentHp;
+  }
+
+  execute(): void {
+    const game = _getGame?.();
+    if (!game) return;
+    this.unit.stats = { ...this.oldStats };
+    this.unit.growthPoints = { ...this.oldGrowthPoints };
+    const result = autoLevelUnit(this.unit, this.levelDifference, this.growthMethod, game);
+    this.statChanges = result.statChanges;
+    for (const [stat, change] of Object.entries(this.statChanges)) {
+      if (this.unit.stats[stat] !== undefined) this.unit.stats[stat] += change;
+    }
+    this.unit.growthPoints = result.growthPoints;
+    this.unit.currentHp = this.unit.maxHp;
+  }
+
+  reverse(): void {
+    this.unit.stats = { ...this.oldStats };
+    this.unit.growthPoints = { ...this.oldGrowthPoints };
+    this.unit.currentHp = this.oldHp;
+  }
+}
+
+/** Add an already-created skill object, avoiding duplicates, reversibly. */
+export class AddSkillAction extends Action {
+  private unit: UnitObject;
+  private skill: SkillObject;
+  private added: boolean = false;
+
+  constructor(unit: UnitObject, skill: SkillObject) {
+    super();
+    this.unit = unit;
+    this.skill = skill;
+  }
+
+  execute(): void {
+    this.added = !this.unit.skills.some((skill) => skill.nid === this.skill.nid);
+    if (this.added) this.unit.skills.push(this.skill);
+    if (this.skill.hasComponent('canto')) this.unit.hasCanto = true;
+  }
+
+  reverse(): void {
+    if (this.added) {
+      const index = this.unit.skills.indexOf(this.skill);
+      if (index >= 0) this.unit.skills.splice(index, 1);
+    }
+    this.unit.hasCanto = this.unit.skills.some((skill) => skill.hasComponent('canto'));
   }
 }
 
