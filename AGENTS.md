@@ -434,13 +434,13 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 |------|------:|---------|
 | `game-state.ts` | ~1450 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~2230 | All game actions (Move, Damage, Heal, autolevel, WEXP, unit metadata, lore, Promote, Convoy, etc.) |
+| `action.ts` | ~2310 | All game actions (Move, Damage, Heal, autolevel, WEXP, unit/item metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
 | `difficulty.ts` | ~135 | Difficulty mode runtime class |
-| `save.ts` | ~1470 | IndexedDB save/load with full serialization |
+| `save.ts` | ~1480 | IndexedDB save/load with full serialization |
 | `records.ts` | ~903 | Recordkeeper, persistent records, achievements |
 | `query-engine.ts` | ~874 | 28 Python-compatible query functions |
 | `support-system.ts` | ~500 | Support pairs, ranks, affinity bonuses |
@@ -450,7 +450,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~9570 | Core states, event-command dispatch, and gameplay logic |
+| `game-states.ts` | ~9640 | Core states, event-command dispatch, and gameplay logic |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -543,8 +543,8 @@ with the corresponding Python source and a regression test.
 Event-driven persistent mutations should use `Action` subclasses so turnwheel
 reversal remains possible. The event runtime currently includes reversible WEXP,
 displayed-level, autolevel, learned-skill, resurrection, lore, unit metadata,
-faction, growth/stat-cap, custom-field, and categorized-note mutations.
+faction, growth/stat-cap, custom-field, categorized-note, and item-property mutations.
 `leveling.ts` ports LT's deterministic level RNG and Fixed/Random/Dynamic/Lucky/BEXP
 autolevel methods. Dynamic `UnitObject.growthPoints`, unit metadata/fields/notes,
-and `GameState.unlockedLore` are serialized with optional save fields so older
-saves continue to load.
+mutable item text/data/uses, and `GameState.unlockedLore` are serialized with
+optional save fields so older saves continue to load.

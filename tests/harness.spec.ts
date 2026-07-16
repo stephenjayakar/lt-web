@@ -458,6 +458,113 @@ test.describe('Event command parity', () => {
     });
   });
 
+  test('item name, description, data, uses, and droppable commands are reversible and persistent', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const unit = game.units.get('Eirika');
+      const item = unit?.items.find((candidate: any) => candidate.nid === 'Rapier');
+      if (!item) return null;
+      const snapshot = () => ({
+        name: item.name,
+        desc: item.desc,
+        uses: item.uses,
+        maxUses: item.maxUses,
+        droppable: item.droppable,
+        data: [...item.data.entries()],
+      });
+      const initial = snapshot();
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(new GameEvent({
+        nid: '_test_item_property_commands',
+        name: 'Item Property Commands',
+        trigger: 'test', level_nid: '0', condition: '', only_once: false, priority: 0,
+        _source: [
+          'change_item_name;Eirika;Rapier;Renais Rapier',
+          'change_item_desc;Eirika;Rapier;A restored royal blade.',
+          'set_item_droppable;Eirika;Rapier;true',
+          'set_item_data;Eirika;Rapier;starting_uses;30',
+          'set_item_uses;Eirika;Rapier;12',
+          'set_item_uses;Eirika;Rapier;3;additive',
+          'break_item;Eirika;Rapier;no_banner',
+        ],
+      }, { type: 'test', levelNid: '0', unit1: unit }));
+      game.state.change('event');
+      return { initial, beforeActionIndex };
+    });
+
+    expect(setup).not.toBeNull();
+    await settle(page, 300);
+
+    const result = await page.evaluate((beforeActionIndex: number) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const getItem = () => game.units.get('Eirika').items.find((item: any) => item.nid === 'Rapier');
+      const snapshot = () => {
+        const item = getItem();
+        return {
+          name: item.name, desc: item.desc, uses: item.uses, maxUses: item.maxUses,
+          droppable: item.droppable, data: [...item.data.entries()],
+        };
+      };
+      const changed = snapshot();
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { changed, reversed, redone: snapshot() };
+    }, setup!.beforeActionIndex);
+
+    expect(result.changed).toMatchObject({
+      name: 'Renais Rapier',
+      desc: 'A restored royal blade.',
+      uses: 0,
+      maxUses: 30,
+      droppable: true,
+    });
+    expect(Object.fromEntries(result.changed.data)).toMatchObject({ starting_uses: 30, uses: 0 });
+    expect(result.reversed).toEqual(setup!.initial);
+    expect(result.redone).toEqual(result.changed);
+
+    const roundTrip = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 96, 'battle');
+      const item = game.units.get('Eirika').items.find((candidate: any) => candidate.nid === 'Rapier');
+      item.name = 'mutated';
+      item.desc = 'mutated';
+      item.setUses(7);
+      item.droppable = false;
+      item.data.set('starting_uses', 99);
+      const loaded = await loadGame(game, 96);
+      const restored = game.units.get('Eirika').items.find((candidate: any) => candidate.nid === 'Rapier');
+      const saved = {
+        name: restored.name,
+        desc: restored.desc,
+        uses: restored.uses,
+        maxUses: restored.maxUses,
+        droppable: restored.droppable,
+        data: Object.fromEntries(restored.data),
+      };
+      await deleteSave(gameNid, 96);
+      return { loaded, saved };
+    });
+    expect(roundTrip).toEqual({
+      loaded: true,
+      saved: {
+        name: 'Renais Rapier',
+        desc: 'A restored royal blade.',
+        uses: 0,
+        maxUses: 30,
+        droppable: true,
+        data: { starting_uses: 30, uses: 0 },
+      },
+    });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

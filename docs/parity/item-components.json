@@ -7,14 +7,14 @@
   "summary": {
     "pythonComponentNids": 201,
     "webHookExports": 25,
-    "referencedComponentNids": 34,
+    "referencedComponentNids": 35,
     "hookMappedComponentNids": 23,
-    "unreferencedComponentNids": 167,
+    "unreferencedComponentNids": 166,
     "structuralStatuses": {
       "hook-and-reference": 16,
       "hook-only": 7,
-      "reference-only": 18,
-      "unreferenced": 160
+      "reference-only": 19,
+      "unreferenced": 159
     }
   },
   "webHookExports": [
@@ -626,11 +626,11 @@
       "webReferences": [
         {
           "source": "src/objects/item.ts",
-          "line": 128
+          "line": 155
         },
         {
           "source": "src/objects/item.ts",
-          "line": 130
+          "line": 157
         }
       ],
       "matchingWebHooks": [],
@@ -981,11 +981,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2963
+          "line": 2967
         },
         {
           "source": "src/objects/item.ts",
-          "line": 115
+          "line": 142
         },
         {
           "source": "src/rendering/highlight.ts",
@@ -1056,11 +1056,11 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 67
+          "line": 94
         },
         {
           "source": "src/objects/item.ts",
-          "line": 69
+          "line": 96
         }
       ],
       "matchingWebHooks": [
@@ -1129,11 +1129,11 @@
       "webReferences": [
         {
           "source": "src/objects/item.ts",
-          "line": 118
+          "line": 145
         },
         {
           "source": "src/objects/item.ts",
-          "line": 120
+          "line": 147
         }
       ],
       "matchingWebHooks": [],
@@ -1228,7 +1228,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 101
+          "line": 128
         }
       ],
       "matchingWebHooks": [],
@@ -1349,15 +1349,15 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7560
+          "line": 7634
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 87
+          "line": 89
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 180
+          "line": 184
         }
       ],
       "matchingWebHooks": [],
@@ -1663,7 +1663,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2568
+          "line": 2572
         }
       ],
       "matchingWebHooks": [],
@@ -2555,19 +2555,19 @@
       "webReferences": [
         {
           "source": "src/objects/item.ts",
-          "line": 138
+          "line": 165
         },
         {
           "source": "src/objects/item.ts",
-          "line": 140
+          "line": 167
         },
         {
           "source": "src/objects/item.ts",
-          "line": 170
+          "line": 197
         },
         {
           "source": "src/objects/item.ts",
-          "line": 173
+          "line": 200
         }
       ],
       "matchingWebHooks": [],
@@ -3312,7 +3312,7 @@
       "webReferences": [
         {
           "source": "src/objects/item.ts",
-          "line": 125
+          "line": 152
         }
       ],
       "matchingWebHooks": [],
@@ -3514,7 +3514,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 85
+          "line": 112
         }
       ],
       "matchingWebHooks": [
@@ -3549,7 +3549,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 89
+          "line": 116
         }
       ],
       "matchingWebHooks": [
@@ -3635,16 +3635,40 @@
       ],
       "webReferences": [
         {
+          "source": "src/engine/save.ts",
+          "line": 833
+        },
+        {
+          "source": "src/engine/save.ts",
+          "line": 835
+        },
+        {
           "source": "src/objects/item.ts",
           "line": 10
         },
         {
           "source": "src/objects/item.ts",
-          "line": 40
+          "line": 44
         },
         {
           "source": "src/objects/item.ts",
-          "line": 41
+          "line": 45
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 50
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 80
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 86
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 86
         }
       ],
       "matchingWebHooks": [],
@@ -3684,10 +3708,39 @@
         "reverse_use",
         "special_sort"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/save.ts",
+          "line": 833
+        },
+        {
+          "source": "src/engine/save.ts",
+          "line": 835
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 52
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 57
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 80
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 87
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 87
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "uses_options",
@@ -4109,27 +4162,27 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 108
-        },
-        {
-          "source": "src/objects/item.ts",
-          "line": 110
-        },
-        {
-          "source": "src/objects/item.ts",
-          "line": 133
-        },
-        {
-          "source": "src/objects/item.ts",
           "line": 135
         },
         {
           "source": "src/objects/item.ts",
-          "line": 150
+          "line": 137
         },
         {
           "source": "src/objects/item.ts",
-          "line": 154
+          "line": 160
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 162
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 177
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 181
         },
         {
           "source": "src/objects/unit.ts",
@@ -4159,15 +4212,15 @@
       "webReferences": [
         {
           "source": "src/objects/item.ts",
-          "line": 133
+          "line": 160
         },
         {
           "source": "src/objects/item.ts",
-          "line": 135
+          "line": 162
         },
         {
           "source": "src/objects/item.ts",
-          "line": 158
+          "line": 185
         }
       ],
       "matchingWebHooks": [],
@@ -4283,23 +4336,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8405
+          "line": 8479
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 570
+          "line": 574
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 571
+          "line": 575
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 579
+          "line": 583
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 592
+          "line": 596
         }
       ],
       "matchingWebHooks": [],
@@ -4358,19 +4411,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1469
+          "line": 1473
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1600
+          "line": 1604
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1602
+          "line": 1606
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1862
+          "line": 1866
         }
       ],
       "matchingWebHooks": [],
@@ -4472,11 +4525,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6105
+          "line": 6118
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1238
+          "line": 1242
         },
         {
           "source": "src/objects/item.ts",
@@ -4484,7 +4537,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 93
+          "line": 120
         }
       ],
       "matchingWebHooks": [
@@ -4521,7 +4574,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 97
+          "line": 124
         }
       ],
       "matchingWebHooks": [
@@ -4562,11 +4615,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2743
+          "line": 2747
         },
         {
           "source": "src/objects/item.ts",
-          "line": 115
+          "line": 142
         }
       ],
       "matchingWebHooks": [],
@@ -4603,7 +4656,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2743
+          "line": 2747
         }
       ],
       "matchingWebHooks": [
@@ -4666,7 +4719,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3703
+          "line": 3707
         },
         {
           "source": "src/objects/item.ts",
@@ -4674,7 +4727,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 77
+          "line": 104
         }
       ],
       "matchingWebHooks": [
@@ -4725,7 +4778,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 73
+          "line": 100
         }
       ],
       "matchingWebHooks": [
@@ -4796,7 +4849,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3715
+          "line": 3719
         }
       ],
       "matchingWebHooks": [
@@ -4839,7 +4892,7 @@
         },
         {
           "source": "src/objects/item.ts",
-          "line": 81
+          "line": 108
         }
       ],
       "matchingWebHooks": [

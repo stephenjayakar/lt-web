@@ -47,6 +47,10 @@ import {
   ChangeUnitRecordAction,
   SetUnitFieldAction,
   ChangeUnitNoteAction,
+  ChangeItemTextAction,
+  SetItemDroppableAction,
+  SetItemDataAction,
+  SetItemUsesAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -6044,6 +6048,15 @@ export class EventState extends State {
     return game.board?.getAllUnits().find((u: UnitObject) => u.nid === nid);
   }
 
+  /** Resolve an item by NID from a unit inventory or the current party convoy. */
+  private findInventoryItem(ownerOrConvoy: string, itemNid: string): ItemObject | undefined {
+    const game = getGame();
+    const items: ItemObject[] | undefined = ownerOrConvoy.toLowerCase() === 'convoy'
+      ? game.getParty()?.convoy
+      : this.findUnit(ownerOrConvoy)?.items;
+    return items?.find((item) => item.nid === itemNid);
+  }
+
   /**
    * Resolve a position argument that could be either "x,y" coordinates
    * or a unit NID (resolves to the unit's current position).
@@ -6749,6 +6762,67 @@ export class EventState extends State {
           if (idx !== -1) {
             unit.items.splice(idx, 1);
           }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_item_name':
+      case 'change_item_desc': {
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        if (item) {
+          const attribute = cmd.type === 'change_item_name' ? 'name' : 'desc';
+          game.actionLog.doAction(new ChangeItemTextAction(item, attribute, args[2] ?? ''));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_item_droppable': {
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        const value = (args[2] ?? '').toLowerCase();
+        if (item) {
+          game.actionLog.doAction(new SetItemDroppableAction(item, ['true', '1', 'yes'].includes(value)));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_item_data': {
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        const key = args[2] ?? '';
+        const rawValue = args[3] ?? '';
+        const value = args.includes('from_python')
+          ? rawValue
+          : evaluateExpression(rawValue, this.buildConditionContext());
+        if (item && key && value !== undefined) {
+          game.actionLog.doAction(new SetItemDataAction(item, key, value));
+        } else if (item && key) {
+          console.warn(`Event set_item_data: could not evaluate ${rawValue}`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_item_uses': {
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        const requested = Number(evaluateExpression(args[2] ?? '', this.buildConditionContext()));
+        if (item && item.maxUses > 0 && Number.isFinite(requested)) {
+          const value = args.includes('additive') ? item.uses + requested : requested;
+          game.actionLog.doAction(new SetItemUsesAction(item, value));
+        } else {
+          console.warn(`Event set_item_uses: invalid owner, item, or uses (${args.join(';')})`);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'break_item': {
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        if (item && item.maxUses > 0) {
+          game.actionLog.doAction(new SetItemUsesAction(item, 0));
+        } else {
+          console.warn(`Event break_item: item has no uses (${args.join(';')})`);
         }
         this.advancePointer();
         return false;

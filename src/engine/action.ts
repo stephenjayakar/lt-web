@@ -993,7 +993,7 @@ export class UseItemAction extends Action {
       this.unit.items.push(this.item);
     }
 
-    this.item.uses = this.usesBefore;
+    this.item.setUses(this.usesBefore);
     this.unit.currentHp = this.hpBefore;
     this.unit.stats = this.statsBefore;
   }
@@ -1204,7 +1204,7 @@ export class WeaponUsesAction extends Action {
     if (this.broken) {
       this.unit.items.push(this.item);
     }
-    this.item.uses = this.usesBefore;
+    this.item.setUses(this.usesBefore);
   }
 }
 
@@ -1820,6 +1820,85 @@ export class ChangeUnitNoteAction extends Action {
   reverse(): void {
     this.unit.notes = this.oldNotes.map(([category, note]) => [category, note]);
   }
+}
+
+/** Reversibly change an item instance's display name or description. */
+export class ChangeItemTextAction extends Action {
+  private item: ItemObject;
+  private attribute: 'name' | 'desc';
+  private value: string;
+  private oldValue: string;
+
+  constructor(item: ItemObject, attribute: 'name' | 'desc', value: string) {
+    super();
+    this.item = item;
+    this.attribute = attribute;
+    this.value = value;
+    this.oldValue = item[attribute];
+  }
+
+  execute(): void { this.item[this.attribute] = this.value; }
+  reverse(): void { this.item[this.attribute] = this.oldValue; }
+}
+
+/** Reversibly set whether an inventory item drops on unit death. */
+export class SetItemDroppableAction extends Action {
+  private item: ItemObject;
+  private value: boolean;
+  private oldValue: boolean;
+
+  constructor(item: ItemObject, value: boolean) {
+    super();
+    this.item = item;
+    this.value = value;
+    this.oldValue = item.droppable;
+  }
+
+  execute(): void { this.item.droppable = this.value; }
+  reverse(): void { this.item.droppable = this.oldValue; }
+}
+
+/** Mirror LT's SetObjData: only an existing runtime-data key can be changed. */
+export class SetItemDataAction extends Action {
+  private item: ItemObject;
+  private key: string;
+  private value: any;
+  private oldValue: any;
+  private exists: boolean;
+
+  constructor(item: ItemObject, key: string, value: any) {
+    super();
+    this.item = item;
+    this.key = key;
+    this.value = value;
+    this.exists = item.data.has(key);
+    this.oldValue = item.data.get(key);
+  }
+
+  execute(): void {
+    if (this.exists) this.item.setData(this.key, this.value);
+  }
+
+  reverse(): void {
+    if (this.exists) this.item.setData(this.key, this.oldValue);
+  }
+}
+
+/** Set normal or chapter uses while keeping the ItemObject data mirror synchronized. */
+export class SetItemUsesAction extends Action {
+  private item: ItemObject;
+  private value: number;
+  private oldValue: number;
+
+  constructor(item: ItemObject, value: number) {
+    super();
+    this.item = item;
+    this.value = Math.max(0, Math.min(item.maxUses, value));
+    this.oldValue = item.uses;
+  }
+
+  execute(): void { this.item.setUses(this.value); }
+  reverse(): void { this.item.setUses(this.oldValue); }
 }
 
 /** Mark a dead unit alive again. Placement is intentionally unchanged. */

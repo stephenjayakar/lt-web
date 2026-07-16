@@ -78,6 +78,8 @@ export type EventCommandType =
   | 'set_variant' | 'set_unit_field' | 'set_unit_note' | 'remove_unit_note'
   | 'reset' | 'has_attacked' | 'has_traded' | 'has_finished'
   | 'give_item' | 'equip_item' | 'remove_item' | 'move_item'
+  | 'set_item_uses' | 'set_item_data' | 'set_item_droppable' | 'break_item'
+  | 'change_item_name' | 'change_item_desc'
   | 'give_exp' | 'set_exp' | 'give_wexp' | 'set_wexp'
   | 'give_skill' | 'remove_skill'
   | 'change_ai' | 'change_party' | 'change_faction' | 'change_team'
@@ -171,6 +173,8 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'set_unit_field', 'set_unit_note', 'remove_unit_note',
   'reset', 'has_attacked', 'has_traded', 'has_finished',
   'give_item', 'equip_item', 'remove_item', 'move_item',
+  'set_item_uses', 'set_item_data', 'set_item_droppable', 'break_item',
+  'change_item_name', 'change_item_desc',
   'give_exp', 'set_exp', 'give_wexp', 'set_wexp',
   'give_skill', 'remove_skill',
   'change_ai', 'change_ai_group', 'change_party', 'change_faction', 'change_team',
