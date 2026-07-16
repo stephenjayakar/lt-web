@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~50,500 lines of TypeScript across 90
+systems. The engine currently spans **~50,700 lines of TypeScript across 92
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -432,11 +432,13 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Core Engine (`src/engine/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-state.ts` | ~1470 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
+| `game-state.ts` | ~1480 | Singleton hub: subsystem refs, level loading/cleanup, generic learned skills, win/loss, difficulty, unit persistence |
 | `target-system.ts` | ~175 | Target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
 | `action.ts` | ~2564 | All game actions (Move/Warp, Damage, Heal, Steal records, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
-| `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
+| `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
+| `learned-skills.ts` | ~80 | Class/inherited learned-skill traversal and generic Feat selection |
+| `static-random.ts` | ~65 | LT LCG and persisted shared growth-random stream |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
@@ -451,7 +453,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10503 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, grouped AOE combat routing, combat-routed utility spells, and item-use rewards |
+| `game-states.ts` | ~10493 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, learned-skill actions, grouped AOE combat routing, combat-routed utility spells, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -553,6 +555,9 @@ so transfers cannot leave stale owner-derived references.
 `multi_item` and `sequence_item` prefab components, ownership propagates down the tree,
 and save restoration reconnects the graph before assigning unit/convoy ownership.
 `leveling.ts` ports LT's deterministic level RNG and Fixed/Random/Dynamic/Lucky/BEXP
-autolevel methods. Dynamic `UnitObject.growthPoints`, unit metadata/fields/notes,
+autolevel methods. `static-random.ts` owns LT's shared growth LCG, while
+`learned-skills.ts` applies class inheritance and database-ordered, non-duplicating
+generic Feat selection during spawning and `autolevel_to`. Dynamic
+`UnitObject.growthPoints`, unit metadata/fields/notes,
 mutable item text/data/uses, and `GameState.unlockedLore` are serialized with
 optional save fields so older saves continue to load.

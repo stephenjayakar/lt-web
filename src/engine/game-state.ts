@@ -48,6 +48,7 @@ import { RoamInfo } from './roam-info';
 import { Recordkeeper } from './records';
 import { GameQueryEngine } from './query-engine';
 import { TargetSystem } from './target-system';
+import { getStartingClassSkillNids } from './learned-skills';
 
 /**
  * GameState — The god object holding references to every major subsystem
@@ -1203,6 +1204,16 @@ export class GameState {
 
     // Generic units are NOT persistent across levels (Python: self.persistent = False)
     unit.persistent = false;
+
+    // Python creates generic class skills before autoleveling. `Feat` entries
+    // resolve through the shared growth RNG when generic_feats is enabled.
+    for (const skillNid of getStartingClassSkillNids(unit, 0, this)) {
+      const skillPrefab = this.db.skills.get(skillNid);
+      if (!skillPrefab) continue;
+      const skill = new SkillObject(skillPrefab);
+      unit.skills.push(skill);
+      if (skill.hasComponent('canto')) unit.hasCanto = true;
+    }
 
     // Auto-level: apply FIXED growth-based stat increases.
     // Python: num_levels = self.level - 1 for tier 0/1 base classes

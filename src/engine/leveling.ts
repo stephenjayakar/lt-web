@@ -1,26 +1,12 @@
 import type { UnitObject } from '../objects/unit';
 import { growthChange } from '../combat/skill-system';
+import { Lcg } from './static-random';
 
 export type GrowthMethod = 'Fixed' | 'Random' | 'Dynamic' | 'Lucky' | 'Bexp';
 
 export interface AutoLevelResult {
   statChanges: Record<string, number>;
   growthPoints: Record<string, number>;
-}
-
-/** LT's deterministic linear-congruential generator. */
-class Lcg {
-  private state: number;
-
-  constructor(seed: number) {
-    this.state = seed & 0x7fffffff;
-  }
-
-  randint(min: number, max: number): number {
-    this.state = (Math.imul(this.state, 1103515245) + 12345) & 0x7fffffff;
-    const random = this.state >>> 16;
-    return (random % (max - min + 1)) + min;
-  }
 }
 
 const MD5_SHIFTS = [

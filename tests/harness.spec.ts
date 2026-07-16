@@ -2639,6 +2639,146 @@ test.describe('Event command parity', () => {
     if (setup!.hasCantoPrefab) expect(result.hasCanto).toBe(true);
   });
 
+  test('generic Feat selection uses LT growth RNG and survives save/load', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const klass = game.db.classes.get(game.units.get('Eirika').klass);
+      const makeFeat = (nid: string) => ({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['feat', null]],
+      });
+      for (const nid of ['_FeatAlpha', '_FeatBeta', '_FeatGamma']) {
+        game.db.skills.set(nid, makeFeat(nid));
+      }
+      klass.learned_skills = [[1, 'Feat']];
+      game.gameVars.set('_random_seed', 0);
+      game.gameVars.delete('_growth_random_seed');
+      game.gameVars.delete('_growth_random_state');
+
+      const spawn = (nid: string) => game.spawnGenericUnit({
+        nid, variant: null, level: 1, klass: klass.nid, faction: '',
+        starting_items: [], starting_skills: [], team: 'enemy', ai: '',
+        ai_group: null, starting_position: null, generic: true,
+      });
+      const selectedFeat = (nid: string) => game.units.get(nid).skills
+        .map((skill: any) => skill.nid)
+        .find((nid: string) => nid.startsWith('_Feat')) ?? null;
+
+      game.db.constants.set('generic_feats', false);
+      spawn('_FeatDisabled');
+      const disabled = {
+        skill: selectedFeat('_FeatDisabled'),
+        state: game.gameVars.get('_growth_random_state') ?? null,
+      };
+
+      game.db.constants.set('generic_feats', true);
+      const featOrder = Array.from(game.db.skills.values())
+        .filter((skill: any) => skill.components.some(([nid]: any[]) => nid === 'feat'))
+        .map((skill: any) => skill.nid);
+      spawn('_FeatFirst');
+      const first = selectedFeat('_FeatFirst');
+      const stateAfterFirst = game.gameVars.get('_growth_random_state');
+
+      await saveGame(game, 96, 'battle');
+      spawn('_FeatSecond');
+      const second = selectedFeat('_FeatSecond');
+      const stateAfterSecond = game.gameVars.get('_growth_random_state');
+
+      const loaded = await loadGame(game, 96);
+      const restoredState = game.gameVars.get('_growth_random_state');
+      spawn('_FeatRestored');
+      const restored = selectedFeat('_FeatRestored');
+      const stateAfterRestored = game.gameVars.get('_growth_random_state');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await deleteSave(gameNid, 96);
+
+      return {
+        disabled, featOrder, first, second, restored, loaded,
+        stateAfterFirst, stateAfterSecond, restoredState, stateAfterRestored,
+      };
+    });
+
+    expect(result.disabled).toEqual({ skill: null, state: null });
+    expect(result.featOrder).toContain('_FeatAlpha');
+    expect(result.first).toBe(result.featOrder[38 % result.featOrder.length]);
+    expect(result.second).toBe(result.featOrder[58 % result.featOrder.length]);
+    expect(result.loaded).toBe(true);
+    expect(result.restored).toBe(result.second);
+    expect(result.stateAfterFirst).toBe(1103527590);
+    expect(result.stateAfterSecond).toBe(377401575);
+    expect(result.restoredState).toBe(result.stateAfterFirst);
+    expect(result.stateAfterRestored).toBe(result.stateAfterSecond);
+  });
+
+  test('autolevel_to resolves distinct Feat entries with reversible skill actions', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const klass = game.db.classes.get(game.units.get('Eirika').klass);
+      const featNids = ['_AutoFeatAlpha', '_AutoFeatBeta', '_AutoFeatGamma'];
+      for (const nid of featNids) {
+        game.db.skills.set(nid, {
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['feat', null]],
+        });
+      }
+      klass.learned_skills = [[2, 'Feat'], [3, 'Feat']];
+      game.db.constants.set('generic_feats', true);
+      game.gameVars.set('_random_seed', 0);
+      game.gameVars.delete('_growth_random_seed');
+      game.gameVars.delete('_growth_random_state');
+      game.spawnGenericUnit({
+        nid: '_FeatAutolevel', variant: null, level: 1, klass: klass.nid, faction: '',
+        starting_items: [], starting_skills: [featNids[0]], team: 'enemy', ai: '',
+        ai_group: null, starting_position: null, generic: true,
+      });
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(new GameEvent({
+        nid: '_test_feat_autolevel', name: 'Feat Autolevel', trigger: 'test',
+        level_nid: '0', condition: '', only_once: false, priority: 0,
+        _source: ['autolevel_to;_FeatAutolevel;3;fixed'],
+      }, { type: 'test', levelNid: '0', unit1: game.units.get('_FeatAutolevel') }));
+      game.state.change('event');
+      return { featNids, beforeActionIndex };
+    });
+
+    await settle(page, 300);
+    const result = await page.evaluate(({ featNids, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const actionLog = game.actionLog as any;
+      const snapshot = () => {
+        const unit = game.units.get('_FeatAutolevel');
+        return {
+          level: unit.level,
+          feats: unit.skills
+            .map((skill: any) => skill.nid)
+            .filter((nid: string) => featNids.includes(nid)),
+        };
+      };
+      const applied = snapshot();
+      const growthState = game.gameVars.get('_growth_random_state');
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      return { applied, reversed, redone: snapshot(), growthState };
+    }, setup);
+
+    expect(result.applied).toEqual({
+      level: 3,
+      feats: ['_AutoFeatAlpha', '_AutoFeatBeta', '_AutoFeatGamma'],
+    });
+    expect(result.reversed).toEqual({ level: 1, feats: ['_AutoFeatAlpha'] });
+    expect(result.redone).toEqual(result.applied);
+    expect(result.growthState).toBe(377401575);
+  });
+
   for (const growthCase of [
     {
       method: 'random',
