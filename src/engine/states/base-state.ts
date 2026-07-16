@@ -18,6 +18,7 @@ import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
+import { ACHIEVEMENTS, type AchievementEntry } from '../records';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -112,6 +113,14 @@ export class BaseMainState extends State {
       value: 'convos',
       enabled: !!hasConvos,
       description: 'View available conversations.',
+    });
+
+    // Python routes achievements through the base Codex child menu.
+    options.push({
+      label: 'Codex',
+      value: 'codex',
+      enabled: true,
+      description: 'Review records and achievements.',
     });
 
     // Options (settings)
@@ -257,6 +266,10 @@ export class BaseMainState extends State {
 
         case 'convos':
           game.state.change('base_convos');
+          break;
+
+        case 'codex':
+          game.state.change('base_codex');
           break;
 
         case 'market': {
@@ -414,6 +427,285 @@ export class BaseConvosState extends State {
       // Pop back to base main (event will play on top)
       game.state.back();
     }
+  }
+}
+
+// ============================================================================
+// BaseCodexState — Base reference-data submenu
+// ============================================================================
+
+export class BaseCodexState extends State {
+  readonly name = 'base_codex';
+  override readonly transparent = true;
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private menu: ChoiceMenu | null = null;
+
+  override start(): StateResult {
+    this.buildMenu();
+  }
+
+  override begin(): StateResult {
+    this.buildMenu();
+  }
+
+  private buildMenu(): void {
+    const hasAchievements = (ACHIEVEMENTS?.getAll().length ?? 0) > 0;
+    const options: MenuOption[] = hasAchievements
+      ? [{
+          label: 'Achievements',
+          value: 'achievements',
+          enabled: true,
+          description: 'Review persistent achievement progress.',
+        }]
+      : [{
+          label: 'No Entries',
+          value: 'empty',
+          enabled: false,
+          description: 'Nothing has been unlocked yet.',
+        }];
+    this.menu = new ChoiceMenu(options, 80, 36);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result) {
+      game.state.back();
+    } else if (result.selected === 'achievements') {
+      game.state.change('base_achievement');
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    const vw = viewport.width;
+    const vh = viewport.height;
+    surf.fillRect(0, 0, vw, vh, 'rgba(0,0,0,0.28)');
+    surf.fillRect(76, 20, Math.min(150, vw - 82), 14, 'rgba(16,16,48,0.94)');
+    surf.drawText('Codex', 82, 23, 'rgba(220,200,128,1)', '8px monospace');
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
+// ============================================================================
+// BaseAchievementState — Project-global achievement browser
+// ============================================================================
+
+const ACHIEVEMENT_HEADER_H = 22;
+const ACHIEVEMENT_LIST_Y = 27;
+const ACHIEVEMENT_ROW_H = 18;
+const ACHIEVEMENT_VISIBLE_ROWS = 5;
+
+export class BaseAchievementState extends State {
+  readonly name = 'base_achievement';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private bgImage: HTMLImageElement | null = null;
+  private achievements: AchievementEntry[] = [];
+  private selectedIndex: number = 0;
+  private scrollOffset: number = 0;
+  private backgroundLoadToken: number = 0;
+
+  override start(): StateResult {
+    this.bgImage = null;
+    this.selectedIndex = 0;
+    this.scrollOffset = 0;
+    this.reloadEntries();
+    this.loadBackground();
+  }
+
+  override begin(): StateResult {
+    this.reloadEntries();
+  }
+
+  override finish(): void {
+    this.backgroundLoadToken++;
+    this.bgImage = null;
+  }
+
+  private reloadEntries(): void {
+    this.achievements = ACHIEVEMENTS?.getAll() ?? [];
+    if (this.achievements.length === 0) {
+      this.selectedIndex = 0;
+      this.scrollOffset = 0;
+      return;
+    }
+    this.selectedIndex = Math.min(this.selectedIndex, this.achievements.length - 1);
+    this.keepSelectionVisible();
+  }
+
+  private loadBackground(): void {
+    const game = getGame();
+    const bgName = String(game.gameVars.get('_base_bg_name') || 'default_background');
+    const token = ++this.backgroundLoadToken;
+    void game.resources.tryLoadImage(`resources/panoramas/${bgName}.png`)
+      .then((img: HTMLImageElement | null) => {
+        if (token === this.backgroundLoadToken) this.bgImage = img;
+      });
+  }
+
+  private getVisibleRowCount(): number {
+    const footerTop = viewport.height - 18;
+    const hasDetailSpace = viewport.height >= 104;
+    const detailSpace = hasDetailSpace ? 26 : 0;
+    const available = footerTop - ACHIEVEMENT_LIST_Y - detailSpace;
+    return Math.max(1, Math.min(ACHIEVEMENT_VISIBLE_ROWS, Math.floor(available / ACHIEVEMENT_ROW_H)));
+  }
+
+  private keepSelectionVisible(): void {
+    const visibleRows = this.getVisibleRowCount();
+    if (this.selectedIndex < this.scrollOffset) {
+      this.scrollOffset = this.selectedIndex;
+    } else if (this.selectedIndex >= this.scrollOffset + visibleRows) {
+      this.scrollOffset = this.selectedIndex - visibleRows + 1;
+    }
+  }
+
+  private moveSelection(delta: number): void {
+    if (this.achievements.length === 0) return;
+    this.selectedIndex = (this.selectedIndex + delta + this.achievements.length) % this.achievements.length;
+    this.keepSelectionVisible();
+  }
+
+  private wrapText(text: string, maxChars: number, maxLines: number): string[] {
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length <= maxChars) {
+        line = candidate;
+      } else {
+        if (line) lines.push(line);
+        line = word.slice(0, maxChars);
+        if (lines.length >= maxLines) break;
+      }
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    if (words.length && lines.length === maxLines && lines.join(' ').length < text.length - 1) {
+      lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, Math.max(0, maxChars - 3))}...`;
+    }
+    return lines;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (game.input?.mouseClick === 'BACK' || event === 'BACK') {
+      game.audioManager?.playSfx?.('Select 4');
+      game.state.back();
+      return;
+    }
+
+    if (game.input?.mouseMoved || game.input?.mouseClick === 'SELECT') {
+      const [mx, my] = game.input.getGameMousePos();
+      const row = Math.floor((my - ACHIEVEMENT_LIST_Y) / ACHIEVEMENT_ROW_H);
+      const index = this.scrollOffset + row;
+      if (mx >= 7 && mx <= viewport.width - 7 && row >= 0 && row < this.getVisibleRowCount() && index < this.achievements.length) {
+        if (index !== this.selectedIndex) game.audioManager?.playSfx?.('Select 6');
+        this.selectedIndex = index;
+      }
+    }
+
+    if (event === 'UP') {
+      this.moveSelection(-1);
+      game.audioManager?.playSfx?.('Select 6');
+    } else if (event === 'DOWN') {
+      this.moveSelection(1);
+      game.audioManager?.playSfx?.('Select 6');
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    const vw = viewport.width;
+    const vh = viewport.height;
+    if (this.bgImage) {
+      const scale = surf.scale;
+      surf.ctx.imageSmoothingEnabled = false;
+      surf.ctx.drawImage(
+        this.bgImage,
+        0, 0, this.bgImage.naturalWidth || vw, this.bgImage.naturalHeight || vh,
+        0, 0, Math.round(vw * scale), Math.round(vh * scale),
+      );
+      surf.fillRect(0, 0, vw, vh, 'rgba(5,9,24,0.64)');
+    } else {
+      surf.fill(9, 13, 30);
+      for (let x = -vh; x < vw; x += 16) {
+        surf.fillRect(x, 0, 1, vh, 'rgba(95,112,164,0.08)');
+      }
+    }
+
+    const completeCount = this.achievements.filter((entry) => entry.complete).length;
+    const total = this.achievements.length;
+    surf.fillRect(0, 0, vw, ACHIEVEMENT_HEADER_H, 'rgba(10,15,42,0.94)');
+    surf.fillRect(0, ACHIEVEMENT_HEADER_H - 2, vw, 2, 'rgba(218,177,75,0.85)');
+    surf.drawText('ACHIEVEMENTS', 7, 5, 'rgba(245,222,148,1)', '10px monospace');
+    const countText = `${completeCount} / ${total}`;
+    surf.drawText(countText, vw - countText.length * 6 - 8, 6, 'rgba(176,205,255,1)', '8px monospace');
+    const progressW = Math.max(1, vw - 14);
+    surf.fillRect(7, 18, progressW, 2, 'rgba(54,64,104,0.9)');
+    if (total > 0) {
+      surf.fillRect(7, 18, Math.floor(progressW * completeCount / total), 2, 'rgba(229,184,68,1)');
+    }
+
+    if (total === 0) {
+      surf.fillRect(22, 54, vw - 44, 34, 'rgba(12,18,48,0.88)');
+      surf.drawRect(22, 54, vw - 44, 34, 'rgba(112,130,190,0.55)');
+      surf.drawText('No achievements yet.', 60, 68, 'rgba(181,191,220,1)', '8px monospace');
+    } else {
+      const visibleRows = this.getVisibleRowCount();
+      const end = Math.min(total, this.scrollOffset + visibleRows);
+      for (let index = this.scrollOffset; index < end; index++) {
+        const entry = this.achievements[index];
+        const hidden = entry.hidden && !entry.complete;
+        const y = ACHIEVEMENT_LIST_Y + (index - this.scrollOffset) * ACHIEVEMENT_ROW_H;
+        const selected = index === this.selectedIndex;
+        surf.fillRect(7, y, vw - 14, ACHIEVEMENT_ROW_H - 2,
+          selected ? 'rgba(55,73,131,0.94)' : 'rgba(12,18,48,0.82)');
+        surf.drawRect(7, y, vw - 14, ACHIEVEMENT_ROW_H - 2,
+          selected ? 'rgba(229,184,68,0.95)' : 'rgba(86,101,153,0.45)');
+        const marker = entry.complete ? '*' : hidden ? '?' : '-';
+        const markerColor = entry.complete
+          ? 'rgba(245,205,91,1)'
+          : hidden ? 'rgba(118,125,151,1)' : 'rgba(155,174,219,1)';
+        surf.drawText(marker, 12, y + 4, markerColor, '8px monospace');
+        const displayName = hidden ? 'Hidden' : entry.name;
+        const status = entry.complete ? 'Complete' : 'Locked';
+        surf.drawText(`${displayName} - ${status}`.slice(0, 42), 25, y + 4,
+          entry.complete ? 'rgba(255,238,181,1)' : 'rgba(218,224,241,1)', '8px monospace');
+      }
+
+      const selected = this.achievements[this.selectedIndex];
+      const hidden = selected.hidden && !selected.complete;
+      const detailY = ACHIEVEMENT_LIST_Y + visibleRows * ACHIEVEMENT_ROW_H + 1;
+      if (detailY + 25 <= vh - 18) {
+        surf.fillRect(7, detailY, vw - 14, 25, 'rgba(8,12,34,0.92)');
+        surf.drawRect(7, detailY, vw - 14, 25, 'rgba(86,101,153,0.55)');
+        const desc = hidden ? '???' : selected.desc;
+        const lines = this.wrapText(desc, Math.max(12, Math.floor((vw - 24) / 4)), 2);
+        lines.forEach((line, index) => {
+          surf.drawText(line, 12, detailY + 4 + index * 8, 'rgba(177,190,222,1)', '6px monospace');
+        });
+      }
+    }
+
+    surf.fillRect(0, vh - 18, vw, 18, 'rgba(8,12,34,0.96)');
+    surf.drawText('UP/DOWN: Browse', 7, vh - 14, 'rgba(137,153,198,1)', '6px monospace');
+    surf.drawText('B: Back', vw - 48, vh - 14, 'rgba(245,222,148,1)', '6px monospace');
+    return surf;
   }
 }
 

@@ -126,6 +126,36 @@ export class MessageAction extends Action {
   reverse(): void { /* Marker only */ }
 }
 
+/** Reversible persistent game-variable assignment, matching LT SetGameVar. */
+export class SetGameVarAction extends Action {
+  private gameVars: Map<string, any>;
+  private nid: string;
+  private value: any;
+  private alreadyExists: boolean;
+  private oldValue: any;
+
+  constructor(gameVars: Map<string, any>, nid: string, value: any) {
+    super();
+    this.gameVars = gameVars;
+    this.nid = nid;
+    this.value = value;
+    this.alreadyExists = gameVars.has(nid);
+    this.oldValue = gameVars.get(nid);
+  }
+
+  execute(): void {
+    this.gameVars.set(this.nid, this.value);
+  }
+
+  reverse(): void {
+    if (this.alreadyExists) {
+      this.gameVars.set(this.nid, this.oldValue);
+    } else {
+      this.gameVars.delete(this.nid);
+    }
+  }
+}
+
 // ------------------------------------------------------------------
 // Action group types for turnwheel navigation
 // ------------------------------------------------------------------

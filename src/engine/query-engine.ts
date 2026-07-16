@@ -9,6 +9,7 @@ import type { NID, RegionData } from '../data/types';
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { SkillObject } from '../objects/skill';
+import { ACHIEVEMENTS } from './records';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (avoids circular imports)
@@ -495,20 +496,11 @@ export class GameQueryEngine {
   // ========================================================================
 
   /**
-   * Check if an achievement has been unlocked.
-   * Checks gameVars for an achievement flag.
+   * Check whether a persistent achievement exists and is complete.
+   * Achievements are project-global persistent data, not game variables.
    */
   hasAchievement(nid: string): boolean {
-    const game = getGame();
-    // Achievements are typically stored as gameVars with a key like "_achievement_<nid>"
-    if (game.gameVars?.has(`_achievement_${nid}`)) {
-      return !!game.gameVars.get(`_achievement_${nid}`);
-    }
-    // Also check a dedicated achievements set if available
-    if (game.achievements) {
-      return game.achievements.has?.(nid) ?? false;
-    }
-    return false;
+    return ACHIEVEMENTS?.checkAchievement(nid) ?? false;
   }
 
   // ========================================================================

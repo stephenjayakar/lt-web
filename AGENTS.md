@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **52,476 lines of TypeScript across 95
+systems. The engine currently spans **52,860 lines of TypeScript across 95
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -410,6 +410,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
   ordered restoration, suspend/resume
 - **Records**: Per-save statistics (kills, damage, healing, etc.),
   cross-save persistent records, achievement system
+- **Achievements**: Canonical create/update/complete/clear/open event commands,
+  project-global localStorage persistence, completion queries and notifications,
+  hidden-entry browser UI, and blocking event resume
 - **Query engine**: 28 Python-compatible query functions with camelCase and
   snake_case aliases for event condition evaluation
 - **Python events (PYEV1)**: Line-by-line interpreter with indentation-based
@@ -440,7 +443,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `game-state.ts` | ~1480 | Singleton hub: subsystem refs, level loading/cleanup, generic learned skills, win/loss, difficulty, unit persistence |
 | `target-system.ts` | ~181 | Availability-gated target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~2856 | All game actions, including reversible board/initiative death, inventory, metadata, Pair Up/Separate/Rescue/Drop, guard gauges, and sourced traveler effects |
+| `action.ts` | ~2886 | All game actions, including reversible game variables, board/initiative death, inventory, metadata, Pair Up/Separate/Rescue/Drop, guard gauges, and sourced traveler effects |
 | `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
 | `learned-skills.ts` | ~80 | Class/inherited learned-skill traversal and generic Feat selection |
 | `static-random.ts` | ~99 | LT LCG plus persisted combat and shared growth-random streams |
@@ -449,8 +452,8 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `initiative.ts` | ~210 | Initiative-based turn system tracker |
 | `difficulty.ts` | ~135 | Difficulty mode runtime class |
 | `save.ts` | ~1510 | IndexedDB save/load with canonical item identities, recursive subitem graphs, pair roles/gauges, and per-skill source metadata |
-| `records.ts` | ~903 | Recordkeeper, persistent records, achievements |
-| `query-engine.ts` | ~876 | 28 Python-compatible query functions, including runtime subitem lookup |
+| `records.ts` | ~907 | Recordkeeper plus project-global persistent achievements with immediate localStorage writes |
+| `query-engine.ts` | ~868 | Python-compatible query functions, including persistent achievement completion and runtime subitem lookup |
 | `support-system.ts` | ~500 | Support pairs, ranks, affinity bonuses |
 | `line-of-sight.ts` | ~170 | Bresenham LOS for fog of war |
 | `perf-monitor.ts` | ~440 | Frame budget monitor, profiling |
@@ -458,9 +461,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10662 | Core states, event dispatch, Pair Up/Separate versus Rescue/Drop menus and targeting, availability-gated items, grouped combat, persistent RNG, and reversible combat/item rewards |
+| `game-states.ts` | ~10720 | Core states and event dispatch, including persistent achievement commands/banners, Pair Up/Rescue menus, availability-gated items, grouped combat, and persistent RNG |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
-| `base-state.ts` | ~510 | Base screen hub menu |
+| `base-state.ts` | ~801 | Base hub/conversations, reachable Codex submenu, and the hidden-aware responsive persistent achievement browser |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
 | `minimap-state.ts` | ~355 | Minimap overlay |
 | `victory-state.ts` | ~332 | Victory screen |
@@ -489,7 +492,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Events (`src/events/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `event-manager.ts` | ~1398 | Event parser/queue, Pair Up/Rescue aliases, condition evaluator, combat-local payload context, specific-event dispatch, and item-target expressions |
+| `event-manager.ts` | ~1402 | Event parser/queue, Pair Up/Rescue and legacy achievement aliases, condition evaluator, combat-local payload context, and item-target expressions |
 | `event-portrait.ts` | ~700 | Portrait compositing, blinking, talking, expressions |
 | `python-events.ts` | ~995 | PYEV1 Python-syntax event interpreter |
 | `screen-positions.ts` | ~117 | Named screen position resolver |

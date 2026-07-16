@@ -57,6 +57,8 @@ import {
 import {
   BaseMainState,
   BaseConvosState,
+  BaseCodexState,
+  BaseAchievementState,
   setBaseGameRef,
 } from './engine/states/base-state';
 import {
@@ -428,6 +430,8 @@ async function main(): Promise<void> {
     new PrepMapState(),
     new BaseMainState(),
     new BaseConvosState(),
+    new BaseCodexState(),
+    new BaseAchievementState(),
     new SettingsMenuState(),
     new MinimapState(),
     new VictoryState(),

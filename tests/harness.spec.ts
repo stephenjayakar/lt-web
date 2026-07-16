@@ -299,6 +299,417 @@ test.describe('Event command parity', () => {
     expect(saveRoundTrip).toEqual({ loaded: true, unlockedLore: ['Guide'] });
   });
 
+  test('achievement commands preserve Python flags, persistence, queries, banners, and turnwheel scope', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const records = await import('/src/engine/records.ts');
+      records.ACHIEVEMENTS.clear();
+
+      const parsed = [
+        'create_achievement;A;Name;Description',
+        'update_achievement;A;New Name;New Description',
+        'complete_achievement;A;t',
+        'clear_achievements',
+        'add_achievement;Legacy;Name;Description',
+      ].map((line) => GameEvent.parseCommand(line)?.type ?? null);
+
+      const event = new GameEvent({
+        nid: '_test_achievement_mutations',
+        name: 'Achievement Mutations',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: [
+          'create_achievement;A;Original;Original description;hidden',
+          'create_achievement;A;Duplicate;Must not replace',
+          'update_achievement;A;Still Hidden;Updated once;hidden',
+          'update_achievement;A;Visible Name;Visible description',
+          'update_achievement;Missing;No-op;No-op description;hidden',
+          'create_achievement;Auto;Automatic;Already complete;hidden;completed',
+          'create_achievement;Malformed',
+          'complete_achievement;A;t',
+          'complete_achievement;A;n',
+          'complete_achievement;A;yes',
+          'complete_achievement;Missing;t',
+        ],
+      }, { type: 'test', levelNid: '0' });
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.eventManager.eventQueue.push(event);
+      return { parsed, commandCount: event.commands.length, beforeActionIndex };
+    });
+
+    expect(setup.parsed).toEqual([
+      'create_achievement',
+      'update_achievement',
+      'complete_achievement',
+      'clear_achievements',
+      'create_achievement',
+    ]);
+    expect(setup.commandCount).toBe(11);
+    await stepFrames(page, 8);
+
+    const mutated = await page.evaluate(async (beforeActionIndex: number) => {
+      const game = (window as any).__gameRef;
+      const records = await import('/src/engine/records.ts');
+      const { GameQueryEngine } = await import('/src/engine/query-engine.ts');
+      const query = new GameQueryEngine();
+      return {
+        entries: records.ACHIEVEMENTS.save(),
+        aHiddenForDisplay: records.ACHIEVEMENTS.getHidden('A'),
+        autoHiddenForDisplay: records.ACHIEVEMENTS.getHidden('Auto'),
+        hasA: query.hasAchievement('A'),
+        hasMissing: query.hasAchievement('Missing'),
+        actionIndex: game.actionLog.actionIndex,
+        newActionTypes: (game.actionLog as any).actions
+          .slice(beforeActionIndex + 1)
+          .map((action: any) => action.constructor.name),
+      };
+    }, setup.beforeActionIndex);
+
+    expect(mutated.entries).toEqual([
+      {
+        nid: 'A',
+        name: 'Visible Name',
+        desc: 'Visible description',
+        complete: true,
+        hidden: false,
+      },
+      {
+        nid: 'Auto',
+        name: 'Automatic',
+        desc: 'Already complete',
+        complete: true,
+        hidden: true,
+      },
+    ]);
+    expect(mutated.aHiddenForDisplay).toBe(false);
+    expect(mutated.autoHiddenForDisplay).toBe(false);
+    expect(mutated.hasA).toBe(true);
+    expect(mutated.hasMissing).toBe(false);
+    // Returning to FreeState records its ordinary marker; the achievement commands add none.
+    expect(mutated.newActionTypes.every((name: string) => name === 'MarkActionGroupEnd')).toBe(true);
+
+    await page.reload();
+    await waitForHarness(page);
+    const restored = await page.evaluate(async () => {
+      const records = await import('/src/engine/records.ts');
+      const { GameQueryEngine } = await import('/src/engine/query-engine.ts');
+      const query = new GameQueryEngine();
+      return {
+        entries: records.ACHIEVEMENTS.save(),
+        hasA: query.hasAchievement('A'),
+        hasAuto: query.hasAchievement('Auto'),
+      };
+    });
+    expect(restored.entries).toEqual(mutated.entries);
+    expect(restored.hasA).toBe(true);
+    expect(restored.hasAuto).toBe(true);
+
+    const bannerSetup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const records = await import('/src/engine/records.ts');
+      records.ACHIEVEMENTS.complete('A', false);
+      (window as any).__achievementSfx = [];
+      (window as any).__achievementOriginalPlaySfx = game.audioManager.playSfx;
+      game.audioManager.playSfx = async (nid: string) => {
+        (window as any).__achievementSfx.push(nid);
+      };
+      const event = new GameEvent({
+        nid: '_test_achievement_banner',
+        name: 'Achievement Banner',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: ['complete_achievement;A;1;banner'],
+      }, { type: 'test', levelNid: '0' });
+      game.eventManager.eventQueue.push(event);
+      return game.actionLog.actionIndex;
+    });
+
+    await stepFrames(page, 5);
+    const duringBanner = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const records = await import('/src/engine/records.ts');
+      const event = game.eventManager.getCurrentEvent();
+      return {
+        complete: records.ACHIEVEMENTS.checkAchievement('A'),
+        pointer: event?.commandPointer ?? null,
+        state: game.state.getCurrentState()?.name ?? null,
+        sfx: [...(window as any).__achievementSfx],
+        actionIndex: game.actionLog.actionIndex,
+      };
+    });
+    expect(duringBanner).toEqual({
+      complete: true,
+      pointer: 0,
+      state: 'event',
+      sfx: ['Item'],
+      actionIndex: bannerSetup,
+    });
+
+    await stepFrames(page, 140);
+    const cleared = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const records = await import('/src/engine/records.ts');
+      game.audioManager.playSfx = (window as any).__achievementOriginalPlaySfx;
+      const event = new GameEvent({
+        nid: '_test_clear_achievements',
+        name: 'Clear Achievements',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: ['clear_achievements'],
+      }, { type: 'test', levelNid: '0' });
+      game.eventManager.eventQueue.push(event);
+      return game.actionLog.actionIndex;
+    });
+    await stepFrames(page, 5);
+    const afterClear = await page.evaluate(async (beforeActionIndex: number) => {
+      const game = (window as any).__gameRef;
+      const records = await import('/src/engine/records.ts');
+      const { GameQueryEngine } = await import('/src/engine/query-engine.ts');
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      return {
+        live: records.ACHIEVEMENTS.save(),
+        persisted: records.AchievementManager.load(gameNid).save(),
+        query: new GameQueryEngine().hasAchievement('A'),
+        actionIndex: game.actionLog.actionIndex,
+        newActionTypes: (game.actionLog as any).actions
+          .slice(beforeActionIndex + 1)
+          .map((action: any) => action.constructor.name),
+      };
+    }, cleared);
+    expect(afterClear.live).toEqual([]);
+    expect(afterClear.persisted).toEqual([]);
+    expect(afterClear.query).toBe(false);
+    expect(afterClear.newActionTypes.every((name: string) => name === 'MarkActionGroupEnd')).toBe(true);
+  });
+
+  test('open_achievements blocks into a navigable hidden-aware browser and resumes the event', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const { MarkPhase } = await import('/src/engine/action.ts');
+      const records = await import('/src/engine/records.ts');
+      records.ACHIEVEMENTS.clear();
+      records.ACHIEVEMENTS.add('Hidden', 'Secret Name', 'Secret description', false, true);
+      records.ACHIEVEMENTS.add('Done', 'First Victory', 'Win your first battle.', true, false);
+      for (let i = 2; i < 7; i++) {
+        records.ACHIEVEMENTS.add(`Entry${i}`, `Achievement ${i}`, `Description for achievement ${i}.`, i % 2 === 0, false);
+      }
+      const parsed = GameEvent.parseCommand('open_achievements;Arena')?.type ?? null;
+      const hadBackground = game.gameVars.has('_base_bg_name');
+      const oldBackground = game.gameVars.get('_base_bg_name');
+      (window as any).__achievementBrowserOldBg = { hadBackground, oldBackground };
+      game.actionLog.doAction(new MarkPhase('achievement_test'));
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const event = new GameEvent({
+        nid: '_test_open_achievements',
+        name: 'Open Achievements',
+        trigger: 'test',
+        level_nid: '0',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: [
+          'open_achievements;Arena',
+          'game_var;_achievement_browser_resumed;1',
+        ],
+      }, { type: 'test', levelNid: '0' });
+      game.eventManager.eventQueue.push(event);
+      return { parsed, beforeActionIndex };
+    });
+
+    expect(setup.parsed).toBe('open_achievements');
+    await stepFrames(page, 8);
+    const opened = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      const event = game.eventManager.getCurrentEvent();
+      return {
+        state: state?.name ?? null,
+        selectedIndex: state?.selectedIndex ?? null,
+        scrollOffset: state?.scrollOffset ?? null,
+        firstEntry: state?.achievements?.[0] ?? null,
+        pointer: event?.commandPointer ?? null,
+        background: game.gameVars.get('_base_bg_name'),
+        resumed: game.gameVars.get('_achievement_browser_resumed') ?? null,
+        actionIndex: game.actionLog.actionIndex,
+      };
+    });
+    expect(opened).toEqual({
+      state: 'base_achievement',
+      selectedIndex: 0,
+      scrollOffset: 0,
+      firstEntry: {
+        nid: 'Hidden',
+        name: 'Secret Name',
+        desc: 'Secret description',
+        complete: false,
+        hidden: true,
+      },
+      pointer: 1,
+      background: 'Arena',
+      resumed: null,
+      actionIndex: setup.beforeActionIndex + 1,
+    });
+    await saveScreenshot(page, 'achievement-browser-hidden');
+
+    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'DOWN');
+    const scrolled = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return {
+        selectedIndex: state.selectedIndex,
+        scrollOffset: state.scrollOffset,
+        visibleRows: state.getVisibleRowCount(),
+      };
+    });
+    expect(scrolled.selectedIndex).toBe(6);
+    expect(scrolled.scrollOffset).toBe(scrolled.selectedIndex - scrolled.visibleRows + 1);
+
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 8);
+    const resumed = await page.evaluate((beforeActionIndex: number) => {
+      const game = (window as any).__gameRef;
+      return {
+        state: game.state.getCurrentState()?.name ?? null,
+        value: game.gameVars.get('_achievement_browser_resumed'),
+        actionIndex: game.actionLog.actionIndex,
+        newActionTypes: (game.actionLog as any).actions
+          .slice(beforeActionIndex + 1)
+          .map((action: any) => action.constructor.name),
+      };
+    }, setup.beforeActionIndex);
+    expect(resumed.state).toBe('free');
+    expect(resumed.value).toBe('1');
+    expect(resumed.newActionTypes).toEqual(['SetGameVarAction', 'MarkActionGroupEnd']);
+
+    const rewind = await page.evaluate((beforeActionIndex: number) => {
+      const game = (window as any).__gameRef;
+      const old = (window as any).__achievementBrowserOldBg;
+      game.actionLog.setUp();
+      game.actionLog.backward(() => {});
+      const reversed = game.gameVars.has('_base_bg_name')
+        ? { exists: true, value: game.gameVars.get('_base_bg_name') }
+        : { exists: false, value: null };
+      game.actionLog.forward(() => {});
+      game.actionLog.forward(() => {});
+      const redone = game.gameVars.get('_base_bg_name');
+      const expected = old.hadBackground
+        ? { exists: true, value: old.oldBackground }
+        : { exists: false, value: null };
+      return { reversed, redone, expected };
+    }, setup.beforeActionIndex);
+    expect(rewind.reversed).toEqual(rewind.expected);
+    expect(rewind.redone).toBe('Arena');
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.state.change('base_main');
+    });
+    await stepFrames(page, 4);
+    const baseOptions = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state.menu.options.map((option: any) => option.value);
+    });
+    expect(baseOptions).toContain('codex');
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.menu.selectedIndex = state.menu.options.findIndex((option: any) => option.value === 'codex');
+    });
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+    expect((await getState(page)).currentStateName).toBe('base_codex');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+    expect((await getState(page)).currentStateName).toBe('base_achievement');
+  });
+
+  test('achievement browser renders a loaded panorama at DPR 2 in a short landscape viewport', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 640, height: 200 },
+      deviceScaleFactor: 2,
+    });
+    const page = await context.newPage();
+    try {
+      await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+      await waitForHarness(page);
+      await page.evaluate(async () => {
+        const game = (window as any).__gameRef;
+        const { GameEvent } = await import('/src/events/event-manager.ts');
+        const records = await import('/src/engine/records.ts');
+        records.ACHIEVEMENTS.clear();
+        for (let i = 0; i < 8; i++) {
+          records.ACHIEVEMENTS.add(`Dpr${i}`, `DPR Achievement ${i}`, `Responsive description ${i}.`, i < 3, false);
+        }
+        game.eventManager.eventQueue.push(new GameEvent({
+          nid: '_test_achievement_dpr',
+          name: 'Achievement DPR',
+          trigger: 'test',
+          level_nid: '0',
+          condition: '',
+          only_once: false,
+          priority: 0,
+          _source: ['open_achievements;Arena'],
+        }, { type: 'test', levelNid: '0' }));
+      });
+      await stepFrames(page, 8);
+      await page.waitForFunction(() => {
+        const state = (window as any).__gameRef.state.getCurrentState() as any;
+        return state?.name === 'base_achievement' && !!state.bgImage;
+      });
+      const layout = await page.evaluate(async () => {
+        const game = (window as any).__gameRef;
+        const state = game.state.getCurrentState() as any;
+        const { viewport } = await import('/src/engine/viewport.ts');
+        return {
+          dpr: window.devicePixelRatio,
+          cssWidth: window.innerWidth,
+          cssHeight: window.innerHeight,
+          viewportWidth: viewport.width,
+          viewportHeight: viewport.height,
+          visibleRows: state.getVisibleRowCount(),
+          backgroundWidth: state.bgImage?.naturalWidth ?? 0,
+          backgroundHeight: state.bgImage?.naturalHeight ?? 0,
+          state: state.name,
+        };
+      });
+      expect(layout.dpr).toBe(2);
+      expect(layout.cssWidth).toBe(640);
+      expect(layout.cssHeight).toBe(200);
+      expect(layout.viewportWidth).toBeGreaterThan(layout.viewportHeight);
+      expect(layout.viewportHeight).toBe(160);
+      expect(layout.visibleRows).toBeGreaterThanOrEqual(1);
+      expect(layout.visibleRows).toBeLessThan(5);
+      expect(layout.backgroundWidth).toBeGreaterThan(0);
+      expect(layout.backgroundHeight).toBeGreaterThan(0);
+      expect(layout.state).toBe('base_achievement');
+      await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'achievement-browser-dpr2-landscape.png') });
+    } finally {
+      await context.close();
+    }
+  });
+
   test('pair_up aliases use Rekka-compatible rescue fallback and non-spatial separation', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

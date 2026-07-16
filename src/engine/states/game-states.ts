@@ -32,6 +32,7 @@ import {
   MarkPhase,
   LockTurnwheel,
   MessageAction,
+  SetGameVarAction,
   PromoteAction,
   ClassChangeAction,
   GainWexpAction,
@@ -135,6 +136,15 @@ function getBoard(): any {
     throw new Error('No level loaded — game.board is null. Ensure loadLevel() completes before entering gameplay states.');
   }
   return game.board;
+}
+
+/** Match LT's Bool event validator. Invalid values remain invalid. */
+function parseEventBool(value: string | undefined): boolean | null {
+  if (value === undefined) return null;
+  const normalized = value.trim().toLowerCase();
+  if (['t', 'true', '1', 'y', 'yes'].includes(normalized)) return true;
+  if (['f', 'false', '0', 'n', 'no'].includes(normalized)) return false;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -10325,31 +10335,79 @@ export class EventState extends State {
         this.advancePointer();
         return false;
       }
-      case 'add_achievement': {
-        // add_achievement;nid;name;desc;[completed];[hidden]
+      case 'create_achievement': {
+        // create_achievement;nid;name;description;[completed];[hidden]
         try {
-          if (args[0] && ACHIEVEMENTS) {
+          if (args[0] && args[1] !== undefined && args[2] !== undefined && ACHIEVEMENTS) {
             const nid = args[0];
-            const name = args[1] ?? nid;
-            const desc = args[2] ?? '';
-            const complete = (args[3] ?? '').toLowerCase() === 'true';
-            const hidden = (args[4] ?? '').toLowerCase() === 'true';
+            const name = args[1];
+            const desc = args[2];
+            const flags = new Set(args.slice(3).map((flag) => flag.toLowerCase()));
+            const complete = flags.has('completed');
+            const hidden = flags.has('hidden');
             ACHIEVEMENTS.add(nid, name, desc, complete, hidden);
+          } else {
+            console.warn(`Event create_achievement: missing required argument (${args.join(';')})`);
           }
-        } catch (e) { console.warn('add_achievement error:', e); }
+        } catch (e) { console.warn('create_achievement error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'update_achievement': {
+        // update_achievement;nid;name;description;[hidden]
+        try {
+          if (args[0] && args[1] !== undefined && args[2] !== undefined && ACHIEVEMENTS) {
+            const hidden = args.slice(3).some((flag) => flag.toLowerCase() === 'hidden');
+            ACHIEVEMENTS.updateAchievement(args[0], args[1], args[2], hidden);
+          } else {
+            console.warn(`Event update_achievement: missing required argument (${args.join(';')})`);
+          }
+        } catch (e) { console.warn('update_achievement error:', e); }
         this.advancePointer();
         return false;
       }
       case 'complete_achievement': {
-        // complete_achievement;nid;[True/False]
+        // complete_achievement;nid;bool;[banner]
         try {
-          if (args[0] && ACHIEVEMENTS) {
-            const complete = (args[1] ?? 'True').toLowerCase() !== 'false';
-            if (complete) ACHIEVEMENTS.complete(args[0]);
+          const complete = parseEventBool(args[1]);
+          if (args[0] && complete !== null && ACHIEVEMENTS) {
+            const changedToComplete = ACHIEVEMENTS.complete(args[0], complete);
+            const banner = args.slice(2).some((flag) => flag.toLowerCase() === 'banner');
+            if (changedToComplete && banner && !this.skipMode) {
+              const achievement = ACHIEVEMENTS.getAchievement(args[0]);
+              if (achievement) {
+                game.audioManager?.playSfx?.('Item');
+                this.banner = new Banner(achievement.name, 'Achievement Unlocked', 2000);
+                this.bannerIsAlert = false;
+                // Python waits two seconds and removes the notification before advancing.
+                return true;
+              }
+            }
+          } else {
+            console.warn(`Event complete_achievement: invalid achievement or bool (${args.join(';')})`);
           }
         } catch (e) { console.warn('complete_achievement error:', e); }
         this.advancePointer();
         return false;
+      }
+      case 'clear_achievements': {
+        try {
+          ACHIEVEMENTS?.clear();
+        } catch (e) { console.warn('clear_achievements error:', e); }
+        this.advancePointer();
+        return false;
+      }
+      case 'open_achievements': {
+        const background = args[0];
+        if (!background) {
+          console.warn('Event open_achievements: missing required background');
+          this.advancePointer();
+          return false;
+        }
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_bg_name', background));
+        this.advancePointer();
+        game.state.change('base_achievement');
+        return true;
       }
 
       // ----- Save/load commands -----

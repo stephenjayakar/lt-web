@@ -745,6 +745,8 @@ export class AchievementManager {
     hidden: boolean = false
   ): void {
     if (this.achievements.has(nid)) {
+      // Python serializes even when the duplicate definition is a no-op.
+      this.persist();
       return;
     }
     this.achievements.set(nid, { nid, name, desc, complete, hidden });
@@ -757,6 +759,8 @@ export class AchievementManager {
   updateAchievement(nid: NID, name: string, desc: string, hidden: boolean): void {
     const a = this.achievements.get(nid);
     if (!a) {
+      // Python serializes after a missing-target update as well.
+      this.persist();
       return;
     }
     a.name = name;
@@ -771,8 +775,8 @@ export class AchievementManager {
   remove(nid: NID): void {
     if (this.achievements.has(nid)) {
       this.achievements.delete(nid);
-      this.persist();
     }
+    this.persist();
   }
 
   /**
