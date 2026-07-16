@@ -187,7 +187,7 @@ export class ItemObject {
       (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
     return this.hasComponent('heal') || this.hasComponent('equation_heal') ||
       this.hasComponent('permanent_stat_change') || deterministicStatus || this.hasComponent('restore') ||
-      this.hasComponent('restore_specific') || this.hasComponent('refresh');
+      this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair');
   }
 
   /**

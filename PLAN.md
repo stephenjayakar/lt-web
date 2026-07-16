@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 69 exact string references; 68 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 71 exact string references; 68 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 30 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 48,980 lines | Builds |
-| Browser regression suite | n/a | 68 Playwright tests | 68/68 passing |
+| TypeScript runtime | n/a | 89 files, 49,072 lines | Builds |
+| Browser regression suite | n/a | 69 Playwright tests | 69/69 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Hammerne inventory-targeting slice:**
+  - Added Python-shaped repair discovery: a repair staff can target only units
+    carrying a finite-use damaged item, while `unrepairable` items are excluded.
+  - Extended interactive item targeting with the second-stage inventory menu
+    used by Hammerne. Keyboard, mouse, cancel, exact runtime-instance selection,
+    reversible repair, staff durability, and turn completion share the existing
+    core item-use lifecycle.
+  - Added an end-to-end map target → inventory target → apply → undo → redo
+    regression. Item coverage advanced to **71/201 exact references**; full
+    harness result: **69/69 passing**.
 
 - **Targeted status, restore, and refresh item slice:**
   - Added core targeted execution for deterministic `status_on_hit` and
@@ -700,6 +711,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement interactive core heal/equation-heal targeting with reversible effects
 - [x] Implement deterministic targeted status, restore, and refresh effects with
   reversible skill/turn-state mutations and valid-target restrictions
+- [x] Implement Hammerne unit/item targeting with `unrepairable` filtering and
+  reversible exact-instance repair
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -765,7 +778,7 @@ unclassified runtime gaps remain.
 ## Active Next Slice
 
 1. Extend interactive item targeting to multi/sequence target collection,
-   movement/repair/item-target flows, and hit-resolved hostile status staves,
+   movement/other item-target flows, and hit-resolved hostile status staves,
    including staff EXP/WEXP and playback.
 2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
    splash empowerment/alternate-splash hooks.

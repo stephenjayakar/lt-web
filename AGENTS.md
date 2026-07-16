@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~49,000 lines of TypeScript across 89
+systems. The engine currently spans **~49,100 lines of TypeScript across 89
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -451,7 +451,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~9950 | Core states, event dispatch, gameplay logic, and interactive healing/status/restore/refresh targeting |
+| `game-states.ts` | ~10030 | Core states, event dispatch, gameplay logic, and interactive unit/inventory item targeting |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -472,7 +472,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
 | `map-combat.ts` | ~580 | Map-mode combat (no animations), including per-strike durability lifecycle |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~560 | Item dispatch, targeting/AOE/heal/status/restore/refresh restrictions, and uses-options durability resolution |
+| `item-system.ts` | ~570 | Item dispatch, targeting/AOE/utility/repair restrictions, and uses-options durability resolution |
 | `skill-system.ts` | ~398 | Skill component dispatch |
 
 ### Events (`src/events/`)

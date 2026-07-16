@@ -80,6 +80,7 @@ import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { evaluateEquation, getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
+import { isRepairableItem } from '../../combat/item-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
@@ -1756,7 +1757,12 @@ export class MenuState extends State {
 // 4b. ItemUseState - Select and use a consumable item
 // ============================================================================
 
-export function applyCoreTargetedItem(unit: UnitObject, item: ItemObject, position: [number, number]): boolean {
+export function applyCoreTargetedItem(
+  unit: UnitObject,
+  item: ItemObject,
+  position: [number, number],
+  targetItem: ItemObject | null = null,
+): boolean {
   const game = getGame();
   if (!game.targetSystem) return false;
   const resolved = game.targetSystem.getTargetFromPosition(unit, item, position);
@@ -1823,6 +1829,16 @@ export function applyCoreTargetedItem(unit: UnitObject, item: ItemObject, positi
         game.actionLog.doAction(new RefreshUnitAction(target));
         applied = true;
       }
+    }
+  }
+
+  if (item.hasComponent('repair')) {
+    const target = resolved.mainTarget
+      ? game.board.getUnit(resolved.mainTarget[0], resolved.mainTarget[1])
+      : null;
+    if (target && targetItem && target.items.includes(targetItem) && isRepairableItem(targetItem)) {
+      game.actionLog.doAction(new SetItemUsesAction(targetItem, targetItem.maxUses));
+      applied = true;
     }
   }
   if (!applied) return false;
@@ -1961,6 +1977,9 @@ export class ItemTargetingState extends MapState {
   private item: ItemObject | null = null;
   private targets: [number, number][] = [];
   private targetIndex = 0;
+  private targetItemMenu: ChoiceMenu | null = null;
+  private pendingTarget: [number, number] | null = null;
+  private repairableItems: ItemObject[] = [];
 
   override begin(): StateResult {
     const game = getGame();
@@ -1977,6 +1996,9 @@ export class ItemTargetingState extends MapState {
       return 'repeat';
     }
     this.targetIndex = 0;
+    this.targetItemMenu = null;
+    this.pendingTarget = null;
+    this.repairableItems = [];
     game.highlight.clear();
     game.highlight.setAttackHighlights(this.targets);
     this.focusTarget();
@@ -1995,6 +2017,24 @@ export class ItemTargetingState extends MapState {
     const unit: UnitObject | null = game.selectedUnit;
     const target = this.targets[index];
     if (!unit || !this.item || !target) return;
+
+    if (this.item.hasComponent('repair')) {
+      const defender = game.board.getUnit(target[0], target[1]);
+      this.repairableItems = defender?.items.filter(isRepairableItem) ?? [];
+      if (this.repairableItems.length === 0) return;
+      this.pendingTarget = target;
+      const options: MenuOption[] = this.repairableItems.map((candidate, itemIndex) => ({
+        label: `${candidate.name} ${candidate.uses}/${candidate.maxUses}`,
+        value: `repair_${itemIndex}`,
+        enabled: true,
+      }));
+      const [cameraX, cameraY] = game.camera.getOffset();
+      const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
+      const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
+      this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      return;
+    }
+
     if (applyCoreTargetedItem(unit, this.item, target)) {
       game.memory.delete('item_use_item');
       game.highlight.clear();
@@ -2004,6 +2044,43 @@ export class ItemTargetingState extends MapState {
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
+    if (this.targetItemMenu) {
+      let menuResult: { selected: string } | { back: true } | null = null;
+      if (game.input?.mouseClick) {
+        const [gx, gy] = game.input.getGameMousePos();
+        menuResult = this.targetItemMenu.handleClick(
+          gx,
+          gy,
+          game.input.mouseClick as 'SELECT' | 'BACK',
+        );
+      }
+      if (game.input?.mouseMoved) {
+        const [gx, gy] = game.input.getGameMousePos();
+        this.targetItemMenu.handleMouseHover(gx, gy);
+      }
+      if (!menuResult && event !== null) menuResult = this.targetItemMenu.handleInput(event);
+      if (!menuResult) return;
+      if ('back' in menuResult) {
+        this.targetItemMenu = null;
+        this.pendingTarget = null;
+        this.repairableItems = [];
+        return;
+      }
+      const itemIndex = Number.parseInt(menuResult.selected.replace('repair_', ''), 10);
+      const unit: UnitObject | null = game.selectedUnit;
+      const targetItem = this.repairableItems[itemIndex];
+      if (unit && this.item && this.pendingTarget && targetItem &&
+          applyCoreTargetedItem(unit, this.item, this.pendingTarget, targetItem)) {
+        game.memory.delete('item_use_item');
+        game.highlight.clear();
+        this.targetItemMenu = null;
+        this.pendingTarget = null;
+        this.repairableItems = [];
+        game.state.back();
+      }
+      return;
+    }
+
     if (game.input?.mouseClick === 'SELECT') {
       const tile = getMouseTile();
       if (tile) {
@@ -2036,10 +2113,15 @@ export class ItemTargetingState extends MapState {
   override draw(surf: Surface): Surface {
     const game = getGame();
     game.highlight.update();
-    return drawMap(surf, true);
+    const result = drawMap(surf, true);
+    this.targetItemMenu?.draw(result);
+    return result;
   }
 
   override end(): StateResult {
+    this.targetItemMenu = null;
+    this.pendingTarget = null;
+    this.repairableItems = [];
     getGame().highlight.clear();
   }
 }

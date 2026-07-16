@@ -76,6 +76,11 @@ export interface SplashResult {
   splash: TargetPosition[];
 }
 
+/** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
+export function isRepairableItem(item: ItemObject): boolean {
+  return item.maxUses > 0 && item.uses < item.maxUses && !item.hasComponent('unrepairable');
+}
+
 function positionsInRadius(
   center: TargetPosition,
   radius: number,
@@ -248,6 +253,11 @@ export function targetRestrict(
       specific ? skill.nid === specific : skill.hasComponent('negative'),
     ));
     if (!canRestore) return false;
+  }
+
+  if (item.hasComponent('repair')) {
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    if (!defender || !defender.items.some(isRepairableItem)) return false;
   }
 
   if (item.hasComponent('empty_tile_target_restrict') &&
