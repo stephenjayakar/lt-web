@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 47 exact string references; 48 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 62 exact string references; 67 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 48,479 lines | Builds |
-| Browser regression suite | n/a | 64 Playwright tests | 64/64 passing |
+| TypeScript runtime | n/a | 89 files, 48,667 lines | Builds |
+| Browser regression suite | n/a | 65 Playwright tests | 65/65 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,23 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Fog, LOS, splash, and target-count slice:**
+  - Completed the Python target-resolution order in `TargetSystem`: range and
+    optional Bresenham LOS, component splash expansion, targeting-fog filtering,
+    ALL-policy restrictions, then minimum target-count validation.
+  - Added hooks for targeting-fog/LOS overrides, `multi_target`, same/fewer-target
+    policies, splash previews, blast/enemy/ally/equation blast, all-allies
+    (including except-self), and all-enemies AOE behavior. This covers every AOE
+    component used by the bundled Sacred Stones project; uncommon shape/line/cone
+    variants remain inventoried for later implementation.
+  - Fog targeting now preserves self and Tile-tag visibility, respects player/AI
+    fog policy, filters both main and splash positions, and supports
+    `target_fog_of_war`; LOS honors project opacity and `ignore_line_of_sight`.
+  - Added fixture coverage for blast membership, global ally splash, strict and
+    flexible multi-target counts, fog bypass/Tile tags, and an injected opacity
+    blocker. Item coverage advanced to **62/201 exact references** and **67/201
+    matching hook surfaces**; full harness result: **65/65 passing**.
 
 - **Item range and target-restriction slice:**
   - Added `max_equation_range` and `global_range` resolution plus
@@ -635,6 +652,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement basic item `valid_targets` union hooks (`target_tile`, `target_unit`,
   `target_enemy`, `target_ally`), range intersection, and recursive child discovery
 - [x] Implement equation/special ranges and expression/empty/traversable target restrictions
+- [x] Implement targeting fog/LOS, target counts, and bundled-project AOE components
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -699,7 +717,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement fog/LOS, splash, and target-count policies in `TargetSystem`.
-2. Integrate staff/item and multi/sequence child selection into the interactive
+1. Integrate staff/item and multi/sequence child selection into the interactive
    targeting and item-use flows.
+2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
+   splash empowerment/alternate-splash hooks.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

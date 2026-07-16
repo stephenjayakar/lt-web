@@ -1949,7 +1949,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 208
+          "line": 335
         }
       ],
       "matchingWebHooks": [
@@ -2735,7 +2735,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 145
+          "line": 272
         },
         {
           "source": "src/engine/records.ts",
@@ -2834,7 +2834,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 150
+          "line": 277
         },
         {
           "source": "src/engine/records.ts",
@@ -2986,7 +2986,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 155
+          "line": 282
         },
         {
           "source": "src/engine/records.ts",

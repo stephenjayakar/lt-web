@@ -936,6 +936,156 @@ test.describe('Event command parity', () => {
     expect(result!.regionTargets).not.toContain(result!.visionPosition);
   });
 
+  test('target system applies splash, target counts, fog, and line of sight in Python order', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { getLine } = await import('/src/engine/line-of-sight.ts');
+      const unit = game.units.get('Eirika');
+      if (!unit?.position || !game.targetSystem || !game.board) return null;
+
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const key = (position: [number, number]) => `${position[0]},${position[1]}`;
+      const keys = (positions: [number, number][]) => positions.map(key).sort();
+      const maxRange = game.board.width + game.board.height;
+      const units = game.board.getAllUnits().filter((other: any) => other.position && !other.isDead());
+      const allies = units.filter((other: any) => game.db.areAllied(unit.team, other.team));
+      const enemies = units.filter((other: any) => !game.db.areAllied(unit.team, other.team));
+      const center = enemies[0]?.position as [number, number] | undefined;
+      if (!center) return null;
+
+      const blast = makeItem('_EnemyBlast', [
+        ['spell', null], ['target_enemy', null], ['enemy_blast_aoe', 3],
+        ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const blastResult = game.targetSystem.getTargetFromPosition(unit, blast, center);
+      const expectedBlast = enemies
+        .filter((other: any) => Math.abs(other.position[0] - center[0]) + Math.abs(other.position[1] - center[1]) <= 3)
+        .map((other: any) => other.position);
+
+      const allAllies = makeItem('_AllAllies', [
+        ['spell', null], ['target_ally', null], ['all_allies_except_self_aoe', null],
+        ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const allySplash = game.targetSystem.getTargetFromPosition(unit, allAllies, unit.position);
+
+      const requiredTargets = enemies.length + 1;
+      const strictMulti = makeItem('_StrictMulti', [
+        ['target_enemy', null], ['multi_target', requiredTargets],
+        ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const flexibleMulti = makeItem('_FlexibleMulti', [
+        ['target_enemy', null], ['multi_target', requiredTargets], ['allow_less_than_max_targets', null],
+        ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const strictTargets = game.targetSystem.getValidTargets(unit, strictMulti);
+      const flexibleTargets = game.targetSystem.getValidTargets(unit, flexibleMulti);
+
+      const fogKeys = ['_fog_of_war', '_fog_of_war_radius', '_ai_fog_of_war_radius', '_other_fog_of_war_radius'];
+      const oldFog = fogKeys.map((fogKey) => [fogKey, game.levelVars.has(fogKey), game.levelVars.get(fogKey)]);
+      game.levelVars.set('_fog_of_war', true);
+      game.levelVars.set('_fog_of_war_radius', 0);
+      game.levelVars.set('_ai_fog_of_war_radius', 0);
+      game.levelVars.set('_other_fog_of_war_radius', 0);
+      game.recalculateAllFow();
+      const taggedEnemy = enemies[0];
+      const oldTags = [...taggedEnemy.tags];
+      if (!taggedEnemy.tags.includes('Tile')) taggedEnemy.tags.push('Tile');
+      const fogItem = makeItem('_FogTarget', [
+        ['target_enemy', null], ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const fogBypassItem = makeItem('_FogBypass', [
+        ['target_enemy', null], ['target_fog_of_war', null], ['min_range', 0], ['max_range', maxRange],
+      ]);
+      const fogTargets = game.targetSystem.getValidTargets(unit, fogItem);
+      const fogBypassTargets = game.targetSystem.getValidTargets(unit, fogBypassItem);
+      taggedEnemy.tags = oldTags;
+      for (const [fogKey, existed, value] of oldFog) {
+        if (existed) game.levelVars.set(fogKey, value);
+        else game.levelVars.delete(fogKey);
+      }
+      game.recalculateAllFow();
+
+      const oldLos = game.db.constants.get('line_of_sight');
+      game.db.constants.set('line_of_sight', true);
+      const opacity = (game.board as any).opacityGrid as boolean[][];
+      let blockedEnemy: any = null;
+      let blocker: [number, number] | null = null;
+      for (const enemy of enemies) {
+        if (!enemy.position || Math.abs(enemy.position[0] - unit.position[0]) + Math.abs(enemy.position[1] - unit.position[1]) <= 1) continue;
+        const baselineVisible = getLine(unit.position, enemy.position, (position: [number, number]) => game.board.getOpacity(position));
+        if (!baselineVisible) continue;
+        for (let x = 0; x < game.board.width && !blocker; x++) {
+          for (let y = 0; y < game.board.height; y++) {
+            if ((x === unit.position[0] && y === unit.position[1]) ||
+                (x === enemy.position[0] && y === enemy.position[1])) continue;
+            const oldOpaque = opacity[y][x];
+            opacity[y][x] = true;
+            const visible = getLine(unit.position, enemy.position, (position: [number, number]) => game.board.getOpacity(position));
+            opacity[y][x] = oldOpaque;
+            if (!visible) { blocker = [x, y]; blockedEnemy = enemy; break; }
+          }
+        }
+        if (blocker) break;
+      }
+      let losTargets: [number, number][] = [];
+      let ignoredLosTargets: [number, number][] = [];
+      if (blocker && blockedEnemy) {
+        const oldBlockerOpacity = opacity[blocker[1]][blocker[0]];
+        opacity[blocker[1]][blocker[0]] = true;
+        const losItem = makeItem('_LosTarget', [
+          ['target_enemy', null], ['min_range', 0], ['max_range', maxRange],
+        ]);
+        const ignoredLosItem = makeItem('_IgnoredLosTarget', [
+          ['target_enemy', null], ['ignore_line_of_sight', null], ['min_range', 0], ['max_range', maxRange],
+        ]);
+        losTargets = game.targetSystem.getValidTargets(unit, losItem);
+        ignoredLosTargets = game.targetSystem.getValidTargets(unit, ignoredLosItem);
+        opacity[blocker[1]][blocker[0]] = oldBlockerOpacity;
+      }
+      if (oldLos === undefined) game.db.constants.delete('line_of_sight');
+      else game.db.constants.set('line_of_sight', oldLos);
+
+      return {
+        blastMain: blastResult.mainTarget,
+        blast: keys(blastResult.splash),
+        expectedBlast: keys(expectedBlast),
+        allyMain: allySplash.mainTarget,
+        allySplash: keys(allySplash.splash),
+        expectedAllySplash: keys(allies.filter((other: any) => other !== unit).map((other: any) => other.position)),
+        strictCount: strictTargets.length,
+        flexible: keys(flexibleTargets),
+        expectedEnemies: keys(enemies.map((other: any) => other.position)),
+        taggedEnemy: key(taggedEnemy.position),
+        fog: keys(fogTargets),
+        fogBypass: keys(fogBypassTargets),
+        blockedEnemy: blockedEnemy?.position ? key(blockedEnemy.position) : null,
+        blocker,
+        los: keys(losTargets),
+        ignoredLos: keys(ignoredLosTargets),
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.blastMain).toBeNull();
+    expect(result!.blast).toEqual(result!.expectedBlast);
+    expect(result!.allyMain).toBeNull();
+    expect(result!.allySplash).toEqual(result!.expectedAllySplash);
+    expect(result!.strictCount).toBe(0);
+    expect(result!.flexible).toEqual(result!.expectedEnemies);
+    expect(result!.fog).toContain(result!.taggedEnemy);
+    expect(result!.fogBypass).toEqual(result!.expectedEnemies);
+    expect(result!.blocker).not.toBeNull();
+    expect(result!.blockedEnemy).not.toBeNull();
+    expect(result!.los).not.toContain(result!.blockedEnemy);
+    expect(result!.ignoredLos).toContain(result!.blockedEnemy);
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
