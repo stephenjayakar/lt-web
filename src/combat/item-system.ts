@@ -13,7 +13,7 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
-import { evaluateCondition } from '../events/event-manager';
+import { evaluateCondition, evaluateExpression } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
 import { alternateSplash, empowerSplash, type AlternateSplash } from './skill-system';
 
@@ -31,6 +31,7 @@ export function validTargets(
   item: ItemObject,
   board: GameBoard,
   db: Database,
+  game?: any,
 ): TargetPosition[] {
   const targets = new Map<string, TargetPosition>();
   const add = (position: TargetPosition): void => {
@@ -57,6 +58,18 @@ export function validTargets(
     }
   }
 
+  if (item.hasComponent('unlock_staff')) {
+    for (const region of game?.currentLevel?.regions ?? []) {
+      if (region.region_type !== 'event' ||
+          !String(region.condition ?? '').includes('can_unlock')) continue;
+      for (let x = region.position[0]; x < region.position[0] + region.size[0]; x++) {
+        for (let y = region.position[1]; y < region.position[1] + region.size[1]; y++) {
+          add([x, y]);
+        }
+      }
+    }
+  }
+
   return [...targets.values()];
 }
 
@@ -76,6 +89,129 @@ export interface SplashContext {
 export interface SplashResult {
   mainTarget: TargetPosition | null;
   splash: TargetPosition[];
+}
+
+function componentList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  return value === undefined || value === null ? [] : [String(value)];
+}
+
+function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][number], item: ItemObject, game?: any): boolean {
+  const condition = skill.getComponent<string>('condition');
+  if (!condition) return true;
+  return evaluateCondition(condition, {
+    game,
+    unit1: unit,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  });
+}
+
+function itemComponentsAvailable(
+  unit: UnitObject,
+  item: ItemObject,
+  components: Map<string, any>,
+  db: Database,
+  game?: any,
+): boolean {
+  if ((components.has('uses') || components.has('c_uses')) && item.uses <= 0) return false;
+  const hpCost = components.get('hp_cost');
+  if (typeof hpCost === 'number' && unit.currentHp <= hpCost) return false;
+  if (components.has('cooldown') && Number(item.data.get('cooldown') ?? 0) !== 0) return false;
+
+  const mana = Number((unit as any).currentMana ?? db.getEquation('MANA') ?? 0);
+  const manaCost = components.get('mana_cost');
+  if (typeof manaCost === 'number' && mana < manaCost) return false;
+  const evalManaCost = components.get('eval_mana_cost');
+  if (typeof evalManaCost === 'string') {
+    const cost = Number(evaluateExpression(evalManaCost, {
+      game, unit1: unit, item, position: unit.position ?? undefined,
+      gameVars: game?.gameVars, levelVars: game?.levelVars,
+    }));
+    if (Number.isFinite(cost) && mana < cost) return false;
+  }
+
+  const weaponType = components.get('weapon_type') as string | undefined;
+  if (weaponType) {
+    const klass = db.classes.get(unit.klass);
+    const classEntry = klass?.wexp_gain?.[weaponType];
+    if (!classEntry) return false;
+    const usableTypes = new Set(Object.entries(klass.wexp_gain)
+      .filter(([, entry]) => entry[0])
+      .map(([nid]) => nid));
+    for (const skill of unit.skills) {
+      if (!availabilitySkillActive(unit, skill, item, game)) continue;
+      for (const nid of componentList(skill.getComponent('wexp_usable_skill'))) usableTypes.add(nid);
+      for (const nid of componentList(skill.getComponent('wexp_unusable_skill'))) usableTypes.delete(nid);
+    }
+    if (!usableTypes.has(weaponType) || Number(unit.wexp[weaponType] ?? 0) <= 0) return false;
+  }
+
+  const rank = components.get('weapon_rank') as string | undefined;
+  if (rank && weaponType) {
+    const requirement = db.weaponRanks.find((candidate) => candidate.rank === rank)?.requirement;
+    if (requirement !== undefined && Number(unit.wexp[weaponType] ?? 0) < requirement) return false;
+  }
+
+  const allowedUnits = components.get('prf_unit');
+  if (allowedUnits !== undefined && !componentList(allowedUnits).includes(unit.nid)) return false;
+  const allowedClasses = components.get('prf_class');
+  if (allowedClasses !== undefined && !componentList(allowedClasses).includes(unit.klass)) return false;
+  const allowedTags = components.get('prf_tags');
+  if (allowedTags !== undefined && !componentList(allowedTags).some((tag) => unit.tags.includes(tag))) return false;
+  const allowedAffinities = components.get('prf_affinity');
+  if (allowedAffinities !== undefined && !componentList(allowedAffinities).includes(unit.affinity)) return false;
+
+  const expression = components.get('eval_available') as string | undefined;
+  if (expression && !evaluateCondition(expression, {
+    game,
+    unit1: unit,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  })) return false;
+
+  return true;
+}
+
+/**
+ * Python item_funcs.available(): every item and skill availability hook must
+ * pass, with direct availability components inherited from the immediate parent.
+ */
+export function available(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+): boolean {
+  if (!itemComponentsAvailable(unit, item, item.components, db, game)) return false;
+
+  // Active item_override skills append item-prefab components to the child's
+  // ordinary hook dispatch. Availability hooks on those prefabs must also pass.
+  for (const skill of unit.skills) {
+    if (!availabilitySkillActive(unit, skill, item, game)) continue;
+    const overrideNid = skill.getComponent<string>('item_override');
+    const override = overrideNid ? db.items.get(overrideNid) : null;
+    if (override && !itemComponentsAvailable(
+      unit, item, new Map(override.components), db, game,
+    )) return false;
+  }
+
+  if (item.parentItem && !itemComponentsAvailable(
+    unit, item.parentItem, item.parentItem.components, db, game,
+  )) return false;
+
+  for (const skill of unit.skills) {
+    if (!availabilitySkillActive(unit, skill, item, game)) continue;
+    if (skill.hasComponent('cannot_use_items')) return false;
+    if (skill.hasComponent('cannot_use_magic_items') &&
+        (item.hasComponent('magic') || item.hasComponent('magic_at_range'))) return false;
+  }
+
+  return true;
 }
 
 /** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
@@ -291,6 +427,8 @@ export function splash(
   context: SplashContext,
 ): SplashResult {
   const board = context.board;
+  // UnlockStaff explicitly suppresses every other splash/AOE component.
+  if (item.hasComponent('unlock_staff')) return { mainTarget: position, splash: [] };
   const spell = isSpell(unit, item);
   const extraRange = empowerSplash(unit);
   const blastValue = item.getComponent<number>('blast_aoe')
@@ -546,6 +684,16 @@ export function targetRestrict(
     if (!defender || !defender.items.some(isRepairableItem)) return false;
   }
 
+  if (item.hasComponent('unlock_staff')) {
+    const validRegion = (context.game?.currentLevel?.regions ?? []).some((region: any) =>
+      region.region_type === 'event' &&
+      String(region.condition ?? '').includes('can_unlock') &&
+      defPos[0] >= region.position[0] && defPos[0] < region.position[0] + region.size[0] &&
+      defPos[1] >= region.position[1] && defPos[1] < region.position[1] + region.size[1],
+    );
+    if (!validRegion) return false;
+  }
+
   if (item.hasComponent('steal') || item.hasComponent('gba_steal')) {
     const defender = context.board.getUnit(defPos[0], defPos[1]);
     if (!defender) return false;
@@ -734,6 +882,20 @@ export function resistFormulaOverride(_unit: UnitObject, item: ItemObject): stri
 /** Does this item ignore weapon advantage? */
 export function ignoreWeaponAdvantage(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('ignore_weapon_advantage');
+}
+
+export function weaponTriangleOverride(_unit: UnitObject, item: ItemObject): string | null {
+  return item.getComponent<string>('weapon_triangle_override') ?? null;
+}
+
+/** Python's NUMERIC_MULTIPLY item hook, with a default multiplier of one. */
+export function modifyWeaponTriangle(_unit: UnitObject, item: ItemObject): number {
+  let result = 1;
+  if (item.hasComponent('reaver')) result *= -2;
+  if (item.hasComponent('double_triangle')) result *= 2;
+  const custom = item.getComponent<number>('custom_triangle_multiplier');
+  if (typeof custom === 'number') result *= custom;
+  return result;
 }
 
 // ============================================================

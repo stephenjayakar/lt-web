@@ -606,44 +606,74 @@ export function weaponTriangle(
   defenseItem: ItemObject | null,
   db: Database,
   attacker?: UnitObject,
+  defender?: UnitObject,
 ): { hitBonus: number; damageBonus: number } {
   const noBonus = { hitBonus: 0, damageBonus: 0 };
   if (!defenseItem) return noBonus;
 
   // Check if either item ignores weapon advantage
   if (attacker && itemSystem.ignoreWeaponAdvantage(attacker, attackItem)) return noBonus;
+  if (defender && itemSystem.ignoreWeaponAdvantage(defender, defenseItem)) return noBonus;
 
-  const atkType = attackItem.getWeaponType();
-  const defType = defenseItem.getWeaponType();
+  const atkType = attacker
+    ? itemSystem.weaponTriangleOverride(attacker, attackItem) ?? attackItem.getWeaponType()
+    : attackItem.getWeaponType();
+  const defType = defender
+    ? itemSystem.weaponTriangleOverride(defender, defenseItem) ?? defenseItem.getWeaponType()
+    : defenseItem.getWeaponType();
   if (!atkType || !defType) return noBonus;
 
   // Look up the attacker's weapon type definition
   const atkWeaponDef = db.weapons.find((w) => w.nid === atkType);
   if (!atkWeaponDef) return noBonus;
 
-  // Check advantages
-  for (const adv of atkWeaponDef.advantage) {
-    if (adv.weapon_type === defType) {
-      return {
-        hitBonus: parseNumericValue(adv.accuracy),
-        damageBonus: parseNumericValue(adv.damage),
-      };
+  const modifier1 = attacker ? itemSystem.modifyWeaponTriangle(attacker, attackItem) : 1;
+  const modifier2 = defender ? itemSystem.modifyWeaponTriangle(defender, defenseItem) : 1;
+  const finalModifier = Math.sign(modifier1) * Math.sign(modifier2) *
+    Math.max(Math.abs(modifier1), Math.abs(modifier2));
+  const requirement = (rank: string): number =>
+    rank === 'All' ? -1 : db.weaponRanks.find((candidate) => candidate.rank === rank)?.requirement ?? Infinity;
+  const resolveBonus = (
+    sourceUnit: UnitObject | undefined,
+    sourceType: string,
+    targetType: string,
+    bonuses: typeof atkWeaponDef.advantage,
+  ) => {
+    let best: (typeof bonuses)[number] | null = null;
+    let bestRequirement = -1;
+    const wexp = sourceUnit ? Number(sourceUnit.wexp[sourceType] ?? 0) : Number.MAX_SAFE_INTEGER;
+    for (const bonus of bonuses) {
+      if (bonus.weapon_type !== 'All' && bonus.weapon_type !== targetType) continue;
+      if (bonus.weapon_rank === 'All') return bonus;
+      const required = requirement(bonus.weapon_rank);
+      if (wexp >= required && required > bestRequirement) {
+        best = bonus;
+        bestRequirement = required;
+      }
     }
-  }
-
-  // Check disadvantages
-  // Note: disadvantage entries already store negative values in the data
-  // (e.g. damage: "-1", accuracy: "-15"), so we use them directly.
-  for (const dis of atkWeaponDef.disadvantage) {
-    if (dis.weapon_type === defType) {
-      return {
-        hitBonus: parseNumericValue(dis.accuracy),
-        damageBonus: parseNumericValue(dis.damage),
-      };
-    }
-  }
-
-  return noBonus;
+    return best;
+  };
+  const attackerAdvantage = resolveBonus(attacker, atkType, defType, atkWeaponDef.advantage);
+  const attackerDisadvantage = resolveBonus(attacker, atkType, defType, atkWeaponDef.disadvantage);
+  const defWeaponDef = db.weapons.find((weapon) => weapon.nid === defType);
+  const defenderAdvantage = defWeaponDef
+    ? resolveBonus(defender, defType, atkType, defWeaponDef.advantage)
+    : null;
+  const defenderDisadvantage = defWeaponDef
+    ? resolveBonus(defender, defType, atkType, defWeaponDef.disadvantage)
+    : null;
+  const sum = (bonuses: Array<(typeof atkWeaponDef.advantage)[number] | null>, attribute: 'accuracy' | 'damage' | 'avoid' | 'resist') =>
+    bonuses.reduce((total, bonus) => total + (bonus ? parseNumericValue(bonus[attribute]) : 0), 0);
+  return {
+    hitBonus: Math.trunc((
+      sum([attackerAdvantage, attackerDisadvantage], 'accuracy') -
+      sum([defenderAdvantage, defenderDisadvantage], 'avoid')
+    ) * finalModifier),
+    damageBonus: Math.trunc((
+      sum([attackerAdvantage, attackerDisadvantage], 'damage') -
+      sum([defenderAdvantage, defenderDisadvantage], 'resist')
+    ) * finalModifier),
+  };
 }
 
 /** Parse a numeric value from a weapon advantage string (may be a number or equation). */
@@ -735,9 +765,13 @@ export function getSupportBonusForCombat(unit: UnitObject, game?: any): SupportE
 // ------------------------------------------------------------------
 
 /** Get the first usable weapon from a unit's inventory. */
-export function getEquippedWeapon(unit: UnitObject): ItemObject | null {
+export function getEquippedWeapon(
+  unit: UnitObject,
+  db?: Database,
+  game?: any,
+): ItemObject | null {
   for (const item of unit.items) {
-    if (item.isWeapon()) return item;
+    if (item.isWeapon() && (!db || itemSystem.available(unit, item, db, game))) return item;
   }
   return null;
 }
