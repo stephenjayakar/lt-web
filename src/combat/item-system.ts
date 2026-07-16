@@ -15,6 +15,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateCondition } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
+import { alternateSplash, empowerSplash, type AlternateSplash } from './skill-system';
 
 export type TargetPosition = [number, number];
 
@@ -125,6 +126,163 @@ function positionsInRadius(
   return positions;
 }
 
+function samePosition(left: TargetPosition, right: TargetPosition): boolean {
+  return left[0] === right[0] && left[1] === right[1];
+}
+
+/** LT's taxicab-grid raytrace, including both endpoints. */
+function raytrace(start: TargetPosition, end: TargetPosition): TargetPosition[] {
+  let [x, y] = start;
+  const dx0 = Math.abs(end[0] - start[0]);
+  const dy0 = Math.abs(end[1] - start[1]);
+  const xInc = end[0] > start[0] ? 1 : -1;
+  const yInc = end[1] > start[1] ? 1 : -1;
+  let error = dx0 - dy0;
+  const dx = dx0 * 2;
+  const dy = dy0 * 2;
+  const result: TargetPosition[] = [];
+  let remaining = 1 + dx0 + dy0;
+  while (remaining > 0) {
+    result.push([x, y]);
+    if (error > 0) {
+      x += xInc;
+      error -= dy;
+    } else {
+      y += yInc;
+      error += dx;
+    }
+    remaining--;
+  }
+  return result;
+}
+
+function adjacentToUnit(unit: UnitObject, board: GameBoard): TargetPosition[] {
+  if (!unit.position) return [];
+  const positions: TargetPosition[] = [];
+  for (let x = unit.position[0] - 1; x <= unit.position[0] + 1; x++) {
+    for (let y = unit.position[1] - 1; y <= unit.position[1] + 1; y++) {
+      if ((x !== unit.position[0] || y !== unit.position[1]) && board.inBounds(x, y)) {
+        positions.push([x, y]);
+      }
+    }
+  }
+  return positions;
+}
+
+interface ShapeBlastValue {
+  shape: TargetPosition[];
+  target: 'ally' | 'enemy' | 'all';
+  range: number;
+}
+
+function shapeBlastValue(value: unknown): ShapeBlastValue {
+  const normalized = Array.isArray(value) && value.every((entry) => Array.isArray(entry) && entry.length === 2)
+    ? Object.fromEntries(value as [string, unknown][])
+    : (value && typeof value === 'object' ? value as Record<string, unknown> : {});
+  const shape = Array.isArray((normalized as any).shape)
+    ? (normalized as any).shape.filter((entry: unknown) =>
+      Array.isArray(entry) && entry.length >= 2 && Number.isFinite(Number(entry[0])) && Number.isFinite(Number(entry[1])),
+    ).map((entry: unknown[]) => [Number(entry[0]), Number(entry[1])] as TargetPosition)
+    : [];
+  const target = (normalized as any).target;
+  return {
+    shape,
+    target: target === 'enemy' || target === 'all' ? target : 'ally',
+    range: Math.max(0, Number((normalized as any).range ?? 1)),
+  };
+}
+
+function shapedPositions(
+  center: TargetPosition,
+  value: ShapeBlastValue,
+  extraRange: number,
+  board: GameBoard,
+): TargetPosition[] {
+  const positions = new Map<string, TargetPosition>();
+  for (let distance = 1; distance <= value.range + extraRange; distance++) {
+    for (const [dx, dy] of value.shape) {
+      const candidate: TargetPosition = [center[0] + distance * dx, center[1] + distance * dy];
+      if (board.inBounds(candidate[0], candidate[1])) {
+        positions.set(`${candidate[0]},${candidate[1]}`, candidate);
+      }
+    }
+  }
+  return [...positions.values()];
+}
+
+function affectedUnits(
+  positions: TargetPosition[],
+  unit: UnitObject,
+  context: SplashContext,
+  target: 'ally' | 'enemy' | 'all',
+): TargetPosition[] {
+  return positions.filter((candidate) => {
+    const other = context.board.getUnit(candidate[0], candidate[1]);
+    if (!other) return false;
+    if (target === 'enemy') return !context.db.areAllied(unit.team, other.team);
+    if (target === 'ally') return context.db.areAllied(unit.team, other.team);
+    return true;
+  });
+}
+
+function resolveBlast(
+  unit: UnitObject,
+  item: ItemObject,
+  position: TargetPosition,
+  context: SplashContext,
+  radius: number,
+  target: 'ally' | 'enemy' | 'all',
+): SplashResult {
+  const affected = affectedUnits(positionsInRadius(position, radius, context.board), unit, context, target);
+  if (isSpell(unit, item)) return { mainTarget: null, splash: affected };
+  const mainTarget = context.board.getUnit(position[0], position[1]) ? position : null;
+  return { mainTarget, splash: affected.filter((candidate) => !samePosition(candidate, position)) };
+}
+
+function resolveCleave(
+  unit: UnitObject,
+  position: TargetPosition,
+  context: SplashContext,
+): SplashResult {
+  const nearby = adjacentToUnit(unit, context.board).filter((candidate) => !samePosition(candidate, position));
+  return {
+    mainTarget: context.board.getUnit(position[0], position[1]) ? position : null,
+    splash: affectedUnits(nearby, unit, context, 'enemy'),
+  };
+}
+
+function alternateSplashResult(
+  kind: AlternateSplash,
+  unit: UnitObject,
+  item: ItemObject,
+  position: TargetPosition,
+  context: SplashContext,
+): SplashResult {
+  if (kind === 'enemy_cleave') return resolveCleave(unit, position, context);
+  const target = kind === 'enemy_blast' ? 'enemy'
+    : kind === 'smart_blast' && item.hasComponent('target_enemy') ? 'enemy'
+      : kind === 'smart_blast' && item.hasComponent('target_ally') ? 'ally' : 'all';
+  return resolveBlast(unit, item, position, context, empowerSplash(unit), target);
+}
+
+function itemIsUnsplashable(item: ItemObject): boolean {
+  return item.hasComponent('unsplashable') || item.hasComponent('shape_blast_aoe');
+}
+
+function resultOrAlternate(
+  result: SplashResult,
+  unit: UnitObject,
+  item: ItemObject,
+  position: TargetPosition,
+  context: SplashContext,
+): SplashResult {
+  if (result.mainTarget || result.splash.length > 0) return result;
+  const alternate = alternateSplash(unit);
+  return alternate && !itemIsUnsplashable(item)
+    ? alternateSplashResult(alternate, unit, item, position, context)
+    : result;
+}
+
 /** Resolve the item's main target and affected splash positions. */
 export function splash(
   unit: UnitObject,
@@ -134,6 +292,7 @@ export function splash(
 ): SplashResult {
   const board = context.board;
   const spell = isSpell(unit, item);
+  const extraRange = empowerSplash(unit);
   const blastValue = item.getComponent<number>('blast_aoe')
     ?? item.getComponent<number>('enemy_blast_aoe')
     ?? item.getComponent<number>('ally_blast_aoe')
@@ -142,46 +301,67 @@ export function splash(
     ?? item.getComponent<string>('ally_equation_blast_aoe');
 
   if (blastValue !== undefined || equationBlast) {
-    const radius = equationBlast
+    const radius = (equationBlast
       ? Math.max(0, context.evaluateRangeEquation?.(equationBlast) ?? 0)
-      : Math.max(0, Number(blastValue));
-    const positions = positionsInRadius(position, radius, board);
+      : Math.max(0, Number(blastValue))) + extraRange;
     const enemyOnly = item.hasComponent('enemy_blast_aoe') ||
       (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_enemy'));
     const allyOnly = item.hasComponent('ally_blast_aoe') || item.hasComponent('ally_equation_blast_aoe') ||
       (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_ally'));
-    const affected = positions.filter((candidate) => {
-      const target = board.getUnit(candidate[0], candidate[1]);
-      if (!target) return false;
-      if (enemyOnly) return !context.db.areAllied(unit.team, target.team);
-      if (allyOnly) return context.db.areAllied(unit.team, target.team);
-      return true;
-    });
-    if (spell) return { mainTarget: null, splash: affected };
-    const mainTarget = board.getUnit(position[0], position[1]) ? position : null;
-    return {
-      mainTarget,
-      splash: affected.filter((candidate) => candidate[0] !== position[0] || candidate[1] !== position[1]),
+    return resultOrAlternate(
+      resolveBlast(unit, item, position, context, radius, enemyOnly ? 'enemy' : allyOnly ? 'ally' : 'all'),
+      unit, item, position, context,
+    );
+  }
+
+  if (item.hasComponent('shape_blast_aoe')) {
+    const value = shapeBlastValue(item.getComponent('shape_blast_aoe'));
+    const affected = affectedUnits(shapedPositions(position, value, extraRange, board), unit, context, value.target);
+    const result: SplashResult = spell ? { mainTarget: null, splash: affected } : {
+      mainTarget: board.getUnit(position[0], position[1]) ? position : null,
+      splash: affected.filter((candidate) => !samePosition(candidate, position)),
     };
+    return resultOrAlternate(result, unit, item, position, context);
+  }
+
+  if (item.hasComponent('enemy_cleave_aoe')) {
+    return resultOrAlternate(resolveCleave(unit, position, context), unit, item, position, context);
+  }
+
+  if ((item.hasComponent('line_aoe') || item.hasComponent('enemy_line_aoe')) && unit.position) {
+    const line = raytrace(unit.position, position).filter((candidate) => !samePosition(candidate, unit.position!));
+    const target = item.hasComponent('enemy_line_aoe') ? 'enemy' : 'all';
+    const affected = affectedUnits(line, unit, context, target);
+    const result: SplashResult = spell ? { mainTarget: null, splash: affected } : {
+      mainTarget: board.getUnit(position[0], position[1]) ? position : null,
+      splash: affected.filter((candidate) => !samePosition(candidate, position)),
+    };
+    return resultOrAlternate(result, unit, item, position, context);
   }
 
   if (item.hasComponent('all_allies_aoe') || item.hasComponent('all_allies_except_self_aoe')) {
     const excludeSelf = item.hasComponent('all_allies_except_self_aoe');
-    return {
+    return resultOrAlternate({
       mainTarget: null,
       splash: board.getAllUnits()
         .filter((target) => target.position && context.db.areAllied(unit.team, target.team) && (!excludeSelf || target !== unit))
         .map((target) => [target.position![0], target.position![1]] as TargetPosition),
-    };
+    }, unit, item, position, context);
   }
 
   if (item.hasComponent('all_enemies_aoe')) {
     const affected = board.getAllUnits()
       .filter((target) => target.position && !context.db.areAllied(unit.team, target.team))
       .map((target) => [target.position![0], target.position![1]] as TargetPosition);
-    return spell
+    const result = spell
       ? { mainTarget: null, splash: affected }
       : { mainTarget: board.getUnit(position[0], position[1]) ? position : null, splash: affected };
+    return resultOrAlternate(result, unit, item, position, context);
+  }
+
+  const alternate = alternateSplash(unit);
+  if (alternate && !itemIsUnsplashable(item)) {
+    return alternateSplashResult(alternate, unit, item, position, context);
   }
 
   return { mainTarget: position, splash: [] };
@@ -194,11 +374,89 @@ export function splashPositions(
   position: TargetPosition,
   context: SplashContext,
 ): TargetPosition[] {
-  const result = splash(unit, item, position, context);
-  const positions = new Map<string, TargetPosition>();
-  if (result.mainTarget) positions.set(`${result.mainTarget[0]},${result.mainTarget[1]}`, result.mainTarget);
-  for (const candidate of result.splash) positions.set(`${candidate[0]},${candidate[1]}`, candidate);
-  return positions.size > 0 ? [...positions.values()] : [position];
+  const board = context.board;
+  const extraRange = empowerSplash(unit);
+  const blastValue = item.getComponent<number>('blast_aoe')
+    ?? item.getComponent<number>('enemy_blast_aoe')
+    ?? item.getComponent<number>('ally_blast_aoe')
+    ?? item.getComponent<number>('smart_blast_aoe');
+  const equationBlast = item.getComponent<string>('equation_blast_aoe')
+    ?? item.getComponent<string>('ally_equation_blast_aoe');
+  if (blastValue !== undefined || equationBlast) {
+    const radius = (equationBlast
+      ? Math.max(0, context.evaluateRangeEquation?.(equationBlast) ?? 0)
+      : Math.max(0, Number(blastValue))) + extraRange;
+    let positions = positionsInRadius(position, radius, board);
+    const enemyOnly = item.hasComponent('enemy_blast_aoe') ||
+      (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_enemy'));
+    if (enemyOnly) {
+      positions = positions.filter((candidate) => {
+        const other = board.getUnit(candidate[0], candidate[1]);
+        return !other || !context.db.areAllied(unit.team, other.team);
+      });
+    }
+    return positions;
+  }
+  if (item.hasComponent('shape_blast_aoe')) {
+    const positions = shapedPositions(position, shapeBlastValue(item.getComponent('shape_blast_aoe')), extraRange, board);
+    return positions.length > 0 ? positions : [position];
+  }
+  if (item.hasComponent('enemy_cleave_aoe')) {
+    const positions = adjacentToUnit(unit, board)
+      .filter((candidate) => !samePosition(candidate, position))
+      .filter((candidate) => {
+        const other = board.getUnit(candidate[0], candidate[1]);
+        return !other || !context.db.areAllied(unit.team, other.team);
+      });
+    if (positions.length > 0) return positions;
+  }
+  if ((item.hasComponent('line_aoe') || item.hasComponent('enemy_line_aoe')) && unit.position) {
+    let positions = raytrace(unit.position, position).filter((candidate) => !samePosition(candidate, unit.position!));
+    if (item.hasComponent('enemy_line_aoe')) {
+      positions = positions.filter((candidate) => {
+        const other = board.getUnit(candidate[0], candidate[1]);
+        return !other || !context.db.areAllied(unit.team, other.team);
+      });
+    }
+    if (positions.length > 0) return positions;
+  }
+  if (item.hasComponent('all_allies_aoe') || item.hasComponent('all_allies_except_self_aoe')) {
+    const positions: TargetPosition[] = [];
+    for (let x = 0; x < board.width; x++) for (let y = 0; y < board.height; y++) positions.push([x, y]);
+    return positions;
+  }
+  if (item.hasComponent('all_enemies_aoe')) {
+    const positions: TargetPosition[] = [];
+    for (let x = 0; x < board.width; x++) {
+      for (let y = 0; y < board.height; y++) {
+        const other = board.getUnit(x, y);
+        if (!other || !context.db.areAllied(unit.team, other.team)) positions.push([x, y]);
+      }
+    }
+    return positions;
+  }
+  const alternate = alternateSplash(unit);
+  if (alternate && !itemIsUnsplashable(item)) {
+    if (alternate === 'enemy_cleave') {
+      return adjacentToUnit(unit, board)
+        .filter((candidate) => !samePosition(candidate, position))
+        .filter((candidate) => {
+          const other = board.getUnit(candidate[0], candidate[1]);
+          return !other || !context.db.areAllied(unit.team, other.team);
+        });
+    }
+    let positions = positionsInRadius(position, extraRange, board);
+    const enemyOnly = alternate === 'enemy_blast' ||
+      (alternate === 'smart_blast' && item.hasComponent('target_enemy'));
+    if (enemyOnly) {
+      positions = positions.filter((candidate) => {
+        const other = board.getUnit(candidate[0], candidate[1]);
+        return !other || !context.db.areAllied(unit.team, other.team);
+      });
+    }
+    return positions;
+  }
+  return [position];
 }
 
 export function numTargets(_unit: UnitObject, item: ItemObject): number {

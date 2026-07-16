@@ -52,6 +52,38 @@ function productSkillValues(unit: UnitObject, componentNid: string, defaultVal: 
   return found ? result : defaultVal;
 }
 
+/** Item-component shape supplied by an alternate-splash skill. */
+export type AlternateSplash = 'blast' | 'enemy_blast' | 'smart_blast' | 'enemy_cleave';
+
+/**
+ * Extra AOE range granted by Oversplash-family skills.
+ *
+ * Python resolves empower_splash with NUMERIC_ACCUM, and the derived enemy
+ * and smart variants inherit the same hook.
+ */
+export function empowerSplash(unit: UnitObject): number {
+  return sumSkillValues(unit, 'oversplash') +
+    sumSkillValues(unit, 'enemy_oversplash') +
+    sumSkillValues(unit, 'smart_oversplash');
+}
+
+/**
+ * Replacement splash component for otherwise single-target items.
+ * UNIQUE resolution follows unit skill/component order, matching LT's
+ * generated skill dispatcher.
+ */
+export function alternateSplash(unit: UnitObject): AlternateSplash | null {
+  for (const skill of unit.skills) {
+    for (const componentNid of skill.components.keys()) {
+      if (componentNid === 'oversplash') return 'blast';
+      if (componentNid === 'enemy_oversplash') return 'enemy_blast';
+      if (componentNid === 'smart_oversplash') return 'smart_blast';
+      if (componentNid === 'Cleave') return 'enemy_cleave';
+    }
+  }
+  return null;
+}
+
 // ============================================================
 // Boolean hooks (ALL_DEFAULT_FALSE)
 // ============================================================
