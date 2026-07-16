@@ -3,6 +3,7 @@ import type { ItemObject } from '../objects/item';
 import type { SkillObject } from '../objects/skill';
 import type { GameBoard } from '../objects/game-board';
 import { autoLevelUnit } from './leveling';
+import type { InitiativeTracker } from './initiative';
 
 // Forward declare — we need a getter function since game-state has circular deps
 let _getGame: (() => any) | null = null;
@@ -816,6 +817,7 @@ export class HealAction extends Action {
  */
 export class HasAttackedAction extends Action {
   private unit: UnitObject;
+  private previous: boolean = false;
 
   constructor(unit: UnitObject) {
     super();
@@ -823,11 +825,12 @@ export class HasAttackedAction extends Action {
   }
 
   execute(): void {
+    this.previous = this.unit.hasAttacked;
     this.unit.hasAttacked = true;
   }
 
   reverse(): void {
-    this.unit.hasAttacked = false;
+    this.unit.hasAttacked = this.previous;
   }
 }
 
@@ -836,6 +839,7 @@ export class HasAttackedAction extends Action {
  */
 export class WaitAction extends Action {
   private unit: UnitObject;
+  private previous: boolean = false;
 
   constructor(unit: UnitObject) {
     super();
@@ -843,11 +847,12 @@ export class WaitAction extends Action {
   }
 
   execute(): void {
+    this.previous = this.unit.finished;
     this.unit.finished = true;
   }
 
   reverse(): void {
-    this.unit.finished = false;
+    this.unit.finished = this.previous;
   }
 }
 
@@ -1172,18 +1177,29 @@ export class DropAction extends Action {
 export class DeathAction extends Action {
   private unit: UnitObject;
   private board: GameBoard;
+  private initiative: InitiativeTracker | null;
   private position: [number, number] | null = null;
   private wasDead: boolean = false;
+  private initiativeLine: string[] | null = null;
+  private initiativeValues: number[] | null = null;
+  private initiativeIndex: number = -1;
 
-  constructor(unit: UnitObject, board: GameBoard) {
+  constructor(unit: UnitObject, board: GameBoard, initiative: InitiativeTracker | null = null) {
     super();
     this.unit = unit;
     this.board = board;
+    this.initiative = initiative;
   }
 
   execute(): void {
     this.wasDead = this.unit.dead;
     this.position = this.unit.position ? [...this.unit.position] as [number, number] : null;
+    if (this.initiative) {
+      this.initiativeLine = [...this.initiative.unitLine];
+      this.initiativeValues = [...this.initiative.initiativeLine];
+      this.initiativeIndex = this.initiative.currentIdx;
+      this.initiative.removeUnit(this.unit);
+    }
 
     this.unit.dead = true;
     this.board.removeUnit(this.unit);
@@ -1193,6 +1209,11 @@ export class DeathAction extends Action {
     this.unit.dead = this.wasDead;
     if (this.position) {
       this.board.setUnit(this.position[0], this.position[1], this.unit);
+    }
+    if (this.initiative && this.initiativeLine && this.initiativeValues) {
+      this.initiative.unitLine = [...this.initiativeLine];
+      this.initiative.initiativeLine = [...this.initiativeValues];
+      this.initiative.currentIdx = this.initiativeIndex;
     }
   }
 }

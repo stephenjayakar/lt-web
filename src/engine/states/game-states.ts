@@ -62,6 +62,8 @@ import {
   RemoveSubItemAction,
   HealAction,
   GainExpAction,
+  DeathAction,
+  HasAttackedAction,
   WaitAction,
   UseItemAction,
   RemoveSkillAction,
@@ -77,6 +79,7 @@ import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../.
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
+import { queueCombatItemEvents } from '../../combat/combat-lifecycle';
 import { MapAnimation } from '../../rendering/map-animation';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
@@ -3151,6 +3154,7 @@ function resolveCombatTargetGroup(
 type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'cleanup';
 
 export class CombatState extends State {
+  private initialized: boolean = false;
   readonly name = 'combat';
   override readonly transparent = true;
 
@@ -3224,7 +3228,17 @@ export class CombatState extends State {
       (this.results.defenderDead && this.getActiveCombat() ? [this.getActiveCombat()!.defender] : []);
   }
 
+  private getCombatKiller(unit: UnitObject): UnitObject | null {
+    const strikes = this.getActiveCombat()?.strikes ?? [];
+    for (let index = strikes.length - 1; index >= 0; index--) {
+      const strike = strikes[index];
+      if (strike.defender === unit && strike.hit) return strike.attacker;
+    }
+    return null;
+  }
+
   override begin(): StateResult {
+    if (this.initialized) return;
     const game = getGame();
     const attacker: UnitObject = game.selectedUnit;
     let defender: UnitObject = game.combatTarget;
@@ -3301,6 +3315,7 @@ export class CombatState extends State {
     this.rankUpBanner = null;
     this.stoleBanner = null;
     this.stoleBannerShown = false;
+    this.initialized = true;
 
     // Clear all highlights and hide cursor/HUD before combat starts
     // (Python does this in interaction.py and the red_cursor state)
@@ -3320,6 +3335,29 @@ export class CombatState extends State {
         void game.audioManager.pushMusic(battleTrack);
       }
     }
+
+    const combatStartTriggered = game.eventManager?.trigger(
+      {
+        type: 'combat_start',
+        unit1: attacker,
+        unit2: primaryDefender,
+        unitNid: attacker.nid,
+        position: attacker.position ? [...attacker.position] as [number, number] : undefined,
+        item: attackItem,
+        isAnimationCombat: this.isAnimationCombat,
+        levelNid: game.currentLevel?.nid,
+      },
+      {
+        game,
+        unit1: attacker,
+        unit2: primaryDefender,
+        position: attacker.position,
+        item: attackItem,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+      },
+    ) ?? false;
+    if (combatStartTriggered && !game.eventCombat) game.state.change('event');
   }
 
   /**
@@ -3566,7 +3604,8 @@ export class CombatState extends State {
         // Pass real delta to combat (skip mode is handled inside AnimationCombat)
         const done = activeCombat.update(realDelta);
         if (done) {
-          this.results = activeCombat.applyResults();
+          this.results = activeCombat.applyResults(game.actionLog);
+          queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
             const stolenItem = this.results.stolenItem;
             const stealDefender = this.getPrimaryCombatDefender() ?? activeCombat.defender;
@@ -3644,12 +3683,14 @@ export class CombatState extends State {
         if (this.phaseTimer >= 350) {
           // Remove dead units from board and initiative tracker
           for (const deadDefender of this.getDefenderDeaths()) {
-            if (game.initiative) game.initiative.removeUnit(deadDefender);
-            game.board.removeUnit(deadDefender);
+            game.actionLog.doAction(new DeathAction(deadDefender, game.board, game.initiative));
           }
           if (this.results!.attackerDead) {
-            if (game.initiative) game.initiative.removeUnit(activeCombat!.attacker);
-            game.board.removeUnit(activeCombat!.attacker);
+            game.actionLog.doAction(new DeathAction(
+              activeCombat!.attacker,
+              game.board,
+              game.initiative,
+            ));
           }
 
           // Check if attacker earned EXP
@@ -3851,13 +3892,13 @@ export class CombatState extends State {
         const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
 
         if (!attacker.isDead()) {
-          attacker.hasAttacked = true;
+          game.actionLog.doAction(new HasAttackedAction(attacker));
 
           // Check for Canto: if the unit has canto, don't mark as finished
           if (hasCanto) {
             attacker.finished = false;
           } else {
-            attacker.finished = true;
+            game.actionLog.doAction(new WaitAction(attacker));
           }
         }
 
@@ -3868,30 +3909,68 @@ export class CombatState extends State {
 
           // combat_death for each dead unit
           for (const deadDefender of this.getDefenderDeaths()) {
+            const killer = this.getCombatKiller(deadDefender) ?? attacker;
             game.eventManager.trigger(
               {
                 type: 'combat_death',
                 unit1: deadDefender,
-                unit2: attacker,
+                unit2: killer,
                 unitNid: deadDefender.nid,
-                position: deadDefender.position,
+                position: this.results?.deathPositions?.get(deadDefender) ?? deadDefender.position,
                 levelNid,
               },
-              { ...ctx, unit1: deadDefender, unit2: attacker },
+              { ...ctx, unit1: deadDefender, unit2: killer },
             );
           }
           if (this.results?.attackerDead) {
+            const killer = this.getCombatKiller(attacker) ?? defender;
             game.eventManager.trigger(
-              { type: 'combat_death', unit1: attacker, unit2: defender, unitNid: attacker.nid, position: attacker.position, levelNid },
-              { ...ctx, unit1: attacker, unit2: defender },
+              {
+                type: 'combat_death', unit1: attacker, unit2: killer, unitNid: attacker.nid,
+                position: this.results?.deathPositions?.get(attacker) ?? attacker.position, levelNid,
+              },
+              { ...ctx, unit1: attacker, unit2: killer },
             );
           }
 
           // combat_end fires after every combat
           game.eventManager.trigger(
-            { type: 'combat_end', unit1: attacker, unit2: defender, levelNid },
-            ctx,
+            {
+              type: 'combat_end', unit1: attacker, unit2: defender, levelNid,
+              position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
+              item: activeCombat!.attackItem,
+              isAnimationCombat: this.isAnimationCombat,
+              playback: activeCombat!.strikes,
+            },
+            { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
           );
+
+          // Python fires unit_death after combat_end, once the encounter's
+          // end-combat hooks and records have completed.
+          for (const deadDefender of this.getDefenderDeaths()) {
+            const killer = this.getCombatKiller(deadDefender) ?? attacker;
+            game.eventManager.trigger(
+              {
+                type: 'unit_death', unit1: deadDefender, unit2: killer,
+                unitNid: deadDefender.nid,
+                position: this.results?.deathPositions?.get(deadDefender) ?? deadDefender.position,
+                levelNid,
+              },
+              { ...ctx, unit1: deadDefender, unit2: killer },
+            );
+          }
+          if (this.results?.attackerDead) {
+            const killer = this.getCombatKiller(attacker) ?? defender;
+            game.eventManager.trigger(
+              {
+                type: 'unit_death', unit1: attacker, unit2: killer,
+                unitNid: attacker.nid,
+                position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
+                levelNid,
+              },
+              { ...ctx, unit1: attacker, unit2: killer },
+            );
+          }
         }
 
         // Activate AI groups if an enemy was involved in combat
@@ -3931,6 +4010,7 @@ export class CombatState extends State {
         this.combat = null;
         this.animCombat = null;
         this.isAnimationCombat = false;
+        this.initialized = false;
         this.results = null;
         this.leftPlatformImg = null;
         this.rightPlatformImg = null;
@@ -6857,11 +6937,14 @@ export class EventState extends State {
       gameVars: game.gameVars,
       levelVars: game.levelVars,
       localArgs: new Map<string, any>([
+        ...(trigger?.localArgs?.entries() ?? []),
         ['stat_changes', trigger?.statChanges],
         ['source', trigger?.source],
         ['weapon_type', trigger?.weaponType],
         ['old_wexp', trigger?.oldWexp],
         ['rank', trigger?.rank],
+        ['is_animation_combat', trigger?.isAnimationCombat],
+        ['playback', trigger?.playback],
       ]),
     };
   }
@@ -9442,18 +9525,15 @@ export class EventState extends State {
             while (mc.state !== 'done') {
               mc.update(16);
             }
-            const results = mc.applyResults();
+            const results = mc.applyResults(game.actionLog);
+            queueCombatItemEvents(game, mc.strikes);
             // Handle deaths
             for (const deadDefender of results.defenderDeaths ??
               (results.defenderDead ? [targetGroup.representative] : [])) {
-              if (game.initiative) game.initiative.removeUnit(deadDefender);
-              game.board.removeUnit(deadDefender);
-              game.units.delete(deadDefender.nid);
+              game.actionLog.doAction(new DeathAction(deadDefender, game.board, game.initiative));
             }
-            if (results.attackerDead && iuAttacker.position && game.board) {
-              if (game.initiative) game.initiative.removeUnit(iuAttacker);
-              game.board.removeUnit(iuAttacker.position[0], iuAttacker.position[1]);
-              game.units.delete(iuAttacker.nid);
+            if (results.attackerDead && game.board) {
+              game.actionLog.doAction(new DeathAction(iuAttacker, game.board, game.initiative));
             }
           }
           game.memory.delete('combat_item');

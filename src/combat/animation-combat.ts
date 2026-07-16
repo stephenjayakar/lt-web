@@ -9,6 +9,8 @@ import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
 import { convertSpritesheetToFrames } from './sprite-loader';
 import { computeHit, computeDamage, computeCrit } from './combat-calcs';
 import { usesConsumedByStrikes } from './item-system';
+import type { ActionLog } from '../engine/action';
+import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
 
 
@@ -625,8 +627,6 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateExpWait(): boolean {
-    // Cache results
-    this.cachedResults = this.computeResults();
     this.transition('fade_out');
     return false;
   }
@@ -1009,11 +1009,22 @@ export class AnimationCombat implements AnimationCombatOwner {
   // Results
   // ================================================================
 
-  applyResults(): CombatResults {
+  applyResults(actionLog?: ActionLog): CombatResults {
     if (this.cachedResults) {
       return this.cachedResults;
     }
-    return this.computeResults();
+    if (actionLog) {
+      const action = new CombatResultAction<CombatResults>(
+        [this.attacker, this.defender],
+        [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],
+        () => this.computeResults(),
+      );
+      actionLog.doAction(action);
+      this.cachedResults = action.getResult();
+      return this.cachedResults;
+    }
+    this.cachedResults = this.computeResults();
+    return this.cachedResults;
   }
 
   private computeResults(): CombatResults {
@@ -1116,6 +1127,10 @@ export class AnimationCombat implements AnimationCombatOwner {
       attackerWexpGained: componentResults.attackerWexpGained,
       attackerRankUp: componentResults.attackerRankUp,
       stolenItem: componentResults.stolenItem,
+      deathPositions: new Map([this.attacker, this.defender].map((unit) => [
+        unit,
+        unit.position ? [...unit.position] as [number, number] : null,
+      ])),
     };
   }
 

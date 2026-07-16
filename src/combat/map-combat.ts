@@ -6,6 +6,8 @@ import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
 import { usesConsumedByStrikes } from './item-system';
 import { applyGroupCombatComponents, type WeaponRankUp } from './combat-components';
+import type { ActionLog } from '../engine/action';
+import { CombatResultAction } from './combat-result-action';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -38,6 +40,8 @@ export interface CombatResults {
   defenderDeaths?: UnitObject[];
   /** Droppable items found on dead defenders, paired with their owners. */
   droppedItems?: { unit: UnitObject; item: import('../objects/item').ItemObject }[];
+  /** Map positions captured before reversible death removal. */
+  deathPositions?: Map<UnitObject, [number, number] | null>;
 }
 
 export interface MapCombatGroup {
@@ -126,6 +130,7 @@ export class MapCombat {
   // Audio (optional, set after construction to enable combat SFX)
   audioManager: { playSfx(name: string): void } | null = null;
   private hitSoundPlayed: boolean = false;
+  private cachedResults: CombatResults | null = null;
 
   constructor(
     attacker: UnitObject,
@@ -270,7 +275,23 @@ export class MapCombat {
    * Returns detailed results including stat gains from level-ups and
    * weapon breakage information.
    */
-  applyResults(): CombatResults {
+  applyResults(actionLog?: ActionLog): CombatResults {
+    if (this.cachedResults) return this.cachedResults;
+    if (actionLog) {
+      const action = new CombatResultAction<CombatResults>(
+        [this.attacker, ...this.defenders],
+        [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],
+        () => this.computeResults(),
+      );
+      actionLog.doAction(action);
+      this.cachedResults = action.getResult();
+      return this.cachedResults;
+    }
+    this.cachedResults = this.computeResults();
+    return this.cachedResults;
+  }
+
+  private computeResults(): CombatResults {
     // Walk through all strikes and apply HP changes to actual units
     let atkHp = this.attackerStartHp;
     const defenderHps = new Map(this.defenderStartHps);
@@ -381,6 +402,10 @@ export class MapCombat {
       stolenItem: componentResults.stolenItem,
       defenderDeaths,
       droppedItems,
+      deathPositions: new Map([this.attacker, ...this.defenders].map((unit) => [
+        unit,
+        unit.position ? [...unit.position] as [number, number] : null,
+      ])),
     };
   }
 
