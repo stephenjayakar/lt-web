@@ -63,6 +63,7 @@ export interface TargetRestrictionContext {
   board: GameBoard;
   db: Database;
   game?: any;
+  evaluateEquation?: (equationNid: string, unit: UnitObject, item?: ItemObject) => number;
 }
 
 export interface SplashContext {
@@ -79,6 +80,33 @@ export interface SplashResult {
 /** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
 export function isRepairableItem(item: ItemObject): boolean {
   return item.maxUses > 0 && item.uses < item.maxUses && !item.hasComponent('unrepairable');
+}
+
+/** Match LT's separate accessory/non-accessory inventory capacity. */
+export function inventoryFull(unit: UnitObject, item: ItemObject, db: Database): boolean {
+  const accessory = item.hasComponent('accessory');
+  const limit = Number(db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
+  const count = unit.items.filter((candidate) => candidate.hasComponent('accessory') === accessory).length;
+  return count >= limit;
+}
+
+export function unstealable(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('locked') || item.hasComponent('unstealable');
+}
+
+/** Per-item Steal eligibility; generic Steal allows unequipped weapons, GBA Steal does not. */
+export function stealItemRestrict(
+  stealer: UnitObject,
+  stealItem: ItemObject,
+  defender: UnitObject,
+  targetItem: ItemObject,
+  db: Database,
+): boolean {
+  if (unstealable(defender, targetItem) || inventoryFull(stealer, targetItem, db)) return false;
+  if (stealItem.hasComponent('gba_steal')) {
+    return !targetItem.isWeapon() && !targetItem.isSpell();
+  }
+  return targetItem !== defender.getEquippedWeapon();
 }
 
 function positionsInRadius(
@@ -258,6 +286,17 @@ export function targetRestrict(
   if (item.hasComponent('repair')) {
     const defender = context.board.getUnit(defPos[0], defPos[1]);
     if (!defender || !defender.items.some(isRepairableItem)) return false;
+  }
+
+  if (item.hasComponent('steal') || item.hasComponent('gba_steal')) {
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    if (!defender) return false;
+    const stealAtk = context.evaluateEquation?.('STEAL_ATK', unit, item) ?? unit.getStatValue('SPD');
+    const stealDef = context.evaluateEquation?.('STEAL_DEF', defender, item) ?? defender.getStatValue('SPD');
+    if (stealAtk < stealDef) return false;
+    if (!defender.items.some((candidate) => stealItemRestrict(unit, item, defender, candidate, context.db))) {
+      return false;
+    }
   }
 
   if (item.hasComponent('unload_unit')) {

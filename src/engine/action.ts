@@ -2030,6 +2030,35 @@ export class SetItemDroppableAction extends Action {
   reverse(): void { this.item.droppable = this.oldValue; }
 }
 
+/** Append a per-save gameplay record and remove it again on turnwheel rewind. */
+export class UpdateRecordsAction extends Action {
+  private recordType: string;
+  private args: unknown[];
+  private appended: boolean = false;
+
+  constructor(recordType: string, ...args: unknown[]) {
+    super();
+    this.recordType = recordType;
+    this.args = args;
+  }
+
+  execute(): void {
+    const game = _getGame?.();
+    if (!game?.records) return;
+    game.records.append(
+      this.recordType,
+      game.turnCount ?? game.phase?.turnCount ?? 1,
+      game.currentLevel?.nid ?? null,
+      ...this.args,
+    );
+    this.appended = true;
+  }
+
+  reverse(): void {
+    if (this.appended) _getGame?.()?.records?.pop?.(this.recordType);
+  }
+}
+
 /** Mirror LT's SetObjData: only an existing runtime-data key can be changed. */
 export class SetItemDataAction extends Action {
   private item: ItemObject;

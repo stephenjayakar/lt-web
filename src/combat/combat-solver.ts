@@ -375,7 +375,8 @@ export class CombatPhaseSolver {
     }
 
     // Roll for hit
-    const hit = this.rollHit(finalHit, rngMode);
+    // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT.
+    const hit = item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true;
 
     // Roll for crit (only if hit lands)
     const crit = hit ? Math.floor(Math.random() * 100) < critChance : false;

@@ -20,6 +20,8 @@ export interface CombatComponentResults {
   fixedExp: number | null;
   attackerWexpGained: number;
   attackerRankUp: WeaponRankUp | null;
+  /** Item selected by a successful Steal hook; CombatState performs the reversible transfer. */
+  stolenItem: ItemObject | null;
 }
 
 function addStatus(target: UnitObject, statusNid: string | undefined, db: Database): void {
@@ -98,6 +100,19 @@ function fixedExp(
   return Math.max(Number(db.getConstant('min_exp', 0)), Math.min(100, Math.floor(amount)));
 }
 
+function resolveStolenItem(
+  attacker: UnitObject,
+  item: ItemObject,
+  defender: UnitObject,
+  strikes: CombatStrike[],
+): ItemObject | null {
+  if (!item.hasComponent('steal') && !item.hasComponent('gba_steal')) return null;
+  const targetItem = item.data.get('target_item') as ItemObject | undefined;
+  item.data.delete('target_item');
+  const hit = strikes.some((strike) => strike.attacker === attacker && strike.item === item && strike.hit);
+  return hit && targetItem && defender.items.includes(targetItem) ? targetItem : null;
+}
+
 /** Resolve component hooks shared by map and full-animation combat. */
 export function applyCombatComponents(
   attacker: UnitObject,
@@ -120,5 +135,6 @@ export function applyCombatComponents(
     fixedExp: fixedExp(attacker, attackItem, defender, strikes, attackerDead, db),
     attackerWexpGained: attackerWexp.amount,
     attackerRankUp: attackerWexp.rankUp,
+    stolenItem: resolveStolenItem(attacker, attackItem, defender, strikes),
   };
 }

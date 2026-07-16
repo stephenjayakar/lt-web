@@ -336,6 +336,9 @@ export function avoid(
 
 /** Calculate damage output. */
 export function damage(unit: UnitObject, item: ItemObject, db: Database): number {
+  // Utility spells without a damage hook are non-damaging in LT; they do not
+  // inherit STR/MAG merely because they enter the combat lifecycle.
+  if (!item.hasComponent('damage') && !item.hasComponent('equation_damage')) return 0;
   // Check for skill formula override
   const formulaOverride = skillSystem.damageFormula(unit);
 

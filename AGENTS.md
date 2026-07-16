@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~49,600 lines of TypeScript across 90
+systems. The engine currently spans **~49,900 lines of TypeScript across 90
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -435,7 +435,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `game-state.ts` | ~1470 | Singleton hub: subsystem refs, level loading/cleanup, win/loss, difficulty, unit persistence |
 | `target-system.ts` | ~175 | Target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~2535 | All game actions (Move/Warp, Damage, Heal, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
+| `action.ts` | ~2564 | All game actions (Move/Warp, Damage, Heal, Steal records, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~300 | LT growth methods, deterministic level RNG, and autolevel calculations |
 | `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
 | `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
@@ -451,7 +451,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10290 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence targeting, combat-routed status spells, and item-use rewards |
+| `game-states.ts` | ~10408 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, combat-routed utility spells, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -468,12 +468,12 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 |------|------:|---------|
 | `combat-calcs.ts` | ~733 | Hit, damage, crit, avoid, weapon triangle, and Python-priority alternate/override item/skill formulas |
 | `combat-solver.ts` | ~409 | Strike sequencing, vantage/desperation/miracle |
-| `combat-components.ts` | ~124 | Shared on-hit status, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
+| `combat-components.ts` | ~140 | Shared on-hit status, Steal selection, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
 | `animation-combat.ts` | ~1303 | GBA-style animation combat state machine and shared per-strike durability/component lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
 | `map-combat.ts` | ~596 | Map-mode combat, including per-strike durability, status, fixed reward, and rank-up results |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~600 | Item dispatch, targeting/AOE/utility/repair/unload restrictions, spell combat rules, formula hooks, and uses-options durability resolution |
+| `item-system.ts` | ~640 | Item dispatch, targeting/AOE/utility/repair/unload/Steal restrictions, inventory capacity, spell combat rules, formula hooks, and uses-options durability resolution |
 | `skill-system.ts` | ~453 | Skill dispatch, including formula priority, forced-movement, and EXP/WEXP multiplier hooks |
 
 ### Events (`src/events/`)
@@ -505,7 +505,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### AI (`src/ai/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `ai-controller.ts` | ~1195 | Full AI: behaviours, targeting, healing, group activation |
+| `ai-controller.ts` | ~1265 | Full AI: behaviours, targeting, healing, value-based Steal selection, group activation |
 
 ### UI (`src/ui/`)
 | File | Lines | Purpose |
