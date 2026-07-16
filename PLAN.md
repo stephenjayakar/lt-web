@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 64 exact string references; 68 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 69 exact string references; 68 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 30 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 48,858 lines | Builds |
-| Browser regression suite | n/a | 67 Playwright tests | 67/67 passing |
+| TypeScript runtime | n/a | 89 files, 48,980 lines | Builds |
+| Browser regression suite | n/a | 68 Playwright tests | 68/68 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,21 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Targeted status, restore, and refresh item slice:**
+  - Added core targeted execution for deterministic `status_on_hit` and
+    `status_after_combat_on_hit` effects, negative/specific status restoration,
+    and refresh. This covers the bundled project's 15 deterministic status uses,
+    four post-combat status buffs, two restore items, and refresh item.
+  - Added reversible exact-instance skill removal and exact turn-state refresh
+    actions. Target discovery now excludes restore targets without matching
+    statuses and refresh targets that have not finished their turn.
+  - Added an end-to-end validity → apply → undo → redo → save/load regression.
+    Hit-resolved hostile status staves, repair/item targets, movement sequences,
+    staff EXP/WEXP, and presentation playback remain open rather than being
+    approximated with guaranteed effects.
+  - Item coverage advanced to **69/201 exact references**; skill coverage to
+    **30/241 exact references**; full harness result: **68/68 passing**.
 
 - **Interactive healing-item targeting slice:**
   - Added the `item_targeting` map state and routed ranged healing staves/spells
@@ -683,6 +698,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement targeting fog/LOS, target counts, and bundled-project AOE components
 - [x] Implement `uses_options` per-hit/miss/per-combat durability semantics in both combat modes
 - [x] Implement interactive core heal/equation-heal targeting with reversible effects
+- [x] Implement deterministic targeted status, restore, and refresh effects with
+  reversible skill/turn-state mutations and valid-target restrictions
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -747,8 +764,9 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Extend interactive item targeting to multi/sequence target collection and
-   utility/status/item-target effects, including staff EXP/WEXP and playback.
+1. Extend interactive item targeting to multi/sequence target collection,
+   movement/repair/item-target flows, and hit-resolved hostile status staves,
+   including staff EXP/WEXP and playback.
 2. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
    splash empowerment/alternate-splash hooks.
 3. Implement generic `Feat` selection once the shared persistent growth RNG is ported.

@@ -1757,6 +1757,61 @@ export class AddSkillAction extends Action {
   }
 }
 
+/** Remove one runtime skill instance and restore its original slot on rewind. */
+export class RemoveSkillAction extends Action {
+  private unit: UnitObject;
+  private skill: SkillObject;
+  private index: number = -1;
+
+  constructor(unit: UnitObject, skill: SkillObject) {
+    super();
+    this.unit = unit;
+    this.skill = skill;
+  }
+
+  execute(): void {
+    this.index = this.unit.skills.indexOf(this.skill);
+    if (this.index >= 0) this.unit.skills.splice(this.index, 1);
+    this.unit.hasCanto = this.unit.skills.some((candidate) => candidate.hasComponent('canto'));
+  }
+
+  reverse(): void {
+    if (this.index >= 0 && !this.unit.skills.includes(this.skill)) {
+      this.unit.skills.splice(this.index, 0, this.skill);
+    }
+    if (this.skill.hasComponent('canto')) this.unit.hasCanto = true;
+  }
+}
+
+/** Refresh a unit's action flags, restoring the exact prior state on rewind. */
+export class RefreshUnitAction extends Action {
+  private unit: UnitObject;
+  private oldHasAttacked: boolean = false;
+  private oldHasMoved: boolean = false;
+  private oldHasTraded: boolean = false;
+  private oldFinished: boolean = false;
+
+  constructor(unit: UnitObject) {
+    super();
+    this.unit = unit;
+  }
+
+  execute(): void {
+    this.oldHasAttacked = this.unit.hasAttacked;
+    this.oldHasMoved = this.unit.hasMoved;
+    this.oldHasTraded = this.unit.hasTraded;
+    this.oldFinished = this.unit.finished;
+    this.unit.resetTurnState();
+  }
+
+  reverse(): void {
+    this.unit.hasAttacked = this.oldHasAttacked;
+    this.unit.hasMoved = this.oldHasMoved;
+    this.unit.hasTraded = this.oldHasTraded;
+    this.unit.finished = this.oldFinished;
+  }
+}
+
 type MutableUnitAttribute =
   | 'name' | 'desc' | 'variant' | 'aiGroup' | 'portraitNid' | 'affinity';
 

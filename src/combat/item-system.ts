@@ -230,11 +230,24 @@ export function targetRestrict(
   splash: TargetPosition[],
   context: TargetRestrictionContext,
 ): boolean {
+  const affectedUnits = [defPos, ...splash]
+    .map((position) => context.board.getUnit(position[0], position[1]))
+    .filter((target): target is UnitObject => !!target);
+
   if (item.hasComponent('heal') || item.hasComponent('equation_heal')) {
-    const affected = [defPos, ...splash]
-      .map((position) => context.board.getUnit(position[0], position[1]))
-      .filter((target): target is UnitObject => !!target);
-    if (!affected.some((target) => target.currentHp < target.maxHp)) return false;
+    if (!affectedUnits.some((target) => target.currentHp < target.maxHp)) return false;
+  }
+
+  if (item.hasComponent('refresh') && !affectedUnits.some((target) => target.finished)) {
+    return false;
+  }
+
+  if (item.hasComponent('restore') || item.hasComponent('restore_specific')) {
+    const specific = item.getComponent<string>('restore_specific');
+    const canRestore = affectedUnits.some((target) => target.skills.some((skill) =>
+      specific ? skill.nid === specific : skill.hasComponent('negative'),
+    ));
+    if (!canRestore) return false;
   }
 
   if (item.hasComponent('empty_tile_target_restrict') &&
