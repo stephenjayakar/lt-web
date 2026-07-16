@@ -7,9 +7,45 @@
  * Skills are stored as SkillObject[] on UnitObject. Each SkillObject
  * has a components: Map<string, any>.
  */
-
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
+import { SkillObject } from '../objects/skill';
+
+export type SkillFactory = (nid: string) => SkillObject | null;
+
+/** Apply traveler skill hooks, including source-aware pairup_bonus grants. */
+export function onPairup(unit: UnitObject, leader: UnitObject, createSkill?: SkillFactory): SkillObject[] {
+  const added: SkillObject[] = [];
+  for (const skill of unit.skills) {
+    const childNid = skill.getComponent<string>('pairup_bonus');
+    if (!childNid || !createSkill) continue;
+    const exists = leader.skills.some(candidate =>
+      candidate.nid === childNid &&
+      candidate.data.get('pairupSource') === unit.nid &&
+      candidate.data.get('pairupSourceType') === 'traveler');
+    if (exists) continue;
+    const child = createSkill(childNid);
+    if (!child) continue;
+    child.data.set('pairupSource', unit.nid);
+    child.data.set('pairupSourceType', 'traveler');
+    leader.skills.push(child);
+    added.push(child);
+  }
+  return added;
+}
+
+/** Remove only traveler-sourced pairup grants; natural same-NID skills survive. */
+export function onSeparate(unit: UnitObject, leader: UnitObject): SkillObject[] {
+  const removed: SkillObject[] = [];
+  for (let index = leader.skills.length - 1; index >= 0; index--) {
+    const skill = leader.skills[index];
+    if (skill.data.get('pairupSource') === unit.nid && skill.data.get('pairupSourceType') === 'traveler') {
+      leader.skills.splice(index, 1);
+      removed.push(skill);
+    }
+  }
+  return removed;
+}
 
 // ============================================================
 // Helper: iterate all skill components that define a given hook

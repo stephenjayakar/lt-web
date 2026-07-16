@@ -1,7 +1,8 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
-import type { SkillObject } from '../objects/skill';
+import { SkillObject } from '../objects/skill';
 import type { GameBoard } from '../objects/game-board';
+import { onPairup, onSeparate } from '../combat/skill-system';
 import { autoLevelUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 
@@ -1103,35 +1104,224 @@ export class RescueAction extends Action {
   private target: UnitObject;
   private board: GameBoard;
   private targetPos: [number, number] | null = null;
+  private oldTraveler: string | null;
+  private oldHasRescued: boolean;
 
   constructor(rescuer: UnitObject, target: UnitObject, board: GameBoard) {
     super();
     this.rescuer = rescuer;
     this.target = target;
     this.board = board;
+    this.oldTraveler = rescuer.traveler;
+    this.oldHasRescued = rescuer.hasRescued;
   }
-
   execute(): void {
     this.targetPos = this.target.position ? [...this.target.position] as [number, number] : null;
-
-    // Remove target from board
     this.board.removeUnit(this.target);
-
-    // Set rescue references
     this.rescuer.rescuing = this.target;
     this.target.rescuedBy = this.rescuer;
+    this.rescuer.traveler = this.target.nid;
+    this.rescuer.hasRescued = true;
   }
-
   reverse(): void {
     this.rescuer.rescuing = null;
     this.target.rescuedBy = null;
+    this.rescuer.traveler = this.oldTraveler;
+    this.rescuer.hasRescued = this.oldHasRescued;
+    if (this.targetPos) this.board.setUnit(this.targetPos[0], this.targetPos[1], this.target);
+  }
 
-    // Place target back on board
-    if (this.targetPos) {
-      this.board.setUnit(this.targetPos[0], this.targetPos[1], this.target);
+}
+function makeSkillForAction(nid: string): SkillObject | null {
+  const game = _getGame?.();
+  const prefab = game?.db?.skills?.get?.(nid);
+  return prefab ? new SkillObject(prefab) : null;
+}
+
+type PairState = {
+  traveler: string | null;
+  rescuing: UnitObject | null;
+  rescuedBy: UnitObject | null;
+  leadUnit: boolean;
+  gauge: number;
+  hasRescued: boolean;
+  hasDropped: boolean;
+  hasAttacked: boolean;
+  hasMoved: boolean;
+  hasTraded: boolean;
+  finished: boolean;
+};
+
+function pairState(unit: UnitObject): PairState {
+  return {
+    traveler: unit.traveler,
+    rescuing: unit.rescuing,
+    rescuedBy: unit.rescuedBy,
+    leadUnit: unit.leadUnit,
+    gauge: unit.getGuardGauge(),
+    hasRescued: unit.hasRescued,
+    hasDropped: unit.hasDropped,
+    hasAttacked: unit.hasAttacked,
+    hasMoved: unit.hasMoved,
+    hasTraded: unit.hasTraded,
+    finished: unit.finished,
+  };
+}
+
+function restorePairState(unit: UnitObject, state: PairState): void {
+  unit.traveler = state.traveler;
+  unit.rescuing = state.rescuing;
+  unit.rescuedBy = state.rescuedBy;
+  unit.leadUnit = state.leadUnit;
+  unit.currentGuardGauge = state.gauge;
+  unit.hasRescued = state.hasRescued;
+  unit.hasDropped = state.hasDropped;
+  unit.hasAttacked = state.hasAttacked;
+  unit.hasMoved = state.hasMoved;
+  unit.hasTraded = state.hasTraded;
+  unit.finished = state.finished;
+}
+
+/** Pair a follower into a leader's guard stance. */
+export class PairUpAction extends Action {
+  private unit: UnitObject;
+  private leader: UnitObject;
+  private board: GameBoard;
+  private oldPos: [number, number] | null;
+  private oldUnit: PairState;
+  private oldLeader: PairState;
+  private addedSkills: SkillObject[] = [];
+  private initialized = false;
+
+  constructor(unit: UnitObject, leader: UnitObject, board: GameBoard, _db?: unknown) {
+    super();
+    this.unit = unit;
+    this.leader = leader;
+    this.board = board;
+    this.oldPos = unit.position ? [...unit.position] as [number, number] : null;
+    this.oldUnit = pairState(unit);
+    this.oldLeader = pairState(leader);
+  }
+
+  execute(): void {
+    this.leader.traveler = this.unit.nid;
+    this.leader.rescuing = this.unit;
+    this.unit.rescuedBy = this.leader;
+    if (this.unit.position) this.board.removeUnit(this.unit);
+    if (!this.initialized) {
+      this.addedSkills = onPairup(this.unit, this.leader, makeSkillForAction);
+      this.initialized = true;
+    } else {
+      for (const skill of this.addedSkills) if (!this.leader.skills.includes(skill)) this.leader.skills.push(skill);
     }
+    this.unit.leadUnit = false;
+    this.leader.leadUnit = true;
+    this.leader.setGuardGauge(this.oldUnit.gauge + this.oldLeader.gauge);
+    this.unit.setGuardGauge(0);
+  }
+
+  reverse(): void {
+    for (const skill of this.addedSkills) {
+      const index = this.leader.skills.indexOf(skill);
+      if (index >= 0) this.leader.skills.splice(index, 1);
+    }
+    if (this.oldPos) this.board.setUnit(this.oldPos[0], this.oldPos[1], this.unit);
+    restorePairState(this.unit, this.oldUnit);
+    restorePairState(this.leader, this.oldLeader);
   }
 }
+
+/** Separate a leader/follower pair, optionally placing and waiting the follower. */
+export class SeparatePairUpAction extends Action {
+  private leader: UnitObject;
+  private follower: UnitObject;
+  private board: GameBoard;
+  private position: [number, number] | null;
+  private withWait: boolean;
+  private oldLeader: PairState;
+  private oldFollower: PairState;
+  private oldFollowerPos: [number, number] | null;
+  private removedSkills: SkillObject[] = [];
+  private initialized = false;
+
+  constructor(
+    leader: UnitObject,
+    follower: UnitObject,
+    board: GameBoard,
+    positionOrDb: [number, number] | null | unknown = null,
+    positionOrWait: [number, number] | null | boolean = null,
+    wait = true,
+  ) {
+    super();
+    this.leader = leader;
+    this.follower = follower;
+    this.board = board;
+    this.position = Array.isArray(positionOrDb)
+      ? positionOrDb as [number, number]
+      : Array.isArray(positionOrWait) ? positionOrWait as [number, number] : null;
+    this.withWait = typeof positionOrWait === 'boolean' ? positionOrWait : wait;
+    this.oldLeader = pairState(leader);
+    this.oldFollower = pairState(follower);
+    this.oldFollowerPos = follower.position ? [...follower.position] as [number, number] : null;
+  }
+
+  execute(): void {
+    if (this.position) this.board.setUnit(this.position[0], this.position[1], this.follower);
+    if (this.withWait) this.follower.finished = true;
+    this.leader.traveler = null;
+    this.leader.rescuing = null;
+    this.follower.rescuedBy = null;
+    this.leader.hasDropped = true;
+    const split = Math.floor(this.oldLeader.gauge / 2);
+    this.leader.setGuardGauge(split);
+    this.follower.setGuardGauge(split);
+    this.leader.leadUnit = false;
+    this.follower.leadUnit = false;
+    if (!this.initialized) {
+      this.removedSkills = onSeparate(this.follower, this.leader);
+      this.initialized = true;
+    } else {
+      for (const skill of this.removedSkills) {
+        if (!this.leader.skills.includes(skill)) this.leader.skills.push(skill);
+      }
+      this.removedSkills = onSeparate(this.follower, this.leader);
+    }
+  }
+
+  reverse(): void {
+    if (this.position && this.follower.position) this.board.removeUnit(this.follower);
+    for (const skill of this.removedSkills) if (!this.leader.skills.includes(skill)) this.leader.skills.push(skill);
+    restorePairState(this.leader, this.oldLeader);
+    restorePairState(this.follower, this.oldFollower);
+    if (this.oldFollowerPos) this.board.setUnit(this.oldFollowerPos[0], this.oldFollowerPos[1], this.follower);
+  }
+}
+
+/** Remove a carried partner without changing the board position. */
+export class RemovePartnerAction extends Action {
+  private unit: UnitObject;
+  private partner: UnitObject | null;
+  private oldUnit: PairState;
+
+  constructor(unit: UnitObject, partner?: UnitObject) {
+    super();
+    this.unit = unit;
+    this.partner = unit.rescuing ?? partner ?? null;
+    this.oldUnit = pairState(unit);
+  }
+
+  execute(): void {
+    this.unit.traveler = null;
+    this.unit.rescuing = null;
+    if (this.partner) this.partner.rescuedBy = null;
+  }
+
+  reverse(): void {
+    restorePairState(this.unit, this.oldUnit);
+    if (this.partner) this.partner.rescuedBy = this.unit;
+  }
+}
+
 
 /**
  * DropAction - Drop a rescued unit onto an adjacent tile.
@@ -1141,25 +1331,24 @@ export class DropAction extends Action {
   private target: UnitObject;
   private board: GameBoard;
   private dropPos: [number, number];
+  private oldTraveler: string | null;
+  private oldHasDropped: boolean;
 
-  constructor(
-    rescuer: UnitObject,
-    target: UnitObject,
-    board: GameBoard,
-    dropPos: [number, number],
-  ) {
+  constructor(rescuer: UnitObject, target: UnitObject, board: GameBoard, dropPos: [number, number]) {
     super();
     this.rescuer = rescuer;
     this.target = target;
     this.board = board;
     this.dropPos = dropPos;
+    this.oldTraveler = rescuer.traveler;
+    this.oldHasDropped = rescuer.hasDropped;
   }
 
   execute(): void {
     this.rescuer.rescuing = null;
     this.target.rescuedBy = null;
-
-    // Place target on the board at drop position
+    this.rescuer.traveler = null;
+    this.rescuer.hasDropped = true;
     this.board.setUnit(this.dropPos[0], this.dropPos[1], this.target);
   }
 
@@ -1167,22 +1356,21 @@ export class DropAction extends Action {
     this.board.removeUnit(this.target);
     this.rescuer.rescuing = this.target;
     this.target.rescuedBy = this.rescuer;
+    this.rescuer.traveler = this.oldTraveler;
+    this.rescuer.hasDropped = this.oldHasDropped;
   }
 }
 
-/**
- * DeathAction - Handle unit death (remove from board, mark as dead).
- * Preserves position for turnwheel reversal.
- */
+/** DeathAction - Handle unit death and preserve placement for rewind. */
 export class DeathAction extends Action {
   private unit: UnitObject;
   private board: GameBoard;
   private initiative: InitiativeTracker | null;
   private position: [number, number] | null = null;
-  private wasDead: boolean = false;
+  private wasDead = false;
   private initiativeLine: string[] | null = null;
   private initiativeValues: number[] | null = null;
-  private initiativeIndex: number = -1;
+  private initiativeIndex = -1;
 
   constructor(unit: UnitObject, board: GameBoard, initiative: InitiativeTracker | null = null) {
     super();
@@ -1200,16 +1388,13 @@ export class DeathAction extends Action {
       this.initiativeIndex = this.initiative.currentIdx;
       this.initiative.removeUnit(this.unit);
     }
-
     this.unit.dead = true;
     this.board.removeUnit(this.unit);
   }
 
   reverse(): void {
     this.unit.dead = this.wasDead;
-    if (this.position) {
-      this.board.setUnit(this.position[0], this.position[1], this.unit);
-    }
+    if (this.position) this.board.setUnit(this.position[0], this.position[1], this.unit);
     if (this.initiative && this.initiativeLine && this.initiativeValues) {
       this.initiative.unitLine = [...this.initiativeLine];
       this.initiative.initiativeLine = [...this.initiativeValues];
@@ -1277,13 +1462,6 @@ export class PutItemInConvoy extends Action {
     const game = _getGame?.();
     if (!game) return;
     this.oldOwnerNid = this.item.owner?.nid ?? null;
-    this.item.owner = null;
-    const party = game.getParty(this.partyNid);
-    if (party) party.convoy.push(this.item);
-  }
-
-  reverse(): void {
-    const game = _getGame?.();
     if (!game) return;
     const party = game.getParty(this.partyNid);
     if (party) {
@@ -1293,6 +1471,15 @@ export class PutItemInConvoy extends Action {
     if (this.oldOwnerNid) {
       const unit = game.getUnit(this.oldOwnerNid);
       if (unit) this.item.owner = unit;
+    }
+  }
+  reverse(): void {
+    const game = _getGame?.();
+    if (!game) return;
+    if (this.oldOwnerNid) {
+      const unit = game.getUnit(this.oldOwnerNid);
+      if (unit && !unit.items.includes(this.item)) unit.items.push(this.item);
+      this.item.owner = unit ?? null;
     }
   }
 }
