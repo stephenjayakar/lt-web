@@ -3,7 +3,7 @@
 This document describes how the Lex Talionis web engine was architected
 and built across multiple AI-assisted sessions, covering the analysis strategy,
 design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **~51,700 lines of TypeScript across 95
+systems. The engine currently spans **~52,000 lines of TypeScript across 95
 source files**.
 
 When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
@@ -435,7 +435,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | File | Lines | Purpose |
 |------|------:|---------|
 | `game-state.ts` | ~1480 | Singleton hub: subsystem refs, level loading/cleanup, generic learned skills, win/loss, difficulty, unit persistence |
-| `target-system.ts` | ~175 | Target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
+| `target-system.ts` | ~181 | Availability-gated target union, range/LOS/fog/restriction/count filtering, splash expansion, and recursive sequence guards |
 | `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
 | `action.ts` | ~2585 | All game actions (Move/Warp, Damage, Heal, reversible board/initiative death, Steal records, status removal, refresh, autolevel, WEXP, unit/item/subitem metadata, lore, Promote, Convoy, etc.) |
 | `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
@@ -455,7 +455,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Game States (`src/engine/states/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `game-states.ts` | ~10576 | Core states, event dispatch, gameplay logic, interactive unit/inventory/multi/sequence/Steal targeting, learned-skill actions, grouped AOE combat routing, persistent RNG wiring, reversible combat lifecycle triggers/results, combat-routed utility spells, and item-use rewards |
+| `game-states.ts` | ~10591 | Core states, event dispatch, gameplay logic, availability-gated item/weapon menus, interactive unit/inventory/multi/sequence/Steal targeting, learned-skill actions, grouped AOE combat routing, persistent RNG wiring, reversible combat lifecycle triggers/results, combat-routed utility spells, and item-use rewards |
 | `prep-state.ts` | ~499 | GBA-style preparation screen |
 | `base-state.ts` | ~510 | Base screen hub menu |
 | `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
@@ -470,9 +470,9 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### Combat (`src/combat/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `combat-calcs.ts` | ~743 | Hit, damage, crit, avoid, weapon triangle, splash combat mode, and Python-priority alternate/override item/skill formulas |
+| `combat-calcs.ts` | ~777 | Hit, damage, crit, avoid, Python-shaped weapon-triangle ranks/reavers/overrides/defender bonuses, splash combat mode, and alternate/override item/skill formulas |
 | `combat-solver.ts` | ~663 | Single/grouped strike sequencing, exact attack-info tuples, persistent RNG modes, scoped procs, main-only counters, splash propagation, vantage/desperation/miracle |
-| `combat-components.ts` | ~236 | Shared grouped on-hit status, Steal selection, fixed EXP, WEXP, class-cap, and weapon-rank resolution |
+| `combat-components.ts` | ~304 | Shared grouped on-hit status, Steal selection, fixed and standard/Gompertz level EXP, WEXP, class-cap, and weapon-rank resolution |
 | `animation-combat.ts` | ~1342 | GBA-style animation combat state machine with reversible RNG/proc setup, deferred result commit, and shared per-strike durability/component lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
 | `map-combat.ts` | ~729 | Map-mode single/grouped combat with proc playback, reversible RNG setup, per-defender HP/animation state, and action-backed result effects |
@@ -480,7 +480,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 | `combat-result-action.ts` | ~132 | Exact before/after combat mutation snapshots for deterministic turnwheel undo/redo |
 | `combat-skill-lifecycle.ts` | ~371 | Combat RNG transition records, skill conditions, temporary attack/defense/pre-procs, item overrides, grouped sharing, and charge cleanup |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~906 | Item dispatch, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, inventory capacity, spell combat rules, resist/item-override formulas, and uses-options durability resolution |
+| `item-system.ts` | ~1068 | Item availability/cost/rank/prf/condition/override/parent dispatch, unlock-region targeting, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, spell combat rules, triangle modifiers, and uses-options durability resolution |
 | `skill-system.ts` | ~491 | Skill dispatch, including proc modifier aliases, Oversplash/Cleave alternate AOE, formula priority, forced-movement, and EXP/WEXP multiplier hooks |
 
 ### Events (`src/events/`)
@@ -512,7 +512,7 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 ### AI (`src/ai/`)
 | File | Lines | Purpose |
 |------|------:|---------|
-| `ai-controller.ts` | ~1265 | Full AI: behaviours, targeting, healing, value-based Steal selection, group activation |
+| `ai-controller.ts` | ~1266 | Full AI: availability-gated combat/support choices, behaviours, targeting, healing, value-based Steal selection, group activation |
 
 ### UI (`src/ui/`)
 | File | Lines | Purpose |

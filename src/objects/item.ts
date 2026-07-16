@@ -69,6 +69,12 @@ export class ItemObject {
         this.uses = 0;
       }
     }
+
+    const cooldown = this.components.get('cooldown');
+    if (typeof cooldown === 'number') {
+      this.data.set('cooldown', 0);
+      this.data.set('starting_cooldown', cooldown);
+    }
   }
 
   // ------------------------------------------------------------------

@@ -6,6 +6,7 @@ import { evaluateEquation } from '../combat/combat-calcs';
 import { getLine } from './line-of-sight';
 import {
   validTargets,
+  available,
   rangeRestrict,
   targetRestrict,
   splash,
@@ -39,7 +40,7 @@ export class TargetSystem {
 
   /** Component hook results before range and other positional filtering. */
   getComponentTargets(unit: UnitObject, item: ItemObject): TargetPosition[] {
-    return validTargets(unit, item, this.board, this.db);
+    return validTargets(unit, item, this.board, this.db, this.game);
   }
 
   /** Valid target positions from the unit's current (or supplied) origin. */
@@ -48,7 +49,7 @@ export class TargetSystem {
     item: ItemObject,
     origin: TargetPosition | null = unit.position,
   ): TargetPosition[] {
-    if (!origin) return [];
+    if (!origin || !available(unit, item, this.db, this.game)) return [];
 
     const minRange = item.getMinRange();
     let maxRange = item.hasComponent('global_range') ? 99 : item.getMaxRange();

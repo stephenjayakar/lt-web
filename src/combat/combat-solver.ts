@@ -169,8 +169,8 @@ export class CombatPhaseSolver {
   ): CombatStrike {
     const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
       { attack: [], defense: [] };
-    const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
-    const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
+    const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
+    const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
 
     const isMiss = token.startsWith('miss');
     const isCrit = token.startsWith('crit');
@@ -608,9 +608,9 @@ export class CombatPhaseSolver {
     const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
       { attack: [], defense: [] };
     // Compute hit chance with weapon triangle bonus
-    const defWeapon = target.items.find((i) => i.isWeapon()) ?? null;
+    const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
     const baseHit = calcs.computeHit(striker, item, target, db, board, undefined, mode);
-    const wt = calcs.weaponTriangle(item, defWeapon, db, striker);
+    const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
     const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
     // Compute crit chance

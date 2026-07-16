@@ -21,7 +21,7 @@ import {
   getEquippedWeapon,
   evaluateEquation,
 } from '../combat/combat-calcs';
-import { stealItemRestrict } from '../combat/item-system';
+import { available as itemAvailable, stealItemRestrict } from '../combat/item-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 
@@ -514,7 +514,7 @@ export class AIController {
   private getMaxItemRange(unit: UnitObject): number {
     let maxRange = 0;
     for (const item of unit.items) {
-      if (item.isWeapon() || item.isSpell()) {
+      if ((item.isWeapon() || item.isSpell()) && itemAvailable(unit, item, this.db, this.gameRef)) {
         maxRange = Math.max(maxRange, item.getMaxRange());
       }
     }
@@ -524,7 +524,8 @@ export class AIController {
 
   private getStealItems(unit: UnitObject): ItemObject[] {
     const items = unit.items.filter((item) =>
-      (item.hasComponent('steal') || item.hasComponent('gba_steal')) && item.hasUsesRemaining(),
+      (item.hasComponent('steal') || item.hasComponent('gba_steal')) &&
+      itemAvailable(unit, item, this.db, this.gameRef),
     );
     if (unit.skills.some((skill) => skill.getComponent<string>('ability') === 'Steal')) {
       const prefab = this.db.items.get('Steal');
@@ -603,7 +604,7 @@ export class AIController {
     // Gather all weapons the unit can use
     const weapons: ItemObject[] = [];
     for (const item of unit.items) {
-      if (item.isWeapon()) {
+      if (item.isWeapon() && itemAvailable(unit, item, this.db, this.gameRef)) {
         weapons.push(item);
       }
     }
@@ -750,7 +751,7 @@ export class AIController {
     const items: ItemObject[] = [];
     for (const item of unit.items) {
       if (item.hasNoAI()) continue;
-      if (!item.hasUsesRemaining()) continue;
+      if (!itemAvailable(unit, item, this.db, this.gameRef)) continue;
 
       // Staves: spell/magic items that target allies and can heal
       if ((item.isSpell() || item.hasComponent('weapon_type')) && item.targetsAllies() && item.canHeal()) {
@@ -1069,7 +1070,7 @@ export class AIController {
     const hitChance = computeHit(unit, item, target, this.db, this.board);
     const accuracy = hitChance / 100;
 
-    const defenderWeapon = getEquippedWeapon(target);
+    const defenderWeapon = getEquippedWeapon(target, this.db, this.gameRef);
     const doubles = canDouble(unit, item, target, defenderWeapon, this.db);
     const numAttacks = 1 + (doubles ? 1 : 0);
 
@@ -1204,7 +1205,7 @@ export class AIController {
    */
   private findCounterWeapon(defender: UnitObject, dist: number): ItemObject | null {
     for (const item of defender.items) {
-      if (!item.isWeapon()) continue;
+      if (!item.isWeapon() || !itemAvailable(defender, item, this.db, this.gameRef)) continue;
       if (dist >= item.getMinRange() && dist <= item.getMaxRange()) {
         return item;
       }

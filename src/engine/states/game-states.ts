@@ -92,6 +92,7 @@ import {
   allowSameTarget,
   allowLessThanMaxTargets,
   stealItemRestrict,
+  available as itemAvailable,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -321,11 +322,19 @@ function getTargetsInRange(
   unit: UnitObject,
   fromX: number,
   fromY: number,
+  item?: ItemObject,
 ): UnitObject[] {
   const game = getGame();
-  const weapon = getEquippedWeapon(unit);
+  const weapon = item ?? getEquippedWeapon(unit, game.db, game);
   if (!weapon || !game.targetSystem) return [];
   return game.targetSystem.getValidUnitTargets(unit, weapon, [fromX, fromY]);
+}
+
+function getAvailableCombatItems(unit: UnitObject): ItemObject[] {
+  const game = getGame();
+  return unit.items.filter((item) =>
+    (item.isWeapon() || item.isSpell()) && itemAvailable(unit, item, game.db, game),
+  );
 }
 
 /** Get all adjacent allied units to a unit at a specific position. */
@@ -1480,7 +1489,8 @@ export class MenuState extends State {
     const uy = unit.position[1];
 
     // Attack option — only if enemies are in weapon range from current position
-    const targets = getTargetsInRange(unit, ux, uy);
+    const targets = [...new Set(getAvailableCombatItems(unit)
+      .flatMap((item) => getTargetsInRange(unit, ux, uy, item)))];
     if (targets.length > 0) {
       options.push({ label: 'Attack', value: 'attack', enabled: true });
     }
@@ -1501,7 +1511,11 @@ export class MenuState extends State {
     }
 
     // Item option — if unit has usable healing/consumable items
-    if (unit.hasUsableItems()) {
+    const hasUsableItem = unit.getUsableItems().some((item) =>
+      itemAvailable(unit, item, game.db, game) &&
+      (item.isStatBooster() || (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0),
+    );
+    if (hasUsableItem) {
       options.push({ label: 'Item', value: 'item', enabled: true });
     }
 
@@ -2032,7 +2046,8 @@ export class ItemUseState extends State {
     }
 
     this.usableItems = unit.getUsableItems().filter((item) =>
-      item.isStatBooster() || (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
+      itemAvailable(unit, item, game.db, game) &&
+      (item.isStatBooster() || (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0),
     );
     if (this.usableItems.length === 0) {
       game.state.back();
@@ -2783,12 +2798,12 @@ export class WeaponChoiceState extends State {
 
     // Gather all usable weapons (has uses remaining, is a weapon)
     this.weapons = unit.items.filter(
-      (item) => item.isWeapon() && item.hasUsesRemaining(),
+      (item) => item.isWeapon() && itemAvailable(unit, item, game.db, game),
     );
 
     // Also include spells
     const spells = unit.items.filter(
-      (item) => item.isSpell() && item.hasUsesRemaining() && !item.isWeapon(),
+      (item) => item.isSpell() && !item.isWeapon() && itemAvailable(unit, item, game.db, game),
     );
     this.weapons.push(...spells);
 
@@ -2805,7 +2820,7 @@ export class WeaponChoiceState extends State {
     }
 
     // Remember current equipped weapon for undo
-    this.previousEquipped = getEquippedWeapon(unit);
+    this.previousEquipped = getEquippedWeapon(unit, game.db, game);
 
     // Build menu options
     const options: MenuOption[] = this.weapons.map((w) => ({
@@ -2970,7 +2985,7 @@ export class TargetingState extends MapState {
 
     // Show attack range highlights
     game.highlight.clear();
-    const weapon = getEquippedWeapon(unit);
+    const weapon = getEquippedWeapon(unit, game.db, game);
     if (weapon) {
       const minRange = weapon.getMinRange();
       const maxRange = weapon.getMaxRange();
@@ -3083,7 +3098,7 @@ export class TargetingState extends MapState {
     const target = this.targets[this.targetIndex];
     if (target) {
       const unit: UnitObject = game.selectedUnit;
-      const weapon = getEquippedWeapon(unit);
+      const weapon = getEquippedWeapon(unit, game.db, game);
       if (weapon && target.position) {
         const cameraOffset = game.camera.getOffset();
         const tx = target.position[0] * TILEWIDTH - cameraOffset[0];
@@ -3250,7 +3265,7 @@ export class CombatState extends State {
 
     const selectedCombatItem = game.memory.get('combat_item') as ItemObject | undefined;
     game.memory.delete('combat_item');
-    const attackItem = selectedCombatItem ?? getEquippedWeapon(attacker);
+    const attackItem = selectedCombatItem ?? getEquippedWeapon(attacker, game.db, game);
     if (!attackItem) {
       game.state.back();
       return;
@@ -3261,7 +3276,7 @@ export class CombatState extends State {
     const splashDefenders = targetGroup.splashDefenders;
     defender = targetGroup.representative;
     const groupedCombat = !primaryDefender || splashDefenders.length > 0;
-    const defenseItem = primaryDefender ? getEquippedWeapon(primaryDefender) : null;
+    const defenseItem = primaryDefender ? getEquippedWeapon(primaryDefender, game.db, game) : null;
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
     // Read and consume the combat script (set by interact_unit)

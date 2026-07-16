@@ -16,7 +16,7 @@ export interface WeaponRankUp {
 }
 
 export interface CombatComponentResults {
-  /** Null means the item has no fixed EXP component and normal combat EXP should be used. */
+  /** Null means the item has no EXP component and fallback combat EXP should be used. */
   fixedExp: number | null;
   attackerWexpGained: number;
   attackerRankUp: WeaponRankUp | null;
@@ -131,7 +131,66 @@ function grantGroupWexp(
   return { amount: unit.wexp[weaponType] - oldWexp, rankUp };
 }
 
-function groupFixedExp(
+function internalLevel(unit: UnitObject, db: Database): number {
+  let klass = db.classes.get(unit.klass);
+  if (!klass) return unit.level;
+  if (klass.tier === 0) return unit.level - klass.max_level;
+  if (klass.tier === 1) return unit.level;
+  let result = unit.level;
+  for (let remaining = 5; remaining > 0 && klass.promotes_from; remaining--) {
+    const parent = db.classes.get(klass.promotes_from);
+    if (!parent) break;
+    result += parent.max_level;
+    klass = parent;
+    if (klass.tier <= 0) break;
+  }
+  return result;
+}
+
+function levelExp(unit: UnitObject, target: UnitObject, db: Database): number {
+  const promoteReset = db.getConstant('promote_level_reset', true);
+  const levelDiff = promoteReset
+    ? internalLevel(target, db) - internalLevel(unit, db)
+    : target.level - unit.level;
+  const formula = String(db.getConstant('exp_formula', 'standard'));
+  if (formula === 'gompertz') {
+    const max = Number(db.getConstant('gexp_max', 30)) + 1;
+    const min = Number(db.getConstant('gexp_min', 1));
+    const slope = Number(db.getConstant('gexp_slope', 0.25));
+    const intercept = Number(db.getConstant('gexp_intercept', 10));
+    const magnitude = max - min;
+    const offset = Math.log(-Math.log((intercept - min) / magnitude)) / slope;
+    return min + magnitude * Math.exp(-Math.exp(-slope * (levelDiff - offset)));
+  }
+  if (formula === 'standard') {
+    const offset = Number(db.getConstant('exp_offset', 0));
+    const curve = Number(db.getConstant('exp_curve', 0.035));
+    const magnitude = Number(db.getConstant('exp_magnitude', 10));
+    return magnitude * Math.exp((levelDiff + offset) * curve);
+  }
+  return 0;
+}
+
+function modifyExp(
+  value: number,
+  unit: UnitObject,
+  target: UnitObject,
+  deadTargets: Set<UnitObject>,
+  db: Database,
+): number {
+  const selfMultiplier = expMultiplier(unit, target);
+  const enemyMultiplier = enemyExpMultiplier(target, unit);
+  let result = value * selfMultiplier * enemyMultiplier;
+  if (deadTargets.has(target)) {
+    result *= Number(db.getConstant('kill_multiplier', 1));
+    if (target.tags.includes('Boss')) {
+      result += Math.trunc(Number(db.getConstant('boss_bonus', 0)) * selfMultiplier * enemyMultiplier);
+    }
+  }
+  return result;
+}
+
+function groupComponentExp(
   attacker: UnitObject,
   item: ItemObject,
   strikes: CombatStrike[],
@@ -139,28 +198,37 @@ function groupFixedExp(
   deadTargets: Set<UnitObject>,
   db: Database,
 ): number | null {
-  const value = item.getComponent<number>('exp');
-  if (value === undefined) return null;
+  const hasFixed = item.hasComponent('exp');
+  const hasLevel = item.hasComponent('level_exp');
+  if (!hasFixed && !hasLevel) return null;
   if (attackerDead || attacker.team !== 'player') return 0;
-  const defenders = new Set(strikes
+  const hitDefenders = new Set(strikes
     .filter((strike) => strike.attacker === attacker && strike.item === item && strike.hit)
     .map((strike) => strike.defender)
     .filter((target) => !target.tags.includes('Tile')));
-  if (defenders.size === 0) return 0;
+  const damagedDefenders = new Set(strikes
+    .filter((strike) => strike.attacker === attacker && strike.item === item &&
+      strike.hit && strike.damage > 0 && !db.areAllied(attacker.team, strike.defender.team))
+    .map((strike) => strike.defender)
+    .filter((target) => !target.tags.includes('Tile')));
   let total = 0;
-  for (const defender of defenders) {
-    const selfMultiplier = expMultiplier(attacker, defender);
-    const enemyMultiplier = enemyExpMultiplier(defender, attacker);
-    let amount = Number(value) * selfMultiplier * enemyMultiplier;
-    if (deadTargets.has(defender)) {
-      amount *= Number(db.getConstant('kill_multiplier', 1));
-      if (defender.tags.includes('Boss')) {
-        amount += Number(db.getConstant('boss_bonus', 0)) * selfMultiplier * enemyMultiplier;
-      }
+  const minExp = Number(db.getConstant('min_exp', 0));
+  if (hasFixed) {
+    let componentTotal = 0;
+    const value = Number(item.getComponent<number>('exp') ?? 0);
+    for (const defender of hitDefenders) {
+      componentTotal += modifyExp(value, attacker, defender, deadTargets, db);
     }
-    total += amount;
+    total += Math.max(minExp, Math.min(100, Math.floor(componentTotal)));
   }
-  return Math.max(Number(db.getConstant('min_exp', 0)), Math.min(100, Math.floor(total)));
+  if (hasLevel) {
+    let componentTotal = 0;
+    for (const defender of damagedDefenders) {
+      componentTotal += modifyExp(levelExp(attacker, defender, db), attacker, defender, deadTargets, db);
+    }
+    total += Math.max(minExp, Math.min(100, Math.floor(componentTotal)));
+  }
+  return Math.max(-100, Math.min(100, Math.trunc(total)));
 }
 
 function resolveStolenItem(
@@ -226,7 +294,7 @@ export function applyGroupCombatComponents(
     );
   }
   return {
-    fixedExp: groupFixedExp(attacker, attackItem, strikes, attackerDead, deadDefenders, db),
+    fixedExp: groupComponentExp(attacker, attackItem, strikes, attackerDead, deadDefenders, db),
     attackerWexpGained: attackerWexp.amount,
     attackerRankUp: attackerWexp.rankUp,
     stolenItem: mainDefender

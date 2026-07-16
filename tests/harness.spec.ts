@@ -1183,6 +1183,400 @@ test.describe('Event command parity', () => {
     expect(result.cleaveSplash).toEqual(['3,2', '4,4']);
   });
 
+  test('item availability gates default prfs, ranks, conditions, parent trees, player menus, targeting, and AI', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { available, splash } = await import('/src/combat/item-system.ts');
+      const { WeaponChoiceState } = await import('/src/engine/states/game-states.ts');
+      const eirika = game.units.get('Eirika');
+      const seth = game.units.get('Seth');
+      const moulderPrefab = game.db.units.get('Moulder');
+      const moulderClass = moulderPrefab ? game.db.classes.get(moulderPrefab.klass) : null;
+      const moulder = moulderPrefab && moulderClass ? new UnitObject(moulderPrefab, moulderClass) : null;
+      const enemy = [...game.units.values()].find((unit: any) => unit.team === 'enemy');
+      if (!eirika || !seth || !moulder || !enemy || !game.aiController) return null;
+
+      const rapier = new ItemObject(game.db.items.get('Rapier'));
+      const torch = new ItemObject(game.db.items.get('Torch_Staff'));
+      const oldFog = game.gameVars.get('_fog_of_war');
+      game.gameVars.set('_fog_of_war', false);
+      const torchOff = available(moulder, torch, game.db, game);
+      game.gameVars.set('_fog_of_war', true);
+      const torchOn = available(moulder, torch, game.db, game);
+
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const targetItem = makeItem('_AvailabilityTarget', [
+        ['target_tile', null], ['min_range', 0], ['global_range', null],
+        ['prf_unit', ['Eirika']], ['uses', 2],
+      ]);
+      const targetCounts = {
+        eirika: game.targetSystem.getValidTargets(eirika, targetItem).length,
+        seth: game.targetSystem.getValidTargets(seth, targetItem).length,
+      };
+
+      const unlock = new ItemObject(game.db.items.get('Unlock'));
+      moulder.position = [1, 1];
+      const oldRegions = game.currentLevel.regions;
+      game.currentLevel.regions = [{
+        nid: '_AvailabilityDoor', region_type: 'event', position: [2, 1], size: [1, 1],
+        sub_nid: 'Door', condition: "can_unlock(unit, item)", time_left: null,
+        only_once: true, interrupt_move: false, hide_time: false,
+      }, {
+        nid: '_AvailabilityNonLock', region_type: 'event', position: [1, 2], size: [1, 1],
+        sub_nid: 'Visit', condition: 'True', time_left: null,
+        only_once: true, interrupt_move: false, hide_time: false,
+      }];
+      const unlockTargets = game.targetSystem.getValidTargets(moulder, unlock)
+        .map((position: [number, number]) => position.join(','));
+      const compositeUnlock = makeItem('_AvailabilityCompositeUnlock', [
+        ['unlock_staff', null], ['blast_aoe', 3], ['spell', null],
+      ]);
+      const unlockSplash = splash(moulder, compositeUnlock, [2, 1], {
+        board: game.board, db: game.db,
+      });
+      game.currentLevel.regions = oldRegions;
+
+      const parent = makeItem('_AvailabilityParent', [['prf_unit', ['Eirika']]]);
+      const child = makeItem('_AvailabilityChild', [['target_tile', null], ['min_range', 0], ['global_range', null]]);
+      child.parentItem = parent;
+      const parentAvailability = {
+        eirika: available(eirika, child, game.db, game),
+        seth: available(seth, child, game.db, game),
+      };
+      const grandparent = makeItem('_AvailabilityGrandparent', [['prf_unit', ['Nobody']]]);
+      parent.parentItem = grandparent;
+      const immediateParentOnly = available(eirika, child, game.db, game);
+
+      const hpCost = makeItem('_AvailabilityHpCost', [['hp_cost', eirika.currentHp]]);
+      const hpCostBlocked = available(eirika, hpCost, game.db, game);
+      const cooldown = makeItem('_AvailabilityCooldown', [['cooldown', 2]]);
+      const cooldownReady = available(eirika, cooldown, game.db, game);
+      cooldown.data.set('cooldown', 1);
+      const cooldownBlocked = available(eirika, cooldown, game.db, game);
+
+      game.db.items.set('_AvailabilityOverrideItem', {
+        nid: '_AvailabilityOverrideItem', name: '', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['prf_unit', ['Nobody']]],
+      });
+      const overrideSkill = new SkillObject({
+        nid: '_AvailabilityOverrideSkill', name: '', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['item_override', '_AvailabilityOverrideItem']],
+      });
+      eirika.skills.push(overrideSkill);
+      const overrideBlocked = available(eirika, targetItem, game.db, game);
+      eirika.skills.splice(eirika.skills.indexOf(overrideSkill), 1);
+      game.db.items.delete('_AvailabilityOverrideItem');
+
+      const oldEirikaWexp = { ...eirika.wexp };
+      eirika.wexp.Sword = 30;
+      const rankItem = makeItem('_AvailabilityRank', [
+        ['weapon', null], ['weapon_type', 'Sword'], ['weapon_rank', 'D'],
+      ]);
+      const rankBefore = available(eirika, rankItem, game.db, game);
+      eirika.wexp.Sword = 31;
+      const rankAfter = available(eirika, rankItem, game.db, game);
+
+      const blockPrefab = {
+        nid: '_AvailabilityBlock', name: '', desc: '', icon_nid: '', icon_index: [0, 0] as [number, number],
+        components: [['cannot_use_items', null]] as [string, any][],
+      };
+      const conditionalPrefab = {
+        nid: '_AvailabilityConditionalBlock', name: '', desc: '', icon_nid: '', icon_index: [0, 0] as [number, number],
+        components: [['cannot_use_items', null], ['condition', 'False']] as [string, any][],
+      };
+      const block = new SkillObject(blockPrefab);
+      const conditionalBlock = new SkillObject(conditionalPrefab);
+      eirika.skills.push(conditionalBlock);
+      const conditionalIgnored = available(eirika, targetItem, game.db, game);
+      eirika.skills.push(block);
+      const skillBlocked = available(eirika, targetItem, game.db, game);
+      eirika.skills.splice(eirika.skills.indexOf(block), 1);
+      eirika.skills.splice(eirika.skills.indexOf(conditionalBlock), 1);
+
+      const allowedA = makeItem('_AllowedWeaponA', [
+        ['weapon', null], ['target_enemy', null], ['min_range', 1], ['max_range', 99],
+        ['damage', 1], ['hit', 100],
+      ]);
+      const allowedB = makeItem('_AllowedWeaponB', [
+        ['weapon', null], ['target_enemy', null], ['min_range', 1], ['max_range', 99],
+        ['damage', 2], ['hit', 100],
+      ]);
+      const forbidden = makeItem('_ForbiddenWeapon', [
+        ['weapon', null], ['target_enemy', null], ['min_range', 1], ['max_range', 99],
+        ['damage', 999], ['hit', 100], ['prf_unit', ['Nobody']],
+      ]);
+      const oldSelected = game.selectedUnit;
+      const oldItems = [...eirika.items];
+      eirika.items = [forbidden, allowedA, allowedB];
+      game.selectedUnit = eirika;
+      const weaponState = new WeaponChoiceState();
+      weaponState.begin();
+      const playerWeapons = (weaponState as any).weapons.map((item: any) => item.nid);
+      eirika.items = oldItems;
+      game.selectedUnit = oldSelected;
+      game.highlight.clear();
+
+      const oldEnemyItems = [...enemy.items];
+      const oldEnemyPosition = enemy.position ? [...enemy.position] as [number, number] : null;
+      const oldEirikaPosition = eirika.position ? [...eirika.position] as [number, number] : null;
+      enemy.items = [forbidden, allowedA];
+      const aiAction = (game.aiController as any).primaryAI(
+        enemy,
+        enemy.position ? [[...enemy.position]] : [],
+        [eirika],
+        0.5,
+      );
+      enemy.items = oldEnemyItems;
+      if (oldEnemyPosition) enemy.position = oldEnemyPosition;
+      if (oldEirikaPosition) eirika.position = oldEirikaPosition;
+
+      eirika.wexp = oldEirikaWexp;
+      targetItem.setUses(0);
+      const exhausted = available(eirika, targetItem, game.db, game);
+      if (oldFog === undefined) game.gameVars.delete('_fog_of_war');
+      else game.gameVars.set('_fog_of_war', oldFog);
+      return {
+        defaults: {
+          eirikaRapier: available(eirika, rapier, game.db, game),
+          sethRapier: available(seth, rapier, game.db, game),
+          torchOff, torchOn,
+        },
+        targetCounts,
+        unlockTargets,
+        unlockSplash,
+        parentAvailability,
+        immediateParentOnly,
+        hpCostBlocked,
+        cooldownReady,
+        cooldownBlocked,
+        overrideBlocked,
+        rankBefore,
+        rankAfter,
+        conditionalIgnored,
+        skillBlocked,
+        exhausted,
+        playerWeapons,
+        aiWeapon: aiAction?.item?.nid ?? null,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.defaults).toEqual({
+      eirikaRapier: true, sethRapier: false, torchOff: false, torchOn: true,
+    });
+    expect(result!.targetCounts.eirika).toBeGreaterThan(0);
+    expect(result!.targetCounts.seth).toBe(0);
+    expect(result!.unlockTargets).toEqual(['2,1']);
+    expect(result!.unlockSplash).toEqual({ mainTarget: [2, 1], splash: [] });
+    expect(result!.parentAvailability).toEqual({ eirika: true, seth: false });
+    expect(result!.immediateParentOnly).toBe(true);
+    expect(result!.hpCostBlocked).toBe(false);
+    expect(result!.cooldownReady).toBe(true);
+    expect(result!.cooldownBlocked).toBe(false);
+    expect(result!.overrideBlocked).toBe(false);
+    expect(result!.rankBefore).toBe(false);
+    expect(result!.rankAfter).toBe(true);
+    expect(result!.conditionalIgnored).toBe(true);
+    expect(result!.skillBlocked).toBe(false);
+    expect(result!.exhausted).toBe(false);
+    expect(result!.playerWeapons).toEqual(['_AllowedWeaponA', '_AllowedWeaponB']);
+    expect(result!.aiWeapon).toBe('_AllowedWeaponA');
+  });
+
+  test('level EXP and weapon-triangle components match Python curves and replay through saves', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { weaponTriangle } = await import('/src/combat/combat-calcs.ts');
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const makeUnit = (nid: string, team: string, level: number, hp: number = 100) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level, klass: template.klass,
+          tags: [], bases: { HP: 100, STR: 0, MAG: 0, SKL: 20, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = hp;
+        unit.wexp = { Sword: 251, Lance: 251, Axe: 251 };
+        return unit;
+      };
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const levelWeapon = (damage: number) => makeItem('_LevelExpWeapon', [
+        ['spell', null], ['target_enemy', null], ['hit', 100], ['damage', damage],
+        ['level_exp', null], ['min_range', 1], ['max_range', 1],
+      ]);
+
+      const attacker = makeUnit('_LevelExpAttacker', 'player', 1);
+      const equalTarget = makeUnit('_LevelExpEqual', 'enemy', 1);
+      const equalCombat = new MapCombat(
+        attacker, levelWeapon(5), equalTarget, null, game.db, 'grandmaster', null, ['hit1'],
+      );
+      const beforeIndex = game.actionLog.actionIndex;
+      const equalResult = equalCombat.applyResults(game.actionLog);
+      const afterEqual = attacker.exp;
+      while ((game.actionLog as any).actionIndex > beforeIndex) game.actionLog.runActionBackward();
+      const afterUndo = attacker.exp;
+      while ((game.actionLog as any).actionIndex < (game.actionLog as any).actions.length - 1) {
+        game.actionLog.runActionForward();
+      }
+      const afterRedo = attacker.exp;
+
+      const higherAttacker = makeUnit('_LevelExpHigherAttacker', 'player', 1);
+      const higherTarget = makeUnit('_LevelExpHigherTarget', 'enemy', 11);
+      const higherResult = new MapCombat(
+        higherAttacker, levelWeapon(5), higherTarget, null, game.db, 'grandmaster', null, ['hit1'],
+      ).applyResults();
+
+      const bossAttacker = makeUnit('_LevelExpBossAttacker', 'player', 1);
+      const boss = makeUnit('_LevelExpBoss', 'enemy', 1, 5);
+      boss.tags.push('Boss');
+      const bossResult = new MapCombat(
+        bossAttacker, levelWeapon(10), boss, null, game.db, 'grandmaster', null, ['hit1'],
+      ).applyResults();
+
+      const missAttacker = makeUnit('_LevelExpMissAttacker', 'player', 1);
+      const missTarget = makeUnit('_LevelExpMissTarget', 'enemy', 1);
+      const missResult = new MapCombat(
+        missAttacker, levelWeapon(5), missTarget, null, game.db, 'grandmaster', null, ['miss1'],
+      ).applyResults();
+      const allyAttacker = makeUnit('_LevelExpAllyAttacker', 'player', 1);
+      const allyTarget = makeUnit('_LevelExpAllyTarget', 'player', 1);
+      const allyResult = new MapCombat(
+        allyAttacker, levelWeapon(5), allyTarget, null, game.db, 'grandmaster', null, ['hit1'],
+      ).applyResults();
+
+      const swordUnit = makeUnit('_TriangleSword', 'player', 1);
+      const axeUnit = makeUnit('_TriangleAxe', 'enemy', 1);
+      const sword = makeItem('_TriangleSwordItem', [['weapon', null], ['weapon_type', 'Sword']]);
+      const axe = makeItem('_TriangleAxeItem', [['weapon', null], ['weapon_type', 'Axe']]);
+      const reaverSword = makeItem('_TriangleReaverSword', [
+        ['weapon', null], ['weapon_type', 'Sword'], ['reaver', null],
+      ]);
+      const reaverAxe = makeItem('_TriangleReaverAxe', [
+        ['weapon', null], ['weapon_type', 'Axe'], ['reaver', null],
+      ]);
+      const override = makeItem('_TriangleOverride', [
+        ['weapon', null], ['weapon_type', 'Sword'], ['weapon_triangle_override', 'Axe'],
+      ]);
+      const lance = makeItem('_TriangleLanceItem', [['weapon', null], ['weapon_type', 'Lance']]);
+      const triangle = {
+        normal: weaponTriangle(sword, axe, game.db, swordUnit, axeUnit),
+        attackReaver: weaponTriangle(reaverSword, axe, game.db, swordUnit, axeUnit),
+        bothReaver: weaponTriangle(reaverSword, reaverAxe, game.db, swordUnit, axeUnit),
+        override: weaponTriangle(override, lance, game.db, swordUnit, axeUnit),
+      };
+
+      const bonus = (weaponType: string, rank: string, values: Partial<Record<string, string>>) => ({
+        weapon_type: weaponType, weapon_rank: rank,
+        damage: '0', resist: '0', accuracy: '0', avoid: '0', crit: '0', dodge: '0',
+        attack_speed: '0', defense_speed: '0', ...values,
+      });
+      const weaponCount = game.db.weapons.length;
+      game.db.weapons.push({
+        nid: '_TriangleCombinedAtk', name: '', force_melee_anim: false, hide_from_display: false,
+        rank_bonus: [], icon_nid: '', icon_index: [0, 0],
+        advantage: [bonus('_TriangleCombinedDef', 'All', { accuracy: '10', damage: '3' })],
+        disadvantage: [bonus('_TriangleCombinedDef', 'All', { accuracy: '-2', damage: '-1' })],
+      } as any, {
+        nid: '_TriangleCombinedDef', name: '', force_melee_anim: false, hide_from_display: false,
+        rank_bonus: [], icon_nid: '', icon_index: [0, 0],
+        advantage: [bonus('_TriangleCombinedAtk', 'All', { avoid: '4', resist: '1' })],
+        disadvantage: [bonus('_TriangleCombinedAtk', 'All', { avoid: '-1', resist: '0' })],
+      } as any, {
+        nid: '_TriangleRanked', name: '', force_melee_anim: false, hide_from_display: false,
+        rank_bonus: [], icon_nid: '', icon_index: [0, 0], disadvantage: [],
+        advantage: [
+          bonus('_TrianglePlain', 'All', { accuracy: '1', damage: '1' }),
+          bonus('_TrianglePlain', 'A', { accuracy: '99', damage: '99' }),
+        ],
+      } as any, {
+        nid: '_TrianglePlain', name: '', force_melee_anim: false, hide_from_display: false,
+        rank_bonus: [], icon_nid: '', icon_index: [0, 0], advantage: [], disadvantage: [],
+      } as any);
+      const combinedAtk = makeItem('_TriangleCombinedAtkItem', [
+        ['weapon', null], ['weapon_type', '_TriangleCombinedAtk'],
+      ]);
+      const combinedDef = makeItem('_TriangleCombinedDefItem', [
+        ['weapon', null], ['weapon_type', '_TriangleCombinedDef'],
+      ]);
+      const ranked = makeItem('_TriangleRankedItem', [
+        ['weapon', null], ['weapon_type', '_TriangleRanked'],
+      ]);
+      const plain = makeItem('_TrianglePlainItem', [
+        ['weapon', null], ['weapon_type', '_TrianglePlain'],
+      ]);
+      swordUnit.wexp._TriangleCombinedAtk = 251;
+      swordUnit.wexp._TriangleRanked = 251;
+      axeUnit.wexp._TriangleCombinedDef = 251;
+      axeUnit.wexp._TrianglePlain = 251;
+      const extendedTriangle = {
+        combined: weaponTriangle(combinedAtk, combinedDef, game.db, swordUnit, axeUnit),
+        allRankFirst: weaponTriangle(ranked, plain, game.db, swordUnit, axeUnit),
+      };
+      game.db.weapons.splice(weaponCount);
+
+      game.units.set(attacker.nid, attacker);
+      await saveGame(game, 88, 'battle');
+      attacker.exp = 77;
+      const loaded = await loadGame(game, 88);
+      const savedExp = game.units.get(attacker.nid)?.exp;
+      await deleteSave(game, 88);
+      game.units.delete(attacker.nid);
+
+      return {
+        exp: {
+          equal: equalResult.expGained,
+          afterEqual,
+          afterUndo,
+          afterRedo,
+          higher: higherResult.expGained,
+          boss: bossResult.expGained,
+          miss: missResult.expGained,
+          ally: allyResult.expGained,
+        },
+        triangle,
+        extendedTriangle,
+        save: { loaded, exp: savedExp },
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.exp).toEqual({
+      equal: 10, afterEqual: 10, afterUndo: 0, afterRedo: 10,
+      higher: 14, boss: 70, miss: 1, ally: 1,
+    });
+    expect(result!.triangle).toEqual({
+      normal: { hitBonus: 15, damageBonus: 1 },
+      attackReaver: { hitBonus: -30, damageBonus: -2 },
+      bothReaver: { hitBonus: 30, damageBonus: 2 },
+      override: { hitBonus: 15, damageBonus: 1 },
+    });
+    expect(result!.extendedTriangle).toEqual({
+      combined: { hitBonus: 5, damageBonus: 1 },
+      allRankFirst: { hitBonus: 1, damageBonus: 1 },
+    });
+    expect(result!.save).toEqual({ loaded: true, exp: 10 });
+  });
+
   test('group map combat propagates splash once, counters only from main, and aggregates rewards', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -2301,7 +2695,7 @@ test.describe('Event command parity', () => {
     });
   });
 
-  test('hostile status staves use alternate hit formulas and hit-gated combat rewards', async ({ page }) => {
+  test('hostile status staves use alternate hit formulas and Python minimum EXP on miss', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -2421,9 +2815,9 @@ test.describe('Event command parity', () => {
     expect(result!.afterMiss).toEqual({
       hasStatus: false,
       uses: 2,
-      exp: 35,
+      exp: 36,
       wexp: 34,
-      resultExp: 0,
+      resultExp: 1,
       resultWexp: 0,
       hp: result!.defenderHp,
     });
@@ -2436,8 +2830,16 @@ test.describe('Event command parity', () => {
     const setup = await page.evaluate(async () => {
       const game = (window as any).__gameRef;
       const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
       const caster = game.units.get('Eirika');
       if (!caster?.position || !game.db.skills.has('Sleep')) return null;
+      const oldStaffWexp = caster.wexp.Staff ?? null;
+      caster.wexp.Staff = 31;
+      const staffAccess = new SkillObject({
+        nid: '_MenuStaffAccess', name: 'Menu Staff Access', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['wexp_usable_skill', 'Staff']],
+      });
+      caster.skills.push(staffAccess);
       const item = new ItemObject({
         nid: '_MenuSleep', name: 'Menu Sleep', desc: '', icon_nid: '', icon_index: [0, 0],
         components: [
@@ -2447,7 +2849,12 @@ test.describe('Event command parity', () => {
         ],
       });
       const target = game.targetSystem.getValidUnitTargets(caster, item)[0];
-      if (!target?.position) return null;
+      if (!target?.position) {
+        caster.skills = caster.skills.filter((skill: any) => skill !== staffAccess);
+        if (oldStaffWexp === null) delete caster.wexp.Staff;
+        else caster.wexp.Staff = oldStaffWexp;
+        return null;
+      }
       item.owner = caster;
       caster.items.unshift(item);
       caster.finished = false;
@@ -2456,7 +2863,12 @@ test.describe('Event command parity', () => {
       game.selectedUnit = caster;
       game.combatScript = ['hit1', 'end'];
       game.state.change('item_use');
-      return { casterNid: caster.nid, targetNid: target.nid, targetPosition: [...target.position] };
+      return {
+        casterNid: caster.nid,
+        targetNid: target.nid,
+        targetPosition: [...target.position],
+        oldStaffWexp,
+      };
     });
     expect(setup).not.toBeNull();
 
@@ -2476,7 +2888,7 @@ test.describe('Event command parity', () => {
     expect(enteredCombat).toEqual({ name: 'combat', isMapCombat: true, isAnimationCombat: false });
 
     await stepFrames(page, 320);
-    const applied = await page.evaluate(({ casterNid, targetNid }) => {
+    const applied = await page.evaluate(({ casterNid, targetNid, oldStaffWexp }) => {
       const game = (window as any).__gameRef;
       const caster = game.units.get(casterNid);
       const target = game.units.get(targetNid);
@@ -2488,6 +2900,9 @@ test.describe('Event command parity', () => {
         uses: item?.uses,
       };
       target.skills = target.skills.filter((skill: any) => skill.nid !== 'Sleep');
+      caster.skills = caster.skills.filter((skill: any) => skill.nid !== '_MenuStaffAccess');
+      if (oldStaffWexp === null) delete caster.wexp.Staff;
+      else caster.wexp.Staff = oldStaffWexp;
       const index = caster.items.indexOf(item);
       if (index >= 0) caster.items.splice(index, 1);
       return snapshot;
@@ -3764,6 +4179,13 @@ test.describe('Magic Sword Combat', () => {
     // Give Eirika a Light Brand (has `magic` + `battle_cast_anim: "Lightning"`)
     const given = await giveItem(page, 'Eirika', 'Light_Brand');
     expect(given).toBe(true);
+
+    // The DEBUG fixture starts Eirika below Light Brand's C-rank requirement.
+    // Make this combat scenario explicitly legal under the runtime availability rules.
+    await page.evaluate(() => {
+      const eirika = (window as any).__gameRef?.units?.get?.('Eirika');
+      if (eirika) eirika.wexp.Sword = Math.max(eirika.wexp.Sword ?? 0, 71);
+    });
 
     const lightBrandUsesBefore = await page.evaluate(() => {
       const g = (window as any).__gameRef;

@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 95 exact string references; 77 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 63 exact string references; 65 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 110 exact string references; 92 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 67 exact string references; 65 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 95 files, 51,696 lines | Builds |
-| Browser regression suite | n/a | 85 Playwright tests | 85/85 passing |
+| TypeScript runtime | n/a | 95 files, 51,983 lines | Builds |
+| Browser regression suite | n/a | 87 Playwright tests | 87/87 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,28 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Item availability, combat EXP, and weapon-triangle parity slice:**
+  - Added Python-shaped item availability for uses/chapter uses, HP and mana costs,
+    cooldown state, class weapon access and ranks, personal/class/tag/affinity
+    restrictions, evaluated conditions, conditional skill prohibitions, active item
+    overrides, and immediate parent-item restrictions. Default player menus,
+    targeting, counters, and AI now select only available items.
+  - Ported `unlock_staff` target discovery against exact `can_unlock` event regions,
+    including full region geometry and suppression of unrelated splash components.
+    Cooldown-backed items now initialize the same runtime data fields as Python.
+  - Ported component `level_exp`, including promoted internal-level traversal,
+    standard/Gompertz curves, self/enemy multipliers, kill/boss rewards, minimum EXP,
+    allied-target exclusion, and final encounter clamping. Fixed EXP and level EXP
+    aggregate across unique defenders and remain reversible/save-safe.
+  - Expanded weapon-triangle resolution to independent advantage/disadvantage matches,
+    `All` rank ordering, reaver/double-triangle modifiers, overrides, ignore hooks,
+    and defender-derived avoid/resist adjustments.
+  - Added default-project and synthetic regressions spanning menus, targeting, AI,
+    unlock regions, parent/override conditions, EXP curves, turnwheel, save/load, and
+    triangle combinations. Inventory advanced to **110/201 item exact references / 92
+    hook surfaces** and **67/241 skill exact references / 65 hook surfaces**; the full
+    serial gate is **87/87 passing**.
 
 - **Persistent combat RNG and skill-proc lifecycle slice:**
   - Replaced gameplay `Math.random()` hit/crit rolls with LT's persisted 31-bit
@@ -894,6 +916,9 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   with combat-local target/mode/item arguments
 - [x] Implement attack/defense/pre-proc temporary-skill scopes with proc equations,
   conditions, item overrides, reversible charge consumption, and grouped sharing
+- [x] Enforce Python item availability across player menus, target discovery, counters,
+  and AI, including costs, cooldown, ranks/prfs, conditions, overrides, and parent items
+- [x] Implement `unlock_staff` event-region targeting without inherited AOE splash
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -910,6 +935,10 @@ item-use fixture matrices match Python outputs and side effects.
   killer identity, death position, playback, animation mode, and event blocking
 - [x] Persist LT's combat LCG and make classic/True Hit/True Hit Plus/Fates Hit/
   Grandmaster hit and crit rolls reversible across turnwheel and save/load
+- [x] Port component `level_exp` standard/Gompertz/internal-level rewards and verify
+  combat EXP across allies, bosses, turnwheel, and save/load
+- [x] Match weapon-triangle rank ordering, simultaneous relation merging,
+  reaver/override/ignore hooks, and defender avoid/resist contributions
 - [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
 - [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
@@ -963,9 +992,9 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Port the next high-usage unresolved item target/use/end-combat hook cluster from
-   the generated component manifest and add interaction fixtures.
-2. Implement the next project-used parser-recognized event commands that still lack
+1. Implement the next project-used parser-recognized event commands that still lack
    dispatcher cases, with reversible mutations and blocking/flag coverage.
+2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
+   the generated component manifest and add interaction fixtures.
 3. Extend skill lifecycle parity beyond combat procs: upkeep/endstep charge reset,
    combat arts, post-strike/status hooks, pair-up hooks, and proc icon presentation.
