@@ -6,15 +6,15 @@
   ],
   "summary": {
     "pythonComponentNids": 241,
-    "webHookExports": 48,
-    "referencedComponentNids": 42,
-    "hookMappedComponentNids": 64,
-    "unreferencedComponentNids": 199,
+    "webHookExports": 49,
+    "referencedComponentNids": 63,
+    "hookMappedComponentNids": 65,
+    "unreferencedComponentNids": 178,
     "structuralStatuses": {
-      "hook-and-reference": 36,
-      "hook-only": 28,
-      "reference-only": 6,
-      "unreferenced": 171
+      "hook-and-reference": 43,
+      "hook-only": 22,
+      "reference-only": 20,
+      "unreferenced": 156
     }
   },
   "webHookExports": [
@@ -55,6 +55,7 @@
     "resistMultiplier",
     "damageFormula",
     "resistFormula",
+    "resistFormulaOverride",
     "accuracyFormula",
     "accuracyFormulaOverride",
     "avoidFormula",
@@ -228,10 +229,15 @@
       "methods": [
         "weapon_filter"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 200
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "proc_turn_skill",
@@ -272,10 +278,19 @@
         "start_sub_combat",
         "end_sub_combat_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 15
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 332
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "defense_proc",
@@ -294,10 +309,19 @@
         "start_sub_combat",
         "end_sub_combat_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 15
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 335
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "attack_pre_proc",
@@ -316,10 +340,19 @@
         "start_combat",
         "end_combat_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 15
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 313
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "defense_pre_proc",
@@ -338,10 +371,19 @@
         "start_combat",
         "end_combat_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 15
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 317
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "proc_rate",
@@ -358,10 +400,15 @@
       "methods": [
         "proc_rate"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 206
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "astra_proc",
@@ -409,10 +456,15 @@
       "methods": [
         "get_components"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 216
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "unit_anim",
@@ -824,7 +876,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8486
+          "line": 8488
         },
         {
           "source": "src/native.ts",
@@ -917,11 +969,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10379
+          "line": 10382
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10402
+          "line": 10405
         }
       ],
       "matchingWebHooks": [],
@@ -1188,7 +1240,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7888
+          "line": 7890
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1249,7 +1301,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 440
+          "line": 446
         }
       ],
       "matchingWebHooks": [
@@ -1276,7 +1328,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 444
+          "line": 450
         }
       ],
       "matchingWebHooks": [
@@ -1303,7 +1355,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 448
+          "line": 454
         }
       ],
       "matchingWebHooks": [
@@ -1370,7 +1422,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 452
+          "line": 458
         }
       ],
       "matchingWebHooks": [
@@ -1417,11 +1469,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 462
+          "line": 468
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 472
+          "line": 478
         }
       ],
       "matchingWebHooks": [
@@ -1452,11 +1504,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 463
+          "line": 469
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 478
+          "line": 484
         }
       ],
       "matchingWebHooks": [
@@ -1526,10 +1578,27 @@
         "text",
         "cooldown"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 184
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 186
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 275
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 39
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "drain_charge",
@@ -1556,10 +1625,23 @@
         "text",
         "cooldown"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 189
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 277
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 40
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "charges_per_turn",
@@ -1582,10 +1664,23 @@
         "cooldown",
         "on_endstep"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 189
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 277
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 41
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "upkeep_charge_increase",
@@ -1622,10 +1717,15 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 358
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "combat_charge_increase_by_stat",
@@ -1642,10 +1742,15 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 359
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "gain_mana",
@@ -2793,6 +2898,10 @@
           "line": 637
         },
         {
+          "source": "src/combat/skill-system.ts",
+          "line": 224
+        },
+        {
           "source": "src/engine/records.ts",
           "line": 207
         },
@@ -2852,12 +2961,17 @@
       "methods": [
         "modify_resist"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 229
+        }
+      ],
       "matchingWebHooks": [
         "modifyResist"
       ],
-      "lexicalTestMention": false,
-      "status": "hook-only"
+      "lexicalTestMention": true,
+      "status": "hook-and-reference"
     },
     {
       "nid": "hit",
@@ -2877,23 +2991,27 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 119
+          "line": 124
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 222
+          "line": 228
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 855
+          "line": 874
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 484
+          "line": 626
         },
         {
           "source": "src/combat/item-system.ts",
           "line": 642
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 234
         },
         {
           "source": "src/engine/records.ts",
@@ -2921,7 +3039,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4501
+          "line": 4503
         },
         {
           "source": "src/objects/item.ts",
@@ -2987,6 +3105,10 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/skill-system.ts",
+          "line": 239
+        },
+        {
           "source": "src/combat/terrain-bonuses.ts",
           "line": 25
         }
@@ -3037,27 +3159,31 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 119
+          "line": 124
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 222
+          "line": 228
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 886
+          "line": 905
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 666
+          "line": 670
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 122
+          "line": 176
         },
         {
           "source": "src/combat/item-system.ts",
           "line": 647
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 244
         },
         {
           "source": "src/engine/records.ts",
@@ -3081,7 +3207,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4513
+          "line": 4515
         }
       ],
       "matchingWebHooks": [
@@ -3127,12 +3253,17 @@
       "methods": [
         "modify_crit_avoid"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 249
+        }
+      ],
       "matchingWebHooks": [
         "modifyCritAvoid"
       ],
       "lexicalTestMention": false,
-      "status": "hook-only"
+      "status": "hook-and-reference"
     },
     {
       "nid": "attack_speed",
@@ -3149,12 +3280,17 @@
       "methods": [
         "modify_attack_speed"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 259
+        }
+      ],
       "matchingWebHooks": [
         "modifyAttackSpeed"
       ],
       "lexicalTestMention": false,
-      "status": "hook-only"
+      "status": "hook-and-reference"
     },
     {
       "nid": "defense_speed",
@@ -3171,12 +3307,17 @@
       "methods": [
         "modify_defense_speed"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 264
+        }
+      ],
       "matchingWebHooks": [
         "modifyDefenseSpeed"
       ],
       "lexicalTestMention": false,
-      "status": "hook-only"
+      "status": "hook-and-reference"
     },
     {
       "nid": "damage_multiplier",
@@ -3339,10 +3480,19 @@
         "test_on",
         "test_off"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 172
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 183
+        }
+      ],
       "matchingWebHooks": [],
-      "lexicalTestMention": false,
-      "status": "unreferenced"
+      "lexicalTestMention": true,
+      "status": "reference-only"
     },
     {
       "nid": "condition",
@@ -3359,10 +3509,15 @@
       "methods": [
         "condition"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 192
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "lost_on_end_combat",
@@ -3720,12 +3875,17 @@
       "methods": [
         "damage_formula"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 398
+        }
+      ],
       "matchingWebHooks": [
         "damageFormula"
       ],
       "lexicalTestMention": false,
-      "status": "hook-only"
+      "status": "hook-and-reference"
     },
     {
       "nid": "damage_formula_override",
@@ -3762,12 +3922,21 @@
       "methods": [
         "resist_formula"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 727
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 404
+        }
+      ],
       "matchingWebHooks": [
         "resistFormula"
       ],
-      "lexicalTestMention": false,
-      "status": "hook-only"
+      "lexicalTestMention": true,
+      "status": "hook-and-reference"
     },
     {
       "nid": "resist_formula_override",
@@ -3784,10 +3953,21 @@
       "methods": [
         "resist_formula_override"
       ],
-      "webReferences": [],
-      "matchingWebHooks": [],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 731
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 408
+        }
+      ],
+      "matchingWebHooks": [
+        "resistFormulaOverride"
+      ],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "hook-and-reference"
     },
     {
       "nid": "alternate_accuracy_formula",
@@ -3811,7 +3991,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 408
+          "line": 414
         }
       ],
       "matchingWebHooks": [
@@ -3842,7 +4022,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 412
+          "line": 418
         }
       ],
       "matchingWebHooks": [
@@ -3873,7 +4053,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 418
+          "line": 424
         }
       ],
       "matchingWebHooks": [
@@ -3904,7 +4084,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 422
+          "line": 428
         }
       ],
       "matchingWebHooks": [
@@ -4185,7 +4365,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10560
+          "line": 10563
         }
       ],
       "matchingWebHooks": [

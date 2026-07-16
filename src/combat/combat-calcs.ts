@@ -357,8 +357,12 @@ export function damage(unit: UnitObject, item: ItemObject, db: Database): number
 
 /** Calculate defense/resistance against an incoming attack item. */
 export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, board?: GameBoard | null): number {
-  // Check for skill formula override
-  const formulaOverride = skillSystem.resistFormula(unit);
+  // Python precedence mirrors the other formula hooks: defensive skill
+  // override, attacking item override, defensive skill alternate, item alternate.
+  const formulaOverride = skillSystem.resistFormulaOverride(unit) ??
+    itemSystem.resistFormulaOverride(unit, attackItem) ??
+    skillSystem.resistFormula(unit) ??
+    itemSystem.resistFormula(unit, attackItem);
 
   const magic = isMagic(attackItem);
   const defaultExpr = magic ? 'RES' : 'DEF';

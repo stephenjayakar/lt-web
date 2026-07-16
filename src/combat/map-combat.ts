@@ -8,6 +8,11 @@ import { usesConsumedByStrikes } from './item-system';
 import { applyGroupCombatComponents, type WeaponRankUp } from './combat-components';
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
+import {
+  CombatLifecycleRecord,
+  type CombatProcMark,
+} from './combat-skill-lifecycle';
+import { getCombatRandom, type RandomGameState } from '../engine/static-random';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -96,6 +101,7 @@ export class MapCombat {
   attackItem: ItemObject;
   defenseItem: ItemObject | null;
   strikes: CombatStrike[];
+  procPlayback: CombatProcMark[];
 
   state: MapCombatState;
   currentStrikeIndex: number;
@@ -131,6 +137,8 @@ export class MapCombat {
   audioManager: { playSfx(name: string): void } | null = null;
   private hitSoundPlayed: boolean = false;
   private cachedResults: CombatResults | null = null;
+  private lifecycleRecord: CombatLifecycleRecord;
+  private lifecycleRecorded: boolean = false;
 
   constructor(
     attacker: UnitObject,
@@ -142,6 +150,7 @@ export class MapCombat {
     board?: GameBoard | null,
     script?: string[] | null,
     group?: MapCombatGroup,
+    randomGame?: RandomGameState | null,
   ) {
     this.attacker = attacker;
     this.attackItem = attackItem;
@@ -157,8 +166,16 @@ export class MapCombat {
     this.defenseItem = this.primaryDefender ? defenseItem : null;
     this.db = db;
 
-    // Solve the combat to get the strike sequence
-    const solver = new CombatPhaseSolver();
+    // Solve the combat to get the strike sequence. Proc/charge mutations and
+    // the persistent combat RNG are captured before resolution for turnwheel.
+    this.lifecycleRecord = new CombatLifecycleRecord(
+      [attacker, ...this.defenders],
+      randomGame ?? null,
+    );
+    const solver = new CombatPhaseSolver(
+      randomGame ? () => getCombatRandom(randomGame) : undefined,
+      randomGame,
+    );
     this.strikes = group
       ? solver.resolveGroup(
         attacker,
@@ -172,6 +189,8 @@ export class MapCombat {
         script,
       )
       : solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
+    this.procPlayback = [...solver.procPlayback];
+    this.lifecycleRecord.finish();
 
     this.state = 'init';
     this.currentStrikeIndex = 0;
@@ -278,6 +297,10 @@ export class MapCombat {
   applyResults(actionLog?: ActionLog): CombatResults {
     if (this.cachedResults) return this.cachedResults;
     if (actionLog) {
+      if (!this.lifecycleRecorded) {
+        actionLog.doAction(this.lifecycleRecord);
+        this.lifecycleRecorded = true;
+      }
       const action = new CombatResultAction<CombatResults>(
         [this.attacker, ...this.defenders],
         [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],

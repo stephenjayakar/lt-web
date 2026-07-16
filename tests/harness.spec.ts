@@ -1628,6 +1628,7 @@ test.describe('Event command parity', () => {
         mode: event.trigger.localArgs.get('mode'),
         target: event.trigger.unit2?.nid,
         targetPos: event.trigger.localArgs.get('target_pos'),
+        attackInfo: event.trigger.localArgs.get('attack_info'),
       }));
       game.state.change('event');
       return { count, order, payloads };
@@ -1642,6 +1643,9 @@ test.describe('Event command parity', () => {
       payload.mode === 'attack' && payload.target === '_LifecycleDefender' &&
       payload.targetPos[0] === 3 && payload.targetPos[1] === 2,
     )).toBe(true);
+    expect(queued!.payloads.map((payload: any) => payload.attackInfo)).toEqual([
+      [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0],
+    ]);
 
     await settle(page, 300);
     const processed = await page.evaluate(() => {
@@ -1655,6 +1659,314 @@ test.describe('Event command parity', () => {
     });
     expect(processed).toEqual({
       count: 6, last: '_EventAfterAny', mode: 'attack', target: '_LifecycleDefender',
+    });
+  });
+
+  test('persistent combat LCG, proc charge, turnwheel, and save restore match LT state', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const {
+        getCombatRandom, getCombatRandomState, setCombatRandomState,
+      } = await import('/src/engine/static-random.ts');
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const makeUnit = (nid: string, team: string) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 0, MAG: 0, SKL: 0, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = 30;
+        return unit;
+      };
+
+      game.gameVars.set('_random_seed', 17);
+      game.gameVars.delete('_combat_random_seed');
+      game.gameVars.delete('_combat_random_state');
+      const pythonSequence = [
+        getCombatRandom(game), getCombatRandom(game), getCombatRandom(game), getCombatRandom(game),
+      ];
+      setCombatRandomState(game, 17);
+
+      const procNid = '_PersistentProcEffect';
+      const parentNid = '_PersistentProcParent';
+      game.db.skills.set(procNid, {
+        nid: procNid, name: procNid, desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['damage', 4]],
+      });
+      game.db.skills.set(parentNid, {
+        nid: parentNid, name: parentNid, desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['attack_proc', procNid], ['proc_rate', 100], ['drain_charge', 2]],
+      });
+      const attacker = makeUnit('_PersistentRngAttacker', 'player');
+      const defender = makeUnit('_PersistentRngDefender', 'enemy');
+      const parent = new SkillObject(game.db.skills.get(parentNid));
+      attacker.skills.push(parent);
+      const item = new ItemObject({
+        nid: '_PersistentRngItem', name: '_PersistentRngItem', desc: '',
+        icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 1], ['hit', 100], ['uses', 5]],
+      });
+      attacker.items.push(item);
+      const beforeIndex = game.actionLog.actionIndex;
+      const combat = new MapCombat(
+        attacker, item, defender, null, game.db, 'classic', null, ['hit1'], undefined, game,
+      );
+      const afterConstruction = {
+        charge: parent.data.get('charge'),
+        random: getCombatRandomState(game),
+        procKinds: combat.procPlayback.map((mark: any) => mark.kind),
+      };
+      combat.applyResults(game.actionLog);
+      const applied = {
+        charge: parent.data.get('charge'), random: getCombatRandomState(game),
+        hp: defender.currentHp, uses: item.uses,
+      };
+      const actionLog = game.actionLog as any;
+      while (actionLog.actionIndex > beforeIndex) actionLog.runActionBackward();
+      const reversed = {
+        charge: parent.data.get('charge'), random: getCombatRandomState(game),
+        hp: defender.currentHp, uses: item.uses,
+      };
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = {
+        charge: parent.data.get('charge'), random: getCombatRandomState(game),
+        hp: defender.currentHp, uses: item.uses,
+      };
+
+      game.units.set(attacker.nid, attacker);
+      game.units.set(defender.nid, defender);
+      await saveGame(game, 89, 'battle');
+      parent.data.set('charge', 0);
+      setCombatRandomState(game, 999);
+      const loaded = await loadGame(game, 89);
+      const restoredAttacker = game.units.get(attacker.nid);
+      const restoredParent = restoredAttacker?.skills.find((skill: any) => skill.nid === parentNid);
+      const saved = {
+        loaded,
+        charge: restoredParent?.data.get('charge'),
+        random: getCombatRandomState(game),
+      };
+      await deleteSave(game, 89);
+      game.units.delete(attacker.nid);
+      game.units.delete(defender.nid);
+      game.db.skills.delete(procNid);
+      game.db.skills.delete(parentNid);
+      return { pythonSequence, afterConstruction, applied, reversed, redone, saved };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.pythonSequence).toEqual([7, 52, 25, 27]);
+    expect(result!.afterConstruction).toEqual({
+      charge: 1, random: 1579902326, procKinds: ['attack_proc'],
+    });
+    expect(result!.applied).toEqual({ charge: 1, random: 1579902326, hp: 25, uses: 4 });
+    expect(result!.reversed).toEqual({ charge: 2, random: 17, hp: 30, uses: 5 });
+    expect(result!.redone).toEqual(result!.applied);
+    expect(result!.saved).toEqual({ loaded: true, charge: 1, random: 1579902326 });
+  });
+
+  test('attack, defense, and pre-procs scope temporary skills across grouped strikes', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+      const makeUnit = (nid: string, team: string, defense: number = 0) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 100, STR: 0, MAG: 0, SKL: 0, SPD: 5, LCK: 0, DEF: defense, RES: defense, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = 100;
+        return unit;
+      };
+      const addSkill = (nid: string, components: [string, any][]) => {
+        const prefab = { nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0] as [number, number], components };
+        game.db.skills.set(nid, prefab);
+        return prefab;
+      };
+      const skillNids = [
+        '_GroupDamageProc', '_GroupPreProc', '_GroupAttackParent', '_GroupPreParent',
+        '_DefenseProc', '_DefenseParent', '_SureProc', '_SureParent',
+        '_LunaProc', '_LunaParent', '_ConditionalParent',
+      ];
+      addSkill('_GroupDamageProc', [['damage', 30]]);
+      addSkill('_GroupPreProc', [['damage', 7]]);
+      addSkill('_GroupAttackParent', [
+        ['attack_proc', '_GroupDamageProc'], ['proc_rate', 100], ['drain_charge', 2],
+      ]);
+      addSkill('_GroupPreParent', [
+        ['attack_pre_proc', '_GroupPreProc'], ['proc_rate', 100], ['build_charge', 1],
+      ]);
+      addSkill('_DefenseProc', [['resist', 1000]]);
+      addSkill('_DefenseParent', [
+        ['defense_proc', '_DefenseProc'], ['proc_rate', 100], ['drain_charge', 2],
+      ]);
+      addSkill('_SureProc', [['hit', 1000]]);
+      addSkill('_SureParent', [['attack_proc', '_SureProc'], ['proc_rate', 100]]);
+      addSkill('_LunaProc', [['item_override', '_ZeroResistOverride']]);
+      addSkill('_LunaParent', [['attack_proc', '_LunaProc'], ['proc_rate', 100]]);
+      addSkill('_ConditionalParent', [
+        ['attack_proc', '_GroupDamageProc'], ['proc_rate', 100],
+        ['combat_condition', "mode == 'attack' and unit2.team == 'player'"],
+      ]);
+      game.db.items.set('_ZeroResistOverride', {
+        nid: '_ZeroResistOverride', name: '_ZeroResistOverride', desc: '',
+        icon_nid: '', icon_index: [0, 0], components: [['alternate_resist_formula', 'ZERO']],
+      });
+      game.db.equations.set('ZERO', '0');
+
+      const groupAttacker = makeUnit('_GroupProcAttacker', 'player');
+      const groupMain = makeUnit('_GroupProcMain', 'enemy');
+      const groupSplash = makeUnit('_GroupProcSplash', 'enemy');
+      const attackParent = new SkillObject(game.db.skills.get('_GroupAttackParent'));
+      const preParent = new SkillObject(game.db.skills.get('_GroupPreParent'));
+      preParent.data.set('charge', 1);
+      groupAttacker.skills.push(attackParent, preParent);
+      const groupItem = new ItemObject({
+        nid: '_GroupProcItem', name: '_GroupProcItem', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 1], ['hit', 100], ['uses', 10]],
+      });
+      groupAttacker.items.push(groupItem);
+      const groupCombat = new MapCombat(
+        groupAttacker, groupItem, groupMain, null, game.db, 'grandmaster', null, null,
+        { mainDefender: groupMain, splashDefenders: [groupSplash] },
+      );
+      const group = {
+        strikes: groupCombat.strikes.map((strike: any) => ({
+          target: strike.defender.nid, damage: strike.damage,
+          attackInfo: strike.attackInfo, procs: strike.attackProcs?.map((mark: any) => mark.procSkill.nid) ?? [],
+        })),
+        playback: groupCombat.procPlayback.map((mark: any) => `${mark.kind}:${mark.procSkill.nid}`),
+        attackCharge: attackParent.data.get('charge'),
+        preCharge: preParent.data.get('charge'),
+        remainingSkills: groupAttacker.skills.map((skill: any) => skill.nid),
+      };
+
+      const defenseAttacker = makeUnit('_DefenseProcAttacker', 'player');
+      const defenseTarget = makeUnit('_DefenseProcTarget', 'enemy');
+      const defenseParent = new SkillObject(game.db.skills.get('_DefenseParent'));
+      defenseTarget.skills.push(defenseParent);
+      const defenseItem = new ItemObject({
+        nid: '_DefenseProcItem', name: '_DefenseProcItem', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 20], ['hit', 100]],
+      });
+      const defenseCombat = new MapCombat(
+        defenseAttacker, defenseItem, defenseTarget, null, game.db, 'grandmaster', null, ['hit1'],
+      );
+      const defense = {
+        damage: defenseCombat.strikes[0].damage,
+        procs: defenseCombat.strikes[0].defenseProcs?.map((mark: any) => mark.procSkill.nid) ?? [],
+        charge: defenseParent.data.get('charge'),
+        remainingSkills: defenseTarget.skills.map((skill: any) => skill.nid),
+      };
+
+      const sureAttacker = makeUnit('_SureAttacker', 'player');
+      const sureTarget = makeUnit('_SureTarget', 'enemy');
+      sureAttacker.stats.SKL = 400;
+      sureAttacker.skills.push(new SkillObject(game.db.skills.get('Sure_Strike')));
+      const sureItem = new ItemObject({
+        nid: '_SureItem', name: '_SureItem', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 1], ['hit', -200]],
+      });
+      const sureCombat = new MapCombat(
+        sureAttacker, sureItem, sureTarget, null, game.db, 'classic', null, null,
+      );
+
+      const lunaAttacker = makeUnit('_LunaAttacker', 'player');
+      const lunaTarget = makeUnit('_LunaTarget', 'enemy', 50);
+      lunaAttacker.stats.SKL = 400;
+      lunaAttacker.skills.push(new SkillObject(game.db.skills.get('Luna')));
+      const lunaItem = new ItemObject({
+        nid: '_LunaItem', name: '_LunaItem', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 10], ['hit', 100]],
+      });
+      const lunaCombat = new MapCombat(
+        lunaAttacker, lunaItem, lunaTarget, null, game.db, 'grandmaster', null, ['hit1'],
+      );
+
+      const lethalityAttacker = makeUnit('_LethalityAttacker', 'player');
+      const lethalityTarget = makeUnit('_LethalityTarget', 'enemy');
+      lethalityAttacker.stats.SKL = 400;
+      lethalityAttacker.skills.push(new SkillObject(game.db.skills.get('Lethality')));
+      const lethalityItem = new ItemObject({
+        nid: '_LethalityItem', name: '_LethalityItem', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 1], ['hit', 100]],
+      });
+      const lethalityCombat = new MapCombat(
+        lethalityAttacker, lethalityItem, lethalityTarget, null, game.db, 'grandmaster', null, ['hit1'],
+      );
+
+      const conditionalAttacker = makeUnit('_ConditionalAttacker', 'player');
+      const conditionalTarget = makeUnit('_ConditionalTarget', 'enemy');
+      conditionalAttacker.skills.push(new SkillObject(game.db.skills.get('_ConditionalParent')));
+      const conditionalItem = new ItemObject({
+        nid: '_ConditionalItem', name: '_ConditionalItem', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['damage', 1], ['hit', 100]],
+      });
+      const conditionalCombat = new MapCombat(
+        conditionalAttacker, conditionalItem, conditionalTarget, null,
+        game.db, 'grandmaster', null, ['hit1'],
+      );
+      const special = {
+        sureHit: sureCombat.strikes[0].hit,
+        sureProc: sureCombat.strikes[0].attackProcs?.[0]?.procSkill.nid ?? null,
+        lunaDamage: lunaCombat.strikes[0].damage,
+        lunaProc: lunaCombat.strikes[0].attackProcs?.[0]?.procSkill.nid ?? null,
+        lethalityDamage: lethalityCombat.strikes[0].damage,
+        lethalityProc: lethalityCombat.strikes[0].attackProcs?.[0]?.procSkill.nid ?? null,
+        conditionalDamage: conditionalCombat.strikes[0].damage,
+        conditionalProc: conditionalCombat.strikes[0].attackProcs?.[0]?.procSkill.nid ?? null,
+        overrideCleaned: !lunaItem.hasComponent('alternate_resist_formula'),
+      };
+
+      for (const nid of skillNids) game.db.skills.delete(nid);
+      game.db.items.delete('_ZeroResistOverride');
+      return { group, defense, special };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.group.strikes).toEqual([
+      { target: '_GroupProcMain', damage: 38, attackInfo: [0, 0], procs: ['_GroupDamageProc'] },
+      { target: '_GroupProcSplash', damage: 38, attackInfo: [0, 0], procs: ['_GroupDamageProc'] },
+    ]);
+    expect(result!.group.playback).toEqual([
+      'attack_pre_proc:_GroupPreProc',
+      'attack_proc:_GroupDamageProc',
+    ]);
+    expect(result!.group.attackCharge).toBe(1);
+    expect(result!.group.preCharge).toBe(0);
+    expect(result!.group.remainingSkills).toEqual(['_GroupAttackParent', '_GroupPreParent']);
+    expect(result!.defense).toEqual({
+      damage: 0, procs: ['_DefenseProc'], charge: 1,
+      remainingSkills: ['_DefenseParent'],
+    });
+    expect(result!.special).toEqual({
+      sureHit: true, sureProc: 'Sure_Strike_Proc', lunaDamage: 10,
+      lunaProc: 'Luna_Proc', lethalityDamage: 1000,
+      lethalityProc: 'Lethality_Proc', conditionalDamage: 1,
+      conditionalProc: null, overrideCleaned: true,
     });
   });
 
