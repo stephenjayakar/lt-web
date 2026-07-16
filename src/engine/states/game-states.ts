@@ -51,6 +51,12 @@ import {
   SetItemDroppableAction,
   SetItemDataAction,
   SetItemUsesAction,
+  StoreItemAction,
+  TakeItemFromConvoy,
+  MoveItemBetweenUnitsAction,
+  MoveItemBetweenConvoysAction,
+  RemoveItemFromUnitAction,
+  RemoveItemFromConvoy,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -6057,6 +6063,15 @@ export class EventState extends State {
     return items?.find((item) => item.nid === itemNid);
   }
 
+  /** Match LT's item/accessory inventory capacity check (skill offsets remain a P3 hook gap). */
+  private inventoryFull(unit: UnitObject, item: ItemObject): boolean {
+    const game = getGame();
+    const accessory = item.hasComponent('accessory');
+    const limit = Number(game.db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
+    const count = unit.items.filter((candidate) => candidate.hasComponent('accessory') === accessory).length;
+    return count >= limit;
+  }
+
   /**
    * Resolve a position argument that could be either "x,y" coordinates
    * or a unit NID (resolves to the unit's current position).
@@ -6754,14 +6769,73 @@ export class EventState extends State {
       }
 
       case 'remove_item': {
-        const unitNid = args[0] ?? '';
+        const ownerNid = args[0] ?? '';
         const itemNid = args[1] ?? '';
-        const unit = this.findUnit(unitNid);
-        if (unit) {
-          const idx = unit.items.findIndex((i: ItemObject) => i.nid === itemNid);
-          if (idx !== -1) {
-            unit.items.splice(idx, 1);
+        if (ownerNid.toLowerCase() === 'convoy') {
+          const partyArg = args.slice(2).find((arg) => arg !== 'no_banner');
+          const party = game.getParty(partyArg || undefined);
+          const item = party?.convoy.find((candidate: ItemObject) => candidate.nid === itemNid);
+          if (item) game.actionLog.doAction(new RemoveItemFromConvoy(item, party?.nid));
+        } else {
+          const unit = this.findUnit(ownerNid);
+          const item = unit?.items.find((candidate: ItemObject) => candidate.nid === itemNid);
+          if (unit && item) game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'move_item': {
+        const giverNid = args[0] ?? '';
+        const receiverNid = args[1] ?? '';
+        const giverIsConvoy = giverNid.toLowerCase() === 'convoy';
+        const receiverIsConvoy = receiverNid.toLowerCase() === 'convoy';
+        const giverUnit = giverIsConvoy ? undefined : this.findUnit(giverNid);
+        const sourceItems: ItemObject[] | undefined = giverIsConvoy
+          ? game.getParty()?.convoy
+          : giverUnit?.items;
+        const item = args[2]
+          ? sourceItems?.find((candidate) => candidate.nid === args[2])
+          : sourceItems?.at(-1);
+
+        if (!item || (!giverIsConvoy && !giverUnit)) {
+          console.warn(`Event move_item: invalid giver or item (${args.join(';')})`);
+        } else if (giverIsConvoy && receiverIsConvoy) {
+          console.warn('Event move_item: current convoy is already the receiver');
+        } else if (giverIsConvoy) {
+          const receiver = this.findUnit(receiverNid);
+          if (receiver && !this.inventoryFull(receiver, item)) {
+            game.actionLog.doAction(new TakeItemFromConvoy(receiver, item));
+          } else {
+            console.warn(`Event move_item: invalid or full receiver (${receiverNid})`);
           }
+        } else if (receiverIsConvoy) {
+          game.actionLog.doAction(new StoreItemAction(giverUnit!, item));
+        } else {
+          const receiver = this.findUnit(receiverNid);
+          if (receiver && !this.inventoryFull(receiver, item)) {
+            game.actionLog.doAction(new MoveItemBetweenUnitsAction(giverUnit!, receiver, item));
+          } else {
+            console.warn(`Event move_item: invalid or full receiver (${receiverNid})`);
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'move_item_between_convoys': {
+        const itemNid = args[0] ?? '';
+        const sourcePartyNid = args[1] ?? '';
+        const targetPartyNid = args[2] ?? '';
+        const sourceValid = game.parties.has(sourcePartyNid) || game.db.parties.has(sourcePartyNid);
+        const targetValid = game.parties.has(targetPartyNid) || game.db.parties.has(targetPartyNid);
+        const sourceParty = sourceValid ? game.getParty(sourcePartyNid) : null;
+        const targetParty = targetValid ? game.getParty(targetPartyNid) : null;
+        const item = sourceParty?.convoy.find((candidate: ItemObject) => candidate.nid === itemNid);
+        if (item && sourceParty && targetParty && sourceParty !== targetParty) {
+          game.actionLog.doAction(new MoveItemBetweenConvoysAction(item, sourcePartyNid, targetPartyNid));
+        } else {
+          console.warn(`Event move_item_between_convoys: invalid party or item (${args.join(';')})`);
         }
         this.advancePointer();
         return false;

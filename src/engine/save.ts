@@ -344,14 +344,10 @@ function localStorageKeys(): string[] {
 // Serialization Functions
 // ============================================================================
 
-function serializeUnit(unit: UnitObject): UnitSaveData {
-  // Collect item map keys from the unit's items
-  const itemKeys: string[] = [];
-  for (let i = 0; i < unit.items.length; i++) {
-    const item = unit.items[i];
-    // Reconstruct the key format used in game.items
-    itemKeys.push(`${unit.nid}_${item.nid}_${i + 1}`);
-  }
+function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string>): UnitSaveData {
+  const itemKeys = unit.items
+    .map((item) => itemKeyByObject.get(item))
+    .filter((key): key is string => !!key);
 
   // Collect skill NIDs
   const skillNids: string[] = unit.skills.map(s => s.nid);
@@ -485,13 +481,10 @@ function serializeLevel(
   };
 }
 
-function serializeParty(party: PartyObject): PartySaveData {
-  // Collect convoy item keys
-  const convoyItemKeys: string[] = [];
-  for (let i = 0; i < party.convoy.length; i++) {
-    const item = party.convoy[i];
-    convoyItemKeys.push(`convoy_${party.nid}_${item.nid}_${i}`);
-  }
+function serializeParty(party: PartyObject, itemKeyByObject: Map<ItemObject, string>): PartySaveData {
+  const convoyItemKeys = party.convoy
+    .map((item) => itemKeyByObject.get(item))
+    .filter((key): key is string => !!key);
 
   return {
     nid: party.nid,
@@ -521,32 +514,35 @@ function serializeSupportPair(pair: SupportPair): SupportPairSaveData {
 // ============================================================================
 
 function buildSaveDict(game: any): SaveDict {
-  // Serialize all items (including convoy items)
+  // Assign canonical save keys from the item's current container. Runtime registry
+  // keys may describe an old owner after event/trade movement and cannot be trusted.
   const items: ItemSaveData[] = [];
-  const serializedItemKeys = new Set<string>();
-
-  // Items from the game.items map
-  for (const [key, item] of game.items as Map<string, ItemObject>) {
+  const itemKeyByObject = new Map<ItemObject, string>();
+  const usedItemKeys = new Set<string>();
+  const registerItem = (item: ItemObject, preferredKey: string) => {
+    if (itemKeyByObject.has(item)) return;
+    let key = preferredKey;
+    let suffix = 2;
+    while (usedItemKeys.has(key)) key = `${preferredKey}_${suffix++}`;
+    usedItemKeys.add(key);
+    itemKeyByObject.set(item, key);
     items.push(serializeItem(item, key));
-    serializedItemKeys.add(key);
+  };
+  for (const unit of (game.units as Map<string, UnitObject>).values()) {
+    unit.items.forEach((item, index) => registerItem(item, `unit_${unit.nid}_${index}_${item.nid}`));
   }
-
-  // Convoy items from parties (if not already in game.items)
   for (const party of (game.parties as Map<string, PartyObject>).values()) {
-    for (let i = 0; i < party.convoy.length; i++) {
-      const item = party.convoy[i];
-      const key = `convoy_${party.nid}_${item.nid}_${i}`;
-      if (!serializedItemKeys.has(key)) {
-        items.push(serializeItem(item, key));
-        serializedItemKeys.add(key);
-      }
-    }
+    party.convoy.forEach((item, index) => registerItem(item, `convoy_${party.nid}_${index}_${item.nid}`));
+  }
+  // Preserve registered objects that are temporarily outside an inventory/convoy.
+  for (const [key, item] of game.items as Map<string, ItemObject>) {
+    registerItem(item, key);
   }
 
   // Serialize all units
   const units: UnitSaveData[] = [];
   for (const unit of (game.units as Map<string, UnitObject>).values()) {
-    units.push(serializeUnit(unit));
+    units.push(serializeUnit(unit, itemKeyByObject));
   }
 
   // Serialize all unique skills from units
@@ -570,7 +566,7 @@ function buildSaveDict(game: any): SaveDict {
   // Serialize parties
   const parties: PartySaveData[] = [];
   for (const party of (game.parties as Map<string, PartyObject>).values()) {
-    parties.push(serializeParty(party));
+    parties.push(serializeParty(party, itemKeyByObject));
   }
 
   // Serialize state stack

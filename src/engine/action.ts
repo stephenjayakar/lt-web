@@ -1320,6 +1320,98 @@ export class RemoveItemFromConvoy extends Action {
   }
 }
 
+/** Remove an item from a unit inventory without destroying its registered instance. */
+export class RemoveItemFromUnitAction extends Action {
+  private unit: UnitObject;
+  private item: ItemObject;
+  private itemIndex: number;
+
+  constructor(unit: UnitObject, item: ItemObject) {
+    super();
+    this.unit = unit;
+    this.item = item;
+    this.itemIndex = unit.items.indexOf(item);
+  }
+
+  execute(): void {
+    const index = this.unit.items.indexOf(this.item);
+    if (index >= 0) this.unit.items.splice(index, 1);
+    this.item.owner = null;
+  }
+
+  reverse(): void {
+    this.unit.items.splice(this.itemIndex, 0, this.item);
+    this.item.owner = this.unit;
+  }
+}
+
+/** Move one item between unit inventories while preserving its source slot on rewind. */
+export class MoveItemBetweenUnitsAction extends Action {
+  private source: UnitObject;
+  private target: UnitObject;
+  private item: ItemObject;
+  private sourceIndex: number;
+
+  constructor(source: UnitObject, target: UnitObject, item: ItemObject) {
+    super();
+    this.source = source;
+    this.target = target;
+    this.item = item;
+    this.sourceIndex = source.items.indexOf(item);
+  }
+
+  execute(): void {
+    const index = this.source.items.indexOf(this.item);
+    if (index >= 0) this.source.items.splice(index, 1);
+    this.target.items.push(this.item);
+    this.item.owner = this.target;
+  }
+
+  reverse(): void {
+    const index = this.target.items.indexOf(this.item);
+    if (index >= 0) this.target.items.splice(index, 1);
+    this.source.items.splice(this.sourceIndex, 0, this.item);
+    this.item.owner = this.source;
+  }
+}
+
+/** Move an item between named party convoys reversibly. */
+export class MoveItemBetweenConvoysAction extends Action {
+  private item: ItemObject;
+  private sourcePartyNid: string;
+  private targetPartyNid: string;
+  private sourceIndex: number = -1;
+
+  constructor(item: ItemObject, sourcePartyNid: string, targetPartyNid: string) {
+    super();
+    this.item = item;
+    this.sourcePartyNid = sourcePartyNid;
+    this.targetPartyNid = targetPartyNid;
+  }
+
+  execute(): void {
+    const game = _getGame?.();
+    const source = game?.getParty(this.sourcePartyNid);
+    const target = game?.getParty(this.targetPartyNid);
+    if (!source || !target) return;
+    this.sourceIndex = source.convoy.indexOf(this.item);
+    if (this.sourceIndex >= 0) source.convoy.splice(this.sourceIndex, 1);
+    target.convoy.push(this.item);
+    this.item.owner = null;
+  }
+
+  reverse(): void {
+    const game = _getGame?.();
+    const source = game?.getParty(this.sourcePartyNid);
+    const target = game?.getParty(this.targetPartyNid);
+    if (!source || !target) return;
+    const index = target.convoy.indexOf(this.item);
+    if (index >= 0) target.convoy.splice(index, 1);
+    source.convoy.splice(Math.max(0, this.sourceIndex), 0, this.item);
+    this.item.owner = null;
+  }
+}
+
 /**
  * StoreItemAction - Store an item from a unit's inventory into the current party's convoy.
  * Used by the convoy UI when a player stores an item.
