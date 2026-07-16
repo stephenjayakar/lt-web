@@ -148,6 +148,7 @@ let _activeCombatOffsets: {
   defender: UnitObject;
   attackerOffset: [number, number]; // pixel offsets
   defenderOffset: [number, number];
+  defenderOffsets?: Map<UnitObject, [number, number]>;
 } | null = null;
 
 export function setActiveCombatOffsets(
@@ -217,9 +218,13 @@ function collectVisibleUnits(): {
       if (u === _activeCombatOffsets.attacker) {
         visualOffsetX += _activeCombatOffsets.attackerOffset[0] / TILEWIDTH;
         visualOffsetY += _activeCombatOffsets.attackerOffset[1] / TILEHEIGHT;
-      } else if (u === _activeCombatOffsets.defender) {
-        visualOffsetX += _activeCombatOffsets.defenderOffset[0] / TILEWIDTH;
-        visualOffsetY += _activeCombatOffsets.defenderOffset[1] / TILEHEIGHT;
+      } else {
+        const defenderOffset = _activeCombatOffsets.defenderOffsets?.get(u) ??
+          (u === _activeCombatOffsets.defender ? _activeCombatOffsets.defenderOffset : null);
+        if (defenderOffset) {
+          visualOffsetX += defenderOffset[0] / TILEWIDTH;
+          visualOffsetY += defenderOffset[1] / TILEHEIGHT;
+        }
       }
     }
 
@@ -3110,6 +3115,30 @@ export class TargetingState extends MapState {
 // 6. CombatState
 // ============================================================================
 
+function resolveCombatTargetGroup(
+  game: any,
+  attacker: UnitObject,
+  item: ItemObject,
+  selectedDefender: UnitObject,
+): { representative: UnitObject; mainDefender: UnitObject | null; splashDefenders: UnitObject[] } {
+  let mainDefender: UnitObject | null = selectedDefender;
+  let splashDefenders: UnitObject[] = [];
+  if (game.targetSystem && selectedDefender.position) {
+    const resolved = game.targetSystem.getTargetFromPosition(attacker, item, selectedDefender.position);
+    mainDefender = resolved.mainTarget
+      ? game.board.getUnit(resolved.mainTarget[0], resolved.mainTarget[1])
+      : null;
+    splashDefenders = [...new Set<UnitObject>(resolved.splash
+      .map((position: [number, number]) => game.board.getUnit(position[0], position[1]))
+      .filter((unit: UnitObject | null): unit is UnitObject => !!unit && unit !== mainDefender))];
+  }
+  return {
+    representative: mainDefender ?? splashDefenders[0] ?? selectedDefender,
+    mainDefender,
+    splashDefenders,
+  };
+}
+
 /**
  * CombatState phases:
  * 1. 'combat' - Running the MapCombat animation (strikes, HP drain)
@@ -3176,10 +3205,28 @@ export class CombatState extends State {
     return this.isAnimationCombat ? this.animCombat : this.combat;
   }
 
+  private getCombatDefenders(): UnitObject[] {
+    const active = this.getActiveCombat();
+    if (!active) return [];
+    return this.combat?.defenders ?? [active.defender];
+  }
+
+  private getPrimaryCombatDefender(): UnitObject | null {
+    const active = this.getActiveCombat();
+    if (!active) return null;
+    return this.combat ? this.combat.primaryDefender : active.defender;
+  }
+
+  private getDefenderDeaths(): UnitObject[] {
+    if (!this.results) return [];
+    return this.results.defenderDeaths ??
+      (this.results.defenderDead && this.getActiveCombat() ? [this.getActiveCombat()!.defender] : []);
+  }
+
   override begin(): StateResult {
     const game = getGame();
     const attacker: UnitObject = game.selectedUnit;
-    const defender: UnitObject = game.combatTarget;
+    let defender: UnitObject = game.combatTarget;
 
     if (!attacker || !defender) {
       game.state.back();
@@ -3194,7 +3241,12 @@ export class CombatState extends State {
       return;
     }
 
-    const defenseItem = getEquippedWeapon(defender);
+    const targetGroup = resolveCombatTargetGroup(game, attacker, attackItem, defender);
+    const primaryDefender = targetGroup.mainDefender;
+    const splashDefenders = targetGroup.splashDefenders;
+    defender = targetGroup.representative;
+    const groupedCombat = !primaryDefender || splashDefenders.length > 0;
+    const defenseItem = primaryDefender ? getEquippedWeapon(primaryDefender) : null;
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
     // Read and consume the combat script (set by interact_unit)
@@ -3203,7 +3255,7 @@ export class CombatState extends State {
 
     // Check if both units have battle animations available
     // Utility spells use the map presentation in LT and have no weapon pose.
-    const canAnimate = !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
+    const canAnimate = !groupedCombat && !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
       attacker, attackItem, defender, defenseItem, rngMode, game, script,
     );
 
@@ -3224,12 +3276,16 @@ export class CombatState extends State {
         rngMode,
         game.board,
         script,
+        groupedCombat ? { mainDefender: primaryDefender, splashDefenders } : undefined,
       );
       // Wire audio manager for combat sound effects
       if (game.audioManager) {
         this.combat.audioManager = game.audioManager;
       }
-      console.log(`CombatState: using MapCombat (${attacker.name} vs ${defender.name})`);
+      const targetNames = groupedCombat
+        ? [primaryDefender, ...splashDefenders].filter(Boolean).map((unit) => unit!.name).join(', ')
+        : defender.name;
+      console.log(`CombatState: using MapCombat (${attacker.name} vs ${targetNames})`);
     }
 
     this.results = null;
@@ -3512,8 +3568,9 @@ export class CombatState extends State {
           this.results = activeCombat.applyResults();
           if (this.results.stolenItem) {
             const stolenItem = this.results.stolenItem;
+            const stealDefender = this.getPrimaryCombatDefender() ?? activeCombat.defender;
             game.actionLog.doAction(new MoveItemBetweenUnitsAction(
-              activeCombat.defender,
+              stealDefender,
               activeCombat.attacker,
               stolenItem,
             ));
@@ -3523,7 +3580,7 @@ export class CombatState extends State {
             game.actionLog.doAction(new UpdateRecordsAction(
               'steal',
               activeCombat.attacker.nid,
-              activeCombat.defender.nid,
+              stealDefender.nid,
               stolenItem.nid,
             ));
           }
@@ -3544,7 +3601,7 @@ export class CombatState extends State {
                 {
                   game,
                   unit1: activeCombat.attacker,
-                  unit2: activeCombat.defender,
+                  unit2: this.getPrimaryCombatDefender() ?? activeCombat.defender,
                   gameVars: game.gameVars,
                   levelVars: game.levelVars,
                 },
@@ -3553,17 +3610,20 @@ export class CombatState extends State {
           }
           // Record combat message for turnwheel
           const atkName = activeCombat.attacker.name;
-          const defName = activeCombat.defender.name;
+          const primaryDefender = this.getPrimaryCombatDefender();
+          const defName = primaryDefender?.name;
           const isSpell = activeCombat.attackItem?.isSpell?.();
           const isHeal = activeCombat.attackItem?.targetsAllies?.();
-          if (isHeal) {
+          if (isHeal && defName) {
             game.actionLog.doAction(new MessageAction(`${atkName} helped ${defName}`));
           } else if (isSpell) {
             game.actionLog.doAction(new MessageAction(`${atkName} used ${activeCombat.attackItem?.name ?? 'spell'}`));
-          } else {
+          } else if (defName) {
             game.actionLog.doAction(new MessageAction(`${atkName} attacked ${defName}`));
+          } else {
+            game.actionLog.doAction(new MessageAction(`${atkName} attacked`));
           }
-          if (this.results.attackerDead || this.results.defenderDead) {
+          if (this.results.attackerDead || this.getDefenderDeaths().length > 0) {
             this.phase = 'death';
             this.phaseTimer = 0;
             this.deathFadeProgress = 0;
@@ -3582,9 +3642,9 @@ export class CombatState extends State {
         this.deathFadeProgress = Math.min(1, this.phaseTimer / 350);
         if (this.phaseTimer >= 350) {
           // Remove dead units from board and initiative tracker
-          if (this.results!.defenderDead) {
-            if (game.initiative) game.initiative.removeUnit(activeCombat!.defender);
-            game.board.removeUnit(activeCombat!.defender);
+          for (const deadDefender of this.getDefenderDeaths()) {
+            if (game.initiative) game.initiative.removeUnit(deadDefender);
+            game.board.removeUnit(deadDefender);
           }
           if (this.results!.attackerDead) {
             if (game.initiative) game.initiative.removeUnit(activeCombat!.attacker);
@@ -3785,7 +3845,8 @@ export class CombatState extends State {
 
       case 'cleanup': {
         const attacker = activeCombat!.attacker;
-        const defender = activeCombat!.defender;
+        const defender = this.getPrimaryCombatDefender() ?? activeCombat!.defender;
+        const combatDefenders = this.getCombatDefenders();
         const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
 
         if (!attacker.isDead()) {
@@ -3805,10 +3866,17 @@ export class CombatState extends State {
           const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
 
           // combat_death for each dead unit
-          if (this.results?.defenderDead) {
+          for (const deadDefender of this.getDefenderDeaths()) {
             game.eventManager.trigger(
-              { type: 'combat_death', unit1: defender, unit2: attacker, unitNid: defender.nid, position: defender.position, levelNid },
-              { ...ctx, unit1: defender, unit2: attacker },
+              {
+                type: 'combat_death',
+                unit1: deadDefender,
+                unit2: attacker,
+                unitNid: deadDefender.nid,
+                position: deadDefender.position,
+                levelNid,
+              },
+              { ...ctx, unit1: deadDefender, unit2: attacker },
             );
           }
           if (this.results?.attackerDead) {
@@ -3828,7 +3896,9 @@ export class CombatState extends State {
         // Activate AI groups if an enemy was involved in combat
         if (game.aiController) {
           game.aiController.activateGroupOnCombat(activeCombat!.attacker, game);
-          game.aiController.activateGroupOnCombat(activeCombat!.defender, game);
+          for (const combatDefender of combatDefenders) {
+            game.aiController.activateGroupOnCombat(combatDefender, game);
+          }
         }
 
         // Check win/loss conditions
@@ -3980,19 +4050,25 @@ export class CombatState extends State {
     const cameraOffset = game.camera.getOffset();
 
     const atkPos = this.combat!.attacker.position;
-    const defPos = this.combat!.defender.position;
-
     // Push combat animation offsets so collectVisibleUnits applies them
     // to the underlying map render (lunge + shake on the actual sprites)
     const atkLunge = rs.attackerAnim.lungeOffset;
     const atkShake = rs.attackerAnim.shakeOffset;
     const defLunge = rs.defenderAnim.lungeOffset;
     const defShake = rs.defenderAnim.shakeOffset;
+    const defenderOffsets = new Map<UnitObject, [number, number]>(rs.defenders.map((entry) => [
+      entry.unit,
+      [
+        entry.anim.lungeOffset[0] + entry.anim.shakeOffset[0],
+        entry.anim.lungeOffset[1] + entry.anim.shakeOffset[1],
+      ],
+    ]));
     setActiveCombatOffsets({
       attacker: this.combat!.attacker,
       defender: this.combat!.defender,
       attackerOffset: [atkLunge[0] + atkShake[0], atkLunge[1] + atkShake[1]],
       defenderOffset: [defLunge[0] + defShake[0], defLunge[1] + defShake[1]],
+      defenderOffsets,
     });
 
     // White flash overlay on hit targets
@@ -4005,14 +4081,13 @@ export class CombatState extends State {
         `rgba(255,255,255,${rs.attackerAnim.flashAlpha.toFixed(2)})`,
       );
     }
-    if (rs.defenderAnim.flashAlpha > 0 && defPos) {
-      const fx = defPos[0] * TILEWIDTH - cameraOffset[0];
-      const fy = defPos[1] * TILEHEIGHT - cameraOffset[1];
-      surf.fillRect(
-        fx - 4, fy - 4,
-        TILEWIDTH + 8, TILEHEIGHT + 8,
-        `rgba(255,255,255,${rs.defenderAnim.flashAlpha.toFixed(2)})`,
-      );
+    for (const entry of rs.defenders) {
+      const position = entry.unit.position;
+      if (entry.anim.flashAlpha <= 0 || !position) continue;
+      const fx = position[0] * TILEWIDTH - cameraOffset[0];
+      const fy = position[1] * TILEHEIGHT - cameraOffset[1];
+      surf.fillRect(fx - 4, fy - 4, TILEWIDTH + 8, TILEHEIGHT + 8,
+        `rgba(255,255,255,${entry.anim.flashAlpha.toFixed(2)})`);
     }
 
     // HP bars (positioned above the unit, accounting for shake/lunge)
@@ -4022,11 +4097,13 @@ export class CombatState extends State {
       const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
       this.drawHpBar(surf, ax, ay, rs.attackerHp, rs.attackerMaxHp);
     }
-    if (defPos) {
-      const defShakeX = rs.defenderAnim.shakeOffset[0] + rs.defenderAnim.lungeOffset[0];
-      const dx = defPos[0] * TILEWIDTH - cameraOffset[0] + defShakeX;
-      const dy = defPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
-      this.drawHpBar(surf, dx, dy, rs.defenderHp, rs.defenderMaxHp);
+    for (const entry of rs.defenders) {
+      const position = entry.unit.position;
+      if (!position) continue;
+      const offsetX = entry.anim.shakeOffset[0] + entry.anim.lungeOffset[0];
+      const dx = position[0] * TILEWIDTH - cameraOffset[0] + offsetX;
+      const dy = position[1] * TILEHEIGHT - cameraOffset[1] - 6;
+      this.drawHpBar(surf, dx, dy, entry.hp, entry.maxHp);
     }
 
     // Floating damage numbers
@@ -4035,9 +4112,11 @@ export class CombatState extends State {
     // Death fade-out: dim the dying unit's tile with white overlay
     if (this.phase === 'death') {
       const alpha = this.deathFadeProgress * 0.85;
-      if (this.results?.defenderDead && defPos) {
-        const dx = defPos[0] * TILEWIDTH - cameraOffset[0];
-        const dy = defPos[1] * TILEHEIGHT - cameraOffset[1];
+      for (const deadDefender of this.getDefenderDeaths()) {
+        const position = deadDefender.position;
+        if (!position) continue;
+        const dx = position[0] * TILEWIDTH - cameraOffset[0];
+        const dy = position[1] * TILEHEIGHT - cameraOffset[1];
         surf.fillRect(dx - 24, dy - 32, 64, 48, `rgba(255,255,255,${alpha.toFixed(2)})`);
       }
       if (this.results?.attackerDead && atkPos) {
@@ -9307,6 +9386,7 @@ export class EventState extends State {
           : null;
 
         // Resolve ability/item — equip specified weapon if provided
+        let iuAbilityItem: ItemObject | null = null;
         if (iuAbilityNid) {
           let abilityItem = iuAttacker.items.find(
             (i: ItemObject) => i.nid === iuAbilityNid || i.name === iuAbilityNid,
@@ -9320,6 +9400,7 @@ export class EventState extends State {
             }
           }
           if (abilityItem) {
+            iuAbilityItem = abilityItem;
             // Move to front of inventory (equip)
             const idx = iuAttacker.items.indexOf(abilityItem);
             if (idx > 0) {
@@ -9334,16 +9415,27 @@ export class EventState extends State {
         game.combatTarget = iuDefender;
         game.combatScript = iuScript;
         game.eventCombat = true;  // Flag so CombatState doesn't double-push EventState
+        if (iuAbilityItem && !iuAbilityItem.isWeapon()) {
+          game.memory.set('combat_item', iuAbilityItem);
+        }
 
         if (iuImmediate) {
           // Immediate mode: resolve combat without visual animation
-          const attackItem = iuAttacker.items.find((i: ItemObject) => i.isWeapon());
-          const defItem = iuDefender.items.find((i: ItemObject) => i.isWeapon()) ?? null;
+          const attackItem = iuAbilityItem ?? iuAttacker.items.find((i: ItemObject) => i.isWeapon());
           if (attackItem) {
+            const targetGroup = resolveCombatTargetGroup(game, iuAttacker, attackItem, iuDefender);
+            const grouped = !targetGroup.mainDefender || targetGroup.splashDefenders.length > 0;
+            const defItem = targetGroup.mainDefender
+              ? targetGroup.mainDefender.items.find((i: ItemObject) => i.isWeapon()) ?? null
+              : null;
             const rngMode2 = game.db.getConstant('rng_mode', 'true_hit') as any;
             const mc = new MapCombat(
-              iuAttacker, attackItem, iuDefender, defItem,
+              iuAttacker, attackItem, targetGroup.representative, defItem,
               game.db, rngMode2, game.board, iuScript,
+              grouped ? {
+                mainDefender: targetGroup.mainDefender,
+                splashDefenders: targetGroup.splashDefenders,
+              } : undefined,
             );
             // Run combat to completion instantly
             while (mc.state !== 'done') {
@@ -9351,10 +9443,11 @@ export class EventState extends State {
             }
             const results = mc.applyResults();
             // Handle deaths
-            if (results.defenderDead && iuDefender.position && game.board) {
-              if (game.initiative) game.initiative.removeUnit(iuDefender);
-              game.board.removeUnit(iuDefender.position[0], iuDefender.position[1]);
-              game.units.delete(iuDefender.nid);
+            for (const deadDefender of results.defenderDeaths ??
+              (results.defenderDead ? [targetGroup.representative] : [])) {
+              if (game.initiative) game.initiative.removeUnit(deadDefender);
+              game.board.removeUnit(deadDefender);
+              game.units.delete(deadDefender.nid);
             }
             if (results.attackerDead && iuAttacker.position && game.board) {
               if (game.initiative) game.initiative.removeUnit(iuAttacker);
@@ -9362,7 +9455,9 @@ export class EventState extends State {
               game.units.delete(iuAttacker.nid);
             }
           }
+          game.memory.delete('combat_item');
           game.combatScript = null;
+          game.eventCombat = false;
           this.advancePointer();
           return false;
         } else {

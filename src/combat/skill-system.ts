@@ -436,19 +436,19 @@ export function defenseSpeedFormula(unit: UnitObject): string | undefined {
 // Exp / WExp multipliers (UNIQUE, default 1)
 // ============================================================
 
-export function expMultiplier(unit: UnitObject, _target: UnitObject): number {
+export function expMultiplier(unit: UnitObject, _target: UnitObject | null): number {
   return getSkillValue<number>(unit, 'exp_multiplier') ?? 1;
 }
 
-export function enemyExpMultiplier(unit: UnitObject, _target: UnitObject): number {
+export function enemyExpMultiplier(unit: UnitObject, _target: UnitObject | null): number {
   return getSkillValue<number>(unit, 'enemy_exp_multiplier') ?? 1;
 }
 
-export function wexpMultiplier(unit: UnitObject, _target: UnitObject): number {
+export function wexpMultiplier(unit: UnitObject, _target: UnitObject | null): number {
   return getSkillValue<number>(unit, 'wexp_multiplier') ?? 1;
 }
 
-export function enemyWexpMultiplier(unit: UnitObject, _target: UnitObject): number {
+export function enemyWexpMultiplier(unit: UnitObject, _target: UnitObject | null): number {
   return getSkillValue<number>(unit, 'enemy_wexp_multiplier') ?? 1;
 }
 

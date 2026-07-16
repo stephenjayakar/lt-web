@@ -51,8 +51,8 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Item component NIDs | 201 | 86 exact string references; 74 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 41 exact string references; 64 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 90 files, 50,163 lines | Builds |
-| Browser regression suite | n/a | 75 Playwright tests | 75/75 passing |
+| TypeScript runtime | n/a | 90 files, 50,545 lines | Builds |
+| Browser regression suite | n/a | 77 Playwright tests | 77/77 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,29 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Multi-defender AOE combat execution slice:**
+  - Added Python-shaped grouped strike resolution: the main defender follows
+    normal vantage/counter/double ordering, splash defenders never counter and
+    are processed immediately after the propagated attacker strike, and pure
+    spell AOE operates without a synthetic main defender.
+  - Default splash now receives only the first attacker subattack; the
+    `double_splash` constant propagates brave/additional attacks. Every affected
+    hit retains its own hit/crit/damage roll, `splash` combat mode, component
+    hooks, and durability loss.
+  - Extended map combat presentation to track HP, lunge/shake, flash, and damage
+    popups for every defender. CombatState and immediate `interact_unit` combat
+    resolve the same target group, force grouped encounters to map presentation,
+    remove/trigger death handling for every casualty, and activate every
+    involved AI group.
+  - Aggregated fixed EXP, ordinary combat EXP, WEXP, rank crossings, statuses,
+    multi-death results, and droppable-item discovery across unique affected
+    defenders while preserving main-only defensive WEXP and counters.
+  - Added direct solver/controller and end-to-end CombatState regressions for
+    strike order, main-only counters, default and `double_splash` propagation,
+    durability, fixed EXP/WEXP, pure AOE routing, multi-death/drop reporting,
+    and map return. Harness inventory is now **77 tests**; the full serial gate is
+    **77/77 passing**.
 
 - **Uncommon AOE geometry and skill-driven splash slice:**
   - Ported Python's remaining AOE item geometries: configurable/repeating
@@ -797,7 +820,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   restrictions, reversible transfer/records, player ability UI, and value-based AI selection
 - [x] Implement shape/line/cleave AOE geometry plus Oversplash-family and Cleave
   skill-driven empowerment/replacement, including Python-shaped previews
-- [ ] Extend combat execution from one defender to resolved main+splash defender
+- [x] Extend combat execution from one defender to resolved main+splash defender
   groups with splash-mode counter/reward/durability semantics
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
@@ -863,8 +886,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Extend combat execution to resolved main+splash defender groups, including
-   splash-mode strike/counter/reward/durability behavior and map-only presentation.
-2. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
-3. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
+1. Implement generic `Feat` selection using the shared persistent growth RNG.
+2. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
    and fully reversible HP/EXP/death result actions.
+3. Port the next high-usage unresolved item target/use/end-combat hook cluster from
+   the generated component manifest and add interaction fixtures.

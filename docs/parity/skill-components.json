@@ -134,7 +134,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1482
+          "line": 1487
         }
       ],
       "matchingWebHooks": [],
@@ -824,7 +824,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8323
+          "line": 8402
         },
         {
           "source": "src/native.ts",
@@ -917,11 +917,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10203
+          "line": 10298
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10226
+          "line": 10321
         }
       ],
       "matchingWebHooks": [],
@@ -966,7 +966,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1852
+          "line": 1857
         }
       ],
       "matchingWebHooks": [],
@@ -1183,7 +1183,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7725
+          "line": 7804
         },
         {
           "source": "src/events/event-manager.ts",
@@ -2884,7 +2884,7 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 379
+          "line": 484
         },
         {
           "source": "src/combat/item-system.ts",
@@ -2912,11 +2912,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2213
+          "line": 2218
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4341
+          "line": 4420
         },
         {
           "source": "src/objects/item.ts",
@@ -3044,11 +3044,11 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 663
+          "line": 666
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 119
+          "line": 122
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3076,7 +3076,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4353
+          "line": 4432
         }
       ],
       "matchingWebHooks": [
@@ -4176,7 +4176,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10395
+          "line": 10490
         }
       ],
       "matchingWebHooks": [

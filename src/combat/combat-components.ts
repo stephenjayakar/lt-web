@@ -84,20 +84,83 @@ function grantWexp(
   return { amount: unit.wexp[weaponType] - oldWexp, rankUp };
 }
 
-function fixedExp(
+function grantGroupWexp(
+  unit: UnitObject,
+  item: ItemObject,
+  mainTarget: UnitObject | null,
+  strikes: CombatStrike[],
+  unitDead: boolean,
+  deadTargets: Set<UnitObject>,
+  db: Database,
+): { amount: number; rankUp: WeaponRankUp | null } {
+  const weaponType = item.getComponent<string>('weapon_type');
+  if (!weaponType || unitDead || (!item.isWeapon() && !item.hasComponent('spell'))) {
+    return { amount: 0, rankUp: null };
+  }
+  const marks = strikes.filter((strike) =>
+    strike.attacker === unit && strike.item === item &&
+    (strike.hit || db.getConstant('miss_wexp', false)),
+  );
+  if (marks.length === 0) return { amount: 0, rankUp: null };
+
+  const base = Number(item.getComponent<number>('wexp') ?? 1);
+  let rawAmount = 0;
+  if (db.getConstant('double_wexp', false)) {
+    for (const mark of marks) {
+      const target = mark.defender;
+      const killMultiplier = deadTargets.has(target) && db.getConstant('kill_wexp', false) ? 2 : 1;
+      rawAmount += base * killMultiplier *
+        wexpMultiplier(unit, target) * enemyWexpMultiplier(target, unit);
+    }
+  } else {
+    const killMultiplier = db.getConstant('kill_wexp', false) &&
+      marks.some((mark) => deadTargets.has(mark.defender)) ? 2 : 1;
+    const multiplier = mainTarget
+      ? wexpMultiplier(unit, mainTarget) * enemyWexpMultiplier(mainTarget, unit)
+      : wexpMultiplier(unit, null);
+    rawAmount = base * killMultiplier * multiplier;
+  }
+  const amount = Math.max(0, Math.floor(rawAmount));
+  if (amount === 0) return { amount: 0, rankUp: null };
+
+  const oldWexp = unit.wexp[weaponType] ?? 0;
+  unit.wexp[weaponType] = Math.min(weaponExpCap(unit, weaponType, db), oldWexp + amount);
+  const rankUp = [...db.weaponRanks].reverse().find((rank) =>
+    oldWexp < rank.requirement && unit.wexp[weaponType] >= rank.requirement,
+  ) ?? null;
+  return { amount: unit.wexp[weaponType] - oldWexp, rankUp };
+}
+
+function groupFixedExp(
   attacker: UnitObject,
   item: ItemObject,
-  defender: UnitObject,
   strikes: CombatStrike[],
   attackerDead: boolean,
+  deadTargets: Set<UnitObject>,
   db: Database,
 ): number | null {
   const value = item.getComponent<number>('exp');
   if (value === undefined) return null;
-  const hit = strikes.some((strike) => strike.attacker === attacker && strike.item === item && strike.hit);
-  if (attackerDead || attacker.team !== 'player' || !hit) return 0;
-  const amount = Number(value) * expMultiplier(attacker, defender) * enemyExpMultiplier(defender, attacker);
-  return Math.max(Number(db.getConstant('min_exp', 0)), Math.min(100, Math.floor(amount)));
+  if (attackerDead || attacker.team !== 'player') return 0;
+  const defenders = new Set(strikes
+    .filter((strike) => strike.attacker === attacker && strike.item === item && strike.hit)
+    .map((strike) => strike.defender)
+    .filter((target) => !target.tags.includes('Tile')));
+  if (defenders.size === 0) return 0;
+  let total = 0;
+  for (const defender of defenders) {
+    const selfMultiplier = expMultiplier(attacker, defender);
+    const enemyMultiplier = enemyExpMultiplier(defender, attacker);
+    let amount = Number(value) * selfMultiplier * enemyMultiplier;
+    if (deadTargets.has(defender)) {
+      amount *= Number(db.getConstant('kill_multiplier', 1));
+      if (defender.tags.includes('Boss')) {
+        amount += Number(db.getConstant('boss_bonus', 0)) * selfMultiplier * enemyMultiplier;
+      }
+    }
+    total += amount;
+  }
+  return Math.max(Number(db.getConstant('min_exp', 0)), Math.min(100, Math.floor(total)));
 }
 
 function resolveStolenItem(
@@ -124,17 +187,50 @@ export function applyCombatComponents(
   defenderDead: boolean,
   db: Database,
 ): CombatComponentResults {
-  applyStrikeStatuses(strikes, db);
-  const attackerWexp = grantWexp(
-    attacker, attackItem, defender, strikes, attackerDead, defenderDead, db,
+  return applyGroupCombatComponents(
+    attacker,
+    attackItem,
+    defender,
+    defenseItem,
+    strikes,
+    attackerDead,
+    new Set(defenderDead ? [defender] : []),
+    db,
   );
-  if (defenseItem) {
-    grantWexp(defender, defenseItem, attacker, strikes, defenderDead, attackerDead, db);
+}
+
+/** Resolve hooks and aggregate rewards across a main+splash defender group. */
+export function applyGroupCombatComponents(
+  attacker: UnitObject,
+  attackItem: ItemObject,
+  mainDefender: UnitObject | null,
+  defenseItem: ItemObject | null,
+  strikes: CombatStrike[],
+  attackerDead: boolean,
+  deadDefenders: Set<UnitObject>,
+  db: Database,
+): CombatComponentResults {
+  applyStrikeStatuses(strikes, db);
+  const attackerWexp = grantGroupWexp(
+    attacker, attackItem, mainDefender, strikes, attackerDead, deadDefenders, db,
+  );
+  if (mainDefender && defenseItem) {
+    grantWexp(
+      mainDefender,
+      defenseItem,
+      attacker,
+      strikes,
+      deadDefenders.has(mainDefender),
+      attackerDead,
+      db,
+    );
   }
   return {
-    fixedExp: fixedExp(attacker, attackItem, defender, strikes, attackerDead, db),
+    fixedExp: groupFixedExp(attacker, attackItem, strikes, attackerDead, deadDefenders, db),
     attackerWexpGained: attackerWexp.amount,
     attackerRankUp: attackerWexp.rankUp,
-    stolenItem: resolveStolenItem(attacker, attackItem, defender, strikes),
+    stolenItem: mainDefender
+      ? resolveStolenItem(attacker, attackItem, mainDefender, strikes)
+      : null,
   };
 }
