@@ -99,6 +99,7 @@ export type EventCommandType =
   | 'battle_save' | 'prep' | 'base' | 'shop' | 'choice' | 'unchoice'
   | 'chapter_title' | 'set_tile'
   | 'has_visited' | 'unlock' | 'find_unlock' | 'spend_unlock'
+  | 'pair_up' | 'separate'
   // Overworld
   | 'toggle_narration_mode' | 'overworld_cinematic' | 'reveal_overworld_node'
   | 'reveal_overworld_road' | 'overworld_move_unit' | 'set_overworld_position'
@@ -195,6 +196,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'battle_save', 'prep', 'base', 'shop', 'choice', 'unchoice',
   'chapter_title', 'set_tile',
   'has_visited', 'unlock', 'find_unlock', 'spend_unlock',
+  'pair_up', 'separate',
   // Base screen
   'add_base_convo', 'ignore_base_convo', 'remove_base_convo',
   'clear_market_items', 'add_lore', 'remove_lore',
@@ -265,6 +267,8 @@ const COMMAND_ALIASES: Record<string, string> = {
   'break': 'finish',
   'resurrect_unit': 'resurrect',
   'unlock_lore': 'add_lore',
+  'rescue': 'pair_up',
+  'drop': 'separate',
   // Legacy names from our old code
   'set_game_var': 'game_var',
   'change_objective': 'change_objective_simple',

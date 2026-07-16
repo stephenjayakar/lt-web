@@ -47,6 +47,46 @@ export function onSeparate(unit: UnitObject, leader: UnitObject): SkillObject[] 
   return removed;
 }
 
+/** Python's ignore_rescue_penalty ALL_DEFAULT_FALSE skill hook. */
+export function ignoreRescuePenalty(unit: UnitObject): boolean {
+  return unit.skills.some(skill => skill.hasComponent('ignore_rescue_penalty'));
+}
+
+/** Install the source-specific hidden Rescue penalty skill. */
+export function onRescue(
+  rescuer: UnitObject,
+  rescuee: UnitObject,
+  createSkill?: SkillFactory,
+): SkillObject[] {
+  if (!createSkill || ignoreRescuePenalty(rescuer)) return [];
+  const exists = rescuer.skills.some(skill =>
+    skill.nid === 'Rescue' &&
+    skill.data.get('rescueSource') === rescuee.nid &&
+    skill.data.get('rescueSourceType') === 'traveler');
+  if (exists) return [];
+  const penalty = createSkill('Rescue');
+  if (!penalty) return [];
+  penalty.data.set('rescueSource', rescuee.nid);
+  penalty.data.set('rescueSourceType', 'traveler');
+  rescuer.skills.push(penalty);
+  return [penalty];
+}
+
+/** Remove only the Rescue penalty sourced from this traveler. */
+export function onRemoveRescue(rescuer: UnitObject, rescuee: UnitObject): SkillObject[] {
+  const removed: SkillObject[] = [];
+  for (let index = rescuer.skills.length - 1; index >= 0; index--) {
+    const skill = rescuer.skills[index];
+    if (skill.nid === 'Rescue' &&
+        skill.data.get('rescueSource') === rescuee.nid &&
+        skill.data.get('rescueSourceType') === 'traveler') {
+      rescuer.skills.splice(index, 1);
+      removed.unshift(skill);
+    }
+  }
+  return removed;
+}
+
 // ============================================================
 // Helper: iterate all skill components that define a given hook
 // ============================================================

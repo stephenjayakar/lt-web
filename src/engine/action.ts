@@ -2,7 +2,9 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import type { GameBoard } from '../objects/game-board';
-import { onPairup, onSeparate } from '../combat/skill-system';
+import type { Database } from '../data/database';
+import { evaluateEquation } from '../combat/combat-calcs';
+import { onPairup, onRemoveRescue, onRescue, onSeparate } from '../combat/skill-system';
 import { autoLevelUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 
@@ -1106,6 +1108,8 @@ export class RescueAction extends Action {
   private targetPos: [number, number] | null = null;
   private oldTraveler: string | null;
   private oldHasRescued: boolean;
+  private penaltySkills: SkillObject[] = [];
+  private initialized = false;
 
   constructor(rescuer: UnitObject, target: UnitObject, board: GameBoard) {
     super();
@@ -1122,8 +1126,20 @@ export class RescueAction extends Action {
     this.target.rescuedBy = this.rescuer;
     this.rescuer.traveler = this.target.nid;
     this.rescuer.hasRescued = true;
+    if (!this.initialized) {
+      this.penaltySkills = onRescue(this.rescuer, this.target, makeSkillForAction);
+      this.initialized = true;
+    } else {
+      for (const skill of this.penaltySkills) {
+        if (!this.rescuer.skills.includes(skill)) this.rescuer.skills.push(skill);
+      }
+    }
   }
   reverse(): void {
+    for (const skill of this.penaltySkills) {
+      const index = this.rescuer.skills.indexOf(skill);
+      if (index >= 0) this.rescuer.skills.splice(index, 1);
+    }
     this.rescuer.rescuing = null;
     this.target.rescuedBy = null;
     this.rescuer.traveler = this.oldTraveler;
@@ -1146,6 +1162,10 @@ type PairState = {
   gauge: number;
   hasRescued: boolean;
   hasDropped: boolean;
+  hasTaken: boolean;
+  hasGiven: boolean;
+  builtGuard: boolean;
+  strikePartner: UnitObject | null;
   hasAttacked: boolean;
   hasMoved: boolean;
   hasTraded: boolean;
@@ -1161,6 +1181,10 @@ function pairState(unit: UnitObject): PairState {
     gauge: unit.getGuardGauge(),
     hasRescued: unit.hasRescued,
     hasDropped: unit.hasDropped,
+    hasTaken: unit.hasTaken,
+    hasGiven: unit.hasGiven,
+    builtGuard: unit.builtGuard,
+    strikePartner: unit.strikePartner,
     hasAttacked: unit.hasAttacked,
     hasMoved: unit.hasMoved,
     hasTraded: unit.hasTraded,
@@ -1176,10 +1200,29 @@ function restorePairState(unit: UnitObject, state: PairState): void {
   unit.currentGuardGauge = state.gauge;
   unit.hasRescued = state.hasRescued;
   unit.hasDropped = state.hasDropped;
+  unit.hasTaken = state.hasTaken;
+  unit.hasGiven = state.hasGiven;
+  unit.builtGuard = state.builtGuard;
+  unit.strikePartner = state.strikePartner;
   unit.hasAttacked = state.hasAttacked;
   unit.hasMoved = state.hasMoved;
   unit.hasTraded = state.hasTraded;
   unit.finished = state.finished;
+}
+
+type IndexedSkill = { skill: SkillObject; index: number };
+
+function restoreIndexedSkills(unit: UnitObject, skills: IndexedSkill[]): void {
+  for (const { skill, index } of [...skills].sort((a, b) => a.index - b.index)) {
+    if (!unit.skills.includes(skill)) unit.skills.splice(Math.min(index, unit.skills.length), 0, skill);
+  }
+}
+
+function getMaxGuardGauge(unit: UnitObject, db?: Database): number {
+  const expression = db?.getEquation('MAX_GUARD');
+  if (!expression) return 10;
+  const value = evaluateEquation(expression, unit, { db });
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 10;
 }
 
 /** Pair a follower into a leader's guard stance. */
@@ -1190,14 +1233,16 @@ export class PairUpAction extends Action {
   private oldPos: [number, number] | null;
   private oldUnit: PairState;
   private oldLeader: PairState;
+  private db?: Database;
   private addedSkills: SkillObject[] = [];
   private initialized = false;
 
-  constructor(unit: UnitObject, leader: UnitObject, board: GameBoard, _db?: unknown) {
+  constructor(unit: UnitObject, leader: UnitObject, board: GameBoard, db?: Database) {
     super();
     this.unit = unit;
     this.leader = leader;
     this.board = board;
+    this.db = db;
     this.oldPos = unit.position ? [...unit.position] as [number, number] : null;
     this.oldUnit = pairState(unit);
     this.oldLeader = pairState(leader);
@@ -1208,6 +1253,8 @@ export class PairUpAction extends Action {
     this.leader.rescuing = this.unit;
     this.unit.rescuedBy = this.leader;
     if (this.unit.position) this.board.removeUnit(this.unit);
+    // Python PairUp runs Reset on the follower while preserving its movement-left value.
+    this.unit.resetTurnState();
     if (!this.initialized) {
       this.addedSkills = onPairup(this.unit, this.leader, makeSkillForAction);
       this.initialized = true;
@@ -1216,8 +1263,11 @@ export class PairUpAction extends Action {
     }
     this.unit.leadUnit = false;
     this.leader.leadUnit = true;
-    this.leader.setGuardGauge(this.oldUnit.gauge + this.oldLeader.gauge);
-    this.unit.setGuardGauge(0);
+    this.leader.setGuardGauge(
+      this.oldUnit.gauge + this.oldLeader.gauge,
+      getMaxGuardGauge(this.leader, this.db),
+    );
+    this.unit.setGuardGauge(0, getMaxGuardGauge(this.unit, this.db));
   }
 
   reverse(): void {
@@ -1241,14 +1291,15 @@ export class SeparatePairUpAction extends Action {
   private oldLeader: PairState;
   private oldFollower: PairState;
   private oldFollowerPos: [number, number] | null;
-  private removedSkills: SkillObject[] = [];
+  private db?: Database;
+  private removedSkills: IndexedSkill[] = [];
   private initialized = false;
 
   constructor(
     leader: UnitObject,
     follower: UnitObject,
     board: GameBoard,
-    positionOrDb: [number, number] | null | unknown = null,
+    positionOrDb: Database | [number, number] | null = null,
     positionOrWait: [number, number] | null | boolean = null,
     wait = true,
   ) {
@@ -1256,9 +1307,10 @@ export class SeparatePairUpAction extends Action {
     this.leader = leader;
     this.follower = follower;
     this.board = board;
+    this.db = positionOrDb && !Array.isArray(positionOrDb) ? positionOrDb : undefined;
     this.position = Array.isArray(positionOrDb)
-      ? positionOrDb as [number, number]
-      : Array.isArray(positionOrWait) ? positionOrWait as [number, number] : null;
+      ? positionOrDb
+      : Array.isArray(positionOrWait) ? positionOrWait : null;
     this.withWait = typeof positionOrWait === 'boolean' ? positionOrWait : wait;
     this.oldLeader = pairState(leader);
     this.oldFollower = pairState(follower);
@@ -1273,24 +1325,26 @@ export class SeparatePairUpAction extends Action {
     this.follower.rescuedBy = null;
     this.leader.hasDropped = true;
     const split = Math.floor(this.oldLeader.gauge / 2);
-    this.leader.setGuardGauge(split);
-    this.follower.setGuardGauge(split);
+    this.leader.setGuardGauge(split, getMaxGuardGauge(this.leader, this.db));
+    this.follower.setGuardGauge(split, getMaxGuardGauge(this.follower, this.db));
     this.leader.leadUnit = false;
     this.follower.leadUnit = false;
     if (!this.initialized) {
-      this.removedSkills = onSeparate(this.follower, this.leader);
+      const indices = new Map(this.leader.skills.map((skill, index) => [skill, index]));
+      this.removedSkills = onSeparate(this.follower, this.leader)
+        .map(skill => ({ skill, index: indices.get(skill) ?? this.leader.skills.length }));
       this.initialized = true;
     } else {
-      for (const skill of this.removedSkills) {
-        if (!this.leader.skills.includes(skill)) this.leader.skills.push(skill);
+      for (const { skill } of this.removedSkills) {
+        const index = this.leader.skills.indexOf(skill);
+        if (index >= 0) this.leader.skills.splice(index, 1);
       }
-      this.removedSkills = onSeparate(this.follower, this.leader);
     }
   }
 
   reverse(): void {
     if (this.position && this.follower.position) this.board.removeUnit(this.follower);
-    for (const skill of this.removedSkills) if (!this.leader.skills.includes(skill)) this.leader.skills.push(skill);
+    restoreIndexedSkills(this.leader, this.removedSkills);
     restorePairState(this.leader, this.oldLeader);
     restorePairState(this.follower, this.oldFollower);
     if (this.oldFollowerPos) this.board.setUnit(this.oldFollowerPos[0], this.oldFollowerPos[1], this.follower);
@@ -1302,23 +1356,41 @@ export class RemovePartnerAction extends Action {
   private unit: UnitObject;
   private partner: UnitObject | null;
   private oldUnit: PairState;
+  private oldPartnerRescuedBy: UnitObject | null;
+  private removedPenalty: IndexedSkill[] = [];
+  private initialized = false;
 
   constructor(unit: UnitObject, partner?: UnitObject) {
     super();
     this.unit = unit;
     this.partner = unit.rescuing ?? partner ?? null;
     this.oldUnit = pairState(unit);
+    this.oldPartnerRescuedBy = this.partner?.rescuedBy ?? null;
   }
 
   execute(): void {
+    if (this.partner) {
+      if (!this.initialized) {
+        const indices = new Map(this.unit.skills.map((skill, index) => [skill, index]));
+        this.removedPenalty = onRemoveRescue(this.unit, this.partner)
+          .map(skill => ({ skill, index: indices.get(skill) ?? this.unit.skills.length }));
+        this.initialized = true;
+      } else {
+        for (const { skill } of this.removedPenalty) {
+          const index = this.unit.skills.indexOf(skill);
+          if (index >= 0) this.unit.skills.splice(index, 1);
+        }
+      }
+    }
     this.unit.traveler = null;
     this.unit.rescuing = null;
     if (this.partner) this.partner.rescuedBy = null;
   }
 
   reverse(): void {
+    restoreIndexedSkills(this.unit, this.removedPenalty);
     restorePairState(this.unit, this.oldUnit);
-    if (this.partner) this.partner.rescuedBy = this.unit;
+    if (this.partner) this.partner.rescuedBy = this.oldPartnerRescuedBy;
   }
 }
 
@@ -1333,6 +1405,8 @@ export class DropAction extends Action {
   private dropPos: [number, number];
   private oldTraveler: string | null;
   private oldHasDropped: boolean;
+  private removedPenalty: IndexedSkill[] = [];
+  private initialized = false;
 
   constructor(rescuer: UnitObject, target: UnitObject, board: GameBoard, dropPos: [number, number]) {
     super();
@@ -1345,6 +1419,17 @@ export class DropAction extends Action {
   }
 
   execute(): void {
+    if (!this.initialized) {
+      const indices = new Map(this.rescuer.skills.map((skill, index) => [skill, index]));
+      this.removedPenalty = onRemoveRescue(this.rescuer, this.target)
+        .map(skill => ({ skill, index: indices.get(skill) ?? this.rescuer.skills.length }));
+      this.initialized = true;
+    } else {
+      for (const { skill } of this.removedPenalty) {
+        const index = this.rescuer.skills.indexOf(skill);
+        if (index >= 0) this.rescuer.skills.splice(index, 1);
+      }
+    }
     this.rescuer.rescuing = null;
     this.target.rescuedBy = null;
     this.rescuer.traveler = null;
@@ -1354,6 +1439,7 @@ export class DropAction extends Action {
 
   reverse(): void {
     this.board.removeUnit(this.target);
+    restoreIndexedSkills(this.rescuer, this.removedPenalty);
     this.rescuer.rescuing = this.target;
     this.target.rescuedBy = this.rescuer;
     this.rescuer.traveler = this.oldTraveler;
@@ -1462,6 +1548,13 @@ export class PutItemInConvoy extends Action {
     const game = _getGame?.();
     if (!game) return;
     this.oldOwnerNid = this.item.owner?.nid ?? null;
+    this.item.owner = null;
+    const party = game.getParty(this.partyNid);
+    if (party) party.convoy.push(this.item);
+  }
+
+  reverse(): void {
+    const game = _getGame?.();
     if (!game) return;
     const party = game.getParty(this.partyNid);
     if (party) {
@@ -1471,15 +1564,6 @@ export class PutItemInConvoy extends Action {
     if (this.oldOwnerNid) {
       const unit = game.getUnit(this.oldOwnerNid);
       if (unit) this.item.owner = unit;
-    }
-  }
-  reverse(): void {
-    const game = _getGame?.();
-    if (!game) return;
-    if (this.oldOwnerNid) {
-      const unit = game.getUnit(this.oldOwnerNid);
-      if (unit && !unit.items.includes(this.item)) unit.items.push(this.item);
-      this.item.owner = unit ?? null;
     }
   }
 }

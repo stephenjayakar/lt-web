@@ -293,6 +293,15 @@ export class GameState {
         unit.rescuedBy.rescuing = null;
         unit.rescuedBy = null;
       }
+      unit.traveler = null;
+      unit.leadUnit = false;
+      unit.currentGuardGauge = 0;
+      unit.builtGuard = false;
+      unit.strikePartner = null;
+      unit.skills = unit.skills.filter((skill) =>
+        skill.data.get('pairupSourceType') !== 'traveler' &&
+        skill.data.get('rescueSourceType') !== 'traveler',
+      );
 
       // Heal to full HP
       unit.currentHp = unit.stats['HP'] ?? unit.currentHp;

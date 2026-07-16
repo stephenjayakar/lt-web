@@ -69,6 +69,11 @@ import {
   RemoveSkillAction,
   RefreshUnitAction,
   WarpUnitAction,
+  RescueAction,
+  DropAction,
+  PairUpAction,
+  SeparatePairUpAction,
+  RemovePartnerAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -367,7 +372,8 @@ function getAdjacentUnits(x: number, y: number): UnitObject[] {
 }
 
 /** Get all adjacent empty tiles that are in bounds. */
-function getAdjacentEmptyTiles(x: number, y: number): [number, number][] {
+function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | null): [number, number][] {
+  const game = getGame();
   const board = getBoard();
   const dirs: [number, number][] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
   const tiles: [number, number][] = [];
@@ -375,6 +381,10 @@ function getAdjacentEmptyTiles(x: number, y: number): [number, number][] {
     const nx = x + dx;
     const ny = y + dy;
     if (board.inBounds(nx, ny) && !board.isOccupied(nx, ny)) {
+      if (traveler) {
+        const movementGroup = game.db.classes.get(traveler.klass)?.movement_group ?? 'Infantry';
+        if (board.getMovementCost(nx, ny, movementGroup, game.db) >= 99) continue;
+      }
       tiles.push([nx, ny]);
     }
   }
@@ -1527,19 +1537,25 @@ export class MenuState extends State {
       }
     }
 
-    // Rescue option — if adjacent allied unit that can be rescued
-    const rescuableUnits = getAdjacentAllies(unit, ux, uy).filter(
-      (ally) => !ally.isRescued() && !ally.isRescuing(),
+    const pairUpEnabled = game.db.getConstant('pairup', false);
+    const pairUpAllowed = pairUpEnabled && !game.db.getConstant('attack_stance_only', false);
+    const rescuableUnits = getAdjacentAllies(unit, ux, uy).filter((ally) =>
+      !ally.isRescued() && !ally.isRescuing() &&
+      (!pairUpEnabled || ally.team === unit.team),
     );
-    if (rescuableUnits.length > 0 && !unit.isRescuing()) {
-      options.push({ label: 'Rescue', value: 'rescue', enabled: true });
+    if (!unit.isRescuing() && !unit.isRescued() && rescuableUnits.length > 0) {
+      if (pairUpAllowed) options.push({ label: 'Pair Up', value: 'pair_up', enabled: true });
+      else if (!pairUpEnabled) options.push({ label: 'Rescue', value: 'rescue', enabled: true });
     }
 
-    // Drop option — if unit is carrying a rescued unit
     if (unit.isRescuing()) {
-      const dropTiles = getAdjacentEmptyTiles(ux, uy);
+      const dropTiles = getAdjacentEmptyTiles(ux, uy, unit.rescuing);
       if (dropTiles.length > 0) {
-        options.push({ label: 'Drop', value: 'drop', enabled: true });
+        if (pairUpEnabled && unit.leadUnit && !unit.hasAttacked) {
+          options.push({ label: 'Separate', value: 'separate', enabled: true });
+        } else if (!pairUpEnabled) {
+          options.push({ label: 'Drop', value: 'drop', enabled: true });
+        }
       }
     }
 
@@ -1661,10 +1677,10 @@ export class MenuState extends State {
       } else if (value === 'trade') {
         this.menu = null;
         game.state.change('trade');
-      } else if (value === 'rescue') {
+      } else if (value === 'rescue' || value === 'pair_up') {
         this.menu = null;
         game.state.change('rescue');
-      } else if (value === 'drop') {
+      } else if (value === 'drop' || value === 'separate') {
         this.menu = null;
         game.state.change('drop');
       } else if (value.startsWith('region_')) {
@@ -2617,7 +2633,8 @@ export class RescueState extends State {
     }
 
     this.rescuableUnits = getAdjacentAllies(unit, unit.position[0], unit.position[1])
-      .filter((ally) => !ally.isRescued() && !ally.isRescuing());
+      .filter((ally) => !ally.isRescued() && !ally.isRescuing() &&
+        (!game.db.getConstant('pairup', false) || ally.team === unit.team));
 
     if (this.rescuableUnits.length === 0) {
       game.state.back();
@@ -2651,13 +2668,15 @@ export class RescueState extends State {
       const unit: UnitObject = game.selectedUnit;
 
       if (target && unit) {
-        // Remove target from board
-        game.board.removeUnit(target);
-        // Set rescue references
-        unit.rescuing = target;
-        target.rescuedBy = unit;
-        // Finish the unit's turn
-        unit.finished = true;
+        const pairUp = game.db.getConstant('pairup', false) &&
+          !game.db.getConstant('attack_stance_only', false);
+        if (pairUp) {
+          // Python PairUpAbility pairs the acting unit into the selected leader.
+          game.actionLog.doAction(new PairUpAction(unit, target, game.board, game.db));
+        } else {
+          game.actionLog.doAction(new RescueAction(unit, target, game.board));
+          game.actionLog.doAction(new WaitAction(unit));
+        }
       }
 
       this.menu = null;
@@ -2690,7 +2709,7 @@ export class DropState extends MapState {
       return;
     }
 
-    this.dropTiles = getAdjacentEmptyTiles(unit.position[0], unit.position[1]);
+    this.dropTiles = getAdjacentEmptyTiles(unit.position[0], unit.position[1], unit.rescuing);
 
     if (this.dropTiles.length === 0) {
       game.state.back();
@@ -2737,12 +2756,14 @@ export class DropState extends MapState {
           const unit: UnitObject = game.selectedUnit;
           const target = unit?.rescuing;
           if (unit && target) {
-            // Drop the rescued unit
-            unit.rescuing = null;
-            target.rescuedBy = null;
-            game.board.setUnit(pos.x, pos.y, target);
-            // Finish unit's turn
-            unit.finished = true;
+            if (game.db.getConstant('pairup', false) && unit.leadUnit) {
+              game.actionLog.doAction(new SeparatePairUpAction(
+                unit, target, game.board, game.db, [pos.x, pos.y], true,
+              ));
+            } else {
+              game.actionLog.doAction(new DropAction(unit, target, game.board, [pos.x, pos.y]));
+            }
+            game.actionLog.doAction(new WaitAction(unit));
           }
           game.highlight.clear();
           game.state.back();
@@ -10089,6 +10110,56 @@ export class EventState extends State {
       case 'remove_lore': {
         const loreNid = args[0];
         if (loreNid) game.actionLog.doAction(new RemoveLoreAction(loreNid));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'pair_up': {
+        // pair_up;Follower;Leader (nickname: rescue)
+        const follower = this.findUnit(args[0] ?? '');
+        const leader = this.findUnit(args[1] ?? '');
+        if (!follower) {
+          console.warn(`Event pair_up: follower not found (${args[0] ?? ''})`);
+        } else if (follower.rescuedBy || follower.rescuing) {
+          console.warn(`Event pair_up: follower is already traveling (${follower.nid})`);
+        } else if (!leader) {
+          console.warn(`Event pair_up: leader not found (${args[1] ?? ''})`);
+        } else if (leader.rescuedBy || leader.rescuing) {
+          console.warn(`Event pair_up: leader is already traveling (${leader.nid})`);
+        } else {
+          let canPairUp = game.db.getConstant('pairup', false) &&
+            !game.db.getConstant('attack_stance_only', false);
+          if (canPairUp && game.db.getConstant('player_pairup_only', false)) {
+            canPairUp = leader.team === 'player' && follower.team === 'player';
+          }
+          if (canPairUp) {
+            game.actionLog.doAction(new PairUpAction(follower, leader, game.board, game.db));
+          } else {
+            // Python falls back to classic Rescue whenever guard stance is unavailable.
+            game.actionLog.doAction(new RescueAction(leader, follower, game.board));
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'separate': {
+        // separate;Leader (nickname: drop). Event separation is non-spatial.
+        const leader = this.findUnit(args[0] ?? '');
+        const follower = leader?.rescuing ?? null;
+        if (!leader) {
+          console.warn(`Event separate: unit not found (${args[0] ?? ''})`);
+        } else if (!follower) {
+          console.warn(`Event separate: unit has no traveler (${leader.nid})`);
+        } else if (game.db.getConstant('pairup', false)) {
+          game.actionLog.doAction(new SeparatePairUpAction(
+            leader, follower, game.board, game.db, null, true,
+          ));
+        } else {
+          // RemovePartner deliberately clears the relationship without placing
+          // the traveler on the map; Rekka's Glutton/Capture events rely on this.
+          game.actionLog.doAction(new RemovePartnerAction(leader, follower));
+        }
         this.advancePointer();
         return false;
       }

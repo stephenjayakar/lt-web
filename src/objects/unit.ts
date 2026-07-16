@@ -207,7 +207,7 @@ export class UnitObject {
     this.rescuedBy = null;
     this.traveler = null;
     this.leadUnit = false;
-    this.currentGuardGauge = 10;
+    this.currentGuardGauge = 0;
     this.builtGuard = false;
     this.hasRescued = false;
     this.hasDropped = false;
@@ -220,9 +220,9 @@ export class UnitObject {
     this.statusEffects = [];
   }
 
-  /** Current guard gauge, defaulting to Python's standard initial value. */
+  /** Current guard gauge, defaulting to Python's empty initial state. */
   getGuardGauge(): number {
-    return this.currentGuardGauge ?? 10;
+    return this.currentGuardGauge ?? 0;
   }
 
   setGuardGauge(value: number, maxGauge: number = 10): void {
@@ -507,5 +507,6 @@ export class UnitObject {
     this.hasDropped = false;
     this.hasTaken = false;
     this.hasGiven = false;
+    this.strikePartner = null;
   }
 }

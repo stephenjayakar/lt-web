@@ -955,9 +955,11 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.party = unitData.party;
       unit.persistent = unitData.persistent;
       unit.statusEffects = unitData.statusEffects.map(se => ({ ...se }));
-      unit.traveler = unitData.travelerNid ?? null;
-      unit.leadUnit = unitData.leadUnit ?? false;
-      unit.currentGuardGauge = unitData.currentGuardGauge ?? 10;
+      unit.traveler = unitData.travelerNid ?? unitData.rescuingNid ?? null;
+      unit.leadUnit = unitData.leadUnit ?? (
+        game.db.getConstant('pairup', false) && !!unitData.rescuingNid
+      );
+      unit.currentGuardGauge = unitData.currentGuardGauge ?? 0;
       unit.builtGuard = unitData.builtGuard ?? false;
       unit.hasRescued = unitData.hasRescued ?? false;
       unit.hasDropped = unitData.hasDropped ?? false;
