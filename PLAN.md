@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 81 exact string references; 74 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 37 exact string references; 60 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 86 exact string references; 74 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 41 exact string references; 64 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 90 files, 49,873 lines | Builds |
-| Browser regression suite | n/a | 74 Playwright tests | 74/74 passing |
+| TypeScript runtime | n/a | 90 files, 50,163 lines | Builds |
+| Browser regression suite | n/a | 75 Playwright tests | 75/75 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,23 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Uncommon AOE geometry and skill-driven splash slice:**
+  - Ported Python's remaining AOE item geometries: configurable/repeating
+    `shape_blast_aoe`, attacker-centered `enemy_cleave_aoe`, and taxicab-grid
+    `line_aoe`/`enemy_line_aoe`. Shape targeting preserves ally/enemy/all
+    filtering and its Python `unsplashable` policy.
+  - Added NUMERIC_ACCUM splash empowerment and UNIQUE alternate-splash dispatch
+    for `oversplash`, `enemy_oversplash`, `smart_oversplash`, and `Cleave`.
+    Existing blast/equation/shape radii receive the accumulated bonus; otherwise
+    the selected skill supplies its Python-equivalent blast or cleave component.
+  - Split affected-unit resolution from preview geometry so empty tiles remain
+    highlighted, enemy previews hide allied occupants, global previews cover the
+    board, and actual item/AI target expansion still contains live units only.
+  - Added isolated geometry/filter/interaction coverage for line, shape,
+    Oversplash, Cleave, and `unsplashable`. Item coverage advanced to **86/201
+    exact references / 74 hook surfaces** and skill coverage to **41/241 exact
+    references / 64 hook surfaces**; the full serial gate is **75/75 passing**.
 
 - **Steal item/ability/AI parity slice:**
   - Implemented shared `steal` and `gba_steal` legality: STEAL_ATK/STEAL_DEF
@@ -778,6 +795,10 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   one-sided combat playback, hit-gated status/durability, fixed EXP/WEXP, and rank-up UI
 - [x] Implement generic/GBA Steal target and inventory choice, equation/capacity
   restrictions, reversible transfer/records, player ability UI, and value-based AI selection
+- [x] Implement shape/line/cleave AOE geometry plus Oversplash-family and Cleave
+  skill-driven empowerment/replacement, including Python-shaped previews
+- [ ] Extend combat execution from one defender to resolved main+splash defender
+  groups with splash-mode counter/reward/durability semantics
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks
@@ -842,8 +863,8 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement remaining shape/line/cone/cleave/global AOE variants and skill-driven
-   splash empowerment/alternate-splash hooks.
+1. Extend combat execution to resolved main+splash defender groups, including
+   splash-mode strike/counter/reward/durability behavior and map-only presentation.
 2. Implement generic `Feat` selection once the shared persistent growth RNG is ported.
 3. Continue combat component lifecycle parity with event-on-hit, item/skill proc,
    and fully reversible HP/EXP/death result actions.

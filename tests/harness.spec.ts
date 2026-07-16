@@ -1086,6 +1086,103 @@ test.describe('Event command parity', () => {
     expect(result!.ignoredLos).toContain(result!.blockedEnemy);
   });
 
+  test('AOE geometry and alternate splash skills match Python component policies', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const { GameBoard } = await import('/src/objects/game-board.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { splash, splashPositions } = await import('/src/combat/item-system.ts');
+
+      const db = { areAllied: (left: string, right: string) => left === right } as any;
+      const makeUnit = (nid: string, team: string) => ({ nid, team, position: null, skills: [] }) as any;
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const makeSkill = (nid: string, component: [string, any]) => new SkillObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components: [component],
+      });
+      const keys = (positions: [number, number][]) => positions.map(([x, y]) => `${x},${y}`).sort();
+
+      const lineBoard = new GameBoard(9, 9);
+      const lineCaster = makeUnit('line-caster', 'player');
+      const lineAlly = makeUnit('line-ally', 'player');
+      const lineMiddle = makeUnit('line-middle', 'enemy');
+      const lineTarget = makeUnit('line-target', 'enemy');
+      lineBoard.setUnit(2, 4, lineCaster);
+      lineBoard.setUnit(3, 4, lineAlly);
+      lineBoard.setUnit(4, 4, lineMiddle);
+      lineBoard.setUnit(6, 4, lineTarget);
+      const lineItem = makeItem('_EnemyLine', [['enemy_line_aoe', null]]);
+      const lineResult = splash(lineCaster, lineItem, [6, 4], { board: lineBoard, db });
+      const linePreview = splashPositions(lineCaster, lineItem, [6, 4], { board: lineBoard, db });
+
+      const shapeBoard = new GameBoard(9, 9);
+      const shapeCaster = makeUnit('shape-caster', 'player');
+      shapeCaster.skills.push(makeSkill('_Oversplash', ['oversplash', 1]));
+      shapeBoard.setUnit(1, 1, shapeCaster);
+      const shapeItem = makeItem('_Shape', [['shape_blast_aoe', {
+        shape: [[1, 0], [0, 1]], target: 'enemy', range: 2,
+      }]]);
+      const shapePreview = splashPositions(shapeCaster, shapeItem, [4, 4], { board: shapeBoard, db });
+
+      const oversplashBoard = new GameBoard(9, 9);
+      const oversplashCaster = makeUnit('oversplash-caster', 'player');
+      oversplashCaster.skills.push(makeSkill('_EnemyOversplash', ['enemy_oversplash', 2]));
+      const oversplashTarget = makeUnit('oversplash-target', 'enemy');
+      const oversplashEnemy = makeUnit('oversplash-enemy', 'enemy');
+      const oversplashAlly = makeUnit('oversplash-ally', 'player');
+      oversplashBoard.setUnit(2, 4, oversplashCaster);
+      oversplashBoard.setUnit(6, 4, oversplashTarget);
+      oversplashBoard.setUnit(5, 3, oversplashEnemy);
+      oversplashBoard.setUnit(6, 3, oversplashAlly);
+      const plainItem = makeItem('_Plain', [['target_enemy', null]]);
+      const protectedItem = makeItem('_Protected', [['target_enemy', null], ['unsplashable', null]]);
+      const oversplashResult = splash(oversplashCaster, plainItem, [6, 4], { board: oversplashBoard, db });
+      const protectedResult = splash(oversplashCaster, protectedItem, [6, 4], { board: oversplashBoard, db });
+
+      const cleaveBoard = new GameBoard(7, 7);
+      const cleaveCaster = makeUnit('cleave-caster', 'player');
+      cleaveCaster.skills.push(makeSkill('_Cleave', ['Cleave', null]));
+      const cleaveTarget = makeUnit('cleave-target', 'enemy');
+      const cleaveEnemyA = makeUnit('cleave-enemy-a', 'enemy');
+      const cleaveEnemyB = makeUnit('cleave-enemy-b', 'enemy');
+      const cleaveAlly = makeUnit('cleave-ally', 'player');
+      cleaveBoard.setUnit(3, 3, cleaveCaster);
+      cleaveBoard.setUnit(4, 3, cleaveTarget);
+      cleaveBoard.setUnit(3, 2, cleaveEnemyA);
+      cleaveBoard.setUnit(4, 4, cleaveEnemyB);
+      cleaveBoard.setUnit(2, 3, cleaveAlly);
+      const cleaveResult = splash(cleaveCaster, plainItem, [4, 3], { board: cleaveBoard, db });
+
+      return {
+        lineMain: lineResult.mainTarget,
+        lineSplash: keys(lineResult.splash),
+        linePreview: keys(linePreview),
+        shapePreview: keys(shapePreview),
+        oversplashMain: oversplashResult.mainTarget,
+        oversplash: keys(oversplashResult.splash),
+        protectedMain: protectedResult.mainTarget,
+        protectedSplash: keys(protectedResult.splash),
+        cleaveMain: cleaveResult.mainTarget,
+        cleaveSplash: keys(cleaveResult.splash),
+      };
+    });
+
+    expect(result.lineMain).toEqual([6, 4]);
+    expect(result.lineSplash).toEqual(['4,4']);
+    expect(result.linePreview).toEqual(['4,4', '5,4', '6,4']);
+    expect(result.shapePreview).toEqual(['4,5', '4,6', '4,7', '5,4', '6,4', '7,4']);
+    expect(result.oversplashMain).toEqual([6, 4]);
+    expect(result.oversplash).toEqual(['5,3']);
+    expect(result.protectedMain).toEqual([6, 4]);
+    expect(result.protectedSplash).toEqual([]);
+    expect(result.cleaveMain).toEqual([4, 3]);
+    expect(result.cleaveSplash).toEqual(['3,2', '4,4']);
+  });
+
   test('uses_options consumes durability per hit, miss policy, and per-combat policy', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
