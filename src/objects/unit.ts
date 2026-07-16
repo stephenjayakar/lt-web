@@ -300,7 +300,7 @@ export class UnitObject {
     return this.items.filter(
       (item) =>
         !item.isWeapon() &&
-        (item.hasComponent('heal') || item.hasComponent('equation_heal') || item.isStatBooster()) &&
+        item.hasCoreUseEffect() &&
         (!item.maxUses || item.uses > 0),
     );
   }

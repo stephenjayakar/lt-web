@@ -1296,6 +1296,107 @@ test.describe('Event command parity', () => {
     expect(turnwheel.redone).toEqual({ hp: applied.hp, uses: 1, finished: true });
   });
 
+  test('targeted status, restore, and refresh effects undo, redo, and save', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { applyCoreTargetedItem } = await import('/src/engine/states/game-states.ts');
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const caster = game.units.get('Eirika');
+      const target = game.units.get('Seth');
+      const poisonPrefab = game.db.skills.get('Poisoned');
+      if (!caster?.position || !target?.position || !poisonPrefab || !game.db.skills.has('ResistPlus')) return null;
+
+      const prefabs = [
+        {
+          nid: '_UtilityBarrier', name: 'Utility Barrier', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['spell', null], ['target_ally', null], ['status_on_hit', 'ResistPlus'], ['uses', 2], ['min_range', 1], ['max_range', 99]],
+        },
+        {
+          nid: '_UtilityRestore', name: 'Utility Restore', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['spell', null], ['target_ally', null], ['restore', null], ['uses', 2], ['min_range', 1], ['max_range', 99]],
+        },
+        {
+          nid: '_UtilityRefresh', name: 'Utility Refresh', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['spell', null], ['target_ally', null], ['refresh', null], ['uses', 2], ['min_range', 1], ['max_range', 99]],
+        },
+      ] as any[];
+      const items = prefabs.map((prefab) => {
+        game.db.items.set(prefab.nid, prefab);
+        const item = new ItemObject(prefab);
+        item.owner = caster;
+        caster.items.push(item);
+        game.items.set(`_test_${prefab.nid}`, item);
+        return item;
+      });
+      target.skills = target.skills.filter((skill: any) => skill.nid !== 'Poisoned' && skill.nid !== 'ResistPlus');
+      target.skills.push(new SkillObject(poisonPrefab));
+      target.hasAttacked = true;
+      target.hasMoved = true;
+      target.hasTraded = true;
+      target.finished = true;
+      caster.finished = false;
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const validBefore = {
+        restore: game.targetSystem.getValidTargets(caster, items[1]).some((position: any) => position[0] === target.position[0] && position[1] === target.position[1]),
+        refresh: game.targetSystem.getValidTargets(caster, items[2]).some((position: any) => position[0] === target.position[0] && position[1] === target.position[1]),
+      };
+      applyCoreTargetedItem(caster, items[0], target.position);
+      applyCoreTargetedItem(caster, items[1], target.position);
+      applyCoreTargetedItem(caster, items[2], target.position);
+
+      const snapshot = () => ({
+        skills: target.skills.map((skill: any) => skill.nid).filter((nid: string) => nid === 'Poisoned' || nid === 'ResistPlus').sort(),
+        flags: [target.hasAttacked, target.hasMoved, target.hasTraded, target.finished],
+        uses: items.map((item: any) => item.uses),
+        casterFinished: caster.finished,
+      });
+      const applied = snapshot();
+      const actionLog = game.actionLog as any;
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < actionLog.actions.length - 1) actionLog.runActionForward();
+      const redone = snapshot();
+      const validAfter = {
+        restore: game.targetSystem.getValidTargets(caster, items[1]).some((position: any) => position[0] === target.position[0] && position[1] === target.position[1]),
+        refresh: game.targetSystem.getValidTargets(caster, items[2]).some((position: any) => position[0] === target.position[0] && position[1] === target.position[1]),
+      };
+
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 93, 'battle');
+      target.skills = [];
+      target.finished = true;
+      items.forEach((item: any) => item.setUses(0));
+      const loaded = await loadGame(game, 93);
+      const loadedTarget = game.units.get('Seth');
+      const loadedCaster = game.units.get('Eirika');
+      const persisted = {
+        skills: loadedTarget.skills.map((skill: any) => skill.nid).filter((nid: string) => nid === 'Poisoned' || nid === 'ResistPlus').sort(),
+        finished: loadedTarget.finished,
+        uses: prefabs.map((prefab) => loadedCaster.items.find((item: any) => item.nid === prefab.nid)?.uses),
+      };
+      await deleteSave(gameNid, 93);
+      return { validBefore, validAfter, applied, reversed, redone, loaded, persisted };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.validBefore).toEqual({ restore: true, refresh: true });
+    expect(result!.validAfter).toEqual({ restore: false, refresh: false });
+    expect(result!.applied).toEqual({
+      skills: ['ResistPlus'], flags: [false, false, false, false], uses: [1, 1, 1], casterFinished: true,
+    });
+    expect(result!.reversed).toEqual({
+      skills: ['Poisoned'], flags: [true, true, true, true], uses: [2, 2, 2], casterFinished: false,
+    });
+    expect(result!.redone).toEqual(result!.applied);
+    expect(result!.loaded).toBe(true);
+    expect(result!.persisted).toEqual({ skills: ['ResistPlus'], finished: false, uses: [1, 1, 1] });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

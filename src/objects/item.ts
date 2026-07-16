@@ -181,6 +181,15 @@ export class ItemObject {
     return this.isHealing() || this.isStatBooster();
   }
 
+  /** Core targeted effects currently supported by the web item-use lifecycle. */
+  hasCoreUseEffect(): boolean {
+    const deterministicStatus = !this.hasComponent('hit') &&
+      (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
+    return this.hasComponent('heal') || this.hasComponent('equation_heal') ||
+      this.hasComponent('permanent_stat_change') || deterministicStatus || this.hasComponent('restore') ||
+      this.hasComponent('restore_specific') || this.hasComponent('refresh');
+  }
+
   /**
    * Get the healing amount for a healing item.
    * The 'heal' component stores the HP to restore.

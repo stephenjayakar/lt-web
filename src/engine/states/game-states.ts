@@ -62,6 +62,8 @@ import {
   HealAction,
   WaitAction,
   UseItemAction,
+  RemoveSkillAction,
+  RefreshUnitAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -1754,7 +1756,7 @@ export class MenuState extends State {
 // 4b. ItemUseState - Select and use a consumable item
 // ============================================================================
 
-function applyCoreTargetedItem(unit: UnitObject, item: ItemObject, position: [number, number]): boolean {
+export function applyCoreTargetedItem(unit: UnitObject, item: ItemObject, position: [number, number]): boolean {
   const game = getGame();
   if (!game.targetSystem) return false;
   const resolved = game.targetSystem.getTargetFromPosition(unit, item, position);
@@ -1776,6 +1778,49 @@ function applyCoreTargetedItem(unit: UnitObject, item: ItemObject, position: [nu
       const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
       if (target && target.currentHp < target.maxHp) {
         game.actionLog.doAction(new HealAction(target, healAmount));
+        applied = true;
+      }
+    }
+  }
+
+  const statusNids = [
+    item.getComponent<string>('status_on_hit'),
+    item.getComponent<string>('status_after_combat_on_hit'),
+  ].filter((nid): nid is string => !!nid);
+  if (statusNids.length > 0) {
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      if (!target) continue;
+      for (const statusNid of statusNids) {
+        const prefab = game.db.skills.get(statusNid);
+        if (prefab && !target.skills.some((skill: SkillObject) => skill.nid === statusNid)) {
+          game.actionLog.doAction(new AddSkillAction(target, new SkillObject(prefab)));
+          applied = true;
+        }
+      }
+    }
+  }
+
+  if (item.hasComponent('restore') || item.hasComponent('restore_specific')) {
+    const specific = item.getComponent<string>('restore_specific');
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      if (!target) continue;
+      const removable = target.skills.filter((skill: SkillObject) =>
+        specific ? skill.nid === specific : skill.hasComponent('negative'),
+      );
+      for (const skill of removable) {
+        game.actionLog.doAction(new RemoveSkillAction(target, skill));
+        applied = true;
+      }
+    }
+  }
+
+  if (item.hasComponent('refresh')) {
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      if (target?.finished) {
+        game.actionLog.doAction(new RefreshUnitAction(target));
         applied = true;
       }
     }
