@@ -808,6 +808,134 @@ test.describe('Event command parity', () => {
     expect(result!.recursive).toEqual(result!.expectedAllUnits);
   });
 
+  test('item target restrictions cover equations, expressions, empty tiles, and traversability', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Eirika');
+      if (!unit?.position || !game.targetSystem || !game.board || !game.currentLevel) return null;
+
+      const makeItem = (nid: string, components: [string, any][]) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      });
+      const keys = (values: [number, number][]) => values.map(([x, y]) => `${x},${y}`).sort();
+      const maxRange = game.board.width + game.board.height;
+      const [ux, uy] = unit.position;
+
+      const equationItem = makeItem('_EquationRange', [
+        ['target_tile', null], ['min_range', 1], ['max_equation_range', 'MAGIC_RANGE'],
+      ]);
+      const equationMax = Math.max(5, Math.floor(unit.getStatValue('MAG') / 2));
+      const expectedEquation: [number, number][] = [];
+      for (let x = 0; x < game.board.width; x++) {
+        for (let y = 0; y < game.board.height; y++) {
+          const distance = Math.abs(x - ux) + Math.abs(y - uy);
+          if (distance >= 1 && distance <= equationMax) expectedEquation.push([x, y]);
+        }
+      }
+
+      const specialRangeItem = makeItem('_SpecialRange', [
+        ['target_tile', null], ['min_range', 1], ['max_range', 3], ['eval_special_range', 'x == 0'],
+      ]);
+      const expectedSpecial: [number, number][] = [];
+      for (let y = 0; y < game.board.height; y++) {
+        const distance = Math.abs(y - uy);
+        if (distance >= 1 && distance <= 3) expectedSpecial.push([ux, y]);
+      }
+
+      const emptyItem = makeItem('_EmptyTile', [
+        ['target_tile', null], ['min_range', 0], ['max_range', maxRange],
+        ['empty_tile_target_restrict', null],
+      ]);
+      const expectedEmpty: [number, number][] = [];
+      for (let x = 0; x < game.board.width; x++) {
+        for (let y = 0; y < game.board.height; y++) {
+          if (!game.board.getUnit(x, y)) expectedEmpty.push([x, y]);
+        }
+      }
+
+      const traversableItem = makeItem('_TraversableTile', [
+        ['target_tile', null], ['min_range', 0], ['max_range', maxRange],
+        ['traversable_tile_target_restrict', null],
+      ]);
+      const movementGroup = game.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+      const expectedTraversable: [number, number][] = [];
+      for (let x = 0; x < game.board.width; x++) {
+        for (let y = 0; y < game.board.height; y++) {
+          if (game.board.getMovementCost(x, y, movementGroup, game.db) <= unit.getMovement()) {
+            expectedTraversable.push([x, y]);
+          }
+        }
+      }
+
+      const oldLevel = unit.level;
+      const levelItem = makeItem('_LevelRestrict', [
+        ['target_ally', null], ['min_range', 0], ['max_range', maxRange],
+        ['eval_target_restrict_2', 'unit.level >= 10'],
+      ]);
+      unit.level = 9;
+      const lowLevelTargets = game.targetSystem.getValidTargets(unit, levelItem);
+      unit.level = 10;
+      const highLevelTargets = game.targetSystem.getValidTargets(unit, levelItem);
+      unit.level = oldLevel;
+
+      const enemy = game.board.getAllUnits().find((other: any) =>
+        other.position && !game.db.areAllied(unit.team, other.team));
+      const oldTags = enemy ? [...enemy.tags] : [];
+      if (enemy && !enemy.tags.includes('Tile')) enemy.tags.push('Tile');
+      const tagItem = makeItem('_TagRestrict', [
+        ['target_enemy', null], ['min_range', 0], ['max_range', maxRange],
+        ['eval_target_restrict_2', "'Tile' not in target.tags"],
+      ]);
+      const tagTargets = game.targetSystem.getValidTargets(unit, tagItem);
+      if (enemy) enemy.tags = oldTags;
+
+      const visionPosition: [number, number] = [0, 0];
+      const visionRegion = {
+        nid: '_TargetVision', region_type: 'vision', sub_nid: '',
+        position: visionPosition, size: [1, 1], condition: 'True', only_once: false,
+      };
+      game.currentLevel.regions.push(visionRegion);
+      const regionItem = makeItem('_RegionRestrict', [
+        ['target_tile', null], ['min_range', 0], ['max_range', maxRange],
+        ['eval_target_restrict_2', "not game.get_region_under_pos(target_pos, 'vision')"],
+      ]);
+      const regionTargets = game.targetSystem.getValidTargets(unit, regionItem);
+      game.currentLevel.regions.pop();
+
+      return {
+        equation: keys(game.targetSystem.getValidTargets(unit, equationItem)),
+        expectedEquation: keys(expectedEquation),
+        special: keys(game.targetSystem.getValidTargets(unit, specialRangeItem)),
+        expectedSpecial: keys(expectedSpecial),
+        empty: keys(game.targetSystem.getValidTargets(unit, emptyItem)),
+        expectedEmpty: keys(expectedEmpty),
+        traversable: keys(game.targetSystem.getValidTargets(unit, traversableItem)),
+        expectedTraversable: keys(expectedTraversable),
+        lowLevelCount: lowLevelTargets.length,
+        highLevelCount: highLevelTargets.length,
+        taggedEnemyPosition: enemy?.position ? `${enemy.position[0]},${enemy.position[1]}` : null,
+        tagTargets: keys(tagTargets),
+        visionPosition: `${visionPosition[0]},${visionPosition[1]}`,
+        regionTargets: keys(regionTargets),
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.equation).toEqual(result!.expectedEquation);
+    expect(result!.special).toEqual(result!.expectedSpecial);
+    expect(result!.empty).toEqual(result!.expectedEmpty);
+    expect(result!.traversable).toEqual(result!.expectedTraversable);
+    expect(result!.lowLevelCount).toBe(0);
+    expect(result!.highLevelCount).toBeGreaterThan(0);
+    expect(result!.taggedEnemyPosition).not.toBeNull();
+    expect(result!.tagTargets).not.toContain(result!.taggedEnemyPosition);
+    expect(result!.regionTargets).not.toContain(result!.visionPosition);
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

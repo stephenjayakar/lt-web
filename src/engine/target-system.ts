@@ -2,7 +2,13 @@ import type { Database } from '../data/database';
 import type { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
-import { validTargets, type TargetPosition } from '../combat/item-system';
+import { evaluateEquation } from '../combat/combat-calcs';
+import {
+  validTargets,
+  rangeRestrict,
+  targetRestrict,
+  type TargetPosition,
+} from '../combat/item-system';
 
 function positionKey(position: TargetPosition): string {
   return `${position[0]},${position[1]}`;
@@ -15,10 +21,12 @@ function positionKey(position: TargetPosition): string {
 export class TargetSystem {
   private db: Database;
   private board: GameBoard;
+  private game: any;
 
-  constructor(db: Database, board: GameBoard) {
+  constructor(db: Database, board: GameBoard, game?: any) {
     this.db = db;
     this.board = board;
+    this.game = game;
   }
 
   /** Component hook results before range and other positional filtering. */
@@ -35,10 +43,25 @@ export class TargetSystem {
     if (!origin) return [];
 
     const minRange = item.getMinRange();
-    const maxRange = item.getMaxRange();
+    let maxRange = item.hasComponent('global_range') ? 99 : item.getMaxRange();
+    const rangeEquation = item.getComponent<string>('max_equation_range');
+    if (rangeEquation) {
+      const expression = this.db.getEquation(rangeEquation) ?? rangeEquation;
+      maxRange = evaluateEquation(expression, unit, { db: this.db, item });
+    }
+    const relativeRestriction = rangeRestrict(unit, item, maxRange);
     return this.getComponentTargets(unit, item).filter((position) => {
       const distance = Math.abs(position[0] - origin[0]) + Math.abs(position[1] - origin[1]);
-      return distance >= minRange && distance <= maxRange;
+      if (distance < minRange || distance > maxRange) return false;
+      if (relativeRestriction &&
+          !relativeRestriction.has(`${position[0] - origin[0]},${position[1] - origin[1]}`)) {
+        return false;
+      }
+      return targetRestrict(unit, item, position, [], {
+        board: this.board,
+        db: this.db,
+        game: this.game,
+      });
     });
   }
 

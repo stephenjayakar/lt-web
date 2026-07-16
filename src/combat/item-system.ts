@@ -13,6 +13,7 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
+import { evaluateCondition } from '../events/event-manager';
 
 export type TargetPosition = [number, number];
 
@@ -55,6 +56,79 @@ export function validTargets(
   }
 
   return [...targets.values()];
+}
+
+export interface TargetRestrictionContext {
+  board: GameBoard;
+  db: Database;
+  game?: any;
+}
+
+/** Apply every component target restriction (ALL policy). */
+export function targetRestrict(
+  unit: UnitObject,
+  item: ItemObject,
+  defPos: TargetPosition,
+  splash: TargetPosition[],
+  context: TargetRestrictionContext,
+): boolean {
+  if (item.hasComponent('empty_tile_target_restrict') &&
+      context.board.getUnit(defPos[0], defPos[1])) {
+    return false;
+  }
+
+  if (item.hasComponent('traversable_tile_target_restrict')) {
+    const movementGroup = context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+    const movementCost = context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db);
+    if (movementCost > unit.getMovement()) return false;
+  }
+
+  const expression = item.getComponent<string>('eval_target_restrict_2');
+  if (expression) {
+    const positions = [defPos, ...splash];
+    const passes = positions.some((targetPos) => evaluateCondition(expression, {
+      game: context.game,
+      unit1: unit,
+      unit2: context.board.getUnit(targetPos[0], targetPos[1]),
+      position: unit.position ?? undefined,
+      item,
+      gameVars: context.game?.gameVars,
+      levelVars: context.game?.levelVars,
+      localArgs: new Map([['target_pos', targetPos]]),
+    }));
+    if (!passes) return false;
+  }
+
+  return true;
+}
+
+/** Relative positions allowed by eval_special_range, or null when unrestricted. */
+export function rangeRestrict(
+  _unit: UnitObject,
+  item: ItemObject,
+  maxRange: number,
+): Set<string> | null {
+  const expression = item.getComponent<string>('eval_special_range');
+  if (!expression) return null;
+
+  const allowed = new Set<string>();
+  try {
+    const jsExpression = expression
+      .replace(/\bTrue\b/g, 'true')
+      .replace(/\bFalse\b/g, 'false')
+      .replace(/\band\b/g, '&&')
+      .replace(/\bor\b/g, '||')
+      .replace(/\bnot\b/g, '!');
+    const predicate = new Function('x', 'y', `"use strict"; return Boolean(${jsExpression});`);
+    for (let x = -maxRange; x <= maxRange; x++) {
+      for (let y = -maxRange; y <= maxRange; y++) {
+        if (predicate(x, y)) allowed.add(`${x},${y}`);
+      }
+    }
+  } catch (error) {
+    console.warn(`ItemSystem: eval_special_range failed for "${expression}"`, error);
+  }
+  return allowed;
 }
 
 // ============================================================

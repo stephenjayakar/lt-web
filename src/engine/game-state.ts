@@ -475,7 +475,7 @@ export class GameState {
 
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
-    this.targetSystem = new TargetSystem(this.db, this.board);
+    this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
     // c2. Initialize fog of war grids and opacity grid --------------------
@@ -661,7 +661,7 @@ export class GameState {
 
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
-    this.targetSystem = new TargetSystem(this.db, this.board);
+    this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
     // Reinitialize fog of war grids and opacity
