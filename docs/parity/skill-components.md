@@ -94,7 +94,7 @@ Summary: 29/241 referenced in web source; 55/241 expose at least one matching we
 | modify_minimum_range | ModifyMinimumRange | lt-maker/app/engine/skill_components/combat2_components.py:257 | COMBAT2 | modify_minimum_range |  |  |  | unreferenced |
 | eval_max_range | EvalMaximumRange | lt-maker/app/engine/skill_components/combat2_components.py:269 | COMBAT2 | modify_maximum_range, has_dynamic_range |  |  |  | unreferenced |
 | eval_min_range | EvalMinimumRange | lt-maker/app/engine/skill_components/combat2_components.py:288 | COMBAT2 | modify_minimum_range, has_dynamic_range |  |  |  | unreferenced |
-| cannot_double | CannotDouble | lt-maker/app/engine/skill_components/combat2_components.py:307 | COMBAT2 | no_double | noDouble | src/combat/item-system.ts:335 |  | hook-and-reference |
+| cannot_double | CannotDouble | lt-maker/app/engine/skill_components/combat2_components.py:307 | COMBAT2 | no_double | noDouble | src/combat/item-system.ts:366 |  | hook-and-reference |
 | can_double_on_defense | CanDoubleOnDefense | lt-maker/app/engine/skill_components/combat2_components.py:316 | COMBAT2 | def_double | defDouble |  |  | hook-only |
 | vantage | Vantage | lt-maker/app/engine/skill_components/combat2_components.py:324 | COMBAT2 | vantage | vantage | src/combat/skill-system.ts:61 |  | hook-and-reference |
 | desperation | Desperation | lt-maker/app/engine/skill_components/combat2_components.py:333 | COMBAT2 | desperation | desperation | src/combat/skill-system.ts:66 |  | hook-and-reference |
@@ -129,14 +129,14 @@ Summary: 29/241 referenced in web source; 55/241 expose at least one matching we
 | subtle_stat_change | SubtleStatChange | lt-maker/app/engine/skill_components/combat_components.py:53 | COMBAT | stat_change, subtle_stat_change | statChange |  |  | hook-only |
 | growth_change | GrowthChange | lt-maker/app/engine/skill_components/combat_components.py:67 | COMBAT | growth_change | growthChange | src/combat/skill-system.ts:169 |  | hook-and-reference |
 | equation_growth_change | EquationGrowthChange | lt-maker/app/engine/skill_components/combat_components.py:78 | COMBAT | growth_change | growthChange |  |  | hook-only |
-| damage | Damage | lt-maker/app/engine/skill_components/combat_components.py:89 | COMBAT | modify_damage | modifyDamage | src/combat/item-system.ts:272<br>src/engine/records.ts:207<br>src/engine/records.ts:334<br>+2 more |  | hook-and-reference |
+| damage | Damage | lt-maker/app/engine/skill_components/combat_components.py:89 | COMBAT | modify_damage | modifyDamage | src/combat/item-system.ts:303<br>src/engine/records.ts:207<br>src/engine/records.ts:334<br>+2 more | mention | hook-and-reference |
 | eval_damage | EvalDamage | lt-maker/app/engine/skill_components/combat_components.py:100 | COMBAT | modify_damage | modifyDamage |  |  | hook-only |
 | resist | Resist | lt-maker/app/engine/skill_components/combat_components.py:115 | COMBAT | modify_resist | modifyResist |  |  | hook-only |
-| hit | Hit | lt-maker/app/engine/skill_components/combat_components.py:126 | COMBAT | modify_accuracy | modifyAccuracy | src/combat/animation-combat.ts:115<br>src/combat/animation-combat.ts:218<br>src/combat/animation-combat.ts:853<br>+9 more |  | hook-and-reference |
+| hit | Hit | lt-maker/app/engine/skill_components/combat_components.py:126 | COMBAT | modify_accuracy | modifyAccuracy | src/combat/animation-combat.ts:116<br>src/combat/animation-combat.ts:219<br>src/combat/animation-combat.ts:854<br>+9 more | mention | hook-and-reference |
 | eval_hit | EvalHit | lt-maker/app/engine/skill_components/combat_components.py:137 | COMBAT | modify_accuracy | modifyAccuracy |  |  | hook-only |
 | avoid | Avoid | lt-maker/app/engine/skill_components/combat_components.py:152 | COMBAT | modify_avoid, tile_avoid | modifyAvoid | src/combat/terrain-bonuses.ts:25 |  | hook-and-reference |
 | eval_avoid | EvalAvoid | lt-maker/app/engine/skill_components/combat_components.py:166 | COMBAT | modify_avoid | modifyAvoid |  |  | hook-only |
-| crit | Crit | lt-maker/app/engine/skill_components/combat_components.py:181 | COMBAT | modify_crit_accuracy | modifyCritAccuracy | src/combat/animation-combat.ts:115<br>src/combat/animation-combat.ts:218<br>src/combat/animation-combat.ts:884<br>+9 more |  | hook-and-reference |
+| crit | Crit | lt-maker/app/engine/skill_components/combat_components.py:181 | COMBAT | modify_crit_accuracy | modifyCritAccuracy | src/combat/animation-combat.ts:116<br>src/combat/animation-combat.ts:219<br>src/combat/animation-combat.ts:885<br>+9 more |  | hook-and-reference |
 | eval_crit | EvalCrit | lt-maker/app/engine/skill_components/combat_components.py:192 | COMBAT | modify_crit_accuracy | modifyCritAccuracy |  |  | hook-only |
 | crit_avoid | CritAvoid | lt-maker/app/engine/skill_components/combat_components.py:207 | COMBAT | modify_crit_avoid | modifyCritAvoid |  |  | hook-only |
 | attack_speed | AttackSpeed | lt-maker/app/engine/skill_components/combat_components.py:218 | COMBAT | modify_attack_speed | modifyAttackSpeed |  |  | hook-only |

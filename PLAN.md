@@ -48,11 +48,11 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 204 recognized; 194 matching case labels | Partial |
-| Item component NIDs | 201 | 62 exact string references; 67 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 64 exact string references; 68 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 29 exact string references; 55 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 40 web states | Partial |
-| TypeScript runtime | n/a | 89 files, 48,667 lines | Builds |
-| Browser regression suite | n/a | 65 Playwright tests | 65/65 passing |
+| TypeScript runtime | n/a | 89 files, 48,700 lines | Builds |
+| Browser regression suite | n/a | 66 Playwright tests | 66/66 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Per-strike durability and `uses_options` slice:**
+  - Replaced unconditional once-per-combat weapon durability loss with Python's
+    hit lifecycle: one use per successful strike by default, optional loss on
+    misses, and optional collapse to one qualifying loss for the whole combat.
+  - Applied the shared policy to map and full animation combat for both attacker
+    and defender, including brave/multi-strike and scripted combat sequences.
+    `no_break_out_of_uses` items now become unusable at zero without being removed.
+  - Added deterministic mixed-hit/miss, miss-only, one-loss, direct combat
+    integration, and persistent-broken-item fixtures. Item coverage advanced to
+    **64/201 exact references** and **68/201 matching hook surfaces**; full
+    harness result: **66/66 passing**.
 
 - **Fog, LOS, splash, and target-count slice:**
   - Completed the Python target-resolution order in `TargetSystem`: range and
@@ -653,6 +665,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   `target_enemy`, `target_ally`), range intersection, and recursive child discovery
 - [x] Implement equation/special ranges and expression/empty/traversable target restrictions
 - [x] Implement targeting fog/LOS, target counts, and bundled-project AOE components
+- [x] Implement `uses_options` per-hit/miss/per-combat durability semantics in both combat modes
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement aura propagation and cleanup
 - [ ] Implement charge/cooldown, conditional activation, proc, pair-up, and status hooks

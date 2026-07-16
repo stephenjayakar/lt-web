@@ -468,11 +468,11 @@ The event system supports both semicolon-delimited (EVNT) and Python-syntax
 |------|------:|---------|
 | `combat-calcs.ts` | ~722 | Hit, damage, crit, avoid, weapon triangle, component dispatch |
 | `combat-solver.ts` | ~409 | Strike sequencing, vantage/desperation/miracle |
-| `animation-combat.ts` | ~1078 | GBA-style animation combat state machine |
+| `animation-combat.ts` | ~1290 | GBA-style animation combat state machine and shared per-strike durability lifecycle |
 | `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
-| `map-combat.ts` | ~555 | Map-mode combat (no animations) |
+| `map-combat.ts` | ~580 | Map-mode combat (no animations), including per-strike durability lifecycle |
 | `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~510 | Item dispatch, valid-target/range/restriction hooks, target policies, bundled-project AOE behavior |
+| `item-system.ts` | ~545 | Item dispatch, targeting/AOE policies, and uses-options durability resolution |
 | `skill-system.ts` | ~398 | Skill component dispatch |
 
 ### Events (`src/events/`)

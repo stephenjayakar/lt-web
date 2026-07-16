@@ -14,6 +14,7 @@ import type { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateCondition } from '../events/event-manager';
+import type { CombatStrike } from './combat-solver';
 
 export type TargetPosition = [number, number];
 
@@ -189,6 +190,36 @@ export function allowTargetInFogOfWar(_unit: UnitObject, item: ItemObject): bool
 
 export function ignoreFogOfWar(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('ignore_fog_of_war');
+}
+
+function usesOption(item: ItemObject, key: 'lose_uses_on_miss' | 'one_loss_per_combat'): boolean {
+  const value = item.getComponent<any>('uses_options');
+  if (value && !Array.isArray(value) && typeof value === 'object') return !!value[key];
+  if (Array.isArray(value)) {
+    const entry = value.find((candidate: any) => Array.isArray(candidate) && candidate[0] === key);
+    return entry ? entry[1] === true || entry[1] === 'T' : false;
+  }
+  return false;
+}
+
+export function loseUsesOnMiss(_unit: UnitObject, item: ItemObject): boolean {
+  return usesOption(item, 'lose_uses_on_miss');
+}
+
+export function oneLossPerCombat(_unit: UnitObject, item: ItemObject): boolean {
+  return usesOption(item, 'one_loss_per_combat');
+}
+
+/** Number of durability points consumed by one side's resolved strikes. */
+export function usesConsumedByStrikes(
+  unit: UnitObject,
+  item: ItemObject,
+  strikes: CombatStrike[],
+): number {
+  const ownStrikes = strikes.filter((strike) => strike.attacker === unit && strike.item === item);
+  const qualifying = ownStrikes.filter((strike) => strike.hit || loseUsesOnMiss(unit, item));
+  if (oneLossPerCombat(unit, item)) return qualifying.length > 0 ? 1 : 0;
+  return qualifying.length;
 }
 
 /** Apply every component target restriction (ALL policy). */
