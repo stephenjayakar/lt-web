@@ -1086,6 +1086,99 @@ test.describe('Event command parity', () => {
     expect(result!.ignoredLos).toContain(result!.blockedEnemy);
   });
 
+  test('uses_options consumes durability per hit, miss policy, and per-combat policy', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { usesConsumedByStrikes } = await import('/src/combat/item-system.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const attacker = game.units.get('Eirika');
+      const defender = game.board.getAllUnits().find((unit: any) =>
+        unit.position && !game.db.areAllied(attacker.team, unit.team));
+      if (!attacker || !defender) return null;
+
+      const makeItem = (nid: string, options: any, extra: [string, any][] = []) => new ItemObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['weapon', null], ['target_enemy', null], ['damage', 0], ['hit', 100],
+          ['uses', 10], ['uses_options', options], ['min_range', 1], ['max_range', 1],
+          ...extra,
+        ],
+      });
+      const defaultItem = makeItem('_UsesDefault', {
+        lose_uses_on_miss: false, one_loss_per_combat: false,
+      });
+      const loseOnMissItem = makeItem('_UsesMiss', {
+        lose_uses_on_miss: true, one_loss_per_combat: false,
+      });
+      const oneLossItem = makeItem('_UsesOnce', {
+        lose_uses_on_miss: false, one_loss_per_combat: true,
+      });
+      const oneLossMissItem = makeItem('_UsesOnceMiss', {
+        lose_uses_on_miss: true, one_loss_per_combat: true,
+      });
+      const strike = (item: any, hit: boolean) => ({
+        attacker, defender, item, hit, crit: false, damage: 0, isCounter: false,
+      });
+      const mixed = (item: any) => [strike(item, true), strike(item, true), strike(item, false)];
+
+      const integrationItem = makeItem('_UsesIntegration', {
+        lose_uses_on_miss: false, one_loss_per_combat: false,
+      });
+      integrationItem.setUses(3);
+      integrationItem.maxUses = 3;
+      attacker.items.push(integrationItem);
+      const combat = new MapCombat(
+        attacker, integrationItem, defender, null, game.db, 'classic', game.board,
+        ['hit1', 'hit1', 'miss1'],
+      );
+      combat.applyResults();
+      const integrationUses = integrationItem.uses;
+      attacker.items.splice(attacker.items.indexOf(integrationItem), 1);
+
+      const persistentBrokenItem = makeItem('_NoBreakUses', {
+        lose_uses_on_miss: false, one_loss_per_combat: false,
+      }, [['no_break_out_of_uses', true]]);
+      persistentBrokenItem.setUses(1);
+      persistentBrokenItem.maxUses = 1;
+      attacker.items.push(persistentBrokenItem);
+      const brokenCombat = new MapCombat(
+        attacker, persistentBrokenItem, defender, null, game.db, 'classic', game.board,
+        ['hit1'],
+      );
+      const brokenResults = brokenCombat.applyResults();
+      const remainedAfterBreak = attacker.items.includes(persistentBrokenItem);
+      attacker.items.splice(attacker.items.indexOf(persistentBrokenItem), 1);
+
+      return {
+        defaultMixed: usesConsumedByStrikes(attacker, defaultItem, mixed(defaultItem)),
+        loseOnMissMixed: usesConsumedByStrikes(attacker, loseOnMissItem, mixed(loseOnMissItem)),
+        oneLossMixed: usesConsumedByStrikes(attacker, oneLossItem, mixed(oneLossItem)),
+        oneLossMissOnly: usesConsumedByStrikes(attacker, oneLossItem, [strike(oneLossItem, false)]),
+        oneLossWithMiss: usesConsumedByStrikes(attacker, oneLossMissItem, [strike(oneLossMissItem, false)]),
+        integrationUses,
+        persistentUses: persistentBrokenItem.uses,
+        remainedAfterBreak,
+        reportedBroken: brokenResults.attackWeaponBroke,
+      };
+    });
+
+    expect(result).toEqual({
+      defaultMixed: 2,
+      loseOnMissMixed: 3,
+      oneLossMixed: 1,
+      oneLossMissOnly: 0,
+      oneLossWithMiss: 1,
+      integrationUses: 1,
+      persistentUses: 0,
+      remainedAfterBreak: true,
+      reportedBroken: true,
+    });
+  });
+
   test('autolevel_to matches LT fixed growths, hidden mode, triggers, and learned skills', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

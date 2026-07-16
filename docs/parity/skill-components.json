@@ -1949,7 +1949,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 335
+          "line": 366
         }
       ],
       "matchingWebHooks": [
@@ -2735,7 +2735,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 272
+          "line": 303
         },
         {
           "source": "src/engine/records.ts",
@@ -2757,7 +2757,7 @@
       "matchingWebHooks": [
         "modifyDamage"
       ],
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "hook-and-reference"
     },
     {
@@ -2822,19 +2822,19 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 115
+          "line": 116
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 218
+          "line": 219
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 853
+          "line": 854
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 277
+          "line": 308
         },
         {
           "source": "src/engine/records.ts",
@@ -2872,7 +2872,7 @@
       "matchingWebHooks": [
         "modifyAccuracy"
       ],
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "hook-and-reference"
     },
     {
@@ -2966,15 +2966,15 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 115
+          "line": 116
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 218
+          "line": 219
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 884
+          "line": 885
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -2986,7 +2986,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 282
+          "line": 313
         },
         {
           "source": "src/engine/records.ts",

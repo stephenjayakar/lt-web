@@ -4,6 +4,7 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
+import { usesConsumedByStrikes } from './item-system';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -210,16 +211,8 @@ export class MapCombat {
     // Walk through all strikes and apply HP changes to actual units
     let atkHp = this.attackerStartHp;
     let defHp = this.defenderStartHp;
-    let attackerStrikeCount = 0;
-    let defenderStrikeCount = 0;
 
     for (const strike of this.strikes) {
-      if (strike.attacker === this.attacker) {
-        attackerStrikeCount++;
-      } else {
-        defenderStrikeCount++;
-      }
-
       if (!strike.hit) continue;
 
       if (strike.attacker === this.attacker) {
@@ -251,18 +244,25 @@ export class MapCombat {
     let attackWeaponBroke = false;
     let defenseWeaponBroke = false;
 
-    if (attackerStrikeCount > 0 && this.attackItem.maxUses > 0) {
-      // Decrement once per combat (not per strike) to match LT behavior
-      attackWeaponBroke = this.attackItem.decrementUses();
-      if (attackWeaponBroke) {
+    const attackerUses = usesConsumedByStrikes(this.attacker, this.attackItem, this.strikes);
+    if (attackerUses > 0 && this.attackItem.maxUses > 0) {
+      for (let i = 0; i < attackerUses && this.attackItem.uses > 0; i++) {
+        attackWeaponBroke = this.attackItem.decrementUses() || attackWeaponBroke;
+      }
+      if (attackWeaponBroke && !this.attackItem.hasComponent('no_break_out_of_uses')) {
         const idx = this.attacker.items.indexOf(this.attackItem);
         if (idx !== -1) this.attacker.items.splice(idx, 1);
       }
     }
 
-    if (defenderStrikeCount > 0 && this.defenseItem && this.defenseItem.maxUses > 0) {
-      defenseWeaponBroke = this.defenseItem.decrementUses();
-      if (defenseWeaponBroke) {
+    const defenderUses = this.defenseItem
+      ? usesConsumedByStrikes(this.defender, this.defenseItem, this.strikes)
+      : 0;
+    if (defenderUses > 0 && this.defenseItem && this.defenseItem.maxUses > 0) {
+      for (let i = 0; i < defenderUses && this.defenseItem.uses > 0; i++) {
+        defenseWeaponBroke = this.defenseItem.decrementUses() || defenseWeaponBroke;
+      }
+      if (defenseWeaponBroke && !this.defenseItem.hasComponent('no_break_out_of_uses')) {
         const idx = this.defender.items.indexOf(this.defenseItem);
         if (idx !== -1) this.defender.items.splice(idx, 1);
       }
