@@ -92,11 +92,26 @@ export class UnitObject {
   finished: boolean;
   dead: boolean;
 
-  // -- Rescue state -------------------------------------------------------
-  /** The unit currently being carried by this unit, or null. */
+  // -- Rescue / pair-up state --------------------------------------------
+  /** The unit currently being carried or guarded by this unit, if any. */
   rescuing: UnitObject | null;
-  /** The unit currently carrying this unit, or null. */
+  /** The unit currently carrying or leading this unit, if any. */
   rescuedBy: UnitObject | null;
+  /** Python-faithful shared traveler reference; kept in sync by actions/save. */
+  traveler: NID | null;
+  /** Whether this unit is the lead unit in a pair-up stance. */
+  leadUnit: boolean;
+  /** Guard gauge accumulated by this unit. */
+  currentGuardGauge: number;
+  /** Whether guard was built during the current guard period. */
+  builtGuard: boolean;
+  /** Rescue/drop action flags for the current phase. */
+  hasRescued: boolean;
+  hasDropped: boolean;
+  hasTaken: boolean;
+  hasGiven: boolean;
+  /** Combat-only partner reference. */
+  strikePartner: UnitObject | null;
 
   // -- Canto / post-combat movement ---------------------------------------
   /** Whether this unit has Canto (can move after attacking). */
@@ -190,10 +205,36 @@ export class UnitObject {
     this.dead = false;
     this.rescuing = null;
     this.rescuedBy = null;
+    this.traveler = null;
+    this.leadUnit = false;
+    this.currentGuardGauge = 10;
+    this.builtGuard = false;
+    this.hasRescued = false;
+    this.hasDropped = false;
+    this.hasTaken = false;
+    this.hasGiven = false;
+    this.strikePartner = null;
     this.hasCanto = false;
     this.party = '';
     this.persistent = true;
     this.statusEffects = [];
+  }
+
+  /** Current guard gauge, defaulting to Python's standard initial value. */
+  getGuardGauge(): number {
+    return this.currentGuardGauge ?? 10;
+  }
+
+  setGuardGauge(value: number, maxGauge: number = 10): void {
+    this.currentGuardGauge = Math.max(0, Math.min(value, maxGauge));
+  }
+
+  /** Resolve MAX_GUARD when a database is available; otherwise use 10. */
+  getMaxGuardGauge(db?: { getEquation?: (nid: string) => string | undefined }): number {
+    const equation = db?.getEquation?.('MAX_GUARD');
+    if (!equation) return 10;
+    const match = equation.match(/^\s*(\d+)\s*$/);
+    return match ? Math.max(0, Number(match[1])) : 10;
   }
 
   // ------------------------------------------------------------------
@@ -462,5 +503,9 @@ export class UnitObject {
     this.hasMoved = false;
     this.hasTraded = false;
     this.finished = false;
+    this.hasRescued = false;
+    this.hasDropped = false;
+    this.hasTaken = false;
+    this.hasGiven = false;
   }
 }

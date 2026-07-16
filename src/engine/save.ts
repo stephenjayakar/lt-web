@@ -71,6 +71,17 @@ export interface UnitSaveData {
   statusEffects: StatusEffect[];
   rescuingNid: string | null;
   rescuedByNid: string | null;
+  /** Optional Python-faithful pair-up/rescue state fields. */
+  travelerNid?: string | null;
+  leadUnit?: boolean;
+  currentGuardGauge?: number;
+  builtGuard?: boolean;
+  hasRescued?: boolean;
+  hasDropped?: boolean;
+  hasTaken?: boolean;
+  hasGiven?: boolean;
+  /** Per-unit skill instance data preserves source identity and duplicates. */
+  skillInstances?: { nid: string; data: [string, any][] }[];
 }
 
 export interface ItemSaveData {
@@ -341,8 +352,6 @@ function localStorageKeys(): string[] {
   }
   return keys;
 }
-
-// ============================================================================
 // Serialization Functions
 // ============================================================================
 
@@ -350,9 +359,11 @@ function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string
   const itemKeys = unit.items
     .map((item) => itemKeyByObject.get(item))
     .filter((key): key is string => !!key);
-
-  // Collect skill NIDs
   const skillNids: string[] = unit.skills.map(s => s.nid);
+  const skillInstances = unit.skills.map(skill => ({
+    nid: skill.nid,
+    data: Array.from(skill.data.entries()),
+  }));
 
   return {
     nid: unit.nid,
@@ -396,6 +407,15 @@ function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string
     statusEffects: unit.statusEffects.map(se => ({ ...se })),
     rescuingNid: unit.rescuing ? unit.rescuing.nid : null,
     rescuedByNid: unit.rescuedBy ? unit.rescuedBy.nid : null,
+    travelerNid: unit.traveler,
+    leadUnit: unit.leadUnit,
+    currentGuardGauge: unit.getGuardGauge(),
+    builtGuard: unit.builtGuard,
+    hasRescued: unit.hasRescued,
+    hasDropped: unit.hasDropped,
+    hasTaken: unit.hasTaken,
+    hasGiven: unit.hasGiven,
+    skillInstances,
   };
 }
 
@@ -935,6 +955,14 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.party = unitData.party;
       unit.persistent = unitData.persistent;
       unit.statusEffects = unitData.statusEffects.map(se => ({ ...se }));
+      unit.traveler = unitData.travelerNid ?? null;
+      unit.leadUnit = unitData.leadUnit ?? false;
+      unit.currentGuardGauge = unitData.currentGuardGauge ?? 10;
+      unit.builtGuard = unitData.builtGuard ?? false;
+      unit.hasRescued = unitData.hasRescued ?? false;
+      unit.hasDropped = unitData.hasDropped ?? false;
+      unit.hasTaken = unitData.hasTaken ?? false;
+      unit.hasGiven = unitData.hasGiven ?? false;
 
       // Restore items onto the unit
       unit.items = [];
@@ -948,33 +976,24 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
         }
       }
 
-      // Restore skills
+      // Restore skills without invoking pair-up hooks or deriving extras.
       unit.skills = [];
-      for (const skillNid of unitData.skills) {
+      const skillEntries = unitData.skillInstances ?? unitData.skills.map(nid => ({ nid, data: undefined }));
+      for (const skillEntry of skillEntries) {
+        const skillNid = skillEntry.nid;
         try {
-          // Try DB prefab first
           const dbSkillPrefab: SkillPrefab | undefined = game.db?.skills?.get?.(skillNid);
           const savedSkillData = skillsByNid.get(skillNid);
-
+          const instanceData = skillEntry.data;
           if (dbSkillPrefab) {
             const skill = new SkillCtor(dbSkillPrefab);
-
-            // Override component values from save if available
             if (savedSkillData) {
               (skill as any).components = new Map<string, any>();
-              for (const [k, v] of savedSkillData.components) {
-                skill.components.set(k, v);
-              }
-              // Restore skill data
-              (skill as any).data = new Map<string, any>();
-              for (const [k, v] of savedSkillData.data) {
-                skill.data.set(k, v);
-              }
+              for (const [k, v] of savedSkillData.components) skill.components.set(k, v);
             }
-
+            (skill as any).data = new Map<string, any>(instanceData ?? savedSkillData?.data ?? []);
             unit.skills.push(skill);
           } else if (savedSkillData) {
-            // No DB prefab; construct from save data
             const syntheticSkillPrefab: SkillPrefab = {
               nid: savedSkillData.nid,
               name: savedSkillData.name,
@@ -984,11 +1003,7 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
               components: savedSkillData.components,
             };
             const skill = new SkillCtor(syntheticSkillPrefab);
-            // Restore data
-            (skill as any).data = new Map<string, any>();
-            for (const [k, v] of savedSkillData.data) {
-              skill.data.set(k, v);
-            }
+            (skill as any).data = new Map<string, any>(instanceData ?? savedSkillData.data);
             unit.skills.push(skill);
           } else {
             console.warn(`Unit "${unitData.nid}": skill "${skillNid}" not found in DB or save`);
@@ -1006,16 +1021,15 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   }
 
   // 7b. Resolve rescue references (needs all units to be created first)
+  // 7b. Resolve rescue/pair references after every unit exists. No lifecycle
+  // hooks run here; saved skills are already the authoritative runtime list.
   for (const unitData of s.units) {
     const unit = unitsByNid.get(unitData.nid);
     if (!unit) continue;
-
-    if (unitData.rescuingNid) {
-      unit.rescuing = unitsByNid.get(unitData.rescuingNid) ?? null;
-    }
-    if (unitData.rescuedByNid) {
-      unit.rescuedBy = unitsByNid.get(unitData.rescuedByNid) ?? null;
-    }
+    const rescuingNid = unitData.rescuingNid ?? (unitData.leadUnit ? unitData.travelerNid : null);
+    const rescuedByNid = unitData.rescuedByNid ?? (!unitData.leadUnit ? unitData.travelerNid : null);
+    if (rescuingNid) unit.rescuing = unitsByNid.get(rescuingNid) ?? null;
+    if (rescuedByNid) unit.rescuedBy = unitsByNid.get(rescuedByNid) ?? null;
   }
 
   // 8. Restore parties
