@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 206,
-    "dispatcherPythonNids": 196,
+    "parserRecognizedPythonNids": 210,
+    "dispatcherPythonNids": 200,
     "itemReferencedComponentNids": 110,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 69,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 184,
+      "dispatched-unverified": 188,
       "missing-dispatch": 10,
-      "missing-parser": 49,
+      "missing-parser": 45,
       "stub-hint": 12
     }
   },
@@ -1068,7 +1068,7 @@
       "nicknameRecognized": true,
       "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "dispatched-unverified"
     },
     {
@@ -5168,12 +5168,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3545
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "soundroom",
@@ -5905,12 +5905,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3852
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "update_achievement",
@@ -5931,12 +5931,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3859
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "complete_achievement",
@@ -5960,7 +5960,7 @@
       "nicknameRecognized": null,
       "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "dispatched-unverified"
     },
     {
@@ -5976,12 +5976,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3921
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
-      "status": "missing-parser"
+      "lexicalTestMention": true,
+      "status": "dispatched-unverified"
     },
     {
       "nid": "create_record",

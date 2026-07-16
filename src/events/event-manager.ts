@@ -124,7 +124,8 @@ export type EventCommandType =
   // Persistent records & achievements
   | 'create_record' | 'update_record' | 'replace_record' | 'delete_record'
   | 'unlock_difficulty' | 'unlock_song'
-  | 'add_achievement' | 'complete_achievement'
+  | 'create_achievement' | 'update_achievement' | 'complete_achievement' | 'clear_achievements'
+  | 'open_achievements'
   // Save/load
   | 'battle_save_prompt' | 'suspend'
   // Short aliases
@@ -217,7 +218,8 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   // Persistent records & achievements
   'create_record', 'update_record', 'replace_record', 'delete_record',
   'unlock_difficulty', 'unlock_song',
-  'add_achievement', 'complete_achievement',
+  'create_achievement', 'update_achievement', 'complete_achievement', 'clear_achievements',
+  'open_achievements',
   // Save/load
   'battle_save', 'battle_save_prompt', 'skip_save', 'suspend',
   // Roam mode
@@ -269,6 +271,8 @@ const COMMAND_ALIASES: Record<string, string> = {
   'unlock_lore': 'add_lore',
   'rescue': 'pair_up',
   'drop': 'separate',
+  // Pre-parity web builds exposed this non-Python name.
+  'add_achievement': 'create_achievement',
   // Legacy names from our old code
   'set_game_var': 'game_var',
   'change_objective': 'change_objective_simple',

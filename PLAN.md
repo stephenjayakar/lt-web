@@ -47,12 +47,12 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
-| Event command NIDs | 255 | 206 recognized; 196 matching case labels | Partial |
+| Event command NIDs | 255 | 210 recognized; 200 matching case labels | Partial |
 | Item component NIDs | 201 | 110 exact string references; 92 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 69 exact string references; 67 with matching hook surfaces | Partial/Unknown |
-| Registered runtime states | broad Python state catalog | 41 web states | Partial |
-| TypeScript runtime | n/a | 95 files, 52,476 lines | Builds |
-| Browser regression suite | n/a | 89 Playwright tests | 89/89 passing |
+| Registered runtime states | broad Python state catalog | 43 web states | Partial |
+| TypeScript runtime | n/a | 95 files, 52,860 lines | Builds |
+| Browser regression suite | n/a | 92 Playwright tests | 92/92 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,34 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Persistent achievement commands and browser parity slice:**
+  - Audited Python achievement commands, manager persistence, Boolean validators,
+    query semantics, banner timing, and the bundled testing-project usage. Achievement
+    mutations are intentionally project-global/localStorage state and remain outside
+    turnwheel history, matching Python's immediate persistent manager writes.
+  - Replaced the legacy-only `add_achievement` surface with canonical
+    `create_achievement`, retaining `add_achievement` as a compatibility alias. Added
+    `update_achievement`, `clear_achievements`, and `open_achievements`, required-argument
+    guards, flag-presence behavior, all ten Python Bool spellings, duplicate/missing
+    no-ops, update-to-visible semantics, and completion-to-false support.
+  - Fixed `has_achievement` to query the initialized persistent manager and require
+    completion rather than consulting unrelated game variables or mere membership.
+    Successful `complete_achievement;...;banner` now plays the Item sound and blocks on
+    a two-second notification; skip and false-completion paths remain non-blocking.
+  - Added the reachable Base `Codex` submenu and `base_achievement` state with panorama
+    loading, completion count/progress, Python-shaped `Hidden - Locked`/`???` redaction,
+    responsive scrollable keyboard/mouse navigation, descriptions, and event resume on
+    Back. Its background assignment uses a reversible `SetGameVarAction`.
+  - A ChatGPT-backed OMP Luna medium review identified and drove fixes for base-flow
+    reachability, short-landscape overflow, stale asynchronous panorama results, hidden
+    display wording, and test coverage through the real ActionLog turnwheel path.
+  - Added regressions covering bundled syntax, persistence across page reload, queries,
+    banner blocking, non-turnwheel mutation scope, clear persistence, hidden UI, scrolling,
+    event pause/resume, base/Codex reachability, background undo/redo, a real loaded
+    panorama, DPR 2, and short-landscape layout. Inventory advanced to **210/255
+    recognized commands / 200 case labels**, **43 registered states**, and **52,860
+    TypeScript lines**; the full serial gate is **92/92 passing**.
 
 - **Pair-up, Rescue fallback, and separation parity slice:**
   - Used an OMP Luna medium research audit against the Python runtime and bundled
@@ -887,7 +915,9 @@ passes; record newly discovered work here immediately.
   item movement, dialog variants, special music, save deletion, and others)
 - [x] Implement project-used `pair_up`/`rescue` and `separate`/`drop` commands with
   Pair Up versus classic Rescue fallback semantics
-- [ ] Implement the 49 Python commands still absent from the parser, prioritized by
+- [x] Implement project-used achievement create/update plus complete/clear/open flows,
+  including flags, persistence, banner blocking, query semantics, and browser UI
+- [ ] Implement the 45 Python commands still absent from the parser, prioritized by
   project usage: unit/item mutation, party transfer, scripts, overlays, and UI
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
@@ -909,6 +939,8 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
   inventory/convoy, class change, support, fog, initiative, and event mutations
 - [x] Round-trip and rewind Rescue/Pair Up relationships, roles, guard gauges,
   sourced skills, follower flags, separation placement, and legacy save defaults
+- [x] Verify project-global achievement persistence across reload, deliberate exclusion
+  from turnwheel, and reversible `open_achievements` background state
 
 **Gate:** save round trips are lossless for in-scope state and every logged mutation
 returns to byte-equivalent state after reverse/redo where the Python action does.
@@ -985,6 +1017,8 @@ item-use fixture matrices match Python outputs and side effects.
 - [ ] Implement difficulty/mode selection and complete title Extras flows
 - [ ] Complete base submenus: supports, codex/library/guide, BEXP, records,
   achievements, sound room, and unit management
+- [x] Implement the persistent achievement browser with hidden-entry display,
+  completion progress, navigation, and event pause/resume
 - [ ] Complete roam talk/shop interaction and overworld option menus
 - [x] Switch Rescue/Drop menus and targeting states to Pair Up/Separate when enabled
 - [ ] Add initiative bar, rescue/status icons, movement arrows, growth/support/WEXP info
@@ -1022,10 +1056,9 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Implement the project-used achievement create/update commands from the bundled
-   testing project, with persistent records and behavioral coverage.
+1. Complete the remaining pair-up surface (`Switch`, `Transfer`, attack stance) with
+   player menus, actions, guard gauges, and deterministic tests.
 2. Port the next high-usage unresolved item target/use/end-combat hook cluster from
    the generated component manifest and add interaction fixtures.
-3. Complete the remaining pair-up surface (`Switch`, `Transfer`, attack stance), then
-   extend skill lifecycles through upkeep/endstep, combat arts, post-strike/status
-   hooks, and proc icon presentation.
+3. Implement the next project-used missing event command cluster after a fresh usage
+   scan, preserving flags, blocking behavior, persistence, and UI reachability.
