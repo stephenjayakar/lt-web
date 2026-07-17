@@ -684,6 +684,14 @@ export function targetRestrict(
     if (!defender || !defender.items.some(isRepairableItem)) return false;
   }
 
+  if (item.hasComponent('permanent_stat_change')) {
+    const changes = item.getNumericComponentMap('permanent_stat_change');
+    const canApply = affectedUnits.some((target) => Object.entries(changes).some(([stat, amount]) =>
+      amount <= 0 || target.getStatValue(stat) < target.getStatCap(stat),
+    ));
+    if (!canApply) return false;
+  }
+
   if (item.hasComponent('unlock_staff')) {
     const validRegion = (context.game?.currentLevel?.regions ?? []).some((region: any) =>
       region.region_type === 'event' &&

@@ -4376,6 +4376,140 @@ test.describe('Event command parity', () => {
     expect(result.persisted).toEqual({ casterHasGem: true, targetHasGem: false, records: 1 });
   });
 
+  test('permanent booster Dict components apply caps, HP, growths, WEXP, saves, and turnwheel', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { ItemUseState, MenuState } = await import('/src/engine/states/game-states.ts');
+      const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
+      const unit = game.units.get('Eirika');
+      const prefab = game.db.items.get('Angelic_Robe');
+      const growthPrefab = game.db.items.get('Metis_s_Tome');
+      if (!unit?.position || !prefab || !growthPrefab) return null;
+
+      const item = new ItemObject(prefab);
+      const unitPosition = [...unit.position] as [number, number];
+      const metis = new ItemObject(growthPrefab);
+      item.components.set(
+        'permanent_growth_change',
+        metis.getComponent('permanent_growth_change'),
+      );
+      item.components.set('permanent_statcap_change', [['LCK', 2]]);
+      const weaponType = Object.keys(unit.wexp)[0] ?? 'Sword';
+      item.components.set('wexp_change', [[weaponType, 4]]);
+      item.owner = unit;
+      unit.items = [item];
+      unit.finished = false;
+      unit.hasAttacked = false;
+
+      const hpCap = unit.getStatCap('HP');
+      unit.stats.HP = hpCap;
+      unit.currentHp = Math.max(1, hpCap - 10);
+      const blockedAtCap = game.targetSystem.getValidTargetsRecursive(unit, item).length;
+      game.selectedUnit = unit;
+      const cappedMenuState = new MenuState();
+      cappedMenuState.begin();
+      const cappedMenu = (cappedMenuState as any).menu.options.map((option: any) => option.label);
+      unit.stats.HP = hpCap - 3;
+      unit.currentHp = Math.max(1, unit.stats.HP - 10);
+      unit.wexp[weaponType] = 1;
+      const beforeActionIndex = game.actionLog.actionIndex;
+      const before = {
+        stats: { HP: unit.stats.HP },
+        hp: unit.currentHp,
+        growth: unit.growths.SPD ?? 0,
+        cap: unit.statCapModifiers.LCK ?? 0,
+        wexp: unit.wexp[weaponType] ?? 0,
+        uses: item.uses,
+        inventory: unit.items.map((candidate: any) => candidate.nid),
+        finished: unit.finished,
+      };
+      const normalized = item.getStatChanges();
+      const normalizedGrowths = metis.getNumericComponentMap('permanent_growth_change');
+      const validTargets = game.targetSystem.getValidTargetsRecursive(unit, item);
+      const availableMenuState = new MenuState();
+      availableMenuState.begin();
+      const availableMenu = (availableMenuState as any).menu.options.map((option: any) => option.label);
+
+      const state = new ItemUseState();
+      state.begin();
+      state.takeInput('SELECT');
+      const afterActionIndex = game.actionLog.actionIndex;
+      const snapshot = (target: any, trackedItem: any) => ({
+        stats: { HP: target.stats.HP },
+        hp: target.currentHp,
+        growth: target.growths.SPD ?? 0,
+        cap: target.statCapModifiers.LCK ?? 0,
+        wexp: target.wexp[weaponType] ?? 0,
+        uses: trackedItem.uses,
+        inventory: target.items.map((candidate: any) => candidate.nid),
+        finished: target.finished,
+      });
+      const applied = snapshot(unit, item);
+      while (game.actionLog.actionIndex > beforeActionIndex) game.actionLog.runActionBackward();
+      const reversed = snapshot(unit, item);
+      while (game.actionLog.actionIndex < afterActionIndex) game.actionLog.runActionForward();
+      const redone = snapshot(unit, item);
+
+      const gameNid = game.db.getConstant('game_nid', 'default');
+      await saveGame(game, 92, 'battle');
+      unit.stats.HP = 1;
+      unit.currentHp = 1;
+      unit.growths.SPD = 0;
+      unit.statCapModifiers.LCK = 0;
+      unit.wexp[weaponType] = 0;
+      const loaded = await loadGame(game, 92);
+      const loadedUnit = game.units.get('Eirika');
+      const persisted = {
+        stats: { HP: loadedUnit.stats.HP },
+        hp: loadedUnit.currentHp,
+        growth: loadedUnit.growths.SPD ?? 0,
+        cap: loadedUnit.statCapModifiers.LCK ?? 0,
+        wexp: loadedUnit.wexp[weaponType] ?? 0,
+        inventory: loadedUnit.items.map((candidate: any) => candidate.nid),
+        finished: loadedUnit.finished,
+      };
+      await deleteSave(gameNid, 92);
+      return {
+        blockedAtCap, cappedMenu, availableMenu, normalized, normalizedGrowths, validTargets, unitPosition,
+        before, applied, reversed, redone, loaded, persisted,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.blockedAtCap).toBe(0);
+    expect(result!.cappedMenu).not.toContain('Item');
+    expect(result!.availableMenu).toContain('Item');
+    expect(result!.normalized).toEqual({ HP: 7 });
+    expect(result!.normalizedGrowths).toMatchObject({ HP: 5, STR: 5, SPD: 5, DEF: 5, RES: 5 });
+    expect(result!.validTargets).toEqual([result!.unitPosition]);
+    expect(result!.applied).toEqual({
+      stats: { HP: result!.before.stats.HP + 3 },
+      hp: result!.before.hp + 3,
+      growth: result!.before.growth + 5,
+      cap: result!.before.cap + 2,
+      wexp: result!.before.wexp + 4,
+      uses: 0,
+      inventory: [],
+      finished: true,
+    });
+    expect(result!.reversed).toEqual(result!.before);
+    expect(result!.redone).toEqual(result!.applied);
+    expect(result!.loaded).toBe(true);
+    expect(result!.persisted).toEqual({
+      stats: result!.applied.stats,
+      hp: result!.applied.hp,
+      growth: result!.applied.growth,
+      cap: result!.applied.cap,
+      wexp: result!.applied.wexp,
+      inventory: [],
+      finished: true,
+    });
+  });
+
   test('healing staff flows through item menu, mouse targeting, and reversible actions', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
