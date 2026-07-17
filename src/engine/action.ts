@@ -1023,62 +1023,51 @@ export class GainExpAction extends Action {
   }
 }
 
-/**
- * UseItemAction - Use a consumable item (healing, stat booster, etc.).
- */
-export class UseItemAction extends Action {
+/** Apply cap-clamped permanent stat changes with exact HP and turnwheel restoration. */
+export class ApplyStatChangesAction extends Action {
   private unit: UnitObject;
-  private item: ItemObject;
-  private hpBefore: number = 0;
-  private statsBefore: Record<string, number> = {};
-  private usesBefore: number = 0;
-  private broken: boolean = false;
+  private requested: Record<string, number>;
+  private beforeStats: Record<string, number>;
+  private beforeHp: number;
+  private afterStats: Record<string, number> | null = null;
+  private afterHp: number = 0;
+  private applied: Record<string, number> = {};
 
-  constructor(unit: UnitObject, item: ItemObject) {
+  constructor(unit: UnitObject, requested: Record<string, number>) {
     super();
     this.unit = unit;
-    this.item = item;
+    this.requested = { ...requested };
+    this.beforeStats = { ...unit.stats };
+    this.beforeHp = unit.currentHp;
   }
 
   execute(): void {
-    this.hpBefore = this.unit.currentHp;
-    this.usesBefore = this.item.uses;
-    this.statsBefore = { ...this.unit.stats };
-
-    if (this.item.isHealing()) {
-      const heal = this.item.getHealAmount();
-      this.unit.currentHp = Math.min(this.unit.maxHp, this.unit.currentHp + heal);
+    if (this.afterStats) {
+      this.unit.stats = { ...this.afterStats };
+      this.unit.currentHp = this.afterHp;
+      return;
     }
-
-    if (this.item.isStatBooster()) {
-      const changes = this.item.getStatChanges();
-      for (const [stat, amount] of Object.entries(changes)) {
-        if (this.unit.stats[stat] !== undefined) {
-          this.unit.stats[stat] += amount;
-        }
-      }
+    const oldMaxHp = this.unit.maxHp;
+    for (const [stat, requested] of Object.entries(this.requested)) {
+      if (this.unit.stats[stat] === undefined || !Number.isFinite(requested)) continue;
+      const current = this.unit.stats[stat];
+      const amount = Math.max(-current, Math.min(requested, this.unit.getStatCap(stat) - current));
+      this.unit.stats[stat] = current + amount;
+      this.applied[stat] = amount;
     }
-
-    this.broken = this.item.decrementUses();
-
-    // Remove broken items from inventory
-    if (this.broken) {
-      const idx = this.unit.items.indexOf(this.item);
-      if (idx !== -1) {
-        this.unit.items.splice(idx, 1);
-      }
-    }
+    const maxHpIncrease = Math.max(0, this.unit.maxHp - oldMaxHp);
+    this.unit.currentHp = Math.max(0, Math.min(this.unit.maxHp, this.unit.currentHp + maxHpIncrease));
+    this.afterStats = { ...this.unit.stats };
+    this.afterHp = this.unit.currentHp;
   }
 
   reverse(): void {
-    // Re-add broken item
-    if (this.broken) {
-      this.unit.items.push(this.item);
-    }
+    this.unit.stats = { ...this.beforeStats };
+    this.unit.currentHp = this.beforeHp;
+  }
 
-    this.item.setUses(this.usesBefore);
-    this.unit.currentHp = this.hpBefore;
-    this.unit.stats = this.statsBefore;
+  getAppliedChanges(): Record<string, number> {
+    return { ...this.applied };
   }
 }
 

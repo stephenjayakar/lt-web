@@ -67,7 +67,7 @@ import {
   HasAttackedAction,
   HasTradedAction,
   WaitAction,
-  UseItemAction,
+  ApplyStatChangesAction,
   RemoveSkillAction,
   RefreshUnitAction,
   WarpUnitAction,
@@ -1544,7 +1544,7 @@ export class MenuState extends State {
     // Item option — if unit has usable healing/consumable items
     const hasUsableItem = unit.getUsableItems().some((item) =>
       itemAvailable(unit, item, game.db, game) &&
-      (item.isStatBooster() || (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0),
+      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
     );
     if (hasUsableItem) {
       options.push({ label: 'Item', value: 'item', enabled: true });
@@ -1961,6 +1961,71 @@ function applyCoreTargetedEffects(
       applied = true;
     }
   }
+
+
+  // Generated item hooks run in component insertion order. Preserve that
+  // ordering when one custom booster combines several permanent mutations.
+  for (const targetPosition of positions.values()) {
+    const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+    if (!target) continue;
+
+    for (const componentNid of item.components.keys()) {
+      if (componentNid === 'permanent_stat_change') {
+        game.actionLog.doAction(new ApplyStatChangesAction(
+          target,
+          item.getNumericComponentMap(componentNid),
+        ));
+        applied = true;
+      } else if (componentNid === 'permanent_growth_change') {
+        game.actionLog.doAction(new ChangeUnitRecordAction(
+          target,
+          'growths',
+          item.getNumericComponentMap(componentNid),
+          'add',
+        ));
+        applied = true;
+      } else if (componentNid === 'permanent_statcap_change') {
+        game.actionLog.doAction(new ChangeUnitRecordAction(
+          target,
+          'statCapModifiers',
+          item.getNumericComponentMap(componentNid),
+          'add',
+        ));
+        applied = true;
+      } else if (componentNid === 'wexp_change') {
+        for (const [weaponType, amount] of Object.entries(
+          item.getNumericComponentMap(componentNid),
+        )) {
+          const action = new GainWexpAction(target, weaponType, amount);
+          game.actionLog.doAction(action);
+          const rankUp = action.getRankUp();
+          if (rankUp) {
+            game.eventManager?.trigger(
+              {
+                type: 'unit_weapon_rank_up',
+                levelNid: game.currentLevel?.nid ?? '',
+                unitNid: target.nid,
+                unit1: target,
+                item,
+                weaponType,
+                oldWexp: action.getOldWexp(),
+                rank: rankUp.rank,
+              },
+              {
+                game,
+                unit1: target,
+                item,
+                position: target.position,
+                gameVars: game.gameVars,
+                levelVars: game.levelVars,
+              },
+            );
+          }
+        }
+        applied = true;
+      }
+    }
+  }
   return applied;
 }
 
@@ -2108,7 +2173,7 @@ export class ItemUseState extends State {
 
     this.usableItems = unit.getUsableItems().filter((item) =>
       itemAvailable(unit, item, game.db, game) &&
-      (item.isStatBooster() || (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0),
+      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
     );
     if (this.usableItems.length === 0) {
       game.state.back();
@@ -2164,15 +2229,6 @@ export class ItemUseState extends State {
       const unit: UnitObject = game.selectedUnit;
 
       if (item && unit) {
-        if (item.isStatBooster()) {
-          game.actionLog.doAction(new UseItemAction(unit, item));
-          game.actionLog.doAction(new WaitAction(unit));
-          game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
-          this.menu = null;
-          game.state.back();
-          return;
-        }
-
         const targets = game.targetSystem?.getValidTargetsRecursive(unit, item) ?? [];
         if (item.hasCoreUseEffect() && !item.hasComponent('sequence_item') &&
             targets.length === 1 && unit.position &&

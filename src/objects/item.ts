@@ -182,9 +182,17 @@ export class ItemObject {
     return this.components.has('permanent_stat_change');
   }
 
+  /** True for any item that permanently modifies a unit progression record. */
+  isPermanentBooster(): boolean {
+    return this.hasComponent('permanent_stat_change') ||
+      this.hasComponent('permanent_growth_change') ||
+      this.hasComponent('permanent_statcap_change') ||
+      this.hasComponent('wexp_change');
+  }
+
   /** Whether this item is a consumable (healing or stat booster). */
   isConsumable(): boolean {
-    return this.isHealing() || this.isStatBooster();
+    return this.isHealing() || this.isPermanentBooster();
   }
 
   /** Core targeted effects currently supported by the web item-use lifecycle. */
@@ -192,7 +200,7 @@ export class ItemObject {
     const deterministicStatus = !this.hasComponent('hit') &&
       (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
     const directEffect = this.hasComponent('heal') || this.hasComponent('equation_heal') ||
-      this.hasComponent('permanent_stat_change') || deterministicStatus || this.hasComponent('restore') ||
+      this.isPermanentBooster() || deterministicStatus || this.hasComponent('restore') ||
       this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair') ||
       this.hasComponent('store_unit') || this.hasComponent('unload_unit');
     return directEffect || this.subitems.some((subitem) => subitem.hasCoreUseEffect());
@@ -226,12 +234,26 @@ export class ItemObject {
     return 0;
   }
 
-  /**
-   * Get stat changes from a stat booster item.
-   * The 'permanent_stat_change' component is a Record<string, number>.
-   */
+  /** Normalize LT Dict components, which serialize as arrays of key/value pairs. */
+  getNumericComponentMap(componentNid: string): Record<string, number> {
+    const raw = this.getComponent<unknown>(componentNid);
+    const entries = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === 'object'
+        ? Object.entries(raw as Record<string, unknown>)
+        : [];
+    const result: Record<string, number> = {};
+    for (const entry of entries) {
+      if (!Array.isArray(entry) || entry.length < 2) continue;
+      const value = Number(entry[1]);
+      if (Number.isFinite(value)) result[String(entry[0])] = value;
+    }
+    return result;
+  }
+
+  /** Get the normalized stat changes from a permanent stat booster. */
   getStatChanges(): Record<string, number> {
-    return this.getComponent<Record<string, number>>('permanent_stat_change') ?? {};
+    return this.getNumericComponentMap('permanent_stat_change');
   }
 
   /** Whether this item is droppable (set during unit creation from starting_items). */
