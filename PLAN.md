@@ -90,6 +90,28 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Known Bugs
 
+- [x] **`remove_unit`/`remove_group`/`remove_all_units`/`remove_all_enemies` event
+  commands permanently deleted units from the unit registry instead of just
+  taking them off the map.** *(Fixed)* All four `EventState` command handlers
+  (`src/engine/states/game-states.ts`, `remove_unit` ~8197, `remove_group`
+  ~8369, `remove_all_enemies`/`remove_all_units` ~9547) called
+  `game.units.delete(nid)` after removing from the board. Python's
+  reference (`lt-maker/app/events/event_functions.py:1113` `remove_unit`,
+  `:1518` `remove_group`, `:1171`/`:1176` `remove_all_units`/
+  `remove_all_enemies`) only ever calls `action.LeaveMap`/`FadeOut`/
+  `WarpOut`/`SwooshOut`, which clear `unit.position` via `game.leave()` —
+  they never remove the unit from the registry. Concretely this dropped
+  Seth from the party forever: Ch.5's intro event (`5_Intro.json`) does
+  `add_unit;Seth;...` then `remove_unit;Seth;immediate` to stage a
+  cutscene-only appearance, and the buggy `remove_unit` deleted the
+  persistent player unit outright instead of just clearing his map
+  position, so he silently vanished from `game.units` (and from all
+  future prep/base/convoy access) instead of remaining an off-map reserve
+  member. All four handlers now only clear `unit.position`/board presence.
+  Also upgraded `restoreGameState`'s per-unit restore failure from
+  `console.warn` to `console.error` (`src/engine/save.ts` ~1298) since a
+  unit failing to restore means it silently disappears from the game —
+  too serious to be an easily-missed warning.
 - [x] **Settings `Text Speed` had no effect on dialogue typing.** *(Fixed)*
   `EventState` now passes `_setting_text_speed` into `Dialog`, and dialog typing
   now uses LT-style time-based cadence (ms-per-character, including `0` = instant).
@@ -156,6 +178,41 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Sacred Stones full-campaign chain smoke test lands green (P7,
+  `tests/campaign-chain.spec.ts`, new):** one continuous sequential
+  Prologue -> Ch.1 -> Ch.2 -> Ch.3 -> Ch.4 -> Ch.5-win playthrough driven
+  through the real win-condition/level-transition machinery, exercising
+  persistent-unit carryover, `cleanUpLevel` HP/state resets, prep/base
+  intro flows, recruitment persistence across a chapter boundary, and a
+  mid-campaign save/load round trip. Landed alongside two real fixes it
+  uncovered:
+  1. **prep/base double-`EventState` push** — `PrepMainState.start()`/
+     `BaseMainState.start()` used `hasActiveEvents()` (true for the
+     *parent* event that's running the `prep`/`base` command itself) to
+     decide whether to push `'event'` for `on_prep_start`/`on_base_start`;
+     now they push only when that trigger's own `eventManager.trigger()`
+     call returns true, matching Python's `prep.py`/`base.py` (fixed
+     `src/engine/states/prep-state.ts`, `src/engine/states/base-state.ts`).
+  2. **`remove_unit`/`remove_group`/`remove_all_units`/`remove_all_enemies`
+     deleted units from the registry instead of just the map** — see
+     Known Bugs above; this is what was silently dropping Seth in Ch.5.
+  Also fixed two test-harness bugs found while chasing the above: the
+  chain spec's `loadSnapshot` assert (`expect(loaded).toBe(true)`) is
+  structurally weak because `harness.loadSnapshot` only returns `false` on
+  a catastrophic top-level throw — per-unit restore failures inside
+  `restoreGameState` are caught and logged individually, so `true` alone
+  never proved a full round trip; the spec now documents this and relies
+  on the explicit per-unit `sethAlive`/`eirikaAlive` checks as the real
+  proof. And the "resume the chain" step was calling
+  `game.state.change('prep_main')` while `prep_main` was already the
+  active top state; `StateMachine` (`src/engine/state-machine.ts`) keeps
+  one singleton `State` instance per registered name and `change()`
+  *pushes* that shared instance rather than replacing the top, so this
+  pushed the same `PrepMainState` object a second time — pressing Fight!
+  then popped the duplicate, revealing the identical instance underneath
+  and making it look stuck. Removed the redundant `change()` call. Final
+  gate: `npx playwright test --workers=1` all green (194 total, 1
+  intentionally skipped Ch.6+ placeholder).
 - **Deterministic golden combat-scenario matrix + `miracle` skill finish (P4):**
   reviewed and completed partial in-flight edits (`CombatPhaseSolver.miracleSaved`/
   `applyMiracleCleanup`, `skill-system.ts` `miracleSkill`/`consumeMiracleCharge`)
@@ -1638,6 +1695,9 @@ match the reference within documented browser tolerances.
 
 - [ ] Expand Sacred Stones coverage from the current chapter/event matrix to a complete
   campaign smoke path with branch, recruitment, shop, convoy, save, and ending coverage
+  (note 2026-07-18: bundled default.ltproj ends at Ch.5 — "complete" means
+  Prologue through Ch.5-end sequential chain; later-chapter parity requires an
+  external full-campaign project fixture)
 - [ ] Run repeated soak tests with deterministic seeds and archive first-failure state
 - [ ] Validate at least one component-heavy and one PYEV1-heavy external project
 - [ ] Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle
@@ -1649,36 +1709,21 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-**Equipped-item lifecycle and equip-linked component cluster** (selected 2026-07-17
-from default-project usage counts: `status_on_equip` ×16, `multi_status_on_equip` ×1,
-`lifelink` ×2, `eclipse` ×1 — all currently unreferenced; the web engine has no
-equip/unequip lifecycle at all, only a derived first-available-weapon lookup):
+All slices from the 2026-07-17 selection queue have landed (equip lifecycle,
+effective damage, status application, equation evaluator, skill-identity saves,
+event/region persistence, trigger dispatch, region reversibility, droppable
+pickup, promotion, aesthetics, save-field closure, supply/item_discard,
+create_unit/set_position, combat goldens). Refreshed queue:
 
-1. Add tracked `equippedWeapon`/`equippedAccessory` to `UnitObject` with Python
-   `equip`/`unequip`/`autoequip`/`can_equip` semantics, reversible
-   Equip/Unequip/BringToTop actions, autoequip at Python call sites (creation, item
-   add/remove/trade/break, weapon choice), and backward-compatible save defaults.
-2. Implement `status_on_equip`/`multi_status_on_equip` as item-sourced reversible
-   skill add/remove on equip transitions (reusing the existing sourced-skill pattern).
-3. Implement `lifelink` after-strike healing from attacker damage playback and
-   `eclipse` half-current-HP on-hit; verify existing `no_double` behavior.
-4. Regressions: equip-skill lifecycle across weapon switch/trade/removal/break,
-   lifelink/eclipse in combat, turnwheel undo/redo, and save/load round trips.
-
-Both slices above landed 2026-07-17 (see Recent Changes). Remaining from that
-audit: `warning`/`eval_warning`/`item_icon_flash` target-icon aesthetics.
-
-Next candidates, in order:
-
-4. Status-application cluster: `status_on_hit` end-to-end verification plus
-   `status_on_hold` add/remove lifecycle (Fili Shield/Hoplon Guard grant the
-   `negate` skills that effective damage now honors).
-5. Equation-evaluator and save-field defect slices recorded in P2/P4 from
-   `docs/parity/runtime-inventory.md`.
-
-Then, as before:
-
-5. Implement the next project-used missing event command cluster after a fresh usage
-   scan, preserving flags, blocking behavior, persistence, and UI reachability.
-6. Inventory Python triggers, query functions, equations, and save fields to close the
-   remaining P0 evidence gaps before selecting another broad gameplay subsystem.
+1. **Sacred Stones full-campaign chain smoke (P7, re-scoped 2026-07-18):** the
+   bundled default.ltproj is a truncated demo ending at Ch.5 (no Ch.6+ data
+   exists), so "campaign completion" here means one sequential
+   Prologue -> Ch.5-end playthrough smoke with chapter chaining, prep/supply
+   flows, and recently shipped systems (promotion, drops) exercised inside the
+   run where the data allows.
+2. Base submenus and mode selection (P5): records, BEXP, sound room,
+   library/guide, difficulty/mode selection.
+3. AI verification (P4): terrain targeting, faction/party target specs, roam AI,
+   group rules against the Python AI controller.
+4. Aura propagation and remaining proc/charge/cooldown status hooks (P3).
+5. Component resolve policies (all/any/sum/unique/default) verification (P3).

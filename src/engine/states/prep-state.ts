@@ -113,8 +113,12 @@ export class PrepMainState extends State {
     if (game.eventManager) {
       const levelNid = game.currentLevel?.nid ?? '';
       const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
-      game.eventManager.trigger({ type: 'on_prep_start', levelNid }, ctx);
-      if (game.eventManager.hasActiveEvents()) {
+      // Only push an event state when this trigger queued a NEW event.
+      // hasActiveEvents() also sees the parent event that opened prep (the
+      // chapter intro running the `prep` command), and pushing a second
+      // EventState for it corrupts the stack (empty stack after Fight!).
+      const triggered = game.eventManager.trigger({ type: 'on_prep_start', levelNid }, ctx);
+      if (triggered) {
         game.state.change('event');
       }
     }

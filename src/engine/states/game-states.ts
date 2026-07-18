@@ -8195,15 +8195,23 @@ export class EventState extends State {
       }
 
       case 'remove_unit': {
+        // Matches Python's remove_unit event function: it only takes the
+        // unit off the map (action.LeaveMap/FadeOut/WarpOut/SwooshOut all
+        // just clear position via game.leave()); it never removes the unit
+        // from the unit registry. Persistent player units must remain in
+        // game.units (as off-map reserve members) so they carry over to
+        // future levels; only the map/board presence is cleared here.
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit && game.board) {
+        if (unit && unit.position) {
           // Remove from initiative tracker if active
           if (game.initiative) {
             game.initiative.removeUnit(unit);
           }
-          game.board.removeUnit(unit);
-          game.units.delete(unitNid);
+          if (game.board) {
+            game.board.removeUnit(unit);
+          }
+          unit.position = null;
         }
         this.advancePointer();
         return false;
@@ -8359,6 +8367,11 @@ export class EventState extends State {
       }
 
       case 'remove_group': {
+        // Matches Python's remove_group: only takes units off the map via
+        // action.LeaveMap/FadeOut/WarpOut (position clear); it never deletes
+        // them from the unit registry. See 'remove_unit' above for the same
+        // fix and rationale (persistent player units must survive as
+        // off-map reserve members).
         const groupNid = args[0] ?? '';
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
@@ -8366,9 +8379,10 @@ export class EventState extends State {
           const unitNids: string[] = group.units ?? [];
           for (const uNid of unitNids) {
             const unit = this.findUnit(uNid);
-            if (unit) {
+            if (unit && unit.position) {
+              if (game.initiative) game.initiative.removeUnit(unit);
               if (game.board) game.board.removeUnit(unit);
-              game.units.delete(uNid);
+              unit.position = null;
             }
           }
         }
@@ -9531,20 +9545,26 @@ export class EventState extends State {
       // ----- Remove all units / enemies -----
 
       case 'remove_all_enemies': {
+        // Matches Python's remove_all_enemies: only takes units off the
+        // map (action.FadeOut clears position); never deletes from the
+        // unit registry. See 'remove_unit' above for rationale.
         const enemies = game.board?.getTeamUnits('enemy') ?? [];
         for (const enemy of enemies) {
           game.board?.removeUnit(enemy);
-          game.units.delete(enemy.nid);
+          enemy.position = null;
         }
         this.advancePointer();
         return false;
       }
 
       case 'remove_all_units': {
+        // Matches Python's remove_all_units: only takes units off the map
+        // (action.LeaveMap clears position); never deletes from the unit
+        // registry. See 'remove_unit' above for rationale.
         const allUnits = game.board?.getAllUnits() ?? [];
         for (const u of allUnits) {
           game.board?.removeUnit(u);
-          game.units.delete(u.nid);
+          u.position = null;
         }
         this.advancePointer();
         return false;

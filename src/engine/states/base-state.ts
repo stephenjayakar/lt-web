@@ -80,8 +80,11 @@ export class BaseMainState extends State {
     if (game.eventManager) {
       const levelNid = game.currentLevel?.nid ?? '';
       const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
-      game.eventManager.trigger({ type: 'on_base_start', levelNid }, ctx);
-      if (game.eventManager.hasActiveEvents()) {
+      // Push an event state only when this trigger queued a NEW event —
+      // hasActiveEvents() also sees a parent event that opened base via the
+      // `base` command, and double-pushing EventState corrupts the stack.
+      const triggered = game.eventManager.trigger({ type: 'on_base_start', levelNid }, ctx);
+      if (triggered) {
         game.state.change('event');
       }
     }
