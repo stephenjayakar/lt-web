@@ -913,6 +913,38 @@ export class OnlyOnceEventAction extends Action {
 }
 
 /**
+ * CreateUnitAction - Registers a freshly-constructed UnitObject into
+ * `game.units` and (optionally) places it on the board. Mirrors Python's
+ * `action.do(action.RegisterUnit(new_unit))` inside event_functions.create_unit —
+ * the unit itself is built eagerly (GameState.buildUnit), but registration/
+ * placement is deferred into this action so turnwheel rewind can fully
+ * un-create the unit.
+ */
+export class CreateUnitAction extends Action {
+  private game: any;
+  private unit: UnitObject;
+  private position: [number, number] | null;
+
+  constructor(game: any, unit: UnitObject, position: [number, number] | null) {
+    super();
+    this.game = game;
+    this.unit = unit;
+    this.position = position;
+  }
+
+  execute(): void {
+    this.game.registerUnit(this.unit, this.position);
+  }
+
+  reverse(): void {
+    if (this.unit.position && this.game.board) {
+      this.game.board.removeUnit(this.unit);
+    }
+    this.game.units.delete(this.unit.nid);
+  }
+}
+
+/**
  * AddRegionAction - Add a region to the current level's region list.
  * Mirrors Python's action.AddRegion.
  */

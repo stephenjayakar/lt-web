@@ -156,6 +156,47 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **`create_unit` and `set_position` event commands:** usage scan of every
+  bundled project's event files (`lt-maker/*.ltproj/game_data/events/**`,
+  both `.event` source and `events.json` forms) for all 45 parser-audit-flagged
+  missing commands plus the case-label-only list found **zero live usage** —
+  the only near-hits were `#trigger_script;Trigger` (commented out in
+  `default.ltproj`/`rekka.ltproj`) and `say`/`ending` substring false-positives
+  inside dialogue text. Per the fallback rule, implemented the two
+  highest-value zero-usage commands instead: `create_unit` (already
+  parser-recognized per `event-commands.json` but had no `EventState` case —
+  any project event calling it silently no-op'd) and `set_position` (small,
+  self-contained, has a real `{e:position}` consumer). `create_unit` builds a
+  generic unit from a template (existing unit or db `UnitPrefab`, class-derived
+  stats/growths/wexp like `make_generic`, `copy_stats` flag overwrites stats
+  from an existing-unit template), auto-assigns `{created_unit}` via
+  `trigger.localArgs` when Nid is blank, and registers/places through a new
+  `CreateUnitAction` (`src/engine/action.ts`) for full turnwheel-undo and
+  save/load support — `GameState.spawnUnit` was split into `buildUnit()` +
+  `registerUnit()` (`src/engine/game-state.ts`) so registration can be
+  deferred into the action. `set_position` overrides
+  `currentEvent.trigger.position` for the rest of the event. New
+  `tests/event-commands-2.spec.ts` (7 tests, all green): parser dispatch,
+  explicit-nid + copy_stats placement, auto-nid + `{created_unit}`, off-map
+  creation, turnwheel undo, save/load round trip, and `set_position`'s
+  `{e:position}` override. `npm run audit:parity`: parser-recognized 210→211,
+  EventState case labels 200→202. Deferred (all zero real usage; would each
+  need a new subsystem — nested/blocking sub-events for `trigger_script(_with_args)`
+  and `loop_units`, region+generic bookkeeping for `remove_generics_from_region`,
+  party/generic identity plumbing for `recruit_generic`/`merge_parties`/
+  `party_transfer`, and a discrete sprite-pose system for `pose_unit`, which
+  doesn't exist in this engine at all): `add_fatigue`, `*_item_component`,
+  `*_skill_component`, `add_unit_map_anim`, `arrange_formation`,
+  `change_bg_tilemap`, `change_roam_ai`, `change_roaming(_unit)`,
+  `change_team_palette`, `clean_up_roaming`, `delete_save`, `dump_vars`,
+  `enable_repair_shop`, `force_chapter_clean_up`, `loop_units`,
+  `merge_parties`, `open_bexp_menu`, `open_credits`, `open_guide`,
+  `open_library`, `open_trade`, `open_unit_management`, `party_transfer`,
+  `pose_unit`, `records_screen`, `recruit_generic`,
+  `remove_game_board_bounds`, `remove_generics_from_region`,
+  `set_custom_options`, `set_game_board_bounds`, `set_mode_autolevels`,
+  `set_mode_rng`, `set_skill_data`, `show_minimap`, `soundroom`,
+  `text_entry`, `trigger_script(_with_args)`.
 - **Supply/convoy and item_discard player states (P5):** new
   `src/engine/states/supply-state.ts` with `SupplyItemsState` ('supply_items')
   and `ItemDiscardState` ('item_discard'), registered in `main.ts`. Supply is

@@ -83,6 +83,7 @@ import {
   BringToTopItemAction,
   AddRegionAction,
   RemoveRegionAction,
+  CreateUnitAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -8063,6 +8064,132 @@ export class EventState extends State {
         // Spawn the unit — handle both unique and generic
         this.spawnUnitFromLevelData(unitData, posOverride, game);
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'create_unit': {
+        // create_unit;Unit;Nid;Level;Position;EntryType;Placement;[copy_stats]
+        // Creates a new unit instance from a template (either an already-
+        // spawned unit or a UnitPrefab in the database) and optionally
+        // places it on the map. Mirrors event_functions.create_unit().
+        const templateNid = args[0] ?? '';
+        const explicitNid = (args[1] ?? '').trim();
+        const levelStr = (args[2] ?? '').trim();
+        const posArg = (args[3] ?? '').trim();
+        const entryType = (args[4] || 'fade').trim();
+        const placement = (args[5] || 'giveup').trim().toLowerCase();
+        const flagArgs = args.slice(6).map((s) => s.toLowerCase());
+        const copyStats = flagArgs.includes('copy_stats');
+
+        const templateUnit = this.findUnit(templateNid);
+        const templatePrefab = templateUnit ? undefined : game.db?.units?.get(templateNid);
+        if (!templateUnit && !templatePrefab) {
+          console.warn(`create_unit: couldn't find unit template "${templateNid}"`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Resolve/assign the new unit's nid
+        let newNid = explicitNid;
+        if (!newNid) {
+          let counter = 201;
+          while (game.units.has(String(counter))) counter++;
+          newNid = String(counter);
+        } else if (game.units.has(newNid)) {
+          console.warn(`create_unit: unit with nid "${newNid}" already exists`);
+          this.advancePointer();
+          return false;
+        }
+
+        const baseKlass = templateUnit ? templateUnit.klass : templatePrefab.klass;
+        const firstFaction = (Array.from(game.db?.factions?.values?.() ?? [])[0] as any)?.nid ?? '';
+        const baseFaction = (templateUnit ? templateUnit.faction : templatePrefab.faction) || firstFaction;
+        const baseTeam = templateUnit ? templateUnit.team : (templatePrefab.team ?? 'player');
+        const baseAi = templateUnit ? templateUnit.ai : (templatePrefab.ai ?? 'None');
+        const baseVariant = templateUnit ? templateUnit.variant : (templatePrefab.variant ?? null);
+        const parsedLevel = levelStr ? parseInt(levelStr, 10) : NaN;
+        const baseLevel = !isNaN(parsedLevel) ? parsedLevel : (templateUnit ? templateUnit.level : templatePrefab.level);
+        const baseItems: [string, boolean][] = templateUnit
+          ? templateUnit.items.map((it: ItemObject) => [it.nid, !!it.droppable] as [string, boolean])
+          : (templatePrefab.starting_items ?? []);
+        const learnedSkills = templateUnit ? [] : (templatePrefab.learned_skills ?? []);
+
+        const baseKlassDef = game.db?.classes?.get(baseKlass);
+        if (!baseKlassDef) {
+          console.warn(`create_unit: unknown class "${baseKlass}" for template "${templateNid}"`);
+          this.advancePointer();
+          return false;
+        }
+
+        // Like make_generic, a create_unit instance is built as a fresh
+        // generic unit whose stats/growths/wexp come from the class
+        // (Python: GenericUnit(...) -> UnitObject.from_prefab). copy_stats
+        // then overwrites .stats with the template's own stats afterward.
+        const syntheticPrefab: any = {
+          nid: newNid,
+          name: baseVariant || newNid,
+          desc: '',
+          variant: baseVariant,
+          level: baseLevel,
+          klass: baseKlass,
+          tags: [],
+          bases: { ...baseKlassDef.bases },
+          growths: { ...baseKlassDef.growths },
+          stat_cap_modifiers: {},
+          faction: baseFaction,
+          starting_items: baseItems,
+          learned_skills: learnedSkills,
+          wexp_gain: baseKlassDef.wexp_gain,
+          portrait_nid: '',
+          affinity: '',
+        };
+
+        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi);
+        newUnit.generic = true;
+        newUnit.faction = baseFaction || null;
+        if (copyStats && templateUnit) {
+          newUnit.stats = { ...templateUnit.stats };
+        }
+        if (game.currentParty) {
+          newUnit.party = game.currentParty;
+        }
+
+        // Resolve target position (if any), applying placement rules
+        let targetPos: [number, number] | null = null;
+        if (posArg) {
+          const parts = posArg.split(',').map((s: string) => parseInt(s.trim(), 10));
+          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            targetPos = this._checkPlacement([parts[0], parts[1]], placement, game);
+          }
+        }
+        void entryType; // Placement animation type is cosmetic-only in this port.
+
+        game.actionLog.doAction(new CreateUnitAction(game, newUnit, targetPos));
+
+        // Mirror Python's {created_unit} substitution when Nid was left blank:
+        // subsequent {e:created_unit} lookups in this event resolve to the
+        // new unit's nid via the trigger's localArgs (see resolvePath()).
+        if (!explicitNid && this.currentEvent) {
+          if (!this.currentEvent.trigger.localArgs) {
+            this.currentEvent.trigger.localArgs = new Map<string, any>();
+          }
+          this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
+        }
+
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_position': {
+        // set_position;x,y  (or a unit nid, resolved to its current position)
+        // Overrides {e:position} for the remainder of this event, mirroring
+        // Python's Event.position / text_evaluator.position.
+        const posArg = args[0] ?? '';
+        const resolved = this.resolvePosition(posArg, game);
+        if (this.currentEvent) {
+          this.currentEvent.trigger.position = resolved ?? undefined;
+        }
         this.advancePointer();
         return false;
       }
