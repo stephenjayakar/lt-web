@@ -1296,7 +1296,10 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unitsByNid.set(unit.nid, unit);
       game.units.set(unit.nid, unit);
     } catch (err) {
-      console.warn(`Failed to restore unit "${unitData.nid}":`, err);
+      // A unit failing to restore here means it silently vanishes from the
+      // game (not present in game.units at all), which is a serious data-
+      // loss bug rather than an ignorable warning — surface it loudly.
+      console.error(`Failed to restore unit "${unitData.nid}" — unit will be MISSING after load:`, err);
     }
   }
 
