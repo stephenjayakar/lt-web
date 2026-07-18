@@ -7,7 +7,6 @@ import type { ActionLog } from '../engine/action';
 import {
   SetItemDroppableAction,
   MoveItemBetweenUnitsAction,
-  StoreItemAction,
   RemoveItemFromUnitAction,
 } from '../engine/action';
 
@@ -32,13 +31,29 @@ export function droppableSentToConvoyBannerText(item: ItemObject): string {
   return `${item.name} sent to convoy.`;
 }
 
+export interface DroppablePickupResult {
+  /** Banner text for each pickup, in order, for the caller to display. */
+  banners: string[];
+  /**
+   * Player units force-given a drop while at capacity: the caller must route
+   * the player through the 'item_discard' state after combat resolves
+   * (Python's force_give -> item_discard flow).
+   */
+  pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }>;
+}
+
 /**
  * Applies Python's simple_combat.handle_item_gain: every droppable item on a
  * unit killed this combat transfers to the killer (the attacker for defender
  * deaths, or the primary defender if the attacker itself died). No team
  * allegiance gate exists in Python — an enemy killing a player unit loots its
- * droppable items exactly like a player killing an enemy. Returns banner text
- * for each successful pickup/convoy-send, in order, for the caller to display.
+ * droppable items exactly like a player killing an enemy.
+ *
+ * A full PLAYER killer is force-given the item anyway (over capacity) and
+ * reported in `pendingDiscards` so the caller can open the 'item_discard'
+ * state, matching Python's GiveItem force_give -> item_discard flow. A full
+ * non-player killer matches Python's GiveItem silent refusal: the item is
+ * removed from the dead unit and lost.
  */
 export function applyDroppableItemPickups(
   actionLog: Pick<ActionLog, 'doAction'>,
@@ -46,8 +61,9 @@ export function applyDroppableItemPickups(
   results: CombatResults,
   attacker: UnitObject,
   dropRecipient: UnitObject | null,
-): string[] {
+): DroppablePickupResult {
   const banners: string[] = [];
+  const pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
   for (const { unit: deadUnit, item } of results.droppedItems ?? []) {
     const killer = deadUnit === attacker ? dropRecipient : attacker;
     if (!killer) continue;
@@ -60,17 +76,18 @@ export function applyDroppableItemPickups(
       actionLog.doAction(new MoveItemBetweenUnitsAction(deadUnit, killer, item));
       banners.push(droppableAcquiredBannerText(killer, item));
     } else if (killer.team === 'player') {
-      // Python opens the item_discard state for a full player inventory; we
-      // simplify to sending the drop straight to the convoy (SentToConvoy banner).
-      actionLog.doAction(new StoreItemAction(deadUnit, item));
-      banners.push(droppableSentToConvoyBannerText(item));
+      // Python force-gives the item (over capacity) and then opens the
+      // item_discard state for the player to choose what to store/discard.
+      actionLog.doAction(new MoveItemBetweenUnitsAction(deadUnit, killer, item));
+      banners.push(droppableAcquiredBannerText(killer, item));
+      pendingDiscards.push({ unit: killer, item });
     } else {
       // Python's GiveItem.do() silently refuses to add to a full non-player
       // inventory; the item is simply removed from the dead unit and lost.
       actionLog.doAction(new RemoveItemFromUnitAction(deadUnit, item));
     }
   }
-  return banners;
+  return { banners, pendingDiscards };
 }
 
 function eventNid(item: ItemObject, component: string): string | null {

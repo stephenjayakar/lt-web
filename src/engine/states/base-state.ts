@@ -106,6 +106,17 @@ export class BaseMainState extends State {
       description: 'Manage your units and equipment.',
     });
 
+    // Supply (convoy) — available in base whenever _convoy is enabled
+    // (Python base exposes convoy management with no adjacency requirement).
+    if (game.gameVars?.get('_convoy')) {
+      options.push({
+        label: 'Supply',
+        value: 'supply',
+        enabled: true,
+        description: 'Store and retrieve items.',
+      });
+    }
+
     // Market: insert after Manage if enabled
     if (hasMarket) {
       const hasItems = game.marketItems && game.marketItems.size > 0;
@@ -274,6 +285,20 @@ export class BaseMainState extends State {
           // Reuse prep screen for unit management
           game.state.change('prep_main');
           break;
+
+        case 'supply': {
+          // Simplification of Python's per-unit base Manage->Items flow:
+          // open the supply screen for the first living party unit.
+          let supplyUnit = null;
+          for (const unit of game.units.values()) {
+            if (unit.team === 'player' && !unit.dead) { supplyUnit = unit; break; }
+          }
+          if (supplyUnit) {
+            game.memory.set('supply_unit', supplyUnit);
+            game.state.change('supply_items');
+          }
+          break;
+        }
 
         case 'convos':
           game.state.change('base_convos');
