@@ -26,6 +26,7 @@ import {
   setGameRef,
   TitleState,
   TitleMainState,
+  TitleModeState,
   LevelSelectState,
   OptionMenuState,
   FreeState,
@@ -67,6 +68,9 @@ import {
   BaseConvosState,
   BaseCodexState,
   BaseAchievementState,
+  BaseLoreState,
+  BaseRecordsState,
+  BaseSoundRoomState,
   setBaseGameRef,
 } from './engine/states/base-state';
 import {
@@ -414,6 +418,7 @@ async function main(): Promise<void> {
   const states = [
     new TitleState(),
     new TitleMainState(),
+    new TitleModeState(),
     new LevelSelectState(),
     new OptionMenuState(),
     new FreeState(),
@@ -446,6 +451,10 @@ async function main(): Promise<void> {
     new BaseConvosState(),
     new BaseCodexState(),
     new BaseAchievementState(),
+    new BaseLoreState(false),
+    new BaseLoreState(true),
+    new BaseRecordsState(),
+    new BaseSoundRoomState(),
     new SettingsMenuState(),
     new MinimapState(),
     new VictoryState(),

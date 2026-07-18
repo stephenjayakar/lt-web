@@ -21,7 +21,7 @@ import { viewport, isSmallScreen } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
-import type { RegionData } from '../../data/types';
+import type { RegionData, DifficultyMode } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
 import { evaluateCondition, evaluateExpression, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
@@ -87,6 +87,7 @@ import {
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
+import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { Banner } from '../../ui/banner';
 import { Dialog } from '../../ui/dialog';
@@ -737,7 +738,7 @@ export class TitleMainState extends State {
     } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
       const selected = this.options[this.cursor];
       if (selected === 'New Game') {
-        game.state.change('level_select');
+        game.state.change('title_mode');
       } else if (selected === 'Continue') {
         // Load the most recent save (highest realtime)
         game.state.change('load_menu');
@@ -748,6 +749,247 @@ export class TitleMainState extends State {
       }
     } else if (event === 'BACK') {
       game.state.back(); // Return to press-start screen
+    }
+  }
+}
+
+// ============================================================================
+// 1a1. TitleModeState — Difficulty/mode selection (new-game flow)
+// Port of lt-maker/app/engine/title_screen.py TitleModeState.
+//
+// Python's flow is difficulty_setup -> death_setup -> growth_setup, but the
+// death/growth sub-screens only appear when the chosen mode's
+// permadeath_choice/growths_choice is "Player Choice" — no bundled project
+// (default/rekka/testing_proj.ltproj) uses Player Choice, so that branch is
+// deferred here (documented, not invented) until a project fixture needs it.
+// Like Python, the mode list itself is skipped entirely when there is at
+// most one available (unlocked) difficulty mode — game.currentMode is set
+// directly and we proceed straight to level_select.
+// ============================================================================
+
+type TitleModePhase = 'difficulty_setup' | 'death_setup' | 'growth_setup';
+
+export class TitleModeState extends State {
+  readonly name = 'title_mode';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private availableModes: DifficultyMode[] = [];
+  private cursor: number = 0;
+  private phase: TitleModePhase = 'difficulty_setup';
+  private requiresPermadeathChoice = false;
+  private requiresGrowthChoice = false;
+  private menuOptions: string[] = [];
+
+  private static readonly DEATH_OPTIONS = ['Classic', 'Casual'];
+  private static readonly GROWTH_OPTIONS = ['Random', 'Fixed', 'Dynamic', 'Lucky', 'Bexp'];
+
+  private get difficultyChoice(): boolean {
+    return this.availableModes.length > 1;
+  }
+
+  private get currentModeNids(): string[] {
+    return this.availableModes.map((m) => m.nid);
+  }
+
+  override start(): StateResult {
+    const game = getGame();
+    const allModes = game.db.difficultyModes;
+    this.availableModes = allModes.filter(
+      (m: DifficultyMode) => !m.start_locked || (RECORDS && RECORDS.checkDifficultyUnlocked(m.nid)),
+    );
+    this.cursor = 0;
+    this.phase = 'difficulty_setup';
+    this.requiresPermadeathChoice = false;
+    this.requiresGrowthChoice = false;
+    this.menuOptions = [];
+
+    this.beginCurrentPhase();
+  }
+
+  override begin(): StateResult {
+    this.beginCurrentPhase();
+  }
+
+  private beginCurrentPhase(): void {
+    if (this.phase === 'difficulty_setup') {
+      this.startDifficultySelection();
+    } else if (this.phase === 'death_setup') {
+      this.startDeathSelection();
+    } else {
+      this.startGrowthSelection();
+    }
+  }
+
+  private startDifficultySelection(): void {
+    const game = getGame();
+    if (this.difficultyChoice) {
+      this.menuOptions = this.availableModes.map((mode) => mode.name);
+      this.cursor = Math.max(0, Math.min(this.cursor, this.menuOptions.length - 1));
+      this.phase = 'difficulty_setup';
+      return;
+    }
+
+    const fallbackMode = this.availableModes[0] ?? game.db.difficultyModes[0];
+    if (fallbackMode) {
+      const mode = DifficultyModeObject.fromPrefab(fallbackMode);
+      game.currentMode = mode;
+      this.requiresPermadeathChoice = fallbackMode.permadeath_choice === 'Player Choice';
+      this.requiresGrowthChoice = fallbackMode.growths_choice === 'Player Choice';
+    }
+
+    if (this.requiresPermadeathChoice) {
+      this.phase = 'death_setup';
+      this.cursor = 1;
+      this.startDeathSelection();
+    } else if (this.requiresGrowthChoice) {
+      this.phase = 'growth_setup';
+      this.cursor = 0;
+      this.startGrowthSelection();
+    } else {
+      game.state.change('level_select');
+    }
+  }
+
+  private startDeathSelection(): void {
+    this.menuOptions = TitleModeState.DEATH_OPTIONS.slice();
+    this.cursor = Math.max(0, Math.min(this.cursor, this.menuOptions.length - 1));
+    this.phase = 'death_setup';
+  }
+
+  private startGrowthSelection(): void {
+    this.menuOptions = TitleModeState.GROWTH_OPTIONS.slice();
+    this.cursor = Math.max(0, Math.min(this.cursor, this.menuOptions.length - 1));
+    this.phase = 'growth_setup';
+  }
+
+  private chooseCurrentModeByIndex(index: number): void {
+    const game = getGame();
+    const mode = this.availableModes[index];
+    if (!mode) return;
+
+    const modeObj = DifficultyModeObject.fromPrefab(mode);
+    game.currentMode = modeObj;
+    this.requiresPermadeathChoice = mode.permadeath_choice === 'Player Choice';
+    this.requiresGrowthChoice = mode.growths_choice === 'Player Choice';
+
+    if (this.requiresPermadeathChoice) {
+      this.phase = 'death_setup';
+      this.cursor = 1;
+      this.startDeathSelection();
+      return;
+    }
+
+    if (this.requiresGrowthChoice) {
+      this.phase = 'growth_setup';
+      this.cursor = 0;
+      this.startGrowthSelection();
+      return;
+    }
+
+    game.state.change('level_select');
+  }
+
+  private applyDeathChoice(): void {
+    const game = getGame();
+    game.currentMode.permadeath = this.menuOptions[this.cursor] === 'Classic';
+    if (this.requiresGrowthChoice) {
+      this.phase = 'growth_setup';
+      this.cursor = 0;
+      this.startGrowthSelection();
+    } else {
+      game.state.change('level_select');
+    }
+  }
+
+  private applyGrowthChoice(): void {
+    const game = getGame();
+    game.currentMode.growths = this.menuOptions[this.cursor];
+    game.state.change('level_select');
+  }
+
+  private handleBack(): void {
+    const game = getGame();
+    if (this.phase === 'difficulty_setup') {
+      game.state.back();
+      return;
+    }
+
+    if (this.phase === 'death_setup') {
+      if (this.difficultyChoice) {
+        this.phase = 'difficulty_setup';
+        this.cursor = 0;
+        this.startDifficultySelection();
+      } else {
+        game.state.back();
+      }
+      return;
+    }
+
+    if (this.phase === 'growth_setup') {
+      if (this.requiresPermadeathChoice) {
+        this.phase = 'death_setup';
+        this.cursor = 1;
+        this.startDeathSelection();
+      } else if (this.difficultyChoice) {
+        this.phase = 'difficulty_setup';
+        this.cursor = 0;
+        this.startDifficultySelection();
+      } else {
+        game.state.back();
+      }
+    }
+  }
+
+  private moveCursor(delta: number): void {
+    if (this.menuOptions.length === 0) return;
+    this.cursor = (this.cursor + delta + this.menuOptions.length) % this.menuOptions.length;
+  }
+
+  override draw(surf: Surface): Surface {
+    const vw = viewport.width;
+    const vh = viewport.height;
+    surf.fill(16, 16, 32);
+
+    let title = 'Select Difficulty';
+    if (this.phase === 'death_setup') title = 'Permadeath Rule';
+    if (this.phase === 'growth_setup') title = 'Growth Method';
+    const titleX = Math.floor(vw / 2) - (title.length * 4);
+    surf.drawText(title, titleX, 10, 'white', '10px monospace');
+
+    const options = this.menuOptions;
+    for (let i = 0; i < options.length; i++) {
+      const y = 30 + i * 16;
+      const selected = i === this.cursor;
+      if (selected) {
+        surf.fillRect(20, y - 2, vw - 40, 14, 'rgba(60,80,160,0.6)');
+        surf.drawText('>', 12, y, 'rgb(220,200,80)', '9px monospace');
+      }
+      surf.drawText(options[i], 24, y, selected ? 'white' : 'rgb(180,180,200)', '9px monospace');
+    }
+
+    if (this.phase !== 'difficulty_setup' && this.currentModeNids.length > 0) {
+      const subtitle = `Mode: ${this.availableModes[Math.max(0, Math.min(this.cursor, this.availableModes.length - 1))]?.name ?? this.availableModes[0]?.name ?? 'None'}`;
+      surf.drawText(subtitle, 14, vh - 16, 'rgba(200,200,240,0.8)', '7px monospace');
+    }
+    return surf;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (event === 'UP') {
+      this.moveCursor(-1);
+    } else if (event === 'DOWN') {
+      this.moveCursor(1);
+    } else if (event === 'BACK') {
+      this.handleBack();
+    } else if (event === 'SELECT' || getGame().input?.mouseClick === 'SELECT') {
+      if (this.phase === 'difficulty_setup') {
+        this.chooseCurrentModeByIndex(this.cursor);
+      } else if (this.phase === 'death_setup') {
+        this.applyDeathChoice();
+      } else if (this.phase === 'growth_setup') {
+        this.applyGrowthChoice();
+      }
     }
   }
 }

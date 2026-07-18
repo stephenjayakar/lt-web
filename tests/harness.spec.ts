@@ -640,6 +640,12 @@ test.describe('Event command parity', () => {
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 3);
     expect((await getState(page)).currentStateName).toBe('base_codex');
+    // Select the Achievements entry by value — the Codex submenu now also
+    // contains Library/Records/Sound Room/Guide, so position is not stable.
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.menu.selectedIndex = state.menu.options.findIndex((option: any) => option.value === 'achievements');
+    });
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 3);
     expect((await getState(page)).currentStateName).toBe('base_achievement');

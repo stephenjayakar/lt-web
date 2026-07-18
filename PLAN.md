@@ -178,6 +178,24 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Base codex/data submenus + title-mode flow (P5):**
+  - Added reachable Codex branches for `base_library`, `base_guide`, `base_records`,
+    and `base_sound_room`; library/guide entries are sourced from unlocked lore,
+    records visibility is now filtered through `LevelPrefab.should_record` exactly
+    as `game.records.get_levels()` does, and sound-room entries are loaded and
+    playable from the panorama state.
+  - Implemented title new-game flow stage machine (`difficulty_setup` ->
+    `death_setup` -> `growth_setup`) in `TitleModeState`, including player-choice
+    branches for `permadeath_choice`/`growths_choice` plus direct single-mode
+    advancement.
+  - Added player-only MVP ranking and previous-level-only chapter filtering to
+    the records browser, matching `record_book.py` chapter/mode semantics.
+  - Added/updated parity tests in `tests/base-submenus.spec.ts` for Records/Library/
+    Guide/Sound Room reachability and title-mode branching.
+  - Pending deferrals: `BaseCodex` map branch/map launch remain deferred (no
+    existing registered `base_world_map` equivalent in this workstream), `BEXP`
+    submenu wiring remains deferred pending allocation workflow reintroduction,
+    and title Extras are still unimplemented.
 - **Sacred Stones full-campaign chain smoke test lands green (P7,
   `tests/campaign-chain.spec.ts`, new):** one continuous sequential
   Prologue -> Ch.1 -> Ch.2 -> Ch.3 -> Ch.4 -> Ch.5-win playthrough driven
@@ -1663,9 +1681,11 @@ item-use fixture matrices match Python outputs and side effects.
   single-option auto-promotion, and a `promotion_choice` state (keyboard + mouse +
   cancel) for multi-option `turns_into`; shared core also backs the `promote`/
   `class_change` event commands
-- [ ] Implement difficulty/mode selection and complete title Extras flows
-- [ ] Complete base submenus: supports, codex/library/guide, BEXP, records,
-  achievements, sound room, and unit management
+- [x] Implement difficulty/mode selection flow (`difficulty_setup` →
+  `death_setup` → `growth_setup`) through title-mode screens.
+- [ ] Complete base submenus: supports, base menu launch plumbing, and BEXP/unit
+  management; codex/library/guide, records, achievements, and sound room are now
+  implemented.
 - [x] Implement the persistent achievement browser with hidden-entry display,
   completion progress, navigation, and event pause/resume
 - [ ] Complete roam talk/shop interaction and overworld option menus
