@@ -92,6 +92,12 @@ export class PrepMainState extends State {
     }
     this.options.push('Check Map');
     this.descriptions.push('View the battlefield.');
+    // Supply (convoy) — Python preps expose convoy management whenever the
+    // _convoy game var is enabled (no map-adjacency requirement in prep).
+    if (game.gameVars?.get('_convoy')) {
+      this.options.push('Supply');
+      this.descriptions.push('Store and retrieve items.');
+    }
     this.options.push('Fight!');
     this.descriptions.push('Begin the battle!');
 
@@ -238,6 +244,14 @@ export class PrepMainState extends State {
         game.state.change('prep_pick');
       } else if (selected === 'Check Map') {
         game.state.change('prep_map');
+      } else if (selected === 'Supply') {
+        // Simplification of Python's per-unit prep Manage->Items flow: open
+        // the supply screen for the first living party unit.
+        const unit = getPartyUnits()[0];
+        if (unit) {
+          game.memory.set('supply_unit', unit);
+          game.state.change('supply_items');
+        }
       } else if (selected === 'Fight!') {
         this.fight();
       }

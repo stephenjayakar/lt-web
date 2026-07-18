@@ -58,6 +58,11 @@ import {
   setPrepGameRef,
 } from './engine/states/prep-state';
 import {
+  SupplyItemsState,
+  ItemDiscardState,
+  setSupplyGameRef,
+} from './engine/states/supply-state';
+import {
   BaseMainState,
   BaseConvosState,
   BaseCodexState,
@@ -387,6 +392,7 @@ async function main(): Promise<void> {
   setInfoMenuGameRef(gameState);
   setMenuAudioManager(audioManager);
   setPrepGameRef(gameState);
+  setSupplyGameRef(gameState);
   setBaseGameRef(gameState);
   setSettingsGameRef(gameState);
   setMinimapGameRef(gameState);
@@ -434,6 +440,8 @@ async function main(): Promise<void> {
     new PrepMainState(),
     new PrepPickUnitsState(),
     new PrepMapState(),
+    new SupplyItemsState(),
+    new ItemDiscardState(),
     new BaseMainState(),
     new BaseConvosState(),
     new BaseCodexState(),

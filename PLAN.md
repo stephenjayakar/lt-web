@@ -156,6 +156,42 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Supply/convoy and item_discard player states (P5):** new
+  `src/engine/states/supply-state.ts` with `SupplyItemsState` ('supply_items')
+  and `ItemDiscardState` ('item_discard'), registered in `main.ts`. Supply is
+  reachable from the prep menu, the base menu (both gated only on the
+  `_convoy` game var, like Python prep/base), and the map unit menu's
+  'Supply' command per Python's `SupplyAbility` gate (`_convoy` + unit has
+  the 'Convoy' tag or an adjacent same-team ally has 'AdjConvoy' —
+  `abilities.py:293-304`). All transfers go through the existing reversible
+  `StoreItemAction`/`TakeItemFromConvoy`; taking from the convoy is a
+  disabled no-op when the unit's accessory/normal slot class is full
+  (Python supply has no item_discard path). `ItemDiscardState` mirrors
+  `general_states.py:1569-1699`: STORAGE mode (store to convoy) when
+  `_convoy` and (`long_range_storage`, no position, or SupplyAbility),
+  else DISCARD mode using a reversible remove (Python `RemoveItem` at
+  `action.py:1379` removes without convoy and reinserts on reverse —
+  verified); BACK is refused while over capacity (Python plays Error only);
+  the newly gained item is locked; only items of the new item's
+  accessory-class are selectable; the locked-inventory edge auto-resolves
+  (Python `_check_locked_inventory`). The combat droppable-pickup overflow
+  deviation is replaced: a full player killer is now force-added the drop
+  and routed through 'item_discard' after combat cleanup (via
+  `applyDroppableItemPickups`'s new `pendingDiscards` return and a queue in
+  `game.memory`); the non-player silent-refusal branch is unchanged.
+  Python has no save-blocking list for 'item_discard' (`state_machine.py`
+  has no such concept) and saves are only offered from prep/base/menu
+  states, so no mid-discard save support is needed — verified. Simplified
+  vs Python (documented): flat sorted give/take list (weapons grouped by
+  weapon-type order, then non-weapons, alphabetical tiebreak) instead of
+  the multi-tab convoy menu; no restock/optimize/convoy-trade sub-flows; no
+  option_child confirm submenu in item_discard; prep/base entry opens the
+  first living party unit instead of the per-unit Manage flow. The
+  `open_convoy` event command remains a stub (deferred). New
+  `tests/supply-discard.spec.ts` (6 specs): prep/base reachability,
+  give/take round trip with exact undo, capacity no-op, forced
+  uncancelable item_discard from an over-capacity combat pickup landing the
+  chosen item in the convoy, and save/load round trip.
 - **Save-field gap closeout (P2, runtime-inventory.md §4):** persisted Unit
   `current_mana` (dynamic `currentMana` property set by `set_current_mana`,
   read by `item-system.ts` mana-cost checks — `save.ts` `UnitSaveData.currentMana`,
@@ -447,11 +483,13 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   - Fixed `map-combat.ts`/`animation-combat.ts` to collect **every** droppable
     item on a killed unit (previously only the first, via `.find`) into
     `CombatResults.droppedItems`.
-  - Overflow rule: a full player-team killer's drop is sent to the current
-    party's convoy (`SentToConvoy` banner) — a documented simplification of
-    Python's `item_discard` UI flow, which forces the add and then prompts the
-    player to discard something. A full non-player killer does not receive the
-    item at all (matches `GiveItem.do()`'s silent refusal for non-player teams).
+  - Overflow rule (updated by the supply/item_discard slice): a full
+    player-team killer is force-given the drop (over capacity) and then routed
+    through the 'item_discard' state after combat cleanup, matching Python's
+    `GiveItem` force-give -> `item_discard` flow (the earlier
+    straight-to-convoy simplification is removed). A full non-player killer
+    does not receive the item at all (matches `GiveItem.do()`'s silent refusal
+    for non-player teams).
   - Confirmed (contrary to the initial assumption) that Python's
     `handle_item_gain` has **no team-allegiance gate**: an enemy unit that kills
     a player unit loots that unit's droppable items exactly like a player kill
@@ -1474,8 +1512,12 @@ item-use fixture matrices match Python outputs and side effects.
 ### P5 — State Machine and Player-Facing UI
 
 - [ ] Inventory Python state names and map them to web states or documented mergers
-- [ ] Implement supply/convoy, repair shop, trade variants, item discard/targeting,
+- [ ] Implement repair shop, trade variants, item targeting variants,
   formation, text entry, and objective/dialog-log flows
+- [x] Implement supply/convoy ('supply_items') and forced item discard
+  ('item_discard') states: prep/base/map-Supply reachability per Python's
+  gates, reversible give/take, capacity enforcement, and the combat
+  overflow force-give -> item_discard flow (see Recent Changes)
 - [x] Implement the promotion-item flow: `Promote`/`ForcePromote` item components,
   single-option auto-promotion, and a `promotion_choice` state (keyboard + mouse +
   cancel) for multi-option `turns_into`; shared core also backs the `promote`/

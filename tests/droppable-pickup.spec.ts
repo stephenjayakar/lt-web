@@ -8,8 +8,9 @@
  *    the killer (RemoveItem + a synthesized give_item event).
  *  - The item's `droppable` flag is always cleared on transfer (SetDroppable(item, False)).
  *  - If the killer's inventory is full: a player killer still receives the item via a
- *    forced-add + item_discard flow in Python; this web port simplifies that to sending
- *    the drop straight to the convoy instead (documented deviation). A non-player killer
+ *    forced-add + item_discard flow, now matched by this port (the item is force-added
+ *    over capacity and the CombatState routes the player through the 'item_discard'
+ *    state; see tests/supply-discard.spec.ts). A non-player killer
  *    with a full inventory simply does not receive the item (GiveItem.do() refuses to add
  *    for non-player when `item_funcs.inventory_full` is true) — the item is lost.
  *  - There is NO team-allegiance gate in handle_item_gain: an enemy unit that kills a
@@ -140,7 +141,7 @@ test.describe('Droppable-item pickup on kill', () => {
     expect(owner!.droppable).toBe(false);
   });
 
-  test('overflowing a player killer inventory sends the drop to the convoy instead', async ({ page }) => {
+  test('overflowing a player killer inventory force-adds the drop for item_discard', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
@@ -163,10 +164,12 @@ test.describe('Droppable-item pickup on kill', () => {
     expect(result).not.toBeNull();
     expect(result.defenderDead).toBe(true);
 
+    // Python force-gives the drop (over capacity); the item_discard state is
+    // then responsible for bringing the unit back under the limit.
     const owner = await getItemOwner(page, 'Elixir');
     expect(owner).not.toBeNull();
-    expect(owner!.inConvoy).toBe(true);
-    expect(owner!.ownerNid).toBeNull();
+    expect(owner!.inConvoy).toBe(false);
+    expect(owner!.ownerNid).toBe('Eirika');
     expect(owner!.droppable).toBe(false);
   });
 

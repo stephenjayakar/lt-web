@@ -94,6 +94,7 @@ import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import { queueCombatItemEvents, applyDroppableItemPickups } from '../../combat/combat-lifecycle';
+import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
@@ -1700,6 +1701,12 @@ export class MenuState extends State {
       options.push({ label: 'Talk', value: 'talk', enabled: true });
     }
 
+    // Supply — Python SupplyAbility: _convoy enabled and unit has 'Convoy'
+    // tag or an adjacent same-team ally has 'AdjConvoy'.
+    if (supplyAvailableOnMap(unit, game)) {
+      options.push({ label: 'Supply', value: 'supply', enabled: true });
+    }
+
     // Wait is always available
     options.push({ label: 'Wait', value: 'wait', enabled: true });
 
@@ -1784,9 +1791,10 @@ export class MenuState extends State {
           this.menu = null;
           return this.begin();
         }
-      } else if (value === 'transfer') {
+      } else if (value === 'supply') {
+        game.memory.set('supply_unit', unit);
         this.menu = null;
-        game.state.change('transfer');
+        game.state.change('supply_items');
       } else if (value.startsWith('region_')) {
         // Region interaction — triggered by sub_nid (Visit, Seize, Shop, Armory, Chest, etc.)
         const regionNid = value.slice('region_'.length);
@@ -3773,6 +3781,7 @@ export class CombatState extends State {
   private stoleBannerShown: boolean = false;
   private gotItemBanner: Banner | null = null;
   private gotItemBannerQueue: string[] = [];
+  private pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
   private rankUpBannerShown: boolean = false;
 
   /** Get whichever combat controller is active (AnimationCombat or MapCombat). */
@@ -3904,6 +3913,7 @@ export class CombatState extends State {
     this.stoleBannerShown = false;
     this.gotItemBanner = null;
     this.gotItemBannerQueue = [];
+    this.pendingDiscards = [];
     this.rankUpBannerShown = false;
     this.initialized = true;
 
@@ -4216,13 +4226,15 @@ export class CombatState extends State {
             ));
           }
           // Droppable item pickup (Python simple_combat.handle_item_gain).
-          this.gotItemBannerQueue = applyDroppableItemPickups(
+          const pickupResult = applyDroppableItemPickups(
             game.actionLog,
             game.db,
             this.results,
             activeCombat.attacker,
             this.getPrimaryCombatDefender() ?? activeCombat.defender,
           );
+          this.gotItemBannerQueue = pickupResult.banners;
+          this.pendingDiscards = pickupResult.pendingDiscards;
           if (this.results.attackerRankUp) {
             const rankUp = this.results.attackerRankUp;
             const weaponType = activeCombat.attackItem.getComponent<string>('weapon_type');
@@ -4628,6 +4640,16 @@ export class CombatState extends State {
 
         // Pop combat state
         game.state.back();
+
+        // A full player killer force-given a droppable item must resolve the
+        // 'item_discard' state (Python GiveItem force_give -> item_discard).
+        if (this.pendingDiscards.length > 0) {
+          const queue = (game.memory.get('item_discard_queue') as any[] | undefined) ?? [];
+          queue.push(...this.pendingDiscards);
+          game.memory.set('item_discard_queue', queue);
+          this.pendingDiscards = [];
+          game.state.change('item_discard');
+        }
 
         // If events were triggered by combat (combat_end, combat_death), push EventState.
         // BUT skip this when combat was triggered from an event (interact_unit) —
