@@ -565,6 +565,7 @@ export class GameState {
 
     // h. Create EventManager -----------------------------------------------
     this.eventManager = new EventManager(this.db.events);
+    this.eventManager.actionLog = this.actionLog;
 
     // h2. Create AIController -----------------------------------------------
     this.aiController = new AIController(this.db, this.board, this.pathSystem);

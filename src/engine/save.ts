@@ -3,7 +3,7 @@
 // Mirrors LT's app/engine/save.py.
 // ---------------------------------------------------------------------------
 
-import type { NID, LevelPrefab, ItemPrefab, SkillPrefab } from '../data/types';
+import type { NID, LevelPrefab, ItemPrefab, SkillPrefab, RegionData } from '../data/types';
 import type { Database } from '../data/database';
 import type { UnitObject, StatusEffect } from '../objects/unit';
 import { ItemObject as ItemObjectCtor } from '../objects/item';
@@ -137,6 +137,21 @@ export interface SkillSaveData {
   itemSourceKey?: string | null;
 }
 
+/** Full runtime region state, mirroring RegionData so runtime-created/mutated
+ * regions (via add_region, region_condition, etc.) survive save/load. */
+export interface RegionSaveData {
+  nid: string;
+  region_type: string;
+  position: [number, number];
+  size: [number, number];
+  sub_nid: string;
+  condition: string;
+  time_left: number | null;
+  only_once: boolean;
+  interrupt_move: boolean;
+  hide_time: boolean;
+}
+
 export interface LevelSaveData {
   nid: string;
   name: string;
@@ -147,7 +162,10 @@ export interface LevelSaveData {
   music: Record<string, string>;
   objective: { simple: string; win: string; loss: string };
   unitNids: string[];
-  regionNids: string[];
+  /** Full region state (position/size/type/condition/etc). Preferred over legacy regionNids. */
+  regions?: RegionSaveData[];
+  /** @deprecated Legacy field from saves written before full region-state persistence. */
+  regionNids?: string[];
 }
 
 export interface PartySaveData {
@@ -196,6 +214,8 @@ export interface SaveDict {
   roamInfo: { roam: boolean; roamUnitNid: string | null };
   overworldRegistry: [string, any][];
   memory: [string, any][];
+  /** NIDs of only_once events already triggered. Optional for legacy saves (defaults to empty). */
+  alreadyTriggeredEvents?: string[];
 }
 
 export interface SaveMetadata {
@@ -551,8 +571,20 @@ function serializeLevel(
   // Collect unit NIDs from level units
   const unitNids: string[] = level.units.map(u => u.nid);
 
-  // Collect region NIDs
-  const regionNids: string[] = level.regions.map(r => r.nid);
+  // Collect full region state (position/size/type/condition/etc.) so
+  // runtime-created or -mutated regions survive save/load.
+  const regions: RegionSaveData[] = (level.regions ?? []).map((r) => ({
+    nid: r.nid,
+    region_type: r.region_type,
+    position: [r.position[0], r.position[1]],
+    size: [r.size[0], r.size[1]],
+    sub_nid: r.sub_nid,
+    condition: r.condition,
+    time_left: r.time_left,
+    only_once: r.only_once,
+    interrupt_move: r.interrupt_move,
+    hide_time: r.hide_time,
+  }));
 
   return {
     nid: level.nid,
@@ -564,7 +596,7 @@ function serializeLevel(
     music: { ...level.music },
     objective: { ...level.objective },
     unitNids,
-    regionNids,
+    regions,
   };
 }
 
@@ -777,6 +809,9 @@ export function buildSaveDict(game: any): SaveDict {
     // Persist the skill uid counter so subsequent constructions stay monotonic
     // and restored uids don't collide with new ones (Python set_next_uids).
     skillCounter: getNextSkillUid(),
+    alreadyTriggeredEvents: game.eventManager
+      ? Array.from((game.eventManager as EventManager).getOnceTriggered())
+      : [],
   };
 }
 
@@ -1344,7 +1379,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
 
   // 15. Restore level (if present)
   if (s.level) {
-    await restoreLevel(game, s.level, unitsByNid);
+    await restoreLevel(game, s.level, unitsByNid, s.alreadyTriggeredEvents);
   }
 
   // 16. Restore overworld registry
@@ -1367,6 +1402,7 @@ async function restoreLevel(
   game: any,
   levelData: LevelSaveData,
   unitsByNid: Map<string, UnitObject>,
+  alreadyTriggeredEvents: string[] | undefined,
 ): Promise<void> {
   try {
     // Get the level prefab from DB
@@ -1376,7 +1412,27 @@ async function restoreLevel(
       return;
     }
 
-    game.currentLevel = levelPrefab;
+    // Build the runtime region list. Prefer the fully-serialized `regions`
+    // field. For legacy saves that only have `regionNids`, fall back to the
+    // prefab's regions filtered to the saved NIDs — this is the "least
+    // surprising" legacy behavior: it preserves which regions existed
+    // (add/remove_region effects) even though per-region runtime mutations
+    // (e.g. region_condition edits) are lost, since that data was never
+    // captured by the old format. Very old saves with neither field fall
+    // back to using the prefab's regions unmodified (current pre-fix
+    // behavior).
+    let regions: RegionData[];
+    if (levelData.regions) {
+      regions = levelData.regions.map((r) => ({ ...r }));
+    } else if ((levelData as any).regionNids) {
+      const savedNids: string[] = (levelData as any).regionNids;
+      regions = (levelPrefab.regions ?? []).filter((r: RegionData) => savedNids.includes(r.nid));
+    } else {
+      regions = levelPrefab.regions ?? [];
+    }
+    // Clone the prefab so runtime region mutations don't leak back into the
+    // shared DB prefab object (game.currentLevel used to alias it directly).
+    game.currentLevel = { ...levelPrefab, regions };
 
     // Load tilemap
     const tilemapData = game.db?.tilemaps?.get?.(levelData.tilemapNid);
@@ -1498,6 +1554,8 @@ async function restoreLevel(
 
     // Create EventManager
     game.eventManager = new EventManager(game.db?.events);
+    game.eventManager.actionLog = game.actionLog ?? null;
+    game.eventManager.restoreOnceTriggered(alreadyTriggeredEvents);
 
     // Create AIController
     game.aiController = new AIController(game.db, game.board, game.pathSystem);

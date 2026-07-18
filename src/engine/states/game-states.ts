@@ -81,6 +81,8 @@ import {
   RemovePartnerAction,
   EquipItemAction,
   BringToTopItemAction,
+  AddRegionAction,
+  RemoveRegionAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -9078,7 +9080,7 @@ export class EventState extends State {
         if (!game.currentLevel.regions) {
           game.currentLevel.regions = [];
         }
-        game.currentLevel.regions.push(newRegion);
+        game.actionLog.doAction(new AddRegionAction(newRegion, game.currentLevel.regions));
         this.advancePointer();
         return false;
       }
@@ -9086,9 +9088,7 @@ export class EventState extends State {
       case 'remove_region': {
         const regionNid = args[0] ?? '';
         if (game.currentLevel?.regions) {
-          game.currentLevel.regions = game.currentLevel.regions.filter(
-            (r: RegionData) => r.nid !== regionNid
-          );
+          game.actionLog.doAction(new RemoveRegionAction(regionNid, game.currentLevel.regions));
         }
         this.advancePointer();
         return false;

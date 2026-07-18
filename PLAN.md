@@ -156,6 +156,41 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **already_triggered_events + full region-state save-field parity (runtime-inventory.md §4):**
+  - `EventManager` (`src/events/event-manager.ts`) now exposes
+    `getOnceTriggered()`/`restoreOnceTriggered()` for save serialization, and
+    marks only-once events through a new reversible `OnlyOnceEventAction`
+    (`src/engine/action.ts`) recorded on `game.actionLog` when one is wired up
+    (mirrors Python's `action.OnlyOnceEvent` do/reverse), so turnwheel undo
+    restores an event's re-triggerability. Call sites without an action log
+    fall back to marking the set directly (no throw). `SaveDict` gained
+    `alreadyTriggeredEvents?: string[]`; legacy saves without it default to
+    an empty set.
+  - `LevelSaveData.regions` (`src/engine/save.ts`) now captures full
+    `RegionData` state (position, size, region_type, sub_nid, condition,
+    time_left, only_once, interrupt_move, hide_time) instead of just
+    `regionNids: string[]`. `restoreLevel` rebuilds `currentLevel.regions`
+    from the saved records, so regions added at runtime via `add_region`
+    survive reload and regions removed/consumed (village visits,
+    `remove_region`) stay gone instead of reappearing from the prefab.
+    `game.currentLevel` is now a shallow clone of the DB level prefab
+    (`{ ...levelPrefab, regions }`) instead of aliasing it directly, so
+    runtime region mutations can't leak back into the shared prefab object.
+    Legacy saves with the old `regionNids` field but no `regions` fall back
+    to the prefab's regions filtered to those NIDs (least-surprising legacy
+    path — per-region runtime edits like `region_condition` are lost for
+    those old saves, but which regions existed is preserved).
+  - Added `AddRegionAction`/`RemoveRegionAction` (`src/engine/action.ts`) and
+    wired them into the `add_region`/`remove_region` event command handlers
+    in `src/engine/states/game-states.ts` (previously direct, unreversible
+    array mutation), so turnwheel undo restores region add/remove.
+  - New spec `tests/event-region-save.spec.ts`: only-once event doesn't
+    re-fire after save/load; turnwheel undo restores only-once
+    triggerability; runtime `add_region` region survives save/load with all
+    fields intact; a `remove_region`-removed region stays gone after
+    save/load; a legacy save lacking `regions` still loads via the prefab
+    fallback. Full serial gate green (137 tests).
+
 - **Skill identity save-field parity (runtime-inventory.md §4 gap #3):**
   - `SkillObject` (`src/objects/skill.ts`) now carries a per-instance `uid`
     backed by a module-level counter seeded to 100 (Python `SkillObject.next_uid`),
@@ -1108,6 +1143,12 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 ### P2 — Actions, Save/Restore, and Turnwheel
 
 - [ ] Route all event and gameplay mutations through reversible actions
+- [ ] Make village-visit auto-consumption of `only_once` regions reversible
+  (two direct-mutation sites in `game-states.ts`; save/load already captures the
+  effect, only turnwheel undo is affected)
+- [ ] Fix `loadLevel()` prefab aliasing: `game.currentLevel` can alias the DB
+  level prefab so runtime mutations leak into the database (the restore path was
+  fixed with a defensive clone in the region-save slice; the load path remains)
 - [x] Route map/full-animation combat outcomes and death removal through deterministic
   reversible actions, including HP/EXP/level/WEXP/status/item and initiative state
 - [ ] Inventory every Python save field and restoration-order dependency
@@ -1120,9 +1161,21 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
   each unit's skill list in order, and reconnects `itemSource` to the restored
   ItemObject by mapKey. Legacy saves (no `skillKey`/`uid`/`skillCounter`) still load
   via the re-derivation fallback. Covered by `tests/skill-identity-save.spec.ts`.
-- [ ] Close remaining inventoried save-field gaps: `already_triggered_events`,
-  regions/teams/bounds/terrain-status registries, `current_mana`/`current_fatigue`,
-  dialog/action logs (see `docs/parity/runtime-inventory.md`)
+- [x] `already_triggered_events` + full region-state save-field parity (was: web
+  kept `EventManager.onceTriggered` in-memory only with no reversible marking,
+  and saves only stored `regionNids: string[]` with nothing consuming it, so
+  runtime-added/removed regions didn't survive reload). `SaveDict` now carries
+  `alreadyTriggeredEvents` (restored via `EventManager.restoreOnceTriggered`)
+  and `LevelSaveData.regions: RegionSaveData[]` (full `RegionData` fields,
+  restored into `currentLevel.regions` instead of rebuilding from the level
+  prefab); only-once marking and `add_region`/`remove_region` now route
+  through reversible actions (`OnlyOnceEventAction`, `AddRegionAction`,
+  `RemoveRegionAction`) for turnwheel parity. Legacy saves with old
+  `regionNids` but no `regions` fall back to the prefab filtered to those
+  NIDs. Covered by `tests/event-region-save.spec.ts`.
+- [ ] Close remaining inventoried save-field gaps: terrain-status registries,
+  teams, bounds, `current_mana`/`current_fatigue`, dialog/action logs
+  (see `docs/parity/runtime-inventory.md`)
 - [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
   initiative, roam, overworld, records, achievements, and in-progress events
 - [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults
