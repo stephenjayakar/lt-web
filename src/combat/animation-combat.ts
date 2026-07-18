@@ -8,7 +8,7 @@ import type { CombatEffectData, PaletteData } from './battle-anim-types';
 import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
 import { convertSpritesheetToFrames } from './sprite-loader';
 import { computeHit, computeDamage, computeCrit } from './combat-calcs';
-import { usesConsumedByStrikes } from './item-system';
+import { usesConsumedByStrikes, hasEclipse, eclipseDamage, lifelinkHealForStrike } from './item-system';
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
@@ -1058,13 +1058,25 @@ export class AnimationCombat implements AnimationCombatOwner {
   private computeResults(): CombatResults {
     let atkHp = this.attackerStartHp;
     let defHp = this.defenderStartHp;
+    const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
 
     for (const strike of this.strikes) {
       if (!strike.hit) continue;
+      let damage = strike.damage;
+      // Eclipse on_hit overrides damage to floor(targetCurrentHp/2).
+      if (hasEclipse(strike.item)) {
+        const targetHp = strike.attacker === this.attacker ? defHp : atkHp;
+        damage = eclipseDamage(targetHp);
+      }
       if (strike.attacker === this.attacker) {
-        defHp -= strike.damage;
+        // Lifelink after_strike: heal per hitting strike, clamping the
+        // strike's damage to the defender's remaining HP so overkill damage
+        // never heals. Mirrors Python `Lifelink.after_strike`.
+        const heal = lifelinkHealForStrike(this.attacker, this.attackItem, strike, defHp);
+        if (heal > 0) atkHp = Math.min(attackerMaxHp, atkHp + heal);
+        defHp -= damage;
       } else {
-        atkHp -= strike.damage;
+        atkHp -= damage;
       }
     }
 
@@ -1097,6 +1109,10 @@ export class AnimationCombat implements AnimationCombatOwner {
       if (attackWeaponBroke && !this.attackItem.hasComponent('no_break_out_of_uses')) {
         const idx = this.attacker.items.indexOf(this.attackItem);
         if (idx !== -1) this.attacker.items.splice(idx, 1);
+        if (this.attacker.equippedWeapon === this.attackItem || this.attacker.equippedAccessory === this.attackItem) {
+          this.attacker.unequip(this.attackItem);
+        }
+        this.attacker.autoequip();
       }
     }
 
@@ -1110,6 +1126,10 @@ export class AnimationCombat implements AnimationCombatOwner {
       if (defenseWeaponBroke && !this.defenseItem.hasComponent('no_break_out_of_uses')) {
         const idx = this.defender.items.indexOf(this.defenseItem);
         if (idx !== -1) this.defender.items.splice(idx, 1);
+        if (this.defender.equippedWeapon === this.defenseItem || this.defender.equippedAccessory === this.defenseItem) {
+          this.defender.unequip(this.defenseItem);
+        }
+        this.defender.autoequip();
       }
     }
 

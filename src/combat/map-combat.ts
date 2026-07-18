@@ -4,7 +4,7 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
-import { usesConsumedByStrikes } from './item-system';
+import { usesConsumedByStrikes, hasEclipse, eclipseDamage, lifelinkHealForStrike } from './item-system';
 import {
   applyGroupCombatComponents,
   grantPartnerCombatWexp,
@@ -350,19 +350,33 @@ export class MapCombat {
   }
 
   private computeResults(): CombatResults {
-    // Walk through all strikes and apply HP changes to actual units
+    // Walk through all strikes and apply HP changes to actual units.
     let atkHp = this.attackerStartHp;
     const defenderHps = new Map(this.defenderStartHps);
+    const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
 
     for (const strike of this.strikes) {
       if (!strike.hit) continue;
+      // Eclipse on_hit overrides damage to floor(targetCurrentHp/2).
+      let damage = strike.damage;
+      if (hasEclipse(strike.item)) {
+        const targetHp = strike.defender === this.attacker
+          ? atkHp
+          : (defenderHps.get(strike.defender) ?? strike.defender.currentHp);
+        damage = eclipseDamage(targetHp);
+      }
       if (strike.defender === this.attacker) {
-        atkHp -= strike.damage;
+        atkHp -= damage;
       } else if (defenderHps.has(strike.defender)) {
-        defenderHps.set(
-          strike.defender,
-          (defenderHps.get(strike.defender) ?? strike.defender.currentHp) - strike.damage,
-        );
+        const before = defenderHps.get(strike.defender) ?? strike.defender.currentHp;
+        // Lifelink after_strike: heal per hitting attacker strike, clamping
+        // the strike's damage to the defender's remaining HP so overkill
+        // damage never heals. Mirrors Python `Lifelink.after_strike`.
+        if (strike.attacker === this.attacker) {
+          const heal = lifelinkHealForStrike(this.attacker, this.attackItem, strike, before);
+          if (heal > 0) atkHp = Math.min(attackerMaxHp, atkHp + heal);
+        }
+        defenderHps.set(strike.defender, before - damage);
       }
     }
 
@@ -402,6 +416,8 @@ export class MapCombat {
         if (broke && !item.hasComponent('no_break_out_of_uses')) {
           const inventoryIndex = unit.items.indexOf(item);
           if (inventoryIndex !== -1) unit.items.splice(inventoryIndex, 1);
+          if (unit.equippedWeapon === item || unit.equippedAccessory === item) unit.unequip(item);
+          unit.autoequip();
         }
       }
       return broke;

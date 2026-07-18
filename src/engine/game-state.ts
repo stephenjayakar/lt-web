@@ -1094,6 +1094,9 @@ export class GameState {
       }
     }
 
+    // Autoequip after starting items/skills are populated (Python UnitObject.__init__).
+    unit.autoequip();
+
     // Place on board
     if (position && this.board) {
       this.board.setUnit(position[0], position[1], unit);

@@ -19,6 +19,10 @@ import type { Surface } from './engine/surface';
 import type { InputEvent, GameButton } from './engine/input';
 import { FRAMETIME, updateAnimationCounters } from './engine/constants';
 import { ItemObject } from './objects/item';
+import { EquipItemAction } from './engine/action';
+import { isItemSourcedSkill } from './combat/item-system';
+import { MapCombat } from './combat/map-combat';
+import * as saveSystem from './engine/save';
 
 export interface HarnessAPI {
   /** Step the game forward by N frames. Optionally inject an input on the first frame. */
@@ -45,6 +49,18 @@ export interface HarnessAPI {
   killUnit: (unitNid: string) => boolean;
   /** Trigger a game event by firing a trigger. Returns true if events were queued. */
   triggerEvent: (triggerType: string) => boolean;
+  /** Get detailed unit state including equipped weapon/accessory and skills. */
+  getUnitDetail: (unitNid: string) => UnitDetail | null;
+  /** Force-equip an item on a unit via a reversible EquipItemAction (turnwheel-safe). */
+  equipItem: (unitNid: string, itemNid: string) => boolean;
+  /** Directly resolve map combat between attacker and defender without UI. Returns results. */
+  resolveCombat: (attackerNid: string, defenderNid: string) => CombatResultSummary | null;
+  /** Save current game state to a named slot and return the serialized snapshot. */
+  saveSnapshot: () => unknown;
+  /** Restore game state from a previously saved snapshot. */
+  loadSnapshot: (snapshot: unknown) => Promise<boolean>;
+  /** Undo the last action group via the turnwheel. */
+  turnwheelUndo: () => boolean;
 }
 
 export interface HarnessState {
@@ -62,6 +78,32 @@ export interface HarnessState {
     isDead: boolean;
   }>;
   levelNid: string | null;
+}
+
+export interface UnitDetail {
+  nid: string;
+  name: string;
+  team: string;
+  hp: number;
+  maxHp: number;
+  isDead: boolean;
+  position: [number, number] | null;
+  equippedWeaponNid: string | null;
+  equippedAccessoryNid: string | null;
+  itemNids: string[];
+  skillNids: string[];
+  /** Skill NIDs that were granted by an equipped item (status_on_equip). */
+  itemSourcedSkillNids: string[];
+}
+
+export interface CombatResultSummary {
+  attackerHp: number;
+  defenderHp: number;
+  attackerDead: boolean;
+  defenderDead: boolean;
+  strikeCount: number;
+  /** Damage dealt by each strike (in order). */
+  strikeDamages: number[];
 }
 
 /**
@@ -254,6 +296,86 @@ export function installHarness(
         { type: triggerType, levelNid },
         { game, gameVars: game.gameVars, levelVars: game.levelVars },
       );
+    },
+
+    getUnitDetail(unitNid: string): UnitDetail | null {
+      const unit = game.units.get(unitNid);
+      if (!unit) return null;
+      const itemSourcedSkillNids = unit.skills
+        .filter((s) => isItemSourcedSkill(s))
+        .map((s) => s.nid);
+      return {
+        nid: unit.nid,
+        name: unit.name,
+        team: unit.team,
+        hp: unit.currentHp,
+        maxHp: unit.stats['HP'] ?? 0,
+        isDead: unit.isDead(),
+        position: unit.position ? [unit.position[0], unit.position[1]] : null,
+        equippedWeaponNid: unit.equippedWeapon?.nid ?? null,
+        equippedAccessoryNid: unit.equippedAccessory?.nid ?? null,
+        itemNids: unit.items.map((i) => i.nid),
+        skillNids: unit.skills.map((s) => s.nid),
+        itemSourcedSkillNids,
+      };
+    },
+
+    equipItem(unitNid: string, itemNid: string): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit) return false;
+      const item = unit.items.find((i) => i.nid === itemNid);
+      if (!item) return false;
+      if (!unit.canEquip(item)) return false;
+      game.actionLog.doAction(new EquipItemAction(unit, item));
+      return true;
+    },
+
+    resolveCombat(attackerNid: string, defenderNid: string): CombatResultSummary | null {
+      const attacker = game.units.get(attackerNid);
+      const defender = game.units.get(defenderNid);
+      if (!attacker || !defender || !attacker.position || !defender.position) return null;
+      const weapon = attacker.equippedWeapon;
+      if (!weapon) return null;
+      const rngMode = (game.db.getConstant('rng_mode', 'true_hit') as string) as any;
+      const mc = new MapCombat(
+        attacker, weapon, defender, null,
+        game.db, rngMode, game.board, null, undefined, game,
+      );
+      const results = mc.applyResults(game.actionLog);
+      return {
+        attackerHp: attacker.currentHp,
+        defenderHp: defender.currentHp,
+        attackerDead: results.attackerDead,
+        defenderDead: results.defenderDead,
+        strikeCount: mc.strikes.length,
+        strikeDamages: mc.strikes.map((s) => (s.hit ? s.damage : 0)),
+      };
+    },
+
+    saveSnapshot(): unknown {
+      return saveSystem.buildSaveDict(game);
+    },
+
+    async loadSnapshot(snapshot: unknown): Promise<boolean> {
+      try {
+        await saveSystem.restoreGameState(game, snapshot as any);
+        return true;
+      } catch (err) {
+        console.warn('[Harness] loadSnapshot failed:', err);
+        return false;
+      }
+    },
+
+    turnwheelUndo(): boolean {
+      const log = game.actionLog;
+      if (!log || typeof log.undo !== 'function') return false;
+      try {
+        const action = log.undo();
+        return action !== null;
+      } catch (err) {
+        console.warn('[Harness] turnwheelUndo failed:', err);
+        return false;
+      }
     },
   };
 

@@ -15,6 +15,7 @@ import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
 import { setActionGameRef } from './engine/action';
+import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
 import { initBaseSurf } from './ui/base-surf';
 import { setMenuAudioManager } from './ui/menu';
@@ -379,6 +380,7 @@ async function main(): Promise<void> {
   // --- GameState ---
   drawLoadingScreen(ctx, 'Initializing...');
   const gameState = initGameState(db, resources, audioManager);
+  setUnitGameRef(() => gameState);
   setActionGameRef(() => gameState);
   setGameRef(gameState);
   setInfoMenuGameRef(gameState);

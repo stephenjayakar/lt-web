@@ -483,7 +483,15 @@ export function computeDamage(
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
   const baseDmg = atk - def;
 
-  const itemDynDmg = itemSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, mode, null, baseDmg);
+  // Attacker-only weapon-triangle damage advantage, folded into the
+  // effective might by `EffectiveDamage.dynamic_damage` when
+  // `weapon_effectiveness_multiplied` is true (Python `compute_advantage_attr`).
+  const advantageDamage = weaponTriangle(
+    attackItem, defWeapon, db, attacker, defender,
+  ).attackerDamageAdvantage;
+  const itemDynDmg = itemSystem.dynamicDamage(
+    attacker, attackItem, defender, defWeapon, mode, null, baseDmg, db, game, advantageDamage,
+  );
   const skillDynDmg = skillSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, mode, null, baseDmg);
   const skillDynResist = skillSystem.dynamicResist(defender, defWeapon, attacker, attackItem, mode, null, def);
 
@@ -624,8 +632,8 @@ export function weaponTriangle(
   db: Database,
   attacker?: UnitObject,
   defender?: UnitObject,
-): { hitBonus: number; damageBonus: number } {
-  const noBonus = { hitBonus: 0, damageBonus: 0 };
+): { hitBonus: number; damageBonus: number; attackerDamageAdvantage: number } {
+  const noBonus = { hitBonus: 0, damageBonus: 0, attackerDamageAdvantage: 0 };
   if (!defenseItem) return noBonus;
 
   // Check if either item ignores weapon advantage
@@ -690,6 +698,13 @@ export function weaponTriangle(
       sum([attackerAdvantage, attackerDisadvantage], 'damage') -
       sum([defenderAdvantage, defenderDisadvantage], 'resist')
     ) * finalModifier),
+    // Attacker-only weapon-triangle damage advantage, matching Python
+    // `combat_calcs.compute_advantage_attr(unit, target, item, item2, 'damage')`
+    // (excludes the defender's resist advantage). Folded into the effective
+    // might by `EffectiveDamage.dynamic_damage` when weapon_effectiveness_multiplied.
+    attackerDamageAdvantage: Math.trunc(
+      sum([attackerAdvantage, attackerDisadvantage], 'damage') * finalModifier,
+    ),
   };
 }
 
@@ -787,8 +802,12 @@ export function getEquippedWeapon(
   db?: Database,
   game?: any,
 ): ItemObject | null {
-  for (const item of unit.items) {
-    if (item.isWeapon() && (!db || itemSystem.available(unit, item, db, game))) return item;
+  // Tracked equipped weapon is authoritative (Python `unit.equipped_weapon`).
+  if (unit.equippedWeapon) return unit.equippedWeapon;
+  // Fallback for units constructed before autoequip ran: derive and cache.
+  if (db) {
+    unit.autoequip();
+    if (unit.equippedWeapon) return unit.equippedWeapon;
   }
   return null;
 }

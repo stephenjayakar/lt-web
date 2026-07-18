@@ -1,6 +1,14 @@
 import type { NID, UnitPrefab, KlassDef, AlliancePair } from '../data/types';
 import type { ItemObject } from './item';
 import type { SkillObject } from './skill';
+import type { Database } from '../data/database';
+import { available as itemAvailable, dispatchEquipHooks } from '../combat/item-system';
+
+/** Lazy game ref so unit equip hooks can reach the db without a circular import. */
+let _getGameForUnits: (() => any) | null = null;
+/** Registered by game-state at boot (mirrors the action.ts pattern). */
+export function setUnitGameRef(getter: () => any): void { _getGameForUnits = getter; }
+function gameForUnits(): any { return _getGameForUnits?.(); }
 
 /**
  * Opaque handle for whatever map-sprite representation the renderer uses.
@@ -57,13 +65,16 @@ export class UnitObject {
   growths: Record<string, number>;
   /** Dynamic-leveling pity values, keyed by stat NID. */
   growthPoints: Record<string, number>;
-
+  items: ItemObject[];
+  /** Tracked equipped weapon (Python `equipped_weapon`). Null until autoequip. */
+  equippedWeapon: ItemObject | null = null;
+  /** Tracked equipped accessory (Python `equipped_accessory`). */
+  equippedAccessory: ItemObject | null = null;
+  skills: SkillObject[];
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;
   statCapModifiers: Record<string, number>;
 
-  items: ItemObject[];
-  skills: SkillObject[];
   tags: string[];
   ai: NID;
 
@@ -331,9 +342,115 @@ export class UnitObject {
   // Item helpers
   // ------------------------------------------------------------------
 
-  /** Get the first usable weapon in the inventory. */
+  /** Whether an item is an accessory (Python `item_system.is_accessory`). */
+  private isAccessory(item: ItemObject): boolean {
+    return item.hasComponent('accessory');
+  }
+
+  /** Return all items including multi_item subitems (Python `get_all_items`). */
+  private getAllItems(): ItemObject[] {
+    const result: ItemObject[] = [];
+    for (const item of this.items) {
+      if (item.hasComponent('multi_item') && item.subitems.length > 0) {
+        result.push(...item.subitems);
+      } else {
+        result.push(item);
+      }
+    }
+    return result;
+  }
+  /** True if the unit can currently equip `item` (Python `can_equip`). */
+  canEquip(item: ItemObject): boolean {
+    // Python: item_system.equippable(unit, item) and item_funcs.available(unit, item).
+    // Only weapons and accessories are equippable; consumables/spells-as-items are not.
+    if (!item.isWeapon() && !this.isAccessory(item)) return false;
+    const game = gameForUnits();
+    const db = game?.db;
+    if (!db) return true;
+    return itemAvailable(this, item, db, game);
+  }
+
+  private equipDb(): Database | undefined {
+    return gameForUnits()?.db;
+  }
+
+  /**
+   * Equip `item`, swapping out any currently-equipped item in the same slot.
+   * Mirrors Python `UnitObject.equip` exactly, including on_equip_item hooks.
+   */
+  equip(item: ItemObject): void {
+    if (this.isAccessory(item) && item === this.equippedAccessory) return;
+    if (item === this.equippedWeapon) return;
+    if (this.isAccessory(item)) {
+      if (this.equippedAccessory) this.unequip(this.equippedAccessory, item);
+      this.equippedAccessory = item;
+    } else {
+      if (this.equippedWeapon) this.unequip(this.equippedWeapon, item);
+      this.equippedWeapon = item;
+    }
+    dispatchEquipHooks(this, item, true, this.equipDb());
+  }
+
+  /**
+   * Unequip `item`, optionally swapping to `swapTo` (Python `unequip`).
+   * Fires on_unequip_item hooks.
+   */
+  unequip(item: ItemObject, swapTo: ItemObject | null = null): void {
+    if (item !== this.equippedWeapon && item !== this.equippedAccessory) return;
+    if (this.isAccessory(item)) {
+      this.equippedAccessory = swapTo;
+    } else {
+      this.equippedWeapon = swapTo;
+    }
+    dispatchEquipHooks(this, item, false, this.equipDb());
+  }
+
+  /**
+   * Auto-equip a valid weapon and accessory, keeping accessories sorted after
+   * items. Mirrors Python `UnitObject.autoequip` exactly.
+   */
+  autoequip(): void {
+    const allItems = this.getAllItems();
+    if (this.equippedWeapon && !this.canEquip(this.equippedWeapon)) {
+      this.unequip(this.equippedWeapon);
+    }
+    if (!this.equippedWeapon) {
+      for (const item of allItems) {
+        if (this.isAccessory(item)) continue;
+        if (this.canEquip(item)) {
+          this.equip(item);
+          break;
+        }
+      }
+    }
+    if (this.equippedAccessory && !this.canEquip(this.equippedAccessory)) {
+      this.unequip(this.equippedAccessory);
+    }
+    if (!this.equippedAccessory) {
+      for (const item of allItems) {
+        if (!this.isAccessory(item)) continue;
+        if (this.canEquip(item)) {
+          this.equip(item);
+          break;
+        }
+      }
+    }
+    // Keep accessories sorted after items (Python: sorted by is_accessory).
+    this.items.sort((a, b) => {
+      const aa = this.isAccessory(a) ? 1 : 0;
+      const bb = this.isAccessory(b) ? 1 : 0;
+      return aa - bb;
+    });
+  }
+
+  /** Currently equipped weapon (Python `get_weapon`). */
   getEquippedWeapon(): ItemObject | null {
-    return this.items.find((item) => item.isWeapon() && (!item.maxUses || item.uses > 0)) ?? null;
+    return this.equippedWeapon;
+  }
+
+  /** Currently equipped accessory (Python `get_accessory`). */
+  getEquippedAccessory(): ItemObject | null {
+    return this.equippedAccessory;
   }
 
   /** Get core usable consumables and non-weapon healing spells/staves. */

@@ -1115,6 +1115,8 @@ export class TradeAction extends Action {
       itemB.owner = this.unitA;
     }
 
+    this.unitA.autoequip();
+    this.unitB.autoequip();
     this.unitA.hasTraded = true;
     this.unitB.hasTraded = true;
   }
@@ -1131,6 +1133,8 @@ export class TradeAction extends Action {
       itemB.owner = this.unitA;
     }
 
+    this.unitA.autoequip();
+    this.unitB.autoequip();
     this.unitA.hasTraded = false;
     this.unitB.hasTraded = false;
   }
@@ -1774,6 +1778,10 @@ export class WeaponUsesAction extends Action {
       if (idx !== -1) {
         this.unit.items.splice(idx, 1);
       }
+      if (this.unit.equippedWeapon === this.item || this.unit.equippedAccessory === this.item) {
+        this.unit.unequip(this.item);
+      }
+      this.unit.autoequip();
     }
   }
 
@@ -1782,6 +1790,7 @@ export class WeaponUsesAction extends Action {
       this.unit.items.push(this.item);
     }
     this.item.setUses(this.usesBefore);
+    this.unit.autoequip();
   }
 }
 
@@ -1853,6 +1862,7 @@ export class TakeItemFromConvoy extends Action {
     }
     this.unit.items.push(this.item);
     this.item.owner = this.unit;
+    this.unit.autoequip();
   }
 
   reverse(): void {
@@ -1863,6 +1873,7 @@ export class TakeItemFromConvoy extends Action {
     this.item.owner = null;
     const party = game.getParty(this.partyNid);
     if (party) party.convoy.push(this.item);
+    this.unit.autoequip();
   }
 }
 
@@ -1914,11 +1925,17 @@ export class RemoveItemFromUnitAction extends Action {
     const index = this.unit.items.indexOf(this.item);
     if (index >= 0) this.unit.items.splice(index, 1);
     this.item.owner = null;
+    // If the removed item was equipped, autoequip a replacement (Python remove_item).
+    if (this.unit.equippedWeapon === this.item || this.unit.equippedAccessory === this.item) {
+      this.unit.unequip(this.item);
+      this.unit.autoequip();
+    }
   }
 
   reverse(): void {
     this.unit.items.splice(this.itemIndex, 0, this.item);
     this.item.owner = this.unit;
+    this.unit.autoequip();
   }
 }
 
@@ -1942,6 +1959,8 @@ export class MoveItemBetweenUnitsAction extends Action {
     if (index >= 0) this.source.items.splice(index, 1);
     this.target.items.push(this.item);
     this.item.owner = this.target;
+    this.source.autoequip();
+    this.target.autoequip();
   }
 
   reverse(): void {
@@ -1949,6 +1968,8 @@ export class MoveItemBetweenUnitsAction extends Action {
     if (index >= 0) this.target.items.splice(index, 1);
     this.source.items.splice(this.sourceIndex, 0, this.item);
     this.item.owner = this.source;
+    this.source.autoequip();
+    this.target.autoequip();
   }
 }
 
@@ -2014,6 +2035,7 @@ export class StoreItemAction extends Action {
     this.item.owner = null;
     const party = game.getParty();
     if (party) party.convoy.push(this.item);
+    this.unit.autoequip();
   }
 
   reverse(): void {
@@ -2026,6 +2048,7 @@ export class StoreItemAction extends Action {
     }
     this.unit.items.splice(this.itemIndex, 0, this.item);
     this.item.owner = this.unit;
+    this.unit.autoequip();
   }
 }
 
@@ -2064,6 +2087,7 @@ export class TradeItemWithConvoy extends Action {
     // Add convoy item to unit at original index
     this.unit.items.splice(this.unitItemIndex, 0, this.convoyItem);
     this.convoyItem.owner = this.unit;
+    this.unit.autoequip();
   }
 
   reverse(): void {
@@ -2082,6 +2106,7 @@ export class TradeItemWithConvoy extends Action {
     party.convoy.push(this.convoyItem);
     this.unit.items.splice(this.unitItemIndex, 0, this.unitItem);
     this.unitItem.owner = this.unit;
+    this.unit.autoequip();
   }
 }
 
@@ -2357,6 +2382,119 @@ export class RemoveSkillAction extends Action {
       this.unit.skills.splice(this.index, 0, this.skill);
     }
     if (this.skill.hasComponent('canto')) this.unit.hasCanto = true;
+  }
+}
+
+// ------------------------------------------------------------------
+// Equipped-item lifecycle (Python EquipItem / UnequipItem / BringToTopItem)
+// ------------------------------------------------------------------
+
+/**
+ * Reversibly equip an item, mirroring Python `action.EquipItem`.
+ * Captures the previously-equipped item in the same slot so the turnwheel
+ * can restore it. `persistThroughMenuCancel` keeps the choice when the
+ * player backs out of the subsequent targeting menu.
+ */
+export class EquipItemAction extends Action {
+  persistThroughMenuCancel = true;
+  private unit: UnitObject;
+  private item: ItemObject;
+  private previousEquipped: ItemObject | null;
+
+  constructor(unit: UnitObject, item: ItemObject) {
+    super();
+    this.unit = unit;
+    this.item = item;
+    this.previousEquipped = item.hasComponent('accessory')
+      ? unit.equippedAccessory
+      : unit.equippedWeapon;
+  }
+
+  execute(): void {
+    this.unit.equip(this.item);
+  }
+
+  reverse(): void {
+    this.unit.unequip(this.item);
+    if (this.previousEquipped) this.unit.equip(this.previousEquipped);
+  }
+}
+
+/**
+ * Reversibly unequip an item, mirroring Python `action.UnequipItem`.
+ * Unequipping auto-equips the next valid item in the same slot, so the
+ * reverse restores the original item.
+ */
+export class UnequipItemAction extends Action {
+  private unit: UnitObject;
+  private item: ItemObject;
+  private isEquippedWeapon: boolean;
+  private isEquippedAccessory: boolean;
+
+  constructor(unit: UnitObject, item: ItemObject) {
+    super();
+    this.unit = unit;
+    this.item = item;
+    this.isEquippedWeapon = item === unit.equippedWeapon;
+    this.isEquippedAccessory = item === unit.equippedAccessory;
+  }
+
+  execute(): void {
+    if (!this.isEquippedWeapon && !this.isEquippedAccessory) return;
+    this.unit.unequip(this.item);
+    // Unequip auto-equips the next valid item in the same slot (Python behavior).
+    const lookingForAccessory = this.isEquippedAccessory;
+    for (const candidate of this.unit.items) {
+      if (candidate === this.item) continue;
+      if (candidate.hasComponent('accessory') !== lookingForAccessory) continue;
+      if (this.unit.canEquip(candidate)) {
+        this.unit.equip(candidate);
+        break;
+      }
+    }
+  }
+
+  reverse(): void {
+    if (this.isEquippedWeapon || this.isEquippedAccessory) {
+      this.unit.equip(this.item);
+    }
+  }
+}
+
+/**
+ * Move an item to the front of inventory, mirroring Python `BringToTopItem`.
+ * Accessories move to just after the last non-accessory; weapons move to
+ * index 0. Reverses by restoring the original index.
+ */
+export class BringToTopItemAction extends Action {
+  persistThroughMenuCancel = true;
+  private unit: UnitObject;
+  private item: ItemObject;
+  private oldIndex: number;
+
+  constructor(unit: UnitObject, item: ItemObject) {
+    super();
+    this.unit = unit;
+    this.item = item;
+    this.oldIndex = unit.items.indexOf(item);
+  }
+
+  execute(): void {
+    const idx = this.unit.items.indexOf(this.item);
+    if (idx === -1) return;
+    this.unit.items.splice(idx, 1);
+    if (this.item.hasComponent('accessory')) {
+      const nonaccessoryCount = this.unit.items.filter((i) => !i.hasComponent('accessory')).length;
+      this.unit.items.splice(nonaccessoryCount, 0, this.item);
+    } else {
+      this.unit.items.unshift(this.item);
+    }
+  }
+
+  reverse(): void {
+    const idx = this.unit.items.indexOf(this.item);
+    if (idx !== -1) this.unit.items.splice(idx, 1);
+    this.unit.items.splice(Math.max(0, this.oldIndex), 0, this.item);
   }
 }
 

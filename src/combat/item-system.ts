@@ -10,6 +10,7 @@
  */
 
 import type { UnitObject } from '../objects/unit';
+import { SkillObject } from '../objects/skill';
 import type { ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
@@ -855,6 +856,8 @@ export function canBeCountered(_unit: UnitObject, item: ItemObject): boolean {
 /** Can this weapon double? */
 export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
   if (item.hasComponent('spell')) return false;
+  // Python NoDouble item component (nid 'no_double') prevents doubling.
+  if (item.hasComponent('no_double')) return false;
   if (item.hasComponent('cannot_double')) return false;
   return true;
 }
@@ -974,6 +977,14 @@ export function modifyAttackSpeed(_unit: UnitObject, item: ItemObject): number {
 /**
  * Dynamic damage modifier — effective damage, situational bonuses, etc.
  * Called during combat with full attacker/defender context.
+ *
+ * `db` and `game` are required to resolve the target's class tags and any
+ * skill `condition` expressions for the negate check. `advantageDamage` is
+ * the attacker-only weapon-triangle damage contribution (Python
+ * `combat_calcs.compute_advantage_attr(unit, target, item, item2, 'damage')`),
+ * supplied by the caller to avoid a circular import with combat-calcs; it is
+ * folded into the effective might only when `weapon_effectiveness_multiplied`
+ * is true (matching Python `EffectiveDamage.dynamic_damage`).
  */
 export function dynamicDamage(
   unit: UnitObject,
@@ -983,29 +994,36 @@ export function dynamicDamage(
   _mode: string,
   _attackInfo: any,
   _baseValue: number,
+  db?: Database,
+  game?: any,
+  advantageDamage?: number,
 ): number {
   let total = 0;
 
-  // Effective damage: check if the weapon is effective against the target
-  const effectiveComp = item.getComponent<any>('effective');
-  if (effectiveComp) {
-    const tags: string[] = effectiveComp.effective_tags ?? effectiveComp ?? [];
-    const multiplier: number = effectiveComp.effective_multiplier ?? 3;
-    const bonusDamage: number = effectiveComp.effective_bonus_damage ?? 0;
-
-    // Check if target has any of the effective tags
-    const targetTags = target.tags ?? [];
-    const isEffective = (Array.isArray(tags) ? tags : []).some(
-      (tag: string) => targetTags.includes(tag),
+  // Canonical effective_damage component (dict form).
+  const eff = item.getComponent<EffectiveDamageValue>('effective_damage');
+  if (eff) {
+    total += effectiveDamageContribution(
+      unit, item, target, eff, db, game, advantageDamage ?? 0,
     );
+  }
 
-    if (isEffective) {
-      if (effectiveComp.weapon_effectiveness_multiplied) {
-        // Multiply the weapon's base damage
-        const weaponDmg = item.getDamage();
-        total += weaponDmg * (multiplier - 1); // -1 because base is already counted
+  // Deprecated effective_tag + effective / effective_multiplier path.
+  // Python `EffectiveTag.dynamic_damage`: tags come from `effective_tag`,
+  // the bonus from `effective_multiplier` (multiplier on might) or a flat
+  // `effective` integer. Negation mirrors the deprecated `_check_negate`,
+  // which does NOT consult `skill_system.condition`.
+  const depTags = item.getComponent<string[]>('effective_tag');
+  if (Array.isArray(depTags) && depTags.length > 0) {
+    if (isEffectiveAgainstTags(target, depTags, db) &&
+        !checkEffectiveNegate(target, depTags, game, false)) {
+      const mult = item.getComponent<number>('effective_multiplier');
+      if (typeof mult === 'number') {
+        const might = Number(damage(unit, item) ?? 0);
+        total += Math.trunc((mult - 1) * might);
+      } else {
+        total += Number(item.getComponent<number>('effective') ?? 0);
       }
-      total += bonusDamage;
     }
   }
 
@@ -1029,6 +1047,123 @@ export function dynamicDamage(
 
   // Brave component: handled via dynamicMultiattacks instead
   return total;
+}
+
+/**
+ * Canonical `effective_damage` contribution. Mirrors Python
+ * `EffectiveDamage.dynamic_damage`: might = item damage component; when
+ * `weapon_effectiveness_multiplied` (default true), the attacker's
+ * weapon-triangle damage advantage is added to might; the bonus is
+ * `int((multiplier - 1) * might + effective_bonus_damage)`.
+ */
+function effectiveDamageContribution(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  eff: EffectiveDamageValue,
+  db: Database | undefined,
+  game: any,
+  advantageDamage: number,
+): number {
+  const tags: string[] = Array.isArray(eff.effective_tags) ? eff.effective_tags : [];
+  if (!isEffectiveAgainstTags(target, tags, db)) return 0;
+  if (checkEffectiveNegate(target, tags, game, true)) return 0;
+  const multiplier = Number(eff.effective_multiplier ?? 3);
+  const bonusDamage = Number(eff.effective_bonus_damage ?? 0);
+  const weaponMultiplied = eff.weapon_effectiveness_multiplied !== false; // default true
+  let might = Number(damage(unit, item) ?? 0);
+  if (weaponMultiplied) might += advantageDamage;
+  return Math.trunc((multiplier - 1) * might + bonusDamage);
+}
+
+/**
+ * Shape of the canonical `effective_damage` item component value, as stored
+ * in the default project (e.g. Armorslayer, Hammer, Rapier, ballistae).
+ * Defaults: effective_multiplier 3, effective_bonus_damage 0,
+ * show_effectiveness_flash true, weapon_effectiveness_multiplied true.
+ */
+interface EffectiveDamageValue {
+  effective_tags?: string[];
+  effective_multiplier?: number;
+  effective_bonus_damage?: number;
+  show_effectiveness_flash?: boolean;
+  weapon_effectiveness_multiplied?: boolean;
+}
+
+/**
+ * Tags used for effectiveness checks: the unit's own tags, its class tags
+ * (from the db Klass def), and tags granted by skills with a `has_tags`
+ * component. Mirrors Python `UnitObject.tags`, which unions
+ * `self._tags | class.tags | skill_system.additional_tags(self)`.
+ */
+export function effectivenessTargetTags(target: UnitObject, db?: Database): Set<string> {
+  const tags = new Set<string>(target.tags ?? []);
+  if (db) {
+    const klass = db.classes.get(target.klass);
+    if (klass?.tags) for (const t of klass.tags) tags.add(t);
+  }
+  for (const skill of target.skills) {
+    const has = skill.getComponent<string[]>('has_tags');
+    if (Array.isArray(has)) for (const t of has) tags.add(t);
+  }
+  return tags;
+}
+
+/** Any effective tag present on the target's effective tag set. */
+function isEffectiveAgainstTags(
+  target: UnitObject,
+  effectiveTags: string[],
+  db?: Database,
+): boolean {
+  if (effectiveTags.length === 0) return false;
+  const targetTags = effectivenessTargetTags(target, db);
+  return effectiveTags.some((t) => targetTags.has(t));
+}
+
+/**
+ * Python `skill_system.condition(skill, unit)`: every component defining a
+ * `condition` must pass. The web stores at most one `condition` component
+ * per skill (Map-keyed), so we evaluate that single expression when present
+ * against the unit's equipped weapon, matching Python's fallback
+ * (`item = unit.equipped_weapon`).
+ */
+export function skillCondition(skill: SkillObject, unit: UnitObject, game?: any): boolean {
+  const condition = skill.getComponent<string>('condition');
+  if (!condition) return true;
+  return evaluateCondition(condition, {
+    game,
+    unit1: unit,
+    item: unit.equippedWeapon ?? undefined,
+    position: unit.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  });
+}
+
+/**
+ * Python `EffectiveDamage._check_negate` (canonical) and
+ * `EffectiveIcon._check_negate` (deprecated). When `useCondition` is true
+ * (canonical path), the negate skill must itself be active via
+ * `skill_system.condition`; the deprecated path skips that check, matching
+ * Python. Negation fires on any `negate` component or a `negate_tags`
+ * component whose tag list intersects the item's effective tags.
+ */
+function checkEffectiveNegate(
+  target: UnitObject,
+  effectiveTags: string[],
+  game: any,
+  useCondition: boolean,
+): boolean {
+  for (const skill of target.skills) {
+    if (useCondition && !skillCondition(skill, target, game)) continue;
+    if (skill.hasComponent('negate')) return true;
+    const negateTags = skill.getComponent<string[]>('negate_tags');
+    if (Array.isArray(negateTags) &&
+        negateTags.some((t) => effectiveTags.includes(t))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1073,4 +1208,151 @@ export function dynamicAttackSpeed(
   _baseValue: number,
 ): number {
   return 0;
+}
+
+// ============================================================
+// Equip lifecycle hooks (status_on_equip / multi_status_on_equip)
+// ============================================================
+
+/** Source-tag keys stored on a skill granted by an equipped item. */
+export const ITEM_SOURCE_KEY = 'itemSource';
+export const ITEM_SOURCE_TYPE_KEY = 'itemSourceType';
+export const ITEM_SOURCE_NID_KEY = 'itemSourceNid';
+
+/** True when `skill` was granted by an item's status_on_equip hook. */
+export function isItemSourcedSkill(skill: SkillObject): boolean {
+  return skill.data.get(ITEM_SOURCE_TYPE_KEY) === 'item';
+}
+
+/**
+ * Fire on_equip_item / on_unequip_item component hooks for `item`.
+ * `equip=true` adds sourced skills; `equip=false` removes one sourced instance.
+ * Mirrors Python StatusOnEquip / MultiStatusOnEquip.
+ */
+export function dispatchEquipHooks(
+  unit: UnitObject,
+  item: ItemObject,
+  equip: boolean,
+  db: Database | undefined,
+): void {
+  const skillNids = collectStatusOnEquipNids(item);
+  for (const skillNid of skillNids) {
+    if (equip) addItemSourcedSkill(unit, item, skillNid, db);
+    else removeOneItemSourcedSkill(unit, item, skillNid);
+  }
+}
+
+
+/** Collect every status_on_equip / multi_status_on_equip NID from the item tree. */
+function collectStatusOnEquipNids(item: ItemObject): string[] {
+  const nids: string[] = [];
+  const single = item.getComponent<string>('status_on_equip');
+  if (single) nids.push(single);
+  const multi = item.getComponent<string[]>('multi_status_on_equip');
+  if (Array.isArray(multi)) nids.push(...multi);
+  // multi_item children contribute their own equip statuses.
+  for (const sub of item.subitems) nids.push(...collectStatusOnEquipNids(sub));
+  return nids;
+}
+
+/** Add a sourced skill instance, leaving any natural same-NID skill untouched. */
+function addItemSourcedSkill(
+  unit: UnitObject,
+  item: ItemObject,
+  skillNid: string,
+  db: Database | undefined,
+): void {
+  const prefab = db?.skills?.get?.(skillNid);
+  if (!prefab) return;
+  const skill = new SkillObject(prefab);
+  skill.data.set(ITEM_SOURCE_KEY, item);
+  skill.data.set(ITEM_SOURCE_TYPE_KEY, 'item');
+  skill.data.set(ITEM_SOURCE_NID_KEY, item.nid);
+  unit.skills.push(skill);
+  if (skill.hasComponent('canto')) unit.hasCanto = true;
+}
+
+/** Remove exactly one item-sourced instance of `skillNid` for `item`. */
+function removeOneItemSourcedSkill(unit: UnitObject, item: ItemObject, skillNid: string): void {
+  for (let i = unit.skills.length - 1; i >= 0; i--) {
+    const skill = unit.skills[i];
+    if (skill.nid === skillNid &&
+        skill.data.get(ITEM_SOURCE_TYPE_KEY) === 'item' &&
+        skill.data.get(ITEM_SOURCE_KEY) === item) {
+      unit.skills.splice(i, 1);
+      break;
+    }
+  }
+  unit.hasCanto = unit.skills.some((s) => s.hasComponent('canto'));
+}
+
+/** Remove every item-sourced skill for `item` (used on save-load re-derivation). */
+export function removeAllItemSourcedSkills(unit: UnitObject): void {
+  unit.skills = unit.skills.filter((skill) => !isItemSourcedSkill(skill));
+  unit.hasCanto = unit.skills.some((s) => s.hasComponent('canto'));
+}
+
+// ============================================================
+// Combat component hooks: eclipse (on_hit) and lifelink (after_strike)
+// ============================================================
+
+/**
+ * Eclipse on_hit: target loses floor(currentHp/2). Returns the damage to
+ * apply (and 0 triggers a No Damage marker). Python `Eclipse.on_hit`.
+ */
+export function eclipseDamage(currentHp: number): number {
+  return Math.floor(currentHp / 2);
+}
+
+/** Whether `item` (or its subitem tree) carries an eclipse component. */
+export function hasEclipse(item: ItemObject): boolean {
+  if (item.hasComponent('eclipse')) return true;
+  return item.subitems.some((sub) => hasEclipse(sub));
+}
+
+/**
+ * Lifelink after_strike: heal for a single hitting strike, clamping that
+ * strike's damage to the defender's remaining HP at strike time so overkill
+ * damage never heals. Returns floor(clamped * value), or 0 when the item
+ * tree has no lifelink component or the strike is not a hitting strike by
+ * `striker` with `item` (or one of its subitems).
+ *
+ * Mirrors Python `Lifelink.after_strike`, which clamps the per-strike total
+ * damage to `target.get_hp()` (the target's current HP at strike time, before
+ * the queued ChangeHP action applies) before multiplying by the lifelink
+ * fraction. Apply inside the HP-walk loop and cap the striker's HP at max.
+ */
+export function lifelinkHealForStrike(
+  striker: UnitObject,
+  item: ItemObject,
+  strike: CombatStrike,
+  defenderRemainingHp: number,
+): number {
+  const value = lifelinkValue(item);
+  if (value === null) return 0;
+  if (strike.attacker !== striker || !strike.hit) return 0;
+  if (strike.item !== item && !isSubitemOf(strike.item, item)) return 0;
+  const remaining = Math.max(0, defenderRemainingHp);
+  const clamped = Math.max(0, Math.min(strike.damage, remaining));
+  return Math.floor(clamped * value);
+}
+
+/** Return the lifelink fraction (0..1) if the item tree carries one. */
+function lifelinkValue(item: ItemObject): number | null {
+  const direct = item.getComponent<number>('lifelink');
+  if (typeof direct === 'number') return direct;
+  for (const sub of item.subitems) {
+    const v = lifelinkValue(sub);
+    if (v !== null) return v;
+  }
+  return null;
+}
+
+function isSubitemOf(candidate: ItemObject, parent: ItemObject): boolean {
+  let node = candidate.parentItem;
+  while (node) {
+    if (node === parent) return true;
+    node = node.parentItem;
+  }
+  return false;
 }
