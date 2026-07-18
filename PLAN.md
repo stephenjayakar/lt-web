@@ -157,6 +157,41 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Equation-evaluator parity slice (floor div, INITIATIVE case, logical ops):**
+  - Fixed `evaluateEquation` floor-division rewrite in `src/combat/combat-calcs.ts`:
+    the old regex `/(\b[\d.]+)\s*\/\/\s*([\d.]+\b)/g` only matched numeric-literal
+    operands, so any compound left operand such as `(HP - 10)//2` (in the default
+    `RATING` equation) survived and the trailing `//...` parsed as a JS line
+    comment, silently truncating the expression. Replaced with a balanced-paren
+    operand scan (`rewriteFloorDiv`) that walks back/forward over parenthesised
+    groups, identifiers, or numeric literals and rewrites every `//` to
+    `Math.floor((L)/(R))` until none remain.
+  - Made `Database.getEquation` case-insensitive (`src/data/database.ts`): tries
+    the exact key, then the uppercased key. Python uppercases equation nids in
+    the DB and exposes lowercase accessors, so `initiative.ts`'s
+    `db.getEquation('initiative')` now resolves the `INITIATIVE` equation (`SPD`)
+    instead of falling back to 0; the InitiativeTracker sorts faster units first.
+  - Added Python `and`/`or`/`not` support to `evaluateEquationCondition` via
+    word-boundary token rewrites to `&&`/`||`/`!` (identifiers containing these
+    substrings like `bandana`/`format`/`door` are untouched) and Python
+    truthiness for the ternary path. Tag-membership (`'Tag' in unit.tags`) is now
+    non-anchored so compound conditions like `'Mounted' in unit.tags and LCK > 3`
+    work; `not (HP < 10)` works.
+  - Factored shared substitution helpers (`_substituteEquationNids`,
+    `_substituteStatsAndUnit`, `_wrapBuiltins`, `_pythonTruthy`) so equations and
+    conditions stay in lockstep. Exported `evaluateEquationCondition` for the spec.
+  - Added `tests/equation-parity.spec.ts` (7 regressions): `LCK//2`,
+    `(HP - 10)//2 + DEF`, `SKL // 4`, nested `max(5, MAG//2)`, full default
+    `RATING` equation vs Python-computed 58, lowercase `initiative` lookup,
+    InitiativeTracker ordering via `INITIATIVE=SPD`, `'Mounted' in unit.tags and
+    LCK > 3` (true/false variants), `not (HP < 10)`, and default `RESCUE_AID`
+    end-to-end for Mounted (10) and dismounted (14) units. Full serial gate:
+    **7/7 passing**; `npm run build` green; effective-damage (7/7) and the
+    weapon-triangle harness spec (1/1) confirm no equation regressions. Known
+    deferrals: always-`Math.floor` result truncation vs Python `int()`/`float`
+    skip, arbitrary `unit.X` access, arbitrary builtins (`pow`/`round`/`sum`),
+    and nested-ternary handling remain out of scope per the audit.
+
 - **status_on_hold lifecycle + status_on_hit verification slice:**
   - Implemented `status_on_hold` / `multi_status_on_hold` (Python `StatusOnHold`):
     item-sourced skill grant on inventory add and one-instance removal on inventory
@@ -1123,7 +1158,7 @@ item-use fixture matrices match Python outputs and side effects.
 - [x] Match weapon-triangle rank ordering, simultaneous relation merging,
   reaver/override/ignore hooks, and defender avoid/resist contributions
 - [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
-- [ ] Fix equation evaluator parity: `//` with compound operands silently truncates
+- [x] Fix equation evaluator parity: `//` with compound operands silently truncates
   expressions, `INITIATIVE` lookup is case-mismatched (always 0), and condition
   evaluation lacks `and`/`or`/`not` (see `docs/parity/runtime-inventory.md`)
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
