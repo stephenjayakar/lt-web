@@ -1159,15 +1159,19 @@ export class AnimationCombat implements AnimationCombatOwner {
       }
     }
 
-    let droppedItem: ItemObject | null = null;
+    // Python (simple_combat.handle_item_gain): every droppable item on the
+    // killed unit transfers to the killer, not just the first.
+    const droppedItems: { unit: UnitObject; item: ItemObject }[] = [];
     if (defenderDead && !attackerDead) {
-      for (const item of this.defender.items) {
-        if (item.droppable) {
-          droppedItem = item;
-          break;
-        }
+      for (const item of this.defender.items.slice()) {
+        if (item.droppable) droppedItems.push({ unit: this.defender, item });
+      }
+    } else if (attackerDead && !defenderDead) {
+      for (const item of this.attacker.items.slice()) {
+        if (item.droppable) droppedItems.push({ unit: this.attacker, item });
       }
     }
+    const droppedItem = droppedItems[0]?.item ?? null;
 
     return {
       attackerDead,
@@ -1177,6 +1181,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       attackWeaponBroke,
       defenseWeaponBroke,
       droppedItem,
+      droppedItems,
       attackerWexpGained: componentResults.attackerWexpGained,
       attackerRankUp: componentResults.attackerRankUp,
       stolenItem: componentResults.stolenItem,

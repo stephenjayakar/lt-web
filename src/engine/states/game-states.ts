@@ -93,7 +93,7 @@ import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../.
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
-import { queueCombatItemEvents } from '../../combat/combat-lifecycle';
+import { queueCombatItemEvents, applyDroppableItemPickups } from '../../combat/combat-lifecycle';
 import { MapAnimation } from '../../rendering/map-animation';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
@@ -3481,7 +3481,7 @@ function resolveCombatTargetGroup(
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'cleanup';
+type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
 
 export class CombatState extends State {
   private initialized: boolean = false;
@@ -3534,6 +3534,9 @@ export class CombatState extends State {
   private rankUpBanner: Banner | null = null;
   private stoleBanner: Banner | null = null;
   private stoleBannerShown: boolean = false;
+  private gotItemBanner: Banner | null = null;
+  private gotItemBannerQueue: string[] = [];
+  private rankUpBannerShown: boolean = false;
 
   /** Get whichever combat controller is active (AnimationCombat or MapCombat). */
   private getActiveCombat(): MapCombat | AnimationCombat | null {
@@ -3662,6 +3665,9 @@ export class CombatState extends State {
     this.rankUpBanner = null;
     this.stoleBanner = null;
     this.stoleBannerShown = false;
+    this.gotItemBanner = null;
+    this.gotItemBannerQueue = [];
+    this.rankUpBannerShown = false;
     this.initialized = true;
 
     // Clear all highlights and hide cursor/HUD before combat starts
@@ -3972,6 +3978,14 @@ export class CombatState extends State {
               stolenItem.nid,
             ));
           }
+          // Droppable item pickup (Python simple_combat.handle_item_gain).
+          this.gotItemBannerQueue = applyDroppableItemPickups(
+            game.actionLog,
+            game.db,
+            this.results,
+            activeCombat.attacker,
+            this.getPrimaryCombatDefender() ?? activeCombat.defender,
+          );
           if (this.results.attackerRankUp) {
             const rankUp = this.results.attackerRankUp;
             const weaponType = activeCombat.attackItem.getComponent<string>('weapon_type');
@@ -4218,8 +4232,7 @@ export class CombatState extends State {
       case 'rank_up': {
         if (!this.rankUpBanner || this.rankUpBanner.update(realDelta)) {
           this.rankUpBanner = null;
-          this.phase = 'cleanup';
-          this.phaseTimer = 0;
+          this.startRankUpOrCleanup();
         }
         break;
       }
@@ -4228,6 +4241,14 @@ export class CombatState extends State {
         if (!this.stoleBanner || this.stoleBanner.update(realDelta)) {
           this.stoleBanner = null;
           this.stoleBannerShown = true;
+          this.startRankUpOrCleanup();
+        }
+        break;
+      }
+
+      case 'got_item': {
+        if (!this.gotItemBanner || this.gotItemBanner.update(realDelta)) {
+          this.gotItemBanner = null;
           this.startRankUpOrCleanup();
         }
         break;
@@ -4442,16 +4463,25 @@ export class CombatState extends State {
     }
     const rankUp = this.results?.attackerRankUp;
     const weaponType = activeCombat?.attackItem.getComponent<string>('weapon_type');
-    if (rankUp && activeCombat && weaponType) {
+    if (rankUp && activeCombat && weaponType && !this.rankUpBannerShown) {
+      this.rankUpBannerShown = true;
       this.rankUpBanner = new Banner(
         `${activeCombat.attacker.name} reached rank ${rankUp.rank}.`,
         weaponType,
         1800,
       );
       this.phase = 'rank_up';
-    } else {
-      this.phase = 'cleanup';
+      this.phaseTimer = 0;
+      return;
     }
+    if (this.gotItemBannerQueue.length > 0) {
+      const text = this.gotItemBannerQueue.shift()!;
+      this.gotItemBanner = new Banner(text, undefined, 1400);
+      this.phase = 'got_item';
+      this.phaseTimer = 0;
+      return;
+    }
+    this.phase = 'cleanup';
     this.phaseTimer = 0;
   }
 

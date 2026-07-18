@@ -22,6 +22,7 @@ import { ItemObject } from './objects/item';
 import { EquipItemAction, RemoveItemFromUnitAction, TradeAction } from './engine/action';
 import { isItemSourcedSkill } from './combat/item-system';
 import { MapCombat } from './combat/map-combat';
+import { applyDroppableItemPickups } from './combat/combat-lifecycle';
 import * as saveSystem from './engine/save';
 
 export interface HarnessAPI {
@@ -368,6 +369,7 @@ export function installHarness(
         game.db, rngMode, game.board, null, undefined, game,
       );
       const results = mc.applyResults(game.actionLog);
+      applyDroppableItemPickups(game.actionLog, game.db, results, attacker, defender);
       return {
         attackerHp: attacker.currentHp,
         defenderHp: defender.currentHp,

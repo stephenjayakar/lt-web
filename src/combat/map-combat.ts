@@ -507,11 +507,20 @@ export class MapCombat {
       this.grantGuardExp(this.primaryDefender, this.primaryDefender.rescuing, growthMode);
     }
 
+    // Python (simple_combat.handle_item_gain): every droppable item on a killed
+    // unit transfers to the killer, not just the first. Defender deaths transfer
+    // to the attacker; if the attacker dies, its droppable items transfer to the
+    // (primary) defender instead.
     const droppedItems: { unit: UnitObject; item: import('../objects/item').ItemObject }[] = [];
     if (!attackerDead) {
       for (const unit of defenderDeaths) {
-        const item = unit.items.find((candidate) => candidate.droppable);
-        if (item) droppedItems.push({ unit, item });
+        for (const item of unit.items.slice()) {
+          if (item.droppable) droppedItems.push({ unit, item });
+        }
+      }
+    } else if (this.primaryDefender) {
+      for (const item of this.attacker.items.slice()) {
+        if (item.droppable) droppedItems.push({ unit: this.attacker, item });
       }
     }
     const droppedItem = droppedItems[0]?.item ?? null;

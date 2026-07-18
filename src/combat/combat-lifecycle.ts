@@ -2,10 +2,75 @@ import type { EventManager, EventTrigger } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
 import type { CombatStrike } from './combat-solver';
+import type { CombatResults } from './map-combat';
+import type { ActionLog } from '../engine/action';
+import {
+  SetItemDroppableAction,
+  MoveItemBetweenUnitsAction,
+  StoreItemAction,
+  RemoveItemFromUnitAction,
+} from '../engine/action';
 
 interface CombatLifecycleGame {
   eventManager: EventManager | null;
   currentLevel?: { nid: string } | null;
+}
+
+interface DroppableGame {
+  getConstant: (nid: string, fallback?: any) => any;
+}
+
+/** Matches Python banner.AcquiredItem: "{name} got {article} {item}." with no article for possessive names. */
+export function droppableAcquiredBannerText(unit: UnitObject, item: ItemObject): string {
+  if (item.name.includes("'")) return `${unit.name} got ${item.name}.`;
+  const article = /^[aeiouAEIOU]/.test(item.name) ? 'an' : 'a';
+  return `${unit.name} got ${article} ${item.name}.`;
+}
+
+/** Matches Python banner.SentToConvoy: "{item} sent to convoy." */
+export function droppableSentToConvoyBannerText(item: ItemObject): string {
+  return `${item.name} sent to convoy.`;
+}
+
+/**
+ * Applies Python's simple_combat.handle_item_gain: every droppable item on a
+ * unit killed this combat transfers to the killer (the attacker for defender
+ * deaths, or the primary defender if the attacker itself died). No team
+ * allegiance gate exists in Python — an enemy killing a player unit loots its
+ * droppable items exactly like a player killing an enemy. Returns banner text
+ * for each successful pickup/convoy-send, in order, for the caller to display.
+ */
+export function applyDroppableItemPickups(
+  actionLog: Pick<ActionLog, 'doAction'>,
+  db: DroppableGame,
+  results: CombatResults,
+  attacker: UnitObject,
+  dropRecipient: UnitObject | null,
+): string[] {
+  const banners: string[] = [];
+  for (const { unit: deadUnit, item } of results.droppedItems ?? []) {
+    const killer = deadUnit === attacker ? dropRecipient : attacker;
+    if (!killer) continue;
+    actionLog.doAction(new SetItemDroppableAction(item, false));
+    const accessory = item.hasComponent('accessory');
+    const limit = Number(db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
+    const count = killer.items.filter((candidate) => candidate.hasComponent('accessory') === accessory).length;
+    const full = count >= limit;
+    if (!full) {
+      actionLog.doAction(new MoveItemBetweenUnitsAction(deadUnit, killer, item));
+      banners.push(droppableAcquiredBannerText(killer, item));
+    } else if (killer.team === 'player') {
+      // Python opens the item_discard state for a full player inventory; we
+      // simplify to sending the drop straight to the convoy (SentToConvoy banner).
+      actionLog.doAction(new StoreItemAction(deadUnit, item));
+      banners.push(droppableSentToConvoyBannerText(item));
+    } else {
+      // Python's GiveItem.do() silently refuses to add to a full non-player
+      // inventory; the item is simply removed from the dead unit and lost.
+      actionLog.doAction(new RemoveItemFromUnitAction(deadUnit, item));
+    }
+  }
+  return banners;
 }
 
 function eventNid(item: ItemObject, component: string): string | null {
