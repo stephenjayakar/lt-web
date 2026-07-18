@@ -1053,10 +1053,24 @@ export class GameState {
     position: [number, number] | null,
     ai: NID,
   ): UnitObject {
+    const unit = this.buildUnit(prefab, team, ai);
+    this.registerUnit(unit, position);
+    return unit;
+  }
+
+  /**
+   * Construct a UnitObject from a prefab (equips starting items/skills,
+   * autoequips) WITHOUT registering it into `this.units` or placing it on
+   * the board. Split out from spawnUnit() so callers that need reversible
+   * registration (e.g. the `create_unit` event command) can wrap the
+   * registration step in an undoable action while construction itself
+   * (which has no observable side effects on shared state) happens eagerly.
+   */
+  buildUnit(prefab: UnitPrefab, team: string, ai: NID): UnitObject {
     const klassDef = this.db.classes.get(prefab.klass);
     if (!klassDef) {
       throw new Error(
-        `GameState.spawnUnit: unknown class "${prefab.klass}" for unit "${prefab.nid}"`,
+        `GameState.buildUnit: unknown class "${prefab.klass}" for unit "${prefab.nid}"`,
       );
     }
 
@@ -1103,7 +1117,16 @@ export class GameState {
 
     // Autoequip after starting items/skills are populated (Python UnitObject.__init__).
     unit.autoequip();
+    return unit;
+  }
 
+  /**
+   * Register a constructed unit into `this.units` and place it on the
+   * board (or leave it off-map if `position` is null). Mirrors the tail
+   * end of spawnUnit(); split out so it can be re-run by an undoable
+   * action's execute()/reverse() pair (see CreateUnitAction).
+   */
+  registerUnit(unit: UnitObject, position: [number, number] | null): void {
     // Place on board
     if (position && this.board) {
       this.board.setUnit(position[0], position[1], unit);
@@ -1120,7 +1143,6 @@ export class GameState {
     }
 
     this.units.set(unit.nid, unit);
-    return unit;
   }
 
   /**

@@ -78,7 +78,7 @@ export type EventCommandType =
   // Add/remove/interact units
   | 'load_unit' | 'make_generic' | 'create_unit'
   | 'add_unit' | 'move_unit' | 'remove_unit' | 'kill_unit' | 'remove_all_units' | 'remove_all_enemies'
-  | 'interact_unit' | 'resurrect'
+  | 'interact_unit' | 'resurrect' | 'set_position'
   // Modify unit properties
   | 'set_name' | 'set_current_hp' | 'set_current_mana'
   | 'set_variant' | 'set_unit_field' | 'set_unit_note' | 'remove_unit_note'
@@ -176,7 +176,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   // Add/remove/interact units
   'load_unit', 'make_generic', 'create_unit',
   'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
-  'interact_unit', 'resurrect',
+  'interact_unit', 'resurrect', 'set_position',
   // Modify unit properties
   'set_name', 'set_variant', 'set_current_hp', 'set_current_mana',
   'set_unit_field', 'set_unit_note', 'remove_unit_note',
