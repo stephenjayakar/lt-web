@@ -50,6 +50,162 @@ interface EquationContext {
   db?: Database | null;
 }
 
+// ------------------------------------------------------------------
+// Shared expression-rewrite helpers (used by evaluateEquation and
+// evaluateEquationCondition so conditions stay in parity with equations)
+// ------------------------------------------------------------------
+
+/**
+ * Rewrite every Python floor-division `//` into `Math.floor((L)/(R))`.
+ *
+ * Operates on the post-substitution expression where stat tokens and
+ * equation nids have already been replaced by numeric literals. For each
+ * `//` occurrence the left operand is found by walking back over a balanced
+ * parenthesised group, identifier, or numeric literal; the right operand
+ * symmetrically walks forward. Repeats until no `//` remains.
+ *
+ * The previous regex `/(\b[\d.]+)\s*\/\/\s*([\d.]+\b)/g` only matched numeric
+ * literals on both sides, so any compound left operand such as `(HP - 10)//2`
+ * survived untouched and the trailing `//...` parsed as a JS line comment,
+ * silently truncating the expression (broke `RATING`, `MAGIC_RANGE`, etc.).
+ */
+function rewriteFloorDiv(expr: string): string {
+  let out = expr;
+  for (let iter = 0; iter < 1024; iter++) {
+    const idx = out.indexOf('//');
+    if (idx === -1) break;
+
+    // --- Walk back over the left operand ---
+    let i = idx - 1;
+    while (i >= 0 && (out[i] === ' ' || out[i] === '\t' || out[i] === '\n')) i--;
+    let leftStart: number;
+    if (i >= 0 && out[i] === ')') {
+      let depth = 1;
+      i--;
+      while (i >= 0 && depth > 0) {
+        if (out[i] === ')') depth++;
+        else if (out[i] === '(') depth--;
+        if (depth === 0) break;
+        i--;
+      }
+      leftStart = i;
+    } else {
+      while (i >= 0 && /[A-Za-z0-9_.]/.test(out[i])) i--;
+      leftStart = i + 1;
+    }
+
+    // --- Walk forward over the right operand ---
+    let j = idx + 2;
+    while (j < out.length && (out[j] === ' ' || out[j] === '\t' || out[j] === '\n')) j++;
+    let rightEnd: number;
+    if (j < out.length && out[j] === '(') {
+      let depth = 1;
+      j++;
+      while (j < out.length && depth > 0) {
+        if (out[j] === '(') depth++;
+        else if (out[j] === ')') depth--;
+        if (depth === 0) break;
+        j++;
+      }
+      rightEnd = j + 1;
+    } else {
+      while (j < out.length && /[A-Za-z0-9_.]/.test(out[j])) j++;
+      rightEnd = j;
+    }
+
+    if (leftStart >= idx || rightEnd <= idx + 2) {
+      // Malformed — bail to avoid an infinite loop.
+      return out;
+    }
+    const left = out.slice(leftStart, idx).trim();
+    const right = out.slice(idx + 2, rightEnd).trim();
+    const replacement = `Math.floor((${left})/(${right}))`;
+    out = out.slice(0, leftStart) + replacement + out.slice(rightEnd);
+  }
+  return out;
+}
+
+/** Python truthiness for the condition-eval path. */
+function _pythonTruthy(val: unknown): boolean {
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val !== 0 && Number.isFinite(val);
+  if (typeof val === 'string') return val.length > 0;
+  if (val === null || val === undefined) return false;
+  if (Array.isArray(val)) return val.length > 0;
+  return true;
+}
+
+/** Replace named equation references with their recursively-evaluated values. */
+function _substituteEquationNids(
+  processed: string,
+  unit: UnitObject,
+  ctx: EquationContext | undefined,
+  db: Database | null,
+  originalExpr: string,
+): string {
+  if (!db) return processed;
+  const eqNames = db.getEquationNames?.() ?? [];
+  // Sort longest-first to avoid partial matches
+  const sortedEqs = [...eqNames].sort((a, b) => b.length - a.length);
+  for (const eqName of sortedEqs) {
+    // Don't replace stat names — those are handled by stat substitution
+    if (STAT_NAMES.includes(eqName)) continue;
+    const re = new RegExp(`\\b${eqName}\\b`, 'g');
+    if (re.test(processed)) {
+      // Avoid infinite recursion: only resolve if the equation differs
+      const eqExpr = db.getEquation(eqName);
+      if (eqExpr && eqExpr !== originalExpr) {
+        const eqValue = evaluateEquation(eqExpr, unit, ctx);
+        processed = processed.replace(re, String(eqValue));
+      }
+    }
+  }
+  return processed;
+}
+
+/** Replace stat tokens, unit.X accessors, and DB.constants.value(...) calls. */
+function _substituteStatsAndUnit(
+  processed: string,
+  unit: UnitObject,
+  db: Database | null,
+): string {
+  const sortedStats = [...STAT_NAMES].sort((a, b) => b.length - a.length);
+  for (const stat of sortedStats) {
+    const re = new RegExp(`\\b${stat}\\b`, 'g');
+    processed = processed.replace(re, String(unit.getStatValue(stat)));
+  }
+
+  processed = processed.replace(/\bunit\.level\b/g, String(unit.level));
+  processed = processed.replace(/\bunit\.klass\b/g, `"${unit.klass}"`);
+  processed = processed.replace(
+    /\bunit\.get_internal_level\s*\(\s*\)/g,
+    String(_getInternalLevel(unit, db)),
+  );
+
+  if (db) {
+    processed = processed.replace(
+      /\bDB\.constants\.value\s*\(\s*['"](.+?)['"]\s*\)/g,
+      (_m, constName) => {
+        const val = db.getConstant(constName, 0);
+        return typeof val === 'number' ? String(val) : `"${val}"`;
+      },
+    );
+  }
+  return processed;
+}
+
+/** Wrap bare Python builtins (max/min/abs/int/float) with JS equivalents. */
+function _wrapBuiltins(processed: string): string {
+  processed = processed.replace(/(?<!Math\.)(?<![\w.])\bmax\b/g, 'Math.max');
+  processed = processed.replace(/(?<!Math\.)(?<![\w.])\bmin\b/g, 'Math.min');
+  processed = processed.replace(/(?<!Math\.)(?<![\w.])\babs\b/g, 'Math.abs');
+  // Python int() -> Math.floor()
+  processed = processed.replace(/(?<![\w.])\bint\s*\(/g, 'Math.floor(');
+  // Python float() -> Number()
+  processed = processed.replace(/(?<![\w.])\bfloat\s*\(/g, 'Number(');
+  return processed;
+}
+
 /**
  * Evaluate an equation string with stat substitution and extended context.
  *
@@ -89,66 +245,21 @@ export function evaluateEquation(
 
   // Replace named equation references FIRST (before stat substitution)
   // so that e.g. HIT (equation) doesn't collide with HIT (stat if it existed).
-  // Named equations are identifiers that exist in db.equations but NOT in STAT_NAMES.
-  if (db) {
-    const eqNames = db.getEquationNames?.() ?? [];
-    // Sort longest-first to avoid partial matches
-    const sortedEqs = [...eqNames].sort((a, b) => b.length - a.length);
-    for (const eqName of sortedEqs) {
-      // Don't replace stat names — those are handled below
-      if (STAT_NAMES.includes(eqName)) continue;
-      const re = new RegExp(`\\b${eqName}\\b`, 'g');
-      if (re.test(processed)) {
-        // Avoid infinite recursion: only resolve if the equation differs
-        const eqExpr = db.getEquation(eqName);
-        if (eqExpr && eqExpr !== expr) {
-          const eqValue = evaluateEquation(eqExpr, unit, ctx);
-          processed = processed.replace(re, String(eqValue));
-        }
-      }
-    }
-  }
+  processed = _substituteEquationNids(processed, unit, ctx, db, expr);
 
-  // Replace stat tokens with their numeric values
-  const sortedStats = [...STAT_NAMES].sort((a, b) => b.length - a.length);
-  for (const stat of sortedStats) {
-    const re = new RegExp(`\\b${stat}\\b`, 'g');
-    processed = processed.replace(re, String(unit.getStatValue(stat)));
-  }
+  // Replace stat tokens, unit.X accessors, and DB.constants.value(...) calls
+  processed = _substituteStatsAndUnit(processed, unit, db);
 
-  // Replace unit.level, unit.klass, etc. with actual values
-  processed = processed.replace(/\bunit\.level\b/g, String(unit.level));
-  processed = processed.replace(/\bunit\.klass\b/g, `"${unit.klass}"`);
-  processed = processed.replace(
-    /\bunit\.get_internal_level\s*\(\s*\)/g,
-    String(_getInternalLevel(unit, db)),
-  );
-
-  // Replace DB.constants.value('name') with the constant value
-  if (db) {
-    processed = processed.replace(
-      /\bDB\.constants\.value\s*\(\s*['"](.+?)['"]\s*\)/g,
-      (_m, constName) => {
-        const val = db.getConstant(constName, 0);
-        return typeof val === 'number' ? String(val) : `"${val}"`;
-      },
-    );
-  }
-
-  // Convert Python-style integer division `//` to Math.floor
-  processed = processed.replace(
-    /(\b[\d.]+)\s*\/\/\s*([\d.]+\b)/g,
-    (_match, a, b) => `Math.floor((${a})/(${b}))`,
-  );
+  // Convert Python-style integer division `//` to Math.floor.
+  // Operand-aware: any `//` whose operands are parenthesised groups,
+  // identifiers, or numeric literals is rewritten. The previous regex
+  // `/(\b[\d.]+)\s*\/\/\s*([\d.]+\b)/g` only matched numeric literals on
+  // both sides, so `(HP - 10)//2` survived and the rest of the expression
+  // became a JS line comment, silently truncating it.
+  processed = rewriteFloorDiv(processed);
 
   // Wrap bare max/min/abs/int/float with Math/JS equivalents
-  processed = processed.replace(/(?<!Math\.)(?<![\w.])\bmax\b/g, 'Math.max');
-  processed = processed.replace(/(?<!Math\.)(?<![\w.])\bmin\b/g, 'Math.min');
-  processed = processed.replace(/(?<!Math\.)(?<![\w.])\babs\b/g, 'Math.abs');
-  // Python int() -> Math.floor()
-  processed = processed.replace(/(?<![\w.])\bint\s*\(/g, 'Math.floor(');
-  // Python float() -> Number()
-  processed = processed.replace(/(?<![\w.])\bfloat\s*\(/g, 'Number(');
+  processed = _wrapBuiltins(processed);
 
   try {
     // Build evaluation context with clamp utility and math
@@ -183,53 +294,76 @@ function _getInternalLevel(unit: UnitObject, db: Database | null): number {
 
 /**
  * Evaluate a condition within an equation expression.
- * Handles: tag membership, boolean literals, comparisons, unit properties.
+ *
+ * Handles Python condition forms used in default-project equation ternaries:
+ *   - Boolean literals (`True` / `False`)
+ *   - `'Tag' in unit.tags` / `'Tag' not in unit.tags` (also inside compounds)
+ *   - `unit.klass == 'ClassName'` and any `==`/`!=`/`>=`/`<=`/`>`/`<` comparison
+ *   - Python logical operators `and` / `or` / `not` (word-boundary rewrite to
+ *     `&&` / `||` / `!`; identifiers containing these substrings are untouched)
+ *   - Python truthiness for the ternary path (0/'' /empty array → false)
+ *
+ * The expression is rewritten to JS with the same substitutions as
+ * `evaluateEquation` (equation nids, stat tokens, unit.X, DB.constants,
+ * floor-div, builtins) and evaluated via `new Function`. Unknown conditions
+ * fall back to `true` to preserve prior behaviour.
  */
-function evaluateEquationCondition(
+export function evaluateEquationCondition(
   cond: string,
   unit: UnitObject,
   ctx?: EquationContext,
 ): boolean {
-  // 'Tag' in unit.tags
-  const inTagsMatch = cond.match(/^['"](.+?)['"]\s+in\s+unit\.tags$/);
-  if (inTagsMatch) {
-    return unit.tags?.includes(inTagsMatch[1]) ?? false;
-  }
-
-  // 'Tag' not in unit.tags
-  const notInTagsMatch = cond.match(/^['"](.+?)['"]\s+not\s+in\s+unit\.tags$/);
-  if (notInTagsMatch) {
-    return !(unit.tags?.includes(notInTagsMatch[1]) ?? false);
-  }
+  const trimmed = cond.trim();
 
   // Boolean literals
-  if (cond === 'True' || cond === 'true') return true;
-  if (cond === 'False' || cond === 'false') return false;
+  if (trimmed === 'True' || trimmed === 'true') return true;
+  if (trimmed === 'False' || trimmed === 'false') return false;
 
-  // unit.klass == 'ClassName'
-  const klassMatch = cond.match(/^unit\.klass\s*(==|!=)\s*['"](.+?)['"]$/);
-  if (klassMatch) {
-    const eq = klassMatch[1] === '==';
-    return eq ? unit.klass === klassMatch[2] : unit.klass !== klassMatch[2];
+  const db = ctx?.db ?? (_eqGameRef?.()?.db as Database | undefined) ?? null;
+
+  let processed = trimmed;
+
+  // Replace tag-membership forms with boolean literals. Handle `not in`
+  // before `in` so the `not in` form isn't partially consumed. Non-anchored
+  // so compound conditions like `'Mounted' in unit.tags and LCK > 3` work.
+  processed = processed.replace(
+    /['"]([^'"]+)['"]\s+not\s+in\s+unit\.tags/g,
+    (_m, tag) => `(${!(unit.tags?.includes(tag) ?? false)})`,
+  );
+  processed = processed.replace(
+    /['"]([^'"]+)['"]\s+in\s+unit\.tags/g,
+    (_m, tag) => `(${unit.tags?.includes(tag) ?? false})`,
+  );
+
+  // Shared substitutions: equation nids, stat tokens, unit.X, DB.constants.
+  processed = _substituteEquationNids(processed, unit, ctx, db, trimmed);
+  processed = _substituteStatsAndUnit(processed, unit, db);
+  processed = rewriteFloorDiv(processed);
+  processed = _wrapBuiltins(processed);
+
+  // Python logical operators → JS. `\b` ensures we never touch identifiers
+  // that merely contain these substrings (e.g. `bandana`, `format`, `door`).
+  // Apply after builtin wrapping so `Math.floor` (contains `or`) is already
+  // in place — though `\bor\b` would not match inside it anyway because `_`
+  // and letters are word chars with no boundary between them.
+  processed = processed.replace(/\bTrue\b/g, 'true');
+  processed = processed.replace(/\bFalse\b/g, 'false');
+  processed = processed.replace(/\band\b/g, '&&');
+  processed = processed.replace(/\bor\b/g, '||');
+  processed = processed.replace(/\bnot\b/g, '!');
+
+  try {
+    const clamp = (val: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, val));
+    const fn = new Function(
+      'Math', 'clamp',
+      `"use strict"; return (${processed});`,
+    );
+    const result = fn(Math, clamp);
+    return _pythonTruthy(result);
+  } catch {
+    console.warn(`CombatCalcs: unknown equation condition "${cond}" -> "${processed}"`);
+    return true;
   }
-
-  // Simple numeric comparison: LHS op RHS (after stat substitution)
-  const compMatch = cond.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
-  if (compMatch) {
-    const lhs = evaluateEquation(compMatch[1].trim(), unit, ctx);
-    const rhs = evaluateEquation(compMatch[3].trim(), unit, ctx);
-    switch (compMatch[2]) {
-      case '==': return lhs === rhs;
-      case '!=': return lhs !== rhs;
-      case '>': return lhs > rhs;
-      case '<': return lhs < rhs;
-      case '>=': return lhs >= rhs;
-      case '<=': return lhs <= rhs;
-    }
-  }
-
-  console.warn(`CombatCalcs: unknown equation condition "${cond}"`);
-  return true;
 }
 
 // ------------------------------------------------------------------

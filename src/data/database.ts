@@ -620,9 +620,17 @@ export class Database {
     return this.stats.find((s) => s.nid === nid);
   }
 
-  /** Get an equation expression by NID. */
+  /**
+   * Get an equation expression by NID.
+   *
+   * Python's equation parser uppercases equation nids in the DB and exposes
+   * lowercase accessors (`setattr(self, nid.lower(), ...)`), so callers may
+   * pass either form. We try the exact key first, then the uppercased key.
+   */
   getEquation(nid: NID): string | undefined {
-    return this.equations.get(nid);
+    const exact = this.equations.get(nid);
+    if (exact !== undefined) return exact;
+    return this.equations.get(nid.toUpperCase());
   }
 
   /** Get all equation names (for named equation resolution in evaluator). */
