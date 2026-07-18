@@ -92,6 +92,25 @@ export interface CombatAnimState {
   shakeOffset: [number, number];
   /** Flash alpha (0 = no flash, 1 = full white overlay) */
   flashAlpha: number;
+  /**
+   * Additive/subtractive color blend applied to the unit sprite on hit
+   * (Python `map_hit_add_blend` / `map_hit_sub_blend`). `tintAlpha` decays
+   * the same way `flashAlpha` does. `null` when no tint is active.
+   */
+  tintColor: [number, number, number] | null;
+  tintMode: 'add' | 'sub' | null;
+  tintAlpha: number;
+}
+
+function freshAnimState(): CombatAnimState {
+  return {
+    lungeOffset: [0, 0],
+    shakeOffset: [0, 0],
+    flashAlpha: 0,
+    tintColor: null,
+    tintMode: null,
+    tintAlpha: 0,
+  };
 }
 
 export class MapCombat {
@@ -146,6 +165,18 @@ export class MapCombat {
   private lifecycleRecorded: boolean = false;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
   private unitAnims: Map<UnitObject, CombatAnimState> = new Map();
+
+  /** map_cast_pose: attacker stands and casts instead of lunging. */
+  readonly attackerCastPose: boolean;
+  /** no_map_hp_display: suppress HP bar/drain display for this item use. */
+  readonly noMapHpDisplay: boolean;
+  /** map_cast_sfx / map_cast_anim (Python on_hit/on_miss): played once when
+   * the first strike using this item resolves (hit or miss), regardless of
+   * outcome. map_cast_anim has no map-animation-overlay system to render
+   * into on the web yet, so only the SFX and a recorded anim value are
+   * exposed here; see PLAN.md for the deferral note. */
+  private castSfxPlayed: boolean = false;
+  castAnimValue: string | null = null;
 
   constructor(
     attacker: UnitObject,
@@ -230,25 +261,28 @@ export class MapCombat {
     this.defenderDrainStartHps = new Map(this.defenderStartHps);
 
     // Animation state
-    this.attackerAnim = { lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0 };
+    this.attackerAnim = freshAnimState();
     this.unitAnims.set(attacker, this.attackerAnim);
-    this.defenderAnims = new Map(this.defenders.map((unit) => [unit, {
-      lungeOffset: [0, 0] as [number, number],
-      shakeOffset: [0, 0] as [number, number],
-      flashAlpha: 0,
-    }]));
-    this.defenderAnim = this.defenderAnims.get(defender) ?? {
-      lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0,
-    };
+    this.defenderAnims = new Map(this.defenders.map((unit) => [unit, freshAnimState()]));
+    this.defenderAnim = this.defenderAnims.get(defender) ?? freshAnimState();
     if (!this.defenderAnims.has(defender)) this.defenderAnims.set(defender, this.defenderAnim);
     for (const unit of this.participants) {
       if (!this.unitAnims.has(unit)) {
-        this.unitAnims.set(unit, this.defenderAnims.get(unit) ?? {
-          lungeOffset: [0, 0], shakeOffset: [0, 0], flashAlpha: 0,
-        });
+        this.unitAnims.set(unit, this.defenderAnims.get(unit) ?? freshAnimState());
       }
     }
     this.damagePopups = [];
+
+    // map_cast_pose (Python `MapCastPose`): the caster stands in place and
+    // plays its "cast" pose rather than lunging into melee. Approximated in
+    // the web renderer by suppressing the lunge offset for that unit.
+    this.attackerCastPose = attackItem.hasComponent('map_cast_pose');
+
+    // no_map_hp_display (Python `NoMapHPDisplay`): suppress the target HP
+    // bar/drain display for non-combat item uses (most staves/statuses).
+    this.noMapHpDisplay = attackItem.hasComponent('no_map_hp_display');
+
+    this.castAnimValue = attackItem.getComponent<string>('map_cast_anim') ?? null;
   }
 
   /** Instantly skip to the end of combat (no more animation). */
@@ -290,6 +324,13 @@ export class MapCombat {
     defenders: { unit: UnitObject; hp: number; maxHp: number; anim: CombatAnimState }[];
     assistants: { unit: UnitObject; anim: CombatAnimState }[];
     damagePopups: DamagePopup[];
+    /** no_map_hp_display: suppress HP bar rendering for this item use. */
+    noMapHpDisplay: boolean;
+    /** map_cast_pose: attacker plays its cast pose instead of lunging. */
+    attackerCastPose: boolean;
+    /** map_cast_anim: recorded animation nid for this item use (no map-anim
+     * overlay renderer exists yet on the web; see class-level deferral note). */
+    castAnimValue: string | null;
   } {
     const strike =
       this.currentStrikeIndex < this.strikes.length
@@ -315,6 +356,9 @@ export class MapCombat {
         .filter((unit) => unit !== this.attacker && !this.defenders.includes(unit) && !!unit.position)
         .map((unit) => ({ unit, anim: this.unitAnims.get(unit)! })),
       damagePopups: this.damagePopups,
+      noMapHpDisplay: this.noMapHpDisplay,
+      attackerCastPose: this.attackerCastPose,
+      castAnimValue: this.castAnimValue,
     };
   }
 
@@ -589,7 +633,12 @@ export class MapCombat {
         const ndx = dist > 0 ? dx / dist : 0;
         const ndy = dist > 0 ? dy / dist : 0;
 
-        if (this.frameTimer <= LUNGE_DURATION_MS) {
+        // map_cast_pose: the caster stands still instead of lunging.
+        const strikerCastPose = strikerUnit === this.attacker && this.attackerCastPose;
+
+        if (strikerCastPose) {
+          strikerAnim.lungeOffset = [0, 0];
+        } else if (this.frameTimer <= LUNGE_DURATION_MS) {
           // Lunge forward
           const t = this.frameTimer / LUNGE_DURATION_MS;
           const lungePixels = 6; // max pixels to lunge
@@ -606,6 +655,20 @@ export class MapCombat {
         if (this.frameTimer >= LUNGE_DURATION_MS * 0.8 && this.frameTimer <= LUNGE_DURATION_MS * 1.2) {
           if (strike.hit) {
             targetAnim.flashAlpha = strike.crit ? 0.8 : 0.5;
+
+            // map_hit_add_blend / map_hit_sub_blend (Python `on_hit` playback
+            // UnitTintAdd/UnitTintSub): color blend flash on the target.
+            const addColor = strike.item.getComponent<[number, number, number]>('map_hit_add_blend');
+            const subColor = strike.item.getComponent<[number, number, number]>('map_hit_sub_blend');
+            if (addColor) {
+              targetAnim.tintColor = addColor;
+              targetAnim.tintMode = 'add';
+              targetAnim.tintAlpha = 1;
+            } else if (subColor) {
+              targetAnim.tintColor = subColor;
+              targetAnim.tintMode = 'sub';
+              targetAnim.tintAlpha = 1;
+            }
           }
           // Play hit/miss sound at impact
           if (!this.hitSoundPlayed && this.audioManager) {
@@ -618,6 +681,15 @@ export class MapCombat {
               }
             } else {
               this.audioManager.playSfx('Attack Miss 2');
+            }
+          }
+          // map_cast_sfx (Python `on_hit`/`on_miss`): plays once per item use
+          // regardless of hit/miss, on the first strike of the encounter.
+          if (!this.castSfxPlayed && this.audioManager && this.currentStrikeIndex === 0) {
+            const castSfx = this.attackItem.getComponent<string>('map_cast_sfx');
+            if (castSfx) {
+              this.castSfxPlayed = true;
+              this.audioManager.playSfx(castSfx);
             }
           }
         } else {
@@ -730,6 +802,11 @@ export class MapCombat {
     this.attackerAnim.flashAlpha = Math.max(0, this.attackerAnim.flashAlpha - deltaMs * 0.004);
     for (const anim of this.unitAnims.values()) {
       anim.flashAlpha = Math.max(0, anim.flashAlpha - deltaMs * 0.004);
+      anim.tintAlpha = Math.max(0, anim.tintAlpha - deltaMs * 0.004);
+      if (anim.tintAlpha <= 0) {
+        anim.tintColor = null;
+        anim.tintMode = null;
+      }
     }
 
     // Update damage popups
@@ -779,10 +856,16 @@ export class MapCombat {
     this.attackerAnim.lungeOffset = [0, 0];
     this.attackerAnim.shakeOffset = [0, 0];
     this.attackerAnim.flashAlpha = 0;
+    this.attackerAnim.tintAlpha = 0;
+    this.attackerAnim.tintColor = null;
+    this.attackerAnim.tintMode = null;
     for (const anim of this.unitAnims.values()) {
       anim.lungeOffset = [0, 0];
       anim.shakeOffset = [0, 0];
       anim.flashAlpha = 0;
+      anim.tintAlpha = 0;
+      anim.tintColor = null;
+      anim.tintMode = null;
     }
     if (this.frameTimer >= CLEANUP_DURATION_MS) {
       this.frameTimer = 0;

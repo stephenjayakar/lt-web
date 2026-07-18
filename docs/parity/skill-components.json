@@ -7,14 +7,14 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 54,
-    "referencedComponentNids": 73,
+    "referencedComponentNids": 74,
     "hookMappedComponentNids": 67,
-    "unreferencedComponentNids": 168,
+    "unreferencedComponentNids": 167,
     "structuralStatuses": {
       "hook-and-reference": 45,
       "hook-only": 22,
-      "reference-only": 28,
-      "unreferenced": 146
+      "reference-only": 29,
+      "unreferenced": 145
     }
   },
   "webHookExports": [
@@ -140,7 +140,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1588
+          "line": 1589
         }
       ],
       "matchingWebHooks": [],
@@ -826,10 +826,15 @@
       "methods": [
         "start_combat"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/map-combat.ts",
+          "line": 285
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "battle_animation_music",
@@ -885,15 +890,15 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9118
+          "line": 9188
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10901
+          "line": 10971
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10914
+          "line": 10984
         },
         {
           "source": "src/native.ts",
@@ -986,11 +991,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11080
+          "line": 11150
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11103
+          "line": 11173
         }
       ],
       "matchingWebHooks": [],
@@ -1040,7 +1045,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2051
+          "line": 2052
         }
       ],
       "matchingWebHooks": [],
@@ -1282,7 +1287,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8520
+          "line": 8590
         },
         {
           "source": "src/events/event-manager.ts",
@@ -3120,11 +3125,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2497
+          "line": 2498
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5097
+          "line": 5138
         },
         {
           "source": "src/objects/item.ts",
@@ -3300,7 +3305,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5109
+          "line": 5150
         }
       ],
       "matchingWebHooks": [
@@ -4478,7 +4483,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11261
+          "line": 11331
         }
       ],
       "matchingWebHooks": [

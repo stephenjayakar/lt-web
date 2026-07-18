@@ -48,7 +48,7 @@ Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 210 recognized; 200 matching case labels | Partial |
-| Item component NIDs | 201 | 122 exact string references; 92 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 134 exact string references; 92 with matching hook surfaces | Partial/Unknown |
 | Skill component NIDs | 241 | 73 exact string references; 67 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 44 web states | Partial |
 | TypeScript runtime | n/a | 95 files, 54,370 lines | Builds |
@@ -156,6 +156,47 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Aesthetic combat-feedback item components:** ports
+  `app/engine/item_components/aesthetic_components.py`'s high-usage cosmetic
+  cluster into `src/combat/map-combat.ts` (`MapCombat`):
+  - `map_hit_add_blend`/`map_hit_sub_blend` (~25 default-project items:
+    Fire/Elfire/Nosferatu/Flux/etc.): `CombatAnimState` gained
+    `tintColor`/`tintMode`/`tintAlpha`, set from the hitting strike's item
+    component at the same impact frame as the existing white flash, decaying
+    on the same schedule. Rendered in `src/engine/states/game-states.ts`
+    (`drawUnitTint`) — additive tint uses canvas `globalCompositeOperation =
+    'lighter'`; subtractive tint has no true canvas primitive, so it's
+    approximated with a translucent dark overlay (documented deviation).
+  - `map_cast_pose` (~30 items): `MapCombat.attackerCastPose` (from
+    `attackItem.hasComponent('map_cast_pose')`), consumed in `updateStrike` to
+    suppress the lunge offset for that striker. The web has no map sprite
+    pose/state machine (no `combat_attacker`/`start_cast` states like
+    Python), so "plays the cast pose" is approximated as "stands still
+    instead of lunging into melee" — documented deviation, not a full pose
+    port.
+  - `no_map_hp_display` (~31 items): `MapCombat.noMapHpDisplay` suppresses
+    both HP bars in `drawMapCombat` for that item's combat.
+  - `map_cast_sfx` (~5 items) / `map_cast_anim` (1 item, Pure_Water): cast SFX
+    plays once via `audioManager.playSfx` on the first strike's impact frame
+    regardless of hit/miss; `map_cast_anim`'s value is captured on
+    `MapCombat.castAnimValue` but not rendered — the web has no map-animation
+    overlay system to hang a cast animation off of yet (deferred, documented).
+  - `warning`/`eval_warning` (5 items: Killer weapons, Shamshir):
+    `computeTargetIcon()` in `src/combat/item-system.ts` mirrors Python's
+    `target_icon` (available + enemy check for `warning`); `eval_warning`
+    only approximates the trivial/default `'True'` expression since no
+    default-project item ships a non-trivial evaluated string and the web has
+    no general expression evaluator wired into targeting (documented
+    deviation). Rendered as a small colored marker over enemy targets in
+    `ItemTargetingState.drawTargetWarnings` (`src/engine/states/game-states.ts`).
+    `item_icon_flash` (menu icon white-flash) has no clean seam in the
+    current item-menu icon pipeline and is deferred, undocumented in code
+    beyond this note.
+  - New harness hooks `resolveCombatAesthetics`/`computeTargetIcon`
+    (`src/harness.ts`) and `tests/aesthetic-components.spec.ts` (10 tests)
+    assert presentation state directly rather than pixels: tint color/mode,
+    cast-pose flag, HP-display suppression, recorded cast SFX, cast-anim
+    value, and warning-icon computation for a Killer weapon vs enemy/ally.
 - **Promotion-item flow (Promote/ForcePromote + promotion_choice state):**
   - Ports `app/engine/item_components/class_change_components.py`
     (`Promote`/`ForcePromote`) and the `promotion`/`promotion_choice` states.

@@ -107,6 +107,7 @@ import {
   allowLessThanMaxTargets,
   stealItemRestrict,
   available as itemAvailable,
+  computeTargetIcon,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -2704,8 +2705,36 @@ export class ItemTargetingState extends MapState {
     const game = getGame();
     game.highlight.update();
     const result = drawMap(surf, true);
+    this.drawTargetWarnings(result);
     this.targetItemMenu?.draw(result);
     return result;
+  }
+
+  /**
+   * Python `Warning.target_icon` / `EvalWarning.target_icon`: a yellow '!'
+   * (warning) or red '!' (danger) drawn above enemy units currently in the
+   * item's target list, when the wielded item carries the corresponding
+   * aesthetic component. Approximated with a small colored triangle since
+   * the web has no bespoke icon sprite sheet wired in for this marker.
+   */
+  private drawTargetWarnings(surf: Surface): void {
+    const game = getGame();
+    const unit = game.selectedUnit;
+    const item = this.activeItem();
+    if (!unit || !item || !this.targets.length) return;
+    if (!item.hasComponent('warning') && !item.hasComponent('eval_warning')) return;
+    const cameraOffset = game.camera.getOffset();
+    for (const target of this.targets) {
+      const targetUnit = game.board?.getUnit?.(target[0], target[1]) ?? null;
+      if (!targetUnit) continue;
+      const icon = computeTargetIcon(unit, item, targetUnit, game.db, game);
+      if (!icon) continue;
+      const x = target[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
+      const y = target[1] * TILEHEIGHT - cameraOffset[1] - 4;
+      const color = icon === 'danger' ? 'rgb(224,32,32)' : 'rgb(248,216,0)';
+      surf.fillRect(x - 1, y - 8, 2, 6, color);
+      surf.fillRect(x - 1, y - 1, 2, 2, color);
+    }
   }
 
   override end(): StateResult {
@@ -4767,20 +4796,32 @@ export class CombatState extends State {
         `rgba(255,255,255,${entry.anim.flashAlpha.toFixed(2)})`);
     }
 
-    // HP bars (positioned above the unit, accounting for shake/lunge)
-    if (atkPos) {
-      const atkShakeX = rs.attackerAnim.shakeOffset[0] + rs.attackerAnim.lungeOffset[0];
-      const ax = atkPos[0] * TILEWIDTH - cameraOffset[0] + atkShakeX;
-      const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
-      this.drawHpBar(surf, ax, ay, rs.attackerHp, rs.attackerMaxHp);
-    }
+    // map_hit_add_blend / map_hit_sub_blend color tint on hit targets.
+    // Additive blend brightens using the composite canvas 'lighter' op;
+    // subtractive blend is approximated with a normal dark overlay (canvas
+    // has no true subtractive blend mode) -- see PLAN.md for the note.
+    this.drawUnitTint(surf, rs.attackerAnim, atkPos, cameraOffset);
     for (const entry of rs.defenders) {
-      const position = entry.unit.position;
-      if (!position) continue;
-      const offsetX = entry.anim.shakeOffset[0] + entry.anim.lungeOffset[0];
-      const dx = position[0] * TILEWIDTH - cameraOffset[0] + offsetX;
-      const dy = position[1] * TILEHEIGHT - cameraOffset[1] - 6;
-      this.drawHpBar(surf, dx, dy, entry.hp, entry.maxHp);
+      this.drawUnitTint(surf, entry.anim, entry.unit.position, cameraOffset);
+    }
+
+    // HP bars (positioned above the unit, accounting for shake/lunge).
+    // no_map_hp_display suppresses both bars for this item use.
+    if (!rs.noMapHpDisplay) {
+      if (atkPos) {
+        const atkShakeX = rs.attackerAnim.shakeOffset[0] + rs.attackerAnim.lungeOffset[0];
+        const ax = atkPos[0] * TILEWIDTH - cameraOffset[0] + atkShakeX;
+        const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
+        this.drawHpBar(surf, ax, ay, rs.attackerHp, rs.attackerMaxHp);
+      }
+      for (const entry of rs.defenders) {
+        const position = entry.unit.position;
+        if (!position) continue;
+        const offsetX = entry.anim.shakeOffset[0] + entry.anim.lungeOffset[0];
+        const dx = position[0] * TILEWIDTH - cameraOffset[0] + offsetX;
+        const dy = position[1] * TILEHEIGHT - cameraOffset[1] - 6;
+        this.drawHpBar(surf, dx, dy, entry.hp, entry.maxHp);
+      }
     }
 
     // Floating damage numbers
@@ -5369,6 +5410,35 @@ export class CombatState extends State {
     const srcW = (img as HTMLCanvasElement).width ?? 32;
     const srcH = (img as HTMLCanvasElement).height ?? 40;
     surf.drawImageFull(img, ox, oy, srcW, srcH, alpha, flipH);
+  }
+
+  /**
+   * Draw a map_hit_add_blend / map_hit_sub_blend color tint over a unit's
+   * tile. Additive tints use canvas 'lighter' composite to brighten;
+   * subtractive tints are approximated with a translucent dark overlay
+   * (canvas 2D has no true subtractive/darken-only blend primitive).
+   */
+  private drawUnitTint(
+    surf: Surface,
+    anim: { tintColor: [number, number, number] | null; tintMode: 'add' | 'sub' | null; tintAlpha: number },
+    position: [number, number] | null,
+    cameraOffset: [number, number],
+  ): void {
+    if (!anim.tintColor || !anim.tintMode || anim.tintAlpha <= 0 || !position) return;
+    const [r, g, b] = anim.tintColor;
+    const fx = position[0] * TILEWIDTH - cameraOffset[0];
+    const fy = position[1] * TILEHEIGHT - cameraOffset[1];
+    const alpha = anim.tintAlpha.toFixed(2);
+    const ctx = surf.ctx;
+    const prevOp = ctx.globalCompositeOperation;
+    if (anim.tintMode === 'add') {
+      ctx.globalCompositeOperation = 'lighter';
+      surf.fillRect(fx, fy, TILEWIDTH, TILEHEIGHT, `rgba(${r},${g},${b},${alpha})`);
+    } else {
+      // Darken toward the subtractive color.
+      surf.fillRect(fx, fy, TILEWIDTH, TILEHEIGHT, `rgba(${255 - r},${255 - g},${255 - b},${alpha})`);
+    }
+    ctx.globalCompositeOperation = prevOp;
   }
 
   private drawHpBar(
