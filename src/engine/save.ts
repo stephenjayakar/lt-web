@@ -81,6 +81,13 @@ export interface UnitSaveData {
   leadUnit?: boolean;
   currentGuardGauge?: number;
   builtGuard?: boolean;
+  /**
+   * Mirrors Python's `current_mana` (unit.py:924). Only set on units that have
+   * had `set_current_mana` applied at runtime; optional so legacy saves and
+   * units that never touched mana restore with no dynamic property (matches
+   * pre-existing behavior of items falling back to the MANA equation).
+   */
+  currentMana?: number;
   hasRescued?: boolean;
   hasDropped?: boolean;
   hasTaken?: boolean;
@@ -216,6 +223,11 @@ export interface SaveDict {
   memory: [string, any][];
   /** NIDs of only_once events already triggered. Optional for legacy saves (defaults to empty). */
   alreadyTriggeredEvents?: string[];
+  /**
+   * Talk pair keys ("unitA|unitB") hidden via hide_talk (mirrors Python's
+   * `game_state.talk_hidden`). Optional for legacy saves (defaults to empty).
+   */
+  talkHidden?: string[];
 }
 
 export interface SaveMetadata {
@@ -473,6 +485,7 @@ function serializeUnit(
     hasTaken: unit.hasTaken,
     hasGiven: unit.hasGiven,
     skillInstances,
+    currentMana: (unit as any).currentMana,
   };
 }
 
@@ -811,6 +824,9 @@ export function buildSaveDict(game: any): SaveDict {
     skillCounter: getNextSkillUid(),
     alreadyTriggeredEvents: game.eventManager
       ? Array.from((game.eventManager as EventManager).getOnceTriggered())
+      : [],
+    talkHidden: game.eventManager
+      ? (game.eventManager as EventManager).getTalkHidden()
       : [],
   };
 }
@@ -1166,6 +1182,9 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.hasDropped = unitData.hasDropped ?? false;
       unit.hasTaken = unitData.hasTaken ?? false;
       unit.hasGiven = unitData.hasGiven ?? false;
+      if (unitData.currentMana !== undefined) {
+        (unit as any).currentMana = unitData.currentMana;
+      }
 
       // Restore items onto the unit
       unit.items = [];
@@ -1379,7 +1398,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
 
   // 15. Restore level (if present)
   if (s.level) {
-    await restoreLevel(game, s.level, unitsByNid, s.alreadyTriggeredEvents);
+    await restoreLevel(game, s.level, unitsByNid, s.alreadyTriggeredEvents, s.talkHidden);
   }
 
   // 16. Restore overworld registry
@@ -1403,6 +1422,7 @@ async function restoreLevel(
   levelData: LevelSaveData,
   unitsByNid: Map<string, UnitObject>,
   alreadyTriggeredEvents: string[] | undefined,
+  talkHidden?: string[],
 ): Promise<void> {
   try {
     // Get the level prefab from DB
@@ -1556,6 +1576,7 @@ async function restoreLevel(
     game.eventManager = new EventManager(game.db?.events);
     game.eventManager.actionLog = game.actionLog ?? null;
     game.eventManager.restoreOnceTriggered(alreadyTriggeredEvents);
+    game.eventManager.restoreTalkHidden(talkHidden);
 
     // Create AIController
     game.aiController = new AIController(game.db, game.board, game.pathSystem);

@@ -1234,6 +1234,13 @@ export class EventManager {
   /** Dynamic talk pairs added via event commands: Set of "unitA|unitB" keys. */
   private talkPairs: Set<string>;
   /**
+   * Talk options hidden via hide_talk/unhide_talk event commands: Set of
+   * "unitA|unitB" keys. Mirrors Python's `game_state.talk_hidden`
+   * (game_state.py:131) — hidden talks are suppressed from the map/menu
+   * display but the underlying on_talk event is not removed.
+   */
+  private talkHidden: Set<string>;
+  /**
    * Optional reference to the game's action log, used to record only_once
    * marking as a reversible action (mirrors Python's action.OnlyOnceEvent)
    * so turnwheel undo restores re-triggerability. May be unset in contexts
@@ -1247,6 +1254,7 @@ export class EventManager {
     this.eventQueue = [];
     this.onceTriggered = new Set();
     this.talkPairs = new Set();
+    this.talkHidden = new Set();
   }
 
   /** Get the set of already-triggered only_once event NIDs (for save serialization). */
@@ -1396,6 +1404,33 @@ export class EventManager {
   hasTalkPair(unit1Nid: string, unit2Nid: string): boolean {
     return this.talkPairs.has(`${unit1Nid}|${unit2Nid}`) ||
            this.talkPairs.has(`${unit2Nid}|${unit1Nid}`);
+  }
+
+  /** Hide a talk option from map/menu display (hide_talk event command). */
+  hideTalk(unit1Nid: string, unit2Nid: string): void {
+    this.talkHidden.add(`${unit1Nid}|${unit2Nid}`);
+  }
+
+  /** Unhide a previously-hidden talk option (unhide_talk event command). */
+  unhideTalk(unit1Nid: string, unit2Nid: string): void {
+    this.talkHidden.delete(`${unit1Nid}|${unit2Nid}`);
+    this.talkHidden.delete(`${unit2Nid}|${unit1Nid}`);
+  }
+
+  /** Check if a talk option is hidden from map/menu display. */
+  isTalkHidden(unit1Nid: string, unit2Nid: string): boolean {
+    return this.talkHidden.has(`${unit1Nid}|${unit2Nid}`) ||
+           this.talkHidden.has(`${unit2Nid}|${unit1Nid}`);
+  }
+
+  /** Get the set of hidden talk pair keys (for save serialization). */
+  getTalkHidden(): string[] {
+    return Array.from(this.talkHidden);
+  }
+
+  /** Restore the set of hidden talk pair keys (for save loading). */
+  restoreTalkHidden(pairs: string[] | undefined): void {
+    this.talkHidden = new Set(pairs ?? []);
   }
 
   /**

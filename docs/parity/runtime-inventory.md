@@ -162,7 +162,7 @@ Sources: `game_state.py:398` (GameState.save), `unit.py:893` (UnitObject.save), 
 | units | game_state.py:399 | PERSISTED | save.ts:657 | |
 | items | game_state.py:400 | PERSISTED | save.ts:658 | |
 | skills | game_state.py:401 | PERSISTED | save.ts:659 | |
-| terrain_status_registry | game_state.py:402 | MISSING | — | terrain status state lost |
+| terrain_status_registry | game_state.py:402 | N/A (documented, 2026-07-17) | — | Web has no terrain-granted-status system at all (no `add_terrain_status`/`register_terrain_status` equivalent, no terrain-status skill grants anywhere in `src/`). Nothing to serialize; adding a registry field with no producer would be dead code. Deferred until a terrain-status feature is ported. |
 | regions | game_state.py:403 | MISSING | — | region registry not serialized |
 | level | game_state.py:404 | PERSISTED | save.ts:660 | |
 | overworlds | game_state.py:405 | PARTIAL | save.ts:683-685 | Map entries, not full `overworld.save()` objects — shape differs |
@@ -171,24 +171,24 @@ Sources: `game_state.py:398` (GameState.save), `unit.py:893` (UnitObject.save), 
 | game_vars | game_state.py:408 | PERSISTED | save.ts:663 | |
 | level_vars | game_state.py:409 | PERSISTED | save.ts:664 | |
 | current_mode | game_state.py:410 | PERSISTED | save.ts:665-667 | via `DifficultyModeObject.save()` |
-| teams | game_state.py:411 | MISSING | — | team registry not serialized |
+| teams | game_state.py:411 | N/A (documented, 2026-07-17) | — | Python's `teams` registry IS runtime-mutable (`change_team_palette` command calls `TeamObject.change_palettes()`), but the web port does not implement `change_team_palette` (grepped `src/engine/states/game-states.ts` — no case for it) and has no other runtime team-mutation path; `AlliancePair`/`TeamDef` are read-only DB data (`src/data/types.ts:270,273`). Teams are purely DB-static in the web port today, so there is nothing to serialize. Blocked on porting `change_team_palette`; revisit then. |
 | parties | game_state.py:412 | PERSISTED | save.ts:668 | |
 | current_party | game_state.py:413 | PERSISTED | save.ts:669 | |
 | state | game_state.py:414 | PARTIAL | save.ts:670 | only current state name (`stateStack`), not full state-machine save |
-| action_log | game_state.py:415 | MISSING | — | |
+| action_log | game_state.py:415 | DEFERRED (documented, 2026-07-17) | — | Large feature: `src/engine/action.ts` has no `serialize`/`save`/`restore` scaffolding at all (grepped) — the web action log is in-memory only. Persisting it (for mid-battle-save turnwheel history) requires a serialization format for every Action subclass, out of scope for this slice. Deferred; see runtime-inventory.md Highest-Risk Gaps #5 for the related `already_triggered_events` gap (since closed, see below) which was a much smaller, tractable slice of the same area. |
 | events | game_state.py:416 | MISSING | — | EventManager state not serialized |
 | supports | game_state.py:417 | PERSISTED | save.ts:673 | |
 | records | game_state.py:418 | PERSISTED | save.ts:672 | |
-| speak_styles | game_state.py:419 | MISSING | — | |
+| speak_styles | game_state.py:419 | N/A (documented, 2026-07-17) | — | `speak_style` is a recognized event-command token (`src/events/event-manager.ts:55,153`) but has no case in the game-states.ts command switch (grepped, no match) — it is unimplemented, so there is no runtime `SpeakStyleLibrary`-equivalent state to serialize. Deferred until `speak_style` itself is wired. |
 | market_items | game_state.py:420 | PERSISTED | save.ts:674 | |
 | unlocked_lore | game_state.py:421 | PERSISTED | save.ts:676 | |
-| dialog_log | game_state.py:422 | MISSING | — | |
-| already_triggered_events | game_state.py:423 | MISSING | — | events re-fire on reload |
+| dialog_log | game_state.py:422 | N/A (documented, 2026-07-17) | — | No `DialogLog`-equivalent runtime object in the web port (grepped `src/` for `dialogLog`/`dialog_log` — no hits outside this doc). Nothing to persist. |
+| already_triggered_events | game_state.py:423 | PERSISTED | save.ts:812-814 | Closed in an earlier slice (see PLAN.md P2 "already_triggered_events + full region-state save-field parity"). |
 | talk_options | game_state.py:424 | PERSISTED | save.ts:677 | |
-| talk_hidden | game_state.py:425 | MISSING | — | |
+| talk_hidden | game_state.py:425 | PERSISTED (closed 2026-07-17) | save.ts (SaveDict.talkHidden), event-manager.ts (`EventManager.talkHidden`/`hideTalk`/`unhideTalk`/`isTalkHidden`/`getTalkHidden`/`restoreTalkHidden`) | Previously `hide_talk`/`unhide_talk` were no-ops in game-states.ts ("not yet tracked visually"). Added an `EventManager`-backed hidden-pair `Set<string>` (keys `"unitA\|unitB"`, order-independent lookup), wired both event commands to it, filtered it into the map Talk-menu-option check (game-states.ts, the `adjacentTalkTargets` filter), and persisted/restored it in save.ts (optional field, defaults to empty set for legacy saves). Test: tests/save-fields.spec.ts. |
 | base_convos | game_state.py:426 | PERSISTED | save.ts:675 | |
 | current_random_state | game_state.py:427 | MISSING | — | combat RNG diverges after load |
-| bounds | game_state.py:428 | MISSING | — | |
+| bounds | game_state.py:428 | N/A (documented, 2026-07-17) | — | `set_game_board_bounds`/`remove_game_board_bounds` event commands are unimplemented in the web port (grepped `game_board_bounds`/`GameBoardBounds` across `src/` — no hits), so there is no runtime bounds field to serialize. Blocked on those commands being ported first. |
 | fog_state | game_state.py:429 | PARTIAL | save.ts:678 | rebuilt from `levelVars._fog_of_war*`, not `previously_visited_tiles` |
 | roam_info | game_state.py:430 | PERSISTED | save.ts:679-682 | only `roam` + `roamUnitNid` |
 
@@ -209,7 +209,7 @@ Sources: `game_state.py:398` (GameState.save), `unit.py:893` (UnitObject.save), 
 | generic | unit.py:904 | PERSISTED | save.ts:368 | |
 | persistent | unit.py:905 | PERSISTED | save.ts:400 | |
 | ai | unit.py:906 | PERSISTED | save.ts:385 | |
-| roam_ai | unit.py:907 | MISSING | — | |
+| roam_ai | unit.py:907 | N/A (documented, 2026-07-17) | — | Web has no per-unit roam-AI dispatch at all: Free Roam mode (`src/engine/states/roam-state.ts`) only ever drives the single player-controlled unit directly (`FreeRoamState.roamUnit`) — there is no NPC roam-AI system for `change_roam_ai`/`set_roam_ai` to target, and neither event command is implemented (grepped, no case in game-states.ts). Web's `roam_ai` in `src/data/types.ts:308` is an unrelated AI-def boolean flag, not a per-unit field. Adding a stored `unit.roamAi` with no consumer would be dead code. Deferred until NPC roam-AI is ported. |
 | ai_group | unit.py:908 | PERSISTED | save.ts:390 | |
 | items | unit.py:909 | PERSISTED | save.ts:382 | stores item map keys, not uids |
 | name | unit.py:910 | PERSISTED | save.ts:364 | |
@@ -226,8 +226,8 @@ Sources: `game_state.py:398` (GameState.save), `unit.py:893` (UnitObject.save), 
 | skills | unit.py:921 | PARTIAL | save.ts:383,412 | Python stores `(uid, source, source_type)` per skill; web stores NIDs + `skillInstances` (nid+data); `source`/`source_type` lost |
 | notes | unit.py:922 | PERSISTED | save.ts:369 | |
 | current_hp | unit.py:923 | PERSISTED | save.ts:377 | |
-| current_mana | unit.py:924 | MISSING | — | |
-| current_fatigue | unit.py:925 | MISSING | — | |
+| current_mana | unit.py:924 | PERSISTED (closed 2026-07-17) | save.ts:446 (serialize), save.ts:1185-1187 (restore), UnitSaveData.currentMana | Web tracks `unit.currentMana` as a dynamic (not class-declared) property, set via the `set_current_mana` event command (game-states.ts) and consumed by `item-system.ts:125` mana-cost checks (falls back to the `MANA` equation when unset). Now persisted as an optional field; legacy saves and units that never touched mana restore with the property left unset (unchanged fallback behavior). Test: tests/save-fields.spec.ts. |
+| current_fatigue | unit.py:925 | N/A (documented, 2026-07-17) | — | Web has no fatigue mechanic at all — grepped `src/` (excluding tests) for `fatigue` (any case): zero hits. No `set_current_fatigue`-equivalent command, no runtime field, no consumer. Nothing to persist; adding a field would be dead code. Deferred until a fatigue system is ported. |
 | traveler | unit.py:926 | PERSISTED | save.ts:404 | `travelerNid` |
 | current_guard_gauge | unit.py:927 | PERSISTED | save.ts:406 | |
 | built_guard | unit.py:928 | PERSISTED | save.ts:407 | |
@@ -283,7 +283,9 @@ Ranked by likely gameplay/save-corruption impact:
 9. **19 of 41 event triggers unreferenced.** Whole feature categories have no trigger dispatch: overworld (3), base/prep (4), roam-input (3), unit cursor selection (3), hidden skill/item lifecycle (`event_after_initiated_combat`, `event_on_remove`). Projects using these triggers will silently no-op.
 10. **GameState `state` (only current name, not full stack), `teams`, `regions`, `bounds`, `terrain_status_registry` not properly persisted.** Mid-level save restore loses state-machine depth and runtime map mutations; shape mismatches rather than clean missing fields.
 
-Lower-risk but worth tracking: `get_units_in_region` rectangular-only shape (vs `region.contains()`), `is_dead` not-found inversion, `get_support_rank` selection divergence, convoy-path item queries routed through a separate helper, `action_state` arbitrary-key loss, Unit `current_mana`/`current_fatigue`/`roam_ai`, Item `command_item`, `talk_hidden`/`speak_styles`/`dialog_log`/`action_log`.
+Lower-risk but worth tracking: `get_units_in_region` rectangular-only shape (vs `region.contains()`), `is_dead` not-found inversion, `get_support_rank` selection divergence, convoy-path item queries routed through a separate helper, `action_state` arbitrary-key loss, Item `command_item`.
+
+**Closed 2026-07-17 (P2 save-field gap closeout):** Unit `current_mana` (persisted — has a live runtime representation via `set_current_mana`); `talk_hidden` (persisted — `hide_talk`/`unhide_talk` were dead-lettered no-ops, now backed by an `EventManager` hidden-pair set that also feeds the map Talk-menu filter). **Documented as non-applicable/deferred** (no runtime representation to serialize; adding fields would be dead code): Unit `current_fatigue` (no fatigue system in web at all), Unit `roam_ai` (no NPC roam-AI dispatch in web's Free Roam), GameState `terrain_status_registry` (no terrain-granted-status system), GameState `teams` (registry is DB-static in web; Python's runtime mutation path `change_team_palette` is unported), GameState `bounds` (`set_game_board_bounds`/`remove_game_board_bounds` unported), GameState `speak_styles` (`speak_style` command unwired), GameState `dialog_log` (no DialogLog-equivalent object). GameState `action_log` remains a large deferred feature (no serialization scaffolding exists for any Action subclass).
 
 ---
 
