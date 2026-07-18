@@ -156,6 +156,21 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Save-field gap closeout (P2, runtime-inventory.md §4):** persisted Unit
+  `current_mana` (dynamic `currentMana` property set by `set_current_mana`,
+  read by `item-system.ts` mana-cost checks — `save.ts` `UnitSaveData.currentMana`,
+  optional/legacy-safe) and GameState `talk_hidden` (`hide_talk`/`unhide_talk`
+  were no-ops; added `EventManager.talkHidden` hidden-pair set with
+  `hideTalk`/`unhideTalk`/`isTalkHidden`/`getTalkHidden`/`restoreTalkHidden`,
+  wired both event commands to it, and filtered it into the map Talk-menu
+  option check in `game-states.ts`). New `tests/save-fields.spec.ts` covers
+  both round-trips plus legacy-save defaults. Documented (not implemented, no
+  dead code) as non-applicable/deferred: Unit `current_fatigue`/`roam_ai`,
+  GameState `terrain_status_registry`/`teams`/`bounds`/`speak_styles`/
+  `dialog_log` (no runtime state exists for any of these in the web port —
+  see runtime-inventory.md §4 for the per-field reasoning), and `action_log`
+  (large deferred feature, no serialization scaffolding for any Action
+  subclass).
 - **Aesthetic combat-feedback item components:** ports
   `app/engine/item_components/aesthetic_components.py`'s high-usage cosmetic
   cluster into `src/combat/map-combat.ts` (`MapCombat`):
@@ -1353,9 +1368,25 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
   `RemoveRegionAction`) for turnwheel parity. Legacy saves with old
   `regionNids` but no `regions` fall back to the prefab filtered to those
   NIDs. Covered by `tests/event-region-save.spec.ts`.
-- [ ] Close remaining inventoried save-field gaps: terrain-status registries,
-  teams, bounds, `current_mana`/`current_fatigue`, dialog/action logs
-  (see `docs/parity/runtime-inventory.md`)
+- [x] Close remaining inventoried save-field gaps (runtime-inventory.md §4).
+  Persisted (had a live runtime representation, previously missing from
+  `save.ts`): Unit `current_mana` (dynamic property set via `set_current_mana`,
+  consumed by item-system.ts mana-cost checks; optional field, legacy-safe) and
+  GameState `talk_hidden` (`hide_talk`/`unhide_talk` were no-ops — added an
+  `EventManager` hidden-pair set, wired both commands to it, and filtered it
+  into the map Talk-menu option check). Covered by `tests/save-fields.spec.ts`
+  (mana round-trip + legacy default; talk_hidden round-trip, reciprocal lookup,
+  + legacy default). Documented as non-applicable/deferred rather than given
+  dead serialization (no runtime state exists to persist): Unit
+  `current_fatigue` (no fatigue mechanic in web at all), Unit `roam_ai` (no
+  NPC roam-AI dispatch — Free Roam only drives the single player unit),
+  GameState `terrain_status_registry` (no terrain-granted-status system),
+  `teams` (DB-static in web; Python's runtime mutation path
+  `change_team_palette` is unported), `bounds` (`set_game_board_bounds`/
+  `remove_game_board_bounds` unported), `speak_styles` (`speak_style` command
+  unwired), `dialog_log` (no DialogLog-equivalent object). `action_log`
+  remains a large deferred feature (no serialization scaffolding for any
+  Action subclass) — out of scope for this slice.
 - [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
   initiative, roam, overworld, records, achievements, and in-progress events
 - [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults

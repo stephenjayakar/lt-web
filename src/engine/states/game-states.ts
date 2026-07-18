@@ -1690,7 +1690,9 @@ export class MenuState extends State {
           unit1: unit,
           unit2: other,
         }, ctx);
-        return events.length > 0;
+        if (events.length === 0) return false;
+        if (game.eventManager.isTalkHidden(unit.nid, other.nid)) return false;
+        return true;
       }
       return false;
     });
@@ -9050,9 +9052,20 @@ export class EventState extends State {
         return false;
       }
 
-      case 'hide_talk':
+      case 'hide_talk': {
+        // hide_talk;unit1_nid;unit2_nid
+        if (game.eventManager && args.length >= 2) {
+          game.eventManager.hideTalk(args[0], args[1]);
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'unhide_talk': {
-        // Talk visibility toggling — not yet tracked visually
+        // unhide_talk;unit1_nid;unit2_nid
+        if (game.eventManager && args.length >= 2) {
+          game.eventManager.unhideTalk(args[0], args[1]);
+        }
         this.advancePointer();
         return false;
       }
