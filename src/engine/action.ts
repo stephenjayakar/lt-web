@@ -7,6 +7,7 @@ import { evaluateEquation } from '../combat/combat-calcs';
 import { onPairup, onRemoveRescue, onRescue, onSeparate } from '../combat/skill-system';
 import { autoLevelUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
+import type { RegionData } from '../data/types';
 
 // Forward declare — we need a getter function since game-state has circular deps
 let _getGame: (() => any) | null = null;
@@ -884,6 +885,96 @@ export class HasTradedAction extends Action {
 
   reverse(): void {
     this.unit.hasTraded = this.previous;
+  }
+}
+
+/**
+ * OnlyOnceEventAction - Mark an only_once event as triggered.
+ * Mirrors Python's action.OnlyOnceEvent (game.already_triggered_events
+ * append/remove), so turnwheel undo restores re-triggerability.
+ */
+export class OnlyOnceEventAction extends Action {
+  private eventNid: string;
+  private onceTriggered: Set<string>;
+
+  constructor(eventNid: string, onceTriggered: Set<string>) {
+    super();
+    this.eventNid = eventNid;
+    this.onceTriggered = onceTriggered;
+  }
+
+  execute(): void {
+    this.onceTriggered.add(this.eventNid);
+  }
+
+  reverse(): void {
+    this.onceTriggered.delete(this.eventNid);
+  }
+}
+
+/**
+ * AddRegionAction - Add a region to the current level's region list.
+ * Mirrors Python's action.AddRegion.
+ */
+export class AddRegionAction extends Action {
+  private region: RegionData;
+  private regions: RegionData[];
+  private didAdd: boolean = false;
+
+  constructor(region: RegionData, regions: RegionData[]) {
+    super();
+    this.region = region;
+    this.regions = regions;
+  }
+
+  execute(): void {
+    if (this.regions.some((r) => r.nid === this.region.nid)) {
+      this.didAdd = false;
+      return;
+    }
+    this.regions.push(this.region);
+    this.didAdd = true;
+  }
+
+  reverse(): void {
+    if (!this.didAdd) return;
+    const idx = this.regions.indexOf(this.region);
+    if (idx !== -1) this.regions.splice(idx, 1);
+  }
+}
+
+/**
+ * RemoveRegionAction - Remove a region from the current level's region list.
+ * Mirrors Python's action.RemoveRegion.
+ */
+export class RemoveRegionAction extends Action {
+  private regionNid: string;
+  private regions: RegionData[];
+  private removed: RegionData | null = null;
+  private removedIndex: number = -1;
+
+  constructor(regionNid: string, regions: RegionData[]) {
+    super();
+    this.regionNid = regionNid;
+    this.regions = regions;
+  }
+
+  execute(): void {
+    const idx = this.regions.findIndex((r) => r.nid === this.regionNid);
+    if (idx === -1) {
+      this.removed = null;
+      this.removedIndex = -1;
+      return;
+    }
+    this.removed = this.regions[idx];
+    this.removedIndex = idx;
+    this.regions.splice(idx, 1);
+  }
+
+  reverse(): void {
+    if (!this.removed) return;
+    const idx = Math.min(this.removedIndex, this.regions.length);
+    this.regions.splice(idx, 0, this.removed);
   }
 }
 

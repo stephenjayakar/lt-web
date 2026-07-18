@@ -1,6 +1,8 @@
 import type { NID, EventPrefab } from '../data/types';
 import { isPyev1 as _isPyev1, PythonEventProcessor as _PythonEventProcessor } from './python-events';
 import { GameQueryEngine } from '../engine/query-engine';
+import type { ActionLog } from '../engine/action';
+import { OnlyOnceEventAction } from '../engine/action';
 
 // Lazy accessor to avoid circular-import issues at module evaluation time.
 function _getPythonEvents() {
@@ -1231,12 +1233,43 @@ export class EventManager {
   private onceTriggered: Set<NID>;
   /** Dynamic talk pairs added via event commands: Set of "unitA|unitB" keys. */
   private talkPairs: Set<string>;
+  /**
+   * Optional reference to the game's action log, used to record only_once
+   * marking as a reversible action (mirrors Python's action.OnlyOnceEvent)
+   * so turnwheel undo restores re-triggerability. May be unset in contexts
+   * without an action log (e.g. harness/test setups) — callers fall back
+   * to marking onceTriggered directly in that case.
+   */
+  actionLog: ActionLog | null = null;
 
   constructor(events: Map<NID, EventPrefab>) {
     this.allEvents = events;
     this.eventQueue = [];
     this.onceTriggered = new Set();
     this.talkPairs = new Set();
+  }
+
+  /** Get the set of already-triggered only_once event NIDs (for save serialization). */
+  getOnceTriggered(): Set<NID> {
+    return this.onceTriggered;
+  }
+
+  /** Restore the set of already-triggered only_once event NIDs (for save loading). */
+  restoreOnceTriggered(nids: NID[] | undefined): void {
+    this.onceTriggered = new Set(nids ?? []);
+  }
+
+  /** Mark an event as triggered, routing through the action log when available. */
+  private markOnceTriggered(eventNid: NID): void {
+    if (this.actionLog) {
+      try {
+        this.actionLog.doAction(new OnlyOnceEventAction(eventNid, this.onceTriggered));
+        return;
+      } catch (err) {
+        console.warn(`EventManager: failed to record OnlyOnceEventAction for "${eventNid}", falling back to direct mark:`, err);
+      }
+    }
+    this.onceTriggered.add(eventNid);
   }
 
   /**
@@ -1284,7 +1317,7 @@ export class EventManager {
 
       // Mark as triggered if only_once
       if (prefab.only_once) {
-        this.onceTriggered.add(prefab.nid);
+        this.markOnceTriggered(prefab.nid);
       }
 
       // Create and enqueue the event
@@ -1308,7 +1341,7 @@ export class EventManager {
     const prefab = this.allEvents.get(eventNid);
     if (!prefab) return false;
     if (!force && prefab.only_once && this.onceTriggered.has(prefab.nid)) return false;
-    if (prefab.only_once) this.onceTriggered.add(prefab.nid);
+    if (prefab.only_once) this.markOnceTriggered(prefab.nid);
     const event = new GameEvent(prefab, trigger);
     if (event.isDone()) return false;
     this.eventQueue.push(event);
