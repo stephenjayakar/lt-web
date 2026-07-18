@@ -47,6 +47,14 @@ export class CombatPhaseSolver {
   private phaseCounts: Map<UnitObject, number> = new Map();
   readonly procPlayback: CombatProcMark[] = [];
   readonly guardGaugeResults: Map<UnitObject, number> = new Map();
+  /**
+   * Units saved from death at the very end of this combat by a 'miracle'
+   * skill (Python cleanup_combat: SetHP(1) + TriggerCharge). Populated only
+   * after all strikes have resolved, mirroring Python's post-combat cleanup
+   * rather than a mid-combat clamp. Consumers (e.g. MapCombat.computeResults)
+   * should treat a unit in this set as surviving at 1 HP instead of dying.
+   */
+  readonly miracleSaved: Set<UnitObject> = new Set();
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -66,6 +74,7 @@ export class CombatPhaseSolver {
     this.phaseCounts.clear();
     this.procPlayback.length = 0;
     this.guardGaugeResults.clear();
+    this.miracleSaved.clear();
     for (const unit of [attacker, ...defenders]) {
       this.guardGaugeResults.set(unit, unit.getGuardGauge());
     }
@@ -78,6 +87,22 @@ export class CombatPhaseSolver {
     this.lifecycle.endCombat(strikes);
     this.procPlayback.push(...this.lifecycle.marks);
     this.lifecycle = null;
+  }
+
+  /**
+   * Python cleanup_combat: at the very end of the whole combat (after all
+   * strikes, including doubles/desperation/vantage), any unit at <= 0 HP
+   * with an available 'miracle' skill is resurrected at 1 HP and the
+   * skill's charge (if any) is consumed. Called once per resolved combat
+   * for each participant that took damage.
+   */
+  private applyMiracleCleanup(unit: UnitObject, hp: { hp: number }): void {
+    if (hp.hp > 0) return;
+    const skill = skillSystem.miracleSkill(unit);
+    if (!skill) return;
+    skillSystem.consumeMiracleCharge(skill);
+    hp.hp = 1;
+    this.miracleSaved.add(unit);
   }
 
   private nextPhase(unit: UnitObject): number {
@@ -197,6 +222,9 @@ export class CombatPhaseSolver {
         if (strike.hit) atkHp.hp -= strike.damage;
       }
     }
+
+    this.applyMiracleCleanup(attacker, atkHp);
+    this.applyMiracleCleanup(defender, defHp);
 
     return this.strikes;
   }
@@ -637,6 +665,9 @@ export class CombatPhaseSolver {
         doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
       }
     }
+
+    this.applyMiracleCleanup(attacker, atkHp);
+    this.applyMiracleCleanup(defender, defHp);
 
     return this.strikes;
   }
