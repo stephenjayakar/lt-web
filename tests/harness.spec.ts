@@ -2844,14 +2844,14 @@ test.describe('Event command parity', () => {
       higher: 14, boss: 70, miss: 1, ally: 1,
     });
     expect(result!.triangle).toEqual({
-      normal: { hitBonus: 15, damageBonus: 1 },
-      attackReaver: { hitBonus: -30, damageBonus: -2 },
-      bothReaver: { hitBonus: 30, damageBonus: 2 },
-      override: { hitBonus: 15, damageBonus: 1 },
+      normal: { hitBonus: 15, damageBonus: 1, attackerDamageAdvantage: 1 },
+      attackReaver: { hitBonus: -30, damageBonus: -2, attackerDamageAdvantage: -2 },
+      bothReaver: { hitBonus: 30, damageBonus: 2, attackerDamageAdvantage: 2 },
+      override: { hitBonus: 15, damageBonus: 1, attackerDamageAdvantage: 1 },
     });
     expect(result!.extendedTriangle).toEqual({
-      combined: { hitBonus: 5, damageBonus: 1 },
-      allRankFirst: { hitBonus: 1, damageBonus: 1 },
+      combined: { hitBonus: 5, damageBonus: 1, attackerDamageAdvantage: 2 },
+      allRankFirst: { hitBonus: 1, damageBonus: 1, attackerDamageAdvantage: 1 },
     });
     expect(result!.save).toEqual({ loaded: true, exp: 10 });
   });

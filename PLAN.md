@@ -41,18 +41,18 @@ non-default representative `.ltproj` passes the compatibility suite, save/restor
 and turnwheel reversibility tests pass, and `npm run build`, `npm run audit:parity`,
 and the full Playwright suite are green.
 
-## Evidence Baseline (2026-07-16)
+## Evidence Baseline (2026-07-17)
 
 Run `npm run audit:parity` to regenerate the source inventory. Current baseline:
 
 | Domain | Python reference | Web inventory | Current classification |
 |---|---:|---:|---|
 | Event command NIDs | 255 | 210 recognized; 200 matching case labels | Partial |
-| Item component NIDs | 201 | 111 exact string references; 92 with matching hook surfaces | Partial/Unknown |
-| Skill component NIDs | 241 | 69 exact string references; 67 with matching hook surfaces | Partial/Unknown |
+| Item component NIDs | 201 | 122 exact string references; 92 with matching hook surfaces | Partial/Unknown |
+| Skill component NIDs | 241 | 73 exact string references; 67 with matching hook surfaces | Partial/Unknown |
 | Registered runtime states | broad Python state catalog | 44 web states | Partial |
-| TypeScript runtime | n/a | 95 files, 53,630 lines | Builds |
-| Browser regression suite | n/a | 94 Playwright tests | 94/94 passing |
+| TypeScript runtime | n/a | 95 files, 54,370 lines | Builds |
+| Browser regression suite | n/a | 109 Playwright tests | 109/109 passing |
 
 Counts are inventories, not equivalence percentages: one generated hook can cover
 many components, while one switch case can still omit flags or blocking behavior.
@@ -156,6 +156,62 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Effective-damage parity and lifelink clamp slice:**
+  - Fixed `dynamicDamage` to dispatch the canonical `effective_damage` component
+    (34 default-project items) alongside the deprecated `effective` path; the old
+    code only checked `effective` and had `weapon_effectiveness_multiplied`
+    inverted, so effective weapons dealt normal damage.
+  - Implemented the Python formula `int((multiplier − 1) × might + bonus)` with
+    weapon-triangle damage advantage folded into might by default, target tags
+    unioned from unit + class + skill `has_tags`, and condition-checked
+    `negate`/`negate_tags` suppression. The AI/preview damage path now receives
+    effective damage as well.
+  - Reworked lifelink to heal per strike inside the HP walk, clamped to the
+    defender's remaining HP at strike time — overkill damage no longer heals,
+    matching Python `Lifelink.after_strike`.
+  - Added `tests/effective-damage.spec.ts` (7 regressions: tag bonus, negation
+    variants, deprecated path, triangle folding) and an overkill lifelink
+    regression, and folded the intentional new `attackerDamageAdvantage` field into
+    the existing weapon-triangle golden expectations. Inventory advanced to
+    **122/201 item exact references** and **73/241 skill exact references**;
+    **54,370 TypeScript lines**; the full serial gate is **109/109 passing**.
+
+- **Equipped-item lifecycle and equip-linked component slice:**
+  - Planned directly from default-project usage counts; implementation delegated to a
+    GLM-5.2 (omp/OpenRouter) subagent against the Python source, then hand-reviewed.
+  - Added tracked `equippedWeapon`/`equippedAccessory` to `UnitObject` with Python
+    `equip`/`unequip`/`autoequip`/`can_equip` semantics, multi-item subitem expansion,
+    and the accessories-sorted-after-items rule. `getEquippedWeapon()` now returns the
+    tracked slot instead of the first available weapon.
+  - Added reversible Equip/Unequip/BringToTop actions and wired autoequip through
+    weapon choice (player and AI), trade, unit/convoy item movement, removal, and
+    weapon-break paths in both combat presentations. Equipped references persist in
+    saves with autoequip fallback for older saves.
+  - Implemented `status_on_equip`/`multi_status_on_equip` as item-sourced skill
+    add/remove on equip transitions; exactly one sourced instance is removed on
+    unequip and natural same-NID skills survive. Sourced skills are re-derived from
+    equipped items on save restore.
+  - Implemented `lifelink` healing and `eclipse` half-HP damage in both combat modes,
+    honored `no_double`, and made `siege_weapon` items equippable (pre-existing gap).
+  - Added six regressions (equip skill lifecycle, natural-skill survival, lifelink,
+    eclipse/no-double, turnwheel undo, save/load) plus harness equip/combat/save APIs.
+    Full serial gate: **101/101 passing**. Known deferrals: heal/eclipse playback
+    marks are visual-only gaps; `eclipse_fe7` is unused by bundled projects.
+
+- **P0 runtime inventory (triggers, queries, equations, save fields):**
+  - A read-only GLM-5.2 research subagent inventoried all 41 Python trigger nids,
+    21 query functions, 32 default equations, and every GameState/unit/item/skill
+    save field against the web source; archived with hand-verification notes at
+    `docs/parity/runtime-inventory.md`.
+  - Confirmed actionable defects: equation evaluator `//` truncates compound
+    operands (affects `RATING`-style expressions), `INITIATIVE` equation lookup is
+    case-mismatched (always falls back to 0), skill save collapses per-unit
+    instances by NID (loses `uid`/`source`/`initiator`), `already_triggered_events`
+    and region/team registries are not persisted, and 19/41 trigger nids
+    (base/prep, overworld, roam-input, unit select/wait, `on_support`) have no
+    dispatch. Discounted two report claims: combat RNG state persists via game
+    variables by design, and equip persistence landed with the slice above.
 
 - **Pair Up Switch, Transfer, attack stance, and guard-gauge parity slice:**
   - Used ChatGPT-backed OMP Luna medium plus direct Python-source comparison to audit
@@ -917,7 +973,8 @@ passes; record newly discovered work here immediately.
 - [x] Build a command manifest mapping all 255 Python NIDs to web status, flags,
   blocking semantics, aliases, source function, and regression test
 - [x] Build item/skill component manifests mapping component NIDs to generated hooks
-- [ ] Inventory Python triggers, query functions, equations, and save fields
+- [x] Inventory Python triggers, query functions, equations, and save fields
+  (see `docs/parity/runtime-inventory.md`; discovered defects recorded below)
 - [ ] Add representative non-default project fixtures to CI
 
 **Gate:** every in-scope reference surface has an owner, status, and test target.
@@ -949,6 +1006,9 @@ passes; record newly discovered work here immediately.
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
 - [ ] Audit all trigger payloads and EVNT/PYEV1 parity, including nested flow control
+- [ ] Dispatch the 19 unwired trigger nids (base/prep entry, overworld, roam input,
+  unit select/deselect/wait, `on_support`, `during_unit_level_up`, hidden item/skill
+  lifecycle) per `docs/parity/runtime-inventory.md`
 
 **Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
 by parser plus behavioral tests; unsupported commands fail loudly in development.
@@ -959,6 +1019,10 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 - [x] Route map/full-animation combat outcomes and death removal through deterministic
   reversible actions, including HP/EXP/level/WEXP/status/item and initiative state
 - [ ] Inventory every Python save field and restoration-order dependency
+- [ ] Close inventoried save-field gaps: skill `uid`/`owner`/`source`/`initiator`
+  identity (web collapses per-unit instances by NID), `already_triggered_events`,
+  regions/teams/bounds/terrain-status registries, `current_mana`/`current_fatigue`,
+  dialog/action logs (see `docs/parity/runtime-inventory.md`)
 - [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
   initiative, roam, overworld, records, achievements, and in-progress events
 - [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults
@@ -1026,6 +1090,9 @@ item-use fixture matrices match Python outputs and side effects.
 - [x] Match weapon-triangle rank ordering, simultaneous relation merging,
   reaver/override/ignore hooks, and defender avoid/resist contributions
 - [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
+- [ ] Fix equation evaluator parity: `//` with compound operands silently truncates
+  expressions, `INITIATIVE` lookup is case-mismatched (always 0), and condition
+  evaluation lacks `and`/`or`/`not` (see `docs/parity/runtime-inventory.md`)
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
 - [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
 - [ ] Verify pathfinding, movement costs, LOS/fog, rescue/pair-up, canto, and initiative
@@ -1088,9 +1155,36 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-1. Port the next high-usage unresolved item target/use/end-combat hook cluster from
-   the generated component manifest and add interaction fixtures.
-2. Implement the next project-used missing event command cluster after a fresh usage
+**Equipped-item lifecycle and equip-linked component cluster** (selected 2026-07-17
+from default-project usage counts: `status_on_equip` ×16, `multi_status_on_equip` ×1,
+`lifelink` ×2, `eclipse` ×1 — all currently unreferenced; the web engine has no
+equip/unequip lifecycle at all, only a derived first-available-weapon lookup):
+
+1. Add tracked `equippedWeapon`/`equippedAccessory` to `UnitObject` with Python
+   `equip`/`unequip`/`autoequip`/`can_equip` semantics, reversible
+   Equip/Unequip/BringToTop actions, autoequip at Python call sites (creation, item
+   add/remove/trade/break, weapon choice), and backward-compatible save defaults.
+2. Implement `status_on_equip`/`multi_status_on_equip` as item-sourced reversible
+   skill add/remove on equip transitions (reusing the existing sourced-skill pattern).
+3. Implement `lifelink` after-strike healing from attacker damage playback and
+   `eclipse` half-current-HP on-hit; verify existing `no_double` behavior.
+4. Regressions: equip-skill lifecycle across weapon switch/trade/removal/break,
+   lifelink/eclipse in combat, turnwheel undo/redo, and save/load round trips.
+
+Both slices above landed 2026-07-17 (see Recent Changes). Remaining from that
+audit: `warning`/`eval_warning`/`item_icon_flash` target-icon aesthetics.
+
+Next candidates, in order:
+
+4. Status-application cluster: `status_on_hit` end-to-end verification plus
+   `status_on_hold` add/remove lifecycle (Fili Shield/Hoplon Guard grant the
+   `negate` skills that effective damage now honors).
+5. Equation-evaluator and save-field defect slices recorded in P2/P4 from
+   `docs/parity/runtime-inventory.md`.
+
+Then, as before:
+
+5. Implement the next project-used missing event command cluster after a fresh usage
    scan, preserving flags, blocking behavior, persistence, and UI reachability.
-3. Inventory Python triggers, query functions, equations, and save fields to close the
+6. Inventory Python triggers, query functions, equations, and save fields to close the
    remaining P0 evidence gaps before selecting another broad gameplay subsystem.

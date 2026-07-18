@@ -79,6 +79,8 @@ import {
   GuardPairUpkeepAction,
   SeparatePairUpAction,
   RemovePartnerAction,
+  EquipItemAction,
+  BringToTopItemAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -3021,13 +3023,12 @@ export class WeaponChoiceState extends State {
     this.equipWeapon(unit, this.weapons[0]);
     this.showWeaponRange(unit, this.weapons[0]);
   }
-
   private equipWeapon(unit: UnitObject, weapon: ItemObject): void {
-    // Move the weapon to the front of inventory (equip it)
-    const idx = unit.items.indexOf(weapon);
-    if (idx > 0) {
-      unit.items.splice(idx, 1);
-      unit.items.unshift(weapon);
+    const game = getGame();
+    // Python WeaponChoiceState._test_equip: record a reversible EquipItem so
+    // the turnwheel can undo the choice and status_on_equip hooks fire.
+    if (unit.canEquip(weapon)) {
+      game.actionLog.doAction(new EquipItemAction(unit, weapon));
     }
   }
 
@@ -3101,6 +3102,17 @@ export class WeaponChoiceState extends State {
       if (weapon) {
         const unit: UnitObject = game.selectedUnit;
         this.equipWeapon(unit, weapon);
+        // Python WeaponChoiceState: bring the selected item (or its ultimate
+        // multi_item parent) to the top of inventory after equipping.
+        let topItem = weapon;
+        if (!unit.items.includes(weapon) && weapon.parentItem) {
+          topItem = weapon.parentItem;
+          while (topItem.parentItem) topItem = topItem.parentItem;
+          if (!unit.items.includes(topItem)) topItem = weapon;
+        }
+        if (unit.items.includes(topItem)) {
+          game.actionLog.doAction(new BringToTopItemAction(unit, topItem));
+        }
       }
       game.highlight.clear();
       this.menu = null;
@@ -5527,14 +5539,14 @@ export class AIState extends MapState {
   ): void {
     const game = getGame();
 
-    // Equip the AI's chosen weapon by moving it to the front of inventory.
-    // CombatState.begin() calls getEquippedWeapon() which returns the first
-    // weapon in the unit's inventory, so we must ensure the chosen weapon
-    // is at the front. Matches Python's action.EquipItem in ai_controller.py.
-    const weaponIdx = attacker.items.indexOf(weapon);
-    if (weaponIdx > 0) {
-      attacker.items.splice(weaponIdx, 1);
-      attacker.items.unshift(weapon);
+    // Equip the AI's chosen weapon via a reversible action so the turnwheel
+    // can undo it and status_on_equip hooks fire. Matches Python's
+    // action.EquipItem in ai_controller.py.
+    if (attacker.canEquip(weapon)) {
+      game.actionLog.doAction(new EquipItemAction(attacker, weapon));
+    }
+    if (attacker.items.includes(weapon)) {
+      game.actionLog.doAction(new BringToTopItemAction(attacker, weapon));
     }
     if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
 

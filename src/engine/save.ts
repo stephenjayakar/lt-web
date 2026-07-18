@@ -9,6 +9,7 @@ import { ItemObject as ItemObjectCtor } from '../objects/item';
 import type { ItemObject } from '../objects/item';
 import { SkillObject as SkillObjectCtor } from '../objects/skill';
 import type { SkillObject } from '../objects/skill';
+import { isItemSourcedSkill, dispatchEquipHooks } from '../combat/item-system';
 import { UnitObject as UnitObjectCtor } from '../objects/unit';
 import type { PartyObject } from './party';
 import { PartyObject as PartyObjectCtor } from './party';
@@ -52,6 +53,9 @@ export interface UnitSaveData {
   maxStats: Record<string, number>;
   statCapModifiers?: Record<string, number>;
   items: string[];        // item key references into items map
+  /** Optional equipped-item keys for saves written after tracked equip state. */
+  equippedWeaponKey?: string | null;
+  equippedAccessoryKey?: string | null;
   skills: string[];       // skill NIDs
   tags: string[];
   ai: string;
@@ -386,6 +390,8 @@ function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string
     maxStats: { ...unit.maxStats },
     statCapModifiers: { ...unit.statCapModifiers },
     items: itemKeys,
+    equippedWeaponKey: unit.equippedWeapon ? itemKeyByObject.get(unit.equippedWeapon) ?? null : null,
+    equippedAccessoryKey: unit.equippedAccessory ? itemKeyByObject.get(unit.equippedAccessory) ?? null : null,
     skills: skillNids,
     tags: [...unit.tags],
     ai: unit.ai,
@@ -538,7 +544,7 @@ function serializeSupportPair(pair: SupportPair): SupportPairSaveData {
 // Build SaveDict from Game State
 // ============================================================================
 
-function buildSaveDict(game: any): SaveDict {
+export function buildSaveDict(game: any): SaveDict {
   // Assign canonical save keys from the item's current container. Runtime registry
   // keys may describe an old owner after event/trade movement and cannot be trusted.
   const itemKeyByObject = new Map<ItemObject, string>();
@@ -787,7 +793,7 @@ export async function suspendGame(game: any): Promise<void> {
  * This function uses dynamic imports to avoid circular dependency issues
  * with the object constructors.
  */
-async function restoreGameState(game: any, s: SaveDict): Promise<void> {
+export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   // Use static imports (already imported at top of file)
   const ItemCtor = ItemObjectCtor;
   const SkillCtor = SkillObjectCtor;
@@ -978,11 +984,30 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
         }
       }
 
+      // Restore tracked equipped weapon/accessory (autoequip fallback for old saves).
+      unit.equippedWeapon = null;
+      unit.equippedAccessory = null;
+      const equippedWeapon = unitData.equippedWeaponKey != null
+        ? itemsByKey.get(unitData.equippedWeaponKey) ?? null
+        : null;
+      const equippedAccessory = unitData.equippedAccessoryKey != null
+        ? itemsByKey.get(unitData.equippedAccessoryKey) ?? null
+        : null;
+      if (equippedWeapon) unit.equippedWeapon = equippedWeapon;
+      if (equippedAccessory) unit.equippedAccessory = equippedAccessory;
+      // Old saves (or broken refs) fall back to autoequip-derived values.
+      if (!unit.equippedWeapon || !unit.equippedAccessory) unit.autoequip();
+
       // Restore skills without invoking pair-up hooks or deriving extras.
       unit.skills = [];
       const skillEntries = unitData.skillInstances ?? unitData.skills.map(nid => ({ nid, data: undefined }));
       for (const skillEntry of skillEntries) {
         const skillNid = skillEntry.nid;
+        // Item-sourced skills (status_on_equip) are re-derived below from the
+        // restored equipped items, so skip restoring their stale instances.
+        const isItemSourced = Array.isArray(skillEntry.data) &&
+          skillEntry.data.some(([k, v]) => k === 'itemSourceType' && v === 'item');
+        if (isItemSourced) continue;
         try {
           const dbSkillPrefab: SkillPrefab | undefined = game.db?.skills?.get?.(skillNid);
           const savedSkillData = skillsByNid.get(skillNid);
@@ -1014,6 +1039,10 @@ async function restoreGameState(game: any, s: SaveDict): Promise<void> {
           console.warn(`Unit "${unitData.nid}": failed to restore skill "${skillNid}":`, err);
         }
       }
+
+      // Re-derive item-sourced status_on_equip skills from equipped items.
+      if (unit.equippedWeapon) dispatchEquipHooks(unit, unit.equippedWeapon, true, game.db);
+      if (unit.equippedAccessory) dispatchEquipHooks(unit, unit.equippedAccessory, true, game.db);
 
       unitsByNid.set(unit.nid, unit);
       game.units.set(unit.nid, unit);

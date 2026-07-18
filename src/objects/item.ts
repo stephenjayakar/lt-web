@@ -108,7 +108,7 @@ export class ItemObject {
 
   /** True when the item has a "weapon" component (melee or ranged). */
   isWeapon(): boolean {
-    return this.components.has('weapon');
+    return this.components.has('weapon') || this.components.has('siege_weapon');
   }
 
   getDamage(): number {
