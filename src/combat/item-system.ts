@@ -1406,3 +1406,40 @@ function isSubitemOf(candidate: ItemObject, parent: ItemObject): boolean {
   }
   return false;
 }
+
+/**
+ * Python `Warning.target_icon` / `EvalWarning.target_icon`: a marker shown
+ * over an enemy unit while targeting, warning that the item is dangerous
+ * against them (Killer weapons -> 'warning'; effective-weapon evaluated
+ * conditions -> 'danger').
+ *
+ * `eval_warning`'s Python string is an arbitrary evaluated expression
+ * (`evaluate.evaluate`). The web has no general expression evaluator wired
+ * into targeting, so this approximates only the common default-project
+ * pattern: an unconfigured/`'True'` value means "always danger against an
+ * enemy". No default.ltproj item actually ships a non-trivial eval_warning
+ * expression, so this covers the real-world usage; anything more exotic is
+ * deferred (documented in PLAN.md).
+ */
+export function computeTargetIcon(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  db: Database,
+  game?: any,
+): 'warning' | 'danger' | null {
+  const isEnemy = !unit.isAlly(target.team, db.teams.alliances);
+  if (!isEnemy) return null;
+
+  if (item.hasComponent('warning') && available(unit, item, db, game)) {
+    return 'warning';
+  }
+
+  if (item.hasComponent('eval_warning')) {
+    const expr = String(item.getComponent<string>('eval_warning') ?? 'True').trim();
+    if (expr === 'True' || expr === '') return 'danger';
+    // Non-trivial expressions are not evaluated on the web; skip.
+  }
+
+  return null;
+}

@@ -7,9 +7,9 @@
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 210,
     "dispatcherPythonNids": 200,
-    "itemReferencedComponentNids": 126,
+    "itemReferencedComponentNids": 134,
     "itemHookMappedComponentNids": 92,
-    "skillReferencedComponentNids": 73,
+    "skillReferencedComponentNids": 74,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
       "dispatched-unverified": 188,

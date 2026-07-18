@@ -20,7 +20,7 @@ import type { InputEvent, GameButton } from './engine/input';
 import { FRAMETIME, updateAnimationCounters } from './engine/constants';
 import { ItemObject } from './objects/item';
 import { EquipItemAction, RemoveItemFromUnitAction, TradeAction } from './engine/action';
-import { isItemSourcedSkill } from './combat/item-system';
+import { isItemSourcedSkill, computeTargetIcon } from './combat/item-system';
 import { MapCombat } from './combat/map-combat';
 import { applyDroppableItemPickups } from './combat/combat-lifecycle';
 import * as saveSystem from './engine/save';
@@ -66,6 +66,24 @@ export interface HarnessAPI {
   loadSnapshot: (snapshot: unknown) => Promise<boolean>;
   /** Undo the last action group via the turnwheel. */
   turnwheelUndo: () => boolean;
+  /**
+   * Directly resolve map combat and return aesthetic-presentation state
+   * (tint blends, cast pose, HP-display suppression, recorded SFX) for
+   * asserting cosmetic item components without driving the UI frame loop.
+   */
+  resolveCombatAesthetics: (attackerNid: string, defenderNid: string) => CombatAestheticsSummary | null;
+  /** Pure evaluation of an item's target-icon warning marker against a target. */
+  computeTargetIcon: (unitNid: string, itemNid: string, targetNid: string) => 'warning' | 'danger' | null;
+}
+
+export interface CombatAestheticsSummary {
+  noMapHpDisplay: boolean;
+  attackerCastPose: boolean;
+  castAnimValue: string | null;
+  /** SFX names recorded by the stub audio manager during this resolution, in order. */
+  playedSfx: string[];
+  /** First recorded tint on the defender's animation state, if any. */
+  defenderTint: { color: [number, number, number]; mode: 'add' | 'sub' } | null;
 }
 
 export interface HarnessState {
@@ -392,6 +410,50 @@ export function installHarness(
         console.warn('[Harness] loadSnapshot failed:', err);
         return false;
       }
+    },
+
+    resolveCombatAesthetics(attackerNid: string, defenderNid: string): CombatAestheticsSummary | null {
+      const attacker = game.units.get(attackerNid);
+      const defender = game.units.get(defenderNid);
+      if (!attacker || !defender || !attacker.position || !defender.position) return null;
+      const weapon = attacker.equippedWeapon;
+      if (!weapon) return null;
+      const rngMode = (game.db.getConstant('rng_mode', 'true_hit') as string) as any;
+      const mc = new MapCombat(
+        attacker, weapon, defender, null,
+        game.db, rngMode, game.board, null, undefined, game,
+      );
+      const playedSfx: string[] = [];
+      mc.audioManager = { playSfx: (name: string) => playedSfx.push(name) };
+      let defenderTint: CombatAestheticsSummary['defenderTint'] = null;
+      let guard = 0;
+      while (mc.state !== 'done' && guard < 2000) {
+        mc.update(16);
+        guard++;
+        if (!defenderTint) {
+          const anim = mc.getRenderState().defenders.find((d) => d.unit === defender)?.anim;
+          if (anim?.tintColor && anim.tintMode) {
+            defenderTint = { color: anim.tintColor, mode: anim.tintMode };
+          }
+        }
+      }
+      mc.applyResults();
+      return {
+        noMapHpDisplay: mc.noMapHpDisplay,
+        attackerCastPose: mc.attackerCastPose,
+        castAnimValue: mc.castAnimValue,
+        playedSfx,
+        defenderTint,
+      };
+    },
+
+    computeTargetIcon(unitNid: string, itemNid: string, targetNid: string): 'warning' | 'danger' | null {
+      const unit = game.units.get(unitNid);
+      const target = game.units.get(targetNid);
+      if (!unit || !target) return null;
+      const item = unit.items.find((i) => i.nid === itemNid);
+      if (!item) return null;
+      return computeTargetIcon(unit, item, target, game.db, game);
     },
 
     turnwheelUndo(): boolean {
