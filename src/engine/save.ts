@@ -9,7 +9,7 @@ import { ItemObject as ItemObjectCtor } from '../objects/item';
 import type { ItemObject } from '../objects/item';
 import { SkillObject as SkillObjectCtor } from '../objects/skill';
 import type { SkillObject } from '../objects/skill';
-import { isItemSourcedSkill, dispatchEquipHooks } from '../combat/item-system';
+import { isItemSourcedSkill, dispatchEquipHooks, dispatchHoldHooks } from '../combat/item-system';
 import { UnitObject as UnitObjectCtor } from '../objects/unit';
 import type { PartyObject } from './party';
 import { PartyObject as PartyObjectCtor } from './party';
@@ -85,7 +85,7 @@ export interface UnitSaveData {
   hasTaken?: boolean;
   hasGiven?: boolean;
   /** Per-unit skill instance data preserves source identity and duplicates. */
-  skillInstances?: { nid: string; data: [string, any][] }[];
+  skillInstances?: { nid: string; data: [string, any][]; initiatorNid?: string | null }[];
 }
 
 export interface ItemSaveData {
@@ -367,6 +367,7 @@ function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string
   const skillInstances = unit.skills.map(skill => ({
     nid: skill.nid,
     data: Array.from(skill.data.entries()),
+    initiatorNid: skill.initiatorNid ?? null,
   }));
 
   return {
@@ -1000,7 +1001,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
 
       // Restore skills without invoking pair-up hooks or deriving extras.
       unit.skills = [];
-      const skillEntries = unitData.skillInstances ?? unitData.skills.map(nid => ({ nid, data: undefined }));
+      const skillEntries = unitData.skillInstances ?? unitData.skills.map(nid => ({ nid, data: undefined as [string, unknown][] | undefined, initiatorNid: null as string | null }));
       for (const skillEntry of skillEntries) {
         const skillNid = skillEntry.nid;
         // Item-sourced skills (status_on_equip) are re-derived below from the
@@ -1019,6 +1020,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
               for (const [k, v] of savedSkillData.components) skill.components.set(k, v);
             }
             (skill as any).data = new Map<string, any>(instanceData ?? savedSkillData?.data ?? []);
+            skill.initiatorNid = skillEntry.initiatorNid ?? null;
             unit.skills.push(skill);
           } else if (savedSkillData) {
             const syntheticSkillPrefab: SkillPrefab = {
@@ -1031,6 +1033,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
             };
             const skill = new SkillCtor(syntheticSkillPrefab);
             (skill as any).data = new Map<string, any>(instanceData ?? savedSkillData.data);
+            skill.initiatorNid = skillEntry.initiatorNid ?? null;
             unit.skills.push(skill);
           } else {
             console.warn(`Unit "${unitData.nid}": skill "${skillNid}" not found in DB or save`);
@@ -1043,6 +1046,8 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       // Re-derive item-sourced status_on_equip skills from equipped items.
       if (unit.equippedWeapon) dispatchEquipHooks(unit, unit.equippedWeapon, true, game.db);
       if (unit.equippedAccessory) dispatchEquipHooks(unit, unit.equippedAccessory, true, game.db);
+      // Re-derive item-sourced status_on_hold skills from all inventory items.
+      for (const invItem of unit.items) dispatchHoldHooks(unit, invItem, true, game.db);
 
       unitsByNid.set(unit.nid, unit);
       game.units.set(unit.nid, unit);

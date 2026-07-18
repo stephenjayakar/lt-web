@@ -19,7 +19,7 @@ import type { Surface } from './engine/surface';
 import type { InputEvent, GameButton } from './engine/input';
 import { FRAMETIME, updateAnimationCounters } from './engine/constants';
 import { ItemObject } from './objects/item';
-import { EquipItemAction } from './engine/action';
+import { EquipItemAction, RemoveItemFromUnitAction, TradeAction } from './engine/action';
 import { isItemSourcedSkill } from './combat/item-system';
 import { MapCombat } from './combat/map-combat';
 import * as saveSystem from './engine/save';
@@ -45,6 +45,10 @@ export interface HarnessAPI {
   settle: (maxFrames: number) => void;
   /** Give an item (by DB NID) to a unit (by NID). Returns true if successful. */
   giveItem: (unitNid: string, itemNid: string) => boolean;
+  /** Remove an item (by NID) from a unit's inventory via a reversible action. */
+  removeItem: (unitNid: string, itemNid: string) => boolean;
+  /** Trade an item between two units via a reversible TradeAction. */
+  tradeItem: (fromNid: string, toNid: string, itemNid: string) => boolean;
   /** Kill a unit by NID (set HP to 0, mark dead). For testing win conditions. */
   killUnit: (unitNid: string) => boolean;
   /** Trigger a game event by firing a trigger. Returns true if events were queued. */
@@ -252,7 +256,29 @@ export function installHarness(
       const item = new ItemObject(itemPrefab);
       item.owner = unit;
       unit.items.unshift(item); // put at front so it's auto-equipped
+      unit.onAddItem(item);
+      unit.autoequip();
       game.items.set(`${unit.nid}_${item.nid}_${unit.items.length}`, item);
+      return true;
+    },
+
+    removeItem(unitNid: string, itemNid: string): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit) return false;
+      const item = unit.items.find((i) => i.nid === itemNid);
+      if (!item) return false;
+      game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+      return true;
+    },
+
+    tradeItem(fromNid: string, toNid: string, itemNid: string): boolean {
+      const from = game.units.get(fromNid);
+      const to = game.units.get(toNid);
+      if (!from || !to) return false;
+      const indexA = from.items.findIndex((i) => i.nid === itemNid);
+      if (indexA < 0) return false;
+      const indexB = to.items.length; // append at end
+      game.actionLog.doAction(new TradeAction(from, indexA, to, indexB));
       return true;
     },
 

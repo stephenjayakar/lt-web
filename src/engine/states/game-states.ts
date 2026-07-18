@@ -1922,7 +1922,9 @@ function applyCoreTargetedEffects(
       for (const statusNid of statusNids) {
         const prefab = game.db.skills.get(statusNid);
         if (prefab && !target.skills.some((skill: SkillObject) => skill.nid === statusNid)) {
-          game.actionLog.doAction(new AddSkillAction(target, new SkillObject(prefab)));
+          const statusSkill = new SkillObject(prefab);
+          statusSkill.initiatorNid = unit.nid;
+          game.actionLog.doAction(new AddSkillAction(target, statusSkill));
           applied = true;
         }
       }
@@ -6261,6 +6263,8 @@ export class ShopState extends State {
       const newItem = new ItemObjectClass(prefab);
       newItem.owner = this.unit;
       this.unit.items.push(newItem);
+      this.unit.onAddItem(newItem);
+      this.unit.autoequip();
       this.showMessage(`Bought ${item.name}!`);
     }
   }
@@ -6279,6 +6283,8 @@ export class ShopState extends State {
     if (idx >= 0) {
       this.unit.items.splice(idx, 1);
     }
+    this.unit.onRemoveItem(item);
+    this.unit.autoequip();
 
     this.showMessage(`Sold ${item.name}!`);
 
@@ -7871,6 +7877,8 @@ export class EventState extends State {
             if (giUnit) {
               giItem.owner = giUnit;
               giUnit.items.push(giItem);
+              giUnit.onAddItem(giItem);
+              giUnit.autoequip();
               registerTree(giItem, `${giUnit.nid}_${giItem.nid}_${giUnit.items.length}`);
             }
           }

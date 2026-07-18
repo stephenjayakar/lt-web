@@ -157,6 +157,39 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **status_on_hold lifecycle + status_on_hit verification slice:**
+  - Implemented `status_on_hold` / `multi_status_on_hold` (Python `StatusOnHold`):
+    item-sourced skill grant on inventory add and one-instance removal on inventory
+    remove, reusing the equip-slice sourced-skill helpers (`dispatchHoldHooks`,
+    `UnitObject.onAddItem`/`onRemoveItem`). Wired at every inventory seam: starting
+    items spawn, `give_item`/`remove_item`/`move_item` events, `TradeAction`,
+    `MoveItemBetweenUnitsAction`, `RemoveItemFromUnitAction`, `StoreItemAction`,
+    `TradeItemWithConvoy`, `TakeItemFromConvoy`, `WeaponUsesAction` (break), and
+    shop buy/sell. Save restore re-derives hold skills from all inventory items;
+    turnwheel undo/redo round-trips via the reversible action seams.
+  - Fixed `TradeAction.reverse()` to handle all three cases (swap, move-A-to-B,
+    move-B-to-A) instead of only the swap case — the old reverse silently leaked
+    items and skills on one-sided trades.
+  - Added `initiatorNid` to `SkillObject` (Python `initiator_nid`), set during
+    `status_on_hit` application in combat (`combat-components.addStatus`) and the
+    status-staff item-use path (`game-states.ts`), and persisted in save
+    `skillInstances`. Verified `status_on_hit` end-to-end: map combat applies the
+    skill to the defender with `initiatorNid = attacker`, misses don't apply, and
+    the `CombatResultAction` snapshot makes it turnwheel-reversible.
+  - Added 11 regressions (`tests/status-hold.spec.ts`): give/remove grants and
+    removes the sourced skill; natural same-NID skill survives; trade transfers;
+    turnwheel undo of trade and removal; save/load round trip; Fili_Shield's
+    `NegateFlyEff` suppresses Flying-effective damage (Iron_Bow vs Pegasus_Knight)
+    end-to-end; `status_on_hit` applies `Poisoned` with initiator, no-apply on
+    miss, and turnwheel reversibility. Added `removeItem`/`tradeItem` harness APIs.
+    Inventory advanced to **125/201 item exact references**; **54,623 TypeScript
+    lines**; the full serial gate is **120/120 passing**. Known deferrals:
+    `Silver_Card` (Bargain) shop-price hook has no skill dispatch in the shop price
+    path and is deferred; droppable-item pickup on death is not wired (pre-existing
+    gap, unrelated); `collectStatusOnHoldNids`/`collectStatusOnEquipNids` recurse
+    into subitems, diverging from Python's `inherits_parent` upward-only model
+    (shared with the equip slice — no default-project item triggers this).
+
 - **Effective-damage parity and lifelink clamp slice:**
   - Fixed `dynamicDamage` to dispatch the canonical `effective_damage` component
     (34 default-project items) alongside the deprecated `effective` path; the old
