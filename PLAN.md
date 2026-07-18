@@ -156,6 +156,46 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Promotion-item flow (Promote/ForcePromote + promotion_choice state):**
+  - Ports `app/engine/item_components/class_change_components.py`
+    (`Promote`/`ForcePromote`) and the `promotion`/`promotion_choice` states.
+    `src/objects/item.ts` (`hasCoreUseEffect`) and `src/combat/item-system.ts`
+    (`targetRestrict`) now recognize `promote`/`force_promote` components:
+    targeting excludes units whose class has no `turns_into` (or, for
+    `force_promote`, just requires a live target), matching the Python
+    `end_combat` gate.
+  - New shared core `performPromotionOrClassChange()`
+    (`src/engine/states/game-states.ts`) applies the existing
+    `PromoteAction`/`ClassChangeAction` (`src/engine/action.ts`), grants the
+    new class's `wexp_gain` via reversible `GainWexpAction`s (flat/additive,
+    matching Python's `action.AddWexp` — replacing a prior direct
+    `unit.wexp[...] = Math.max(...)` mutation that wasn't turnwheel-safe),
+    and grants the new class's `learned_skills` at/below the unit's
+    (post-reset) level via reversible `AddSkillAction`s (replacing a prior
+    direct `unit.skills.push(...)` that wasn't turnwheel-safe either). Both
+    the `promote` and `change_class` event commands now call this same core.
+  - `ItemUseState`/`ItemTargetingState.selectTarget` route promotion items
+    through `item_targeting` even when the only valid target is the user
+    (the default project's crests/seals are all self-cast, 0-range items),
+    then: one `turns_into` option applies immediately and returns to `free`;
+    2+ options push a new `PromotionChoiceState` (`game.state` name
+    `promotion_choice`) — a keyboard/mouse/cancel choice menu following the
+    existing `ChoiceMenu`/steal-menu pattern. Canceling refunds (nothing is
+    consumed until a class is actually chosen), matching Python's
+    `can_go_back` refund path.
+  - **Deviation:** the promotion presentation is the plain choice menu above,
+    not Python's scroll/fanfare animation screen. All mechanics (stat gains
+    via the `-99`/`-98`/`-97` sentinel formula and class-max stat caps, wexp
+    gain, learned-skill grants, `promote_level_reset`/`class_change_level_reset`)
+    are exact and were already ported in `PromoteAction`/`ClassChangeAction`.
+  - New spec `tests/promotion.spec.ts` (5 tests): Hero/Warrior multi-choice
+    promotion via the real `menu → item_use → item_targeting →
+    promotion_choice` state flow with exact stat/wexp/skill assertions,
+    single-option Pirate→Berserker auto-promotion with class-skill grant,
+    invalid-target exclusion (level gate and already-maxed class), full
+    turnwheel-undo restoration (class/level/exp/stats/wexp/skills/item), and
+    a save/load round trip.
+  - PLAN.md P5 promotion/class-choice row split off and checked.
 - **P2 hygiene: reversible only_once region consumption + loadLevel() prefab
   aliasing fix:**
   - `src/engine/states/game-states.ts`: the two direct-mutation sites that
@@ -1363,7 +1403,11 @@ item-use fixture matrices match Python outputs and side effects.
 
 - [ ] Inventory Python state names and map them to web states or documented mergers
 - [ ] Implement supply/convoy, repair shop, trade variants, item discard/targeting,
-  promotion/class choice, formation, text entry, and objective/dialog-log flows
+  formation, text entry, and objective/dialog-log flows
+- [x] Implement the promotion-item flow: `Promote`/`ForcePromote` item components,
+  single-option auto-promotion, and a `promotion_choice` state (keyboard + mouse +
+  cancel) for multi-option `turns_into`; shared core also backs the `promote`/
+  `class_change` event commands
 - [ ] Implement difficulty/mode selection and complete title Extras flows
 - [ ] Complete base submenus: supports, codex/library/guide, BEXP, records,
   achievements, sound room, and unit management

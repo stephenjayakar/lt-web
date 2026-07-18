@@ -202,7 +202,8 @@ export class ItemObject {
     const directEffect = this.hasComponent('heal') || this.hasComponent('equation_heal') ||
       this.isPermanentBooster() || deterministicStatus || this.hasComponent('restore') ||
       this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair') ||
-      this.hasComponent('store_unit') || this.hasComponent('unload_unit');
+      this.hasComponent('store_unit') || this.hasComponent('unload_unit') ||
+      this.hasComponent('promote') || this.hasComponent('force_promote');
     return directEffect || this.subitems.some((subitem) => subitem.hasCoreUseEffect());
   }
 

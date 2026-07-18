@@ -685,6 +685,18 @@ export function targetRestrict(
     if (!defender || !defender.items.some(isRepairableItem)) return false;
   }
 
+  if (item.hasComponent('promote')) {
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    if (!defender) return false;
+    const klass = context.db.classes.get(defender.klass);
+    if (!klass || !klass.turns_into || klass.turns_into.length === 0) return false;
+  }
+
+  if (item.hasComponent('force_promote')) {
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    if (!defender) return false;
+  }
+
   if (item.hasComponent('permanent_stat_change')) {
     const changes = item.getNumericComponentMap('permanent_stat_change');
     const canApply = affectedUnits.some((target) => Object.entries(changes).some(([stat, amount]) =>
