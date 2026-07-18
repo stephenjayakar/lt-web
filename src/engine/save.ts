@@ -4,12 +4,13 @@
 // ---------------------------------------------------------------------------
 
 import type { NID, LevelPrefab, ItemPrefab, SkillPrefab } from '../data/types';
+import type { Database } from '../data/database';
 import type { UnitObject, StatusEffect } from '../objects/unit';
 import { ItemObject as ItemObjectCtor } from '../objects/item';
 import type { ItemObject } from '../objects/item';
-import { SkillObject as SkillObjectCtor } from '../objects/skill';
+import { SkillObject as SkillObjectCtor, setNextSkillUid, getNextSkillUid } from '../objects/skill';
 import type { SkillObject } from '../objects/skill';
-import { isItemSourcedSkill, dispatchEquipHooks, dispatchHoldHooks } from '../combat/item-system';
+import { isItemSourcedSkill, dispatchEquipHooks, dispatchHoldHooks, ITEM_SOURCE_KEY, ITEM_SOURCE_TYPE_KEY, ITEM_SOURCE_NID_KEY } from '../combat/item-system';
 import { UnitObject as UnitObjectCtor } from '../objects/unit';
 import type { PartyObject } from './party';
 import { PartyObject as PartyObjectCtor } from './party';
@@ -56,7 +57,7 @@ export interface UnitSaveData {
   /** Optional equipped-item keys for saves written after tracked equip state. */
   equippedWeaponKey?: string | null;
   equippedAccessoryKey?: string | null;
-  skills: string[];       // skill NIDs
+  skills: string[];       // skill NIDs (legacy; superseded by skillInstances with skillKey)
   tags: string[];
   ai: string;
   wexp: Record<string, number>;
@@ -84,8 +85,17 @@ export interface UnitSaveData {
   hasDropped?: boolean;
   hasTaken?: boolean;
   hasGiven?: boolean;
-  /** Per-unit skill instance data preserves source identity and duplicates. */
-  skillInstances?: { nid: string; data: [string, any][]; initiatorNid?: string | null }[];
+  /** Per-unit skill instance records. New saves carry `skillKey` referencing
+   *  an entry in `SaveDict.skills`; legacy saves carry inline `nid`/`data`
+   *  and are restored via the re-derivation fallback. */
+  skillInstances?: {
+    nid: string;
+    /** Identity key into SaveDict.skills (new-format saves). */
+    skillKey?: string;
+    /** Legacy inline instance data (old saves). */
+    data?: [string, any][];
+    initiatorNid?: string | null;
+  }[];
 }
 
 export interface ItemSaveData {
@@ -108,13 +118,23 @@ export interface ItemSaveData {
 }
 
 export interface SkillSaveData {
+  /** Per-instance identity (Python `uid`). */
+  uid: number;
+  /** Canonical key used by unit.skillInstances and item-source linkage. */
+  skillKey: string;
   nid: string;
+  /** Owning unit NID (Python `owner_nid`); null for orphaned skills. */
+  ownerNid: string | null;
+  /** NID of the granting/initiating unit (Python `initiator_nid`). */
+  initiatorNid: string | null;
   name: string;
   desc: string;
   iconNid: string;
   iconIndex: [number, number];
   components: [string, any][];
   data: [string, any][];
+  /** For item-sourced skills: the granting item's mapKey (reconnected on restore). */
+  itemSourceKey?: string | null;
 }
 
 export interface LevelSaveData {
@@ -155,6 +175,7 @@ export interface SaveDict {
   items: ItemSaveData[];
   skills: SkillSaveData[];
   level: LevelSaveData | null;
+  skillCounter?: number;
   turncount: number;
   playtime: number;
   gameVars: [string, any][];
@@ -359,14 +380,23 @@ function localStorageKeys(): string[] {
 // Serialization Functions
 // ============================================================================
 
-function serializeUnit(unit: UnitObject, itemKeyByObject: Map<ItemObject, string>): UnitSaveData {
+function serializeUnit(
+  unit: UnitObject,
+  itemKeyByObject: Map<ItemObject, string>,
+  skillKeyByObject: Map<SkillObject, string>,
+): UnitSaveData {
   const itemKeys = unit.items
     .map((item) => itemKeyByObject.get(item))
     .filter((key): key is string => !!key);
   const skillNids: string[] = unit.skills.map(s => s.nid);
+  // New-format skillInstances reference the authoritative skill record by
+  // skillKey; the per-instance data lives on that record. We omit `data`
+  // here to avoid duplicating live ItemObject references (itemSource) that
+  // would break JSON serialization. Legacy saves (no skillKey) carried
+  // inline data; the restore fallback handles those separately.
   const skillInstances = unit.skills.map(skill => ({
     nid: skill.nid,
-    data: Array.from(skill.data.entries()),
+    skillKey: skillKeyByObject.get(skill),
     initiatorNid: skill.initiatorNid ?? null,
   }));
 
@@ -451,25 +481,50 @@ function serializeItem(item: ItemObject, mapKey: string, itemKeyByObject: Map<It
   };
 }
 
-function serializeSkill(skill: SkillObject): SkillSaveData {
+function serializeSkill(
+  skill: SkillObject,
+  skillKey: string,
+  ownerNid: string | null,
+  itemKeyByObject: Map<ItemObject, string>,
+): SkillSaveData {
   const components: [string, any][] = [];
   for (const [k, v] of skill.components) {
     components.push([k, v]);
   }
 
+  // The item-source entry holds a live ItemObject reference; swap it for the
+  // item's canonical save key so restore can reconnect the same instance.
+  // Other source metadata (pairupSource/rescueSource NID strings, itemSourceNid,
+  // itemSourceType) is already JSON-serializable and round-trips in `data`.
   const data: [string, any][] = [];
+  let itemSourceKey: string | null = null;
   for (const [k, v] of skill.data) {
-    data.push([k, v]);
+    if (k === ITEM_SOURCE_KEY) {
+      const key = v instanceof Object ? itemKeyByObject.get(v as ItemObject) : undefined;
+      if (key) {
+        itemSourceKey = key;
+        continue; // drop the live reference; reconnected on restore
+      }
+      // Unresolvable reference: keep the entry as-is so legacy readers see it.
+      data.push([k, v]);
+    } else {
+      data.push([k, v]);
+    }
   }
 
   return {
+    uid: skill.uid,
+    skillKey,
     nid: skill.nid,
+    ownerNid,
+    initiatorNid: skill.initiatorNid ?? null,
     name: skill.name,
     desc: skill.desc,
     iconNid: skill.iconNid,
     iconIndex: [skill.iconIndex[0], skill.iconIndex[1]],
     components,
     data,
+    itemSourceKey,
   };
 }
 
@@ -572,22 +627,42 @@ export function buildSaveDict(game: any): SaveDict {
   const items = [...itemKeyByObject.entries()]
     .map(([item, key]) => serializeItem(item, key, itemKeyByObject));
 
-  // Serialize all units
+  // Serialize all units (skills serialized separately so each skill instance
+  // gets its own record keyed by identity, mirroring Python's skill_registry).
   const units: UnitSaveData[] = [];
+
+  // Assign canonical per-instance skill keys. Like item mapKeys, these are
+  // derived from the per-instance uid so they survive save/load round trips
+  // and let unit.skillInstances / itemSource linkage reference exact instances.
+  const skillKeyByObject = new Map<SkillObject, string>();
+  const usedSkillKeys = new Set<string>();
+  const registerSkill = (skill: SkillObject, ownerNid: string | null, index: number) => {
+    if (skillKeyByObject.has(skill)) return;
+    const base = `skill_${skill.uid ?? `o${ownerNid ?? 'x'}_${index}_${skill.nid}`}`;
+    let key = base;
+    let suffix = 2;
+    while (usedSkillKeys.has(key)) key = `${base}_${suffix++}`;
+    usedSkillKeys.add(key);
+    skillKeyByObject.set(skill, key);
+  };
   for (const unit of (game.units as Map<string, UnitObject>).values()) {
-    units.push(serializeUnit(unit, itemKeyByObject));
+    unit.skills.forEach((skill, index) => registerSkill(skill, unit.nid, index));
   }
 
-  // Serialize all unique skills from units
+  // Serialize every skill instance (no NID dedupe). Python's skill_registry
+  // holds one entry per instance; deduping by NID collapsed per-unit instances
+  // and severed subskill/source chains.
   const skills: SkillSaveData[] = [];
-  const seenSkillNids = new Set<string>();
   for (const unit of (game.units as Map<string, UnitObject>).values()) {
     for (const skill of unit.skills) {
-      if (!seenSkillNids.has(skill.nid)) {
-        skills.push(serializeSkill(skill));
-        seenSkillNids.add(skill.nid);
-      }
+      const skillKey = skillKeyByObject.get(skill);
+      if (!skillKey) continue;
+      skills.push(serializeSkill(skill, skillKey, unit.nid, itemKeyByObject));
     }
+  }
+
+  for (const unit of (game.units as Map<string, UnitObject>).values()) {
+    units.push(serializeUnit(unit, itemKeyByObject, skillKeyByObject));
   }
 
   // Serialize level
@@ -699,6 +774,9 @@ export function buildSaveDict(game: any): SaveDict {
       (game.overworldRegistry as Map<string, any>).entries(),
     ),
     memory: Array.from((game.memory as Map<string, any>).entries()),
+    // Persist the skill uid counter so subsequent constructions stay monotonic
+    // and restored uids don't collide with new ones (Python set_next_uids).
+    skillCounter: getNextSkillUid(),
   };
 }
 
@@ -780,6 +858,71 @@ export async function suspendGame(game: any): Promise<void> {
 // ============================================================================
 // Restore Helpers
 // ============================================================================
+
+type SkillCtor = typeof SkillObjectCtor;
+
+/**
+ * Rebuild a single SkillObject instance from its new-format save record.
+ * Restores per-instance uid, components, data, initiatorNid, and reconnects
+ * an item-sourced skill's `itemSource` reference to the restored ItemObject
+ * by its canonical save key. Returns null if the skill cannot be resolved
+ * from DB or save data.
+ */
+function restoreSkillInstance(
+  skillNid: string,
+  savedSkillData: SkillSaveData | undefined,
+  skillEntry: { nid: string; skillKey?: string; data?: [string, any][]; initiatorNid?: string | null },
+  game: { db?: Database },
+  SkillCtor: SkillCtor,
+  itemsByKey: Map<string, ItemObject>,
+): SkillObject | null {
+  const dbSkillPrefab: SkillPrefab | undefined = game.db?.skills?.get?.(skillNid);
+  const prefab: SkillPrefab | undefined = dbSkillPrefab ?? (savedSkillData ? {
+    nid: savedSkillData.nid,
+    name: savedSkillData.name,
+    desc: savedSkillData.desc,
+    icon_nid: savedSkillData.iconNid,
+    icon_index: savedSkillData.iconIndex,
+    components: savedSkillData.components,
+  } : undefined);
+  if (!prefab) {
+    console.warn(`Skill "${skillNid}" not found in DB or save`);
+    return null;
+  }
+  const skill = new SkillCtor(prefab);
+  // Restore per-instance identity (Python self.uid = dat['uid']).
+  if (savedSkillData && typeof savedSkillData.uid === 'number') {
+    skill.restoreUid(savedSkillData.uid);
+  }
+  // Restore saved components (may have been modified at runtime).
+  if (savedSkillData) {
+    skill.components = new Map<string, any>();
+    for (const [k, v] of savedSkillData.components) skill.components.set(k, v);
+  }
+  // Instance data: prefer the per-instance data captured on the unit record
+  // (it round-trips pairup/rescue source NIDs and other per-instance state);
+  // fall back to the shared skill-record data.
+  const dataEntries = skillEntry.data ?? savedSkillData?.data ?? [];
+  skill.data = new Map<string, any>(dataEntries);
+  skill.initiatorNid = skillEntry.initiatorNid ?? savedSkillData?.initiatorNid ?? null;
+
+  // Reconnect item-source: the live ItemObject reference was swapped for the
+  // item's mapKey at serialize time. Restore the exact object so mutations
+  // (uses, data) flow through the right instance.
+  if (savedSkillData?.itemSourceKey) {
+    const item = itemsByKey.get(savedSkillData.itemSourceKey);
+    if (item) {
+      skill.data.set(ITEM_SOURCE_KEY, item);
+      // Ensure source-type/nid tags are present (they round-trip via data,
+      // but older new-format snapshots may have dropped them).
+      if (!skill.data.has(ITEM_SOURCE_TYPE_KEY)) skill.data.set(ITEM_SOURCE_TYPE_KEY, 'item');
+      if (!skill.data.has(ITEM_SOURCE_NID_KEY)) skill.data.set(ITEM_SOURCE_NID_KEY, item.nid);
+    } else {
+      console.warn(`Skill "${skillNid}": itemSourceKey "${savedSkillData.itemSourceKey}" not found in restored items`);
+    }
+  }
+  return skill;
+}
 
 // ============================================================================
 // Main Restore Function
@@ -886,10 +1029,26 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
     for (const child of parent.subitems) child.parentItem = parent;
   }
 
-  // 6. Restore skills (build a lookup by NID for unit restoration)
+  // 6. Restore skills lookup. New-format saves key every instance by skillKey
+  // (identity-preserving); legacy saves only have NIDs, so keep the by-nid
+  // fallback for backward compatibility.
+  const skillsByKey = new Map<string, SkillSaveData>();
   const skillsByNid = new Map<string, SkillSaveData>();
   for (const skillData of s.skills) {
+    if (skillData.skillKey) skillsByKey.set(skillData.skillKey, skillData);
+    // Legacy by-nid lookup keeps the last-seen record (mirrors old behavior).
     skillsByNid.set(skillData.nid, skillData);
+  }
+  // Re-seed the per-instance uid counter so restored uids stay stable and new
+  // constructions don't collide (Python set_next_uids).
+  if (s.skillCounter !== undefined) {
+    setNextSkillUid(s.skillCounter);
+  } else {
+    let maxUid = 99;
+    for (const skillData of s.skills) {
+      if (typeof skillData.uid === 'number' && skillData.uid > maxUid) maxUid = skillData.uid;
+    }
+    setNextSkillUid(maxUid + 1);
   }
 
   // 7. Restore units (reference items/skills by key/nid lookup)
@@ -999,19 +1158,48 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       // Old saves (or broken refs) fall back to autoequip-derived values.
       if (!unit.equippedWeapon || !unit.equippedAccessory) unit.autoequip();
 
-      // Restore skills without invoking pair-up hooks or deriving extras.
+      // Restore skills. New-format saves (skillInstances with skillKey) restore
+      // every instance directly — including item-sourced skills, whose itemSource
+      // reference is reconnected to the restored item by mapKey. Legacy saves
+      // (no skillKey) skip item-sourced entries and re-derive them from equipped
+      // / held items via dispatch hooks, preserving the old code path.
       unit.skills = [];
-      const skillEntries = unitData.skillInstances ?? unitData.skills.map(nid => ({ nid, data: undefined as [string, unknown][] | undefined, initiatorNid: null as string | null }));
+      const skillEntries: UnitSaveData['skillInstances'] = unitData.skillInstances ??
+        unitData.skills.map(nid => ({
+          nid,
+          skillKey: undefined,
+          data: undefined as [string, unknown][] | undefined,
+          initiatorNid: null as string | null,
+        }));
+      const newFormat = skillEntries.some(e => e.skillKey);
       for (const skillEntry of skillEntries) {
         const skillNid = skillEntry.nid;
-        // Item-sourced skills (status_on_equip) are re-derived below from the
-        // restored equipped items, so skip restoring their stale instances.
+        const savedSkillData = skillEntry.skillKey
+          ? skillsByKey.get(skillEntry.skillKey)
+          : skillsByNid.get(skillNid);
+        if (newFormat && skillEntry.skillKey) {
+          // Item-sourced skills are restored as instances below; do not skip.
+          try {
+            const restored = restoreSkillInstance(
+              skillNid,
+              savedSkillData,
+              skillEntry,
+              game,
+              SkillCtor,
+              itemsByKey,
+            );
+            if (restored) unit.skills.push(restored);
+          } catch (err) {
+            console.warn(`Unit "${unitData.nid}": failed to restore skill "${skillNid}":`, err);
+          }
+          continue;
+        }
+        // Legacy path: skip item-sourced entries; they are re-derived below.
         const isItemSourced = Array.isArray(skillEntry.data) &&
-          skillEntry.data.some(([k, v]) => k === 'itemSourceType' && v === 'item');
+          skillEntry.data.some(([k, v]) => k === ITEM_SOURCE_TYPE_KEY && v === 'item');
         if (isItemSourced) continue;
         try {
           const dbSkillPrefab: SkillPrefab | undefined = game.db?.skills?.get?.(skillNid);
-          const savedSkillData = skillsByNid.get(skillNid);
           const instanceData = skillEntry.data;
           if (dbSkillPrefab) {
             const skill = new SkillCtor(dbSkillPrefab);
@@ -1043,11 +1231,13 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
         }
       }
 
-      // Re-derive item-sourced status_on_equip skills from equipped items.
-      if (unit.equippedWeapon) dispatchEquipHooks(unit, unit.equippedWeapon, true, game.db);
-      if (unit.equippedAccessory) dispatchEquipHooks(unit, unit.equippedAccessory, true, game.db);
-      // Re-derive item-sourced status_on_hold skills from all inventory items.
-      for (const invItem of unit.items) dispatchHoldHooks(unit, invItem, true, game.db);
+      // Re-derive item-sourced skills ONLY for legacy saves (new-format
+      // restores them as instances above with their itemSource reconnected).
+      if (!newFormat) {
+        if (unit.equippedWeapon) dispatchEquipHooks(unit, unit.equippedWeapon, true, game.db);
+        if (unit.equippedAccessory) dispatchEquipHooks(unit, unit.equippedAccessory, true, game.db);
+        for (const invItem of unit.items) dispatchHoldHooks(unit, invItem, true, game.db);
+      }
 
       unitsByNid.set(unit.nid, unit);
       game.units.set(unit.nid, unit);

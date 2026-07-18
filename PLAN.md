@@ -156,6 +156,30 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Skill identity save-field parity (runtime-inventory.md §4 gap #3):**
+  - `SkillObject` (`src/objects/skill.ts`) now carries a per-instance `uid`
+    backed by a module-level counter seeded to 100 (Python `SkillObject.next_uid`),
+    exposed via `setNextSkillUid`/`getNextSkillUid` and restored through
+    `SkillObject.restoreUid`. The counter is persisted as `SaveDict.skillCounter`
+    and re-seeded on load so restored uids stay stable and new constructions
+    don't collide.
+  - `buildSaveDict` (`src/engine/save.ts`) no longer dedupes skills by NID.
+    Every skill instance is serialized with `uid`, a canonical `skillKey`,
+    `ownerNid`, `initiatorNid`, `data`, and (for item-sourced skills)
+    `itemSourceKey` referencing the granting item's mapKey. The live ItemObject
+    reference held in `data['itemSource']` is swapped for that key at serialize
+    time so the save stays JSON-serializable. Unit `skillInstances` reference
+    the skill record by `skillKey` (no inline data, avoiding circular refs).
+  - `restoreGameState` rebuilds each unit's skill list from the instance
+    records in order, reconnects `itemSource` to the restored ItemObject by
+    mapKey, and restores per-instance uids/components/data/initiatorNid.
+    Legacy saves lacking `skillKey`/`uid`/`skillCounter` still load via the
+    existing re-derivation fallback (dispatchEquipHooks/dispatchHoldHooks).
+  - New spec `tests/skill-identity-save.spec.ts`: distinct same-NID instances
+    on two units survive; item-sourced skill reconnects to the restored item
+    (mutation visible through the skill); initiatorNid round-trips; duplicate
+    natural + sourced same-NID skills on one unit survive with correct sources;
+    legacy-save fallback still loads. Full serial gate green (132 tests).
 
 - **Equation-evaluator parity slice (floor div, INITIATIVE case, logical ops):**
   - Fixed `evaluateEquation` floor-division rewrite in `src/combat/combat-calcs.ts`:
@@ -1087,8 +1111,16 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 - [x] Route map/full-animation combat outcomes and death removal through deterministic
   reversible actions, including HP/EXP/level/WEXP/status/item and initiative state
 - [ ] Inventory every Python save field and restoration-order dependency
-- [ ] Close inventoried save-field gaps: skill `uid`/`owner`/`source`/`initiator`
-  identity (web collapses per-unit instances by NID), `already_triggered_events`,
+- [x] Skill `uid`/`owner_nid`/`initiator_nid`/`subskill` identity save-field parity
+  (was: web collapsed per-unit instances by NID). `SkillObject` now carries a
+  per-instance `uid` (module counter seeded to 100, persisted as `SaveDict.skillCounter`);
+  `buildSaveDict` serializes every instance (no NID dedupe) with `uid`, `skillKey`,
+  `ownerNid`, `initiatorNid`, `data`, and `itemSourceKey`; unit `skillInstances`
+  reference the skill record by `skillKey`; restore re-seeds the counter, rebuilds
+  each unit's skill list in order, and reconnects `itemSource` to the restored
+  ItemObject by mapKey. Legacy saves (no `skillKey`/`uid`/`skillCounter`) still load
+  via the re-derivation fallback. Covered by `tests/skill-identity-save.spec.ts`.
+- [ ] Close remaining inventoried save-field gaps: `already_triggered_events`,
   regions/teams/bounds/terrain-status registries, `current_mana`/`current_fatigue`,
   dialog/action logs (see `docs/parity/runtime-inventory.md`)
 - [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,

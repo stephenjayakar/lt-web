@@ -1,12 +1,34 @@
 import type { NID, SkillPrefab } from '../data/types';
 
 /**
+ * Module-level per-instance uid counter, mirroring Python's
+ * `SkillObject.next_uid`. Seeded to 100 (Python's starting value) and bumped
+ * on every construction. GameState persists/restores the counter via
+ * `setNextSkillUid` / `getNextSkillUid` so uids stay stable across save/load.
+ */
+let nextSkillUid = 100;
+
+/** Seed the skill uid counter (used by save restoration). */
+export function setNextSkillUid(n: number): void {
+  nextSkillUid = Math.max(n, 100);
+}
+
+/** Current skill uid counter value (next constructed skill takes this). */
+export function getNextSkillUid(): number {
+  return nextSkillUid;
+}
+
+/**
  * Runtime representation of a skill instance.
  *
  * Skills are component-based: behaviour is determined by which named
- * components are present rather than by a class hierarchy.
+ * components are present rather than by a class hierarchy. Each instance
+ * carries a stable per-instance `uid` (Python `SkillObject.uid`) so distinct
+ * same-NID skills on one or more units retain identity through save/load.
  */
 export class SkillObject {
+  /** Per-instance identity, stable across save/load (Python `uid`). */
+  uid: number;
   readonly nid: NID;
   readonly name: string;
   readonly desc: string;
@@ -14,7 +36,7 @@ export class SkillObject {
   readonly iconIndex: [number, number];
 
   /** Component store keyed by component NID. */
-  readonly components: Map<string, any>;
+  components: Map<string, any>;
 
   /** NID of the unit that initiated/granted this skill (Python `initiator_nid`). */
   initiatorNid: string | null = null;
@@ -23,6 +45,7 @@ export class SkillObject {
   data: Map<string, any>;
 
   constructor(prefab: SkillPrefab) {
+    this.uid = nextSkillUid++;
     this.nid = prefab.nid;
     this.name = prefab.name;
     this.desc = prefab.desc;
@@ -49,6 +72,16 @@ export class SkillObject {
       this.data.set('charge', drainCharge);
       this.data.set('total_charge', drainCharge);
     }
+  }
+
+  /**
+   * Override the per-instance uid. Used only by save restoration to restore
+   * the exact identity recorded in the save (Python `self.uid = dat['uid']`).
+   * Also bumps the module counter so subsequent constructions stay monotonic.
+   */
+  restoreUid(uid: number): void {
+    this.uid = uid;
+    if (uid >= nextSkillUid) nextSkillUid = uid + 1;
   }
 
   // ------------------------------------------------------------------
