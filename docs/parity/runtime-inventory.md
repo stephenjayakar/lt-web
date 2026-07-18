@@ -20,19 +20,19 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | on_roam_interact | 145 | `unit1: UnitObject`, `units: List[UnitObject]` | REFERENCED | src/engine/states/roam-state.ts:384 | Web payload uses `unit1`, `unit2` (closest), `unitNid`; `units` list not passed |
 | combat_death | 156 | `unit1: UnitObject`, `unit2: Optional[UnitObject]`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:4177, 4191 | Fired per dead defender and dead attacker; web adds `unitNid`, `levelNid` |
 | unit_death | 166 | `unit1: UnitObject`, `unit2: Optional[UnitObject]`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:4216, 4228 | Fired after combat_end (4210 comment); web adds `unitNid`, `levelNid` |
-| unit_wait | 176 | `unit1: UnitObject`, `position: Tuple[int,int]`, `region: Optional[RegionObject]`, `actively_chosen: bool` | UNREFERENCED | — | Wait trigger not wired (region/actively_chosen fields absent) |
-| unit_select | 187 | `unit1: UnitObject`, `position: Tuple[int,int]` | UNREFERENCED | — | Cursor-select trigger not fired |
-| unit_deselect | 196 | `unit1: UnitObject`, `position: Tuple[int,int]` | UNREFERENCED | — | Deselect trigger not fired |
+| unit_wait | 176 | `unit1: UnitObject`, `position: Tuple[int,int]`, `region: Optional[RegionObject]`, `actively_chosen: bool` | REFERENCED | src/engine/states/game-states.ts:1913 (player Wait menu, `actively_chosen=true`), :5594 (AI auto-wait, `actively_chosen=false`) | `actively_chosen` passed via `localArgs`; region via `getRegionUnderPos()` helper (game-states.ts:392) |
+| unit_select | 187 | `unit1: UnitObject`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:1150 | Fired in FreeState SELECT; relies on FreeState.update()'s existing hasActiveEvents() check to push EventState (avoids double-push) |
+| unit_deselect | 196 | `unit1: UnitObject`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:1472 | Fired in MoveState BACK (cancel) handler, after `game.state.back()` |
 | unit_level_up | 205 | `unit1: UnitObject`, `stat_changes: Dict[NID,int]`, `source: str` | REFERENCED | src/engine/states/game-states.ts:8788 | Fired with `levelNid`, `unitNid`, `unit1`; `stat_changes`/`source` presence unverified in payload |
-| during_unit_level_up | 215 | `unit1: UnitObject`, `stat_changes: Dict[NID,int]`, `source: str` | UNREFERENCED | — | Mid-level-up-screen quote trigger not wired |
+| during_unit_level_up | 215 | `unit1: UnitObject`, `stat_changes: Dict[NID,int]`, `source: str` | UNREFERENCED | — | Deferred: the seam exists (LevelUpScreen.update() 'get_next_spark'->'level_up_wait' transition in src/ui/exp-display.ts:378-390, mirroring level_up.py:522), but firing there mid-CombatState 'level_screen' phase has no clean event-pump point (EventState is only ever pushed after CombatState pops, at game-states.ts ~4310) — pumping mid-animation would require restructuring CombatState's phase machine to interleave with EventState, out of scope for this slice |
 | unit_weapon_rank_up | 225 | `unit: UnitObject`, `weapon_type: NID`, `old_wexp: int`, `rank: str` | REFERENCED | src/engine/states/game-states.ts:2005, 3895 | Fired from promote/class-change paths; web payload uses `unit1`/`unitNid` (not `unit`) |
 | combat_start | 236 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `item: ItemObject`, `is_animation_combat: bool` | REFERENCED | src/engine/states/game-states.ts:3602 | Web payload uses `isAnimationCombat` (camelCase) and adds `unitNid` |
 | combat_end | 248 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `item: ItemObject`, `playback: List[PlaybackBrush]` | REFERENCED | src/engine/states/game-states.ts:4201 | `playback` brushes not in web payload (comment 4198) |
 | on_talk | 260 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:1629, 1824, 1841; src/engine/states/roam-state.ts:327 | Web uses `unitA`/`unitB` NID pair plus `unit1`/`unit2`; position omitted in roam path |
-| on_support | 270 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `support_rank_nid: NID`, `is_replay: bool` | UNREFERENCED | — | Support-conversation trigger not fired (support system exists but no trigger dispatch) |
+| on_support | 270 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `support_rank_nid: NID`, `is_replay: bool` | UNREFERENCED | — | Deferred: `src/engine/support-system.ts` only computes support-pair stat bonuses; there is no support-conversation UI at all in the web port (no map "Support" ability like Python's abilities.py:97, no base support-convo list like base.py:384) — wiring the trigger requires building that feature first, out of scope for this slice |
 | on_base_convo | 282 | `base_convo: NID`, `unit: NID` (deprecated) | UNREFERENCED | — | Base-conversation trigger not wired |
-| on_prep_start | 291 | (none) | UNREFERENCED | — | Prep-entry trigger not fired (PrepState exists) |
-| on_base_start | 298 | (none) | UNREFERENCED | — | Base-entry trigger not fired (BaseState exists) |
+| on_prep_start | 291 | (none) | REFERENCED | src/engine/states/prep-state.ts:PrepMainState.start() | Fired once per prep entry, before setupUnits(); pushes EventState directly if events queued |
+| on_base_start | 298 | (none) | REFERENCED | src/engine/states/base-state.ts:BaseMainState.start() | Fired once per base entry, after buildMenu(); pushes EventState directly if events queued |
 | on_turnwheel | 307 | (none) | REFERENCED | src/engine/states/turnwheel-state.ts:296 | Fired post-turnwheel with `game`/`gameVars`/`levelVars` ctx |
 | on_turnwheel | triggers.py:307 | — | REFERENCED | turnwheel-state.ts:296 | |
 | on_title_screen | triggers.py:314 | — | UNREFERENCED | — | |
@@ -51,7 +51,7 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | unlock_staff | triggers.py:471 | unit1, position, item, region | UNREFERENCED (as trigger) | — | appears in item-system.ts:61,431,695 only as item COMPONENT, never dispatched as trigger |
 | (RegionTrigger, dynamic nid) | triggers.py:390 | nid, unit1, position, region, item | REFERENCED (dynamic) | roam-state.ts:350,353 | dispatched via `region.sub_nid` |
 
-**Totals:** 22/41 constant nids referenced, 19 unreferenced. Missing categories: overworld (3), base/prep (4), roam-input (3), title/startup (2), time-region (1), unit cursor selection (3), during-level-up (1), hidden skill/item triggers (2).
+**Totals (updated 2026-07-17):** 27/41 constant nids referenced, 14 unreferenced. This slice wired unit_wait, unit_select, unit_deselect, on_prep_start, on_base_start. Still unreferenced: overworld (3), on_base_convo (1), roam-input (3), title/startup (2), time-region (1), during-level-up (1, deferred — no event-pump seam in CombatState's level-up animation), on_support (1, deferred — no support-conversation UI exists yet), hidden skill/item triggers (2).
 
 ---
 

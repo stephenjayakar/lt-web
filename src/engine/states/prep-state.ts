@@ -101,6 +101,17 @@ export class PrepMainState extends State {
 
     // Setup: force-place Required units on formation spots
     this.setupUnits();
+
+    // on_prep_start fires each time the player enters preps
+    // (matches Python engine/prep.py PrepMainState.start).
+    if (game.eventManager) {
+      const levelNid = game.currentLevel?.nid ?? '';
+      const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+      game.eventManager.trigger({ type: 'on_prep_start', levelNid }, ctx);
+      if (game.eventManager.hasActiveEvents()) {
+        game.state.change('event');
+      }
+    }
   }
 
   private setupUnits(): void {
