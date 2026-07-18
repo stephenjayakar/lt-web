@@ -156,6 +156,32 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Wire 5 of the 19 unwired event triggers (runtime-inventory.md §1):**
+  - `unit_wait` — fired in the player-chosen Wait menu action
+    (`src/engine/states/game-states.ts:1913`, `actively_chosen=true`) and in
+    `AIState`'s auto-wait fallback (`:5594`, `actively_chosen=false`), before
+    the unit is marked finished, matching Python's `unit_funcs.wait()`
+    ordering. Added a `getRegionUnderPos()` helper (`:392`) mirroring
+    `game.get_region_under_pos` for the region-under-unit payload field.
+  - `unit_select`/`unit_deselect` — fired in `FreeState`'s SELECT handler and
+    `MoveState`'s BACK (cancel) handler respectively. `unit_select` does NOT
+    push `EventState` itself — `FreeState.update()` already checks
+    `hasActiveEvents()` later the same frame, and pushing twice double-stacks
+    the state (found via the new spec failing until this was fixed).
+  - `on_prep_start`/`on_base_start` — fired once in `PrepMainState.start()`
+    and `BaseMainState.start()` respectively, matching Python's `prep.py`/
+    `base.py` dispatch points.
+  - Deferred `on_support` (no support-conversation UI exists anywhere in the
+    web port yet — `support-system.ts` only computes stat bonuses) and
+    `during_unit_level_up` (the Python-equivalent seam exists in
+    `LevelUpScreen.update()`'s `get_next_spark`→`level_up_wait` transition,
+    but `CombatState` only ever pushes `EventState` after combat fully pops,
+    not mid-animation — pumping it correctly needs a phase-machine
+    restructure, out of scope here). Both noted in runtime-inventory.md §1.
+  - New spec `tests/trigger-dispatch.spec.ts` (5 tests): player Wait payload
+    (actively_chosen/region), region-under-unit Wait payload, unit_select +
+    unit_deselect payloads via a full cursor-select/cancel flow, and
+    on_prep_start/on_base_start via direct state pushes.
 - **already_triggered_events + full region-state save-field parity (runtime-inventory.md §4):**
   - `EventManager` (`src/events/event-manager.ts`) now exposes
     `getOnceTriggered()`/`restoreOnceTriggered()` for save serialization, and
@@ -1133,9 +1159,13 @@ passes; record newly discovered work here immediately.
 - [ ] Implement overlay/table/textbox commands instead of silently advancing
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
 - [ ] Audit all trigger payloads and EVNT/PYEV1 parity, including nested flow control
-- [ ] Dispatch the 19 unwired trigger nids (base/prep entry, overworld, roam input,
-  unit select/deselect/wait, `on_support`, `during_unit_level_up`, hidden item/skill
-  lifecycle) per `docs/parity/runtime-inventory.md`
+- [x] Dispatch unit_wait, unit_select, unit_deselect, on_prep_start, on_base_start
+  (5 of the 19 unwired trigger nids) per `docs/parity/runtime-inventory.md`
+- [ ] Dispatch the remaining 14 unwired trigger nids: overworld (3), on_base_convo,
+  roam input (3), title/startup (2), time-region, `on_support` (deferred — no
+  support-conversation UI exists yet in the web port), `during_unit_level_up`
+  (deferred — no event-pump seam in CombatState's level-up animation), hidden
+  item/skill lifecycle (2)
 
 **Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
 by parser plus behavioral tests; unsupported commands fail loudly in development.

@@ -389,6 +389,23 @@ function getAdjacentUnits(x: number, y: number): UnitObject[] {
   return units;
 }
 
+/**
+ * Get the first region located at the given position (matches Python's
+ * game.get_region_under_pos). Used by the unit_wait trigger payload.
+ */
+function getRegionUnderPos(x: number, y: number): RegionData | null {
+  const game = getGame();
+  const regions: RegionData[] = game.currentLevel?.regions ?? [];
+  for (const region of regions) {
+    const [rx, ry] = region.position;
+    const [rw, rh] = region.size ?? [1, 1];
+    if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) {
+      return region;
+    }
+  }
+  return null;
+}
+
 /** Get all adjacent empty tiles that are in bounds. */
 function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | null): [number, number][] {
   const game = getGame();
@@ -1145,6 +1162,23 @@ export class FreeState extends MapState {
           game.actionLog.doAction(new MarkActionGroupStart(unit, 'free'));
           game.selectedUnit = unit;
           game.state.change('move');
+          // unit_select fires after the cursor selection is committed
+          // (matches Python general_states.py FreeState.take_input). Don't
+          // push 'event' here directly — FreeState.update() (called later
+          // this same frame, before the 'move' change is flushed) already
+          // checks hasActiveEvents() and pushes it; pushing twice here would
+          // double-stack the EventState.
+          if (game.eventManager && unit.position) {
+            const levelNid = game.currentLevel?.nid ?? '';
+            const ctx = { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars };
+            game.eventManager.trigger(
+              {
+                type: 'unit_select', levelNid, unitNid: unit.nid, unit1: unit,
+                position: [unit.position[0], unit.position[1]],
+              },
+              ctx,
+            );
+          }
         } else if (unit && unit.team !== 'player' && unit.position) {
           // SELECT on enemy: toggle individual enemy range display
           const key = `${unit.position[0]},${unit.position[1]}`;
@@ -1436,11 +1470,29 @@ export class MoveState extends MapState {
         break;
       }
 
-      case 'BACK':
+      case 'BACK': {
+        const deselectedUnit: UnitObject | null = game.selectedUnit;
         game.highlight.clear();
         game._moveOrigin = null;
         game.state.back();
+        // unit_deselect fires after the cursor selection is cleared
+        // (matches Python general_states.py MoveState.take_input BACK).
+        if (game.eventManager && deselectedUnit && deselectedUnit.position) {
+          const levelNid = game.currentLevel?.nid ?? '';
+          const ctx = { game, unit1: deselectedUnit, gameVars: game.gameVars, levelVars: game.levelVars };
+          game.eventManager.trigger(
+            {
+              type: 'unit_deselect', levelNid, unitNid: deselectedUnit.nid, unit1: deselectedUnit,
+              position: [deselectedUnit.position[0], deselectedUnit.position[1]],
+            },
+            ctx,
+          );
+          if (game.eventManager.hasActiveEvents()) {
+            game.state.change('event');
+          }
+        }
         break;
+      }
     }
   }
 
@@ -1860,11 +1912,30 @@ export class MenuState extends State {
           game.state.back();
         }
       } else if (value === 'wait') {
+        // unit_wait fires before the unit is marked finished (matches
+        // Python unit_funcs.wait(), called with actively_chosen=True here).
+        if (unit && unit.position && game.eventManager) {
+          const levelNid = game.currentLevel?.nid ?? '';
+          const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+          const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
+          game.eventManager.trigger(
+            {
+              type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
+              position: [unit.position[0], unit.position[1]],
+              region: region ?? undefined,
+              localArgs: new Map<string, any>([['actively_chosen', true]]),
+            },
+            ctx,
+          );
+        }
         // Record end of action group (turnwheel marker)
         game.actionLog.doAction(new MarkActionGroupEnd('menu'));
         if (unit) unit.finished = true;
         this.menu = null;
         game.state.back();
+        if (game.eventManager?.hasActiveEvents()) {
+          game.state.change('event');
+        }
       }
     }
   }
@@ -5522,10 +5593,32 @@ export class AIState extends MapState {
       }
 
       case 'wait':
-      default:
+      default: {
+        // unit_wait fires before the unit is marked finished, with
+        // actively_chosen=false (matches Python unit_funcs.wait() defaults).
+        if (unit.position && game.eventManager) {
+          const levelNid = game.currentLevel?.nid ?? '';
+          const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+          const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
+          game.eventManager.trigger(
+            {
+              type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
+              position: [unit.position[0], unit.position[1]],
+              region: region ?? undefined,
+              localArgs: new Map<any, any>([['actively_chosen', false]]),
+            },
+            ctx,
+          );
+        }
         unit.finished = true;
+        if (game.eventManager?.hasActiveEvents()) {
+          this.waitingForEvent = true;
+          game.state.change('event');
+          return;
+        }
         this.advanceToNextUnit();
         break;
+      }
     }
   }
 

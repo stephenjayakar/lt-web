@@ -74,6 +74,17 @@ export class BaseMainState extends State {
     this.buildMenu(hasMarket);
 
     this.pulseTimer = 0;
+
+    // on_base_start fires each time the player enters base
+    // (matches Python engine/base.py BaseMainState.start).
+    if (game.eventManager) {
+      const levelNid = game.currentLevel?.nid ?? '';
+      const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+      game.eventManager.trigger({ type: 'on_base_start', levelNid }, ctx);
+      if (game.eventManager.hasActiveEvents()) {
+        game.state.change('event');
+      }
+    }
   }
 
   override begin(): StateResult {
