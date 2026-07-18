@@ -58,8 +58,24 @@ export interface HarnessAPI {
   getUnitDetail: (unitNid: string) => UnitDetail | null;
   /** Force-equip an item on a unit via a reversible EquipItemAction (turnwheel-safe). */
   equipItem: (unitNid: string, itemNid: string) => boolean;
-  /** Directly resolve map combat between attacker and defender without UI. Returns results. */
-  resolveCombat: (attackerNid: string, defenderNid: string) => CombatResultSummary | null;
+  /**
+   * Directly resolve map combat between attacker and defender without UI.
+   * Returns results. An optional CombatScript (hit1/crit1/miss1/hit2/crit2/
+   * miss2/--/end tokens, per interact_unit) forces specific strike outcomes
+   * for deterministic scripted-combat testing.
+   *
+   * `useDefenderWeapon` defaults to false for backward compatibility with
+   * existing specs that assume the defender never counters; pass true to
+   * resolve with the defender's actual equipped weapon so counterattacks,
+   * vantage, and desperation behave like real map combat (Python always
+   * lets the defender counter when able).
+   */
+  resolveCombat: (
+    attackerNid: string,
+    defenderNid: string,
+    script?: string[],
+    useDefenderWeapon?: boolean,
+  ) => CombatResultSummary | null;
   /** Save current game state to a named slot and return the serialized snapshot. */
   saveSnapshot: () => unknown;
   /** Restore game state from a previously saved snapshot. */
@@ -127,6 +143,16 @@ export interface CombatResultSummary {
   strikeCount: number;
   /** Damage dealt by each strike (in order). */
   strikeDamages: number[];
+  /**
+   * Per-strike detail (in order): who struck, whether it was a counter
+   * (defender striking back), whether it hit, and dealt damage. Useful for
+   * asserting exact Python-parity strike ordering (vantage/desperation/brave).
+   */
+  strikeDetails: Array<{ striker: 'attacker' | 'defender'; isCounter: boolean; hit: boolean; crit: boolean; damage: number }>;
+  /** True if the attacker survived combat only via a 'miracle' skill cleanup. */
+  attackerMiracleSaved: boolean;
+  /** True if the defender survived combat only via a 'miracle' skill cleanup. */
+  defenderMiracleSaved: boolean;
 }
 
 /**
@@ -375,16 +401,22 @@ export function installHarness(
       return true;
     },
 
-    resolveCombat(attackerNid: string, defenderNid: string): CombatResultSummary | null {
+    resolveCombat(
+      attackerNid: string,
+      defenderNid: string,
+      script?: string[],
+      useDefenderWeapon?: boolean,
+    ): CombatResultSummary | null {
       const attacker = game.units.get(attackerNid);
       const defender = game.units.get(defenderNid);
       if (!attacker || !defender || !attacker.position || !defender.position) return null;
       const weapon = attacker.equippedWeapon;
       if (!weapon) return null;
+      const defenseItem = useDefenderWeapon ? (defender.equippedWeapon ?? null) : null;
       const rngMode = (game.db.getConstant('rng_mode', 'true_hit') as string) as any;
       const mc = new MapCombat(
-        attacker, weapon, defender, null,
-        game.db, rngMode, game.board, null, undefined, game,
+        attacker, weapon, defender, defenseItem,
+        game.db, rngMode, game.board, script ?? null, undefined, game,
       );
       const results = mc.applyResults(game.actionLog);
       applyDroppableItemPickups(game.actionLog, game.db, results, attacker, defender);
@@ -395,6 +427,15 @@ export function installHarness(
         defenderDead: results.defenderDead,
         strikeCount: mc.strikes.length,
         strikeDamages: mc.strikes.map((s) => (s.hit ? s.damage : 0)),
+        strikeDetails: mc.strikes.map((s) => ({
+          striker: s.attacker === attacker ? 'attacker' : 'defender',
+          isCounter: s.isCounter,
+          hit: s.hit,
+          crit: s.crit,
+          damage: s.hit ? s.damage : 0,
+        })),
+        attackerMiracleSaved: mc.miracleSaved.has(attacker),
+        defenderMiracleSaved: mc.miracleSaved.has(defender),
       };
     },
 

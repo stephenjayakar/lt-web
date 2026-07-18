@@ -164,6 +164,13 @@ export class MapCombat {
   private lifecycleRecord: CombatLifecycleRecord;
   private lifecycleRecorded: boolean = false;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
+  /** Units saved from death by a 'miracle' skill (see CombatPhaseSolver.miracleSaved). */
+  private miracleSavedSet: Set<UnitObject> = new Set();
+
+  /** Public read-only view of which units were saved from death this combat by 'miracle'. */
+  get miracleSaved(): ReadonlySet<UnitObject> {
+    return this.miracleSavedSet;
+  }
   private unitAnims: Map<UnitObject, CombatAnimState> = new Map();
 
   /** map_cast_pose: attacker stands and casts instead of lunging. */
@@ -240,6 +247,7 @@ export class MapCombat {
       : solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
     this.procPlayback = [...solver.procPlayback];
     this.guardGaugeResults = new Map(solver.guardGaugeResults);
+    this.miracleSavedSet = new Set(solver.miracleSaved);
     this.lifecycleRecord.finish();
 
     this.state = 'init';
@@ -422,6 +430,15 @@ export class MapCombat {
         }
         defenderHps.set(strike.defender, before - damage);
       }
+    }
+
+    // Miracle: a unit that would die at the end of combat is instead
+    // resurrected at 1 HP (Python Miracle.cleanup_combat). The solver has
+    // already determined eligibility (skill present + charge available) and
+    // consumed the charge; here we just apply the floor to the actual HP.
+    if (atkHp <= 0 && this.miracleSavedSet.has(this.attacker)) atkHp = 1;
+    for (const [unit, hp] of defenderHps) {
+      if (hp <= 0 && this.miracleSavedSet.has(unit)) defenderHps.set(unit, 1);
     }
 
     // Clamp HP

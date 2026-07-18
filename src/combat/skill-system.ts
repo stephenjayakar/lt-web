@@ -224,6 +224,39 @@ export function ignoreDyingInCombat(unit: UnitObject): boolean {
   return hasAnySkill(unit, 'ignore_dying_in_combat');
 }
 
+/**
+ * Find an available 'miracle' skill on the unit (Python Miracle component,
+ * cleanup_combat hook): "Unit will not die after combat, but will instead be
+ * resurrected with 1 hp." Unlike ignoreDyingInCombat, this only saves the
+ * unit at the very end of combat resolution (cleanup), not mid-combat, and
+ * respects charge components (build_charge/drain_charge/charges_per_turn)
+ * the same way attack/defense procs do.
+ */
+export function miracleSkill(unit: UnitObject): SkillObject | null {
+  for (const skill of unit.skills) {
+    if (!skill.hasComponent('miracle')) continue;
+    if (skill.hasComponent('build_charge')) {
+      const charge = Number(skill.data.get('charge') ?? 0);
+      const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
+      if (charge < total) continue;
+    }
+    if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+      if (Number(skill.data.get('charge') ?? 0) <= 0) continue;
+    }
+    return skill;
+  }
+  return null;
+}
+
+/** Consume the charge (if any) on a triggered miracle skill (Python TriggerCharge). */
+export function consumeMiracleCharge(skill: SkillObject): void {
+  if (skill.hasComponent('build_charge')) {
+    skill.data.set('charge', 0);
+  } else if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    skill.data.set('charge', Number(skill.data.get('charge') ?? 0) - 1);
+  }
+}
+
 /** Unit cannot be displaced by shove, swap, warp, rescue, or related item hooks. */
 export function ignoreForcedMovement(unit: UnitObject): boolean {
   return hasAnySkill(unit, 'ignore_forced_movement');

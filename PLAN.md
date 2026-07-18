@@ -156,6 +156,40 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Deterministic golden combat-scenario matrix + `miracle` skill finish (P4):**
+  reviewed and completed partial in-flight edits (`CombatPhaseSolver.miracleSaved`/
+  `applyMiracleCleanup`, `skill-system.ts` `miracleSkill`/`consumeMiracleCharge`)
+  against `lt-maker/app/engine/skill_components/combat2_components.py` (`Miracle.
+  cleanup_combat`) and `charge_components.py` (`BuildCharge`/`DrainCharge`/
+  `ChargesPerTurn` condition + `trigger_charge` semantics) — the wiring was
+  correct: cleanup fires once at the very end of the whole combat (matching
+  Python's `base_combat.py`/`simple_combat.py` `cleanup_combat()`, not per-strike),
+  charge eligibility/consumption exactly mirrors the Python charge components,
+  and `MapCombat.computeResults()` re-derives HP from strikes independently
+  before applying the miracle floor so it's fully reversible via
+  `CombatResultAction`. Added a public `MapCombat.miracleSaved` getter and
+  extended `harness.resolveCombat` with `strikeDetails` (per-strike striker/
+  isCounter/hit/crit/damage), `attacker/defenderMiracleSaved`, an optional
+  `script` param (CombatScript token forcing), and an opt-in `useDefenderWeapon`
+  flag (existing specs that assumed the defender never counters keep their old
+  behavior; passing `true` resolves with the defender's real equipped weapon,
+  matching Python where the defender always counters when able — found and
+  fixed a real harness gap: `resolveCombat` had always passed `defenseItem:
+  null`, silently disabling all defender counters/vantage/desperation testing).
+  New `tests/combat-goldens.spec.ts` (11 tests, all green, hand-computed
+  `STR + item.might - DEF` expectations cross-checked against `solver.py`):
+  standard order, attacker double, weapon-triangle sign flip, brave (2
+  consecutive attacker strikes), vantage (defender opens), desperation (both
+  attacker strikes before counter), vantage+desperation precedence (vantage
+  wins the open, desperation still chains the double), vantage+brave, miracle
+  survive-then-die (charge consumed, second lethal hit kills), Armorslayer
+  exact effective-damage numbers, and a scripted-combat smoke test. Deferred:
+  Python dynamically re-evaluates attacker/defender phase counts on every
+  solver state transition, so a status_on_hit that changes SPD mid-combat can
+  add/remove a double within the same fight; the web solver computes
+  `attackerDoubles`/`defenderDoubles` once up front in `CombatPhaseSolver.
+  resolveCore` and does not revisit them — documented in PLAN.md P4 rather
+  than risking a solver rewrite in this slice.
 - **`create_unit` and `set_position` event commands:** usage scan of every
   bundled project's event files (`lt-maker/*.ltproj/game_data/events/**`,
   both `.event` source and `events.json` forms) for all 45 parser-audit-flagged
@@ -1545,8 +1579,17 @@ item-use fixture matrices match Python outputs and side effects.
   assist ordering, guard negation/gauge upkeep, rewards, saves, and turnwheel replay
 - [ ] Extend Pair Up golden coverage to scripted-combat partner phases and guard-follower
   rewards in the full battle-animation presentation
-- [ ] Add deterministic golden scenarios for weapon triangle, brave, vantage,
+- [x] Add deterministic golden scenarios for weapon triangle, brave, vantage,
   desperation, miracle, effective damage, status, and scripted combat
+  (`tests/combat-goldens.spec.ts`); finished the `miracle` skill (cleanup-hook
+  resurrect-at-1-HP + charge consumption) and confirmed vantage/desperation
+  precedence against `solver.py`. Deferred: dynamic mid-combat re-evaluation
+  of doubling eligibility (Python recomputes attacker/defender phase counts
+  on every solver state transition; the web solver computes `attackerDoubles`/
+  `defenderDoubles` once up front in `resolveCore` and does not revisit them
+  mid-combat, so a status_on_hit that changes SPD mid-fight can't add/remove
+  a double within that same combat on the web today) and full scripted-combat
+  token coverage beyond a smoke test.
 
 **Gate:** deterministic scenario outputs and action/playback order match Python.
 
