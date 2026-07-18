@@ -416,7 +416,12 @@ export class GameState {
     if (!levelPrefab) {
       throw new Error(`GameState.loadLevel: unknown level "${levelNid}"`);
     }
-    this.currentLevel = levelPrefab;
+    // Clone the level's mutable containers so runtime mutations (region
+    // consumption, etc.) don't leak back into the shared DB prefab object —
+    // a later loadLevel() of the same level must start pristine. Units are
+    // handled separately below via fresh runtime Unit objects, so they don't
+    // need cloning here.
+    this.currentLevel = { ...levelPrefab, regions: (levelPrefab.regions ?? []).map((r) => ({ ...r })) };
 
     // Reset per-level state
     this.units.clear();

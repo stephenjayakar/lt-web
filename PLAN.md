@@ -156,6 +156,32 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **P2 hygiene: reversible only_once region consumption + loadLevel() prefab
+  aliasing fix:**
+  - `src/engine/states/game-states.ts`: the two direct-mutation sites that
+    auto-consume `only_once` regions on village tiles (the `filter()` around
+    what's now `:1839` and the `splice()`-based loop around what's now
+    `:5522`) now route both the triggered region and its Visit/Destructible
+    sibling through `game.actionLog.doAction(new RemoveRegionAction(...))`,
+    reusing the existing `RemoveRegionAction` (`src/engine/action.ts:950`)
+    instead of mutating `level.regions` directly. Both calls land inside the
+    same action group as the rest of the event's mutations (no new
+    `MarkActionGroupStart`/`End` boundary was introduced), so a single
+    turnwheel undo step reverts the whole village interaction, including the
+    sibling region.
+  - `src/engine/game-state.ts`: `GameState.loadLevel()` used to alias the DB
+    level prefab directly (`this.currentLevel = levelPrefab`), so runtime
+    region mutations leaked into the shared prefab object and survived a
+    "clean" reload of the same level. It now clones the `regions` array (and
+    each region object) onto a fresh `currentLevel`, matching the same
+    defensive-clone pattern already used on the save-restore path in
+    `restoreLevel()` (`src/engine/save.ts:1435`). Units/items continue to be
+    constructed fresh from prefab data as before (unaffected).
+  - New spec `tests/region-reversibility.spec.ts` (3 tests): sibling
+    only_once region consumption + turnwheel undo/re-consumption, a clean
+    `loadLevel()` reload pristine-state check (verified to fail before the
+    `game-state.ts` fix and pass after), and save → turnwheel-undo → save/load
+    round trip of the restored region state.
 - **Wire 5 of the 19 unwired event triggers (runtime-inventory.md §1):**
   - `unit_wait` — fired in the player-chosen Wait menu action
     (`src/engine/states/game-states.ts:1913`, `actively_chosen=true`) and in
@@ -1173,10 +1199,10 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 ### P2 — Actions, Save/Restore, and Turnwheel
 
 - [ ] Route all event and gameplay mutations through reversible actions
-- [ ] Make village-visit auto-consumption of `only_once` regions reversible
+- [x] Make village-visit auto-consumption of `only_once` regions reversible
   (two direct-mutation sites in `game-states.ts`; save/load already captures the
   effect, only turnwheel undo is affected)
-- [ ] Fix `loadLevel()` prefab aliasing: `game.currentLevel` can alias the DB
+- [x] Fix `loadLevel()` prefab aliasing: `game.currentLevel` can alias the DB
   level prefab so runtime mutations leak into the database (the restore path was
   fixed with a defensive clone in the region-save slice; the load path remains)
 - [x] Route map/full-animation combat outcomes and death removal through deterministic

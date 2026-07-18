@@ -1840,18 +1840,17 @@ export class MenuState extends State {
           const siblingNid = regionNid.startsWith('Destroy')
             ? regionNid.replace(/^Destroy/, '')
             : `Destroy${regionNid}`;
-          game.currentLevel.regions = game.currentLevel.regions.filter((r: RegionData) => {
-            if (r.nid === regionNid) return false;
-            if (
+          const sibling = game.currentLevel.regions.find(
+            (r: RegionData) =>
               r.nid === siblingNid &&
               r.region_type.toLowerCase() === 'event' &&
               r.position[0] === region.position[0] &&
-              r.position[1] === region.position[1]
-            ) {
-              return false;
-            }
-            return true;
-          });
+              r.position[1] === region.position[1],
+          );
+          game.actionLog.doAction(new RemoveRegionAction(regionNid, game.currentLevel.regions));
+          if (sibling) {
+            game.actionLog.doAction(new RemoveRegionAction(sibling.nid, game.currentLevel.regions));
+          }
         }
         if (unit) unit.finished = true;
         this.menu = null;
@@ -5525,17 +5524,16 @@ export class AIState extends MapState {
                 const siblingNid = region.nid.startsWith('Destroy')
                   ? region.nid.replace(/^Destroy/, '')
                   : `Destroy${region.nid}`;
-                for (let i = regions.length - 1; i >= 0; i--) {
-                  const candidate = regions[i];
-                  const isTriggeredRegion = candidate === region;
-                  const isSiblingRegion =
+                const sibling = regions.find(
+                  (candidate: any) =>
                     candidate.nid === siblingNid &&
                     candidate.region_type === 'event' &&
                     candidate.position[0] === region.position[0] &&
-                    candidate.position[1] === region.position[1];
-                  if (isTriggeredRegion || isSiblingRegion) {
-                    regions.splice(i, 1);
-                  }
+                    candidate.position[1] === region.position[1],
+                );
+                game.actionLog.doAction(new RemoveRegionAction(region.nid, regions));
+                if (sibling) {
+                  game.actionLog.doAction(new RemoveRegionAction(sibling.nid, regions));
                 }
               }
 
