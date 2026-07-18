@@ -250,6 +250,7 @@ export interface LevelPrefab {
   party: NID;
   music: LevelMusic;
   objective: LevelObjective;
+  should_record?: boolean;
   units: (UniqueUnitData | GenericUnitData)[];
   regions: RegionData[];
   unit_groups: UnitGroupData[];
@@ -318,6 +319,14 @@ export type McostData = [number[][], string[], string[]];
 // ------------------------------------------------------------------
 // Difficulty / Constants / Metadata
 // ------------------------------------------------------------------
+
+export interface LoreEntry {
+  nid: NID;
+  name: string;
+  title?: string;
+  category: string;
+  text: string;
+}
 
 export interface DifficultyMode {
   nid: NID;

@@ -35,6 +35,7 @@ import type {
   SupportPairPrefab,
   OverworldPrefab,
   PartyPrefab,
+  LoreEntry,
 } from './types';
 import type { CombatAnimData, CombatEffectData, PaletteData } from '../combat/battle-anim-types';
 import { loadCombatAnims, loadCombatEffects, loadCombatPalettes } from './loaders/combat-anim-loader';
@@ -60,6 +61,7 @@ export class Database {
   ai: Map<NID, AiDef> = new Map();
   factions: Map<NID, FactionDef> = new Map();
   difficultyModes: DifficultyMode[] = [];
+  lore: Map<NID, LoreEntry> = new Map();
   tags: string[] = [];
 
   // Chunked data
@@ -123,6 +125,7 @@ export class Database {
       this.loadSupportPairs(resources),
       this.loadOverworlds(resources),
       this.loadParties(resources),
+      this.loadLore(resources),
     ]);
 
     for (const result of nonChunkedResults) {
@@ -329,6 +332,19 @@ export class Database {
     const data = await resources.tryLoadJson<DifficultyMode[]>('game_data/difficulty_modes.json');
     if (!data) return;
     this.difficultyModes = data;
+  }
+
+  /**
+   * lore.json is an array of LoreEntry objects (game_data/lore.json).
+   * Port of app/data/database/lore.py — Library/Guide browser entries,
+   * gated at display time by game.unlockedLore.
+   */
+  private async loadLore(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<LoreEntry[]>('game_data/lore.json');
+    if (!data) return;
+    for (const entry of data) {
+      this.lore.set(entry.nid, entry);
+    }
   }
 
   /**

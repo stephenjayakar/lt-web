@@ -364,14 +364,23 @@ export class Recordkeeper {
 
   /**
    * Returns ordered list of level NIDs played (based on turn records).
-   * Excludes the current (last) level by convention in the original engine.
+   * Mirrors app/engine/records.py, which does not itself exclude the current
+   * chapter; callers (e.g., base records browser) apply that slicing when needed.
    */
-  getLevels(): string[] {
+  getLevels(levelLookup?: Map<string, any>): string[] {
     const levels: string[] = [];
     for (const record of this.turnsTaken) {
-      if (record.levelNid !== null && !levels.includes(record.levelNid)) {
-        levels.push(record.levelNid);
+      const levelNid = record.levelNid;
+      if (levelNid === null || levels.includes(levelNid)) {
+        continue;
       }
+      if (levelLookup) {
+        const levelPrefab = levelLookup.get(levelNid);
+        if (levelPrefab && levelPrefab.should_record === false) {
+          continue;
+        }
+      }
+      levels.push(levelNid);
     }
     return levels;
   }
