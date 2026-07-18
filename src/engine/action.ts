@@ -1079,6 +1079,8 @@ export class TradeAction extends Action {
   private unitB: UnitObject;
   private indexA: number;
   private indexB: number;
+  private movedItem: ItemObject | null = null;
+  private direction: 'swap' | 'a_to_b' | 'b_to_a' | 'none' = 'none';
 
   constructor(
     unitA: UnitObject,
@@ -1099,20 +1101,33 @@ export class TradeAction extends Action {
 
     if (itemA && itemB) {
       // Swap
+      this.direction = 'swap';
       this.unitA.items[this.indexA] = itemB;
       this.unitB.items[this.indexB] = itemA;
       itemA.owner = this.unitB;
       itemB.owner = this.unitA;
+      this.unitA.onRemoveItem(itemA);
+      this.unitA.onAddItem(itemB);
+      this.unitB.onRemoveItem(itemB);
+      this.unitB.onAddItem(itemA);
     } else if (itemA && !itemB) {
       // Move A to B
+      this.direction = 'a_to_b';
+      this.movedItem = itemA;
       this.unitA.items.splice(this.indexA, 1);
       this.unitB.items.push(itemA);
       itemA.owner = this.unitB;
+      this.unitA.onRemoveItem(itemA);
+      this.unitB.onAddItem(itemA);
     } else if (!itemA && itemB) {
       // Move B to A
+      this.direction = 'b_to_a';
+      this.movedItem = itemB;
       this.unitB.items.splice(this.indexB, 1);
       this.unitA.items.push(itemB);
       itemB.owner = this.unitA;
+      this.unitB.onRemoveItem(itemB);
+      this.unitA.onAddItem(itemB);
     }
 
     this.unitA.autoequip();
@@ -1122,15 +1137,33 @@ export class TradeAction extends Action {
   }
 
   reverse(): void {
-    // This is complex to reverse perfectly; for now, swap back
-    const itemA = this.unitA.items[this.indexA];
-    const itemB = this.unitB.items[this.indexB];
-
-    if (itemA && itemB) {
-      this.unitA.items[this.indexA] = itemB;
-      this.unitB.items[this.indexB] = itemA;
-      itemA.owner = this.unitB;
-      itemB.owner = this.unitA;
+    if (this.direction === 'swap') {
+      const itemA = this.unitA.items[this.indexA];
+      const itemB = this.unitB.items[this.indexB];
+      if (itemA && itemB) {
+        this.unitA.items[this.indexA] = itemB;
+        this.unitB.items[this.indexB] = itemA;
+        itemA.owner = this.unitB;
+        itemB.owner = this.unitA;
+        this.unitA.onRemoveItem(itemB);
+        this.unitA.onAddItem(itemA);
+        this.unitB.onRemoveItem(itemA);
+        this.unitB.onAddItem(itemB);
+      }
+    } else if (this.direction === 'a_to_b' && this.movedItem) {
+      const idx = this.unitB.items.indexOf(this.movedItem);
+      if (idx >= 0) this.unitB.items.splice(idx, 1);
+      this.unitA.items.splice(this.indexA, 0, this.movedItem);
+      this.movedItem.owner = this.unitA;
+      this.unitB.onRemoveItem(this.movedItem);
+      this.unitA.onAddItem(this.movedItem);
+    } else if (this.direction === 'b_to_a' && this.movedItem) {
+      const idx = this.unitA.items.indexOf(this.movedItem);
+      if (idx >= 0) this.unitA.items.splice(idx, 1);
+      this.unitB.items.splice(this.indexB, 0, this.movedItem);
+      this.movedItem.owner = this.unitB;
+      this.unitA.onRemoveItem(this.movedItem);
+      this.unitB.onAddItem(this.movedItem);
     }
 
     this.unitA.autoequip();
@@ -1782,12 +1815,14 @@ export class WeaponUsesAction extends Action {
         this.unit.unequip(this.item);
       }
       this.unit.autoequip();
+      this.unit.onRemoveItem(this.item);
     }
   }
 
   reverse(): void {
     if (this.broken) {
       this.unit.items.push(this.item);
+      this.unit.onAddItem(this.item);
     }
     this.item.setUses(this.usesBefore);
     this.unit.autoequip();
@@ -1862,6 +1897,7 @@ export class TakeItemFromConvoy extends Action {
     }
     this.unit.items.push(this.item);
     this.item.owner = this.unit;
+    this.unit.onAddItem(this.item);
     this.unit.autoequip();
   }
 
@@ -1871,6 +1907,7 @@ export class TakeItemFromConvoy extends Action {
     const idx = this.unit.items.indexOf(this.item);
     if (idx !== -1) this.unit.items.splice(idx, 1);
     this.item.owner = null;
+    this.unit.onRemoveItem(this.item);
     const party = game.getParty(this.partyNid);
     if (party) party.convoy.push(this.item);
     this.unit.autoequip();
@@ -1930,11 +1967,13 @@ export class RemoveItemFromUnitAction extends Action {
       this.unit.unequip(this.item);
       this.unit.autoequip();
     }
+    this.unit.onRemoveItem(this.item);
   }
 
   reverse(): void {
     this.unit.items.splice(this.itemIndex, 0, this.item);
     this.item.owner = this.unit;
+    this.unit.onAddItem(this.item);
     this.unit.autoequip();
   }
 }
@@ -1959,6 +1998,8 @@ export class MoveItemBetweenUnitsAction extends Action {
     if (index >= 0) this.source.items.splice(index, 1);
     this.target.items.push(this.item);
     this.item.owner = this.target;
+    this.source.onRemoveItem(this.item);
+    this.target.onAddItem(this.item);
     this.source.autoequip();
     this.target.autoequip();
   }
@@ -1968,6 +2009,8 @@ export class MoveItemBetweenUnitsAction extends Action {
     if (index >= 0) this.target.items.splice(index, 1);
     this.source.items.splice(this.sourceIndex, 0, this.item);
     this.item.owner = this.source;
+    this.target.onRemoveItem(this.item);
+    this.source.onAddItem(this.item);
     this.source.autoequip();
     this.target.autoequip();
   }
@@ -2036,6 +2079,7 @@ export class StoreItemAction extends Action {
     const party = game.getParty();
     if (party) party.convoy.push(this.item);
     this.unit.autoequip();
+    this.unit.onRemoveItem(this.item);
   }
 
   reverse(): void {
@@ -2048,6 +2092,7 @@ export class StoreItemAction extends Action {
     }
     this.unit.items.splice(this.itemIndex, 0, this.item);
     this.item.owner = this.unit;
+    this.unit.onAddItem(this.item);
     this.unit.autoequip();
   }
 }
@@ -2087,6 +2132,8 @@ export class TradeItemWithConvoy extends Action {
     // Add convoy item to unit at original index
     this.unit.items.splice(this.unitItemIndex, 0, this.convoyItem);
     this.convoyItem.owner = this.unit;
+    this.unit.onRemoveItem(this.unitItem);
+    this.unit.onAddItem(this.convoyItem);
     this.unit.autoequip();
   }
 
@@ -2106,6 +2153,8 @@ export class TradeItemWithConvoy extends Action {
     party.convoy.push(this.convoyItem);
     this.unit.items.splice(this.unitItemIndex, 0, this.unitItem);
     this.unitItem.owner = this.unit;
+    this.unit.onRemoveItem(this.convoyItem);
+    this.unit.onAddItem(this.unitItem);
     this.unit.autoequip();
   }
 }

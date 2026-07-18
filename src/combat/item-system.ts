@@ -1292,6 +1292,44 @@ export function removeAllItemSourcedSkills(unit: UnitObject): void {
   unit.hasCanto = unit.skills.some((s) => s.hasComponent('canto'));
 }
 
+
+// ============================================================
+// Inventory lifecycle hooks (status_on_hold / multi_status_on_hold)
+// ============================================================
+
+/**
+ * Fire on_add_item / on_remove_item component hooks for `item`.
+ * `add=true` adds sourced skills; `add=false` removes one sourced instance.
+ * Mirrors Python StatusOnHold / MultiStatusOnHold.
+ *
+ * Unlike status_on_equip, these fire when the item enters or leaves the
+ * unit's INVENTORY, regardless of equip state.
+ */
+export function dispatchHoldHooks(
+  unit: UnitObject,
+  item: ItemObject,
+  add: boolean,
+  db: Database | undefined,
+): void {
+  const skillNids = collectStatusOnHoldNids(item);
+  for (const skillNid of skillNids) {
+    if (add) addItemSourcedSkill(unit, item, skillNid, db);
+    else removeOneItemSourcedSkill(unit, item, skillNid);
+  }
+}
+
+/** Collect every status_on_hold / multi_status_on_hold NID from the item tree. */
+function collectStatusOnHoldNids(item: ItemObject): string[] {
+  const nids: string[] = [];
+  const single = item.getComponent<string>('status_on_hold');
+  if (single) nids.push(single);
+  const multi = item.getComponent<string[]>('multi_status_on_hold');
+  if (Array.isArray(multi)) nids.push(...multi);
+  // multi_item children contribute their own hold statuses.
+  for (const sub of item.subitems) nids.push(...collectStatusOnHoldNids(sub));
+  return nids;
+}
+
 // ============================================================
 // Combat component hooks: eclipse (on_hit) and lifelink (after_strike)
 // ============================================================

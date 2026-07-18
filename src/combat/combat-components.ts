@@ -24,21 +24,30 @@ export interface CombatComponentResults {
   stolenItem: ItemObject | null;
 }
 
-function addStatus(target: UnitObject, statusNid: string | undefined, db: Database): void {
+function addStatus(
+  target: UnitObject,
+  statusNid: string | undefined,
+  db: Database,
+  initiator?: UnitObject,
+): void {
   if (!statusNid || target.skills.some((skill) => skill.nid === statusNid)) return;
   const prefab = db.skills.get(statusNid);
-  if (prefab) target.skills.push(new SkillObject(prefab));
+  if (!prefab) return;
+  const skill = new SkillObject(prefab);
+  // Python StatusOnHit: action.AddSkill(target, value, unit) — initiator is attacker.
+  if (initiator) skill.initiatorNid = initiator.nid;
+  target.skills.push(skill);
 }
 
 /** Apply item on-hit/end-combat status hooks after the strike sequence has resolved. */
 function applyStrikeStatuses(strikes: CombatStrike[], db: Database): void {
   for (const strike of strikes) {
     if (!strike.hit) continue;
-    addStatus(strike.defender, strike.item.getComponent<string>('status_on_hit'), db);
+    addStatus(strike.defender, strike.item.getComponent<string>('status_on_hit'), db, strike.attacker);
   }
   for (const strike of strikes) {
     if (!strike.hit) continue;
-    addStatus(strike.defender, strike.item.getComponent<string>('status_after_combat_on_hit'), db);
+    addStatus(strike.defender, strike.item.getComponent<string>('status_after_combat_on_hit'), db, strike.attacker);
   }
 }
 

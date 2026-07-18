@@ -1068,6 +1068,7 @@ export class GameState {
         item.owner = unit;
         item.droppable = isDroppable;
         unit.items.push(item);
+        unit.onAddItem(item);
         const registerTree = (node: ItemObject, key: string) => {
           this.items.set(key, node);
           node.subitems.forEach((child, index) => registerTree(child, `${key}_sub_${index}_${child.nid}`));

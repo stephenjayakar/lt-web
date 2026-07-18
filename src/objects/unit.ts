@@ -2,7 +2,7 @@ import type { NID, UnitPrefab, KlassDef, AlliancePair } from '../data/types';
 import type { ItemObject } from './item';
 import type { SkillObject } from './skill';
 import type { Database } from '../data/database';
-import { available as itemAvailable, dispatchEquipHooks } from '../combat/item-system';
+import { available as itemAvailable, dispatchEquipHooks, dispatchHoldHooks } from '../combat/item-system';
 
 /** Lazy game ref so unit equip hooks can reach the db without a circular import. */
 let _getGameForUnits: (() => any) | null = null;
@@ -403,6 +403,25 @@ export class UnitObject {
       this.equippedWeapon = swapTo;
     }
     dispatchEquipHooks(this, item, false, this.equipDb());
+  }
+
+  /**
+   * Fire on_add_item component hooks (status_on_hold / multi_status_on_hold).
+   * Call after an item enters this unit's inventory. Mirrors Python
+   * `unit.insert_item` → `item_system.on_add_item`.
+   */
+  onAddItem(item: ItemObject): void {
+    dispatchHoldHooks(this, item, true, this.equipDb());
+  }
+
+  /**
+   * Fire on_remove_item component hooks (status_on_hold / multi_status_on_hold).
+   * Call after an item leaves this unit's inventory (and after unequip, so
+   * equip-sourced skills are removed first). Mirrors Python `unit.remove_item`
+   * → `item_system.on_remove_item`.
+   */
+  onRemoveItem(item: ItemObject): void {
+    dispatchHoldHooks(this, item, false, this.equipDb());
   }
 
   /**

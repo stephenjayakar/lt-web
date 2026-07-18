@@ -16,6 +16,9 @@ export class SkillObject {
   /** Component store keyed by component NID. */
   readonly components: Map<string, any>;
 
+  /** NID of the unit that initiated/granted this skill (Python `initiator_nid`). */
+  initiatorNid: string | null = null;
+
   /** Runtime data store for skill state (e.g., torch counters). */
   data: Map<string, any>;
 
