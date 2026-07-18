@@ -7,7 +7,7 @@ Summary: 125/201 referenced in web source; 92/201 expose at least one matching w
 
 | NID | Python class | Python source | Tag | Python hooks | Matching web hooks | Exact web references | Test | Structural status |
 |---|---|---|---|---|---|---|---|---|
-| multi_item | MultiItem | lt-maker/app/engine/item_components/advanced_components.py:9 | ADVANCED |  |  | src/engine/states/game-states.ts:8072<br>src/engine/states/game-states.ts:8093<br>src/objects/item.ts:289<br>+1 more | mention | reference-only |
+| multi_item | MultiItem | lt-maker/app/engine/item_components/advanced_components.py:9 | ADVANCED |  |  | src/engine/states/game-states.ts:8102<br>src/engine/states/game-states.ts:8123<br>src/objects/item.ts:289<br>+1 more | mention | reference-only |
 | multi_item_hides_unavailable | MultiItemHidesUnusableChildren | lt-maker/app/engine/item_components/advanced_components.py:16 | ADVANCED |  |  |  |  | unreferenced |
 | sequence_item | SequenceItem | lt-maker/app/engine/item_components/advanced_components.py:21 | ADVANCED |  |  | src/engine/states/game-states.ts:2201<br>src/engine/states/game-states.ts:2309<br>src/engine/states/game-states.ts:2372<br>+8 more | mention | reference-only |
 | multi_target | MultiTarget | lt-maker/app/engine/item_components/advanced_components.py:28 | ADVANCED | num_targets | numTargets | src/combat/item-system.ts:602 | mention | hook-and-reference |
@@ -58,19 +58,19 @@ Summary: 125/201 referenced in web source; 92/201 expose at least one matching w
 | unrepairable | Unrepairable | lt-maker/app/engine/item_components/base_components.py:102 | BASE | unrepairable |  | src/combat/item-system.ts:220 | mention | reference-only |
 | unsplashable | Unsplashable | lt-maker/app/engine/item_components/base_components.py:110 | BASE | unsplashable |  | src/combat/item-system.ts:406 | mention | reference-only |
 | value | Value | lt-maker/app/engine/item_components/base_components.py:118 | BASE | full_price, buy_price, sell_price |  | src/objects/item.ts:10<br>src/objects/item.ts:143 | mention | reference-only |
-| accessory | Accessory | lt-maker/app/engine/item_components/base_components.py:141 | BASE | is_accessory |  | src/combat/item-system.ts:225<br>src/combat/item-system.ts:227<br>src/engine/action.ts:2548<br>+6 more |  | reference-only |
+| accessory | Accessory | lt-maker/app/engine/item_components/base_components.py:141 | BASE | is_accessory |  | src/combat/combat-lifecycle.ts:55<br>src/combat/combat-lifecycle.ts:57<br>src/combat/item-system.ts:225<br>+8 more |  | reference-only |
 | equippable_accessory | EquippableAccessory | lt-maker/app/engine/item_components/base_components.py:149 | BASE | is_accessory, equippable |  |  |  | unreferenced |
 | transform | Transform | lt-maker/app/engine/item_components/base_components.py:160 | BASE | transforms |  |  |  | unreferenced |
 | item_prefab | ItemPrefab | lt-maker/app/engine/item_components/base_components.py:168 | BASE |  |  |  |  | unreferenced |
 | item_tags | ItemTag | lt-maker/app/engine/item_components/base_components.py:175 | BASE |  |  |  |  | unreferenced |
-| promote | Promote | lt-maker/app/engine/item_components/class_change_components.py:8 | CLASS_CHANGE | on_hit, end_combat |  | src/engine/states/game-states.ts:8960<br>src/events/event-manager.ts:96<br>src/events/event-manager.ts:194 |  | reference-only |
+| promote | Promote | lt-maker/app/engine/item_components/class_change_components.py:8 | CLASS_CHANGE | on_hit, end_combat |  | src/engine/states/game-states.ts:8990<br>src/events/event-manager.ts:96<br>src/events/event-manager.ts:194 |  | reference-only |
 | force_promote | ForcePromote | lt-maker/app/engine/item_components/class_change_components.py:39 | CLASS_CHANGE | on_hit, end_combat |  |  |  | unreferenced |
 | class_change | ClassChange | lt-maker/app/engine/item_components/class_change_components.py:54 | CLASS_CHANGE | on_hit, end_combat |  |  |  | unreferenced |
 | force_class_change | ForceClassChange | lt-maker/app/engine/item_components/class_change_components.py:82 | CLASS_CHANGE | on_hit, end_combat |  |  |  | unreferenced |
 | eval_target_restrict | EvalTargetRestrict | lt-maker/app/engine/item_components/deprecated_components.py:17 | DEPRECATED | target_restrict, simple_target_restrict | targetRestrict |  |  | hook-only |
-| event_on_use | EventOnUse | lt-maker/app/engine/item_components/deprecated_components.py:50 | DEPRECATED | on_hit |  | src/combat/combat-lifecycle.ts:51 | mention | reference-only |
-| event_after_use | EventAfterUse | lt-maker/app/engine/item_components/deprecated_components.py:63 | DEPRECATED | on_hit, end_combat |  | src/combat/combat-lifecycle.ts:68 | mention | reference-only |
-| event_after_combat | EventAfterCombat | lt-maker/app/engine/item_components/deprecated_components.py:82 | DEPRECATED | on_hit, end_combat |  | src/combat/combat-lifecycle.ts:69 | mention | reference-only |
+| event_on_use | EventOnUse | lt-maker/app/engine/item_components/deprecated_components.py:50 | DEPRECATED | on_hit |  | src/combat/combat-lifecycle.ts:116 | mention | reference-only |
+| event_after_use | EventAfterUse | lt-maker/app/engine/item_components/deprecated_components.py:63 | DEPRECATED | on_hit, end_combat |  | src/combat/combat-lifecycle.ts:133 | mention | reference-only |
+| event_after_combat | EventAfterCombat | lt-maker/app/engine/item_components/deprecated_components.py:82 | DEPRECATED | on_hit, end_combat |  | src/combat/combat-lifecycle.ts:134 | mention | reference-only |
 | effective | Effective | lt-maker/app/engine/item_components/deprecated_components.py:103 | DEPRECATED | init |  | src/combat/item-system.ts:1025 |  | reference-only |
 | effective_multiplier | EffectiveMultiplier | lt-maker/app/engine/item_components/deprecated_components.py:116 | DEPRECATED | init |  | src/combat/item-system.ts:1020 |  | reference-only |
 | effective_icon | EffectiveIcon | lt-maker/app/engine/item_components/deprecated_components.py:129 | DEPRECATED | item_icon_mod, target_icon |  |  |  | unreferenced |
@@ -138,9 +138,9 @@ Summary: 125/201 referenced in web source; 92/201 expose at least one matching w
 | draw_back_target_restrict | DrawBackTargetRestrict | lt-maker/app/engine/item_components/hit_components.py:366 | SPECIAL | on_hit, target_restrict, end_combat | targetRestrict |  |  | hook-only |
 | steal | Steal | lt-maker/app/engine/item_components/hit_components.py:396 | SPECIAL | init, target_restrict, valid_targets, targets_items, item_restrict, on_hit, end_combat, ai_priority | targetRestrict, validTargets | src/ai/ai-controller.ts:29<br>src/ai/ai-controller.ts:527<br>src/ai/ai-controller.ts:573<br>+14 more | mention | hook-and-reference |
 | gba_steal | GBASteal | lt-maker/app/engine/item_components/hit_components.py:465 | SPECIAL | init, target_restrict, valid_targets, targets_items, item_restrict, on_hit, end_combat, ai_priority | targetRestrict, validTargets | src/ai/ai-controller.ts:527<br>src/combat/combat-components.ts:264<br>src/combat/item-system.ts:244<br>+3 more |  | hook-and-reference |
-| event_on_hit | EventBeforeHit | lt-maker/app/engine/item_components/hit_components.py:479 | SPECIAL | on_hit |  | src/combat/combat-lifecycle.ts:51 | mention | reference-only |
-| event_after_combat_on_hit | EventAfterCombatOnHit | lt-maker/app/engine/item_components/hit_components.py:492 | SPECIAL | on_hit, end_combat |  | src/combat/combat-lifecycle.ts:70 | mention | reference-only |
-| event_after_combat_even_miss | EventAfterCombatEvenMiss | lt-maker/app/engine/item_components/hit_components.py:513 | SPECIAL | on_hit, on_miss, end_combat |  | src/combat/combat-lifecycle.ts:80 | mention | reference-only |
+| event_on_hit | EventBeforeHit | lt-maker/app/engine/item_components/hit_components.py:479 | SPECIAL | on_hit |  | src/combat/combat-lifecycle.ts:116 | mention | reference-only |
+| event_after_combat_on_hit | EventAfterCombatOnHit | lt-maker/app/engine/item_components/hit_components.py:492 | SPECIAL | on_hit, end_combat |  | src/combat/combat-lifecycle.ts:135 | mention | reference-only |
+| event_after_combat_even_miss | EventAfterCombatEvenMiss | lt-maker/app/engine/item_components/hit_components.py:513 | SPECIAL | on_hit, on_miss, end_combat |  | src/combat/combat-lifecycle.ts:145 | mention | reference-only |
 | multi_desc_item | MultiDescItem | lt-maker/app/engine/item_components/multi_desc_components.py:13 | MULTI_DESC | multi_desc |  |  |  | unreferenced |
 | multi_desc_skill | MultiDescSkill | lt-maker/app/engine/item_components/multi_desc_components.py:25 | MULTI_DESC | multi_desc |  |  |  | unreferenced |
 | multi_desc_lore | MultiDescLore | lt-maker/app/engine/item_components/multi_desc_components.py:37 | MULTI_DESC | multi_desc |  |  |  | unreferenced |
@@ -190,7 +190,7 @@ Summary: 125/201 referenced in web source; 92/201 expose at least one matching w
 | restore | Restore | lt-maker/app/engine/item_components/utility_components.py:99 | UTILITY | target_restrict, on_hit | targetRestrict | src/combat/item-system.ts:675<br>src/engine/states/game-states.ts:2006<br>src/objects/item.ts:203 | mention | hook-and-reference |
 | restore_specific | RestoreSpecific | lt-maker/app/engine/item_components/utility_components.py:124 | UTILITY | target_restrict, on_hit | targetRestrict | src/combat/item-system.ts:675<br>src/combat/item-system.ts:676<br>src/engine/states/game-states.ts:2006<br>+2 more |  | hook-and-reference |
 | unlock_staff | UnlockStaff | lt-maker/app/engine/item_components/utility_components.py:134 | UTILITY | valid_targets, splash, target_restrict, on_hit, end_combat | validTargets, splash, targetRestrict | src/combat/item-system.ts:62<br>src/combat/item-system.ts:432<br>src/combat/item-system.ts:696 | mention | hook-and-reference |
-| can_unlock | CanUnlock | lt-maker/app/engine/item_components/utility_components.py:184 | UTILITY | can_unlock |  | src/combat/item-system.ts:65<br>src/combat/item-system.ts:699<br>src/engine/states/game-states.ts:9803<br>+4 more |  | reference-only |
+| can_unlock | CanUnlock | lt-maker/app/engine/item_components/utility_components.py:184 | UTILITY | can_unlock |  | src/combat/item-system.ts:65<br>src/combat/item-system.ts:699<br>src/engine/states/game-states.ts:9833<br>+4 more |  | reference-only |
 | repair | Repair | lt-maker/app/engine/item_components/utility_components.py:200 | UTILITY | init, target_restrict, simple_target_restrict, targets_items, item_restrict, on_hit, end_combat | targetRestrict | src/combat/item-system.ts:683<br>src/engine/states/game-states.ts:2031<br>src/engine/states/game-states.ts:2350<br>+5 more | mention | hook-and-reference |
 | trade | Trade | lt-maker/app/engine/item_components/utility_components.py:242 | UTILITY | on_hit, end_combat |  | src/engine/states/game-states.ts:1613<br>src/engine/states/game-states.ts:1766<br>src/engine/states/game-states.ts:1768<br>+1 more |  | reference-only |
 | menu_after_combat | MenuAfterCombat | lt-maker/app/engine/item_components/utility_components.py:260 | UTILITY | menu_after_combat |  |  |  | unreferenced |

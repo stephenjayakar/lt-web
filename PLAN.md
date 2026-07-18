@@ -331,10 +331,53 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     Inventory advanced to **125/201 item exact references**; **54,623 TypeScript
     lines**; the full serial gate is **120/120 passing**. Known deferrals:
     `Silver_Card` (Bargain) shop-price hook has no skill dispatch in the shop price
-    path and is deferred; droppable-item pickup on death is not wired (pre-existing
-    gap, unrelated); `collectStatusOnHoldNids`/`collectStatusOnEquipNids` recurse
+    path and is deferred (droppable-item pickup on death, noted here as a gap, is
+    now implemented — see the droppable-item pickup slice below);
+    `collectStatusOnHoldNids`/`collectStatusOnEquipNids` recurse
     into subitems, diverging from Python's `inherits_parent` upward-only model
     (shared with the equip slice — no default-project item triggers this).
+
+- **Droppable-item pickup on kill slice:**
+  - Implemented Python `simple_combat.handle_item_gain` parity: every item with
+    `droppable = true` on a unit killed in combat now transfers to the killer
+    (defender deaths → attacker; if the attacker itself dies, its droppable items
+    transfer to the primary defender instead), clearing `droppable` on transfer
+    (`SetDroppable(item, False)` parity) via the new `applyDroppableItemPickups`
+    helper (`src/combat/combat-lifecycle.ts`), called from both `CombatState`
+    (`src/engine/states/game-states.ts`) and the `harness.resolveCombat` test path.
+    Verified against `lt-maker/app/engine/combat/simple_combat.py:380-423`,
+    `app/events/event_functions.py:1539-1585` (`give_item`), and
+    `app/engine/action.py` (`GiveItem`, `PutItemInConvoy`, `SetDroppable`).
+  - Fixed `map-combat.ts`/`animation-combat.ts` to collect **every** droppable
+    item on a killed unit (previously only the first, via `.find`) into
+    `CombatResults.droppedItems`.
+  - Overflow rule: a full player-team killer's drop is sent to the current
+    party's convoy (`SentToConvoy` banner) — a documented simplification of
+    Python's `item_discard` UI flow, which forces the add and then prompts the
+    player to discard something. A full non-player killer does not receive the
+    item at all (matches `GiveItem.do()`'s silent refusal for non-player teams).
+  - Confirmed (contrary to the initial assumption) that Python's
+    `handle_item_gain` has **no team-allegiance gate**: an enemy unit that kills
+    a player unit loots that unit's droppable items exactly like a player kill
+    would. Implemented and tested to match.
+  - Added a `got_item` combat sub-phase and `AcquiredItem`-style banner
+    (`"{name} got {a/an} {item}."`) shown after the rank-up banner and before
+    cleanup, queued per dropped item; reused the existing `stole`/`rank_up`
+    banner-phase machinery in `CombatState`.
+  - Turnwheel undo/redo and save/load already worked for free via the existing
+    reversible-action seams (`SetItemDroppableAction`, `MoveItemBetweenUnitsAction`,
+    `StoreItemAction`, `RemoveItemFromUnitAction`) and the key-based item
+    serialization in `save.ts` — no new persistence code was needed.
+  - Added 5 regressions (`tests/droppable-pickup.spec.ts`): direct pickup with
+    droppable cleared; full-inventory overflow to convoy; enemy-kills-player
+    looting; turnwheel undo restores the item to the dead unit with `droppable`
+    re-set; save/load round trip. Full serial gate is **150/150 passing**.
+    Known deviation: mutual-kill edge case (both attacker and defender die in
+    the same exchange) — Python still runs the defender-drop transfer into the
+    now-dying attacker's inventory before it's discarded; this port skips that
+    transfer instead of handing items to a corpse, since the item would be
+    unrecoverable in Python too. `npm run audit:parity:write` refreshed
+    (line-count drift only, no new component references).
 
 - **Effective-damage parity and lifelink clamp slice:**
   - Fixed `dynamicDamage` to dispatch the canonical `effective_damage` component
