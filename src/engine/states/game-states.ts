@@ -1951,6 +1951,45 @@ export class MenuState extends State {
 // 4b. ItemUseState - Select and use a consumable item
 // ============================================================================
 
+/**
+ * Shared promotion/class-change core: applies the class-swap action, grants
+ * the new class's starting wexp (flat, additive -- matches Python's
+ * action.AddWexp), and grants the new class's learned skills up to the
+ * unit's current level (matching event_functions.py promote/change_class).
+ * Every mutation goes through the reversible action log so turnwheel undo
+ * restores class, stats, wexp, and skills exactly.
+ */
+export function performPromotionOrClassChange(
+  unit: UnitObject,
+  newKlass: string,
+  game: any,
+  kind: 'promote' | 'change_class' = 'promote',
+): void {
+  const action = kind === 'promote'
+    ? new PromoteAction(unit, newKlass)
+    : new ClassChangeAction(unit, newKlass);
+  game.actionLog.doAction(action);
+
+  const { newWexp } = action.getData();
+  for (const [weaponNid, value] of Object.entries(newWexp)) {
+    if (value > 0) {
+      game.actionLog.doAction(new GainWexpAction(unit, weaponNid, value));
+    }
+  }
+
+  const unitKlass = game.db.classes.get(unit.klass);
+  if (unitKlass?.learned_skills) {
+    for (const [levelNeeded, classSkillNid] of unitKlass.learned_skills) {
+      if (unit.level >= levelNeeded && !unit.skills.some((s: SkillObject) => s.nid === classSkillNid)) {
+        const skillPrefab = game.db.skills.get(classSkillNid);
+        if (skillPrefab) {
+          game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(skillPrefab)));
+        }
+      }
+    }
+  }
+}
+
 function applyCoreTargetedEffects(
   unit: UnitObject,
   item: ItemObject,
@@ -2035,6 +2074,29 @@ function applyCoreTargetedEffects(
     if (target && targetItem && target.items.includes(targetItem) && isRepairableItem(targetItem)) {
       game.actionLog.doAction(new SetItemUsesAction(targetItem, targetItem.maxUses));
       applied = true;
+    }
+  }
+
+  // Single-option promotion/force-promotion. Multi-option promotion is
+  // routed through ItemTargetingState.selectTarget -> 'promotion_choice'
+  // instead, since it needs a choice menu; this only covers the direct
+  // (e.g. self-target) path used for uniform application logic.
+  if (item.hasComponent('promote') || item.hasComponent('force_promote')) {
+    const forceKlass = item.getComponent<string>('force_promote');
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      if (!target) continue;
+      let options: string[] = [];
+      if (forceKlass) {
+        options = [forceKlass];
+      } else {
+        const klass = game.db.classes.get(target.klass);
+        options = klass?.turns_into ? [...klass.turns_into] : [];
+      }
+      if (options.length === 1) {
+        performPromotionOrClassChange(target, options[0], game, 'promote');
+        applied = true;
+      }
     }
   }
 
@@ -2306,7 +2368,12 @@ export class ItemUseState extends State {
 
       if (item && unit) {
         const targets = game.targetSystem?.getValidTargetsRecursive(unit, item) ?? [];
-        if (item.hasCoreUseEffect() && !item.hasComponent('sequence_item') &&
+        // Promotion items always route through ItemTargetingState so that
+        // multi-option promotions can present the choice menu, even when
+        // (as with the default project's crests/seals) the only valid
+        // target is the user.
+        const needsPromotionRouting = item.hasComponent('promote') || item.hasComponent('force_promote');
+        if (item.hasCoreUseEffect() && !item.hasComponent('sequence_item') && !needsPromotionRouting &&
             targets.length === 1 && unit.position &&
             targets[0][0] === unit.position[0] && targets[0][1] === unit.position[1]) {
           applyCoreTargetedItem(unit, item, targets[0]);
@@ -2436,6 +2503,38 @@ export class ItemTargetingState extends MapState {
       game.combatTarget = defender;
       game.highlight.clear();
       game.state.change('combat');
+      return;
+    }
+
+    if (activeItem === this.item &&
+        (activeItem.hasComponent('promote') || activeItem.hasComponent('force_promote'))) {
+      const defender = game.board.getUnit(target[0], target[1]);
+      if (!defender) return;
+      const forceKlass = activeItem.getComponent<string>('force_promote');
+      let options: string[];
+      if (forceKlass) {
+        options = [forceKlass];
+      } else {
+        const klass = game.db.classes.get(defender.klass);
+        options = klass?.turns_into ? [...klass.turns_into] : [];
+      }
+      if (options.length === 0) return;
+      if (options.length === 1) {
+        performPromotionOrClassChange(defender, options[0], game, 'promote');
+        finishCoreItemUse(unit, this.item, [defender]);
+        game.memory.delete('item_use_item');
+        game.highlight.clear();
+        game.state.back();
+        return;
+      }
+      // Multiple promotion options: route to the choice menu state, matching
+      // Python's game.state 'promotion_choice'.
+      game.memory.set('promotion_choice_unit', defender);
+      game.memory.set('promotion_choice_options', options);
+      game.memory.set('promotion_choice_item', this.item);
+      game.memory.set('promotion_choice_actor', unit);
+      game.highlight.clear();
+      game.state.change('promotion_choice');
       return;
     }
 
@@ -2617,6 +2716,113 @@ export class ItemTargetingState extends MapState {
     this.sequenceIndex = 0;
     this.selectedTargets = [];
     getGame().highlight.clear();
+  }
+}
+
+// ============================================================================
+// 4c-2. PromotionChoiceState - Choose between multiple promotion targets
+// ============================================================================
+
+/**
+ * Port of Python's PromotionChoiceState (game.state 'promotion_choice').
+ * Reached from ItemTargetingState when the target's class has 2+
+ * `turns_into` options. Presentation is a simplified keyboard/mouse choice
+ * menu rather than the full scroll/fanfare screen; mechanics (class swap,
+ * stat gains, wexp, skills) go through the same reversible core as the
+ * single-option path (see `performPromotionOrClassChange`).
+ */
+export class PromotionChoiceState extends State {
+  readonly name = 'promotion_choice';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private options: string[] = [];
+  private targetUnit: UnitObject | null = null;
+
+  override begin(): StateResult {
+    const game = getGame();
+    this.targetUnit = game.memory.get('promotion_choice_unit') ?? null;
+    this.options = game.memory.get('promotion_choice_options') ?? [];
+    if (!this.targetUnit || this.options.length === 0) {
+      game.state.back();
+      return 'repeat';
+    }
+
+    const menuOptions: MenuOption[] = this.options.map((klassNid: string) => ({
+      label: game.db.classes.get(klassNid)?.name ?? klassNid,
+      value: klassNid,
+      enabled: true,
+    }));
+
+    const [cameraX, cameraY] = game.camera.getOffset();
+    const pos = this.targetUnit.position;
+    const menuX = pos
+      ? Math.min(pos[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100)
+      : viewport.width / 2;
+    const menuY = pos
+      ? Math.min(pos[1] * TILEHEIGHT - cameraY, viewport.height - menuOptions.length * 16 - 8)
+      : viewport.height / 2;
+    this.menu = new ChoiceMenu(menuOptions, Math.max(0, menuX), Math.max(0, menuY));
+  }
+
+  private cleanupMemory(): void {
+    const game = getGame();
+    game.memory.delete('promotion_choice_unit');
+    game.memory.delete('promotion_choice_options');
+    game.memory.delete('promotion_choice_item');
+    game.memory.delete('promotion_choice_actor');
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result) return;
+
+    if ('back' in result) {
+      // Cancel: refund (nothing consumed yet), return to target selection
+      // without promoting -- mirrors Python's can_go_back refund path.
+      this.cleanupMemory();
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+
+    if ('selected' in result) {
+      const newKlass = result.selected;
+      const target = this.targetUnit;
+      const item: ItemObject | null = game.memory.get('promotion_choice_item') ?? null;
+      const actor: UnitObject | null = game.memory.get('promotion_choice_actor') ?? null;
+      if (target && item && actor) {
+        performPromotionOrClassChange(target, newKlass, game, 'promote');
+        finishCoreItemUse(actor, item, [target]);
+      }
+      this.cleanupMemory();
+      game.memory.delete('item_use_item');
+      game.highlight.clear();
+      this.menu = null;
+      game.state.back(); // pop promotion_choice
+      game.state.back(); // pop item_targeting
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    if (this.menu) this.menu.draw(surf);
+    return surf;
+  }
+
+  override end(): StateResult {
+    this.menu = null;
   }
 }
 
@@ -9009,24 +9215,11 @@ export class EventState extends State {
           }
 
           if (klassList.length > 0) {
-            // Use the first class (for multi-class, a choice UI would be needed)
+            // Use the first class. A full 'promotion_choice' UI is not
+            // wired into the event-command flow (deferred); the item-driven
+            // flow (ItemTargetingState -> 'promotion_choice') covers that.
             const newKlass = klassList[0];
-            const promoAction = new PromoteAction(promoUnit, newKlass);
-            game.actionLog.doAction(promoAction);
-
-            // Grant new class skills
-            this.grantClassSkills(promoUnit, game);
-
-            // Apply new weapon experience
-            const { newWexp } = promoAction.getData();
-            if (newWexp) {
-              for (const [weaponNid, value] of Object.entries(newWexp)) {
-                if (value > 0) {
-                  const current = promoUnit.wexp[weaponNid] ?? 0;
-                  promoUnit.wexp[weaponNid] = Math.max(current, value);
-                }
-              }
-            }
+            performPromotionOrClassChange(promoUnit, newKlass, game, 'promote');
 
             // Reload map sprite for new class
             this.loadMapSpriteForUnit(promoUnit, game);
@@ -9062,22 +9255,7 @@ export class EventState extends State {
           if (ccKlassList.length > 0) {
             const newKlass = ccKlassList[0];
             if (newKlass !== ccUnit.klass) {
-              const ccAction = new ClassChangeAction(ccUnit, newKlass);
-              game.actionLog.doAction(ccAction);
-
-              // Grant new class skills
-              this.grantClassSkills(ccUnit, game);
-
-              // Apply new weapon experience
-              const { newWexp } = ccAction.getData();
-              if (newWexp) {
-                for (const [weaponNid, value] of Object.entries(newWexp)) {
-                  if (value > 0) {
-                    const current = ccUnit.wexp[weaponNid] ?? 0;
-                    ccUnit.wexp[weaponNid] = Math.max(current, value);
-                  }
-                }
-              }
+              performPromotionOrClassChange(ccUnit, newKlass, game, 'change_class');
 
               // Reload map sprite for new class
               this.loadMapSpriteForUnit(ccUnit, game);

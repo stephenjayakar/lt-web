@@ -41,25 +41,25 @@ Summary: 73/241 referenced in web source; 67/241 expose at least one matching we
 | map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  |  |  | unreferenced |
 | battle_animation_music | BattleAnimMusic | lt-maker/app/engine/skill_components/aesthetic_components.py:230 | AESTHETIC | battle_music |  |  |  | unreferenced |
 | modify_ai_priority | ModifyAIPriority | lt-maker/app/engine/skill_components/ai_components.py:14 | ADVANCED | ai_priority_multiplier |  |  |  | unreferenced |
-| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  | src/engine/states/game-states.ts:8912<br>src/engine/states/game-states.ts:10723<br>src/engine/states/game-states.ts:10736<br>+1 more |  | reference-only |
+| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  | src/engine/states/game-states.ts:9118<br>src/engine/states/game-states.ts:10901<br>src/engine/states/game-states.ts:10914<br>+1 more |  | reference-only |
 | hidden_if_inactive | HiddenIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:10 | ATTRIBUTE |  |  |  |  | unreferenced |
 | grey_if_inactive | GreyIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:15 | ATTRIBUTE |  |  |  |  | unreferenced |
 | is_terrain | TerrainSkill | lt-maker/app/engine/skill_components/attribute_components.py:20 | ATTRIBUTE | condition |  |  |  | unreferenced |
 | class_skill | ClassSkill | lt-maker/app/engine/skill_components/attribute_components.py:30 | ATTRIBUTE |  |  |  |  | unreferenced |
-| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  | src/engine/states/game-states.ts:10902<br>src/engine/states/game-states.ts:10925 |  | reference-only |
+| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  | src/engine/states/game-states.ts:11080<br>src/engine/states/game-states.ts:11103 |  | reference-only |
 | feat | Feat | lt-maker/app/engine/skill_components/attribute_components.py:44 | ATTRIBUTE |  |  | src/engine/learned-skills.ts:12 | mention | reference-only |
-| negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | src/combat/item-system.ts:678<br>src/engine/states/game-states.ts:2012 |  | reference-only |
+| negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | src/combat/item-system.ts:678<br>src/engine/states/game-states.ts:2051 |  | reference-only |
 | global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  |  | unreferenced |
-| negate | Negate | lt-maker/app/engine/skill_components/attribute_components.py:62 | ATTRIBUTE |  |  | src/combat/item-system.ts:1159 |  | reference-only |
-| negate_tags | NegateTags | lt-maker/app/engine/skill_components/attribute_components.py:67 | ATTRIBUTE |  |  | src/combat/item-system.ts:1160 |  | reference-only |
-| has_tags | HasTags | lt-maker/app/engine/skill_components/attribute_components.py:74 | ATTRIBUTE | additional_tags |  | src/combat/item-system.ts:1106 |  | reference-only |
+| negate | Negate | lt-maker/app/engine/skill_components/attribute_components.py:62 | ATTRIBUTE |  |  | src/combat/item-system.ts:1171 |  | reference-only |
+| negate_tags | NegateTags | lt-maker/app/engine/skill_components/attribute_components.py:67 | ATTRIBUTE |  |  | src/combat/item-system.ts:1172 |  | reference-only |
+| has_tags | HasTags | lt-maker/app/engine/skill_components/attribute_components.py:74 | ATTRIBUTE | additional_tags |  | src/combat/item-system.ts:1118 |  | reference-only |
 | unselectable | Unselectable | lt-maker/app/engine/skill_components/base_components.py:8 | BASE | can_select |  |  |  | unreferenced |
 | cannot_use_items | CannotUseItems | lt-maker/app/engine/skill_components/base_components.py:16 | BASE | available |  | src/combat/item-system.ts:210 | mention | reference-only |
 | cannot_use_magic_items | CannotUseMagicItems | lt-maker/app/engine/skill_components/base_components.py:24 | BASE | available |  | src/combat/item-system.ts:211 |  | reference-only |
 | cannot_trade | CannotTrade | lt-maker/app/engine/skill_components/base_components.py:32 | BASE | no_trade |  |  |  | unreferenced |
 | additional_accessories | AdditionalAccessories | lt-maker/app/engine/skill_components/base_components.py:40 | BASE | num_items_offset, num_accessories_offset |  |  |  | unreferenced |
 | ignore_alliances | IgnoreAlliances | lt-maker/app/engine/skill_components/base_components.py:54 | BASE | check_ally, check_enemy |  |  |  | unreferenced |
-| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  | src/engine/states/game-states.ts:8314<br>src/events/event-manager.ts:92<br>src/events/event-manager.ts:190<br>+2 more |  | reference-only |
+| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  | src/engine/states/game-states.ts:8520<br>src/events/event-manager.ts:92<br>src/events/event-manager.ts:190<br>+2 more |  | reference-only |
 | change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  |  | unreferenced |
 | exp_multiplier | ExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:85 | BASE | exp_multiplier | expMultiplier | src/combat/skill-system.ts:522 |  | hook-and-reference |
 | enemy_exp_multiplier | EnemyExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:95 | BASE | enemy_exp_multiplier | enemyExpMultiplier | src/combat/skill-system.ts:526 |  | hook-and-reference |
@@ -86,7 +86,7 @@ Summary: 73/241 referenced in web source; 67/241 expose at least one matching we
 | ignore_damage | IgnoreDamage | lt-maker/app/engine/skill_components/combat2_components.py:44 | COMBAT2 | after_take_strike |  |  |  | unreferenced |
 | live_to_serve | LiveToServe | lt-maker/app/engine/skill_components/combat2_components.py:61 | COMBAT2 | after_strike |  |  |  | unreferenced |
 | lifetaker | Lifetaker | lt-maker/app/engine/skill_components/combat2_components.py:84 | COMBAT2 | end_combat |  |  |  | unreferenced |
-| lifelink | Lifelink | lt-maker/app/engine/skill_components/combat2_components.py:108 | COMBAT2 | after_strike |  | src/combat/item-system.ts:1380 |  | reference-only |
+| lifelink | Lifelink | lt-maker/app/engine/skill_components/combat2_components.py:108 | COMBAT2 | after_strike |  | src/combat/item-system.ts:1392 |  | reference-only |
 | ally_lifelink | AllyLifelink | lt-maker/app/engine/skill_components/combat2_components.py:132 | COMBAT2 | after_strike |  |  |  | unreferenced |
 | armsthrift | Armsthrift | lt-maker/app/engine/skill_components/combat2_components.py:164 | COMBAT2 | after_strike, post_combat |  |  |  | unreferenced |
 | limit_maximum_range | LimitMaximumRange | lt-maker/app/engine/skill_components/combat2_components.py:233 | COMBAT2 | limit_maximum_range |  |  |  | unreferenced |
@@ -94,7 +94,7 @@ Summary: 73/241 referenced in web source; 67/241 expose at least one matching we
 | modify_minimum_range | ModifyMinimumRange | lt-maker/app/engine/skill_components/combat2_components.py:257 | COMBAT2 | modify_minimum_range |  |  |  | unreferenced |
 | eval_max_range | EvalMaximumRange | lt-maker/app/engine/skill_components/combat2_components.py:269 | COMBAT2 | modify_maximum_range, has_dynamic_range |  |  |  | unreferenced |
 | eval_min_range | EvalMinimumRange | lt-maker/app/engine/skill_components/combat2_components.py:288 | COMBAT2 | modify_minimum_range, has_dynamic_range |  |  |  | unreferenced |
-| cannot_double | CannotDouble | lt-maker/app/engine/skill_components/combat2_components.py:307 | COMBAT2 | no_double | noDouble | src/combat/item-system.ts:861 |  | hook-and-reference |
+| cannot_double | CannotDouble | lt-maker/app/engine/skill_components/combat2_components.py:307 | COMBAT2 | no_double | noDouble | src/combat/item-system.ts:873 |  | hook-and-reference |
 | can_double_on_defense | CanDoubleOnDefense | lt-maker/app/engine/skill_components/combat2_components.py:316 | COMBAT2 | def_double | defDouble |  |  | hook-only |
 | vantage | Vantage | lt-maker/app/engine/skill_components/combat2_components.py:324 | COMBAT2 | vantage | vantage | src/combat/skill-system.ts:169 |  | hook-and-reference |
 | desperation | Desperation | lt-maker/app/engine/skill_components/combat2_components.py:333 | COMBAT2 | desperation | desperation | src/combat/skill-system.ts:174 |  | hook-and-reference |
@@ -148,7 +148,7 @@ Summary: 73/241 referenced in web source; 67/241 expose at least one matching we
 | pcc_static | PCCStatic | lt-maker/app/engine/skill_components/combat_components.py:289 | COMBAT | crit_multiplier |  |  |  | unreferenced |
 | resist_follow_up | ResistFollowUp | lt-maker/app/engine/skill_components/combat_components.py:301 | COMBAT | resist_multiplier | resistMultiplier |  |  | hook-only |
 | combat_condition | CombatCondition | lt-maker/app/engine/skill_components/conditional_components.py:5 | ADVANCED | pre_combat, post_combat_unconditional, condition, test_on, test_off |  | src/combat/combat-skill-lifecycle.ts:172<br>src/combat/combat-skill-lifecycle.ts:183 | mention | reference-only |
-| condition | Condition | lt-maker/app/engine/skill_components/conditional_components.py:44 | ADVANCED | condition |  | src/combat/combat-skill-lifecycle.ts:192<br>src/combat/item-system.ts:101<br>src/combat/item-system.ts:1131 | mention | reference-only |
+| condition | Condition | lt-maker/app/engine/skill_components/conditional_components.py:44 | ADVANCED | condition |  | src/combat/combat-skill-lifecycle.ts:192<br>src/combat/item-system.ts:101<br>src/combat/item-system.ts:1143 | mention | reference-only |
 | lost_on_end_combat | LostOnEndCombat | lt-maker/app/engine/skill_components/deprecated_components.py:9 | DEPRECATED | values, post_combat_unconditional, on_end_chapter |  |  |  | unreferenced |
 | combat_art_set_max_range | CombatArtSetMaxRange | lt-maker/app/engine/skill_components/deprecated_components.py:54 | DEPRECATED | combat_art_set_max_range |  |  |  | unreferenced |
 | combat_art_modify_max_range | CombatArtModifyMaxRange | lt-maker/app/engine/skill_components/deprecated_components.py:66 | DEPRECATED | combat_art_modify_max_range |  |  |  | unreferenced |
@@ -166,12 +166,12 @@ Summary: 73/241 referenced in web source; 67/241 expose at least one matching we
 | dynamic_multiattacks | DynamicMultiattacks | lt-maker/app/engine/skill_components/dynamic_components.py:152 | DYNAMIC | dynamic_multiattacks | dynamicMultiattacks | src/combat/skill-system.ts:431 |  | hook-and-reference |
 | alternate_damage_formula | AlternateDamageFormula | lt-maker/app/engine/skill_components/formula_components.py:4 | FORMULA | damage_formula | damageFormula | src/combat/skill-system.ts:474 |  | hook-and-reference |
 | damage_formula_override | DamageFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:15 | FORMULA | damage_formula_override |  |  |  | unreferenced |
-| alternate_resist_formula | AlternateResistFormula | lt-maker/app/engine/skill_components/formula_components.py:26 | FORMULA | resist_formula | resistFormula | src/combat/item-system.ts:886<br>src/combat/skill-system.ts:480 | mention | hook-and-reference |
-| resist_formula_override | ResistFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:37 | FORMULA | resist_formula_override | resistFormulaOverride | src/combat/item-system.ts:890<br>src/combat/skill-system.ts:484 |  | hook-and-reference |
-| alternate_accuracy_formula | AlternateAccuracyFormula | lt-maker/app/engine/skill_components/formula_components.py:48 | FORMULA | accuracy_formula | accuracyFormula | src/combat/item-system.ts:870<br>src/combat/skill-system.ts:490 | mention | hook-and-reference |
-| accuracy_formula_override | AccuracyFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:59 | FORMULA | accuracy_formula_override | accuracyFormulaOverride | src/combat/item-system.ts:874<br>src/combat/skill-system.ts:494 |  | hook-and-reference |
-| alternate_avoid_formula | AlternateAvoidFormula | lt-maker/app/engine/skill_components/formula_components.py:70 | FORMULA | avoid_formula | avoidFormula | src/combat/item-system.ts:878<br>src/combat/skill-system.ts:500 | mention | hook-and-reference |
-| avoid_formula_override | AvoidFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:81 | FORMULA | avoid_formula_override | avoidFormulaOverride | src/combat/item-system.ts:882<br>src/combat/skill-system.ts:504 |  | hook-and-reference |
+| alternate_resist_formula | AlternateResistFormula | lt-maker/app/engine/skill_components/formula_components.py:26 | FORMULA | resist_formula | resistFormula | src/combat/item-system.ts:898<br>src/combat/skill-system.ts:480 | mention | hook-and-reference |
+| resist_formula_override | ResistFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:37 | FORMULA | resist_formula_override | resistFormulaOverride | src/combat/item-system.ts:902<br>src/combat/skill-system.ts:484 |  | hook-and-reference |
+| alternate_accuracy_formula | AlternateAccuracyFormula | lt-maker/app/engine/skill_components/formula_components.py:48 | FORMULA | accuracy_formula | accuracyFormula | src/combat/item-system.ts:882<br>src/combat/skill-system.ts:490 | mention | hook-and-reference |
+| accuracy_formula_override | AccuracyFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:59 | FORMULA | accuracy_formula_override | accuracyFormulaOverride | src/combat/item-system.ts:886<br>src/combat/skill-system.ts:494 |  | hook-and-reference |
+| alternate_avoid_formula | AlternateAvoidFormula | lt-maker/app/engine/skill_components/formula_components.py:70 | FORMULA | avoid_formula | avoidFormula | src/combat/item-system.ts:890<br>src/combat/skill-system.ts:500 | mention | hook-and-reference |
+| avoid_formula_override | AvoidFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:81 | FORMULA | avoid_formula_override | avoidFormulaOverride | src/combat/item-system.ts:894<br>src/combat/skill-system.ts:504 |  | hook-and-reference |
 | alternate_crit_accuracy_formula | AlternateCritAccuracyFormula | lt-maker/app/engine/skill_components/formula_components.py:92 | FORMULA | crit_accuracy_formula |  |  |  | unreferenced |
 | crit_accuracy_formula_override | CritAccuracyFormulaOverride | lt-maker/app/engine/skill_components/formula_components.py:103 | FORMULA | crit_accuracy_formula_override |  |  |  | unreferenced |
 | alternate_crit_avoid_formula | AlternateCritAvoidFormula | lt-maker/app/engine/skill_components/formula_components.py:114 | FORMULA | crit_avoid_formula |  |  |  | unreferenced |
@@ -183,7 +183,7 @@ Summary: 73/241 referenced in web source; 67/241 expose at least one matching we
 | alternate_critical_multiplier_formula | AlternateCriticalMultiplierFormula | lt-maker/app/engine/skill_components/formula_components.py:180 | FORMULA | critical_multiplier_formula |  |  |  | unreferenced |
 | alternate_critical_addition_formula | AlternateCriticalAdditionFormula | lt-maker/app/engine/skill_components/formula_components.py:191 | FORMULA | critical_addition_formula |  |  |  | unreferenced |
 | alternate_thracia_critical_addition_formula | AlternateThraciaCriticalMultiplierFormula | lt-maker/app/engine/skill_components/formula_components.py:202 | FORMULA | thracia_critical_multiplier_formula |  |  |  | unreferenced |
-| canto | Canto | lt-maker/app/engine/skill_components/movement_components.py:13 | MOVEMENT | canto_movement, has_canto | hasCanto | src/combat/item-system.ts:1272<br>src/combat/item-system.ts:1286<br>src/combat/item-system.ts:1292<br>+8 more |  | hook-and-reference |
+| canto | Canto | lt-maker/app/engine/skill_components/movement_components.py:13 | MOVEMENT | canto_movement, has_canto | hasCanto | src/combat/item-system.ts:1284<br>src/combat/item-system.ts:1298<br>src/combat/item-system.ts:1304<br>+8 more |  | hook-and-reference |
 | canto_plus | CantoPlus | lt-maker/app/engine/skill_components/movement_components.py:27 | MOVEMENT | canto_movement, has_canto | hasCanto |  |  | hook-only |
 | canto_sharp | CantoSharp | lt-maker/app/engine/skill_components/movement_components.py:38 | MOVEMENT | canto_movement, has_canto | hasCanto |  |  | hook-only |
 | canter | Canter | lt-maker/app/engine/skill_components/movement_components.py:49 | MOVEMENT | canto_movement, has_canto | hasCanto |  |  | hook-only |
