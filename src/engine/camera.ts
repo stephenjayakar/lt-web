@@ -116,6 +116,16 @@ export class Camera {
     }
   }
 
+  /** Current (unshaken) camera position, for test/harness introspection. */
+  getPosition(): [number, number] {
+    return [this.x, this.y];
+  }
+
+  /** Current camera target position, for test/harness introspection. */
+  getTarget(): [number, number] {
+    return [this.targetX, this.targetY];
+  }
+
   getOffset(): [number, number] {
     const shake = this.shakeOffsets[this.shakeIdx];
     return [Math.round(this.x) + shake[0], Math.round(this.y) + shake[1]];

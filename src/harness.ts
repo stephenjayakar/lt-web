@@ -119,6 +119,27 @@ export interface HarnessAPI {
   setAiGroupActive: (groupId: string, active: boolean) => void;
   /** Set the terrain NID at a board position (for Terrain target_spec fixtures). */
   setTerrain: (x: number, y: number, terrainNid: string) => void;
+  /** Structural snapshot of the current tilemap: layer visibility/fade state, autotile frame, weather, camera. */
+  getRenderState: () => RenderStateSummary | null;
+  /** Show/hide a tilemap layer directly (bypassing the event system), for deterministic rendering tests. */
+  setLayer: (nid: string, visible: boolean, transition?: 'fade' | 'immediate', nowMs?: number) => boolean;
+  /** Force autotile animation + layer fade transitions to a specific elapsed time (ms), for deterministic frames. */
+  forceTilemapTime: (ms: number) => void;
+  /** Add a weather effect by NID (bypassing the event system). */
+  addWeather: (nid: string) => void;
+  /** Remove a weather effect by NID. */
+  removeWeather: (nid: string) => void;
+  /** Force the camera to an exact pixel position (bypassing easing), for deterministic screenshots. */
+  forceCameraPosition: (x: number, y: number) => void;
+  /** Set the camera's target position and let it ease toward it (does NOT snap). */
+  setCameraTarget: (x: number, y: number) => void;
+}
+
+export interface RenderStateSummary {
+  layers: Array<{ nid: string; visible: boolean; foreground: boolean; state: 'fade_in' | 'fade_out' | null; renderAlpha: number }>;
+  autotileFrame: number;
+  weatherNids: string[];
+  camera: { x: number; y: number; targetX: number; targetY: number };
 }
 
 export interface AiActionSummary {
@@ -607,6 +628,53 @@ export function installHarness(
 
     setTerrain(x: number, y: number, terrainNid: string): void {
       game.board?.setTerrain(x, y, terrainNid);
+    },
+
+    getRenderState(): RenderStateSummary | null {
+      if (!game.tilemap) return null;
+      const layers = game.tilemap.layers.map((l) => ({
+        nid: l.nid,
+        visible: l.visible,
+        foreground: l.foreground,
+        state: l.state,
+        renderAlpha: l.renderAlpha,
+      }));
+      const autotileFrame = game.tilemap.getAutotileFrameIndex();
+      const weatherNids = game.tilemap.weather.map((w) => w.nid);
+      const [cx, cy] = game.camera.getPosition();
+      const [tx, ty] = game.camera.getTarget();
+      return { layers, autotileFrame, weatherNids, camera: { x: cx, y: cy, targetX: tx, targetY: ty } };
+    },
+
+    setLayer(nid: string, visible: boolean, transition?: 'fade' | 'immediate', nowMs?: number): boolean {
+      if (!game.tilemap) return false;
+      const t = nowMs ?? Date.now();
+      if (visible) {
+        game.tilemap.showLayer(nid, transition ?? 'fade', t);
+      } else {
+        game.tilemap.hideLayer(nid, transition ?? 'fade', t);
+      }
+      return true;
+    },
+
+    forceTilemapTime(ms: number): void {
+      game.tilemap?.updateAutotiles(ms);
+    },
+
+    addWeather(nid: string): void {
+      game.tilemap?.addWeather(nid);
+    },
+
+    removeWeather(nid: string): void {
+      game.tilemap?.removeWeather(nid);
+    },
+
+    forceCameraPosition(x: number, y: number): void {
+      game.camera.forcePosition(x, y);
+    },
+
+    setCameraTarget(x: number, y: number): void {
+      game.camera.setTarget(x, y);
     },
 
     turnwheelUndo(): boolean {

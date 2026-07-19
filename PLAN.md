@@ -1990,7 +1990,9 @@ mouse, touch, cancel/back, transition, and resume tests.
 
 ### P6 — Rendering, Animation, Audio, and Resources
 
-- [ ] Compare tile layers, autotiles, weather, map animations, fog, and camera effects
+- [x] Compare tile layers, autotiles, weather, map animations, fog, and camera effects
+  (2026-07-19: verification slice, see `tests/rendering-parity.spec.ts` and PLAN.md
+  entry #3 in Active Next Slice for the full audit table, fix, and deferrals)
 - [ ] Complete combat-animation fallback behavior without debug placeholder art
 - [ ] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
 - [ ] Verify portrait expressions, dialog controls, transitions, overlays, and text layout
@@ -2070,7 +2072,36 @@ slice landed:
    yet, consistent with this port's existing minimal-playback scope.
 3. Trigger payload and EVNT/PYEV1 nested-flow audit (P1).
 4. Roam talk/shop interaction and overworld option menus (P5).
-5. Rendering comparisons: tile layers, autotiles, weather, camera (P6).
+5. ~~Rendering comparisons: tile layers, autotiles, weather, camera (P6)~~ DONE
+   (2026-07-19). Audit vs. `lt-maker/app/engine/objects/tilemap.py`,
+   `particles.py`, `camera.py`:
+
+   | Area | Python behavior | Web behavior (before) | Verdict / action |
+   |---|---|---|---|
+   | Autotile frame timing | `autotile_wait = int(fps * 16.66)`; `frame = (current_time // autotile_wait) % len(frames)` (tilemap.py:100-105) | Already `Math.floor(fps*16.66)` and `Math.floor(t/wait) % AUTOTILE_FRAMES` in `src/rendering/tilemap.ts` | Verified — already matched, no change. Locked with a frame-boundary test in `rendering-parity.spec.ts` (fps=29 → 483ms/frame). |
+   | Autotile pixel source (column/frame → tileset atlas offset) | `subsurface(autotile_images[frame], cull_rect)`, frames built per-column at load (tilemap.py:172-188) | `LayerObject.buildSurface` builds one `Surface` per `AUTOTILE_FRAMES` (16), blit by `column*TILEWIDTH, frameIdx*TILEHEIGHT` | Verified — same 16-frame/column layout. |
+   | Layer show/hide transitions | `show_layer`/`hide_layer` event commands default to `LayerTransition='fade'`, a 333ms cross-fade (`LayerObject.transition_speed=333`, `show()`/`hide()`/`update()` in tilemap.py:61-107); layers fading out are still drawn (`layer.visible or layer.state=='fade_out'`, tilemap.py:265,278); `'immediate'` keyword uses `quick_show()`/`quick_hide()` (instant, no fade) | `TileMapObject.showLayer`/`hideLayer` just flipped `layer.visible` synchronously — no fade, no keep-drawing-while-fading-out | **Fixed** (gameplay-visible pop vs. fade divergence). Ported `LayerObject.show()/hide()/update()` semantics into `src/rendering/tilemap.ts` (`state`, `translucence`, `updateTransition`, `shouldDraw()`, `renderAlpha`, `LAYER_TRANSITION_SPEED=333`); `showLayer`/`hideLayer` now take a `'fade'\|'immediate'` transition arg wired from the event command's optional `LayerTransition` keyword (`src/engine/states/game-states.ts` `show_layer`/`hide_layer` cases); save/restore (`src/engine/save.ts`) uses `'immediate'` since it's reconstructing state, not narratively transitioning. `getFullImage`/`getForegroundImage` now draw fading-out layers and apply `renderAlpha` via `Surface.setAlpha`. Covered by `rendering-parity.spec.ts` (halfway-fade and completed-fade structural + screenshot assertions, plus an immediate-transition test). |
+   | Weather particle systems | `particles.py` defines `Raindrop`, `Sand`, `Smoke`, `Fire`, `Snow`, `WarpFlower`/`ReverseWarpFlower`, `LightMote`/`DarkMote`, `Night`, `Sunset`, `EventTileParticle`, `SwitchTileParticle`, `PurpleMote`, `FirePillar` — each with its own spawn/velocity/lifecycle tuning | `src/rendering/weather.ts` implements `rain`, `snow`, `sand`, `light`, `dark` (mapped to `LightMote`), `night`, `sunset` overlays with hand-tuned abundance/velocity constants, not ported 1:1 from Python's per-class values | **Accepted deviation** (documented, not fixed this pass): the web's particle motion/abundance constants are aesthetic approximations, not Python-derived. `Fire`, `WarpFlower`/`ReverseWarpFlower`, `EventTileParticle`, `SwitchTileParticle`, `PurpleMote`, `FirePillar` have no web equivalent at all (deferred — these are used for map-scripted effect commands like `EventTileParticle`, not ambient `add_weather` weather, so lower priority than ambient weather itself). Because rain/snow/sand spawn via unseeded `Math.random()`, deterministic pixel goldens are only feasible for the zero-particle overlay weathers (`night`/`sunset`); `rendering-parity.spec.ts` locks the `night` overlay's flat-tint rendering as its weather screenshot case for that reason. |
+   | Camera movement model | `camera.py`'s `get_next_position()`: distance/`speed=8.0`-based non-linear approach clamped to `[min(dist,0.25), 1.0]` tiles/frame, angle-split into x/y components; `pan_mode`/`pan_speed=0.125` for linear panning; `pan_algorithm` hook (e.g. `do_slow_pan` via `tcubic_easing`); target/current clamped to `[0, tilemap.width/height - TILEX/TILEY]` in tile units | `src/engine/camera.ts` uses pixel-space exponential smoothing (`SMOOTH_FACTOR=0.15`, snap under `0.5px`) with no distance-based speed curve, no `pan_mode`/`pan_algorithm` equivalent, clamped in pixel units to `[0, mapPixelWH - viewport.width/height]` | **Accepted deviation** (documented, not ported this pass): the web's interpolation curve and coordinate space (pixels vs. tiles) are a structurally different model from Python's, and re-deriving camera to match `get_next_position()` exactly (including the `do_slow_pan`/`pan_algorithm` hook, which no in-scope event command currently drives — no `camera_pan`/`camera_center` event commands exist in the web's event-manager command table) is out of scope for a comparison slice; re-architecting the camera's coordinate system carries meaningfully higher regression risk than the value it returns here. Screen shake (`camera.py`'s `shake`/`shake_idx`/`shake_end_at` loop-array model) IS ported faithfully in `src/engine/camera.ts` (`setShake`/`resetShake`/`shakeIdx` cycling) and is unaffected. Clamping-to-map-bounds behavior (`set_target_limits`/`set_current_limits`) is preserved conceptually via `clampTarget()`, just in pixel instead of tile units — verified equivalent for in-bounds forced positions in `rendering-parity.spec.ts`. |
+   | Fog of war | Out of this slice's line items strictly (not one of tile layers/autotiles/weather/camera), left for its own dedicated audit — not touched here. | — | Not investigated this pass. |
+   | Map animations (`map_anim`/`remove_map_anim`) | Out of this slice's line items strictly; `src/rendering/map-animation.ts` exists and is wired into `TileMapObject.animations`/`highAnimations` | — | Not investigated this pass. |
+
+   New harness surface added for deterministic rendering tests (`src/harness.ts`):
+   `getRenderState()` (layer visibility/fade-state/renderAlpha, autotile frame
+   index, active weather NIDs, camera position/target), `setLayer(nid, visible,
+   transition, nowMs)`, `forceTilemapTime(ms)`, `addWeather`/`removeWeather`,
+   `forceCameraPosition`, `setCameraTarget`. `Camera` gained `getPosition()`/
+   `getTarget()` getters; `TileMapObject` gained `getAutotileFrameIndex()`.
+
+   New spec `tests/rendering-parity.spec.ts` (5 tests, all screenshot-backed
+   where determinism allows, using Playwright's Clock API to freeze/advance
+   `Date.now()` since the render loop reads real time for autotile frame
+   selection and fade progress): autotile frame-boundary timing + screenshot
+   diff across two frames; layer fade halfway/complete (structural + 2
+   screenshots); immediate transition (structural only, no fade); `night`
+   weather overlay screenshot; forced camera position screenshot. Verified
+   green twice consecutively before the full gate. Goldens live under
+   `test-snapshots/rendering-parity.spec.ts-snapshots/`.
 6. ~~Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
    workflow) so the full spec suite ... actually gates PRs~~ DONE --
    `.github/workflows/playwright.yml` already runs the full serial gate
