@@ -500,6 +500,16 @@ async function main(): Promise<void> {
   const gameNid = db.getConstant('game_nid', 'default') as string;
   initPersistentSystems(gameNid);
 
+  // Fire on_startup trigger once per boot, after DB and game state are initialized
+  if (gameState.eventManager) {
+    gameState.eventManager.trigger(
+      {
+        type: 'on_startup',
+      },
+      { game: gameState, gameVars: gameState.gameVars, levelVars: new Map() },
+    );
+  }
+
   // --- Register states ---
   const states = [
     new TitleState(),

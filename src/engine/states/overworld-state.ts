@@ -237,6 +237,19 @@ export class OverworldFreeState extends State {
       // Party is on this node — open the node menu
       this.openNodeMenu(ow, node, game);
     } else if (selected && selected.onNode) {
+      // Fire on_overworld_node_select trigger when the party is about to move to a new node
+      // Payload: entity_nid (the entity moving), node_nid (the target node)
+      if (game.eventManager) {
+        game.eventManager.trigger(
+          {
+            type: 'on_overworld_node_select',
+            entityNid: selected.nid,
+            nodeNid: node.nid,
+          },
+          { game, gameVars: game.gameVars, levelVars: new Map() },
+        );
+      }
+
       // Try to move the party to the clicked node
       const pathPoints = ow.getPathPoints(selected.onNode, node.nid);
       if (pathPoints && pathPoints.length >= 2) {

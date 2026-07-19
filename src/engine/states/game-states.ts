@@ -585,6 +585,18 @@ export class TitleState extends State {
     if (titleMusic) {
       void game.audioManager.playMusic(titleMusic);
     }
+
+    // Fire on_title_screen trigger when entering the title screen.
+    // eventManager can be null when falling back to the title after a
+    // campaign end / lose_game cleanup, so guard like every other site.
+    if (game.eventManager) {
+      game.eventManager.trigger(
+        {
+          type: 'on_title_screen',
+        },
+        { game, gameVars: game.gameVars, levelVars: new Map() },
+      );
+    }
   }
 
   override update(): StateResult {
