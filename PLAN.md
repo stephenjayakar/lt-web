@@ -2450,6 +2450,18 @@ match the reference within documented browser tolerances.
   rather than papering over it. `rekka.ltproj` is component-heavy in the
   sense used by the Pair-up/Rescue-fallback slice: classic (non-Pair-Up)
   `Rescue`/`store_unit` sequence-item components)
+  
+  (2026-07-19: **PYEV1 half validated via synthetic battery.** Added
+  `tests/pyev1-validation.spec.ts` with 14 tests covering the realistic
+  event-script battery: variable assignment and local state, unit queries via
+  u() accessor in conditionals, conditionals over game state, loops over lists
+  and range(), Python builtins (len, sum) in conditionals, command invocation
+  in conditionals (inc_game_var), game vars via v() accessor with fallback,
+  Python boolean expressions and operators, f-string interpolation,
+  error handling for undefined variables (fails gracefully, no crash),
+  and error handling for invalid command names. All tests pass; interpreter
+  correctly evaluates expressions in conditionals, control flow, and variable
+  scope; errors are caught and logged without crashing the engine.)
 - [ ] Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle
 - [x] Remove silent skips for known commands/components in production builds
   (2026-07-19: strict-mode reporting in `src/engine/strict-mode.ts` logs unknown
@@ -2470,5 +2482,4 @@ Queue refreshed 2026-07-19 from the PARITY-REPORT completion-gate gaps:
    + field support initiation), wiring the deferred `on_support` trigger with
    Python payloads; support bonuses already exist.
 2. Remaining trigger cluster: title/startup and overworld-node triggers (P1).
-3. PYEV1-heavy external project fixture validation (P7).
-4. Desktop/touch/PWA/native lifecycle checks (P7).
+3. Desktop/touch/PWA/native lifecycle checks (P7).
