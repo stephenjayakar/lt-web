@@ -179,6 +179,60 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Initiative bar, rescue/status icons, movement arrows UI (P5):** Ported
+  three previously-missing map UI pieces.
+  1. *Movement arrows* (`app/engine/level_cursor.py` `LevelCursor.
+     construct_arrows`/`Arrow`): `src/rendering/movement-arrows.ts`
+     `computeArrowSegments()` ports the exact start/through/end/corner
+     segment-selection switch (same `(col, row)` sprite-sheet coordinates as
+     Python's `Arrow(x, y, position, idx)`, keyed off `direction`/`modifier`
+     tile deltas) and `ArrowRenderer` blits the `movement_arrows` sprite
+     sheet (`public/sprites/movement_arrows.png`, copied from `lt-maker/
+     sprites/`) with an alpha pulse approximating Python's `sin(radians(
+     (get_time()//5 - idx*6) % 180))`-driven color blend (exact per-pixel
+     `change_color`/`blend_colors` tinting is not reproduced — noted as an
+     accepted deviation, timing/segment identity is what's tested).
+     `MoveState.draw` (`src/engine/states/game-states.ts`) now calls this
+     instead of the old flat white-rectangle path preview. `GameState` owns
+     one `arrowRenderer: ArrowRenderer` instance, sprite loaded eagerly like
+     the cursor sprite.
+  2. *Rescue/status map-sprite icons* (`app/engine/unit_sprite.py`
+     `UnitSprite.draw_hp`): `src/rendering/unit-markers.ts` `UnitMarkerIcons`
+     ports the icon block — Boss/Elite/Protect tag icon blinking at Python's
+     exact `int((time % 450) // 150) in (1, 2)` timing (450ms period, hidden
+     1/3 of the time; `elite_icon.png` isn't present anywhere in the checked-
+     in `lt-maker/sprites/` tree so that variant silently no-ops, matching
+     Python's `SPRITES.get` returning `None`), the rescue/pairup marker
+     (colored by the *traveler*'s team `combat_color`, suppressed when the
+     `pairup` constant is on, same as Python), and the droppable-item marker.
+     `combat_color` was plumbed through `TeamDef`/`Database.teams` (previously
+     only `map_sprite_palette` was parsed from `teams.json`). Wired through
+     `collectVisibleUnits()` → `MapView.draw()`/`drawUnits()` → `UnitMarkerIcons.
+     draw()`, one `GameState.unitMarkers` instance, icons loaded from
+     `public/sprites/{rescue_icon_*,boss_icon,protect_icon,droppable_icon}.png`.
+  3. *Initiative bar* (existing `src/engine/initiative.ts` `InitiativeTracker`
+     data model + `MoveInInitiativeAction`/turnwheel slice, previously
+     undrawn): `HUD.drawInitiativeBar()` (`src/ui/hud.ts`) renders a
+     horizontal chip row from `game.initiative.unitLine`/`currentIdx` (deviation
+     from Python's chibi-portrait strip — colored/labelled chips instead,
+     since chibi assets aren't guaranteed for every unit), gated on
+     `initiative.drawMe && unitLine.length > 0` so projects without the
+     `initiative` constant see no change (the tracker itself is only
+     constructed when `db.getConstant('initiative', false)` is true, per
+     existing `GameState` code). Reads live tracker state every frame, so it
+     reflects `MoveInInitiativeAction`/turnwheel mutations with no extra
+     wiring.
+  New spec `tests/map-ui.spec.ts` (8 tests): arrow segment-kind assertions
+  (straight/corner/start/end) against `computeArrowSegments` directly, an
+  in-harness check that a hovered valid destination produces one segment per
+  path tile, the boss-icon blink timing table, a rescue-marker/`pairup`-gate
+  check, and an initiative-bar test using a duck-typed tracker fixture (same
+  shape `InitiativeTracker` exposes) mutated via a `MoveInInitiativeAction.
+  execute()`-equivalent splice/insert to verify order updates. All 8 pass
+  twice consecutively. Deferred: pixel-exact arrow tint animation (see above),
+  chibi-portrait initiative strip, Elite icon asset (missing from source
+  tree, not something to fabricate).
+
 - **Soak automation: deterministic seed sweep + first-failure archiving (P7):**
   Extended `scripts/sacred-stones-soak.mjs` (previously a plain fail-fast loop
   over `npx playwright test`) with two additions.
@@ -2251,4 +2305,5 @@ prior queue with its audit tables is preserved in git history at 817743f):
    filed as real, unfixed gaps needing a portrait-transition-wait / camera-pan
    feature respectively).
 4. Soak automation with deterministic seeds and first-failure archiving (P7).
-5. Initiative bar, rescue/status icons, movement arrows UI (P5).
+5. ~~Initiative bar, rescue/status icons, movement arrows UI (P5)~~ — done,
+   see Recent Changes.

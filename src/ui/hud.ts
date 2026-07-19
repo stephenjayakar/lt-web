@@ -1,6 +1,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 import type { ResourceManager } from '../data/resource-manager';
+import type { InitiativeTracker } from '../engine/initiative';
 
 /**
  * Base dimensions at the "mobile" reference size (CSS pixels).
@@ -32,6 +33,17 @@ function hudScale(screenW: number, screenH: number): number {
   // 375px -> 1.0, 1440px -> 2.5, clamped to [1.0, 3.0]
   const scale = narrow / 375;
   return Math.max(1.0, Math.min(3.0, scale));
+}
+
+/** Team-based chip fill color for the initiative bar (fallback team coloring). */
+function teamChipColor(team: string): string {
+  switch (team) {
+    case 'player': return 'rgba(64, 128, 220, 0.85)';
+    case 'enemy': return 'rgba(220, 64, 64, 0.85)';
+    case 'enemy2': return 'rgba(160, 64, 200, 0.85)';
+    case 'other': return 'rgba(64, 200, 96, 0.85)';
+    default: return 'rgba(120, 120, 120, 0.85)';
+  }
 }
 
 /**
@@ -94,7 +106,11 @@ export class HUD {
    * Draw the HUD overlay onto the display canvas context.
    * All sizes are in CSS pixels scaled by DPR and hudScale.
    */
-  drawScreen(ctx: CanvasRenderingContext2D, screenW: number, screenH: number, _db: Database): void {
+  drawScreen(
+    ctx: CanvasRenderingContext2D, screenW: number, screenH: number, _db: Database,
+    initiative?: InitiativeTracker | null,
+    units?: Map<string, UnitObject> | null,
+  ): void {
     if (!this.visible) return;
 
     const dpr = window.devicePixelRatio || 1;
@@ -105,6 +121,72 @@ export class HUD {
     }
     if (this.terrainName) {
       this.drawTerrainInfo(ctx, dpr, hs, screenW, screenH);
+    }
+    if (initiative && units && initiative.drawMe && initiative.unitLine.length > 0) {
+      this.drawInitiativeBar(ctx, initiative, units, dpr, hs, screenW, screenH);
+    }
+  }
+
+  /**
+   * Initiative order bar -- shown when the 'initiative' constant is on.
+   * Ported from app/engine/initiative_ui.py's drawing of the turn order as
+   * a horizontal row of unit chips, current-turn unit highlighted.
+   * (Web simplification: colored/labelled chips rather than full chibi
+   * portrait strip, since chibi assets aren't guaranteed for all units.)
+   */
+  private drawInitiativeBar(
+    ctx: CanvasRenderingContext2D,
+    initiative: InitiativeTracker,
+    units: Map<string, UnitObject>,
+    dpr: number, hs: number, screenW: number, screenH: number,
+  ): void {
+    const s = dpr * hs;
+    const chipW = 28 * s;
+    const chipH = 28 * s;
+    const gap = 3 * s;
+    const margin = BASE_PANEL_MARGIN * s;
+
+    const total = initiative.unitLine.length;
+    const barW = total * chipW + Math.max(0, total - 1) * gap + 2 * (BASE_INNER_PAD * s);
+    const barX = (screenW * dpr - barW) / 2;
+    const barY = margin;
+    const barH = chipH + 2 * (BASE_INNER_PAD * s);
+
+    ctx.fillStyle = BG_COLOR;
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.strokeStyle = BORDER_COLOR;
+    ctx.lineWidth = dpr * hs;
+    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+
+    let x = barX + BASE_INNER_PAD * s;
+    const y = barY + BASE_INNER_PAD * s;
+
+    for (let i = 0; i < total; i++) {
+      const nid = initiative.unitLine[i];
+      const unit = units.get(nid);
+      const isCurrent = i === initiative.currentIdx;
+
+      ctx.fillStyle = isCurrent
+        ? 'rgba(255, 220, 80, 0.9)'
+        : unit
+          ? teamChipColor(unit.team)
+          : 'rgba(100, 100, 100, 0.6)';
+      ctx.fillRect(x, y, chipW, chipH);
+
+      ctx.strokeStyle = isCurrent ? 'rgba(255, 255, 255, 0.95)' : INNER_BORDER;
+      ctx.lineWidth = (isCurrent ? 2 : 1) * dpr * hs;
+      ctx.strokeRect(x + 0.5, y + 0.5, chipW - 1, chipH - 1);
+
+      const label = unit ? unit.name.slice(0, 2) : '??';
+      ctx.font = `bold ${11 * s}px monospace`;
+      ctx.fillStyle = isCurrent ? 'black' : 'white';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, x + chipW / 2, y + chipH / 2);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      x += chipW + gap;
     }
   }
 

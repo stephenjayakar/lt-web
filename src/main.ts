@@ -661,7 +661,7 @@ async function main(): Promise<void> {
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
     // --- HUD overlay (fixed screen-space, not affected by zoom) ---
-    game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db);
+    game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db, game.initiative, game.units);
     PerfMonitor.endDraw();
 
     // --- Performance overlay (screen-space, on top of everything) ---

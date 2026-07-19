@@ -265,6 +265,7 @@ export interface LevelPrefab {
 export interface TeamDef {
   nid: NID;
   map_sprite_palette: string;
+  combat_color?: string;
 }
 
 /** [team_a, team_b] – these two teams are allied. */
