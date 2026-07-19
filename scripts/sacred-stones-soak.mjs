@@ -21,6 +21,10 @@ const grepPattern =
   process.env.SOAK_GREP ??
   'Sacred Stones Later Chapters|Sacred Stones Chapter Mechanics|Level Progression';
 const workers = process.env.SOAK_WORKERS ?? '1';
+// SOAK_SPECS: space-separated spec paths; empty string = whole test dir.
+const specArgs = (process.env.SOAK_SPECS ?? 'tests/harness.spec.ts')
+  .split(' ')
+  .filter(Boolean);
 
 // Optional deterministic seed sweep: SOAK_SEED_BASE=100 sweeps seeds
 // 100, 101, 102, ... across iterations (each iteration gets a distinct,
@@ -54,7 +58,7 @@ function runPlaywright() {
   return new Promise((resolve) => {
     const child = spawn(
       'npx',
-      ['playwright', 'test', 'tests/harness.spec.ts', '--grep', grepPattern, '--workers', workers],
+      ['playwright', 'test', ...specArgs, '--grep', grepPattern, '--workers', workers],
       { env: process.env },
     );
     let buffer = '';
@@ -87,8 +91,8 @@ function archiveFailure({ iteration, seed, playwrightOutput }) {
 
   const reproCmd =
     seed !== null
-      ? `node -e "require('fs').mkdirSync('public',{recursive:true});require('fs').writeFileSync('public/soak-seed.json', JSON.stringify({seed:${seed}}))" && npx playwright test tests/harness.spec.ts --grep ${JSON.stringify(grepPattern)} --workers ${workers}`
-      : `npx playwright test tests/harness.spec.ts --grep ${JSON.stringify(grepPattern)} --workers ${workers}`;
+      ? `node -e "require('fs').mkdirSync('public',{recursive:true});require('fs').writeFileSync('public/soak-seed.json', JSON.stringify({seed:${seed}}))" && npx playwright test ${specArgs.join(' ')} --grep ${JSON.stringify(grepPattern)} --workers ${workers}`
+      : `npx playwright test ${specArgs.join(' ')} --grep ${JSON.stringify(grepPattern)} --workers ${workers}`;
 
   const summary = [
     `Soak first-failure archive`,

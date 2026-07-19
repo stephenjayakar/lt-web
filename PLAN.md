@@ -179,6 +179,16 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Seeded soak execution (P7):** ran the soak tooling for real across three
+  scopes, all green with zero failure artifacts: Sacred Stones suites x3
+  iterations (seeds 7000-7002, 42 tests each), harness spec x2 (seeds
+  8100-8101, 95 tests each), and the TRUE full suite x2 (seeds 8200-8201,
+  362 passed + 1 skip each). Found and fixed a soak-script limitation while
+  doing it: the runner hardcoded tests/harness.spec.ts, so "full-suite" runs
+  silently shrank; added SOAK_SPECS (space-separated paths; empty = whole
+  test dir). P7 soak row satisfied for the bundled-demo scope.
+
+
 - **Platform lifecycle validation slice (P7 row: 'Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle'):**
   Implemented browser-testable platform lifecycle checks via a new `tests/platform-lifecycle.spec.ts` spec (16 tests, all passing).
   Covers four areas of the platform contract:
@@ -2488,10 +2498,13 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-19 from the PARITY-REPORT completion-gate gaps:
+Queue refreshed 2026-07-19 (platform-lifecycle slice landed):
 
-1. **Support conversations (P5):** support-viewing flow (base Supports submenu
-   + field support initiation), wiring the deferred `on_support` trigger with
-   Python payloads; support bonuses already exist.
-2. Remaining trigger cluster: title/startup and overworld-node triggers (P1).
-3. Desktop/touch/PWA/native lifecycle checks (P7).
+1. **Seeded soak execution (P7):** actually run the soak tooling — multiple
+   full-suite iterations at distinct seeds, archiving any first failure.
+2. Component-gap usage sweep: implement remaining item/skill components that
+   testing_proj/rekka actually reference but the web lacks (usage-driven).
+3. Remaining trigger stragglers: roam-input x3, on_base_convo,
+   overworld_start, event_after_initiated_combat, event_on_remove (P1).
+4. Promote docs/parity/PARITY-REPORT.md from draft to published once the
+   above land, refreshing counts.
