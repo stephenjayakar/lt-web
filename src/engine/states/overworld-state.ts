@@ -222,7 +222,14 @@ export class OverworldFreeState extends State {
     const cursorPos = game.cursor.getHover();
     const node = ow.nodeAt([cursorPos.x, cursorPos.y]);
 
-    if (!node) return;
+    if (!node) {
+      // Clicked on empty space: open the general Unit/Status/Guide/Options/Save
+      // menu, matching Python's OverworldFreeState.take_input SELECT branch
+      // for `else: # clicked on empty space, trigger the general menu`
+      // (overworld_states.py:132-134).
+      game.state.change('overworld_game_option_menu');
+      return;
+    }
 
     const selected = ow.getSelectedEntity();
 
@@ -262,6 +269,12 @@ export class OverworldFreeState extends State {
 
   private openNodeMenu(ow: OverworldManager, node: OverworldNodeObject, game: any): void {
     const options: MenuOption[] = [];
+
+    // "Base Camp" is always the first option on the selected party's own
+    // node, matching Python's OverworldPartyOptionMenu.start(), which
+    // unconditionally seeds `options = ['Base Camp']` before appending any
+    // node-authored menu options (overworld_states.py:338-370).
+    options.push({ label: 'Base Camp', value: '_base_camp', enabled: true, description: 'Enter your base camp.' });
 
     // Add menu options from the node prefab
     for (const opt of node.prefab.menu_options) {
@@ -321,7 +334,13 @@ export class OverworldFreeState extends State {
     if ('selected' in result) {
       const value = result.selected;
 
-      if (value === '_enter_level') {
+      if (value === '_base_camp') {
+        // Mirrors Python's "Base Camp" selection: game.state.change('base_main')
+        // via the memory/transition_to pattern (overworld_states.py:394-396).
+        this.nodeMenu = null;
+        this.menuNodeNid = null;
+        game.state.change('base_main');
+      } else if (value === '_enter_level') {
         // Enter the level associated with this node
         const node = ow.getNode(this.menuNodeNid!);
         if (node?.prefab.level) {
@@ -529,6 +548,105 @@ export class OverworldFreeState extends State {
     surf.ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     surf.ctx.lineWidth = 1 * s;
     surf.ctx.stroke();
+  }
+}
+
+// ============================================================================
+// OverworldGameOptionMenuState - Unit/Status/Guide/Options/Save menu
+// ============================================================================
+
+/**
+ * OverworldGameOptionMenuState — the general options menu that opens when
+ * the player clicks/selects empty overworld space.
+ *
+ * Port of: lt-maker/app/engine/overworld/overworld_states.py
+ * OverworldGameOptionMenuState (overworld_states.py:253-336).
+ *
+ * Python's option list is `['Unit', 'Status', 'Options', 'Save']` plus a
+ * conditional `'Guide'` entry (inserted when unlocked lore of category
+ * 'Guide' exists) and a debug-only `'Debug'` entry. `Unit` is always
+ * `ignore`d (disabled) in Python and `Status` has no handler wired up
+ * upstream either (`# @TODO Implement these`) — both are deferred here for
+ * the same reason: the underlying unit-roster and status-screen states
+ * don't exist yet in either engine. `Options` opens the existing
+ * `settings_menu` state and `Save` opens the existing `save_menu` state,
+ * both of which are already implemented and reused verbatim from the base
+ * menu wiring (see base-state.ts).
+ */
+export class OverworldGameOptionMenuState extends State {
+  readonly name = 'overworld_game_option_menu';
+  override readonly transparent = true;
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private menu: ChoiceMenu | null = null;
+
+  override start(): StateResult {
+    this.buildMenu();
+  }
+
+  override begin(): StateResult {
+    this.buildMenu();
+  }
+
+  private buildMenu(): void {
+    const game = getGame();
+    const unlockedLore = (game.unlockedLore ?? [])
+      .map((nid: string) => game.db.lore.get(nid))
+      .filter((entry: any): entry is any => !!entry);
+    const hasGuide = unlockedLore.some((entry: any) => entry.category === 'Guide');
+
+    const options: MenuOption[] = [
+      { label: 'Unit', value: 'unit', enabled: false, description: 'Not yet implemented.' },
+      { label: 'Status', value: 'status', enabled: false, description: 'Not yet implemented.' },
+    ];
+    if (hasGuide) {
+      options.push({ label: 'Guide', value: 'guide', enabled: true, description: 'Browse strategy guide entries.' });
+    }
+    options.push({ label: 'Options', value: 'options', enabled: true, description: 'Open the settings menu.' });
+    options.push({ label: 'Save', value: 'save', enabled: true, description: 'Save your progress.' });
+
+    const menuX = Math.floor(viewport.width / 2) - 30;
+    const menuY = Math.floor(viewport.height / 2) - (options.length * 8 + 4);
+    this.menu = new ChoiceMenu(options, menuX, menuY);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result) return;
+
+    if ('back' in result) {
+      game.state.back();
+      return;
+    }
+
+    if ('selected' in result) {
+      const value = result.selected;
+      if (value === 'guide') {
+        game.state.change('base_guide');
+      } else if (value === 'options') {
+        game.state.change('settings_menu');
+      } else if (value === 'save') {
+        game.state.change('save_menu');
+      }
+      // 'unit' / 'status' are disabled options and unreachable here.
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
+    return surf;
   }
 }
 

@@ -179,6 +179,51 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Roam talk/shop interaction and overworld option menus (P5):**
+  - Read `lt-maker/app/engine/roam/free_roam_state.py` end to end and fixed
+    several real divergences in `src/engine/states/roam-state.ts`:
+    - `get_closest_unit`/`get_closest_units` used Euclidean distance; Python's
+      `utils.calculate_distance` is taxicab/Manhattan. Diamond- vs
+      circle-shaped talk/interact range is a real gameplay difference, not
+      cosmetic — fixed both to taxicab distance.
+    - `get_visit_region()` never evaluated the region's own `condition`
+      expression (Python only treats a region as "visitable" if its
+      condition is truthy, independent of any condition on the events it
+      triggers) — added the missing `evaluateCondition` check.
+    - The region-interact path tried only the region's `sub_nid` as a
+      trigger type with no fallback; Python's `check_select()` falls back to
+      `on_region_interact` when the sub_nid trigger finds no matching event.
+      This is exactly the path Shop/Armory/Visit regions rely on in roam, so
+      the fallback's absence meant shop regions with no sub_nid-keyed event
+      silently no-opped. Fixed to match the non-roam region-interact code
+      already in `game-states.ts`.
+    - `roam_press_info`/`roam_press_aux`/`roam_press_start` triggers were
+      never fired — INFO/AUX/START went straight to the default info/option
+      menu. Added `checkInfo`/`checkAux`/`checkStart`, matching Python's
+      trigger-then-fallback order and rationalize timing exactly (INFO only
+      rationalizes if a project event actually intercepts it; AUX/START
+      always rationalize).
+    - Found and fixed a latent bug while touching this file: `game.state.push(...)`
+      isn't a method `StateMachine` exposes (only `change`/`back`/`clear`,
+      where `change` pushes) — every call site here would have thrown at
+      runtime the first time INFO/AUX/START/rationalize fired. Replaced with
+      `change`.
+  - Read `lt-maker/app/engine/overworld/overworld_states.py` and found the
+    web overworld (`src/engine/states/overworld-state.ts`) had no equivalent
+    of `OverworldGameOptionMenuState` (the Unit/Status/Guide/Options/Save
+    menu opened by clicking empty overworld space) and was missing the
+    always-present "Base Camp" first entry on `OverworldPartyOptionMenu`
+    (the node menu for the party's own node). Implemented
+    `OverworldGameOptionMenuState` reusing the existing `settings_menu` and
+    `save_menu` states verbatim (same pattern as the base menu); `Unit` and
+    `Status` are left disabled/deferred since neither has a backing state in
+    either engine (Python's own handler has a literal `# @TODO Implement
+    these` for both). Added the "Base Camp" → `base_main` entry to the party
+    node menu.
+  - Added `tests/roam-overworld.spec.ts` (5 tests): taxicab-distance
+    talk-candidate selection, a Shop-region end-to-end purchase through the
+    sub_nid fallback path, and overworld option-menu reachability/cancel for
+    both the empty-space menu and the party's Base Camp entry.
 - **Trigger payload and EVNT/PYEV1 flow-control audit (P1):**
   - Audited every referenced trigger's payload against Python `to_args()` and
     updated `docs/parity/runtime-inventory.md` rows. Fixed: `on_roam_interact`
@@ -1927,7 +1972,14 @@ item-use fixture matrices match Python outputs and side effects.
   implemented.
 - [x] Implement the persistent achievement browser with hidden-entry display,
   completion progress, navigation, and event pause/resume
-- [ ] Complete roam talk/shop interaction and overworld option menus
+- [x] Complete roam talk/shop interaction and overworld option menus: fixed
+  free_roam's talk/candidate distance metric (taxicab, not Euclidean),
+  region-visit condition evaluation, the missing sub_nid→on_region_interact
+  fallback (this is how Shop/Armory regions fire in roam), and wired
+  roam_press_info/aux/start triggers ahead of their default menu fallbacks;
+  added the overworld empty-space "Unit/Status/Guide/Options/Save" option
+  menu and the always-present "Base Camp" entry on the party's node menu
+  (see Recent Changes)
 - [x] Switch Rescue/Drop menus and targeting states to Pair Up/Separate when enabled
 - [x] Add Switch/Transfer menus and attack-target AUX partner cycling for enabled Pair Up
 - [ ] Add initiative bar, rescue/status icons, movement arrows, growth/support/WEXP info
