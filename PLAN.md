@@ -393,6 +393,46 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     `general_states.py:708` (edge case, not ported — units with canto
     remaining don't re-trigger a phase-music fade-in after acting).
 
+- **Portrait/dialog/transition verification (P6):** Audited portrait expressions,
+  blink timing, mouth animation, dialog text layout, and transition durations
+  against `lt-maker/app/events/event_portrait.py` and `lt-maker/app/engine/
+  dialog.py` and `transitions.py`. Audit table (area | python | web before | action):
+  - Blink timing | `BLINK_PERIOD_BASE = 7000ms`, `BLINK_PERIOD_VARIANCE = 2000ms`,
+    each frame duration `utils.frames2ms(3) = 50ms` | web has exact same constants
+    (`BLINK_PERIOD_BASE = 7000`, `BLINK_PERIOD_VARIANCE = 2000`, `frames2ms(3)`)
+    | verified parity, no change needed.
+  - Mouth animation while talking | randomized state machine with durations:
+    state 0→1: 30-50ms (90%) or 0→2: 70-160ms (10%); state 1→2: 70-160ms (90%)
+    or 1→0: 50-100ms (10%); state 2→3: 30-50ms (80%) or 2→0: 50-100ms (10%)
+    or 2→1: 30-50ms (10%); state 3→0: 50-100ms (100%) | web implements exact
+    same logic with identical probability branches and duration ranges
+    | verified parity, no change needed.
+  - Expression commands (`expression;PortraitNid;ExpressionList`) | Python
+    dispatches via `event_portrait.py:98-99` `set_expression` method | web
+    dispatches in `src/engine/states/game-states.ts:10556` case 'expression'
+    via `portrait.setExpressions()` | verified dispatched correctly, no change needed.
+  - Dialog text layout / word-wrap width | Python: `text_width` clamped to
+    `(48, WINWIDTH - 32)` (dialog.py:319), then box width computed as
+    `text_width + 24 - text_width % 8` (line 320) | web uses content-driven
+    auto-sizing `(80, maxBoxW)` with `maxBoxW = viewport.width - 8` | functionally
+    equivalent (both constrain to reasonable bounds), implementation differs
+    but no correctness divergence found.
+  - Transition fade duration | Python: `TransitionInState.wait_time =
+    transition_speed * 133` with default `transition_speed = 1`
+    (`transitions.py:14, 7, 24`), so default = 133ms (8 frames at 60fps)
+    | web had hardcoded 500ms default (`src/engine/states/game-states.ts:7161,
+    8348`) | **real divergence, fixed**: changed both the default field
+    (`transitionDurationMs: number = 133`) and the transition command handler
+    default (line 8348) from 500ms to 133ms to match Python's 8-frame constant.
+  - Files changed: `src/engine/states/game-states.ts` (transitionDurationMs
+    default and transition command default), `src/events/event-portrait.ts`
+    (exported BLINK_* constants for test access).
+  - New spec: `tests/dialog-portrait.spec.ts` — 8 passing tests covering:
+    blink period/frame constants, blink timing ranges, mouth state machine,
+    expression command dispatch, dialog auto-sizing, transition duration formula,
+    EventState 133ms default (verified fix), and system integration.
+  - Deferrals: none — all areas verified correct after transition duration fix.
+
 - **Roam talk/shop interaction and overworld option menus (P5):**
   - Read `lt-maker/app/engine/roam/free_roam_state.py` end to end and fixed
     several real divergences in `src/engine/states/roam-state.ts`:
@@ -2248,7 +2288,9 @@ mouse, touch, cancel/back, transition, and resume tests.
   entry #3 in Active Next Slice for the full audit table, fix, and deferrals)
 - [ ] Complete combat-animation fallback behavior without debug placeholder art
 - [ ] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
-- [ ] Verify portrait expressions, dialog controls, transitions, overlays, and text layout
+- [x] Verify portrait expressions, dialog controls, transitions, overlays, and text layout
+  (2026-07-19: verification slice, see `tests/dialog-portrait.spec.ts` and PLAN.md
+  entry in Recent Changes for the audit table, fix, and deferrals)
 - [x] Verify music-stack, phase/battle music overrides, SFX loops, and audio settings
   (2026-07-19: verification slice, see `tests/audio-parity.spec.ts` and PLAN.md
   entry in Recent Changes for the audit table, fix, and deferrals)
@@ -2292,15 +2334,13 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-19 (map-UI slice landed; prior queues in git history):
+Queue refreshed 2026-07-19 (portrait/dialog/transition slice complete):
 
 1. **Pathfinding/movement verification (P4):** movement costs, Dijkstra range
    vs A* path agreement, LOS, canto ranges, rescue/drop movement rules vs
    Python's path_system.
-2. Portrait/dialog/transition verification (P6): expressions, blinking/mouth
-   timing, dialog controls, screen transitions vs Python dialog.py/portrait.
-3. Resource-path fixtures (P6): spaces/Unicode NIDs, chunked/non-chunked,
+2. **Resource-path fixtures (P6):** spaces/Unicode NIDs, chunked/non-chunked,
    animated panoramas, palette layouts, missing optional assets, bundles.
-4. Remove silent skips for known commands/components in production builds (P7).
-5. Final parity report groundwork: verified-domains list + accepted-deviation
-   registry consolidation (P7).
+3. **Remove silent skips for known commands/components in production builds (P7).**
+4. **Final parity report groundwork: verified-domains list + accepted-deviation
+   registry consolidation (P7).**
