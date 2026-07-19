@@ -141,6 +141,15 @@ export class BaseMainState extends State {
       description: 'View available conversations.',
     });
 
+    // Supports: enabled only if there are support conversations
+    const hasSupportConvos = this.hasSupportConversations();
+    options.push({
+      label: 'Supports',
+      value: 'supports',
+      enabled: !!hasSupportConvos,
+      description: 'View support conversations.',
+    });
+
     // Python routes achievements through the base Codex child menu.
     options.push({
       label: 'Codex',
@@ -177,6 +186,20 @@ export class BaseMainState extends State {
     const menuX = 8;
     const menuY = 24;
     this.menu = new ChoiceMenu(options, menuX, menuY);
+  }
+
+  private hasSupportConversations(): boolean {
+    const game = getGame();
+    const supportController = game.supports;
+    if (!supportController || !supportController.pairs) return false;
+
+    // Check if there are any support pairs with locked or unlocked ranks
+    for (const pair of supportController.pairs.values()) {
+      if (pair.lockedRanks.length > 0 || pair.unlockedRanks.length > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   override update(): StateResult {
@@ -306,6 +329,10 @@ export class BaseMainState extends State {
 
         case 'convos':
           game.state.change('base_convos');
+          break;
+
+        case 'supports':
+          game.state.change('base_supports');
           break;
 
         case 'codex':
@@ -462,6 +489,164 @@ export class BaseConvosState extends State {
       // Trigger base conversation event if event manager exists
       if (game.eventManager) {
         game.eventManager.triggerBaseConvo(convoNid);
+      }
+
+      // Pop back to base main (event will play on top)
+      game.state.back();
+    }
+  }
+}
+
+// ============================================================================
+// BaseSupportState — Base support-conversation submenu
+// ============================================================================
+
+export class BaseSupportState extends State {
+  readonly name = 'base_supports';
+  override readonly transparent = true;
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private menu: ChoiceMenu | null = null;
+
+  override start(): StateResult {
+    this.buildSupportMenu();
+  }
+
+  override begin(): StateResult {
+    this.buildSupportMenu();
+  }
+
+  private buildSupportMenu(): void {
+    const game = getGame();
+    const supportController = game.supports;
+    if (!supportController) {
+      game.state.back();
+      return;
+    }
+
+    // Build list of all available support conversations (unlocked ranks)
+    // mapped by pair and rank. Each can be replayed.
+    const options: MenuOption[] = [];
+
+    for (const [pairNid, pair] of supportController.pairs ?? new Map()) {
+      // Get both units in the pair
+      const unit1 = game.units.get(pair.unit1Nid);
+      const unit2 = game.units.get(pair.unit2Nid);
+      if (!unit1 || !unit2) continue;
+
+      // Add each unlocked rank as a menu option
+      for (const rank of pair.unlockedRanks) {
+        const label = `${unit1.name} & ${unit2.name} — Rank ${rank}`;
+        options.push({
+          label,
+          value: `${pairNid}|${rank}`,
+          enabled: true,
+          description: '(Replay)',
+        });
+      }
+
+      // Also show locked ranks that haven't been viewed yet
+      for (const rank of pair.lockedRanks) {
+        const label = `${unit1.name} & ${unit2.name} — Rank ${rank}`;
+        options.push({
+          label,
+          value: `${pairNid}|${rank}|new`,
+          enabled: true,
+          description: undefined,
+        });
+      }
+    }
+
+    if (options.length === 0) {
+      // No conversations available — pop back immediately
+      game.state.back();
+      return;
+    }
+
+    // Position to the right of the parent menu
+    const menuX = 80;
+    const menuY = 28;
+    this.menu = new ChoiceMenu(options, menuX, menuY);
+  }
+
+  override draw(surf: Surface): Surface {
+    // Transparent state — parent draws background beneath
+
+    // Semi-transparent scrim for readability
+    const vw = viewport.width;
+    const vh = viewport.height;
+    surf.fillRect(0, 0, vw, vh, 'rgba(0,0,0,0.2)');
+
+    // Title
+    surf.fillRect(76, 18, 90, 14, 'rgba(16,16,48,0.9)');
+    surf.drawText('Supports', 80, 21, 'rgba(220,200,128,1)', '7px monospace');
+
+    // Draw menu
+    if (this.menu) {
+      this.menu.draw(surf);
+    }
+
+    return surf;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+
+    // Handle mouse click on menu options
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    // Handle mouse hover
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    // Keyboard fallback
+    if (!result && event !== null) {
+      result = this.menu.handleInput(event);
+    }
+    if (!result) return;
+
+    if ('back' in result) {
+      game.state.back();
+      return;
+    }
+
+    if ('selected' in result) {
+      const parts = result.selected.split('|');
+      const pairNid = parts[0];
+      const rank = parts[1];
+      const isNew = parts[2] === 'new';
+
+      // Trigger support event
+      if (game.eventManager && game.supports) {
+        const pair = game.supports.pairs?.get(pairNid);
+        if (pair) {
+          const unit1 = game.units.get(pair.unit1Nid);
+          const unit2 = game.units.get(pair.unit2Nid);
+          if (unit1 && unit2) {
+            const ctx = { game, unit1, unit2, gameVars: game.gameVars, levelVars: game.levelVars };
+            game.eventManager.trigger(
+              {
+                type: 'on_support',
+                unit1,
+                unit2,
+                position: null, // Base has no position
+                support_rank_nid: rank,
+                is_replay: !isNew, // Replay if already viewed, not replay if new
+              },
+              ctx,
+            );
+            // If it's a new rank (locked), unlock it
+            if (isNew) {
+              game.supports.unlockRank(pairNid, rank);
+            }
+          }
+        }
       }
 
       // Pop back to base main (event will play on top)

@@ -1991,6 +1991,21 @@ export class MenuState extends State {
       options.push({ label: 'Talk', value: 'talk', enabled: true });
     }
 
+    // Support option — check if adjacent unit has an unlocked-but-unviewed support rank
+    // Gate: _supports enabled AND support_constants.combat_convos enabled
+    const supportAvailable = game.gameVars.get('_supports') &&
+      game.db.supportConstants.get('combat_convos');
+    const adjacentSupportTargets = supportAvailable ? getAdjacentUnits(ux, uy).filter((other) => {
+      if (other === unit) return false;
+      // Check if there's a support pair with can_support (unlocked-but-unviewed rank)
+      const pair = game.supports?.getPair(unit.nid, other.nid);
+      if (!pair) return false;
+      return game.supports.canSupport(pair, game);
+    }) : [];
+    if (adjacentSupportTargets.length > 0) {
+      options.push({ label: 'Support', value: 'support', enabled: true });
+    }
+
     // Supply — Python SupplyAbility: _convoy enabled and unit has 'Convoy'
     // tag or an adjacent same-team ally has 'AdjConvoy'.
     if (supplyAvailableOnMap(unit, game)) {
@@ -2207,6 +2222,62 @@ export class MenuState extends State {
             ctx,
           );
         }
+        if (unit) unit.finished = true;
+        this.menu = null;
+        if (game.eventManager?.hasActiveEvents()) {
+          game.state.change('event');
+        } else {
+          game.state.back();
+        }
+      } else if (value === 'support') {
+        // Trigger support event using 'on_support' trigger type (matches LT Python)
+        const adjacentSupportTargets = getAdjacentUnits(
+          unit.position![0],
+          unit.position![1],
+        ).filter((other) => {
+          if (other === unit) return false;
+          const pair = game.supports?.getPair(unit.nid, other.nid);
+          if (!pair) return false;
+          return game.supports.canSupport(pair, game);
+        });
+        if (adjacentSupportTargets.length > 0 && game.supports && game.eventManager) {
+          const target = adjacentSupportTargets[0];
+          const pair = game.supports.getPair(unit.nid, target.nid);
+          if (pair && pair.lockedRanks.length > 0) {
+            const rank = pair.lockedRanks[0];
+            // Match Python flow: back, HasTraded, trigger, unlock
+            game.state.back();
+            game.actionLog.doAction(new HasTradedAction(unit));
+            const supportLevelNid = game.currentLevel?.nid ?? '';
+            const ctx = {
+              game,
+              unit1: unit,
+              unit2: target,
+              gameVars: game.gameVars,
+              levelVars: game.levelVars,
+            };
+            game.eventManager.trigger(
+              {
+                type: 'on_support',
+                levelNid: supportLevelNid,
+                unit1: unit,
+                unit2: target,
+                position: unit.position,
+                support_rank_nid: rank,
+                is_replay: false,
+              },
+              ctx,
+            );
+            // Mark the rank as viewed (unlock it)
+            game.actionLog.doAction(new UnlockSupportRankAction(pair, rank));
+            this.menu = null;
+            if (game.eventManager?.hasActiveEvents()) {
+              game.state.change('event');
+            }
+            return;
+          }
+        }
+        // Should not reach here if menu option is properly gated
         if (unit) unit.finished = true;
         this.menu = null;
         if (game.eventManager?.hasActiveEvents()) {

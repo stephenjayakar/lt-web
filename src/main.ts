@@ -66,6 +66,7 @@ import {
 import {
   BaseMainState,
   BaseConvosState,
+  BaseSupportState,
   BaseCodexState,
   BaseAchievementState,
   BaseLoreState,
@@ -534,6 +535,7 @@ async function main(): Promise<void> {
     new ItemDiscardState(),
     new BaseMainState(),
     new BaseConvosState(),
+    new BaseSupportState(),
     new BaseCodexState(),
     new BaseAchievementState(),
     new BaseLoreState(false),
