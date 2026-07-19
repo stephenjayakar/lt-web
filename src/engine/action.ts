@@ -8,6 +8,7 @@ import { onPairup, onRemoveRescue, onRescue, onSeparate } from '../combat/skill-
 import { autoLevelUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
+import type { SupportPair } from './support-system';
 
 // Forward declare — we need a getter function since game-state has circular deps
 let _getGame: (() => any) | null = null;
@@ -3422,5 +3423,294 @@ export class ClassChangeAction extends Action {
     this.unit.growths = { ...this.oldGrowths };
     this.unit.currentHp = this.oldHp;
     this.unit.wexp = { ...this.oldWexp };
+  }
+}
+
+/**
+ * SetLevelVarAction - Faithful port of Python's SetLevelVar (action.py).
+ * Sets a level-scoped variable and, if it's one of the fog-of-war
+ * variables, recalculates fog of war on both do and reverse (mirrors
+ * SetLevelVar._update_fog_of_war being called from both do() and reverse()).
+ */
+const FOG_LEVEL_VAR_NIDS = new Set([
+  '_fog_of_war', '_fog_of_war_radius', '_ai_fog_of_war_radius',
+  '_other_fog_of_war_radius', '_fog_of_war_type',
+]);
+
+export class SetLevelVarAction extends Action {
+  private levelVars: Map<string, any>;
+  private nid: string;
+  private value: any;
+  private alreadyExists: boolean;
+  private oldValue: any;
+
+  constructor(levelVars: Map<string, any>, nid: string, value: any) {
+    super();
+    this.levelVars = levelVars;
+    this.nid = nid;
+    this.value = value;
+    this.alreadyExists = levelVars.has(nid);
+    this.oldValue = levelVars.get(nid);
+  }
+
+  private updateFow(): void {
+    if (FOG_LEVEL_VAR_NIDS.has(this.nid)) {
+      const game = _getGame?.();
+      if (game && typeof game.recalculateAllFow === 'function') {
+        game.recalculateAllFow();
+      }
+    }
+  }
+
+  execute(): void {
+    this.levelVars.set(this.nid, this.value);
+    this.updateFow();
+  }
+
+  reverse(): void {
+    if (this.alreadyExists) {
+      this.levelVars.set(this.nid, this.oldValue);
+    } else {
+      this.levelVars.delete(this.nid);
+    }
+    this.updateFow();
+  }
+}
+
+/**
+ * ChangeTeamAction - Faithful port of Python's ChangeTeam (action.py).
+ * Changes a unit's team, resetting its AI to 'None' when moving to the
+ * player team (matching Python: `if self.team == 'player': ChangeAI(...)`),
+ * and refreshes fog of war for both the old and new team's vision.
+ */
+export class ChangeTeamAction extends Action {
+  private unit: UnitObject;
+  private team: string;
+  private oldTeam: string;
+  private oldAi: string | null = null;
+
+  constructor(unit: UnitObject, team: string) {
+    super();
+    this.unit = unit;
+    this.team = team;
+    this.oldTeam = unit.team;
+  }
+
+  private recalcFow(): void {
+    const game = _getGame?.();
+    if (game && typeof game.recalculateAllFow === 'function') {
+      game.recalculateAllFow();
+    }
+  }
+
+  execute(): void {
+    this.unit.team = this.team;
+    if (this.team === 'player') {
+      this.oldAi = (this.unit as any).ai ?? null;
+      (this.unit as any).ai = 'None';
+    }
+    this.recalcFow();
+  }
+
+  reverse(): void {
+    this.unit.team = this.oldTeam;
+    if (this.team === 'player' && this.oldAi !== null) {
+      (this.unit as any).ai = this.oldAi;
+    }
+    this.recalcFow();
+  }
+}
+
+/**
+ * IncrementSupportPointsAction - Faithful port of Python's
+ * IncrementSupportPoints (action.py). Snapshots the full pair state before
+ * incrementing so reverse restores points/locked+unlocked ranks/chapter
+ * counters exactly, matching the Python action's save()/restore approach.
+ */
+export class IncrementSupportPointsAction extends Action {
+  private pair: SupportPair;
+  private amount: number;
+  private saved: { points: number; lockedRanks: string[]; unlockedRanks: string[]; pointsGainedThisChapter: number; ranksGainedThisChapter: number };
+
+  constructor(pair: SupportPair, amount: number) {
+    super();
+    this.pair = pair;
+    this.amount = amount;
+    this.saved = {
+      points: pair.points,
+      lockedRanks: [...pair.lockedRanks],
+      unlockedRanks: [...pair.unlockedRanks],
+      pointsGainedThisChapter: pair.pointsGainedThisChapter,
+      ranksGainedThisChapter: pair.ranksGainedThisChapter,
+    };
+  }
+
+  execute(): void {
+    const game = _getGame?.();
+    game?.supports?.incrementPoints?.(this.pair, this.amount);
+  }
+
+  reverse(): void {
+    this.pair.points = this.saved.points;
+    this.pair.lockedRanks = [...this.saved.lockedRanks];
+    this.pair.unlockedRanks = [...this.saved.unlockedRanks];
+    this.pair.pointsGainedThisChapter = this.saved.pointsGainedThisChapter;
+    this.pair.ranksGainedThisChapter = this.saved.ranksGainedThisChapter;
+  }
+}
+
+/**
+ * UnlockSupportRankAction - Faithful port of Python's UnlockSupportRank
+ * (action.py). Moves a rank from locked to unlocked; reverse removes it
+ * from unlocked and restores it to locked only if it was locked before.
+ */
+export class UnlockSupportRankAction extends Action {
+  private pair: SupportPair;
+  private rank: string;
+  private wasLocked = false;
+
+  constructor(pair: SupportPair, rank: string) {
+    super();
+    this.pair = pair;
+    this.rank = rank;
+  }
+
+  execute(): void {
+    this.wasLocked = this.pair.lockedRanks.includes(this.rank);
+    if (this.wasLocked) {
+      this.pair.lockedRanks = this.pair.lockedRanks.filter(r => r !== this.rank);
+    }
+    if (!this.pair.unlockedRanks.includes(this.rank)) {
+      this.pair.unlockedRanks.push(this.rank);
+    }
+    this.pair.ranksGainedThisChapter++;
+  }
+
+  reverse(): void {
+    this.pair.unlockedRanks = this.pair.unlockedRanks.filter(r => r !== this.rank);
+    if (this.wasLocked && !this.pair.lockedRanks.includes(this.rank)) {
+      this.pair.lockedRanks.push(this.rank);
+    }
+    this.pair.ranksGainedThisChapter--;
+  }
+}
+
+/**
+ * DisableSupportRankAction - Faithful port of Python's DisableSupportRank
+ * (action.py). Removes a rank from both locked and unlocked lists;
+ * reverse restores it to whichever list(s) it was previously in.
+ */
+export class DisableSupportRankAction extends Action {
+  private pair: SupportPair;
+  private rank: string;
+  private wasLocked = false;
+  private wasUnlocked = false;
+
+  constructor(pair: SupportPair, rank: string) {
+    super();
+    this.pair = pair;
+    this.rank = rank;
+  }
+
+  execute(): void {
+    this.wasLocked = this.pair.lockedRanks.includes(this.rank);
+    this.wasUnlocked = this.pair.unlockedRanks.includes(this.rank);
+    this.pair.lockedRanks = this.pair.lockedRanks.filter(r => r !== this.rank);
+    this.pair.unlockedRanks = this.pair.unlockedRanks.filter(r => r !== this.rank);
+  }
+
+  reverse(): void {
+    if (this.wasLocked && !this.pair.lockedRanks.includes(this.rank)) {
+      this.pair.lockedRanks.push(this.rank);
+    }
+    if (this.wasUnlocked && !this.pair.unlockedRanks.includes(this.rank)) {
+      this.pair.unlockedRanks.push(this.rank);
+    }
+  }
+}
+
+/**
+ * MoveInInitiativeAction - Faithful port of Python's MoveInInitiative
+ * (action.py). Removes the unit from the initiative line and reinserts
+ * it at a new index computed from an offset; reverse removes and
+ * reinserts at the original index.
+ */
+export class MoveInInitiativeAction extends Action {
+  private unitNid: string;
+  private offset: number;
+  private oldIdx: number;
+  private initiativeValue: number | undefined;
+  private initiative: InitiativeTracker;
+
+  constructor(unitNid: string, offset: number, initiative: InitiativeTracker) {
+    super();
+    this.unitNid = unitNid;
+    this.offset = offset;
+    this.initiative = initiative;
+    this.oldIdx = initiative.getIndex(unitNid) ?? -1;
+    this.initiativeValue = initiative.getInitiativeForUnit(unitNid);
+  }
+
+  execute(): void {
+    if (this.oldIdx < 0) return;
+    const idx = this.initiative.unitLine.indexOf(this.unitNid);
+    if (idx < 0) return;
+    this.initiative.unitLine.splice(idx, 1);
+    this.initiative.initiativeLine.splice(idx, 1);
+    const newIdx = Math.max(0, Math.min(this.oldIdx + this.offset, this.initiative.unitLine.length));
+    this.initiative.insertAt(this.unitNid, newIdx, this.initiativeValue);
+  }
+
+  reverse(): void {
+    if (this.oldIdx < 0) return;
+    const idx = this.initiative.unitLine.indexOf(this.unitNid);
+    if (idx < 0) return;
+    this.initiative.unitLine.splice(idx, 1);
+    this.initiative.initiativeLine.splice(idx, 1);
+    this.initiative.insertAt(this.unitNid, this.oldIdx, this.initiativeValue);
+  }
+}
+
+/**
+ * AddToInitiativeAction - Faithful port of the `add_to_initiative` event
+ * command's reversible semantics (repositions a unit already on the
+ * initiative line relative to the current index; mirrors
+ * MoveInInitiativeAction's structure since the underlying Python event
+ * command reuses insert/remove-at-index primitives).
+ */
+export class AddToInitiativeAction extends Action {
+  private unitNid: string;
+  private relativePos: number;
+  private oldIdx: number;
+  private initiativeValue: number | undefined;
+  private initiative: InitiativeTracker;
+
+  constructor(unitNid: string, relativePos: number, initiative: InitiativeTracker) {
+    super();
+    this.unitNid = unitNid;
+    this.relativePos = relativePos;
+    this.initiative = initiative;
+    this.oldIdx = initiative.getIndex(unitNid) ?? -1;
+    this.initiativeValue = initiative.getInitiativeForUnit(unitNid);
+  }
+
+  execute(): void {
+    if (this.oldIdx < 0) return;
+    const idx = this.initiative.unitLine.indexOf(this.unitNid);
+    if (idx >= 0) {
+      this.initiative.unitLine.splice(idx, 1);
+      this.initiative.initiativeLine.splice(idx, 1);
+    }
+    this.initiative.insertAt(this.unitNid, this.initiative.currentIdx + this.relativePos, this.initiativeValue);
+  }
+
+  reverse(): void {
+    if (this.oldIdx < 0) return;
+    const idx = this.initiative.unitLine.indexOf(this.unitNid);
+    if (idx >= 0) {
+      this.initiative.unitLine.splice(idx, 1);
+      this.initiative.initiativeLine.splice(idx, 1);
+    }
+    this.initiative.insertAt(this.unitNid, this.oldIdx, this.initiativeValue);
   }
 }

@@ -84,6 +84,13 @@ import {
   AddRegionAction,
   RemoveRegionAction,
   CreateUnitAction,
+  SetLevelVarAction,
+  ChangeTeamAction,
+  IncrementSupportPointsAction,
+  UnlockSupportRankAction,
+  DisableSupportRankAction,
+  MoveInInitiativeAction,
+  AddToInitiativeAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -9099,7 +9106,7 @@ export class EventState extends State {
         const team = args[1] ?? 'player';
         const unit = this.findUnit(unitNid);
         if (unit) {
-          unit.team = team;
+          game.actionLog.doAction(new ChangeTeamAction(unit, team));
           // Re-palette the sprite (would need async reload in full implementation)
         }
         this.advancePointer();
@@ -11101,7 +11108,7 @@ export class EventState extends State {
         if (u1 && u2 && game.supports) {
           const pair = game.supports.getPair(u1, u2);
           if (pair) {
-            game.supports.incrementPoints(pair, amount);
+            game.actionLog.doAction(new IncrementSupportPointsAction(pair, amount));
           }
         }
         this.advancePointer();
@@ -11116,7 +11123,7 @@ export class EventState extends State {
         if (u1 && u2 && rank && game.supports) {
           const pair = game.supports.getPair(u1, u2);
           if (pair) {
-            game.supports.unlockRank(pair.nid, rank);
+            game.actionLog.doAction(new UnlockSupportRankAction(pair, rank));
           }
         }
         this.advancePointer();
@@ -11131,7 +11138,7 @@ export class EventState extends State {
         if (u1 && u2 && rank && game.supports) {
           const pair = game.supports.getPair(u1, u2);
           if (pair) {
-            game.supports.disableRank(pair.nid, rank);
+            game.actionLog.doAction(new DisableSupportRankAction(pair, rank));
           }
         }
         this.advancePointer();
@@ -11267,9 +11274,8 @@ export class EventState extends State {
       case 'enable_fog_of_war': {
         const fogEnableStr = args[0]?.toLowerCase?.() ?? 'true';
         const fogEnable = fogEnableStr === 'true' || fogEnableStr === '1';
-        game.levelVars.set('_fog_of_war', fogEnable);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_fog_of_war', fogEnable));
         console.log(`Event: enable_fog_of_war -> ${fogEnable}`);
-        if (typeof game.recalculateAllFow === 'function') game.recalculateAllFow();
         this.advancePointer();
         return false;
       }
@@ -11285,12 +11291,11 @@ export class EventState extends State {
         const fogRadius = parseInt(args[1] ?? '0', 10) || 0;
         const fogAiRadius = args[2] ? (parseInt(args[2], 10) || fogRadius) : fogRadius;
         const fogOtherRadius = args[3] ? (parseInt(args[3], 10) || fogAiRadius) : fogAiRadius;
-        game.levelVars.set('_fog_of_war_type', fogMode);
-        game.levelVars.set('_fog_of_war_radius', fogRadius);
-        game.levelVars.set('_ai_fog_of_war_radius', fogAiRadius);
-        game.levelVars.set('_other_fog_of_war_radius', fogOtherRadius);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_fog_of_war_type', fogMode));
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_fog_of_war_radius', fogRadius));
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_ai_fog_of_war_radius', fogAiRadius));
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_other_fog_of_war_radius', fogOtherRadius));
         console.log(`Event: set_fog_of_war mode=${fogMode} radius=${fogRadius} ai=${fogAiRadius} other=${fogOtherRadius}`);
-        if (typeof game.recalculateAllFow === 'function') game.recalculateAllFow();
         this.advancePointer();
         return false;
       }
@@ -11306,12 +11311,7 @@ export class EventState extends State {
         const pos = parseInt(args[1] ?? '0', 10) || 0;
         const unit = this.findUnit(unitNid);
         if (unit && game.initiative) {
-          game.initiative.removeUnit(unit);
-          game.initiative.insertAt(
-            unit.nid,
-            game.initiative.currentIdx + pos,
-            game.initiative.getInitiativeForUnit(unit.nid),
-          );
+          game.actionLog.doAction(new AddToInitiativeAction(unit.nid, pos, game.initiative));
         }
         this.advancePointer();
         return false;
@@ -11324,13 +11324,7 @@ export class EventState extends State {
         const offset = parseInt(args[1] ?? '0', 10) || 0;
         const unit = this.findUnit(unitNid);
         if (unit && game.initiative) {
-          const oldIdx = game.initiative.getIndex(unit.nid);
-          const initVal = game.initiative.getInitiativeForUnit(unit.nid);
-          if (oldIdx !== undefined && initVal !== undefined) {
-            game.initiative.removeUnit(unit);
-            const newIdx = Math.max(0, Math.min(oldIdx + offset, game.initiative.unitLine.length));
-            game.initiative.insertAt(unit.nid, newIdx, initVal);
-          }
+          game.actionLog.doAction(new MoveInInitiativeAction(unit.nid, offset, game.initiative));
         }
         this.advancePointer();
         return false;
