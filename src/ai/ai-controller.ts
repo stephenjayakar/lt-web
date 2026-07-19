@@ -117,6 +117,12 @@ export class AIController {
     viewRange: number,
   ): [number, number][] {
     if (viewRange === -1) {
+      const groupActive = this.gameRef?.isAiGroupActive
+        ? this.gameRef.isAiGroupActive(unit.aiGroup)
+        : false;
+      if (groupActive) {
+        return this.pathSystem.getValidMoves(unit, this.board);
+      }
       // Guard mode: can only stay at current position
       return unit.position ? [unit.position] : [];
     }
@@ -255,13 +261,25 @@ export class AIController {
     } else if (targetType === 'Ally') {
       candidates = this.getAllies(unit);
     } else if (targetType === 'Unit') {
-      candidates = this.board.getAllUnits().filter(u => u !== unit && !u.isDead() && u.position);
+      candidates = this.board.getAllUnits().filter(u => !u.isDead() && u.position);
     } else {
       // None or unsupported -- no targets
       return [];
     }
 
-    return this.filterByTargetSpec(candidates, behaviour);
+    candidates = this.filterByTargetSpec(candidates, behaviour);
+
+    if (this.db.getConstant('ai_fog_of_war', false) && behaviour.target !== 'Position') {
+      const fogInfo = this.gameRef?.getCurrentFogInfo?.();
+      const allUnits = this.gameRef?.getAllUnits?.() ?? this.board.getAllUnits();
+      candidates = candidates.filter((target) => {
+        if (!target.position) return false;
+        if (target.tags.includes('Tile')) return true;
+        return this.board.inVision(target.position, unit.team, fogInfo, this.db, allUnits);
+      });
+    }
+
+    return candidates;
   }
 
   /**
@@ -372,8 +390,18 @@ export class AIController {
     }
 
     if (behaviour.target === 'Terrain') {
-      // Find all tiles of matching terrain type
-      // TODO: implement terrain position lookup
+      const terrainSpec = behaviour.target_spec;
+      if (typeof terrainSpec === 'string') {
+        const positions: [number, number][] = [];
+        for (let y = 0; y < this.board.height; y++) {
+          for (let x = 0; x < this.board.width; x++) {
+            if (this.board.getTerrain(x, y) === terrainSpec) {
+              positions.push([x, y]);
+            }
+          }
+        }
+        return positions;
+      }
       return [];
     }
 
@@ -432,12 +460,10 @@ export class AIController {
           matches = u.team === specValue;
           break;
         case 'Faction':
-          // Faction is stored on generic units; check via prefab data
-          // For simplicity, compare team or a faction field if available
-          matches = false; // TODO: implement faction matching
+          matches = u.faction === specValue;
           break;
         case 'Party':
-          matches = false; // TODO: implement party matching
+          matches = u.party === specValue;
           break;
         case 'All':
           matches = true;

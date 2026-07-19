@@ -704,7 +704,7 @@
         },
         {
           "source": "src/harness.ts",
-          "line": 491
+          "line": 512
         }
       ],
       "matchingWebHooks": [],
@@ -3878,11 +3878,11 @@
         },
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 527
+          "line": 553
         },
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 573
+          "line": 599
         },
         {
           "source": "src/combat/combat-components.ts",
@@ -3973,7 +3973,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 527
+          "line": 553
         },
         {
           "source": "src/combat/combat-components.ts",
@@ -5916,7 +5916,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 757
+          "line": 783
         },
         {
           "source": "src/combat/combat-components.ts",

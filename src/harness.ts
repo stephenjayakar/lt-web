@@ -90,6 +90,27 @@ export interface HarnessAPI {
   resolveCombatAesthetics: (attackerNid: string, defenderNid: string) => CombatAestheticsSummary | null;
   /** Pure evaluation of an item's target-icon warning marker against a target. */
   computeTargetIcon: (unitNid: string, itemNid: string, targetNid: string) => 'warning' | 'danger' | null;
+  /**
+   * Directly ask the real AIController what action a unit would take,
+   * without stepping frames. Returns a simplified summary for assertions.
+   */
+  aiGetAction: (unitNid: string) => AiActionSummary | null;
+  /** Overwrite a unit's identity fields (faction/party/aiGroup/team) for AI target_spec fixtures. */
+  setUnitIdentity: (
+    unitNid: string,
+    fields: { faction?: string; party?: string; aiGroup?: string; team?: string },
+  ) => boolean;
+  /** Mark an AI group as active/inactive (mirrors Python's game.ai_group_active). */
+  setAiGroupActive: (groupId: string, active: boolean) => void;
+  /** Set the terrain NID at a board position (for Terrain target_spec fixtures). */
+  setTerrain: (x: number, y: number, terrainNid: string) => void;
+}
+
+export interface AiActionSummary {
+  type: string;
+  targetUnitNid: string | null;
+  targetPosition: [number, number] | null;
+  movePathLength: number;
 }
 
 export interface CombatAestheticsSummary {
@@ -495,6 +516,44 @@ export function installHarness(
       const item = unit.items.find((i) => i.nid === itemNid);
       if (!item) return null;
       return computeTargetIcon(unit, item, target, game.db, game);
+    },
+
+    aiGetAction(unitNid: string): AiActionSummary | null {
+      const unit = game.units.get(unitNid);
+      if (!unit || !game.aiController) return null;
+      const action = game.aiController.getAction(unit);
+      return {
+        type: action.type,
+        targetUnitNid: action.targetUnit?.nid ?? null,
+        targetPosition: action.targetPosition ?? null,
+        movePathLength: action.movePath?.length ?? 0,
+      };
+    },
+
+    setUnitIdentity(
+      unitNid: string,
+      fields: { faction?: string; party?: string; aiGroup?: string; team?: string },
+    ): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit) return false;
+      if (fields.faction !== undefined) unit.faction = fields.faction;
+      if (fields.party !== undefined) unit.party = fields.party;
+      if (fields.aiGroup !== undefined) unit.aiGroup = fields.aiGroup;
+      if (fields.team !== undefined) unit.team = fields.team;
+      return true;
+    },
+
+    setAiGroupActive(groupId: string, active: boolean): void {
+      if (!groupId) return;
+      if (active) {
+        game.activateAiGroup(groupId);
+      } else {
+        game.activeAiGroups.delete(groupId);
+      }
+    },
+
+    setTerrain(x: number, y: number, terrainNid: string): void {
+      game.board?.setTerrain(x, y, terrainNid);
     },
 
     turnwheelUndo(): boolean {

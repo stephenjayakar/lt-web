@@ -201,7 +201,7 @@ Summary: 211/255 parser-recognized; 202/255 with dispatcher cases.
 | choice | Choice | choice:3077 | MISCELLANEOUS |  | Nid, Title, Choices, RowWidth?, Orientation?, Alignment?, BG?, EventNid?, EntryType?, Dimensions?, TextAlign? | persist, expression, no_bg, no_cursor, arrows, no_arrows, scroll_bar, no_scroll_bar, backable | yes | yes | no | mention | dispatched-unverified |
 | unchoice | Unchoice | unchoice:3133 | MISCELLANEOUS |  |  |  | yes | yes | no |  | dispatched-unverified |
 | textbox | Textbox | textbox:3144 | MISCELLANEOUS |  | NID, Text, BoxPosition?, Width?, NumLines?, StyleNid?, TextSpeed?, FontColor?, FontType?, BG? | expression | yes | yes | no |  | stub-hint |
-| table | Table | table:3251 | MISCELLANEOUS |  | Nid, TableData, Title?, Dimensions?, RowWidth?, Alignment?, BG?, EntryType?, TextAlign? | expression, no_bg | yes | yes | no |  | stub-hint |
+| table | Table | table:3251 | MISCELLANEOUS |  | Nid, TableData, Title?, Dimensions?, RowWidth?, Alignment?, BG?, EntryType?, TextAlign? | expression, no_bg | yes | yes | no | mention | stub-hint |
 | remove_table | RemoveTable | remove_table:3273 | MISCELLANEOUS | rmtable | Nid |  | yes | yes | no |  | stub-hint |
 | text_entry | TextEntry | text_entry:3276 | MISCELLANEOUS |  | Nid, String, CharacterLimit?, IllegalCharacterList?, DefaultString?, MinimumCharacterLimit? | force_entry | no | no | no |  | missing-parser |
 | chapter_title | ChapterTitle | chapter_title:3298 | MISCELLANEOUS |  | Music?, String? |  | yes | yes | no |  | dispatched-unverified |

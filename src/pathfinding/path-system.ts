@@ -8,6 +8,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 import { Dijkstra, AStar } from './pathfinding';
+import { passThrough } from '../combat/skill-system';
 
 /**
  * High-level pathfinding interface.
@@ -107,6 +108,12 @@ export class PathSystem {
     goalX: number,
     goalY: number,
     board: GameBoard,
+    options?: {
+      canMoveThrough?: (x: number, y: number) => boolean;
+      adjGoodEnough?: boolean;
+      limit?: number;
+      maxMovementLimit?: number;
+    },
   ): [number, number][] | null {
     const pos = unit.position;
     if (!pos) return null;
@@ -122,8 +129,18 @@ export class PathSystem {
       }
     }
 
-    const canMoveThrough = this.buildCanMoveThrough(unit, board);
-    return astar.process(pos[0], pos[1], goalX, goalY, canMoveThrough);
+    const canMoveThrough = options?.canMoveThrough ?? this.buildCanMoveThrough(unit, board);
+
+    return astar.process(
+      pos[0],
+      pos[1],
+      goalX,
+      goalY,
+      canMoveThrough,
+      options?.adjGoodEnough ?? false,
+      options?.limit ?? 0,
+      options?.maxMovementLimit ?? 999,
+    );
   }
 
   /**
@@ -204,6 +221,11 @@ export class PathSystem {
     unit: UnitObject,
     board: GameBoard,
   ): (x: number, y: number) => boolean {
+    // Python: `skill_system.pass_through(self.unit)` makes can_move_through
+    // always true, ignoring occupants entirely (game_state.py / ai_controller.py).
+    if (passThrough(unit)) {
+      return () => true;
+    }
     return (x: number, y: number): boolean => {
       const occupant = board.getUnit(x, y);
       if (!occupant) return true;

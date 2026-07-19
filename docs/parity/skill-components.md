@@ -9,7 +9,7 @@ Summary: 75/241 referenced in web source; 67/241 expose at least one matching we
 |---|---|---|---|---|---|---|---|---|
 | multi_skill | MultiSkill | lt-maker/app/engine/skill_components/advanced_components.py:15 | ADVANCED | before_add, after_remove |  |  |  | unreferenced |
 | parent_condition | ParentCondition | lt-maker/app/engine/skill_components/advanced_components.py:24 | HIDDEN | condition |  |  |  | unreferenced |
-| ability | Ability | lt-maker/app/engine/skill_components/advanced_components.py:59 | ADVANCED | extra_ability, end_combat_unconditional |  | src/ai/ai-controller.ts:530<br>src/engine/states/game-states.ts:1833 |  | reference-only |
+| ability | Ability | lt-maker/app/engine/skill_components/advanced_components.py:59 | ADVANCED | extra_ability, end_combat_unconditional |  | src/ai/ai-controller.ts:556<br>src/engine/states/game-states.ts:1833 |  | reference-only |
 | combat_art | CombatArt | lt-maker/app/engine/skill_components/advanced_components.py:80 | ADVANCED | init, combat_art, start_combat, on_activation, on_deactivation, end_combat_unconditional |  |  |  | unreferenced |
 | menu_category | MenuCategory | lt-maker/app/engine/skill_components/advanced_components.py:119 | ADVANCED | menu_category |  |  |  | unreferenced |
 | automatic_combat_art | AutomaticCombatArt | lt-maker/app/engine/skill_components/advanced_components.py:129 | ADVANCED | on_upkeep, on_endstep |  |  |  | unreferenced |

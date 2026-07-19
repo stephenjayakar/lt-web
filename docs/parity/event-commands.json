@@ -4785,7 +4785,7 @@
       "nicknameRecognized": null,
       "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "stub-hint"
     },
     {
