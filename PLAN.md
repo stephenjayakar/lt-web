@@ -2292,18 +2292,15 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-19 after the rendering-parity slice landed (the full
-prior queue with its audit tables is preserved in git history at 817743f):
+Queue refreshed 2026-07-19 (map-UI slice landed; prior queues in git history):
 
-1. **Turnwheel breadth verification (P2):** systematic undo/redo coverage
-   across death/resurrection, recruitment, class change, support gains, fog,
-   and initiative — the P2 rows still unchecked.
-2. ~~Audio verification (P6)~~ — done, see Recent Changes.
-3. ~~Blocking/no-block/flag matching audit per event command (P1)~~ — done,
-   see Recent Changes (`no_banner` fixed on 7 commands; `add_portrait`/
-   `remove_portrait` `no_block` and `center_cursor`/`move_cursor` `immediate`
-   filed as real, unfixed gaps needing a portrait-transition-wait / camera-pan
-   feature respectively).
-4. Soak automation with deterministic seeds and first-failure archiving (P7).
-5. ~~Initiative bar, rescue/status icons, movement arrows UI (P5)~~ — done,
-   see Recent Changes.
+1. **Pathfinding/movement verification (P4):** movement costs, Dijkstra range
+   vs A* path agreement, LOS, canto ranges, rescue/drop movement rules vs
+   Python's path_system.
+2. Portrait/dialog/transition verification (P6): expressions, blinking/mouth
+   timing, dialog controls, screen transitions vs Python dialog.py/portrait.
+3. Resource-path fixtures (P6): spaces/Unicode NIDs, chunked/non-chunked,
+   animated panoramas, palette layouts, missing optional assets, bundles.
+4. Remove silent skips for known commands/components in production builds (P7).
+5. Final parity report groundwork: verified-domains list + accepted-deviation
+   registry consolidation (P7).

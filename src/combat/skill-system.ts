@@ -113,6 +113,14 @@ function hasAnySkill(unit: UnitObject, componentNid: string): boolean {
   return unit.skills.some(s => s.hasComponent(componentNid));
 }
 
+/** Skill-component nids that grant some form of Canto (movement_components.py). */
+const CANTO_COMPONENTS = ['canto', 'canto_plus', 'canto_sharp', 'canter'];
+
+/** Does this single skill grant canto (any variant)? Used when (de)equipping a skill. */
+export function isCantoSkill(skill: { hasComponent: (nid: string) => boolean }): boolean {
+  return CANTO_COMPONENTS.some((nid) => skill.hasComponent(nid));
+}
+
 /** Sum all numeric values for a component across all skills. */
 function sumSkillValues(unit: UnitObject, componentNid: string): number {
   let total = 0;
@@ -291,9 +299,19 @@ export function canCounter(unit: UnitObject): boolean {
 // Boolean hooks (ANY_DEFAULT_FALSE)
 // ============================================================
 
-/** Does the unit have canto? */
+/**
+ * Does the unit have canto (can move again after acting)?
+ * Python recognizes several canto skill-component variants that all expose
+ * `has_canto`/`canto_movement` (movement_components.py): `canto`, `canto_plus`
+ * (canto even after attacking), `canto_sharp`, and `canter` (fixed-distance
+ * canto). We don't yet distinguish their differing `has_canto` gating (e.g.
+ * base Canto denies a re-move after attacking an enemy other than self) --
+ * only CantoPlus's "always true" semantics are effectively applied here. That
+ * gap is filed as out of scope for this movement-parity slice since no
+ * shipped skill data uses these variants yet.
+ */
 export function hasCanto(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'canto');
+  return unit.skills.some(isCantoSkill);
 }
 
 // ============================================================
