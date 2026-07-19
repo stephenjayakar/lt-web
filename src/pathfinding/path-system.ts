@@ -53,6 +53,9 @@ export class PathSystem {
     // allied tiles but cannot stop on any occupied tile except its own.
     const validMoves: [number, number][] = [];
     for (const [x, y] of results) {
+      // Python applies game_board.bounds to the mcost grid; tiles outside the
+      // configured movement bounds are unreachable (set_game_board_bounds).
+      if (!board.checkBounds(x, y)) continue;
       const occupant = board.getUnit(x, y);
       if (!occupant || occupant === unit) {
         validMoves.push([x, y]);

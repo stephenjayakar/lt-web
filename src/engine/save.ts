@@ -224,6 +224,8 @@ export interface SaveDict {
   memory: [string, any][];
   /** NIDs of only_once events already triggered. Optional for legacy saves (defaults to empty). */
   alreadyTriggeredEvents?: string[];
+  /** Movement bounds override on the game board (Python game_state 'bounds'). */
+  boardBounds?: [number, number, number, number];
   /**
    * Talk pair keys ("unitA|unitB") hidden via hide_talk (mirrors Python's
    * `game_state.talk_hidden`). Optional for legacy saves (defaults to empty).
@@ -823,7 +825,8 @@ export function buildSaveDict(game: any): SaveDict {
     // Persist the skill uid counter so subsequent constructions stay monotonic
     // and restored uids don't collide with new ones (Python set_next_uids).
     skillCounter: getNextSkillUid(),
-    alreadyTriggeredEvents: game.eventManager
+boardBounds: game.board ? ([...game.board.bounds] as [number, number, number, number]) : undefined,
+        alreadyTriggeredEvents: game.eventManager
       ? Array.from((game.eventManager as EventManager).getOnceTriggered())
       : [],
     talkHidden: game.eventManager
@@ -1403,6 +1406,11 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   // 15. Restore level (if present)
   if (s.level) {
     await restoreLevel(game, s.level, unitsByNid, s.alreadyTriggeredEvents, s.talkHidden);
+  }
+
+  // Restore movement bounds after the board exists (legacy saves: natural bounds).
+  if (s.boardBounds && game.board) {
+    game.board.setBounds(...s.boardBounds);
   }
 
   // 16. Restore overworld registry

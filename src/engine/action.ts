@@ -894,6 +894,61 @@ export class HasTradedAction extends Action {
  * Mirrors Python's action.OnlyOnceEvent (game.already_triggered_events
  * append/remove), so turnwheel undo restores re-triggerability.
  */
+/**
+ * SetGameBoardBoundsAction - Python action.SetGameBoardBounds. Stores the
+ * previous bounds tuple; do applies the new bounds, reverse restores.
+ */
+export class SetGameBoardBoundsAction extends Action {
+  private board: any;
+  private newBounds: [number, number, number, number];
+  private oldBounds: [number, number, number, number] | null = null;
+
+  constructor(board: any, bounds: [number, number, number, number]) {
+    super();
+    this.board = board;
+    this.newBounds = bounds;
+  }
+
+  execute(): void {
+    this.oldBounds = [...this.board.bounds] as [number, number, number, number];
+    this.board.setBounds(...this.newBounds);
+  }
+
+  reverse(): void {
+    if (this.oldBounds) this.board.setBounds(...this.oldBounds);
+  }
+}
+
+/**
+ * SetSkillDataAction - Python action.SetObjData applied to a skill's data map.
+ * Reversible: restores the previous value (or deletes a key that was absent).
+ */
+export class SetSkillDataAction extends Action {
+  private skill: any;
+  private key: string;
+  private value: any;
+  private hadKey = false;
+  private oldValue: any;
+
+  constructor(skill: any, key: string, value: any) {
+    super();
+    this.skill = skill;
+    this.key = key;
+    this.value = value;
+  }
+
+  execute(): void {
+    this.hadKey = this.skill.data.has(this.key);
+    this.oldValue = this.skill.data.get(this.key);
+    this.skill.data.set(this.key, this.value);
+  }
+
+  reverse(): void {
+    if (this.hadKey) this.skill.data.set(this.key, this.oldValue);
+    else this.skill.data.delete(this.key);
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;

@@ -85,6 +85,8 @@ import {
   RemoveRegionAction,
   CreateUnitAction,
   SetLevelVarAction,
+  SetGameBoardBoundsAction,
+  SetSkillDataAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8649,6 +8651,124 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_skill_data': {
+        // set_skill_data;GlobalUnit;Skill;Nid;Expression (Python event_functions.py:2158)
+        const unitNid = args[0] ?? '';
+        const skillNid = args[1] ?? '';
+        const dataKey = args[2] ?? '';
+        const rawExpr = args[3] ?? '';
+        const unit = game.units.get(unitNid);
+        const skill = unit?.skills?.find((s: any) => s.nid === skillNid);
+        if (!unit || !skill || !dataKey) {
+          console.warn(`set_skill_data: invalid unit/skill/key (${unitNid}/${skillNid}/${dataKey})`);
+          this.advancePointer();
+          return false;
+        }
+        // Python evaluates a full expression; the web supports numeric/bool
+        // literals plus already-{e:}-substituted values (documented deviation).
+        let value: any = rawExpr;
+        if (/^-?\d+(\.\d+)?$/.test(rawExpr)) value = Number(rawExpr);
+        else if (rawExpr === 'True' || rawExpr === 'true') value = true;
+        else if (rawExpr === 'False' || rawExpr === 'false') value = false;
+        game.actionLog.doAction(new SetSkillDataAction(skill, dataKey, value));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_mode_rng': {
+        // set_mode_rng;RNG (Python event_functions.py:2382) — not turnwheel-logged
+        const validModes = ['classic', 'true_hit', 'true_hit_plus', 'fates_hit', 'grandmaster'];
+        const mode = (args[0] ?? '').trim();
+        if (!validModes.includes(mode)) {
+          console.warn(`set_mode_rng: ${mode} is not a valid RNG option`);
+        } else if (game.currentMode) {
+          game.currentMode.rng_mode = mode;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_mode_autolevels': {
+        // set_mode_autolevels;Level;flags (Python event_functions.py:2367)
+        // hidden flag -> autolevels (invisible); boss flag -> boss variants.
+        const level = parseInt(args[0] ?? '0', 10) || 0;
+        const flagSet = new Set(args.slice(1).map((a: string) => a.trim().toLowerCase()));
+        if (game.currentMode) {
+          if (flagSet.has('hidden')) {
+            if (flagSet.has('boss')) game.currentMode.bossAutolevels = level;
+            else game.currentMode.enemyAutolevels = level;
+          } else {
+            if (flagSet.has('boss')) game.currentMode.bossTruelevels = level;
+            else game.currentMode.enemyTruelevels = level;
+          }
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'show_minimap': {
+        // show_minimap (Python event_functions.py:3532) — pauses the event
+        // while the minimap state is open; resumes when it pops.
+        this.advancePointer();
+        game.state.change('minimap');
+        return true;
+      }
+
+      case 'set_game_board_bounds': {
+        // set_game_board_bounds;MinX;MinY;MaxX;MaxY (Python event_functions.py:890)
+        const [minX, minY, maxX, maxY] = args.slice(0, 4).map((a: string) => parseInt(a, 10));
+        if (!game.board) {
+          console.warn('set_game_board_bounds: no game board available');
+        } else if (!(maxX > minX) || !(maxY > minY)) {
+          console.warn(`set_game_board_bounds: Max must be strictly greater than Min (${minX},${minY},${maxX},${maxY})`);
+        } else {
+          game.actionLog.doAction(new SetGameBoardBoundsAction(game.board, [minX, minY, maxX, maxY]));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_game_board_bounds': {
+        // remove_game_board_bounds (Python event_functions.py:901)
+        if (game.board && game.tilemap) {
+          game.actionLog.doAction(new SetGameBoardBoundsAction(
+            game.board,
+            [0, 0, game.tilemap.width - 1, game.tilemap.height - 1],
+          ));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'dump_vars': {
+        // dump_vars (Python event_functions.py:3996) writes vars to a file and
+        // opens it; the web logs a structured dump instead (documented deviation).
+        console.log('[dump_vars] game_vars:', Object.fromEntries(game.gameVars));
+        console.log('[dump_vars] level_vars:', Object.fromEntries(game.levelVars));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'delete_save': {
+        // delete_save;SaveSlot (Python event_functions.py:769); 'suspend'
+        // deletes the quicksave. Fire-and-forget like other async browser IO.
+        const slot = (args[0] ?? '').trim();
+        void (async () => {
+          const saveModule = await import('../save');
+          if (slot.toLowerCase() === 'suspend') {
+            await saveModule.deleteSuspend(game.db.getConstant('game_nid', 'default') as string);
+          } else {
+            const slotNum = parseInt(slot, 10);
+            await saveModule.deleteSave(
+              game.db.getConstant('game_nid', 'default') as string,
+              Number.isNaN(slotNum) ? 0 : slotNum,
+            );
+          }
+        })().catch((err) => console.warn('delete_save failed:', err));
         this.advancePointer();
         return false;
       }

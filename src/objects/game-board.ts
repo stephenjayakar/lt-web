@@ -51,9 +51,13 @@ export class GameBoard {
    */
   onUnitPositionChanged?: () => void;
 
+  /** Movement bounds (Python game_board.bounds): [minX, minY, maxX, maxY]. */
+  bounds: [number, number, number, number];
+
   constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
+    this.bounds = [0, 0, width - 1, height - 1];
 
     this.unitGrid = [];
     this.teamGrid = [];
@@ -149,6 +153,21 @@ export class GameBoard {
   /** Check if position is within bounds. */
   inBounds(x: number, y: number): boolean {
     return x >= 0 && y >= 0 && x < this.width && y < this.height;
+  }
+
+  /** Set movement bounds (Python GameBoard.set_bounds). Grid storage is unaffected. */
+  setBounds(minX: number, minY: number, maxX: number, maxY: number): void {
+    this.bounds = [minX, minY, maxX, maxY];
+  }
+
+  /** Reset to the tilemap's natural bounds (Python remove_game_board_bounds). */
+  resetBounds(): void {
+    this.bounds = [0, 0, this.width - 1, this.height - 1];
+  }
+
+  /** Python GameBoard.check_bounds: is the position within the movement bounds? */
+  checkBounds(x: number, y: number): boolean {
+    return x >= this.bounds[0] && x <= this.bounds[2] && y >= this.bounds[1] && y <= this.bounds[3];
   }
 
   /**

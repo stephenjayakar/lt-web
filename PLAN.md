@@ -179,6 +179,19 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 1 (implemented solo):** `set_skill_data` (reversible
+  `SetSkillDataAction`), `set_mode_rng`/`set_mode_autolevels` (validated
+  DifficultyModeObject fields incl. hidden/boss routing), `show_minimap`
+  (blocks the event on the existing minimap state, resumes on close),
+  `set_game_board_bounds`/`remove_game_board_bounds` (new Python-shaped
+  `GameBoard.bounds` with movement filtering in `getValidMoves`, reversible
+  `SetGameBoardBoundsAction`, save/load persistence — unblocks the P2
+  bounds save-field row), `dump_vars` (console dump; file-open deviation
+  documented), and `delete_save` (slot + suspend via the async save API).
+  8 regressions in `tests/event-commands-3.spec.ts`. Deviation: set_skill_data
+  evaluates literal numbers/bools rather than arbitrary Python expressions.
+
+
 - **Audit-tooling fix: direct component reads now count as implementation
   evidence (implemented solo):** `scripts/parity-audit.mjs` gains a
   direct-consumption scanner (`getComponent(...)`/`hasComponent('nid')`
