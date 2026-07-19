@@ -27,6 +27,8 @@ export interface EventTrigger {
   regionNid?: NID;
   turnCount?: number;
   team?: string;
+  baseConvo?: NID;       // base conversation nid (on_base_convo)
+  unit?: NID;            // deprecated field (on_base_convo)
   // Context objects for condition evaluation
   unit1?: any;           // UnitObject reference
   unit2?: any;           // UnitObject reference

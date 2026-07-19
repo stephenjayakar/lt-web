@@ -486,13 +486,30 @@ export class BaseConvosState extends State {
         game.baseConvos.set(convoNid, true);
       }
 
-      // Trigger base conversation event if event manager exists
+      // Fire on_base_convo trigger (matches Python engine/base.py:
+      // BaseConvosState.take_input -> trigger('on_base_convo') with base_convo + unit)
       if (game.eventManager) {
-        game.eventManager.triggerBaseConvo(convoNid);
+        const levelNid = game.currentLevel?.nid ?? '';
+        const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+        const triggered = game.eventManager.trigger(
+          {
+            type: 'on_base_convo',
+            levelNid,
+            baseConvo: convoNid,
+            unit: convoNid, // deprecated, but matches Python's unit field
+            localArgs: new Map([['base_convo', convoNid]]),
+          },
+          ctx,
+        );
+        if (triggered) {
+          game.state.change('event');
+        }
       }
 
-      // Pop back to base main (event will play on top)
-      game.state.back();
+      // Pop back to base main (event will play on top if triggered above)
+      if (!game.eventManager || !game.eventManager.hasActiveEvents()) {
+        game.state.back();
+      }
     }
   }
 }

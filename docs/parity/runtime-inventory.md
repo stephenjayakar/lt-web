@@ -9,7 +9,7 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 |---|---|---|---|---|---|
 | level_start | 57 | (none) | REFERENCED | src/engine/game-state.ts:611 | Fired in `loadLevel` step k; also mentioned in comments at game-state.ts:411, game-states.ts:908 |
 | level_end | 66 | (none) | REFERENCED | src/engine/states/game-states.ts:6975 | Fired from EventState on win_game; guarded by `_level_end_triggered` levelVar (6966) |
-| overworld_start | 73 | (none) | UNREFERENCED | — | Overworld entry trigger not wired in web port |
+| overworld_start | 73 | (none) | REFERENCED | src/engine/states/overworld-state.ts:115-122 | Fired in OverworldFreeState.start() after setup; guarded on eventManager (see on_title_screen) |
 | level_select | 84 | (none) | REFERENCED | src/engine/states/game-states.ts:736 | String present only as `LevelSelectState.name` / `state.change('level_select')`; trigger type `level_select` is NOT fired |
 | phase_change | 91 | `team: NID` | REFERENCED | src/engine/states/game-states.ts:5681 | Fired as trigger with `team`; nid also used as state name `PhaseChangeState` (5801) and `state.change('phase_change')` (5667,5671,5786) |
 | turn_change | 99 | (none) | REFERENCED | src/engine/states/game-states.ts:5624, 5688 | Fired as trigger with `turnCount`; nid also used as state name `TurnChangeState` (game-states.ts:992,1253,1263) |
@@ -30,7 +30,7 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | combat_end | 248 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `item: ItemObject`, `playback: List[PlaybackBrush]` | REFERENCED | src/engine/states/game-states.ts:4798-4807 | *(Audited 2026-07-18: already fixed, note was stale)* `playback: activeCombat!.strikes` IS present in the payload and reaches condition/`{e:}` context via the generic `localArgs` mapping (event-manager.ts:1317). |
 | on_talk | 260 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:1629, 1824, 1841; src/engine/states/roam-state.ts:327 | Web uses `unitA`/`unitB` NID pair plus `unit1`/`unit2`. *(Audited 2026-07-18)* Roam-path `position` omission is intentional parity, not a gap: Python's `free_roam_state.py:163` calls `triggers.OnTalk(self.roam_unit, other_unit, None)` — position is `None` at that one call site in Python too. |
 | on_support | 270 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `support_rank_nid: NID`, `is_replay: bool` | REFERENCED | src/engine/states/game-states.ts:2210+ (field Support option trigger); src/engine/states/base-state.ts:530+ (BaseSupportState trigger) | Field Support option fires when adjacent unit has unlocked-but-unviewed rank; gate: `_supports` gameVar + `support_constants.combat_convos` enabled. Base submenu shows all support pairs with any unlocked/locked ranks and replays conversations. |
-| on_base_convo | 282 | `base_convo: NID`, `unit: NID` (deprecated) | UNREFERENCED | — | Base-conversation trigger not wired |
+| on_base_convo | 282 | `base_convo: NID`, `unit: NID` (deprecated) | REFERENCED | src/engine/states/base-state.ts:487-504 | Fired when player selects base conversation; payload base_convo + deprecated unit field |
 | on_prep_start | 291 | (none) | REFERENCED | src/engine/states/prep-state.ts:PrepMainState.start() | Fired once per prep entry, before setupUnits(); pushes EventState directly if events queued |
 | on_base_start | 298 | (none) | REFERENCED | src/engine/states/base-state.ts:BaseMainState.start() | Fired once per base entry, after buildMenu(); pushes EventState directly if events queued |
 | on_turnwheel | 307 | (none) | REFERENCED | src/engine/states/turnwheel-state.ts:296 | Fired post-turnwheel with `game`/`gameVars`/`levelVars` ctx |
@@ -46,12 +46,12 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | preview | triggers.py:401 | position, region | UNREFERENCED | — | 'preview' string appears in game-states.ts:9924 as shop flag, unrelated |
 | event_on_hit | triggers.py:412 | unit1, unit2, position, item, target_pos, mode, attack_info | REFERENCED | combat-lifecycle.ts:51 | referenced as component name; nid resolved via `eventNid()` |
 | event_after_combat | triggers.py:429 | unit1, unit2, position, item, target_pos, mode | REFERENCED | combat-lifecycle.ts:69 | web also dispatches non-Python `event_after_use`, `event_after_combat_on_hit` |
-| event_after_initiated_combat | triggers.py:445 | unit1, unit2, position, item, mode | UNREFERENCED | — | hidden skill/item trigger missing |
-| event_on_remove | triggers.py:460 | unit1 | UNREFERENCED | — | hidden skill trigger missing |
+| event_after_initiated_combat | triggers.py:445 | unit1, unit2, position, item, mode | DEFERRED | — | hidden component-based trigger: EventAfterInitiatedCombat skill component (not yet ported) directly fires events; Python never unconditionally fires this trigger — defer until component implemented |
+| event_on_remove | triggers.py:460 | unit1 | DEFERRED | — | hidden component-based trigger: EventOnRemove skill component (not yet ported) directly fires events; Python never unconditionally fires this trigger — defer until component implemented |
 | unlock_staff | triggers.py:471 | unit1, position, item, region | UNREFERENCED (as trigger) | — | appears in item-system.ts:61,431,695 only as item COMPONENT, never dispatched as trigger |
 | (RegionTrigger, dynamic nid) | triggers.py:390 | nid, unit1, position, region, item | REFERENCED (dynamic) | roam-state.ts:350,353 | dispatched via `region.sub_nid` |
 
-**Totals (updated 2026-07-19):** 30/41 constant nids referenced, 11 unreferenced. Recent slices wired unit_wait, unit_select, unit_deselect, on_prep_start, on_base_start, on_startup, on_title_screen, on_overworld_node_select. Still unreferenced: overworld_start (1), on_base_convo (1), roam-input (3), time-region (1), during-level-up (1, deferred — no event-pump seam in CombatState's level-up animation), on_support (1, deferred — no support-conversation UI exists yet), hidden skill/item triggers (2).
+**Totals (updated 2026-07-19, P1 straggler slice):** 32/41 constant nids REFERENCED. **Newly wired:** on_base_convo, overworld_start. **Already wired (P5):** roam_press_start/info/aux. **Deferred:** time_region_complete (blocked on time-region feature), during_unit_level_up (blocked on level-up seam, no event-pump point in CombatState's animation), event_after_initiated_combat (component-based, no engine dispatch), event_on_remove (component-based, no engine dispatch). **Unreferenced (low-risk):** level_select (not fired as trigger, only state name), preview (shop flag, unrelated).
 
 ---
 
