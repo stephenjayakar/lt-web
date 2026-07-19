@@ -260,7 +260,7 @@ This report consolidates P0-P7 roadmap evidence from current HEAD. The runtime i
 
 **Parity Status Summary:**
 - **Playable:** Sacred Stones Prologue → Ch.5 campaign chain (seeded soak confirmed green)
-- **Verified:** 17/25 domains at varying coverage; 32/41 event triggers wired; 40 spec files with 378+ regressions
+- **Verified:** 17/25 domains at varying coverage; 32/41 event triggers wired; 40 spec files with 368 tests (367 passed + 1 intentional skip)
 - **Deferred (9 items, blocked on larger features):** Time region, during-level-up event pump, support-UI secondary features (component-based triggers), NPC roam AI, fatigue, terrain status, scripted sub-events, mid-combat double re-eval
 - **Low-risk gaps (not impacting shipped projects):** 44 parser-missing commands (zero real usage), 53 dispatcher-missing (recognized but unhandled), 174/241 skill components unreferenced (editor-only or rarely used)
 - **Known approximations:** 22 documented deviations (acceptable per out-of-scope constraints: browser canvas limitations, simplified UX, platform differences)
