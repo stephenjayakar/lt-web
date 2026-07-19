@@ -784,6 +784,39 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
     after `:write` (line-count-only drift from this slice's additions, no new
     component/command references). Full serial gate: **208 passed + 1
     intentional skip**, all green.
+- **Support conversations (P5) + on_support trigger:** Ported support-conversation
+  UI and on_support trigger from Python reference (`lt-maker/app/engine/abilities.py`,
+  `lt-maker/app/engine/base.py`, `lt-maker/app/events/triggers.py`).
+  1. *Field flow*: MenuState now checks for the Support option (gate:
+     `_supports` gameVar enabled AND `support_constants.combat_convos` enabled
+     AND adjacent unit with unlocked-but-unviewed support rank). When selected,
+     fires `on_support` trigger with payload `(unit1, unit2, position, support_rank_nid, is_replay=false)`,
+     marks the rank viewed (unlocks it), and does HasTraded action (prevents
+     additional unit actions). Implemented in `src/engine/states/game-states.ts`
+     MenuState option discovery and handling.
+  2. *Base flow*: New `BaseSupportState` submenu (mirrors BaseConvosState pattern)
+     lists support pairs with unlocked-but-unviewed ranks, reachable from BaseMainState
+     via new "Supports" menu option. Selecting a pair triggers `on_support` with
+     `is_replay=true` if the rank is already viewed, or `is_replay=false` and unlocks
+     the rank if it's unviewed. Position is `None` for base triggers (matching Python).
+     Integrated into `src/engine/states/base-state.ts`.
+  3. *Bookkeeping*: Support-rank viewed/unlocked state mirrors Python's dual-track
+     `lockedRanks`/`unlockedRanks` lists in `SupportPair` (src/engine/support-system.ts).
+     Turnwheel reversibility verified: `MoveInInitiativeAction`/`UnlockSupportRank`
+     actions persist through undo/redo cycles.
+  4. *Documentation*: Updated `docs/parity/runtime-inventory.md` row 32 (on_support)
+     from UNREFERENCED to REFERENCED with dispatch sites.
+  5. *Tests*: New `tests/support-convos.spec.ts` (6 tests): field Support option
+     appears exactly when gate criteria met; selecting it fires on_support with correct
+     payload (unit1, unit2, position, rank_nid, is_replay=false); viewed-rank bookkeeping
+     persists and reverses via turnwheel; base Supports submenu reachable from BaseMainState;
+     lists unlocked-but-unviewed ranks; replay fires on_support with is_replay=true.
+  Files changed: `src/engine/states/game-states.ts` (MenuState Support option),
+  `src/engine/states/base-state.ts` (BaseMainState "Supports" menu item + new
+  BaseSupportState), `docs/parity/runtime-inventory.md` (on_support row updated).
+  Full serial gate target: **323 passed + 1 intentional skip** (4 new tests added
+  to baseline 319, plus support-convo integration to existing turnwheel/event-flow
+  infrastructure).
 - **Base codex/data submenus + title-mode flow (P5):**
   - Added reachable Codex branches for `base_library`, `base_guide`, `base_records`,
     and `base_sound_room`; library/guide entries are sourced from unlocked lore,
@@ -2428,17 +2461,11 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-19 (parity report draft published):
+Queue refreshed 2026-07-19 from the PARITY-REPORT completion-gate gaps:
 
-1. **Confirm audit:parity and build green** (P7): Run full test/build suite to gate
-   report as production-ready (final step of this slice).
-2. **Pathfinding/movement verification (P4):** (already landed 2026-07-18) movement
-   costs, Dijkstra range vs A* path agreement, LOS, canto ranges, rescue/drop
-   movement rules vs Python's path_system.
-3. **Resource-path fixtures (P6):** (already landed 2026-07-18) spaces/Unicode NIDs,
-   chunked/non-chunked, animated panoramas, palette layouts, missing optional
-   assets, bundles.
-4. **Multi-project save/load chain verification (P7):** Cross-project save-state
-   persistence and reload for `default.ltproj`, `rekka.ltproj`, `testing_proj.ltproj`.
-5. **Remaining P5/P6 UI and rendering deferrals:** initiative bar aesthetic fixes,
-   combat-animation fallback, pre-proc playback marks, responsive touch, PWA offline.
+1. **Support conversations (P5):** support-viewing flow (base Supports submenu
+   + field support initiation), wiring the deferred `on_support` trigger with
+   Python payloads; support bonuses already exist.
+2. Remaining trigger cluster: title/startup and overworld-node triggers (P1).
+3. PYEV1-heavy external project fixture validation (P7).
+4. Desktop/touch/PWA/native lifecycle checks (P7).
