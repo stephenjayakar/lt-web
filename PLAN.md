@@ -179,6 +179,45 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Resource-path fixtures: URL encoding, chunked/non-chunked fallback, panoramas,
+  optional assets (P6):** Structural test suite validating resource loading across
+  fixture projects and URI encoding edge cases.
+  1. *URL encoding*: `ResourceManager.resolveUrl()` already encodes each path segment
+     with `encodeURIComponent()` (applied at construction, not dynamically per call).
+     New test coverage for spaces, Unicode characters (e.g., `Eirika Ω`), special
+     characters (`#`, `?`), while preserving forward-slash separators — 4 distinct
+     encoding assertions, all passing. Confirms: "Sacred Stones" → `Sacred%20Stones`,
+     `Ω` → `%CE%A9`, `#` → `%23`, `?` → `%3F`.
+  2. *Chunked vs non-chunked fallback*: Database loader (`loadChunked`) tries
+     `.orderkeys` directory form first (individual JSON files per NID), then falls
+     back to single-file JSON array (e.g., `items.json` vs `items/.orderkeys` +
+     `items/{nid}.json`). Tested against both projects: `testing_proj` uses chunked
+     (verifies `Iron_Sword` loads from chunked format); `rekka` uses non-chunked
+     (verifies item/skill counts > 0 from single JSON). Combat palette loader shows
+     the same pattern: tries `combat_palettes/palette_data/.orderkeys` then falls
+     back to `combat_palettes.json`. No new bugs found — fallback logic already
+     correct in `src/data/database.ts` (`loadChunked` → `loadNonChunkedArray`) and
+     `src/data/loaders/combat-anim-loader.ts`.
+  3. *Animated panorama fallback*: Game state (`game-states.ts`) tries
+     `title_background.png`, falls back to `title_background0.png` for animated
+     sequences. Tested: `tryLoadImage` accepts nonexistent paths gracefully,
+     returning null instead of throwing — no exception raised on 404. Existing
+     code pattern is correct (try → fallback to → null).
+  4. *Missing optional assets*: Five tests covering graceful null returns:
+     `tryLoadMapSprite` for missing stand/move sheets, combat effect spritesheets
+     via `tryLoadImage`, `tryLoadJson` for nonexistent JSON, and combat palette
+     loader's empty-on-missing behavior. All return null/empty map respectively
+     instead of throwing. Two real optional-asset call sites verified:
+     `tryLoadMapSprite()` (map sprites, both optional per `tryLoadMapSprite` API)
+     and effect spritesheet loading (combat effects).
+  New spec `tests/resource-paths.spec.ts`: 18 tests in 6 test groups covering URL
+  encoding (4 tests), chunked/non-chunked (3 tests), panorama fallback (2 tests),
+  missing optional assets (5 tests), cross-project consistency (3 tests), and
+  real usage contexts (1 test). All 18 pass against `default.ltproj`,
+  `testing_proj.ltproj`, and `rekka.ltproj`. No bugs found or fixed — resource
+  loading is working correctly. Deferred: bundle asset verification (already
+  covered by existing soak and compatibility tests).
+
 - **Initiative bar, rescue/status icons, movement arrows UI (P5):** Ported
   three previously-missing map UI pieces.
   1. *Movement arrows* (`app/engine/level_cursor.py` `LevelCursor.
@@ -2294,8 +2333,10 @@ mouse, touch, cancel/back, transition, and resume tests.
 - [x] Verify music-stack, phase/battle music overrides, SFX loops, and audio settings
   (2026-07-19: verification slice, see `tests/audio-parity.spec.ts` and PLAN.md
   entry in Recent Changes for the audit table, fix, and deferrals)
-- [ ] Build resource-path fixtures for spaces, Unicode, chunked/non-chunked data,
+- [x] Build resource-path fixtures for spaces, Unicode, chunked/non-chunked data,
   animated panoramas, palette layouts, missing optional assets, and bundles
+  (2026-07-19: verification slice, see `tests/resource-paths.spec.ts` and PLAN.md
+  entry in Recent Changes for the audit table, findings, and test coverage)
 - [ ] Add screenshot/golden tolerances for representative maps and combat scenes
 
 **Gate:** required assets load across fixture projects and visual/audio state transitions
