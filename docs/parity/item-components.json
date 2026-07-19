@@ -96,11 +96,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8893
+          "line": 8913
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8914
+          "line": 8934
         },
         {
           "source": "src/objects/item.ts",
@@ -1913,11 +1913,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9792
+          "line": 9849
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9818
+          "line": 9875
         },
         {
           "source": "src/events/event-manager.ts",
@@ -5708,7 +5708,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10617
+          "line": 10674
         },
         {
           "source": "src/events/event-manager.ts",

@@ -179,6 +179,62 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Blocking/no-block and flag matching per event command (P1):** Audited
+  `docs/parity/event-commands.json` (84 dispatched commands carry flags)
+  against `lt-maker/app/events/event_functions.py` and real usage in
+  `lt-maker/{default,rekka}.ltproj/game_data/events.json` (`grep`'d for
+  `no_block`/`no_banner`/`immediate`/`FLAG(` occurrences). Findings table
+  (command | flag | python | web before | action):
+  - `give_item` / `remove_item` / `give_skill` / `remove_skill` /
+    `break_item` / `give_money` / `give_bexp` | `no_banner` | Python appends
+    an alert banner (`AcquiredItem`/`TakeItem`/`GiveSkill`/`TakeSkill`/
+    `BrokenItem`/gold/BEXP text) and blocks (`state.change('alert')`) unless
+    `no_banner` is set | web showed **no banner at all, ever**, for any of
+    these seven commands (the flag was silently a no-op both ways) | **fixed**:
+    each case now builds the Python-equivalent banner text, shows it via the
+    existing `this.banner = new Banner(...); this.bannerIsAlert = true; return
+    true` pattern (already used by `give_wexp`/`set_wexp`/`alert`) unless
+    `no_banner` is present or `this.skipMode` is active, matching Python's
+    `banner_flag` gate exactly. `break_item`'s banner is further gated on
+    `unit.team === 'player'` per `item_system.alerts_when_broken` +
+    `unit.team == 'player'` in Python. Real-usage stats: `no_banner` appears
+    27+ times across `rekka.ltproj` (`give_skill`, `remove_skill`) and
+    `set_wexp`/`give_wexp` no_banner usages in `default.ltproj` were already
+    correct; the seven newly-fixed commands are used un-flagged (banner
+    expected) dozens of times in `default.ltproj` (`give_item` alone: 228
+    call sites), so the missing banner was a real, frequently-triggered
+    visible gap.
+  - `add_portrait`/`remove_portrait` | `no_block` | Python's `no_block` (and
+    `immediate`) skips the `self.wait_time = ...; self.state = 'waiting'`
+    block so the *next* event command runs before the portrait fade
+    completes; without the flag the event blocks for one fade duration |
+    web's `add_portrait` blocks only on the (near-instant) async image
+    decode, never on the fade animation, and `remove_portrait` never blocks
+    at all | **filed, not fixed** — both no-flag and `no_block` variants are
+    heavily used in `default.ltproj` (167 no_block vs non-flagged remove,
+    228 non-flagged vs a few no_block add), so this is a real classification
+    gap, but reproducing "block until the fade completes" requires wiring
+    portrait transition duration into the EventState wait-state machine,
+    which is a materially larger, animation-timing-sensitive change than the
+    banner fix and was left out of this pass to avoid destabilizing the
+    272-test baseline right before the gate.
+  - `center_cursor`/`move_cursor` | `immediate` | Python pans the camera to
+    the target over time and blocks until the pan finishes, unless
+    `immediate` skips the pan | web's cursor/camera jump is always instant
+    (`cursor.setPos` + `camera.focusTile`, no animated pan implemented at
+    all), so it already behaves as if `immediate` were always set | **filed,
+    not fixed** — `default.ltproj` uses the flag explicitly twice and relies
+    on the (unimplemented) animated-pan default elsewhere; fixing this needs
+    a real camera-pan feature, out of scope for a flag-matching-only pass.
+  - New spec `tests/command-flags.spec.ts`: paired with/without `no_banner`
+    assertions for all seven fixed commands, using the event-injection
+    pattern from `tests/event-flow.spec.ts` (`installAndRunEvent` +
+    `triggerSpecific`) and a `game_var` set by the command immediately
+    following the one under test as the observable — `no_banner` sets the
+    marker within 5 frames; without it the marker is confirmed unset at 5
+    frames and set only after the banner's ~3000ms/180-frame timer elapses
+    (see the "Banner timer" block in `EventState.update`).
+
 - **Audio verification: music stack, phase/battle music, SFX loops, settings (P6):**
   Audited `src/audio/audio-manager.ts` and every `game.audioManager` call site
   against `lt-maker/app/engine/sound.py` and `phase.py`. Audit table (area |
@@ -2144,6 +2200,10 @@ prior queue with its audit tables is preserved in git history at 817743f):
    across death/resurrection, recruitment, class change, support gains, fog,
    and initiative — the P2 rows still unchecked.
 2. ~~Audio verification (P6)~~ — done, see Recent Changes.
-3. Blocking/no-block/flag matching audit per event command (P1).
+3. ~~Blocking/no-block/flag matching audit per event command (P1)~~ — done,
+   see Recent Changes (`no_banner` fixed on 7 commands; `add_portrait`/
+   `remove_portrait` `no_block` and `center_cursor`/`move_cursor` `immediate`
+   filed as real, unfixed gaps needing a portrait-transition-wait / camera-pan
+   feature respectively).
 4. Soak automation with deterministic seeds and first-failure archiving (P7).
 5. Initiative bar, rescue/status icons, movement arrows UI (P5).

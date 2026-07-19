@@ -8771,7 +8771,9 @@ export class EventState extends State {
         // If unit_nid is 'convoy', put it directly in the convoy
         const giUnitNid = args[0] ?? '';
         const giItemNid = args[1] ?? '';
+        const giBannerFlag = !args.includes('no_banner');
         const giItemPrefab = game.db.items.get(giItemNid);
+        let giBannerText: string | undefined;
         if (giItemPrefab) {
           const giItem = createItemTree(giItemPrefab, (nid) => game.db.items.get(nid));
           const registerTree = (node: ItemObject, key: string) => {
@@ -8785,6 +8787,7 @@ export class EventState extends State {
               giItem.owner = null;
               giParty.convoy.push(giItem);
               registerTree(giItem, `convoy_${giItem.nid}_${giParty.convoy.length}`);
+              giBannerText = `${giItem.name} sent to convoy.`;
             }
           } else {
             const giUnit = this.findUnit(giUnitNid);
@@ -8794,8 +8797,15 @@ export class EventState extends State {
               giUnit.onAddItem(giItem);
               giUnit.autoequip();
               registerTree(giItem, `${giUnit.nid}_${giItem.nid}_${giUnit.items.length}`);
+              const giArticle = /^[aeiou]/i.test(giItem.name) ? 'an' : 'a';
+              giBannerText = `${giUnit.name} got ${giArticle} ${giItem.name}.`;
             }
           }
+        }
+        if (giBannerFlag && giBannerText && !this.skipMode) {
+          this.banner = new Banner(giBannerText, undefined, 3000);
+          this.bannerIsAlert = true;
+          return true;
         }
         this.advancePointer();
         return false;
@@ -8804,6 +8814,8 @@ export class EventState extends State {
       case 'remove_item': {
         const ownerNid = args[0] ?? '';
         const itemNid = args[1] ?? '';
+        const riBannerFlag = !args.includes('no_banner');
+        let riBannerText: string | undefined;
         if (ownerNid.toLowerCase() === 'convoy') {
           const partyArg = args.slice(2).find((arg) => arg !== 'no_banner');
           const party = game.getParty(partyArg || undefined);
@@ -8812,7 +8824,15 @@ export class EventState extends State {
         } else {
           const unit = this.findUnit(ownerNid);
           const item = unit?.items.find((candidate: ItemObject) => candidate.nid === itemNid);
-          if (unit && item) game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+          if (unit && item) {
+            game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+            riBannerText = `${unit.name} lost ${item.name}.`;
+          }
+        }
+        if (riBannerFlag && riBannerText && !this.skipMode) {
+          this.banner = new Banner(riBannerText, undefined, 3000);
+          this.bannerIsAlert = true;
+          return true;
         }
         this.advancePointer();
         return false;
@@ -8966,8 +8986,16 @@ export class EventState extends State {
 
       case 'break_item': {
         const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
+        const biBannerFlag = !args.includes('no_banner');
+        const biUnitNid = args[0] ?? '';
+        const biUnit = this.findUnit(biUnitNid);
         if (item && item.maxUses > 0) {
           game.actionLog.doAction(new SetItemUsesAction(item, 0));
+          if (biBannerFlag && biUnit && biUnit.team === 'player' && !this.skipMode) {
+            this.banner = new Banner(`${item.name} broke.`, undefined, 3000);
+            this.bannerIsAlert = true;
+            return true;
+          }
         } else {
           console.warn(`Event break_item: item has no uses (${args.join(';')})`);
         }
@@ -8980,12 +9008,20 @@ export class EventState extends State {
         const skillNid = args[1] ?? '';
         const unit = this.findUnit(unitNid);
         const skillPrefab = game.db.skills.get(skillNid);
+        const gsBannerFlag = !args.includes('no_banner');
+        let gsAdded = false;
         if (unit && skillPrefab) {
           // Don't add duplicate skills
           if (!unit.skills.some((s: any) => s.nid === skillNid)) {
             const skill = new SkillObject(skillPrefab);
             unit.skills.push(skill);
+            gsAdded = true;
           }
+        }
+        if (gsBannerFlag && gsAdded && unit && skillPrefab && !this.skipMode) {
+          this.banner = new Banner(`${unit.name} got ${skillPrefab.name}.`, undefined, 3000);
+          this.bannerIsAlert = true;
+          return true;
         }
         this.advancePointer();
         return false;
@@ -8995,11 +9031,19 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const skillNid = args[1] ?? '';
         const unit = this.findUnit(unitNid);
+        const rsBannerFlag = !args.includes('no_banner');
+        let rsRemovedSkill: { name: string } | undefined;
         if (unit) {
           const idx = unit.skills.findIndex((s: any) => s.nid === skillNid);
           if (idx !== -1) {
+            rsRemovedSkill = unit.skills[idx];
             unit.skills.splice(idx, 1);
           }
+        }
+        if (rsBannerFlag && rsRemovedSkill && unit && !this.skipMode) {
+          this.banner = new Banner(`${unit.name} lost ${rsRemovedSkill.name}.`, undefined, 3000);
+          this.bannerIsAlert = true;
+          return true;
         }
         this.advancePointer();
         return false;
@@ -9485,6 +9529,7 @@ export class EventState extends State {
         // give_money;amount[;party_nid]
         const amount = parseInt(args[0], 10) || 0;
         const moneyPartyNid = args[1] || undefined;
+        const gmBannerFlag = !args.includes('no_banner');
         const party = game.getParty(moneyPartyNid);
         if (party) {
           const clampedAmount = party.money + amount < 0 ? -party.money : amount;
@@ -9492,6 +9537,12 @@ export class EventState extends State {
         }
         // Also update legacy gameVars for backward compatibility
         game.gameVars.set('money', game.getMoney());
+        if (gmBannerFlag && !this.skipMode) {
+          const text = amount >= 0 ? `Got ${amount} gold.` : `Lost ${-amount} gold.`;
+          this.banner = new Banner(text, undefined, 3000);
+          this.bannerIsAlert = true;
+          return true;
+        }
         this.advancePointer();
         return false;
       }
@@ -9500,12 +9551,18 @@ export class EventState extends State {
         // give_bexp;amount[;party_nid]
         const bexpAmount = parseInt(args[0], 10) || 0;
         const bexpPartyNid = args[1] || undefined;
+        const gbBannerFlag = !args.includes('no_banner');
         const bexpParty = game.getParty(bexpPartyNid);
         if (bexpParty) {
           bexpParty.bexp = Math.max(0, bexpParty.bexp + bexpAmount);
         }
         // Also update legacy gameVars for backward compatibility
         game.gameVars.set('bexp', game.getBexp());
+        if (gbBannerFlag && !this.skipMode) {
+          this.banner = new Banner(`Got ${bexpAmount} BEXP.`, undefined, 3000);
+          this.bannerIsAlert = true;
+          return true;
+        }
         this.advancePointer();
         return false;
       }
