@@ -1854,8 +1854,47 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 - [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
   initiative, roam, overworld, records, achievements, and in-progress events
 - [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults
-- [ ] Verify turnwheel undo/redo across combat, death/resurrection, recruitment,
-  inventory/convoy, class change, support, fog, initiative, and event mutations
+- [x] Verify turnwheel undo/redo across combat, death/resurrection, recruitment,
+  inventory/convoy, class change, support, fog, initiative, and event mutations.
+  Combat/inventory-convoy/class-change/pair-up were already covered by prior
+  slices. This pass closed the remaining gaps, each a faithful port of an
+  `action.py` class that had no reversible web counterpart (state was mutated
+  directly, bypassing `game.actionLog` entirely):
+  - Death/resurrection: `DeathAction`/`ResurrectAction` (src/engine/action.ts)
+    already existed and are faithful to Python `Die`/`Resurrect`
+    (lt-maker/app/engine/action.py:2456,2519) — verified via
+    tests/turnwheel-breadth.spec.ts, no changes needed.
+  - Recruitment: `change_team` event command mutated `unit.team` directly
+    with no AI reset/fog update (src/engine/states/game-states.ts ~9097).
+    Added `ChangeTeamAction` (src/engine/action.ts) mirroring Python
+    `ChangeTeam` (action.py:2754): resets AI to `'None'` on move to
+    `'player'`, recalculates fog of war on do/reverse; wired into the event
+    command.
+  - Support points/ranks: `increment_support_points`/`unlock_support_rank`/
+    `disable_support_rank` event commands called `SupportController` methods
+    directly (game-states.ts ~11096-11138), permanently bypassing the
+    turnwheel. Added `IncrementSupportPointsAction`, `UnlockSupportRankAction`,
+    `DisableSupportRankAction` (action.ts) mirroring Python
+    `IncrementSupportPoints`/`UnlockSupportRank`/`DisableSupportRank`
+    (action.py:2557,2579,2604); wired into all three event commands.
+  - Fog of war: `enable_fog_of_war`/`set_fog_of_war` wrote `game.levelVars`
+    directly and called `recalculateAllFow()` once, with no undo path.
+    Added `SetLevelVarAction` (action.ts) mirroring Python `SetLevelVar`
+    (action.py:557), which recalculates fog on both do and reverse exactly
+    like `_update_fog_of_war` being invoked from both `do()`/`reverse()`;
+    wired into both event commands.
+  - Initiative: `add_to_initiative`/`move_in_initiative` event commands
+    mutated `game.initiative` arrays directly (game-states.ts ~11302-11337)
+    with no reversibility. Added `MoveInInitiativeAction`,
+    `AddToInitiativeAction` (action.ts) mirroring Python `MoveInInitiative`/
+    initiative-repositioning semantics (action.py:3528); wired into both
+    event commands.
+  - Composite/event mutations: verified a multi-command scripted sequence
+    (team change + fog toggle inside one `MarkActionGroupStart`/`...End`
+    group) undoes atomically in the correct LIFO order.
+  New spec: tests/turnwheel-breadth.spec.ts (7 tests, all passing), driving
+  the real `game.actionLog.doAction`/`undo()` path per scenario, not
+  synthetic direct-state assertions.
 - [x] Round-trip and rewind Rescue/Pair Up relationships, roles, guard gauges,
   sourced skills, follower flags, separation placement, and legacy save defaults
 - [x] Verify project-global achievement persistence across reload, deliberate exclusion
@@ -2032,80 +2071,14 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-18 after the `g.db._constants` typo fix + glancing-hit
-slice landed:
+Queue refreshed 2026-07-19 after the rendering-parity slice landed (the full
+prior queue with its audit tables is preserved in git history at 817743f):
 
-1. ~~Fix the `g.db._constants` vs `g.db.constants` typo across the seven spec
-   files noted in Recent Changes~~ DONE. Fixed in combat-goldens.spec.ts,
-   effective-damage.spec.ts, aesthetic-components.spec.ts (via a new
-   `h.setConstant()` harness helper), and status-hold/droppable-pickup/
-   equip-lifecycle.spec.ts's shared `forceRngMode()` helpers (now routed
-   through the same harness setter instead of poking `game.db` directly).
-   Auditing each fixture surfaced two real gaps the typo had been masking:
-   (a) `combat-goldens.spec.ts`'s "crit:0 weapon" fixtures still had a
-   nonzero crit *chance* from SKL (computeCrit's base term is `SKL // 2`,
-   independent of the item's own crit stat) -- fixed by zeroing SKL in the
-   shared fixture; (b) Grandmaster's damage-scaling-by-hit% (added in the
-   prior slice) now actually applies, so combat-goldens.spec.ts's and
-   effective-damage.spec.ts's hand-computed expected damages were
-   re-derived (see each test's updated comments; effective-damage.spec.ts
-   also now forces to-hit to exactly 100 via a saturated `hit` component,
-   since a delta-of-two-combats measurement only stays exact post-scaling
-   at hit=100, trunc() doesn't distribute over addition otherwise). Also
-   found and fixed status-hold.spec.ts's "does not apply on a miss" fixture:
-   Bone's default equipped Iron_Axe granted a Sword-vs-Axe +15 weapon-triangle
-   hit bonus that alone cleared 0 even at SPD 99, so the fixture never
-   actually reached a true 0% hit chance; now strips Bone's weapon first.
-2. ~~Implement glancing-hit damage~~ DONE. `solver.py`'s
-   `roll >= unclamped_hit - DB.constants.value('glancing_hit')` branch
-   (half damage, truncated, applied after Grandmaster's hit%-scaling) is
-   now ported in `src/combat/combat-solver.ts`'s `resolveStrike` (new
-   `glancing` flag on `CombatStrike`, gated by a new `glancing_hit` DB
-   constant lookup, default 0/off). `rollHit` was split into
-   `rollHitDetailed` so the glancing check can reuse the exact roll +
-   effective-hit value that decided the hit itself, matching Python's
-   single `generate_roll()` call per strike. Covered by new
-   `tests/glancing.spec.ts` (band-boundary, off-by-default gating, and
-   Grandmaster composition). Deferred: dedicated glancing playback/marks
-   (Python's `pb.MarkGlancingHit` / `MapGlancingHit` animation) -- the web
-   strike carries the flag but no dedicated glancing visual/sound hookup
-   yet, consistent with this port's existing minimal-playback scope.
-3. Trigger payload and EVNT/PYEV1 nested-flow audit (P1).
-4. Roam talk/shop interaction and overworld option menus (P5).
-5. ~~Rendering comparisons: tile layers, autotiles, weather, camera (P6)~~ DONE
-   (2026-07-19). Audit vs. `lt-maker/app/engine/objects/tilemap.py`,
-   `particles.py`, `camera.py`:
-
-   | Area | Python behavior | Web behavior (before) | Verdict / action |
-   |---|---|---|---|
-   | Autotile frame timing | `autotile_wait = int(fps * 16.66)`; `frame = (current_time // autotile_wait) % len(frames)` (tilemap.py:100-105) | Already `Math.floor(fps*16.66)` and `Math.floor(t/wait) % AUTOTILE_FRAMES` in `src/rendering/tilemap.ts` | Verified — already matched, no change. Locked with a frame-boundary test in `rendering-parity.spec.ts` (fps=29 → 483ms/frame). |
-   | Autotile pixel source (column/frame → tileset atlas offset) | `subsurface(autotile_images[frame], cull_rect)`, frames built per-column at load (tilemap.py:172-188) | `LayerObject.buildSurface` builds one `Surface` per `AUTOTILE_FRAMES` (16), blit by `column*TILEWIDTH, frameIdx*TILEHEIGHT` | Verified — same 16-frame/column layout. |
-   | Layer show/hide transitions | `show_layer`/`hide_layer` event commands default to `LayerTransition='fade'`, a 333ms cross-fade (`LayerObject.transition_speed=333`, `show()`/`hide()`/`update()` in tilemap.py:61-107); layers fading out are still drawn (`layer.visible or layer.state=='fade_out'`, tilemap.py:265,278); `'immediate'` keyword uses `quick_show()`/`quick_hide()` (instant, no fade) | `TileMapObject.showLayer`/`hideLayer` just flipped `layer.visible` synchronously — no fade, no keep-drawing-while-fading-out | **Fixed** (gameplay-visible pop vs. fade divergence). Ported `LayerObject.show()/hide()/update()` semantics into `src/rendering/tilemap.ts` (`state`, `translucence`, `updateTransition`, `shouldDraw()`, `renderAlpha`, `LAYER_TRANSITION_SPEED=333`); `showLayer`/`hideLayer` now take a `'fade'\|'immediate'` transition arg wired from the event command's optional `LayerTransition` keyword (`src/engine/states/game-states.ts` `show_layer`/`hide_layer` cases); save/restore (`src/engine/save.ts`) uses `'immediate'` since it's reconstructing state, not narratively transitioning. `getFullImage`/`getForegroundImage` now draw fading-out layers and apply `renderAlpha` via `Surface.setAlpha`. Covered by `rendering-parity.spec.ts` (halfway-fade and completed-fade structural + screenshot assertions, plus an immediate-transition test). |
-   | Weather particle systems | `particles.py` defines `Raindrop`, `Sand`, `Smoke`, `Fire`, `Snow`, `WarpFlower`/`ReverseWarpFlower`, `LightMote`/`DarkMote`, `Night`, `Sunset`, `EventTileParticle`, `SwitchTileParticle`, `PurpleMote`, `FirePillar` — each with its own spawn/velocity/lifecycle tuning | `src/rendering/weather.ts` implements `rain`, `snow`, `sand`, `light`, `dark` (mapped to `LightMote`), `night`, `sunset` overlays with hand-tuned abundance/velocity constants, not ported 1:1 from Python's per-class values | **Accepted deviation** (documented, not fixed this pass): the web's particle motion/abundance constants are aesthetic approximations, not Python-derived. `Fire`, `WarpFlower`/`ReverseWarpFlower`, `EventTileParticle`, `SwitchTileParticle`, `PurpleMote`, `FirePillar` have no web equivalent at all (deferred — these are used for map-scripted effect commands like `EventTileParticle`, not ambient `add_weather` weather, so lower priority than ambient weather itself). Because rain/snow/sand spawn via unseeded `Math.random()`, deterministic pixel goldens are only feasible for the zero-particle overlay weathers (`night`/`sunset`); `rendering-parity.spec.ts` locks the `night` overlay's flat-tint rendering as its weather screenshot case for that reason. |
-   | Camera movement model | `camera.py`'s `get_next_position()`: distance/`speed=8.0`-based non-linear approach clamped to `[min(dist,0.25), 1.0]` tiles/frame, angle-split into x/y components; `pan_mode`/`pan_speed=0.125` for linear panning; `pan_algorithm` hook (e.g. `do_slow_pan` via `tcubic_easing`); target/current clamped to `[0, tilemap.width/height - TILEX/TILEY]` in tile units | `src/engine/camera.ts` uses pixel-space exponential smoothing (`SMOOTH_FACTOR=0.15`, snap under `0.5px`) with no distance-based speed curve, no `pan_mode`/`pan_algorithm` equivalent, clamped in pixel units to `[0, mapPixelWH - viewport.width/height]` | **Accepted deviation** (documented, not ported this pass): the web's interpolation curve and coordinate space (pixels vs. tiles) are a structurally different model from Python's, and re-deriving camera to match `get_next_position()` exactly (including the `do_slow_pan`/`pan_algorithm` hook, which no in-scope event command currently drives — no `camera_pan`/`camera_center` event commands exist in the web's event-manager command table) is out of scope for a comparison slice; re-architecting the camera's coordinate system carries meaningfully higher regression risk than the value it returns here. Screen shake (`camera.py`'s `shake`/`shake_idx`/`shake_end_at` loop-array model) IS ported faithfully in `src/engine/camera.ts` (`setShake`/`resetShake`/`shakeIdx` cycling) and is unaffected. Clamping-to-map-bounds behavior (`set_target_limits`/`set_current_limits`) is preserved conceptually via `clampTarget()`, just in pixel instead of tile units — verified equivalent for in-bounds forced positions in `rendering-parity.spec.ts`. |
-   | Fog of war | Out of this slice's line items strictly (not one of tile layers/autotiles/weather/camera), left for its own dedicated audit — not touched here. | — | Not investigated this pass. |
-   | Map animations (`map_anim`/`remove_map_anim`) | Out of this slice's line items strictly; `src/rendering/map-animation.ts` exists and is wired into `TileMapObject.animations`/`highAnimations` | — | Not investigated this pass. |
-
-   New harness surface added for deterministic rendering tests (`src/harness.ts`):
-   `getRenderState()` (layer visibility/fade-state/renderAlpha, autotile frame
-   index, active weather NIDs, camera position/target), `setLayer(nid, visible,
-   transition, nowMs)`, `forceTilemapTime(ms)`, `addWeather`/`removeWeather`,
-   `forceCameraPosition`, `setCameraTarget`. `Camera` gained `getPosition()`/
-   `getTarget()` getters; `TileMapObject` gained `getAutotileFrameIndex()`.
-
-   New spec `tests/rendering-parity.spec.ts` (5 tests, all screenshot-backed
-   where determinism allows, using Playwright's Clock API to freeze/advance
-   `Date.now()` since the render loop reads real time for autotile frame
-   selection and fade progress): autotile frame-boundary timing + screenshot
-   diff across two frames; layer fade halfway/complete (structural + 2
-   screenshots); immediate transition (structural only, no fade); `night`
-   weather overlay screenshot; forced camera position screenshot. Verified
-   green twice consecutively before the full gate. Goldens live under
-   `test-snapshots/rendering-parity.spec.ts-snapshots/`.
-6. ~~Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
-   workflow) so the full spec suite ... actually gates PRs~~ DONE --
-   `.github/workflows/playwright.yml` already runs the full serial gate
-   (`npx playwright test --workers=1`) on push/PR.
-7. If a PYEV1-authored external `.ltproj` fixture becomes available, add it
-   to `tests/project-compat.spec.ts` to close the PYEV1-heavy-project gap
-   noted in P7 (both bundled non-default projects use EVNT, not PYEV1).
+1. **Turnwheel breadth verification (P2):** systematic undo/redo coverage
+   across death/resurrection, recruitment, class change, support gains, fog,
+   and initiative — the P2 rows still unchecked.
+2. Audio verification (P6): music stack, phase/battle overrides, SFX loops,
+   audio settings vs Python sound.py.
+3. Blocking/no-block/flag matching audit per event command (P1).
+4. Soak automation with deterministic seeds and first-failure archiving (P7).
+5. Initiative bar, rescue/status icons, movement arrows UI (P5).
