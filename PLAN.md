@@ -179,6 +179,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Audit-tooling fix: direct component reads now count as implementation
+  evidence (implemented solo):** `scripts/parity-audit.mjs` gains a
+  direct-consumption scanner (`getComponent(...)`/`hasComponent('nid')`
+  call sites) feeding a new `consumed` structural status between hook-mapped
+  and reference-only, a Direct-reads manifest column, and summary lines.
+  Result: 109/201 item and 48/241 skill components show direct reads —
+  previously-misleading rows like `wexp`, `value`, and `level_exp` (all fully
+  implemented) no longer classify as reference-only. Closes the tooling gap
+  filed by the component-usage audit; drift guard unaffected (counts only
+  rise). Audit and build green.
+
+
 - **Wire remaining trigger stragglers (P1):** Wired `on_base_convo` and
   `overworld_start` triggers; deferred `event_after_initiated_combat` and
   `event_on_remove` as component-based-only (no engine dispatch path).
@@ -2562,16 +2574,14 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-19 (platform-lifecycle slice landed):
+Queue refreshed 2026-07-19 post-gate (report published; work continues solo):
 
-1. **Seeded soak execution (P7):** [DONE] actually run the soak tooling — multiple
-   full-suite iterations at distinct seeds, archiving any first failure.
-2. **Component-gap usage sweep (P2):** [COMPLETE] audited top-5 usage-gap components;
-   discovered wexp/status_on_equip/status_on_hit already fully implemented;
-   value/level_exp/exp deferred (require pricing/exp-formula subsystems);
-   manifests remain "reference-only" (hook discovery audit limitation, not
-   implementation gap); manifests refresh pending (see section above).
-3. Remaining trigger stragglers: roam-input x3, on_base_convo,
-   overworld_start, event_after_initiated_combat, event_on_remove (P1).
-4. Promote docs/parity/PARITY-REPORT.md from draft to published once the
-   above land, refreshing counts.
+1. **Audit-tooling fix:** structural status should count direct
+   `getComponent('nid')` / `hasComponent('nid')` reads as implementation
+   evidence, not just exported hook functions (currently underreports
+   wexp/value/level_exp etc. as reference-only).
+2. Zero-usage command batches: implement the 44 parser-missing commands in
+   priority clusters for external-project completeness (with strict-mode
+   loud-fail retained for the remainder).
+3. Deferred subsystems, usage-driven: shop pricing hooks (full/buy/sell
+   price), then fatigue or time regions if external projects need them.

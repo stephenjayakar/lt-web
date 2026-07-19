@@ -10,10 +10,12 @@
     "referencedComponentNids": 84,
     "hookMappedComponentNids": 67,
     "unreferencedComponentNids": 157,
+    "consumedComponentNids": 48,
     "structuralStatuses": {
+      "consumed": 25,
       "hook-and-reference": 48,
       "hook-only": 19,
-      "reference-only": 36,
+      "reference-only": 11,
       "unreferenced": 138
     }
   },
@@ -95,6 +97,7 @@
         "after_remove"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -115,6 +118,7 @@
         "condition"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -146,9 +150,19 @@
           "line": 1892
         }
       ],
+      "directReads": [
+        {
+          "source": "src/ai/ai-controller.ts",
+          "line": 556
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 1892
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "combat_art",
@@ -176,6 +190,7 @@
         "end_combat_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -196,6 +211,7 @@
         "menu_category"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -218,6 +234,7 @@
         "on_endstep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -243,9 +260,15 @@
           "line": 200
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 200
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "proc_turn_skill",
@@ -265,6 +288,7 @@
         "on_endstep_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -296,6 +320,7 @@
           "line": 332
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
       "status": "reference-only"
@@ -327,6 +352,7 @@
           "line": 335
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
       "status": "reference-only"
@@ -358,6 +384,7 @@
           "line": 313
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
       "status": "reference-only"
@@ -389,6 +416,7 @@
           "line": 317
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -414,9 +442,15 @@
           "line": 206
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 206
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "astra_proc",
@@ -442,6 +476,7 @@
         "cleanup_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "dynamicMultiattacks",
         "damageMultiplier"
@@ -474,9 +509,19 @@
           "line": 197
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 216
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 197
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "unit_anim",
@@ -500,6 +545,7 @@
         "should_draw_anim"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -520,6 +566,7 @@
         "unit_sprite_alpha_tint"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -540,6 +587,7 @@
         "unit_sprite_flicker_tint"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -560,6 +608,7 @@
         "unit_sprite_flicker_tint"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -580,6 +629,7 @@
         "combat_sprite_flicker_tint"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -600,6 +650,7 @@
         "combat_sprite_flicker_tint"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -620,6 +671,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -640,6 +692,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -660,6 +713,7 @@
         "show_skill_icon"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -680,6 +734,7 @@
         "hide_skill_icon"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -700,6 +755,7 @@
         "target_icon"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -718,6 +774,7 @@
         "target_icon"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -738,6 +795,7 @@
         "after_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -764,6 +822,7 @@
         "change_variant"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -790,6 +849,7 @@
         "change_map_palette"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -810,6 +870,7 @@
         "change_animation"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -835,9 +896,15 @@
           "line": 293
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/map-combat.ts",
+          "line": 293
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "battle_animation_music",
@@ -855,6 +922,7 @@
         "battle_music"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -875,6 +943,7 @@
         "ai_priority_multiplier"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -908,6 +977,7 @@
           "line": 166
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -924,6 +994,7 @@
       "line": 10,
       "methods": [],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -940,6 +1011,7 @@
       "line": 15,
       "methods": [],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -960,6 +1032,7 @@
         "condition"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -976,6 +1049,7 @@
       "line": 30,
       "methods": [],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1001,6 +1075,7 @@
           "line": 11876
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -1022,6 +1097,7 @@
           "line": 12
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
       "status": "reference-only"
@@ -1051,9 +1127,19 @@
           "line": 2438
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 678
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 2438
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "global",
@@ -1067,6 +1153,7 @@
       "line": 57,
       "methods": [],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1088,9 +1175,15 @@
           "line": 1171
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1171
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "negate_tags",
@@ -1109,9 +1202,15 @@
           "line": 1172
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1172
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "has_tags",
@@ -1134,9 +1233,15 @@
           "line": 1118
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1118
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "unselectable",
@@ -1154,6 +1259,7 @@
         "can_select"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1183,9 +1289,15 @@
           "line": 317
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 210
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "cannot_use_magic_items",
@@ -1212,9 +1324,15 @@
           "line": 317
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 211
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "cannot_trade",
@@ -1232,6 +1350,7 @@
         "no_trade"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1254,6 +1373,7 @@
         "num_accessories_offset"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1276,6 +1396,7 @@
         "check_enemy"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1317,6 +1438,7 @@
           "line": 980
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -1337,6 +1459,7 @@
         "modify_buy_price"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1366,6 +1489,7 @@
           "line": 321
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "expMultiplier"
       ],
@@ -1397,6 +1521,7 @@
           "line": 322
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "enemyExpMultiplier"
       ],
@@ -1428,6 +1553,7 @@
           "line": 322
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "wexpMultiplier"
       ],
@@ -1455,9 +1581,15 @@
           "line": 147
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 147
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "wexp_unusable_skill",
@@ -1480,9 +1612,15 @@
           "line": 148
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 148
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "enemy_wexp_multiplier",
@@ -1509,6 +1647,7 @@
           "line": 322
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "enemyWexpMultiplier"
       ],
@@ -1531,6 +1670,7 @@
         "can_unlock"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1562,6 +1702,12 @@
         {
           "source": "src/main.ts",
           "line": 325
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 618
         }
       ],
       "matchingWebHooks": [
@@ -1603,6 +1749,12 @@
           "line": 325
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 624
+        }
+      ],
       "matchingWebHooks": [
         "sightRange"
       ],
@@ -1625,6 +1777,7 @@
         "ignore_fatigue"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1641,6 +1794,7 @@
       "line": 192,
       "methods": [],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1704,9 +1858,35 @@
           "line": 65
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 184
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 186
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 275
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 259
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 261
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 274
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "drain_charge",
@@ -1759,9 +1939,27 @@
           "line": 66
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 189
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 277
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 264
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 276
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "charges_per_turn",
@@ -1810,9 +2008,27 @@
           "line": 67
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 189
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 277
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 264
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 276
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "upkeep_charge_increase",
@@ -1830,6 +2046,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1855,9 +2072,15 @@
           "line": 358
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 358
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "combat_charge_increase_by_stat",
@@ -1880,9 +2103,15 @@
           "line": 359
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 359
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "gain_mana",
@@ -1900,6 +2129,7 @@
         "start_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1922,6 +2152,7 @@
         "start_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1942,6 +2173,7 @@
         "condition"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -1999,9 +2231,15 @@
           "line": 315
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 258
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "TrueMiracle",
@@ -2019,6 +2257,7 @@
         "after_take_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2039,6 +2278,7 @@
         "after_take_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2059,6 +2299,7 @@
         "after_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2079,6 +2320,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2104,9 +2346,15 @@
           "line": 1392
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1392
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "ally_lifelink",
@@ -2124,6 +2372,7 @@
         "after_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2146,6 +2395,7 @@
         "post_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2166,6 +2416,7 @@
         "limit_maximum_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2186,6 +2437,7 @@
         "modify_maximum_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2206,6 +2458,7 @@
         "modify_minimum_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2228,6 +2481,7 @@
         "has_dynamic_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2250,6 +2504,7 @@
         "has_dynamic_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2270,6 +2525,12 @@
         "no_double"
       ],
       "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 873
+        }
+      ],
+      "directReads": [
         {
           "source": "src/combat/item-system.ts",
           "line": 873
@@ -2297,6 +2558,7 @@
         "def_double"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "defDouble"
       ],
@@ -2324,6 +2586,7 @@
           "line": 190
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "vantage"
       ],
@@ -2351,6 +2614,7 @@
           "line": 195
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "desperation"
       ],
@@ -2373,6 +2637,7 @@
         "crit_anyway"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "critAnyway"
       ],
@@ -2400,6 +2665,7 @@
           "line": 220
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "distantCounter"
       ],
@@ -2427,6 +2693,7 @@
           "line": 225
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "closeCounter"
       ],
@@ -2458,6 +2725,12 @@
           "line": 317
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 293
+        }
+      ],
       "matchingWebHooks": [
         "canCounter"
       ],
@@ -2485,6 +2758,7 @@
           "line": 178
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "alternateSplash"
       ],
@@ -2507,6 +2781,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2527,6 +2802,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2547,6 +2823,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2567,6 +2844,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2587,6 +2865,7 @@
         "after_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2609,6 +2888,7 @@
         "start_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2629,6 +2909,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2649,6 +2930,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2669,6 +2951,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2689,6 +2972,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2709,6 +2993,7 @@
         "after_take_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2729,6 +3014,7 @@
         "after_take_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2749,6 +3035,7 @@
         "after_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2769,6 +3056,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2789,6 +3077,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2809,6 +3098,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2829,6 +3119,7 @@
         "post_combat_damage"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2849,6 +3140,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2869,6 +3161,7 @@
         "dynamic_multiattacks"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "dynamicMultiattacks"
       ],
@@ -2893,6 +3186,7 @@
         "after_take_strike"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -2932,6 +3226,12 @@
           "line": 313
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 328
+        }
+      ],
       "matchingWebHooks": [
         "statChange"
       ],
@@ -2954,6 +3254,7 @@
         "stat_change"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "statChange"
       ],
@@ -2976,6 +3277,7 @@
         "stat_change"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "statChange"
       ],
@@ -3000,6 +3302,7 @@
         "subtle_stat_change"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "statChange"
       ],
@@ -3031,6 +3334,12 @@
           "line": 313
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 346
+        }
+      ],
       "matchingWebHooks": [
         "growthChange"
       ],
@@ -3053,6 +3362,7 @@
         "growth_change"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "growthChange"
       ],
@@ -3124,6 +3434,20 @@
           "line": 115
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 475
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 806
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 115
+        }
+      ],
       "matchingWebHooks": [
         "modifyDamage"
       ],
@@ -3146,6 +3470,7 @@
         "modify_damage"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyDamage"
       ],
@@ -3181,6 +3506,7 @@
           "line": 369
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyResist"
       ],
@@ -3280,6 +3606,36 @@
           "line": 212
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-solver.ts",
+          "line": 808
+        },
+        {
+          "source": "src/combat/combat-solver.ts",
+          "line": 833
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 811
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 2884
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 119
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 200
+        },
+        {
+          "source": "src/objects/item.ts",
+          "line": 212
+        }
+      ],
       "matchingWebHooks": [
         "modifyAccuracy"
       ],
@@ -3302,6 +3658,7 @@
         "modify_accuracy"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyAccuracy"
       ],
@@ -3343,6 +3700,7 @@
           "line": 25
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyAvoid"
       ],
@@ -3365,6 +3723,7 @@
         "modify_avoid"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyAvoid"
       ],
@@ -3444,6 +3803,16 @@
           "line": 298
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 866
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 816
+        }
+      ],
       "matchingWebHooks": [
         "modifyCritAccuracy"
       ],
@@ -3466,6 +3835,7 @@
         "modify_crit_accuracy"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyCritAccuracy"
       ],
@@ -3493,6 +3863,7 @@
           "line": 389
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyCritAvoid"
       ],
@@ -3520,6 +3891,7 @@
           "line": 399
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyAttackSpeed"
       ],
@@ -3547,6 +3919,7 @@
           "line": 404
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "modifyDefenseSpeed"
       ],
@@ -3574,6 +3947,7 @@
           "line": 515
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "damageMultiplier"
       ],
@@ -3596,6 +3970,7 @@
         "damage_multiplier"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "damageMultiplier"
       ],
@@ -3623,6 +3998,7 @@
           "line": 528
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "resistMultiplier"
       ],
@@ -3645,6 +4021,7 @@
         "crit_multiplier"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3665,6 +4042,7 @@
         "crit_multiplier"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3685,6 +4063,7 @@
         "resist_multiplier"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "resistMultiplier"
       ],
@@ -3724,9 +4103,19 @@
           "line": 183
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 172
+        },
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 183
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "condition",
@@ -3757,9 +4146,23 @@
           "line": 1143
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 192
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 101
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1143
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": true,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "lost_on_end_combat",
@@ -3781,6 +4184,7 @@
         "on_end_chapter"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3801,6 +4205,7 @@
         "combat_art_set_max_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3821,6 +4226,7 @@
         "combat_art_modify_max_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3843,6 +4249,7 @@
         "has_dynamic_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3863,6 +4270,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -3890,6 +4298,12 @@
         {
           "source": "src/main.ts",
           "line": 315
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 423
         }
       ],
       "matchingWebHooks": [
@@ -3923,6 +4337,12 @@
           "line": 316
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 441
+        }
+      ],
       "matchingWebHooks": [
         "dynamicResist"
       ],
@@ -3952,6 +4372,12 @@
         {
           "source": "src/main.ts",
           "line": 316
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 459
         }
       ],
       "matchingWebHooks": [
@@ -3985,6 +4411,12 @@
           "line": 316
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 477
+        }
+      ],
       "matchingWebHooks": [
         "dynamicAvoid"
       ],
@@ -4007,6 +4439,7 @@
         "dynamic_crit_accuracy"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4027,6 +4460,7 @@
         "dynamic_crit_avoid"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4047,6 +4481,7 @@
         "dynamic_attack_speed"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4067,6 +4502,7 @@
         "dynamic_defense_speed"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4087,6 +4523,7 @@
         "dynamic_attacks"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4116,6 +4553,12 @@
           "line": 316
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 495
+        }
+      ],
       "matchingWebHooks": [
         "dynamicMultiattacks"
       ],
@@ -4143,6 +4586,7 @@
           "line": 538
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "damageFormula"
       ],
@@ -4170,6 +4614,7 @@
           "line": 320
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -4197,6 +4642,12 @@
         {
           "source": "src/combat/skill-system.ts",
           "line": 544
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 898
         }
       ],
       "matchingWebHooks": [
@@ -4234,6 +4685,12 @@
           "line": 321
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 902
+        }
+      ],
       "matchingWebHooks": [
         "resistFormulaOverride"
       ],
@@ -4263,6 +4720,12 @@
         {
           "source": "src/combat/skill-system.ts",
           "line": 554
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 882
         }
       ],
       "matchingWebHooks": [
@@ -4300,6 +4763,12 @@
           "line": 320
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 886
+        }
+      ],
       "matchingWebHooks": [
         "accuracyFormulaOverride"
       ],
@@ -4329,6 +4798,12 @@
         {
           "source": "src/combat/skill-system.ts",
           "line": 564
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 890
         }
       ],
       "matchingWebHooks": [
@@ -4366,6 +4841,12 @@
           "line": 321
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 894
+        }
+      ],
       "matchingWebHooks": [
         "avoidFormulaOverride"
       ],
@@ -4388,6 +4869,7 @@
         "crit_accuracy_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4408,6 +4890,7 @@
         "crit_accuracy_formula_override"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4428,6 +4911,7 @@
         "crit_avoid_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4448,6 +4932,7 @@
         "crit_avoid_formula_override"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4468,6 +4953,7 @@
         "attack_speed_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "attackSpeedFormula"
       ],
@@ -4490,6 +4976,7 @@
         "attack_speed_formula_override"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4510,6 +4997,7 @@
         "defense_speed_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "defenseSpeedFormula"
       ],
@@ -4532,6 +5020,7 @@
         "defense_speed_formula_override"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4552,6 +5041,7 @@
         "critical_multiplier_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4572,6 +5062,7 @@
         "critical_addition_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4592,6 +5083,7 @@
         "thracia_critical_multiplier_formula"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4639,6 +5131,24 @@
           "line": 327
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 187
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1284
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1298
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1304
+        }
+      ],
       "matchingWebHooks": [
         "hasCanto"
       ],
@@ -4668,6 +5178,7 @@
           "line": 117
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "hasCanto"
       ],
@@ -4697,6 +5208,7 @@
           "line": 117
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "hasCanto"
       ],
@@ -4726,6 +5238,7 @@
           "line": 117
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "hasCanto"
       ],
@@ -4748,6 +5261,7 @@
         "movement_type"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4768,6 +5282,7 @@
         "pass_through"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "passThrough"
       ],
@@ -4799,6 +5314,7 @@
           "line": 215
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "ignoreTerrain"
       ],
@@ -4821,6 +5337,7 @@
         "ignore_terrain_traversal"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4850,6 +5367,12 @@
           "line": 318
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 52
+        }
+      ],
       "matchingWebHooks": [
         "ignoreRescuePenalty"
       ],
@@ -4872,6 +5395,7 @@
         "ignore_forced_movement"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "ignoreForcedMovement"
       ],
@@ -4899,6 +5423,7 @@
           "line": 230
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "noAttackAfterMove"
       ],
@@ -4921,6 +5446,7 @@
         "witch_warp"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4941,6 +5467,7 @@
         "witch_warp"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4961,6 +5488,7 @@
         "witch_warp"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -4981,6 +5509,7 @@
         "on_wait"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5003,6 +5532,7 @@
         "on_wait"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5023,6 +5553,7 @@
         "xcom_movement"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5043,6 +5574,7 @@
         "xcom_movement"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5063,6 +5595,7 @@
         "terrain_move_effect"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5083,6 +5616,7 @@
         "terrain_move_effect"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5103,6 +5637,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5123,6 +5658,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5143,6 +5679,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5163,6 +5700,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5183,6 +5721,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5203,6 +5742,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5223,6 +5763,7 @@
         "multi_desc"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5243,6 +5784,7 @@
         "multi_desc_name_override"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5263,6 +5805,7 @@
         "on_death"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5294,6 +5837,7 @@
           "line": 175
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "empowerSplash",
         "alternateSplash"
@@ -5327,6 +5871,7 @@
           "line": 176
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "empowerSplash",
         "alternateSplash"
@@ -5360,6 +5905,7 @@
           "line": 177
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [
         "empowerSplash",
         "alternateSplash"
@@ -5383,6 +5929,7 @@
         "empower_heal"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5403,6 +5950,7 @@
         "empower_heal_received"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5423,6 +5971,7 @@
         "mana"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5443,6 +5992,7 @@
         "mana"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5463,6 +6013,7 @@
         "end_combat"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5491,6 +6042,7 @@
         "test_off"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5524,9 +6076,15 @@
           "line": 326
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 60
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "aura_range",
@@ -5549,9 +6107,15 @@
           "line": 326
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 62
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "aura_target",
@@ -5574,9 +6138,15 @@
           "line": 326
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 63
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "show_aura",
@@ -5595,6 +6165,7 @@
           "line": 326
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -5616,6 +6187,7 @@
           "line": 326
         }
       ],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "reference-only"
@@ -5638,6 +6210,7 @@
         "get_max_shape_range"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5669,6 +6242,12 @@
           "line": 318
         }
       ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 20
+        }
+      ],
       "matchingWebHooks": [
         "onPairup",
         "onSeparate"
@@ -5692,6 +6271,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5712,6 +6292,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5732,6 +6313,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5754,6 +6336,7 @@
         "on_endstep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5774,6 +6357,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5794,6 +6378,7 @@
         "before_gain_skill"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5816,6 +6401,7 @@
         "after_gain_skill"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5836,6 +6422,7 @@
         "after_gain_skill"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5862,6 +6449,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5888,6 +6476,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5916,6 +6505,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5942,6 +6532,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [
         "statChange"
       ],
@@ -5966,6 +6557,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -5988,6 +6580,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -6012,6 +6605,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -6034,6 +6628,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -6054,6 +6649,7 @@
         "on_end_chapter_unconditional"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -6074,6 +6670,7 @@
         "after_true_remove"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -6094,6 +6691,7 @@
         "on_wait"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
@@ -6114,6 +6712,7 @@
         "on_upkeep"
       ],
       "webReferences": [],
+      "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
       "status": "unreferenced"
