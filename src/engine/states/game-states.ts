@@ -1345,6 +1345,10 @@ export class FreeState extends MapState {
 
     game.cursor.visible = true;
 
+    // Phase music (Python: phase.fade_in_phase_music() in FreeState.begin() —
+    // covers e.g. resuming a save mid-turn where phase_change never ran).
+    fadeInPhaseMusic(game);
+
     // Mark end of previous action group (turnwheel marker)
     game.actionLog.doAction(new MarkActionGroupEnd('free'));
 
@@ -5794,6 +5798,9 @@ export class AIState extends MapState {
   override begin(): StateResult {
     const game = getGame();
 
+    // Phase music (Python: AIState.begin() -> phase.fade_in_phase_music()).
+    fadeInPhaseMusic(game);
+
     // Initiative mode: only process the single current initiative unit
     if (game.initiative) {
       const unitNid = game.initiative.getCurrentUnitNid();
@@ -6508,6 +6515,47 @@ export class InitiativeUpkeepState extends State {
 }
 
 // ============================================================================
+// Phase music helpers
+// ============================================================================
+// Port of Python's app/engine/phase.py fade_in_phase_music / fade_out_phase_music.
+// Level music is keyed by `{team}_phase` (player_phase, enemy_phase, ...).
+// Fade duration defaults to 400ms (Python DEFAULT_FADE_TIME_MS), overridable
+// via the `_phase_music_fade_ms` game var.
+
+function getPhaseMusicNid(game: any, team: string): string | undefined {
+  const music = game.currentLevel?.music as Record<string, string> | undefined;
+  return music?.[team + '_phase'];
+}
+
+function getPhaseMusicFadeMs(game: any): number {
+  const val = game.gameVars.get('_phase_music_fade_ms');
+  return typeof val === 'number' ? val : 400;
+}
+
+/** Python: phase.fade_out_phase_music() — called at PhaseChangeState.begin(). */
+function fadeOutPhaseMusic(game: any): void {
+  const nextMusicNid = getPhaseMusicNid(game, game.phase.getCurrent());
+  const currentlyPlaying = game.audioManager?.getCurrentMusicNid?.();
+  // Don't fade out if we'll just fade back in to the same song.
+  if (currentlyPlaying && nextMusicNid && nextMusicNid === currentlyPlaying) {
+    return;
+  }
+  game.audioManager?.fadeToPause?.(getPhaseMusicFadeMs(game));
+}
+
+/** Python: phase.fade_in_phase_music(at_turn_change) — called at PhaseChangeState.end() / FreeState.begin(). */
+function fadeInPhaseMusic(game: any, atTurnChange: boolean = false): void {
+  const musicNid = getPhaseMusicNid(game, game.phase.getCurrent());
+  const fade = getPhaseMusicFadeMs(game);
+  if (musicNid) {
+    const restart = atTurnChange && !!game.db.getConstant?.('restart_phase_music', true);
+    void game.audioManager?.fadeIn?.(musicNid, fade, restart);
+  } else {
+    game.audioManager?.fadeToPause?.(fade);
+  }
+}
+
+// ============================================================================
 // 9. PhaseChangeState
 // ============================================================================
 
@@ -6516,11 +6564,20 @@ export class PhaseChangeState extends State {
   override readonly transparent = true;
 
   private banner: Banner | null = null;
+  private fadedIn = false;
 
   override begin(): StateResult {
     const game = getGame();
     const currentTeam = game.phase.getCurrent();
     const turnCount = game.phase.turnCount;
+
+    // Phase music: fade out whatever's playing before showing the banner
+    // (matches Python: phase.fade_out_phase_music() at PhaseChangeState.begin()).
+    fadeOutPhaseMusic(game);
+    // Play this team's phase-change stinger (Python: PhaseIn.begin() plays
+    // team.phase_change_sound_effect or 'Next Turn'; team-level overrides
+    // aren't modeled in the web team data yet, so this always uses the default).
+    game.audioManager?.playSfx?.('Next Turn');
 
     // Turnwheel markers: lock during non-player phases, mark phase change
     game.actionLog.doAction(new LockTurnwheel(currentTeam !== 'player'));
@@ -6602,6 +6659,12 @@ export class PhaseChangeState extends State {
    */
   override finish(): void {
     const game = getGame();
+    // Phase music: fade back in on the way out (Python: phase.fade_in_phase_music
+    // (at_turn_change=True) at PhaseChangeState.end()).
+    if (!this.fadedIn) {
+      this.fadedIn = true;
+      fadeInPhaseMusic(game, true);
+    }
     if (game.turnCount === 1 && game.phase?.getCurrent() === 'player') {
       game.actionLog.setFirstFreeAction();
     }

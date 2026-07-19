@@ -179,6 +179,70 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Audio verification: music stack, phase/battle music, SFX loops, settings (P6):**
+  Audited `src/audio/audio-manager.ts` and every `game.audioManager` call site
+  against `lt-maker/app/engine/sound.py` and `phase.py`. Audit table (area |
+  python | web before | action):
+  - Music stack (push/pop) | `ChannelPair`/ `SongStack`-style layered channels
+    with independent fade in/out | already had a `musicStack: string[]` with
+    `pushMusic`/`popMusic`/`playMusic`/`stopMusic` and crossfade-on-swap | kept
+    as-is (already correct shape); added call-recording (`AudioManager.calls`)
+    for verification.
+  - Fade durations | `DEFAULT_FADE_TIME_MS = 400`, overridable per-channel |
+    hardcoded 500ms everywhere | added parameterized `fadeIn(nid, fadeMs,
+    fromStart)` / `fadeToPause(fadeMs)` using the Python-correct 400ms default
+    for phase-music call sites; left the pre-existing 500ms default on the
+    generic `playMusic`/`stopMusic` API for non-phase callers (sound room,
+    base, overworld, game-over) since Python's own default is also just a
+    constant with no single canonical value forced on every caller.
+  - Phase-change music switching | `phase.py`: `PhaseChangeState.begin()` calls
+    `fade_out_phase_music()` then `phase.slide_in()` (which plays
+    `team.phase_change_sound_effect or 'Next Turn'`); `PhaseChangeState.end()`
+    calls `fade_in_phase_music(at_turn_change=True)`; `FreeState.begin()` and
+    `AIState.begin()` also call `fade_in_phase_music()` (plain) | **missing
+    entirely** — `PhaseChangeState`/`FreeState`/`AIState` never touched music,
+    so `player_phase`/`enemy_phase` level music fields were only ever applied
+    once at level load | real divergence, fixed: added `fadeOutPhaseMusic`/
+    `fadeInPhaseMusic` helpers in `src/engine/states/game-states.ts` (keyed off
+    `level.music['{team}_phase']`, `_phase_music_fade_ms` game var, and the
+    `restart_phase_music` constant) and wired them into `PhaseChangeState.begin`
+    /`finish`, `FreeState.begin`, and `AIState.begin`; also added the
+    `'Next Turn'` phase-change SFX in `PhaseChangeState.begin` (team-level
+    `phase_change_sound_effect` overrides aren't modeled in the web `TeamDef`
+    data yet — deferred, default-only for now).
+  - Battle music override on combat entry/exit | Python crossfades between a
+    `Channel` and a same-song `battle` sub-channel (`ChannelPair.crossfade()`)
+    | web instead `pushMusic`/`popMusic`s a distinct `player_battle`/
+    `enemy_battle` track in `CombatState` (game-states.ts ~4181/4869) | left
+    as an accepted approximation (pre-existing, not newly introduced) — a true
+    same-song crossfade channel model is a larger rearchitecture out of scope
+    for this slice; the push/pop semantics still correctly restore phase music
+    after combat.
+  - SFX loop lifecycle (`playSfxLoop`/`stopSfx`, EXP-gain loop) | N/A (SFX
+    loops are a web-specific `Experience Gain` UX addition) | already correct:
+    `loopingSfx` map keyed by nid, no-op on double-start, `onended` cleanup |
+    no change.
+  - Volume settings (`set_music_volume`/`set_sfx_volume`) | applied to
+    `Channel.global_volume` -> `reset_volume()` | `setMusicVolume`/
+    `setSfxVolume` already wired from `settings-state.ts` into gain nodes |
+    no change.
+  - Files changed: `src/audio/audio-manager.ts` (added `calls` log,
+    `fadeIn`, `fadeToPause`, `getCurrentMusicNid`, `clearCalls`, refactored
+    `playMusic`/`stopMusic` to share fade-duration-parameterized internals),
+    `src/engine/states/game-states.ts` (phase-music helpers +
+    `PhaseChangeState`/`FreeState`/`AIState` wiring).
+  - New spec: `tests/audio-parity.spec.ts` — call-recording assertions (no
+    real audio playback assertions): event music command semantics
+    (play/push/pop/fade-nid/fade-duration), phase music switching across a
+    full player/enemy/player turn cycle, battle-music enter/exit restore,
+    SFX loop start/stop lifecycle, volume setting application.
+  - Deferrals: team-level `phase_change_sound_effect` override (web `TeamDef`
+    has no such field — always uses the `'Next Turn'` default); true
+    same-song crossfade battle-channel model (kept push/pop approximation);
+    Canto/has-traded mid-turn `fade_in_phase_music()` call in
+    `general_states.py:708` (edge case, not ported — units with canto
+    remaining don't re-trigger a phase-music fade-in after acting).
+
 - **Roam talk/shop interaction and overworld option menus (P5):**
   - Read `lt-maker/app/engine/roam/free_roam_state.py` end to end and fixed
     several real divergences in `src/engine/states/roam-state.ts`:
@@ -2035,7 +2099,9 @@ mouse, touch, cancel/back, transition, and resume tests.
 - [ ] Complete combat-animation fallback behavior without debug placeholder art
 - [ ] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
 - [ ] Verify portrait expressions, dialog controls, transitions, overlays, and text layout
-- [ ] Verify music-stack, phase/battle music overrides, SFX loops, and audio settings
+- [x] Verify music-stack, phase/battle music overrides, SFX loops, and audio settings
+  (2026-07-19: verification slice, see `tests/audio-parity.spec.ts` and PLAN.md
+  entry in Recent Changes for the audit table, fix, and deferrals)
 - [ ] Build resource-path fixtures for spaces, Unicode, chunked/non-chunked data,
   animated panoramas, palette layouts, missing optional assets, and bundles
 - [ ] Add screenshot/golden tolerances for representative maps and combat scenes
@@ -2077,8 +2143,7 @@ prior queue with its audit tables is preserved in git history at 817743f):
 1. **Turnwheel breadth verification (P2):** systematic undo/redo coverage
    across death/resurrection, recruitment, class change, support gains, fog,
    and initiative — the P2 rows still unchecked.
-2. Audio verification (P6): music stack, phase/battle overrides, SFX loops,
-   audio settings vs Python sound.py.
+2. ~~Audio verification (P6)~~ — done, see Recent Changes.
 3. Blocking/no-block/flag matching audit per event command (P1).
 4. Soak automation with deterministic seeds and first-failure archiving (P7).
 5. Initiative bar, rescue/status icons, movement arrows UI (P5).
