@@ -678,12 +678,15 @@ export class CombatPhaseSolver {
    * - classic: single RN, random(0..99) < hitChance
    * - true_hit: average of 2 RNs (standard Fire Emblem 2-RN system)
    * - true_hit_plus: average of 3 RNs
-   * - grandmaster: always hits
+   * - grandmaster: solver.py fixes `roll = 0` (no stream draw) and still
+   *   compares `roll < to_hit`, so it "always hits" only while the to-hit
+   *   value is positive -- a hit chance of exactly 0 (or negative, pre-clamp)
+   *   still misses.
    */
   private rollHit(hitChance: number, rngMode: RngMode): boolean {
     switch (rngMode) {
       case 'grandmaster':
-        return true;
+        return hitChance > 0;
 
       case 'true_hit': {
         const r1 = this.randomRoll();
@@ -751,12 +754,24 @@ export class CombatPhaseSolver {
       !db.areAllied(striker.team, target.team) && !!target.traveler &&
       this.guardGauge(target) >= this.maxGuardGauge(target, db);
 
-    // Roll for hit
-    // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT.
-    const hit = guarded || (item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true);
+    // Roll for hit.
+    // Python's solver.process() always calls generate_roll() first (consuming
+    // the RNG stream for the active mode), then overwrites `roll = -1` for the
+    // Pair Up guard case afterward -- the guard doesn't skip the roll, it just
+    // discards it. Mirror that ordering so the combat-random stream position
+    // stays aligned with Python even when a strike is guarded.
+    // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT
+    // and never call generate_roll() at all.
+    const hitRoll = item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true;
+    const hit = guarded || hitRoll;
 
-    // Roll for crit (only if hit lands)
-    const crit = hit && !guarded ? this.randomRoll() < critChance : false;
+    // Roll for crit.
+    // Python computes `to_crit` and calls generate_crit_roll() whenever the
+    // strike hits, regardless of guard_hit -- guard_hit only gates whether the
+    // crit *effect* applies (`if crit and not guard_hit:`), not whether the
+    // roll happens. Consume the roll first, then discard the result on guard.
+    const critRoll = hit ? this.randomRoll() < critChance : false;
+    const crit = critRoll && !guarded;
 
     // Compute damage (0 on miss)
     let dmg = 0;
@@ -772,6 +787,16 @@ export class CombatPhaseSolver {
           const critDmgMod = skillSystem.modifyCritDamage(striker, item);
           const baseCritMult = 3; // LT default
           dmg = dmg * baseCritMult + critDmgMod;
+        }
+
+        // Grandmaster mode scales damage by to-hit% instead of a binary
+        // miss (weapon_components.py Damage.on_hit/on_glancing_hit/on_crit:
+        // "Reduce damage if in Grandmaster Mode" -> damage = int(damage *
+        // hit / 100), using the same clamped compute_hit value -- `finalHit`
+        // here already matches that, including the weapon-triangle bonus
+        // which Python's compute_hit folds in internally).
+        if (rngMode === 'grandmaster') {
+          dmg = Math.trunc(dmg * finalHit / 100);
         }
       }
 

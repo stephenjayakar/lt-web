@@ -1298,7 +1298,7 @@ test.describe('Event command parity', () => {
       const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
       const { MapCombat } = await import('/src/combat/map-combat.ts');
       const { AnimationCombat } = await import('/src/combat/animation-combat.ts');
-      const { computeDamage } = await import('/src/combat/combat-calcs.ts');
+      const { computeDamage, computeHit, weaponTriangle, getEquippedWeapon } = await import('/src/combat/combat-calcs.ts');
       const { GuardPairUpkeepAction } = await import('/src/engine/action.ts');
       const template = game.db.units.get('Eirika');
       const klass = template ? game.db.classes.get(template.klass) : null;
@@ -1396,13 +1396,26 @@ test.describe('Event command parity', () => {
         assist: !!strike.assist,
         damage: strike.damage,
       }));
-      const expectedAssistDamage = Math.floor(
-        computeDamage(assistA, assistWeapon, defender, game.db, game.board, game, 'attack') / 2,
-      );
-      const expectedDefenseAssistDamage = Math.floor(
-        computeDamage(
-          defenseAssist, defenseAssist.items[0], attacker, game.db, game.board, game, 'defense',
-        ) / 2,
+      // Grandmaster mode scales the solver's computed damage by the clamped
+      // to-hit% (weapon_components.py Damage.on_hit: damage = int(damage *
+      // hit / 100)), including the weapon-triangle damage/hit bonuses that
+      // feed into the strike's actual `finalHit`/`dmg` -- mirror that exact
+      // shape here instead of just halving computeDamage(), since these
+      // fixtures' nonzero SPD gives both sides real avoid (finalHit < 100).
+      const grandmasterAssistDamage = (
+        att: any, item: any, def: any, mode: 'attack' | 'defense',
+      ): number => {
+        const defWeapon = getEquippedWeapon(def, game.db, game);
+        const baseHit = computeHit(att, item, def, game.db, game.board, undefined, mode);
+        const wt = weaponTriangle(item, defWeapon, game.db, att, def);
+        const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
+        const baseDmg = computeDamage(att, item, def, game.db, game.board, game, mode, true);
+        const dmg = baseDmg + wt.damageBonus;
+        return Math.trunc(dmg * finalHit / 100);
+      };
+      const expectedAssistDamage = grandmasterAssistDamage(assistA, assistWeapon, defender, 'attack');
+      const expectedDefenseAssistDamage = grandmasterAssistDamage(
+        defenseAssist, defenseAssist.items[0], attacker, 'defense',
       );
       game.db.constants.set('limit_attack_stance', true);
       const limitedSolver = new CombatPhaseSolver(() => 0, game);
@@ -3626,9 +3639,17 @@ test.describe('Event command parity', () => {
     });
 
     expect(result).not.toBeNull();
+    // Both targets are grandmaster-mode strikes with SPD 5 / LCK 0 giving a
+    // 10-point avoid (AS 5 * 2), so finalHit is 90, not 100 (groupItem's
+    // 'hit' component is 100, attacker SKL 0). Unscaled damage is item 1 +
+    // _GroupDamageProc's attack_proc 30 + _GroupPreProc's attack_pre_proc 7
+    // = 38; Grandmaster mode's damage = int(damage * hit / 100)
+    // (weapon_components.py Damage.on_hit, ported to combat-solver.ts's
+    // resolveStrike in the RNG-mode-verification slice) truncates
+    // 38 * 90 / 100 = 34.2 down to 34 for both the main and splash target.
     expect(result!.group.strikes).toEqual([
-      { target: '_GroupProcMain', damage: 38, attackInfo: [0, 0], procs: ['_GroupDamageProc'] },
-      { target: '_GroupProcSplash', damage: 38, attackInfo: [0, 0], procs: ['_GroupDamageProc'] },
+      { target: '_GroupProcMain', damage: 34, attackInfo: [0, 0], procs: ['_GroupDamageProc'] },
+      { target: '_GroupProcSplash', damage: 34, attackInfo: [0, 0], procs: ['_GroupDamageProc'] },
     ]);
     expect(result!.group.playback).toEqual([
       'attack_pre_proc:_GroupPreProc',

@@ -178,6 +178,80 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **RNG-mode verification and deterministic-replay slice (P4):**
+  - Read `lt-maker/app/engine/combat/solver.py`'s `generate_roll`/
+    `generate_crit_roll`/`process` and confirmed: the hit roll's shape is
+    mode-dependent (classic/Fates Hit: 1 draw, True Hit: 2 averaged, True
+    Hit Plus: 3 averaged, Grandmaster: 0, a fixed `roll=0`), but
+    `generate_crit_roll` is always exactly one `static_random.get_combat()`
+    draw, independent of mode, taken iff the strike hit. Added a runtime
+    regression (`tests/rng-replay.spec.ts`) that counts actual
+    combat-random draws per mode with hit%/crit% forced to 100 and locks
+    the exact per-mode draw counts (2/3/4/2/1).
+  - Found and fixed a real stream-desync bug in the Pair Up guard path:
+    Python's `process()` always calls `generate_roll()` (and, once the
+    strike "hits", `generate_crit_roll()`) *before* overwriting `roll = -1`
+    for a full-gauge guarded strike -- the guard discards the roll's
+    *effect*, not the draw. `src/combat/combat-solver.ts`'s `resolveStrike`
+    previously short-circuited both draws via `guarded ||` / `hit && !guarded`,
+    desyncing the web's combat-random stream from Python whenever a guard
+    fired. Fixed to always draw, then apply the guard override to the
+    result only; verified by comparing stream position across a matched
+    guarded/unguarded strike pair (same starting state, identical ending
+    state, only the guarded strike's damage/effect differs).
+  - Implemented Grandmaster mode's damage-scaling semantics, which were
+    entirely missing on the web (`item_components/weapon_components.py`
+    `Damage.on_hit`/`on_glancing_hit`/`on_crit`: "Reduce damage if in
+    Grandmaster Mode" -> `damage = int(damage * hit / 100)`, using the same
+    clamped `compute_hit` value the solver's hit check uses, which already
+    folds in the weapon-triangle bonus). Also fixed `rollHit`'s Grandmaster
+    case: Python's fixed `roll = 0` still compares `roll < to_hit`, so a
+    to-hit of exactly 0 (or negative pre-clamp) still misses -- the web
+    previously always returned `true` unconditionally.
+  - Verified the leveling growth-stream pull counts already ported in
+    `src/engine/leveling.ts` against `lt-maker/app/engine/unit_funcs.py`'s
+    `_fixed_levelup`/`_random_levelup`/`_dynamic_levelup`: Fixed pulls zero
+    rolls, Random pulls one roll per 100-point growth chunk (a `while`
+    loop), Dynamic pulls exactly one roll regardless of growth magnitude (a
+    single `if`) -- no divergence found; added a regression locking this
+    shape rather than just the resulting stat delta.
+  - Added an end-to-end deterministic-replay regression: a seeded sequence
+    of two real (unscripted) battles plus one `AutoLevelAction` level-up,
+    with a turnwheel undo/redo of the two battles, a save/corrupt/load
+    boundary, and a turnwheel undo/redo of the post-load level-up -- all
+    assert byte-identical HP, stat, and combat-random stream state on both
+    sides of each reversal.
+  - Newly-implemented Grandmaster damage scaling changed two pre-existing
+    `harness.spec.ts` goldens that exercise grandmaster mode with nonzero
+    defender SPD (so finalHit < 100, and damage is now genuinely scaled
+    instead of full): "attack stance selects and cycles partners..." (its
+    hand-derived `expectedAssistDamage`/`expectedDefenseAssistDamage` now
+    replicate the solver's exact `computeDamage(assist=true) + wt.damageBonus,
+    then trunc(dmg * finalHit / 100)` shape instead of a bare `/2`), and
+    "attack, defense, and pre-procs scope temporary skills across grouped
+    strikes" (hardcoded `damage: 38` -> `damage: 34`, i.e.
+    `trunc(38 * 90 / 100)`, with the 90% derivation in a code comment). Both
+    re-derivations were confirmed to be the new (correct) scaling, not a
+    stream-position regression from the guard fix above -- the guard fix
+    only changes behavior when a Pair Up guard actually fires, and neither
+    fixture exercises that path.
+  - Deferred (recorded, not fixed in this slice): a pre-existing, widespread
+    test-infra bug where seven spec files (`combat-goldens.spec.ts`,
+    `effective-damage.spec.ts`, `aesthetic-components.spec.ts`,
+    `droppable-pickup.spec.ts`, `equip-lifecycle.spec.ts`,
+    `status-hold.spec.ts`) set `rng_mode` via a nonexistent `g.db._constants`
+    property instead of the real `g.db.constants` Map, so those tests'
+    "grandmaster" (or parametrized-mode) setup silently never applies --
+    they actually still run under the default `true_hit` mode. They
+    currently pass regardless because their fixtures use ~100% hit / 0%
+    crit weapons, so the mode is functionally irrelevant to their asserted
+    outcomes; fixing the typo was left alone here because retroactively
+    making those tests' RNG mode real risks changing their outcomes (e.g.
+    now-implemented Grandmaster damage scaling) in ways this slice didn't
+    audit fixture-by-fixture. Glancing-hit damage (Python's
+    `roll >= unclamped_hit - glancing_hit`, half-damage branch) also remains
+    entirely unimplemented on the web solver -- out of this slice's four
+    named gaps, but discovered while reading `solver.py`'s `process()`.
 - **Component resolve-policy audit (P3):** built the authoritative Python
   hook→policy table from `ITEM_HOOKS`/`SKILL_HOOKS` in
   `lt-maker/app/engine/component_system/compile_item_system.py` /
@@ -1776,7 +1850,10 @@ item-use fixture matrices match Python outputs and side effects.
   combat EXP across allies, bosses, turnwheel, and save/load
 - [x] Match weapon-triangle rank ordering, simultaneous relation merging,
   reaver/override/ignore hooks, and defender avoid/resist contributions
-- [ ] Verify all RNG modes for hit, crit, level-up, and deterministic replay
+- [x] Verify all RNG modes for hit, crit, level-up, and deterministic replay
+  (see Recent Changes: crit-roll-per-mode parity, Grandmaster damage
+  scaling, a Pair Up guard stream-consumption fix, and end-to-end
+  save/turnwheel replay across two battles plus a level-up)
 - [x] Fix equation evaluator parity: `//` with compound operands silently truncates
   expressions, `INITIATIVE` lookup is case-mismatched (always 0), and condition
   evaluation lacks `and`/`or`/`not` (see `docs/parity/runtime-inventory.md`)
@@ -1879,17 +1956,22 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-18 after the non-default project compatibility
-fixtures landed:
+Queue refreshed 2026-07-18 after the RNG-mode verification and
+deterministic-replay slice landed:
 
-1. RNG-mode verification (P4): deterministic replay across hit/crit/level-up
-   for classic and both True Hit modes beyond the existing goldens.
-2. Trigger payload and EVNT/PYEV1 nested-flow audit (P1).
-3. Roam talk/shop interaction and overworld option menus (P5).
-4. Rendering comparisons: tile layers, autotiles, weather, camera (P6).
-5. Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
+1. Fix the `g.db._constants` vs `g.db.constants` typo across the seven spec
+   files noted in Recent Changes, auditing each fixture's hit/crit chance so
+   turning on the real Grandmaster/parametrized RNG mode doesn't silently
+   change asserted damage/outcome values.
+2. Implement glancing-hit damage (Python's `roll >= unclamped_hit -
+   glancing_hit`, half-damage branch) in the web combat solver -- discovered
+   missing while auditing `solver.py`'s `process()` for the RNG slice above.
+3. Trigger payload and EVNT/PYEV1 nested-flow audit (P1).
+4. Roam talk/shop interaction and overworld option menus (P5).
+5. Rendering comparisons: tile layers, autotiles, weather, camera (P6).
+6. Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
    workflow) so the full spec suite, including `tests/project-compat.spec.ts`,
    actually gates PRs -- currently only `npm run audit:parity` runs in CI.
-6. If a PYEV1-authored external `.ltproj` fixture becomes available, add it
+7. If a PYEV1-authored external `.ltproj` fixture becomes available, add it
    to `tests/project-compat.spec.ts` to close the PYEV1-heavy-project gap
    noted in P7 (both bundled non-default projects use EVNT, not PYEV1).
