@@ -1605,7 +1605,18 @@ passes; record newly discovered work here immediately.
 - [x] Build item/skill component manifests mapping component NIDs to generated hooks
 - [x] Inventory Python triggers, query functions, equations, and save fields
   (see `docs/parity/runtime-inventory.md`; discovered defects recorded below)
-- [ ] Add representative non-default project fixtures to CI
+- [x] Add representative non-default project fixtures to CI (2026-07-18:
+  `tests/project-compat.spec.ts` covers `rekka.ltproj` — FE7A, non-chunked
+  format, classic-Rescue `store_unit`/`sequence_item` data — and
+  `testing_proj.ltproj` — LT, chunked directory-per-type format,
+  achievements-driven intro event — each with clean boot, intro-event
+  progress, one `resolveCombat`, one save/load round trip, and a
+  project-specific data check. `playwright.config.ts` `testDir: './tests'`
+  auto-discovers the new spec by glob, no registration needed. Caveat:
+  `.github/workflows/parity-audit.yml` only runs `npm run audit:parity`;
+  there is no CI job invoking the Playwright suite at all yet (pre-existing
+  gap, not introduced by this slice) — these fixtures are real and green
+  locally but are not yet gated in CI until a Playwright job is added)
 
 **Gate:** every in-scope reference surface has an owner, status, and test target.
 
@@ -1848,7 +1859,17 @@ match the reference within documented browser tolerances.
   Prologue through Ch.5-end sequential chain; later-chapter parity requires an
   external full-campaign project fixture)
 - [ ] Run repeated soak tests with deterministic seeds and archive first-failure state
-- [ ] Validate at least one component-heavy and one PYEV1-heavy external project
+- [x] Validate at least one component-heavy and one PYEV1-heavy external project
+  (2026-07-18: `tests/project-compat.spec.ts` validates `rekka.ltproj` and
+  `testing_proj.ltproj`. Both use plain EVNT-format events, not PYEV1 —
+  verified directly against their `events.json`/`game_data/events/*.json`,
+  each event's structured `commands` array is empty and the real program
+  is semicolon-command text in `_source`, same as `default.ltproj`. Neither
+  bundled non-default project is PYEV1-flavored; no PYEV1-authored `.ltproj`
+  fixture exists in this repo to validate against — recorded as an open gap
+  rather than papering over it. `rekka.ltproj` is component-heavy in the
+  sense used by the Pair-up/Rescue-fallback slice: classic (non-Pair-Up)
+  `Rescue`/`store_unit` sequence-item components)
 - [ ] Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle
 - [ ] Remove silent skips for known commands/components in production builds
 - [ ] Publish a final parity report listing verified domains and accepted deviations
@@ -1858,26 +1879,17 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-All slices from the 2026-07-17 selection queue have landed (equip lifecycle,
-effective damage, status application, equation evaluator, skill-identity saves,
-event/region persistence, trigger dispatch, region reversibility, droppable
-pickup, promotion, aesthetics, save-field closure, supply/item_discard,
-create_unit/set_position, combat goldens). Refreshed queue:
+Queue refreshed 2026-07-18 after the non-default project compatibility
+fixtures landed:
 
-1. **Sacred Stones full-campaign chain smoke (P7, re-scoped 2026-07-18):** the
-   bundled default.ltproj is a truncated demo ending at Ch.5 (no Ch.6+ data
-   exists), so "campaign completion" here means one sequential
-   Prologue -> Ch.5-end playthrough smoke with chapter chaining, prep/supply
-   flows, and recently shipped systems (promotion, drops) exercised inside the
-   run where the data allows.
-2. Base submenus and mode selection (P5): records, BEXP, sound room,
-   library/guide, difficulty/mode selection.
-3. ~~AI verification (P4): terrain targeting, faction/party target specs, group
-   rules against the Python AI controller.~~ Done (see Recent Changes); roam AI
-   and the `SecondaryAI` two-phase view_range search/widen flow remain
-   unaudited and are carried forward as a follow-up, not part of this item.
-4. Aura propagation and remaining proc/charge/cooldown status hooks (P3).
-5. ~~Component resolve policies (all/any/sum/unique/default) verification (P3).~~
-   Done (see Recent Changes and docs/parity/resolve-policies.md): fixed a
-   UNIQUE-policy first-vs-last-wins bug in `skill-system.ts`'s
-   `getSkillValue`/`alternateSplash`.
+1. RNG-mode verification (P4): deterministic replay across hit/crit/level-up
+   for classic and both True Hit modes beyond the existing goldens.
+2. Trigger payload and EVNT/PYEV1 nested-flow audit (P1).
+3. Roam talk/shop interaction and overworld option menus (P5).
+4. Rendering comparisons: tile layers, autotiles, weather, camera (P6).
+5. Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
+   workflow) so the full spec suite, including `tests/project-compat.spec.ts`,
+   actually gates PRs -- currently only `npm run audit:parity` runs in CI.
+6. If a PYEV1-authored external `.ltproj` fixture becomes available, add it
+   to `tests/project-compat.spec.ts` to close the PYEV1-heavy-project gap
+   noted in P7 (both bundled non-default projects use EVNT, not PYEV1).
