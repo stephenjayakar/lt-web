@@ -284,6 +284,84 @@ function showProjectPicker(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Component inventory: log unknown items/skill component NIDs
+// ---------------------------------------------------------------------------
+
+function logUnknownComponents(db: Database): void {
+  const unknownItemComponents = new Set<string>();
+  const unknownSkillComponents = new Set<string>();
+
+  // Known item component NIDs (from the VALID_COMMANDS list plus common components)
+  // This is a minimal check — we log components that look suspicious
+  const knownItemComponents = new Set([
+    'weapon_type', 'weapon_rank', 'hit', 'might', 'weight', 'crit', 'durability',
+    'uses', 'value', 'description', 'name', 'unrepairable', 'rank_bonus',
+    'prf_unit', 'prf_class', 'prf_tags', 'prf_affinity', 'mt', 'hit_bonus',
+    'crit_bonus', 'weight_bonus', 'might_formula', 'hit_formula', 'crit_formula',
+    'weight_formula', 'might_formula_override', 'hit_formula_override',
+    'crit_formula_override', 'weight_formula_override', 'lock', 'steal_priority',
+    'effective', 'glancing_hit', 'glancing_damage', 'magic', 'magic_at_range',
+    'gba_steal', 'target_tile', 'target_unit', 'target_enemy', 'target_ally',
+    'unlock_staff', 'unsplashable', 'enemy_blast_aoe', 'ally_blast_aoe',
+    'smart_blast_aoe', 'ally_equation_blast_aoe', 'shape_blast_aoe',
+    'smart_blast', 'eval_available', 'hp_cost', 'mana_cost', 'eval_mana_cost',
+    'accessory', 'locked', 'unstealable', 'droppable', 'unrepairable',
+  ]);
+
+  const knownSkillComponents = new Set([
+    'stat_change', 'growth_change', 'skill_description', 'name', 'description',
+    'cooldown', 'cooldown_formula', 'cooldown_percent', 'builds_charge',
+    'build_charge', 'drain_charge', 'charges_per_turn', 'miracle', 'dynamic_damage',
+    'dynamic_resist', 'dynamic_accuracy', 'dynamic_avoid', 'dynamic_multiattacks',
+    'cannot_counter', 'cannot_use_items', 'cannot_use_magic_items',
+    'ignore_rescue_penalty', 'pairup_bonus', 'attack_speed_formula',
+    'defense_speed_formula', 'damage_formula', 'accuracy_formula', 'avoid_formula',
+    'resist_formula', 'damage_formula_override', 'accuracy_formula_override',
+    'avoid_formula_override', 'resist_formula_override', 'exp_multiplier',
+    'enemy_exp_multiplier', 'wexp_multiplier', 'enemy_wexp_multiplier',
+    'status_on_hit', 'status_on_equip', 'status_on_unequip', 'status_on_level',
+    'status_off_hit', 'prf_unit', 'prf_class', 'prf_tags', 'prf_affinity',
+    'sight_range_bonus', 'decreasing_sight_range_bonus', 'overslip_blast_aoe',
+    'cleave_aoe', 'aura', 'aura_range', 'aura_target', 'show_aura', 'hide_aura',
+    'canto', 'canto_speed', 'canto_range', 'ignore_forced_movement',
+  ]);
+
+  // Prefab components are [nid, value] pair arrays; runtime objects use Maps.
+  const componentNids = (components: any): string[] => {
+    if (!components) return [];
+    if (components instanceof Map) return Array.from(components.keys());
+    if (Array.isArray(components)) {
+      return components.map((c: any) => (Array.isArray(c) ? c[0] : c)).filter((n: any) => typeof n === 'string');
+    }
+    return Object.keys(components);
+  };
+
+  // Collect unknown item components
+  for (const itemPrefab of db.items.values()) {
+    for (const componentNid of componentNids(itemPrefab.components)) {
+      if (!knownItemComponents.has(componentNid)) {
+        unknownItemComponents.add(componentNid);
+      }
+    }
+  }
+
+  // Collect unknown skill components
+  for (const skillPrefab of db.skills.values()) {
+    for (const componentNid of componentNids(skillPrefab.components)) {
+      if (!knownSkillComponents.has(componentNid)) {
+        unknownSkillComponents.add(componentNid);
+      }
+    }
+  }
+
+  // Log summary if any unknown components found
+  const allUnknown = [...unknownItemComponents, ...unknownSkillComponents].sort();
+  if (allUnknown.length > 0) {
+    console.log(`[ComponentInventory] Found ${allUnknown.length} unrecognized components: ${allUnknown.join(', ')}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 
@@ -365,6 +443,12 @@ async function main(): Promise<void> {
   try {
     drawLoadingScreen(ctx, 'Loading database...');
     await db.load(resources);
+    // Check for unknown components at load time
+    logUnknownComponents(db);
+    if (harnessMode) {
+      // Let tests re-run the scan after injecting synthetic components.
+      (window as any).__logUnknownComponents = () => logUnknownComponents(db);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Failed to load database:', msg);

@@ -3,6 +3,7 @@ import { isPyev1 as _isPyev1, PythonEventProcessor as _PythonEventProcessor } fr
 import { GameQueryEngine } from '../engine/query-engine';
 import type { ActionLog } from '../engine/action';
 import { OnlyOnceEventAction } from '../engine/action';
+import { reportUnimplemented } from '../engine/strict-mode';
 
 // Lazy accessor to avoid circular-import issues at module evaluation time.
 function _getPythonEvents() {
@@ -374,6 +375,7 @@ export class GameEvent {
     }
 
     if (!VALID_COMMANDS.has(rawType)) {
+      reportUnimplemented('command', rawType, `line: "${line}"`);
       return null;
     }
 
