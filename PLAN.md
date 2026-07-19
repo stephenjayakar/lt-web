@@ -228,7 +228,7 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   Platform features genuinely untestable in Playwright (real offline SW interception, install prompt flow, Capacitor device APIs, real bundle zip loading) are documented as covered-by-structure-only.
   New spec file: `tests/platform-lifecycle.spec.ts` (16 tests).
   Files changed: `tests/platform-lifecycle.spec.ts` (new).
-  Gate: all 16 new tests passing; `npm run build` green with precache manifest generation logged; full serial gate passing (362 + 16 = 378 total tests).
+  Gate: all 16 new tests passing; `npm run build` green with precache manifest generation logged; full serial gate passing (362 passed + 1 intentional skip after this slice).
 
 - **Final parity report published (P7):** ✓ COMPLETE. Consolidated evidence from PLAN.md,
   runtime-inventory.md, resolve-policies.md, and all manifest JSON files into a single
@@ -242,7 +242,7 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   section documenting P1/P5 trigger wiring, new features landed, gaps closed;
   (6) regeneration instructions. Confirmed: `npm run audit:parity` green (100 TS files,
   60,159 lines, 211/255 parser, 202/255 dispatched, 135/201 items, 84/241 skills);
-  `npm run build` green with 27-entry precache manifest; 40 spec files, 378+ tests,
+  `npm run build` green with 27-entry precache manifest; 40 spec files, 368 tests (367 passed + 1 skip),
   1 intentional skip. File: `docs/parity/PARITY-REPORT.md`.
 
 - **Remove silent skips for known commands/components (P7):** Unrecognized event
