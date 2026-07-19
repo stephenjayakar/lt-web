@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 211,
-    "dispatcherPythonNids": 202,
+    "parserRecognizedPythonNids": 219,
+    "dispatcherPythonNids": 210,
     "itemReferencedComponentNids": 135,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 190,
+      "dispatched-unverified": 198,
       "missing-dispatch": 9,
-      "missing-parser": 44,
+      "missing-parser": 36,
       "stub-hint": 12
     }
   },
@@ -1531,12 +1531,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 769
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "clear_turnwheel",
@@ -1665,12 +1665,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 890
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "remove_game_board_bounds",
@@ -1685,12 +1685,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 901
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "load_unit",
@@ -3193,12 +3193,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2158
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "change_ai",
@@ -3617,12 +3617,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2367
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_mode_rng",
@@ -3639,12 +3639,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2382
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "promote",
@@ -4101,12 +4101,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3996
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "add_region",
@@ -5146,12 +5146,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3532
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_achievements",

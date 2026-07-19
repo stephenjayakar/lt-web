@@ -82,6 +82,8 @@ export type EventCommandType =
   | 'load_unit' | 'make_generic' | 'create_unit'
   | 'add_unit' | 'move_unit' | 'remove_unit' | 'kill_unit' | 'remove_all_units' | 'remove_all_enemies'
   | 'interact_unit' | 'resurrect' | 'set_position'
+  | 'set_skill_data' | 'set_mode_rng' | 'set_mode_autolevels' | 'show_minimap'
+  | 'set_game_board_bounds' | 'remove_game_board_bounds' | 'dump_vars' | 'delete_save'
   // Modify unit properties
   | 'set_name' | 'set_current_hp' | 'set_current_mana'
   | 'set_variant' | 'set_unit_field' | 'set_unit_note' | 'remove_unit_note'
@@ -180,6 +182,8 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'load_unit', 'make_generic', 'create_unit',
   'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
   'interact_unit', 'resurrect', 'set_position',
+  'set_skill_data', 'set_mode_rng', 'set_mode_autolevels', 'show_minimap',
+  'set_game_board_bounds', 'remove_game_board_bounds', 'dump_vars', 'delete_save',
   // Modify unit properties
   'set_name', 'set_variant', 'set_current_hp', 'set_current_mana',
   'set_unit_field', 'set_unit_note', 'remove_unit_note',
