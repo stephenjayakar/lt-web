@@ -4712,10 +4712,12 @@ export class CombatState extends State {
         if (this.levelUpScreen) {
           const done = this.levelUpScreen.update(now);
           if (done) {
+            this.fireUnitLevelUpTrigger();
             this.startRankUpOrCleanup();
           }
         } else {
           // No screen object — skip
+          this.fireUnitLevelUpTrigger();
           this.startRankUpOrCleanup();
         }
         break;
@@ -4949,6 +4951,31 @@ export class CombatState extends State {
 
     this.phase = 'exp_init';
     this.phaseTimer = 0;
+  }
+
+  /**
+   * Fire the `unit_level_up` trigger for a combat-driven level-up, mirroring
+   * Python's level_up.py:279 `game.events.trigger(triggers.UnitLevelUp(self.unit,
+   * self.stat_changes, self.source))` call which fires for every level-up
+   * (not just `autolevel_to`, which already dispatches this trigger separately
+   * at the event-command call site).
+   */
+  private fireUnitLevelUpTrigger(): void {
+    const game = getGame();
+    const activeCombat = this.getActiveCombat();
+    const unit = activeCombat?.attacker;
+    if (!game?.eventManager || !unit || !this.levelUpGains) return;
+    game.eventManager.trigger(
+      {
+        type: 'unit_level_up',
+        levelNid: game.currentLevel?.nid ?? '',
+        unitNid: unit.nid,
+        unit1: unit,
+        statChanges: { ...this.levelUpGains },
+        source: 'exp_gain',
+      },
+      { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
+    );
   }
 
   private startRankUpOrCleanup(): void {
@@ -7477,18 +7504,29 @@ export class EventState extends State {
       }
 
       const ev = this.currentEvent;
-      const commands = ev.commands;
 
       // Check if event is complete
-      if (ev.commandPointer >= commands.length || ev.isDone()) {
+      if (ev.isDone()) {
         this.finishAndDequeue();
         return;
       }
 
-      const cmd = commands[ev.commandPointer];
+      // getNextCommand() routes through the PYEV1 processor when the event
+      // is Python-syntax (prefab._source starts with '#pyev1') — it evaluates
+      // if/elif/else/for/while internally and returns only the leaf command
+      // lines. For standard EVNT-format events it just reads commands[commandPointer].
+      // (Previously this read `ev.commands[ev.commandPointer]` directly, which
+      // is always empty for PYEV1 events — see GameEvent's constructor comment
+      // that commands stays [] and getNextCommand() is required — so PYEV1
+      // events silently finished without executing a single command.)
+      const cmd = ev.getNextCommand();
       if (!cmd) {
-        this.advancePointer();
-        continue;
+        // Standard events: commandPointer ran past the last parsed command.
+        // PYEV1 events: the processor's internal script pointer is exhausted
+        // (getNextCommand() already flips ev.state to 'done' in that case).
+        // Either way there's nothing left to execute.
+        this.finishAndDequeue();
+        return;
       }
 
       // Execute the command. Returns true if the command is blocking.

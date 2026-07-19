@@ -1249,12 +1249,26 @@ export class EventManager {
    */
   actionLog: ActionLog | null = null;
 
+  /**
+   * Accessor for the live GameState, threaded into PYEV1 GameEvent instances
+   * so python-syntax event scripts can reference `game`, `u(...)`, `v(...)`,
+   * etc. Without this, PYEV1's PythonEventProcessor.buildEvalContext() has no
+   * `game` reference and every game-touching expression silently evaluates
+   * against a null game. Set once via setGameGetter() during game-state init.
+   */
+  private gameGetter: (() => any) | null = null;
+
   constructor(events: Map<NID, EventPrefab>) {
     this.allEvents = events;
     this.eventQueue = [];
     this.onceTriggered = new Set();
     this.talkPairs = new Set();
     this.talkHidden = new Set();
+  }
+
+  /** Register the GameState accessor used to build PYEV1 eval context (see `gameGetter` field doc). */
+  setGameGetter(getter: () => any): void {
+    this.gameGetter = getter;
   }
 
   /** Get the set of already-triggered only_once event NIDs (for save serialization). */
@@ -1329,7 +1343,7 @@ export class EventManager {
       }
 
       // Create and enqueue the event
-      const event = new GameEvent(prefab, trigger);
+      const event = new GameEvent(prefab, trigger, this.gameGetter ?? undefined);
       if (!event.isDone()) {
         this.eventQueue.push(event);
         triggered = true;
@@ -1350,7 +1364,7 @@ export class EventManager {
     if (!prefab) return false;
     if (!force && prefab.only_once && this.onceTriggered.has(prefab.nid)) return false;
     if (prefab.only_once) this.markOnceTriggered(prefab.nid);
-    const event = new GameEvent(prefab, trigger);
+    const event = new GameEvent(prefab, trigger, this.gameGetter ?? undefined);
     if (event.isDone()) return false;
     this.eventQueue.push(event);
     console.log(`EventManager: specifically triggered "${prefab.nid}"`);

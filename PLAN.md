@@ -178,6 +178,28 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+
+- **Trigger payload and EVNT/PYEV1 flow-control audit (P1):**
+  - Audited every referenced trigger's payload against Python `to_args()` and
+    updated `docs/parity/runtime-inventory.md` rows. Fixed: `on_roam_interact`
+    now passes Python's sorted closest-`units` list; combat/EXP-driven
+    level-ups now fire `unit_level_up` (previously only the `autolevel_to`
+    event command dispatched it — Python fires it on every level-up) with
+    `source: 'exp_gain'`. Stale audit notes corrected: `unit_level_up`
+    stat_changes/source and `combat_end` playback were already present; the
+    roam `on_talk` position omission matches Python's own `None` at that site.
+  - Fixed a real PYEV1 gap: `GameEvent` instances received no game accessor,
+    so python-syntax event scripts evaluated `game`/`u()`/`v()` expressions
+    against null. `EventManager.setGameGetter()` now threads the live
+    GameState into PYEV1 eval context.
+  - Added `tests/event-flow.spec.ts` (6 regressions): 3-deep if/elif/else and
+    early-exit nesting in both EVNT and PYEV1 interpreters, PYEV1 loops, and
+    payload assertions for the fixed triggers.
+  - Slice implemented by a Sonnet 5 subagent (terminated at session limit
+    after build-green); docs completion and verification finished by the lead.
+  - Flake filed: `map_hit_add_blend records an additive tint` failed once in
+    full-suite serial order but passes in isolation and on gate rerun —
+    suspected cross-test state leak or timing; investigate if it recurs.
 - **RNG-mode verification and deterministic-replay slice (P4):**
   - Read `lt-maker/app/engine/combat/solver.py`'s `generate_roll`/
     `generate_crit_roll`/`process` and confirmed: the hit roll's shape is

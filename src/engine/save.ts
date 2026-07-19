@@ -1591,6 +1591,7 @@ async function restoreLevel(
     // Create EventManager
     game.eventManager = new EventManager(game.db?.events);
     game.eventManager.actionLog = game.actionLog ?? null;
+    game.eventManager.setGameGetter(() => game);
     game.eventManager.restoreOnceTriggered(alreadyTriggeredEvents);
     game.eventManager.restoreTalkHidden(talkHidden);
 

@@ -324,6 +324,9 @@ export class FreeRoamState extends MapState {
     if (closestTalk && game.eventManager) {
       const triggered = game.eventManager.trigger(
         {
+          // Python's free_roam_state.py:163 passes position=None here — this
+          // is the one on_talk call site where position is intentionally
+          // absent, matching Python's `triggers.OnTalk(self.roam_unit, other_unit, None)`.
           type: 'on_talk',
           unit1: this.roamUnit,
           unit2: closestTalk,
@@ -378,18 +381,20 @@ export class FreeRoamState extends MapState {
 
     // 3. Generic roam interact (catch-all)
     if (game.eventManager) {
-      const closestAny = this.getClosestUnit(false);
+      const closestUnits = this.getClosestUnits(false);
+      const closestAny = closestUnits[0] ?? undefined;
       const triggered = game.eventManager.trigger(
         {
           type: 'on_roam_interact',
           unit1: this.roamUnit,
-          unit2: closestAny ?? undefined,
+          unit2: closestAny,
           unitNid: this.roamUnit.nid,
+          localArgs: new Map<string, any>([['units', closestUnits]]),
         },
         {
           game,
           unit1: this.roamUnit,
-          unit2: closestAny ?? undefined,
+          unit2: closestAny,
           gameVars: game.gameVars,
           levelVars: game.levelVars,
         },
@@ -419,10 +424,14 @@ export class FreeRoamState extends MapState {
               type: 'roaming_interrupt',
               regionNid: region.nid,
               region,
+              unit1: this.roamUnit,
+              unitNid: this.roamUnit.nid,
+              position: this.roamUnit.position,
             },
             {
               game,
               unit1: this.roamUnit,
+              position: this.roamUnit.position,
               region,
               gameVars: game.gameVars,
               levelVars: game.levelVars,
@@ -471,6 +480,37 @@ export class FreeRoamState extends MapState {
       }
     }
     return closest;
+  }
+
+  /**
+   * Find all units within TALK_RANGE of the roam unit, sorted by distance
+   * (closest first). Mirrors Python's `get_closest_units()`
+   * (free_roam_state.py:95) which backs both `get_closest_unit()` and the
+   * `units` list on the `on_roam_interact` trigger.
+   */
+  private getClosestUnits(mustHaveTalk: boolean): UnitObject[] {
+    const game = getGame();
+    if (!game || !this.movementComponent?.roamPosition) return [];
+
+    const roamPos = this.movementComponent.roamPosition;
+    const candidates: Array<{ unit: UnitObject; dist: number }> = [];
+
+    for (const unit of game.units.values()) {
+      if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
+
+      const dx = unit.position[0] - roamPos.x;
+      const dy = unit.position[1] - roamPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist >= TALK_RANGE) continue;
+
+      if (mustHaveTalk && !game.eventManager?.hasTalkPair?.(this.roamUnit!.nid, unit.nid)) {
+        continue;
+      }
+      candidates.push({ unit, dist });
+    }
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates.map((c) => c.unit);
   }
 
   /** Find an EVENT region at the roam unit's grid position. */
