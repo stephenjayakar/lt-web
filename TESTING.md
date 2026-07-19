@@ -66,6 +66,52 @@ suites and fails on the first non-deterministic regression.
   `Sacred Stones Later Chapters|Sacred Stones Chapter Mechanics|Level Progression`
 - Override with env vars to expand/target specific suites.
 
+**Deterministic seed sweep.** The engine's RNG seed (`_random_seed` in
+`game.gameVars`, consumed by `src/engine/static-random.ts` and
+`src/engine/leveling.ts`) defaults to `0` for every page load unless a test
+sets it explicitly. Set `SOAK_SEED_BASE=<int>` to sweep a distinct seed per
+iteration (`SOAK_SEED_BASE + iterationIndex`), exercising different
+combat/growth RNG sequences across the sweep instead of re-running the same
+seed-0 path every time:
+
+```bash
+# Sweep seeds 1000, 1001, 1002 across 3 iterations
+SOAK_ITERATIONS=3 SOAK_SEED_BASE=1000 npm run test:ss:soak
+
+# Or use the pre-wired alias (base seed 1000)
+npm run test:soak:seeded
+```
+
+Seed threading mechanism: before each iteration, the soak script writes
+`public/soak-seed.json` (`{"seed": N}`). `src/main.ts`'s harness bootstrap
+fetches `/soak-seed.json` (via Vite's static `public/` serving) whenever the
+page doesn't already have an explicit `?seed=` query param, and applies it by
+setting `_random_seed` and clearing the derived `_combat_random_seed` /
+`_growth_random_seed` state before the level loads. This means unmodified
+spec files -- whose `page.goto('/?harness=true&...')` calls don't carry a
+seed -- still pick up a distinct, fully reproducible seed per iteration with
+no per-spec changes. Tests that explicitly call
+`game.gameVars.set('_random_seed', N)` themselves (e.g. `rng-replay.spec.ts`)
+are unaffected -- their explicit call happens later and simply overrides
+whatever the soak sweep set. The seed file is removed after the soak run (and
+between iterations when `SOAK_SEED_BASE` is unset), so a normal
+`npx playwright test` run never sees it (`/soak-seed.json` 404s harmlessly).
+
+**First-failure archiving.** On the first failing iteration, the soak script
+stops (fail-fast, unchanged) and archives everything needed to reproduce it
+under `soak-artifacts/<ISO-timestamp>/`:
+
+| File | Contents |
+|------|----------|
+| `SUMMARY.txt` | Iteration number, grep, workers, seed, and a ready-to-paste repro command |
+| `env.json` | Structured version of the same (iteration, grep, workers, seed, raw `SOAK_*` env) |
+| `playwright-output.log` | Full stdout+stderr of the failing `npx playwright test` invocation |
+| `soak-seed.json` | The exact seed file used for that iteration (if seeding was active) |
+| `test-results/` | A copy of Playwright's `test-results/` (traces/screenshots, if enabled in `playwright.config.ts`) at the moment of failure |
+
+`soak-artifacts/` is gitignored -- it's meant to be inspected locally (or
+uploaded from CI) after a red soak run, not committed.
+
 ### URL Parameters
 
 | Param | Default | Description |

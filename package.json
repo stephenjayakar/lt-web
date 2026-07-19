@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test:harness": "playwright test tests/harness.spec.ts",
     "test:ss:soak": "node scripts/sacred-stones-soak.mjs",
+    "test:soak:seeded": "SOAK_SEED_BASE=1000 node scripts/sacred-stones-soak.mjs",
     "audit:parity": "node scripts/parity-audit.mjs --check",
     "audit:parity:write": "node scripts/parity-audit.mjs --write",
     "bundle": "node scripts/bundle-assets.mjs",

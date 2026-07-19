@@ -179,6 +179,46 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Soak automation: deterministic seed sweep + first-failure archiving (P7):**
+  Extended `scripts/sacred-stones-soak.mjs` (previously a plain fail-fast loop
+  over `npx playwright test`) with two additions.
+  1. *Seed threading*: RNG state (`_random_seed` in `game.gameVars`, read by
+     `src/engine/static-random.ts` and `src/engine/leveling.ts`) defaults to
+     `0` on every page load unless a test sets it explicitly, so repeated soak
+     runs previously always walked the same seed-0 RNG path. `SOAK_SEED_BASE`
+     now sweeps a distinct seed per iteration
+     (`SOAK_SEED_BASE + iterationIndex`). Mechanism: the soak script writes
+     `public/soak-seed.json` (`{"seed": N}`) before each iteration;
+     `src/main.ts`'s harness bootstrap (in the `if (harnessMode)` block, right
+     after `installHarness`) fetches `/soak-seed.json` whenever the URL has no
+     explicit `?seed=` param and applies it via `gameState.gameVars.set`,
+     clearing derived `_combat_random_seed`/`_growth_random_seed` state. This
+     required no changes to any of the 40+ hardcoded `page.goto('/?harness=
+     true&...')` calls across spec files, and does not disturb the 8 existing
+     tests (`rng-replay.spec.ts`, a few in `harness.spec.ts`) that pin their
+     own seed explicitly via `page.evaluate` — their explicit call runs later
+     and simply overrides the sweep's seed. The file is removed after the
+     run (and cleared between unseeded iterations), so a normal
+     `npx playwright test` run never sees it (404s harmlessly).
+  2. *First-failure archiving*: on the first failing iteration (fail-fast
+     behavior unchanged — the loop still stops immediately) the script now
+     archives `soak-artifacts/<ISO-timestamp>/{SUMMARY.txt, env.json,
+     playwright-output.log, soak-seed.json, test-results/}` before exiting
+     nonzero. `SUMMARY.txt` includes a ready-to-paste repro command
+     (re-creates the exact `public/soak-seed.json` used, then re-runs just
+     that grep/seed/workers combination outside the soak loop).
+  - Wired `test:soak:seeded` npm script (`SOAK_SEED_BASE=1000` +
+    `test:ss:soak`); `TESTING.md`'s soak section documents both additions.
+  - `soak-artifacts/` and `public/soak-seed.json` added to `.gitignore`.
+  - Demo: ran `SOAK_ITERATIONS=3 SOAK_SEED_BASE=42 SOAK_GREP="DEBUG Level
+    \(clean\)" npm run test:ss:soak` — 3/3 green iterations at seeds 42/43/44.
+    Then temporarily broke an assertion in `harness.spec.ts` (`initial map
+    render`), reran the same command, confirmed
+    `soak-artifacts/<timestamp>/` was created with all five expected files,
+    correct seed (42) and repro command recorded, and the script exited
+    nonzero — then reverted the deliberate breakage (`git diff` on
+    `tests/harness.spec.ts` is clean).
+
 - **Blocking/no-block and flag matching per event command (P1):** Audited
   `docs/parity/event-commands.json` (84 dispatched commands carry flags)
   against `lt-maker/app/events/event_functions.py` and real usage in
@@ -2172,7 +2212,12 @@ match the reference within documented browser tolerances.
   (note 2026-07-18: bundled default.ltproj ends at Ch.5 — "complete" means
   Prologue through Ch.5-end sequential chain; later-chapter parity requires an
   external full-campaign project fixture)
-- [ ] Run repeated soak tests with deterministic seeds and archive first-failure state
+- [x] Run repeated soak tests with deterministic seeds and archive first-failure state
+  (2026-07-19: see Recent Changes — `SOAK_SEED_BASE` seed sweep via
+  `public/soak-seed.json` + `src/main.ts` fetch hook, and
+  `soak-artifacts/<timestamp>/` first-failure archiving in
+  `scripts/sacred-stones-soak.mjs`, demoed with a real green sweep and a
+  forced-then-reverted failure)
 - [x] Validate at least one component-heavy and one PYEV1-heavy external project
   (2026-07-18: `tests/project-compat.spec.ts` validates `rekka.ltproj` and
   `testing_proj.ltproj`. Both use plain EVNT-format events, not PYEV1 —
