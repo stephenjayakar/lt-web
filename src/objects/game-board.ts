@@ -41,6 +41,16 @@ export class GameBoard {
   /** Opacity grid for LOS: [y][x] -> true if opaque. */
   opacityGrid: boolean[][];
 
+  /**
+   * Optional callback fired after any unit position change (setUnit,
+   * removeUnit, moveUnit). Wired up by GameState to `refreshAuras()`, since
+   * aura coverage is a pure function of live unit positions/skills and must
+   * be re-derived whenever the board's unit registry changes (Python's
+   * `game.arrive`/`game.leave` calling `pull_auras`/`propagate_aura`/
+   * `release_aura`).
+   */
+  onUnitPositionChanged?: () => void;
+
   constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
@@ -91,6 +101,7 @@ export class GameBoard {
     this.unitGrid[y][x] = unit;
     this.teamGrid[y][x] = unit.team;
     unit.position = [x, y];
+    this.onUnitPositionChanged?.();
   }
 
   /** Remove a unit from the board. */
@@ -102,6 +113,7 @@ export class GameBoard {
       this.teamGrid[y][x] = null;
     }
     unit.position = null;
+    this.onUnitPositionChanged?.();
   }
 
   /** Get unit at position. */
@@ -127,6 +139,7 @@ export class GameBoard {
     this.unitGrid[newY][newX] = unit;
     this.teamGrid[newY][newX] = unit.team;
     unit.position = [newX, newY];
+    this.onUnitPositionChanged?.();
   }
 
   // ------------------------------------------------------------------

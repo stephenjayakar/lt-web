@@ -178,6 +178,42 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Aura propagation and cleanup (P3):** implemented `aura`/`aura_range`/
+  `aura_target` skill components (`lt-maker/app/engine/skill_components/
+  status_components.py`) against `aura_funcs.py`'s `pull_auras`/
+  `propagate_aura`/`release_aura`/`repopulate_aura`. New
+  `src/combat/aura-system.ts` treats aura coverage as pure derived state (a
+  function of live positions + skills) rather than porting Python's per-tile
+  `game.board.add_aura`/`get_auras` registry: `refreshAuras()` recomputes
+  desired coverage for every aura holder (manhattan shell 1..range, ally/
+  enemy/unit target filter via `unit.isAlly`/`db.areAllied`) and diffs it
+  against currently aura-sourced child skills (tagged via
+  `AURA_SOURCE_TYPE_KEY`/`AURA_OWNER_NID_KEY`/`AURA_PARENT_SKILL_UID_KEY` on
+  `skill.data`, mirroring the `ITEM_SOURCE_*` pattern in
+  `src/combat/item-system.ts`), adding/removing exactly what changed.
+  `GameBoard.onUnitPositionChanged` (new callback, fired from `setUnit`/
+  `removeUnit`/`moveUnit` in `src/objects/game-board.ts`) is wired in
+  `GameState`'s two `new GameBoard(...)` sites and in `save.ts`'s level
+  restore to call `game.refreshAuras()`, so aura coverage stays correct
+  through every existing arrive/leave/move/spawn/death seam (`registerUnit`,
+  `removeUnit`, `WarpUnitAction`, `CreateUnitAction`, `DeathAction`, and the
+  turnwheel's generic `reverse()`/`execute()` replay of those actions) with
+  no per-call-site changes needed elsewhere. Save/load re-derives aura
+  coverage from scratch (`removeAllAuraSourcedSkills` + `refreshAuras()`
+  after all units are placed on the restored board), matching the
+  legacy-format item-sourced-skill re-derivation approach. Added
+  `warpUnit`/`addSkill`/`removeSkill` harness methods and an
+  `auraSourcedSkillNids` field on `UnitDetail` for testability. New
+  `tests/aura.spec.ts` (6 tests) plus a synthetic `TestEnemyAura`/
+  `TestEnemyAura_child` skill-fixture pair (`lt-maker/default.ltproj/
+  game_data/skills/TestEnemyAura*.json` + `.orderkeys` entries) for the
+  enemy-target case, since the only bundled aura (`Inspiration`) is
+  ally-target. **Deferred** (no bundled-project usage found —
+  `aura_shape`/custom aura shapes, `show_aura`/`hide_aura` map highlight
+  cosmetics, and `DB.constants('aura_los')` line-of-sight gating on
+  `apply_aura`): none of these appear in any `*.ltproj`'s skills, so they're
+  left as documented gaps rather than implemented against synthetic-only
+  fixtures.
 - **AI target_spec/terrain/group-activation audit + A* limit-cutoff fix (P4):**
   finished a partial, unverified in-flight predecessor edit (`src/ai/ai-controller.ts`,
   `src/pathfinding/path-system.ts`, `src/pathfinding/pathfinding.ts`) against
@@ -1684,7 +1720,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
   and AI, including costs, cooldown, ranks/prfs, conditions, overrides, and parent items
 - [x] Implement `unlock_staff` event-region targeting without inherited AOE splash
 - [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
-- [ ] Implement aura propagation and cleanup
+- [x] Implement aura propagation and cleanup
 - [x] Implement sourced `pairup_bonus` and hidden Rescue penalty add/remove lifecycles
 - [ ] Implement remaining charge/cooldown, conditional activation, proc, and status hooks
 - [ ] Verify component resolve policies (all/any/sum/unique/default) against Python

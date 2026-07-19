@@ -7,14 +7,14 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 56,
-    "referencedComponentNids": 75,
+    "referencedComponentNids": 78,
     "hookMappedComponentNids": 67,
-    "unreferencedComponentNids": 166,
+    "unreferencedComponentNids": 163,
     "structuralStatuses": {
       "hook-and-reference": 45,
       "hook-only": 22,
-      "reference-only": 30,
-      "unreferenced": 144
+      "reference-only": 33,
+      "unreferenced": 141
     }
   },
   "webHookExports": [
@@ -1943,11 +1943,11 @@
         },
         {
           "source": "src/harness.ts",
-          "line": 173
+          "line": 183
         },
         {
           "source": "src/harness.ts",
-          "line": 175
+          "line": 185
         }
       ],
       "matchingWebHooks": [],
@@ -4505,6 +4505,10 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/aura-system.ts",
+          "line": 187
+        },
+        {
           "source": "src/combat/item-system.ts",
           "line": 1284
         },
@@ -4538,11 +4542,11 @@
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1111
+          "line": 1114
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1256
+          "line": 1273
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -5397,10 +5401,23 @@
       "source": "lt-maker/app/engine/skill_components/status_components.py",
       "line": 13,
       "methods": [],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 39
+        },
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 60
+        },
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 179
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "aura_range",
@@ -5413,10 +5430,15 @@
       "source": "lt-maker/app/engine/skill_components/status_components.py",
       "line": 21,
       "methods": [],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 62
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "aura_target",
@@ -5429,10 +5451,15 @@
       "source": "lt-maker/app/engine/skill_components/status_components.py",
       "line": 30,
       "methods": [],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/combat/aura-system.ts",
+          "line": 63
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "show_aura",

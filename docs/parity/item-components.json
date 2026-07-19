@@ -700,11 +700,11 @@
         },
         {
           "source": "src/harness.ts",
-          "line": 92
+          "line": 100
         },
         {
           "source": "src/harness.ts",
-          "line": 512
+          "line": 554
         }
       ],
       "matchingWebHooks": [],
@@ -4764,11 +4764,11 @@
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1056
+          "line": 1057
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1058
+          "line": 1059
         },
         {
           "source": "src/objects/item.ts",
@@ -4845,11 +4845,11 @@
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1056
+          "line": 1057
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1058
+          "line": 1059
         },
         {
           "source": "src/objects/item.ts",
