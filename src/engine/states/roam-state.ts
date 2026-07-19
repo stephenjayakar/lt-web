@@ -27,6 +27,7 @@ import {
 } from '../../movement/roam-movement';
 import type { UnitObject } from '../../objects/unit';
 import type { FogRenderConfig } from '../../rendering/map-view';
+import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -267,21 +268,19 @@ export class FreeRoamState extends MapState {
       this.checkInteraction();
     }
 
-    // START: open option menu
+    // START: open option menu (unless a roam_press_start event intercepts it)
     if (event === 'START') {
-      this.rationalizeAndDo(() => {
-        game.state.push('option_menu');
-      });
+      this.checkStart();
     }
 
-    // INFO: open info menu for roam unit
+    // AUX: open option menu (unless a roam_press_aux event intercepts it)
+    if (event === 'AUX') {
+      this.checkAux();
+    }
+
+    // INFO: open info menu for roam unit (unless a roam_press_info event intercepts it)
     if (event === 'INFO') {
-      if (this.roamUnit) {
-        this.rationalizeAndDo(() => {
-          game.infoMenuUnit = this.roamUnit;
-          game.state.push('info_menu');
-        });
-      }
+      this.checkInfo();
     }
   }
 
@@ -347,26 +346,45 @@ export class FreeRoamState extends MapState {
       }
     }
 
-    // 2. Check for event regions at current position
+    // 2. Check for event regions at current position. Mirrors Python's
+    // check_select(): try the region's own sub_nid as a RegionTrigger first
+    // (this is how Shop/Armory/Visit/etc. regions fire in roam), and if
+    // that finds no matching event, fall back to the generic
+    // on_region_interact trigger (free_roam_state.py:171-179).
     const region = this.getVisitRegion();
     if (region && game.eventManager) {
-      const subNid = region.sub_nid || 'on_region_interact';
-      const triggered = game.eventManager.trigger(
-        {
-          type: subNid,
-          regionNid: region.nid,
-          unitNid: this.roamUnit.nid,
-          unit1: this.roamUnit,
-          region,
-        },
-        {
-          game,
-          unit1: this.roamUnit,
-          region,
-          gameVars: game.gameVars,
-          levelVars: game.levelVars,
-        },
-      );
+      const ctx = {
+        game,
+        unit1: this.roamUnit,
+        region,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+      };
+      let triggered = false;
+      if (region.sub_nid) {
+        triggered = game.eventManager.trigger(
+          {
+            type: region.sub_nid,
+            regionNid: region.nid,
+            unitNid: this.roamUnit.nid,
+            unit1: this.roamUnit,
+            region,
+          },
+          ctx,
+        );
+      }
+      if (!triggered) {
+        triggered = game.eventManager.trigger(
+          {
+            type: 'on_region_interact',
+            regionNid: region.nid,
+            unitNid: this.roamUnit.nid,
+            unit1: this.roamUnit,
+            region,
+          },
+          ctx,
+        );
+      }
       if (triggered) {
         if (region.only_once && game.currentLevel?.regions) {
           const idx = game.currentLevel.regions.indexOf(region);
@@ -404,6 +422,67 @@ export class FreeRoamState extends MapState {
         return;
       }
     }
+  }
+
+  /**
+   * Called on INFO. Mirrors Python's check_info(): fires `roam_press_info`
+   * first; only if nothing handles it do we fall back to the default info
+   * menu (free_roam_state.py:191-203).
+   */
+  private checkInfo(): void {
+    const game = getGame();
+    if (!game || !this.roamUnit) return;
+    const otherUnit = this.getClosestUnit(false);
+    const triggered = game.eventManager?.trigger(
+      { type: 'roam_press_info', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
+    );
+    if (triggered) {
+      this.rationalizeAllUnits();
+    } else {
+      this.rationalizeAndDo(() => {
+        game.infoMenuUnit = this.roamUnit;
+        game.state.change('info_menu');
+      });
+    }
+  }
+
+  /**
+   * Called on AUX. Mirrors Python's check_aux(): fires `roam_press_aux`;
+   * opens the option menu only if nothing handled it, then always
+   * rationalizes units (free_roam_state.py:205-213).
+   */
+  private checkAux(): void {
+    const game = getGame();
+    if (!game || !this.roamUnit) return;
+    const otherUnit = this.getClosestUnit(false);
+    const triggered = game.eventManager?.trigger(
+      { type: 'roam_press_aux', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
+    );
+    if (!triggered) {
+      game.state.change('option_menu');
+    }
+    this.rationalizeAllUnits();
+  }
+
+  /**
+   * Called on START. Mirrors Python's check_start(): fires `roam_press_start`;
+   * opens the option menu only if nothing handled it, then always
+   * rationalizes units (free_roam_state.py:215-223).
+   */
+  private checkStart(): void {
+    const game = getGame();
+    if (!game || !this.roamUnit) return;
+    const otherUnit = this.getClosestUnit(false);
+    const triggered = game.eventManager?.trigger(
+      { type: 'roam_press_start', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
+    );
+    if (!triggered) {
+      game.state.change('option_menu');
+    }
+    this.rationalizeAllUnits();
   }
 
   private checkRegionInterrupt(): void {
@@ -462,9 +541,10 @@ export class FreeRoamState extends MapState {
     for (const unit of game.units.values()) {
       if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
 
-      const dx = unit.position[0] - roamPos.x;
-      const dy = unit.position[1] - roamPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Taxicab/Manhattan distance, matching Python's utils.calculate_distance
+      // (lt-maker/app/utilities/utils.py:60), which free_roam_state.py uses
+      // for both get_closest_unit() and get_closest_units().
+      const dist = Math.abs(unit.position[0] - roamPos.x) + Math.abs(unit.position[1] - roamPos.y);
 
       if (dist < closestDist) {
         if (mustHaveTalk) {
@@ -498,9 +578,8 @@ export class FreeRoamState extends MapState {
     for (const unit of game.units.values()) {
       if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
 
-      const dx = unit.position[0] - roamPos.x;
-      const dy = unit.position[1] - roamPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Taxicab/Manhattan distance — see getClosestUnit() above.
+      const dist = Math.abs(unit.position[0] - roamPos.x) + Math.abs(unit.position[1] - roamPos.y);
       if (dist >= TALK_RANGE) continue;
 
       if (mustHaveTalk && !game.eventManager?.hasTalkPair?.(this.roamUnit!.nid, unit.nid)) {
@@ -520,10 +599,23 @@ export class FreeRoamState extends MapState {
 
     const [ux, uy] = this.roamUnit.position;
     for (const region of game.currentLevel.regions) {
-      if (region.region_type !== 'event') continue;
+      if ((region.region_type ?? '').toLowerCase() !== 'event') continue;
       const [rx, ry] = region.position;
       const [rw, rh] = region.size;
       if (ux >= rx && ux < rx + rw && uy >= ry && uy < ry + rh) {
+        // Mirrors Python's get_visit_region(): the region's own `condition`
+        // expression must evaluate truthy for it to be considered a visit
+        // target (free_roam_state.py:125-141), independent of any condition
+        // on the events triggered from it.
+        const condCtx: ConditionContext = {
+          game,
+          unit1: this.roamUnit,
+          region,
+          gameVars: game.gameVars,
+          levelVars: game.levelVars,
+        };
+        const conditionStr = region.condition ?? 'True';
+        if (!evaluateCondition(conditionStr, condCtx)) continue;
         return region;
       }
     }
@@ -545,7 +637,7 @@ export class FreeRoamState extends MapState {
     this.movementComponent = null;
 
     // Push rationalize state
-    game.state.push('free_roam_rationalize');
+    game.state.change('free_roam_rationalize');
   }
 
   /** Helper: rationalize, then perform an action. */

@@ -101,6 +101,7 @@ import {
   OverworldFreeState,
   OverworldMovementState,
   OverworldLevelTransitionState,
+  OverworldGameOptionMenuState,
   setOverworldGameRef,
 } from './engine/states/overworld-state';
 import {
@@ -464,6 +465,7 @@ async function main(): Promise<void> {
     new OverworldFreeState(),
     new OverworldMovementState(),
     new OverworldLevelTransitionState(),
+    new OverworldGameOptionMenuState(),
     new FreeRoamState(),
     new FreeRoamRationalizeState(),
     new SaveMenuState(),
