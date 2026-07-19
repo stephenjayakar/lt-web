@@ -6,6 +6,22 @@ import type { GameBoard } from '../objects/game-board';
 import type { FogOfWarConfig } from '../data/types';
 import type { Database } from '../data/database';
 import type { UnitObject } from '../objects/unit';
+import type { UnitMarkerIcons } from './unit-markers';
+
+export interface MapViewUnit {
+  x: number;
+  y: number;
+  visualOffsetX: number;
+  visualOffsetY: number;
+  sprite: any;
+  team: string;
+  finished: boolean;
+  currentHp: number;
+  maxHp: number;
+  specialTag?: 'Boss' | 'Elite' | 'Protect' | null;
+  travelerCombatColor?: string | null;
+  droppable?: boolean;
+}
 
 /**
  * Configuration for fog of war rendering, passed into MapView.draw().
@@ -63,7 +79,7 @@ export class MapView {
   draw(
     tilemap: TileMapObject,
     cullRect: { x: number; y: number; w: number; h: number },
-    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean; currentHp: number; maxHp: number }[],
+    units: MapViewUnit[],
     highlights: Map<string, string> | null,
     cursor: {
       x: number;
@@ -74,6 +90,8 @@ export class MapView {
     showGrid: boolean,
     renderScale: number = 1,
     fogConfig: FogRenderConfig | null = null,
+    markers: UnitMarkerIcons | null = null,
+    markerTimeMs: number = 0,
   ): Surface {
     this.ensureSurface(renderScale);
     this.mapSurface.clear();
@@ -128,7 +146,7 @@ export class MapView {
         );
       });
     }
-    this.drawUnits(this.mapSurface, visibleUnits, offsetX, offsetY);
+    this.drawUnits(this.mapSurface, visibleUnits, offsetX, offsetY, markers, markerTimeMs);
 
     // 5. Foreground tilemap layers (drawn on top of units)
     const fg = tilemap.getForegroundImage(cullRect);
@@ -200,9 +218,11 @@ export class MapView {
    */
   private drawUnits(
     surf: Surface,
-    units: { x: number; y: number; visualOffsetX: number; visualOffsetY: number; sprite: any; team: string; finished: boolean; currentHp: number; maxHp: number }[],
+    units: MapViewUnit[],
     offsetX: number,
     offsetY: number,
+    markers: UnitMarkerIcons | null = null,
+    markerTimeMs: number = 0,
   ): void {
     // Sort by Y (ascending) for painter's algorithm depth
     const sorted = [...units].sort((a, b) => a.y - b.y);
@@ -261,6 +281,21 @@ export class MapView {
         if (fillWidth > 0) {
           surf.fillRect(barX, barY, fillWidth, barHeight, barColor);
         }
+      }
+
+      // Rescue/status overlay icons (see unit-markers.ts).
+      if (markers && markers.loaded && (unit.specialTag || unit.travelerCombatColor || unit.droppable)) {
+        markers.draw(
+          surf,
+          px + 8,
+          py + 8,
+          {
+            specialTag: unit.specialTag ?? null,
+            travelerCombatColor: unit.travelerCombatColor ?? null,
+            droppable: unit.droppable ?? false,
+          },
+          markerTimeMs,
+        );
       }
     }
   }

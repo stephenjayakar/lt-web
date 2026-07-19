@@ -20,6 +20,8 @@ import { ResourceManager } from '../data/resource-manager';
 import { StateMachine } from './state-machine';
 import { Camera } from './camera';
 import { Cursor } from './cursor';
+import { ArrowRenderer } from '../rendering/movement-arrows';
+import { UnitMarkerIcons } from '../rendering/unit-markers';
 import { PhaseController } from './phase';
 import { ActionLog } from './action';
 import { GameBoard } from '../objects/game-board';
@@ -64,6 +66,8 @@ export class GameState {
   targetSystem: TargetSystem | null;
   camera: Camera;
   cursor: Cursor;
+  arrowRenderer: ArrowRenderer;
+  unitMarkers: UnitMarkerIcons;
   phase: PhaseController | null;
   highlight: HighlightManager;
   mapView: MapView;
@@ -177,6 +181,10 @@ export class GameState {
     // Load cursor sprite eagerly (fire-and-forget — falls back to rectangle if it fails)
     // Cursor sprite is an engine-level shared asset at /game-data/sprites/cursor.png
     this.cursor.loadSprite('/game-data/sprites/cursor.png').catch(() => {});
+    this.arrowRenderer = new ArrowRenderer();
+    this.arrowRenderer.loadSprite('/sprites/movement_arrows.png').catch(() => {});
+    this.unitMarkers = new UnitMarkerIcons();
+    this.unitMarkers.loadAll().catch(() => {});
     this.highlight = new HighlightManager();
     this.mapView = new MapView();
     this.unitRenderer = new UnitRenderer();

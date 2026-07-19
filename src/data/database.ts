@@ -54,7 +54,7 @@ export class Database {
     terrainTypes: [],
     unitTypes: [],
   };
-  teams: { defs: { nid: string; palette: string }[]; alliances: [string, string][] } = {
+  teams: { defs: { nid: string; palette: string; combatColor: string }[]; alliances: [string, string][] } = {
     defs: [],
     alliances: [],
   };
@@ -287,7 +287,7 @@ export class Database {
 
     const [defs, alliances] = data;
     this.teams = {
-      defs: defs.map((d) => ({ nid: d.nid, palette: d.map_sprite_palette })),
+      defs: defs.map((d) => ({ nid: d.nid, palette: d.map_sprite_palette, combatColor: d.combat_color ?? 'green' })),
       alliances: alliances ?? [],
     };
   }

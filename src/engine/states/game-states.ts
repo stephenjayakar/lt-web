@@ -105,6 +105,7 @@ import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import { queueCombatItemEvents, applyDroppableItemPickups } from '../../combat/combat-lifecycle';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
+import { computeArrowSegments } from '../../rendering/movement-arrows';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
@@ -208,6 +209,9 @@ function collectVisibleUnits(): {
   finished: boolean;
   currentHp: number;
   maxHp: number;
+  specialTag: 'Boss' | 'Elite' | 'Protect' | null;
+  travelerCombatColor: string | null;
+  droppable: boolean;
 }[] {
   const game = getGame();
   if (!game.board) return [];
@@ -223,6 +227,9 @@ function collectVisibleUnits(): {
     finished: boolean;
     currentHp: number;
     maxHp: number;
+    specialTag: 'Boss' | 'Elite' | 'Protect' | null;
+    travelerCombatColor: string | null;
+    droppable: boolean;
   }[] = [];
 
   for (const u of allUnits) {
@@ -267,6 +274,28 @@ function collectVisibleUnits(): {
       }
     }
 
+    // Boss/Elite/Protect blink icon (unit_sprite.py draw_hp -- elif chain,
+    // so Boss takes priority over Elite over Protect).
+    let specialTag: 'Boss' | 'Elite' | 'Protect' | null = null;
+    if (u.tags.includes('Boss')) specialTag = 'Boss';
+    else if (u.tags.includes('Elite')) specialTag = 'Elite';
+    else if (u.tags.includes('Protect')) specialTag = 'Protect';
+
+    // Rescue/pairup marker: colored by the *carried* unit's team combat_color.
+    // Suppressed when the 'pairup' constant is on (Python draws a paired
+    // sprite offset instead; see unit_sprite.py draw()/draw_hp()).
+    let travelerCombatColor: string | null = null;
+    if (u.traveler && !game.db.getConstant('pairup', false)) {
+      const traveler = game.units.get(u.traveler) ?? null;
+      const travelerTeam = traveler?.team;
+      const teamDef = travelerTeam
+        ? game.db.teams.defs.find((t: { nid: string; combatColor: string }) => t.nid === travelerTeam)
+        : undefined;
+      travelerCombatColor = teamDef?.combatColor ?? 'green';
+    }
+
+    const droppable = u.items.some((it) => it.droppable);
+
     // Only report finished=true for units on the active team so that
     // downstream renderers (placeholder overlays, etc.) don't grey out
     // units from other teams.
@@ -280,6 +309,9 @@ function collectVisibleUnits(): {
       finished: u.finished && u.team === currentTeam,
       currentHp: u.currentHp,
       maxHp: u.maxHp,
+      specialTag,
+      travelerCombatColor,
+      droppable,
     });
   }
   return result;
@@ -328,6 +360,8 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     false, // showGrid
     surf.scale,
     fogConfig,
+    game.unitMarkers,
+    performance.now(),
   );
 
   surf.blit(mapSurf);
@@ -1773,17 +1807,8 @@ export class MoveState extends MapState {
           game.board,
         );
         if (path && path.length > 1) {
-          for (const [px, py] of path) {
-            const screenX = px * TILEWIDTH - cameraOffset[0];
-            const screenY = py * TILEHEIGHT - cameraOffset[1];
-            surf.fillRect(
-              screenX + 4,
-              screenY + 4,
-              TILEWIDTH - 8,
-              TILEHEIGHT - 8,
-              'rgba(255,255,255,0.35)',
-            );
-          }
+          const segments = computeArrowSegments(path);
+          game.arrowRenderer.draw(surf, segments, cameraOffset, performance.now());
         }
       }
     }
