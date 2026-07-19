@@ -35,10 +35,10 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | on_base_start | 298 | (none) | REFERENCED | src/engine/states/base-state.ts:BaseMainState.start() | Fired once per base entry, after buildMenu(); pushes EventState directly if events queued |
 | on_turnwheel | 307 | (none) | REFERENCED | src/engine/states/turnwheel-state.ts:296 | Fired post-turnwheel with `game`/`gameVars`/`levelVars` ctx |
 | on_turnwheel | triggers.py:307 | — | REFERENCED | turnwheel-state.ts:296 | |
-| on_title_screen | triggers.py:314 | — | UNREFERENCED | — | |
-| on_startup | triggers.py:321 | — | UNREFERENCED | — | |
+| on_title_screen | triggers.py:314 | (none) | REFERENCED | game-states.ts:588 | Fired when entering TitleState; fires on_startup in same boot sequence per Python semantics |
+| on_startup | triggers.py:321 | (none) | REFERENCED | main.ts:526 | Fired once at game boot after DB/game state init, before any state change |
 | time_region_complete | triggers.py:328 | position, region | UNREFERENCED | — | time-region feature missing |
-| on_overworld_node_select | triggers.py:343 | entity_nid, node_nid | UNREFERENCED | — | overworld category missing |
+| on_overworld_node_select | triggers.py:343 | entity_nid, node_nid | REFERENCED | overworld-state.ts:241 | Fired when entity selects node; payload entity_nid/node_nid match Python trigger fields |
 | roam_press_start | triggers.py:352 | unit1, unit2 | UNREFERENCED | — | roam input/aux missing |
 | roam_press_info | triggers.py:361 | unit1, unit2 | UNREFERENCED | — | |
 | roam_press_aux | triggers.py:370 | unit1, unit2 | UNREFERENCED | — | |
@@ -51,7 +51,7 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | unlock_staff | triggers.py:471 | unit1, position, item, region | UNREFERENCED (as trigger) | — | appears in item-system.ts:61,431,695 only as item COMPONENT, never dispatched as trigger |
 | (RegionTrigger, dynamic nid) | triggers.py:390 | nid, unit1, position, region, item | REFERENCED (dynamic) | roam-state.ts:350,353 | dispatched via `region.sub_nid` |
 
-**Totals (updated 2026-07-17):** 27/41 constant nids referenced, 14 unreferenced. This slice wired unit_wait, unit_select, unit_deselect, on_prep_start, on_base_start. Still unreferenced: overworld (3), on_base_convo (1), roam-input (3), title/startup (2), time-region (1), during-level-up (1, deferred — no event-pump seam in CombatState's level-up animation), on_support (1, deferred — no support-conversation UI exists yet), hidden skill/item triggers (2).
+**Totals (updated 2026-07-19):** 30/41 constant nids referenced, 11 unreferenced. Recent slices wired unit_wait, unit_select, unit_deselect, on_prep_start, on_base_start, on_startup, on_title_screen, on_overworld_node_select. Still unreferenced: overworld_start (1), on_base_convo (1), roam-input (3), time-region (1), during-level-up (1, deferred — no event-pump seam in CombatState's level-up animation), on_support (1, deferred — no support-conversation UI exists yet), hidden skill/item triggers (2).
 
 ---
 

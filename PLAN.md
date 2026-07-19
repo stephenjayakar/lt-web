@@ -2164,11 +2164,14 @@ passes; record newly discovered work here immediately.
 - [ ] Audit all trigger payloads and EVNT/PYEV1 parity, including nested flow control
 - [x] Dispatch unit_wait, unit_select, unit_deselect, on_prep_start, on_base_start
   (5 of the 19 unwired trigger nids) per `docs/parity/runtime-inventory.md`
-- [ ] Dispatch the remaining 14 unwired trigger nids: overworld (3), on_base_convo,
-  roam input (3), title/startup (2), time-region, `on_support` (deferred — no
-  support-conversation UI exists yet in the web port), `during_unit_level_up`
-  (deferred — no event-pump seam in CombatState's level-up animation), hidden
-  item/skill lifecycle (2)
+- [x] Dispatch title/startup and overworld-node triggers (3 of remaining 14):
+  `on_startup` (fired in boot path after DB init), `on_title_screen` (fired when
+  entering TitleState), `on_overworld_node_select` (fired when entity selects node,
+  with entity_nid and node_nid payload). Covered by `tests/trigger-dispatch-2.spec.ts`.
+- [ ] Dispatch the remaining 11 unwired trigger nids: overworld_start (1), on_base_convo,
+  roam input (3), time-region, `on_support` (deferred — no support-conversation UI
+  exists yet in the web port), `during_unit_level_up` (deferred — no event-pump seam
+  in CombatState's level-up animation), hidden item/skill lifecycle (2)
 
 **Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
 by parser plus behavioral tests; unsupported commands fail loudly in development.
