@@ -230,17 +230,20 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   Files changed: `tests/platform-lifecycle.spec.ts` (new).
   Gate: all 16 new tests passing; `npm run build` green with precache manifest generation logged; full serial gate passing (362 + 16 = 378 total tests).
 
-- **Final parity report draft published (P7):** Consolidated evidence from PLAN.md,
+- **Final parity report published (P7):** ✓ COMPLETE. Consolidated evidence from PLAN.md,
   runtime-inventory.md, resolve-policies.md, and all manifest JSON files into a single
   comprehensive audit at `docs/parity/PARITY-REPORT.md`. Report includes: (1) verified
-  domains table with counts and verification methods (17 domains tracked at various
-  coverage levels); (2) 22-entry accepted-deviations registry (fixed bugs, documented
-  approximations, and intentional simplifications); (3) known gaps categorized by scope
-  (44 parser-missing commands with zero usage, 53 dispatcher-missing, 14 unreferenced
-  triggers, 18 save-field gaps, 12 large-scope deferrals); (4) completion-gate checklist
-  referencing evidence for each of P0-P7; (5) regeneration instructions. Verified
-  against 2026-07-19 commit baseline. Ready for final confirmation via `npm run audit:parity`
-  and `npm run build` before marking P7 as complete. New file: `docs/parity/PARITY-REPORT.md`.
+  domains table with counts and verification methods (17 domains tracked, 32/41 triggers
+  wired after P1 stragglers); (2) 22-entry accepted-deviations registry (fixed bugs,
+  documented approximations, intentional simplifications); (3) known gaps categorized
+  by scope (44 parser-missing commands zero usage, 53 dispatcher-missing, 4 deferred
+  triggers, 2 low-risk unreferenced, 9 large-scope deferrals); (4) completion-gate
+  checklist with evidence for each P0-P7 (all gates met); (5) "Changes since draft"
+  section documenting P1/P5 trigger wiring, new features landed, gaps closed;
+  (6) regeneration instructions. Confirmed: `npm run audit:parity` green (100 TS files,
+  60,159 lines, 211/255 parser, 202/255 dispatched, 135/201 items, 84/241 skills);
+  `npm run build` green with 27-entry precache manifest; 40 spec files, 378+ tests,
+  1 intentional skip. File: `docs/parity/PARITY-REPORT.md`.
 
 - **Remove silent skips for known commands/components (P7):** Unrecognized event
   commands and unimplemented item/skill component NIDs now fail loudly in

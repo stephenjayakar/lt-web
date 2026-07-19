@@ -1961,11 +1961,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 97
+          "line": 99
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 195
+          "line": 197
         },
         {
           "source": "src/objects/item.ts",
@@ -5873,19 +5873,19 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 592
+          "line": 594
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 593
+          "line": 595
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 601
+          "line": 603
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 614
+          "line": 616
         }
       ],
       "matchingWebHooks": [],
@@ -6125,7 +6125,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1329
+          "line": 1331
         },
         {
           "source": "src/main.ts",
