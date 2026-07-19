@@ -178,6 +178,31 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **Component resolve-policy audit (P3):** built the authoritative Python
+  hook→policy table from `ITEM_HOOKS`/`SKILL_HOOKS` in
+  `lt-maker/app/engine/component_system/compile_item_system.py` /
+  `compile_skill_system.py` (backed by `utils.py`'s `unique`/`all_*_priority`/
+  `numeric_accumulate`/etc.) and audited every hook implemented in
+  `src/combat/item-system.ts` / `src/combat/skill-system.ts` against it (see
+  `docs/parity/resolve-policies.md` for the full findings table). Found and
+  fixed one real bug class: Python's `UNIQUE` policy is `vals[-1]` (the
+  **last** component/skill in iteration order wins), but
+  `skill-system.ts`'s `getSkillValue` helper (backing `damageFormula`,
+  `accuracyFormula`, `avoidFormula`, `resistFormula`, their
+  `*_formula_override` siblings, `attackSpeedFormula`, `defenseSpeedFormula`,
+  and the exp/wexp multiplier hooks) and `alternateSplash` (backing
+  Oversplash-family/Cleave AOE replacement) both returned on the **first**
+  matching skill instead. Fixed both to scan every skill and keep
+  overwriting so the last-granted skill wins, matching Python. Item-side
+  hooks were architecturally immune (the web stores item components as a
+  flat 1:1 `Map<nid, value>`, so no two different components can define the
+  same hook name on one item the way Python's component classes can). Added
+  `tests/resolve-policies.spec.ts` (13 unit tests against the pure dispatch
+  functions, no browser harness) covering both fixed hooks in both
+  orderings plus default-value cases, and NUMERIC_ACCUM/ALL_DEFAULT_TRUE/
+  ALL_DEFAULT_FALSE sanity cases. No golden combat numbers changed — no
+  current fixture stacks two skills that define the same UNIQUE hook, so
+  the bug was latent but real.
 - **Aura propagation and cleanup (P3):** implemented `aura`/`aura_range`/
   `aura_target` skill components (`lt-maker/app/engine/skill_components/
   status_components.py`) against `aura_funcs.py`'s `pull_auras`/
@@ -1723,7 +1748,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 - [x] Implement aura propagation and cleanup
 - [x] Implement sourced `pairup_bonus` and hidden Rescue penalty add/remove lifecycles
 - [ ] Implement remaining charge/cooldown, conditional activation, proc, and status hooks
-- [ ] Verify component resolve policies (all/any/sum/unique/default) against Python
+- [x] Verify component resolve policies (all/any/sum/unique/default) against Python
 - [ ] Add fixture-driven component tests, including interactions between components
 
 **Gate:** every runtime component is verified or documented as editor-only; combat and
@@ -1852,4 +1877,7 @@ create_unit/set_position, combat goldens). Refreshed queue:
    and the `SecondaryAI` two-phase view_range search/widen flow remain
    unaudited and are carried forward as a follow-up, not part of this item.
 4. Aura propagation and remaining proc/charge/cooldown status hooks (P3).
-5. Component resolve policies (all/any/sum/unique/default) verification (P3).
+5. ~~Component resolve policies (all/any/sum/unique/default) verification (P3).~~
+   Done (see Recent Changes and docs/parity/resolve-policies.md): fixed a
+   UNIQUE-policy first-vs-last-wins bug in `skill-system.ts`'s
+   `getSkillValue`/`alternateSplash`.

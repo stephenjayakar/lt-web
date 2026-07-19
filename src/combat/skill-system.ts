@@ -91,13 +91,22 @@ export function onRemoveRescue(rescuer: UnitObject, rescuee: UnitObject): SkillO
 // Helper: iterate all skill components that define a given hook
 // ============================================================
 
+/**
+ * Python `utils.unique(vals)` returns `vals[-1]` — the LAST component (in
+ * skill iteration order) that defines the hook wins, not the first. The
+ * generated skill_system dispatchers append to `values` while walking
+ * `unit.skills[:]` in order, so a later skill's value always overrides an
+ * earlier one. Must iterate skills in order and keep overwriting, not
+ * short-circuit on the first match.
+ */
 function getSkillValue<T>(unit: UnitObject, componentNid: string): T | undefined {
+  let result: T | undefined;
   for (const skill of unit.skills) {
     if (skill.hasComponent(componentNid)) {
-      return skill.getComponent<T>(componentNid);
+      result = skill.getComponent<T>(componentNid);
     }
   }
-  return undefined;
+  return result;
 }
 
 function hasAnySkill(unit: UnitObject, componentNid: string): boolean {
@@ -145,19 +154,23 @@ export function empowerSplash(unit: UnitObject): number {
 
 /**
  * Replacement splash component for otherwise single-target items.
- * UNIQUE resolution follows unit skill/component order, matching LT's
- * generated skill dispatcher.
+ *
+ * Python `alternate_splash` is a UNIQUE hook: `utils.unique(vals)` returns
+ * `vals[-1]`, the LAST component (in skill order, then per-skill component
+ * order) that defines it — not the first. Must scan every skill and keep
+ * overwriting the result rather than returning on the first hit.
  */
 export function alternateSplash(unit: UnitObject): AlternateSplash | null {
+  let result: AlternateSplash | null = null;
   for (const skill of unit.skills) {
     for (const componentNid of skill.components.keys()) {
-      if (componentNid === 'oversplash') return 'blast';
-      if (componentNid === 'enemy_oversplash') return 'enemy_blast';
-      if (componentNid === 'smart_oversplash') return 'smart_blast';
-      if (componentNid === 'Cleave') return 'enemy_cleave';
+      if (componentNid === 'oversplash') result = 'blast';
+      else if (componentNid === 'enemy_oversplash') result = 'enemy_blast';
+      else if (componentNid === 'smart_oversplash') result = 'smart_blast';
+      else if (componentNid === 'Cleave') result = 'enemy_cleave';
     }
   }
-  return null;
+  return result;
 }
 
 // ============================================================
