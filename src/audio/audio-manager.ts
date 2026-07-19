@@ -21,6 +21,16 @@ export class AudioManager {
   private musicStack: string[];
   /** Active looping SFX sources, keyed by NID. */
   private loopingSfx: Map<string, AudioBufferSourceNode> = new Map();
+  /**
+   * Call-recording log for verification/tests. Mirrors the Python
+   * SongStack/Channel semantics (play/push/pop/fade) so specs can assert
+   * on music-stack behavior without asserting real audio playback.
+   */
+  readonly calls: Array<{
+    op: 'play' | 'push' | 'pop' | 'stop' | 'fadeIn' | 'fadeToPause' | 'sfx' | 'sfxLoop' | 'sfxStop';
+    nid?: string;
+    fadeMs?: number;
+  }> = [];
 
   constructor(baseUrl: string) {
     this.audioContext = null;
@@ -62,7 +72,13 @@ export class AudioManager {
    * If the same track is already playing, this is a no-op.
    * Fades out the current track over 500ms, then starts the new one.
    */
-  async playMusic(nid: string): Promise<void> {
+  async playMusic(nid: string, fadeMs: number = 500): Promise<void> {
+    this.calls.push({ op: 'play', nid });
+    await this.playMusicWithFade(nid, fadeMs);
+  }
+
+  /** Shared implementation behind playMusic/fadeIn — does not itself record a call. */
+  private async playMusicWithFade(nid: string, fadeMs: number): Promise<void> {
     if (!this.audioContext || !this.musicGain) {
       return;
     }
@@ -78,9 +94,11 @@ export class AudioManager {
       return;
     }
 
+    const fadeSec = fadeMs / 1000;
+
     // Fade out current music
     if (this.currentMusic) {
-      this.fadeOutAndStop(this.currentMusic, this.musicGain, 500);
+      this.fadeOutAndStop(this.currentMusic, this.musicGain, fadeMs);
 
       // Create a new gain node for the incoming track so the fade-out
       // of the old track doesn't interfere.
@@ -95,11 +113,11 @@ export class AudioManager {
     source.loop = true;
     source.connect(this.musicGain);
 
-    // Fade in from 0 over 500ms
+    // Fade in from 0 over fadeMs
     this.musicGain.gain.setValueAtTime(0, this.audioContext.currentTime);
     this.musicGain.gain.linearRampToValueAtTime(
       this.musicVolume,
-      this.audioContext.currentTime + 0.5,
+      this.audioContext.currentTime + fadeSec,
     );
 
     source.start(0);
@@ -112,6 +130,12 @@ export class AudioManager {
    * @param fadeMs Fade-out duration in milliseconds (default 500).
    */
   stopMusic(fadeMs: number = 500): void {
+    this.calls.push({ op: 'stop', fadeMs });
+    this.stopMusicWithFade(fadeMs);
+  }
+
+  /** Shared implementation behind stopMusic/fadeToPause — does not itself record a call. */
+  private stopMusicWithFade(fadeMs: number): void {
     if (!this.currentMusic || !this.musicGain || !this.audioContext) {
       return;
     }
@@ -131,6 +155,7 @@ export class AudioManager {
    * Use popMusic() to restore the previous track.
    */
   async pushMusic(nid: string): Promise<void> {
+    this.calls.push({ op: 'push', nid });
     if (this.currentMusicNid) {
       this.musicStack.push(this.currentMusicNid);
     }
@@ -142,6 +167,7 @@ export class AudioManager {
    * If the stack is empty, stops music.
    */
   async popMusic(): Promise<void> {
+    this.calls.push({ op: 'pop' });
     const previousNid = this.musicStack.pop();
     if (previousNid) {
       await this.playMusic(previousNid);
@@ -151,9 +177,47 @@ export class AudioManager {
   }
 
   /**
+   * Port of Python's phase.fade_in_phase_music / Channel.fade_in: fade in
+   * (or start) the given track over `fadeMs` (default matches Python's
+   * DEFAULT_FADE_TIME_MS / `_phase_music_fade_ms` game var, 400ms).
+   * `fromStart` restarts playback from the beginning (Python passes
+   * from_start=True only when restart_phase_music is on at a turn change);
+   * the web port has no seek-resume, so this is a no-op distinction here
+   * beyond documenting intent for parity.
+   */
+  async fadeIn(nid: string, fadeMs: number = 400, _fromStart: boolean = false): Promise<void> {
+    this.calls.push({ op: 'fadeIn', nid, fadeMs });
+    if (nid === this.currentMusicNid && this.currentMusic) {
+      return;
+    }
+    await this.playMusicWithFade(nid, fadeMs);
+  }
+
+  /**
+   * Port of Python's Channel.fade_to_pause / phase.fade_out_phase_music:
+   * fade the current track out (and effectively stop it — the web port
+   * has no pause/resume for buffer sources) over `fadeMs`.
+   */
+  fadeToPause(fadeMs: number = 400): void {
+    this.calls.push({ op: 'fadeToPause', fadeMs });
+    this.stopMusicWithFade(fadeMs);
+  }
+
+  /** Currently-playing music track nid, or '' if none (Python: get_current_song().nid). */
+  getCurrentMusicNid(): string {
+    return this.currentMusicNid;
+  }
+
+  /** Clear the recorded call log (test helper). */
+  clearCalls(): void {
+    this.calls.length = 0;
+  }
+
+  /**
    * Play a sound effect once.
    */
   async playSfx(nid: string): Promise<void> {
+    this.calls.push({ op: 'sfx', nid });
     if (!this.audioContext || !this.sfxGain) {
       return;
     }
@@ -175,6 +239,7 @@ export class AudioManager {
    * If the same SFX is already looping, this is a no-op.
    */
   async playSfxLoop(nid: string): Promise<void> {
+    this.calls.push({ op: 'sfxLoop', nid });
     if (!this.audioContext || !this.sfxGain) {
       return;
     }
@@ -206,6 +271,7 @@ export class AudioManager {
    * Stop a looping sound effect by NID.
    */
   stopSfx(nid: string): void {
+    this.calls.push({ op: 'sfxStop', nid });
     const source = this.loopingSfx.get(nid);
     if (source) {
       try {
