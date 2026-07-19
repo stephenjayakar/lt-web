@@ -179,6 +179,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Final parity report draft published (P7):** Consolidated evidence from PLAN.md,
+  runtime-inventory.md, resolve-policies.md, and all manifest JSON files into a single
+  comprehensive audit at `docs/parity/PARITY-REPORT.md`. Report includes: (1) verified
+  domains table with counts and verification methods (17 domains tracked at various
+  coverage levels); (2) 22-entry accepted-deviations registry (fixed bugs, documented
+  approximations, and intentional simplifications); (3) known gaps categorized by scope
+  (44 parser-missing commands with zero usage, 53 dispatcher-missing, 14 unreferenced
+  triggers, 18 save-field gaps, 12 large-scope deferrals); (4) completion-gate checklist
+  referencing evidence for each of P0-P7; (5) regeneration instructions. Verified
+  against 2026-07-19 commit baseline. Ready for final confirmation via `npm run audit:parity`
+  and `npm run build` before marking P7 as complete. New file: `docs/parity/PARITY-REPORT.md`.
+
 - **Remove silent skips for known commands/components (P7):** Unrecognized event
   commands and unimplemented item/skill component NIDs now fail loudly in
   development (strict mode enabled via `?strict=true` URL param or `import.meta.env.DEV`)
@@ -2403,21 +2415,30 @@ match the reference within documented browser tolerances.
   sense used by the Pair-up/Rescue-fallback slice: classic (non-Pair-Up)
   `Rescue`/`store_unit` sequence-item components)
 - [ ] Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle
-- [ ] Remove silent skips for known commands/components in production builds
-- [ ] Publish a final parity report listing verified domains and accepted deviations
+- [x] Remove silent skips for known commands/components in production builds
+  (2026-07-19: strict-mode reporting in `src/engine/strict-mode.ts` logs unknown
+  components at load time and fails loudly in development; deduplicating warnings
+  per unique nid; tests in `tests/strict-mode.spec.ts`)
+- [x] Publish a final parity report listing verified domains and accepted deviations
+  (2026-07-19: DRAFT published at `docs/parity/PARITY-REPORT.md` pending final
+  `npm run audit:parity` and `npm run build` confirmation)
 
 **Gate:** all completion-gate commands pass, compatibility fixtures are green, and no
 unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-19 (portrait/dialog/transition slice complete):
+Queue refreshed 2026-07-19 (parity report draft published):
 
-1. **Pathfinding/movement verification (P4):** movement costs, Dijkstra range
-   vs A* path agreement, LOS, canto ranges, rescue/drop movement rules vs
-   Python's path_system.
-2. **Resource-path fixtures (P6):** spaces/Unicode NIDs, chunked/non-chunked,
-   animated panoramas, palette layouts, missing optional assets, bundles.
-3. **Remove silent skips for known commands/components in production builds (P7).**
-4. **Final parity report groundwork: verified-domains list + accepted-deviation
-   registry consolidation (P7).**
+1. **Confirm audit:parity and build green** (P7): Run full test/build suite to gate
+   report as production-ready (final step of this slice).
+2. **Pathfinding/movement verification (P4):** (already landed 2026-07-18) movement
+   costs, Dijkstra range vs A* path agreement, LOS, canto ranges, rescue/drop
+   movement rules vs Python's path_system.
+3. **Resource-path fixtures (P6):** (already landed 2026-07-18) spaces/Unicode NIDs,
+   chunked/non-chunked, animated panoramas, palette layouts, missing optional
+   assets, bundles.
+4. **Multi-project save/load chain verification (P7):** Cross-project save-state
+   persistence and reload for `default.ltproj`, `rekka.ltproj`, `testing_proj.ltproj`.
+5. **Remaining P5/P6 UI and rendering deferrals:** initiative bar aesthetic fixes,
+   combat-animation fallback, pre-proc playback marks, responsive touch, PWA offline.
