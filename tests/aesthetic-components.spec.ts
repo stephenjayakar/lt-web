@@ -44,7 +44,7 @@ async function resolveAesthetics(
     const bone = g?.units?.get?.('Bone');
     if (!eirika || !bone) return null;
 
-    if (g?.db?._constants) g.db._constants.set('rng_mode', 'grandmaster');
+    h.setConstant('rng_mode', 'grandmaster');
 
     h.giveItem('Eirika', itemNid);
     const weapon = eirika.items.find((i: any) => i.nid === itemNid);

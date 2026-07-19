@@ -67,6 +67,13 @@ export interface HarnessAPI {
   /** Force-equip an item on a unit via a reversible EquipItemAction (turnwheel-safe). */
   equipItem: (unitNid: string, itemNid: string) => boolean;
   /**
+   * Override a DB constant for the current test (e.g. `rng_mode`,
+   * `glancing_hit`). Writes directly to `game.db.constants` (the real Map
+   * the engine reads via `Database.getConstant`), not a stand-in -- this is
+   * the only supported way for a spec to reach into DB internals.
+   */
+  setConstant: (key: string, value: boolean | number | string) => void;
+  /**
    * Directly resolve map combat between attacker and defender without UI.
    * Returns results. An optional CombatScript (hit1/crit1/miss1/hit2/crit2/
    * miss2/--/end tokens, per interact_unit) forces specific strike outcomes
@@ -462,6 +469,10 @@ export function installHarness(
       if (!unit.canEquip(item)) return false;
       game.actionLog.doAction(new EquipItemAction(unit, item));
       return true;
+    },
+
+    setConstant(key: string, value: boolean | number | string): void {
+      game.db.constants.set(key, value);
     },
 
     resolveCombat(

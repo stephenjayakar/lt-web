@@ -31,6 +31,14 @@ export interface CombatStrike {
   assist?: boolean;
   /** True when a full guard gauge negated this strike. */
   guarded?: boolean;
+  /**
+   * True when the roll landed in the "glancing" band just above the
+   * to-hit threshold (solver.py: `roll >= unclamped_hit - glancing_hit`),
+   * dealing half damage instead of a normal hit. Gated by the
+   * `glancing_hit` DB constant (default 0 = feature off). Mutually
+   * exclusive with `crit`.
+   */
+  glancing?: boolean;
   mode?: CombatMode;
   attackInfo: [number, number];
   attackProcs?: CombatProcMark[];
@@ -683,36 +691,68 @@ export class CombatPhaseSolver {
    *   value is positive -- a hit chance of exactly 0 (or negative, pre-clamp)
    *   still misses.
    */
-  private rollHit(hitChance: number, rngMode: RngMode): boolean {
+  /**
+   * solver.py's Fates Hit transform (calculate_fates_hit): maps a 0-100
+   * hit chance through a sine-based curve. Exposed separately from
+   * rollHitDetailed so glancing-band math can reuse the same "effective"
+   * hit value that gated the hit roll.
+   */
+  private fatesAdjust(hitChance: number): number {
+    const clamped = Math.max(0, Math.min(100, hitChance));
+    return Math.round(
+      clamped + (40 / 3) * (clamped / 100) *
+      Math.sin((0.02 * clamped - 1) * Math.PI),
+    );
+  }
+
+  /**
+   * Roll for hit based on RNG mode, returning both the hit/miss result and
+   * the raw roll + "effective" hit-chance actually compared against, so
+   * callers can additionally derive glancing hits (solver.py: `roll >=
+   * unclamped_hit - glancing_hit`) from the same draw.
+   *
+   * - classic: single RN, random(0..99) < hitChance
+   * - true_hit: average of 2 RNs (standard Fire Emblem 2-RN system)
+   * - true_hit_plus: average of 3 RNs
+   * - fates_hit: single RN compared against the sine-adjusted hit chance
+   * - grandmaster: solver.py fixes `roll = 0` (no stream draw) and still
+   *   compares `roll < to_hit`, so it "always hits" only while the to-hit
+   *   value is positive -- a hit chance of exactly 0 (or negative, pre-clamp)
+   *   still misses.
+   */
+  private rollHitDetailed(
+    hitChance: number,
+    rngMode: RngMode,
+  ): { hit: boolean; roll: number; effectiveHit: number } {
     switch (rngMode) {
       case 'grandmaster':
-        return hitChance > 0;
+        return { hit: hitChance > 0, roll: 0, effectiveHit: hitChance };
 
       case 'true_hit': {
         const r1 = this.randomRoll();
         const r2 = this.randomRoll();
-        return Math.floor((r1 + r2) / 2) < hitChance;
+        const roll = Math.floor((r1 + r2) / 2);
+        return { hit: roll < hitChance, roll, effectiveHit: hitChance };
       }
 
       case 'true_hit_plus': {
         const r1 = this.randomRoll();
         const r2 = this.randomRoll();
         const r3 = this.randomRoll();
-        return Math.floor((r1 + r2 + r3) / 3) < hitChance;
+        const roll = Math.floor((r1 + r2 + r3) / 3);
+        return { hit: roll < hitChance, roll, effectiveHit: hitChance };
       }
 
       case 'fates_hit': {
-        const clamped = Math.max(0, Math.min(100, hitChance));
-        const adjusted = Math.round(
-          clamped + (40 / 3) * (clamped / 100) *
-          Math.sin((0.02 * clamped - 1) * Math.PI),
-        );
-        return this.randomRoll() < adjusted;
+        const adjusted = this.fatesAdjust(hitChance);
+        const roll = this.randomRoll();
+        return { hit: roll < adjusted, roll, effectiveHit: adjusted };
       }
 
       case 'classic':
       default: {
-        return this.randomRoll() < hitChance;
+        const roll = this.randomRoll();
+        return { hit: roll < hitChance, roll, effectiveHit: hitChance };
       }
     }
   }
@@ -762,7 +802,15 @@ export class CombatPhaseSolver {
     // stays aligned with Python even when a strike is guarded.
     // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT
     // and never call generate_roll() at all.
-    const hitRoll = item.hasComponent('hit') ? this.rollHit(finalHit, rngMode) : true;
+    let hitRoll = true;
+    let roll = 0;
+    let effectiveHit = finalHit;
+    if (item.hasComponent('hit')) {
+      const detail = this.rollHitDetailed(finalHit, rngMode);
+      hitRoll = detail.hit;
+      roll = detail.roll;
+      effectiveHit = detail.effectiveHit;
+    }
     const hit = guarded || hitRoll;
 
     // Roll for crit.
@@ -772,6 +820,18 @@ export class CombatPhaseSolver {
     // roll happens. Consume the roll first, then discard the result on guard.
     const critRoll = hit ? this.randomRoll() < critChance : false;
     const crit = critRoll && !guarded;
+
+    // Glancing hit: solver.py -- when a strike hits but isn't a crit, and
+    // `roll >= unclamped_hit - glancing_hit`, it's a glancing hit (half
+    // damage, truncated) instead of a normal one. Gated by the DB constant
+    // `glancing_hit` (percent-width of the band, default 0/false = off).
+    // Python compares against `unclamped_hit` (compute_hit before the 0-100
+    // clamp); this port's computeHit always clamps internally (same
+    // approximation already used for Grandmaster's damage scaling above),
+    // so `effectiveHit` stands in for it here.
+    const glancingBand = Number(db.getConstant('glancing_hit', 0));
+    const glancing = hit && !guarded && !crit && item.hasComponent('hit') &&
+      glancingBand > 0 && roll >= effectiveHit - glancingBand;
 
     // Compute damage (0 on miss)
     let dmg = 0;
@@ -798,6 +858,13 @@ export class CombatPhaseSolver {
         if (rngMode === 'grandmaster') {
           dmg = Math.trunc(dmg * finalHit / 100);
         }
+
+        // Glancing hit: half damage, truncated toward zero (weapon_components.py
+        // Damage.on_glancing_hit: `damage //= 2`, applied after Grandmaster
+        // scaling). Mutually exclusive with crit (Python's elif).
+        if (glancing) {
+          dmg = Math.trunc(dmg / 2);
+        }
       }
 
       dmg = Math.max(0, dmg);
@@ -813,6 +880,7 @@ export class CombatPhaseSolver {
       isCounter,
       assist,
       guarded,
+      ...(glancing ? { glancing: true } : {}),
       mode,
       attackInfo,
       ...(procs.attack.length ? { attackProcs: procs.attack } : {}),

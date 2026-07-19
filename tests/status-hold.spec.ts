@@ -82,11 +82,7 @@ async function loadSnapshot(page: Page, snapshot: unknown): Promise<boolean> {
 
 async function forceRngMode(page: Page, mode: string): Promise<void> {
   await page.evaluate((mode) => {
-    const g = (window as any).__gameRef;
-    if (g?.db) {
-      if (!g.db._constants) g.db._constants = new Map();
-      g.db._constants.set('rng_mode', mode);
-    }
+    (window as any).__harness?.setConstant('rng_mode', mode);
   }, mode);
 }
 
@@ -394,14 +390,21 @@ test.describe('status_on_hit end-to-end', () => {
     await giveItem(page, 'Eirika', 'Poison_Sword');
     await equipItem(page, 'Eirika', 'Poison_Sword');
 
-    // Force every strike to miss by giving Bone very high SPD (dodge).
+    // Force every strike to miss by giving Bone very high SPD (dodge), and
+    // stripping Bone's default Iron_Axe -- left equipped, Sword-vs-Axe grants
+    // Eirika a +15 weapon-triangle hit bonus (see weaponTriangle in
+    // combat-calcs.ts) that alone clears 0 and would let a hit chance
+    // through even at SPD 99, since compute_hit's raw (very negative) value
+    // is clamped to 0 *before* the triangle bonus is added.
+    await forceRngMode(page, 'grandmaster');
     await page.evaluate(() => {
       const g = (window as any).__gameRef;
-      if (g?.db?._constants) {
-        g.db._constants.set('rng_mode', 'grandmaster');
-      }
       const bone = g?.units?.get?.('Bone');
-      if (bone) bone.stats.SPD = 99;
+      if (bone) {
+        bone.stats.SPD = 99;
+        bone.items = [];
+        bone.equippedWeapon = null;
+      }
     });
 
     await resolveCombat(page, 'Eirika', 'Bone');
