@@ -509,6 +509,42 @@ async function main(): Promise<void> {
     installHarness(gameState, gameSurface, display.canvas, display.ctx);
     // Expose game reference for advanced test manipulation
     (window as any).__gameRef = gameState;
+    // Optional deterministic RNG seed hook for soak automation
+    // (scripts/sacred-stones-soak.mjs). Two sources, checked in order:
+    //   1. ?seed=<int> query param (explicit, per-navigation)
+    //   2. /soak-seed.json static file (public/soak-seed.json), written by the
+    //      soak script before each iteration so unmodified spec files (whose
+    //      page.goto() calls don't carry a ?seed=) still pick up a distinct
+    //      seed per iteration without every spec needing edits.
+    // Either way, applying it clears any derived combat/growth RNG stream
+    // state so a fresh, fully-deterministic sequence starts from this seed.
+    function applySeed(seed: number, source: string): void {
+      gameState.gameVars.set('_random_seed', seed);
+      gameState.gameVars.delete('_combat_random_seed');
+      gameState.gameVars.delete('_growth_random_seed');
+      console.info(`[Harness] Deterministic RNG seed set from ${source}: ${seed}`);
+    }
+    const seedParam = params.get('seed');
+    if (seedParam !== null) {
+      const seed = Number.parseInt(seedParam, 10);
+      if (Number.isFinite(seed)) {
+        applySeed(seed, '?seed=');
+      } else {
+        console.warn(`[Harness] Ignoring invalid ?seed= value: ${seedParam}`);
+      }
+    } else {
+      try {
+        const res = await fetch('/soak-seed.json', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Number.isFinite(data.seed)) {
+            applySeed(data.seed, '/soak-seed.json');
+          }
+        }
+      } catch {
+        // No soak-seed.json present (normal test/dev run) -- ignore.
+      }
+    }
     // Load the requested level directly
     try {
       const h = (window as any).__harness;

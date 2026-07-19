@@ -35,6 +35,10 @@ twa/*.jks
 test-results/
 test-screenshots/
 test-snapshots/
+soak-artifacts/
+
+# Soak seed hook (written/removed by scripts/sacred-stones-soak.mjs)
+public/soak-seed.json
 
 # Editor directories and files
 .vscode/*
