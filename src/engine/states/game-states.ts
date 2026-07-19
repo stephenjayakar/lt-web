@@ -7158,7 +7158,7 @@ export class EventState extends State {
   private transitionFadingIn: boolean = false;  // true = fading to black
   private transitionFadingOut: boolean = false; // true = fading from black
   private transitionHoldBlack: boolean = false; // true = holding black between open/close
-  private transitionDurationMs: number = 500;   // fade duration in ms
+  private transitionDurationMs: number = 133;   // fade duration in ms (Python: transitions.py:14)
   private transitionColor: string = '0,0,0';    // fade color as "r,g,b"
 
   // Choice menu state
@@ -8345,7 +8345,7 @@ export class EventState extends State {
         if (!isNaN(durationArg) && durationArg > 0) {
           this.transitionDurationMs = durationArg;
         } else {
-          this.transitionDurationMs = 500; // default
+          this.transitionDurationMs = 133; // default (Python: transitions.py:14)
         }
         // Parse optional color (r,g,b)
         if (args[2]) {

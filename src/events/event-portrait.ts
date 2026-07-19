@@ -51,9 +51,9 @@ const TRANSITION_SPEED = frames2ms(14); // ~233ms
 const SLIDE_LENGTH = 24;
 
 // Blink timing
-const BLINK_PERIOD_BASE = 7000; // ms
-const BLINK_PERIOD_VARIANCE = 2000;
-const BLINK_FRAME_DURATION = frames2ms(3); // 50ms per blink frame
+export const BLINK_PERIOD_BASE = 7000; // ms
+export const BLINK_PERIOD_VARIANCE = 2000;
+export const BLINK_FRAME_DURATION = frames2ms(3); // 50ms per blink frame
 
 /** Valid expression strings. */
 export type Expression =
