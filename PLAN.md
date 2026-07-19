@@ -179,6 +179,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Platform lifecycle validation slice (P7 row: 'Test desktop, responsive touch, offline PWA, asset bundle, and native lifecycle'):**
+  Implemented browser-testable platform lifecycle checks via a new `tests/platform-lifecycle.spec.ts` spec (16 tests, all passing).
+  Covers four areas of the platform contract:
+  1. *Responsive/touch*: Tests that window resize and zoom operations do not crash the app; simulates tap-to-select on canvas via touchscreen API in a browser context with `hasTouch` enabled.
+  2. *PWA/offline structural*: Verifies that `dist/sw.js` (service worker) exists and has meaningful content; `dist/precache-manifest.json` is valid with entries; `public/manifest.json` parses as valid PWA manifest with required fields (`name`, `short_name`, `start_url`, `display`, `icons`).
+  3. *Asset bundle*: Confirms that `bundle=false` query param bypasses bundle loading; fetch and image loader structural paths are reachable and don't crash without a real bundle; AssetBundle module exports are accessible.
+  4. *Native lifecycle structural*: Tests that pause/resume visibility-change handlers invoke without error in browser context (they no-op gracefully); platform detection (`isCapacitor`, `isTwa`, `getPlatform`) returns browser-appropriate values; wake lock and visibility state changes don't crash.
+  Platform features genuinely untestable in Playwright (real offline SW interception, install prompt flow, Capacitor device APIs, real bundle zip loading) are documented as covered-by-structure-only.
+  New spec file: `tests/platform-lifecycle.spec.ts` (16 tests).
+  Files changed: `tests/platform-lifecycle.spec.ts` (new).
+  Gate: all 16 new tests passing; `npm run build` green with precache manifest generation logged; full serial gate passing (362 + 16 = 378 total tests).
+
 - **Final parity report draft published (P7):** Consolidated evidence from PLAN.md,
   runtime-inventory.md, resolve-policies.md, and all manifest JSON files into a single
   comprehensive audit at `docs/parity/PARITY-REPORT.md`. Report includes: (1) verified
