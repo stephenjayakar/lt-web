@@ -1956,22 +1956,51 @@ unclassified runtime gaps remain.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-18 after the RNG-mode verification and
-deterministic-replay slice landed:
+Queue refreshed 2026-07-18 after the `g.db._constants` typo fix + glancing-hit
+slice landed:
 
-1. Fix the `g.db._constants` vs `g.db.constants` typo across the seven spec
-   files noted in Recent Changes, auditing each fixture's hit/crit chance so
-   turning on the real Grandmaster/parametrized RNG mode doesn't silently
-   change asserted damage/outcome values.
-2. Implement glancing-hit damage (Python's `roll >= unclamped_hit -
-   glancing_hit`, half-damage branch) in the web combat solver -- discovered
-   missing while auditing `solver.py`'s `process()` for the RNG slice above.
+1. ~~Fix the `g.db._constants` vs `g.db.constants` typo across the seven spec
+   files noted in Recent Changes~~ DONE. Fixed in combat-goldens.spec.ts,
+   effective-damage.spec.ts, aesthetic-components.spec.ts (via a new
+   `h.setConstant()` harness helper), and status-hold/droppable-pickup/
+   equip-lifecycle.spec.ts's shared `forceRngMode()` helpers (now routed
+   through the same harness setter instead of poking `game.db` directly).
+   Auditing each fixture surfaced two real gaps the typo had been masking:
+   (a) `combat-goldens.spec.ts`'s "crit:0 weapon" fixtures still had a
+   nonzero crit *chance* from SKL (computeCrit's base term is `SKL // 2`,
+   independent of the item's own crit stat) -- fixed by zeroing SKL in the
+   shared fixture; (b) Grandmaster's damage-scaling-by-hit% (added in the
+   prior slice) now actually applies, so combat-goldens.spec.ts's and
+   effective-damage.spec.ts's hand-computed expected damages were
+   re-derived (see each test's updated comments; effective-damage.spec.ts
+   also now forces to-hit to exactly 100 via a saturated `hit` component,
+   since a delta-of-two-combats measurement only stays exact post-scaling
+   at hit=100, trunc() doesn't distribute over addition otherwise). Also
+   found and fixed status-hold.spec.ts's "does not apply on a miss" fixture:
+   Bone's default equipped Iron_Axe granted a Sword-vs-Axe +15 weapon-triangle
+   hit bonus that alone cleared 0 even at SPD 99, so the fixture never
+   actually reached a true 0% hit chance; now strips Bone's weapon first.
+2. ~~Implement glancing-hit damage~~ DONE. `solver.py`'s
+   `roll >= unclamped_hit - DB.constants.value('glancing_hit')` branch
+   (half damage, truncated, applied after Grandmaster's hit%-scaling) is
+   now ported in `src/combat/combat-solver.ts`'s `resolveStrike` (new
+   `glancing` flag on `CombatStrike`, gated by a new `glancing_hit` DB
+   constant lookup, default 0/off). `rollHit` was split into
+   `rollHitDetailed` so the glancing check can reuse the exact roll +
+   effective-hit value that decided the hit itself, matching Python's
+   single `generate_roll()` call per strike. Covered by new
+   `tests/glancing.spec.ts` (band-boundary, off-by-default gating, and
+   Grandmaster composition). Deferred: dedicated glancing playback/marks
+   (Python's `pb.MarkGlancingHit` / `MapGlancingHit` animation) -- the web
+   strike carries the flag but no dedicated glancing visual/sound hookup
+   yet, consistent with this port's existing minimal-playback scope.
 3. Trigger payload and EVNT/PYEV1 nested-flow audit (P1).
 4. Roam talk/shop interaction and overworld option menus (P5).
 5. Rendering comparisons: tile layers, autotiles, weather, camera (P6).
-6. Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
-   workflow) so the full spec suite, including `tests/project-compat.spec.ts`,
-   actually gates PRs -- currently only `npm run audit:parity` runs in CI.
+6. ~~Add a Playwright job to `.github/workflows/parity-audit.yml` (or a new
+   workflow) so the full spec suite ... actually gates PRs~~ DONE --
+   `.github/workflows/playwright.yml` already runs the full serial gate
+   (`npx playwright test --workers=1`) on push/PR.
 7. If a PYEV1-authored external `.ltproj` fixture becomes available, add it
    to `tests/project-compat.spec.ts` to close the PYEV1-heavy-project gap
    noted in P7 (both bundled non-default projects use EVNT, not PYEV1).

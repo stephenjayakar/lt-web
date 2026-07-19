@@ -69,7 +69,7 @@ async function measureEffective(page: Page, cfg: MeasureConfig): Promise<Effecti
 
     // Grandmaster RNG: every strike hits, removing hit-roll noise so the
     // measured delta isolates the effective component's contribution.
-    if (g?.db?._constants) g.db._constants.set('rng_mode', 'grandmaster');
+    h.setConstant('rng_mode', 'grandmaster');
 
     // --- Eirika: a clean Iron_Sword wielder with zero crit chance. ---
     h.giveItem('Eirika', 'Iron_Sword');
@@ -82,19 +82,30 @@ async function measureEffective(page: Page, cfg: MeasureConfig): Promise<Effecti
     }
     weapon.uses = 99;
     weapon.maxUses = 99;
-    eirika.stats.SPD = 6;
+    // SPD 0 (not 6): matching Bone's forced SPD 0 avoids a speed-advantage
+    // double attack, which would otherwise double the measured delta.
+    eirika.stats.SPD = 0;
     eirika.stats.SKL = 0;
     eirika.stats.LCK = 0;
+    // Force to-hit to exactly 100: under Grandmaster, damage is scaled by
+    // trunc(damage * hit / 100) (weapon_components.py Damage.on_hit), which
+    // does not distribute over addition -- trunc(A+d) - trunc(A) isn't
+    // generally d for hit < 100, so a delta measurement (base vs. effective)
+    // is only exact at hit=100. Iron_Sword's own hit (90) minus Bone's avoid
+    // (klass-dependent, not otherwise controlled here) isn't reliably 100,
+    // so bump the weapon's hit component directly and zero Bone's avoid
+    // inputs (SPD/LCK) to guarantee it.
+    weapon.components.set('hit', 1000); // saturate past any terrain/avoid penalty
 
     // --- Bone: configurable class/tags/skills, no counter by default. ---
     if (c.boneKlass) bone.klass = c.boneKlass;
     bone.tags = c.boneTags ?? [];
     bone.items = [];
     bone.equippedWeapon = null;
-    // No bone stat overrides: the effective bonus is measured as a delta, so
-    // Bone's default DEF/RES cancel out. Grandmaster RNG + Eirika SKL 0 +
-    // Iron_Sword crit 0 already guarantee no crit; inflating Bone's LCK
-    // zeroes the strike damage via an LCK-coupled path, so leave stats alone.
+    bone.stats.SPD = 0;
+    bone.stats.LCK = 0;
+    // No other bone stat overrides: the effective bonus is measured as a
+    // delta, so Bone's default DEF/RES cancel out.
     bone.skills = (c.boneSkills ?? []).map((s) => {
       const components = new Map<string, unknown>(s.components);
       return {
@@ -253,7 +264,7 @@ test.describe('effective_damage item component', () => {
       if (!eirika || !bone) return null;
 
       // Grandmaster RNG: every strike hits, removing hit-roll noise.
-      if (g?.db?._constants) g.db._constants.set('rng_mode', 'grandmaster');
+      h.setConstant('rng_mode', 'grandmaster');
 
       h.giveItem('Eirika', 'Iron_Sword');
       eirika.wexp.Sword = Math.max(eirika.wexp.Sword ?? 0, 200);
@@ -265,17 +276,21 @@ test.describe('effective_damage item component', () => {
       }
       weapon.uses = 99;
       weapon.maxUses = 99;
-      eirika.stats.SPD = 6;
+      // SPD 0: see measureEffective's comment (avoids a speed-advantage double).
+      eirika.stats.SPD = 0;
       eirika.stats.SKL = 0;
       eirika.stats.LCK = 0;
+      // Force to-hit to exactly 100 (see measureEffective's comment): a
+      // Grandmaster damage-scaling delta is only exact when hit=100.
+      weapon.components.set('hit', 1000); // saturate past any terrain/avoid penalty
 
       // General gives Bone the "Armor" tag so the effective component fires,
       // and an Iron_Axe creates a Sword-beats-Axe weapon-triangle advantage.
       bone.klass = 'General';
-      // No bone stat overrides (see measureEffective): the WT bonus is a
-      // delta, and inflating Bone's LCK zeroes Eirika's strike damage.
       bone.tags = [];
       bone.skills = [];
+      bone.stats.SPD = 0;
+      bone.stats.LCK = 0;
 
       const BONE_HP = 999;
 

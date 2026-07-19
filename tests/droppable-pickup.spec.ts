@@ -68,11 +68,7 @@ async function loadSnapshot(page: Page, snapshot: unknown): Promise<boolean> {
 
 async function forceRngMode(page: Page, mode: string): Promise<void> {
   await page.evaluate((mode) => {
-    const g = (window as any).__gameRef;
-    if (g?.db) {
-      if (!g.db._constants) g.db._constants = new Map();
-      g.db._constants.set('rng_mode', mode);
-    }
+    (window as any).__harness?.setConstant('rng_mode', mode);
   }, mode);
 }
 

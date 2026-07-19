@@ -102,7 +102,7 @@ async function setupAndResolve(
     const bone = g?.units?.get?.('Bone');
     if (!eirika || !bone) return null;
 
-    if (g?.db?._constants) g.db._constants.set('rng_mode', 'grandmaster');
+    h.setConstant('rng_mode', 'grandmaster');
 
     // Both units must stand on a terrain tile with a zero defense/avoid bonus
     // for the hand-computed damage numbers below to hold (Bone's default map
@@ -127,7 +127,13 @@ async function setupAndResolve(
       if (spec.str != null) unit.stats.STR = spec.str;
       if (spec.def != null) unit.stats.DEF = spec.def;
       if (spec.spd != null) unit.stats.SPD = spec.spd;
-      unit.stats.SKL = unit.stats.SKL ?? 10;
+      // SKL 0 (not just item crit:0): computeCrit's base term is SKL // 2,
+      // so a nonzero SKL still grants crit chance even on a crit:0 weapon --
+      // now that the rng_mode fixture typo is fixed and 'grandmaster' really
+      // applies, that stray crit chance is no longer masked by a different
+      // fallback RNG mode happening to not roll a crit on this stream, and
+      // would otherwise make these "fully deterministic" goldens flaky.
+      unit.stats.SKL = 0;
       unit.stats.LCK = 0;
       if (spec.hp != null) unit.stats.HP = spec.hp;
       unit.currentHp = spec.currentHp ?? unit.stats.HP;
@@ -152,17 +158,20 @@ test.describe('combat golden matrix', () => {
 
     // Eirika STR10 + Iron_Sword(5) - Bone DEF2 = 13. Bone STR8 + Iron_Sword(5) - Eirika DEF0 = 13.
     // Equal SPD (diff 0 < SPEED_TO_DOUBLE=4): no doubling either side.
+    // Both sides' to-hit: SKL 0 * 2 + LCK//2 0 + item hit 90 - avoid (SPD 5 * 2 + LCK 0 = 10) = 80.
+    // Grandmaster scales damage by to-hit% (weapon_components.py Damage.on_hit):
+    // trunc(13 * 80 / 100) = 10, for both the attack and the counter.
     const r = await setupAndResolve(page, {
       eirika: { weaponNid: 'Iron_Sword', str: 10, def: 0, spd: 5, hp: 999 },
       bone: { weaponNid: 'Iron_Sword', str: 8, def: 2, spd: 5, hp: 999 },
     });
     expect(r).not.toBeNull();
     expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['attacker', 'defender']);
-    expect(r.strikeDetails[0].damage).toBe(13);
-    expect(r.strikeDetails[1].damage).toBe(13);
+    expect(r.strikeDetails[0].damage).toBe(10);
+    expect(r.strikeDetails[1].damage).toBe(10);
     expect(r.strikeDetails[1].isCounter).toBe(true);
-    expect(r.attackerHp).toBe(999 - 13);
-    expect(r.defenderHp).toBe(999 - 13);
+    expect(r.attackerHp).toBe(999 - 10);
+    expect(r.defenderHp).toBe(999 - 10);
   });
 
   test('attacker doubles when speed advantage >= SPEED_TO_DOUBLE (4)', async ({ page }) => {
@@ -177,7 +186,11 @@ test.describe('combat golden matrix', () => {
     expect(r).not.toBeNull();
     // Python order for a plain double: attack, counter, attack-double.
     expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['attacker', 'defender', 'attacker']);
-    expect(r.strikeDetails.map((s: any) => s.damage)).toEqual([13, 13, 13]);
+    // Attacker to-hit is unaffected by its own SPD (80, as in the standard-order
+    // case above): trunc(13 * 80 / 100) = 10 for both attacker strikes.
+    // Bone's counter to-hit uses Eirika's now-higher AS (SPD9, weight5 <= CON5,
+    // so AS=9): avoid = AS*2 = 18, to-hit = 90 - 18 = 72; trunc(13*72/100) = 9.
+    expect(r.strikeDetails.map((s: any) => s.damage)).toEqual([10, 9, 10]);
   });
 
   test('weapon triangle: Sword > Axe advantage flips sign with attacker/defender swapped', async ({ page }) => {
@@ -226,14 +239,16 @@ test.describe('combat golden matrix', () => {
     await stepFrames(page, 5);
 
     // Brave_Sword might 9: 10 + 9 - 2 = 17 per strike, twice, then one counter.
+    // Brave_Sword's lower hit stat brings Eirika's to-hit to 65 (vs Iron_Sword's
+    // 80 above): trunc(17 * 65 / 100) = 11 for each attacker strike.
     const r = await setupAndResolve(page, {
       eirika: { weaponNid: 'Brave_Sword', str: 10, def: 0, spd: 5, hp: 999 },
       bone: { weaponNid: 'Iron_Sword', str: 8, def: 2, spd: 5, hp: 999 },
     });
     expect(r).not.toBeNull();
     expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['attacker', 'attacker', 'defender']);
-    expect(r.strikeDetails[0].damage).toBe(17);
-    expect(r.strikeDetails[1].damage).toBe(17);
+    expect(r.strikeDetails[0].damage).toBe(11);
+    expect(r.strikeDetails[1].damage).toBe(11);
     expect(r.strikeDetails[2].isCounter).toBe(true);
   });
 
@@ -309,8 +324,10 @@ test.describe('combat golden matrix', () => {
     });
     expect(r).not.toBeNull();
     expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['defender', 'attacker', 'attacker']);
-    expect(r.strikeDetails[1].damage).toBe(17);
-    expect(r.strikeDetails[2].damage).toBe(17);
+    // Same Brave_Sword-vs-Iron_Sword to-hit (65) as the plain brave-weapon
+    // case above: trunc(17 * 65 / 100) = 11 for each attacker strike.
+    expect(r.strikeDetails[1].damage).toBe(11);
+    expect(r.strikeDetails[2].damage).toBe(11);
   });
 
   test('miracle: survives lethal damage at 1 HP once, then dies once the charge is spent', async ({ page }) => {
@@ -367,12 +384,14 @@ test.describe('combat golden matrix', () => {
     // effective_multiplier 1.0 (so the (multiplier-1)*might term is 0 and the
     // Armor-tag bonus is purely the flat +16). Base: 10 + 8 - 2 = 16; with the
     // effective bonus: 16 + 16 = 32. General is an Armor-tagged class.
+    // Armorslayer's own hit stat (Bone unarmed, no weapon-triangle term) gives
+    // to-hit 70; Grandmaster scales damage by to-hit%: trunc(32 * 70 / 100) = 22.
     const r = await page.evaluate(async () => {
       const g = (window as any).__gameRef;
       const h = (window as any).__harness;
       const eirika = g?.units?.get?.('Eirika');
       const bone = g?.units?.get?.('Bone');
-      if (g?.db?._constants) g.db._constants.set('rng_mode', 'grandmaster');
+      h.setConstant('rng_mode', 'grandmaster');
       // See setupAndResolve: reposition Bone off Forest (+1 DEF) onto Plain.
       const [ex, ey] = eirika.position;
       bone.position = [ex + 1, ey];
@@ -386,7 +405,9 @@ test.describe('combat golden matrix', () => {
       eirika.stats.STR = 10;
       eirika.stats.DEF = 0;
       eirika.stats.SPD = 5;
-      eirika.stats.SKL = 10;
+      // SKL 0: see setupAndResolve's applyUnit for why (crit chance isn't
+      // gated by the weapon's crit:0 alone).
+      eirika.stats.SKL = 0;
       eirika.stats.LCK = 0;
       eirika.stats.HP = 999;
       eirika.currentHp = 999;
@@ -404,7 +425,7 @@ test.describe('combat golden matrix', () => {
       return h.resolveCombat('Eirika', 'Bone', undefined, true);
     });
     expect(r).not.toBeNull();
-    expect(r.strikeDetails[0].damage).toBe(32);
+    expect(r.strikeDetails[0].damage).toBe(22);
   });
 
   test('scripted combat: forced hit1/hit2 tokens control strike order and outcome', async ({ page }) => {
