@@ -1497,9 +1497,9 @@ async function restoreLevel(
     if (game.tilemap && levelData.layerVisibility) {
       for (const [layerNid, visible] of levelData.layerVisibility) {
         if (visible) {
-          game.tilemap.showLayer(layerNid);
+          game.tilemap.showLayer(layerNid, 'immediate');
         } else {
-          game.tilemap.hideLayer(layerNid);
+          game.tilemap.hideLayer(layerNid, 'immediate');
         }
       }
     }

@@ -10041,18 +10041,22 @@ export class EventState extends State {
       }
 
       case 'show_layer': {
+        // show_layer;Layer[;LayerTransition] -- LayerTransition: 'fade' (default) or 'immediate'
         const layerNid = args[0] ?? '';
+        const transition = args[1] === 'immediate' ? 'immediate' : 'fade';
         if (game.tilemap) {
-          game.tilemap.showLayer(layerNid);
+          game.tilemap.showLayer(layerNid, transition);
         }
         this.advancePointer();
         return false;
       }
 
       case 'hide_layer': {
+        // hide_layer;Layer[;LayerTransition] -- LayerTransition: 'fade' (default) or 'immediate'
         const layerNid2 = args[0] ?? '';
+        const transition2 = args[1] === 'immediate' ? 'immediate' : 'fade';
         if (game.tilemap) {
-          game.tilemap.hideLayer(layerNid2);
+          game.tilemap.hideLayer(layerNid2, transition2);
         }
         this.advancePointer();
         return false;

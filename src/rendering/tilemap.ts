@@ -12,6 +12,9 @@ const AUTOTILE_FRAMES = 16;
  * LayerObject - A single layer of a tilemap, pre-rendered to a Surface.
  * Supports animated autotile frames.
  */
+/** Fade transition duration in ms (matches Python LayerObject.transition_speed). */
+const LAYER_TRANSITION_SPEED = 333;
+
 export class LayerObject {
   nid: string;
   visible: boolean;
@@ -25,6 +28,12 @@ export class LayerObject {
   private autotileFrame: number = 0;
   /** Whether this layer has any autotiles. */
   hasAutotiles: boolean = false;
+
+  /** Fade transition state: null | 'fade_in' | 'fade_out'. */
+  state: 'fade_in' | 'fade_out' | null = null;
+  /** Current translucence (1 = fully transparent, 0 = fully opaque), matching Python semantics. */
+  translucence: number = 1;
+  private startUpdate: number = 0;
 
   constructor(layerData: TilemapLayerData) {
     this.nid = layerData.nid;
@@ -120,6 +129,69 @@ export class LayerObject {
     if (!this.hasAutotiles || this.autotileFrames.length === 0) return null;
     return this.autotileFrames[this.autotileFrame] ?? null;
   }
+
+  /** Current autotile frame index, for test/harness introspection. */
+  getAutotileFrameIndex(): number {
+    return this.autotileFrame;
+  }
+
+  /** Instantly show/hide (no fade). Matches Python quick_show/quick_hide. */
+  quickShow(): void { this.visible = true; this.state = null; }
+  quickHide(): void { this.visible = false; this.state = null; }
+
+  /** Fade in the layer. Matches Python LayerObject.show(). */
+  show(nowMs: number): void {
+    if (!this.visible) {
+      this.visible = true;
+      this.state = 'fade_in';
+      this.translucence = 1;
+      this.startUpdate = nowMs;
+    }
+  }
+
+  /** Fade out the layer. Matches Python LayerObject.hide(). */
+  hide(nowMs: number): void {
+    if (this.visible) {
+      this.visible = false;
+      this.state = 'fade_out';
+      this.translucence = 0;
+      this.startUpdate = nowMs;
+    }
+  }
+
+  /**
+   * Advance the fade transition. Matches Python LayerObject.update().
+   * A layer that is fading out is still drawn (with dropping opacity) even
+   * though `visible` has already flipped to false.
+   */
+  updateTransition(nowMs: number): void {
+    if (this.state === 'fade_in') {
+      this.translucence = 1 - (nowMs - this.startUpdate) / LAYER_TRANSITION_SPEED;
+      if (this.translucence <= 0) {
+        this.translucence = 0;
+        this.state = null;
+      }
+    } else if (this.state === 'fade_out') {
+      this.translucence = (nowMs - this.startUpdate) / LAYER_TRANSITION_SPEED;
+      if (this.translucence >= 1) {
+        this.translucence = 1;
+        this.state = null;
+      }
+    }
+  }
+
+  /** Whether this layer should currently be drawn (visible, or fading out). */
+  shouldDraw(): boolean {
+    return this.visible || this.state === 'fade_out';
+  }
+
+  /** Opacity to render this layer at right now (1 = opaque). */
+  get renderAlpha(): number {
+    if (this.state === 'fade_in' || this.state === 'fade_out') {
+      return Math.max(0, Math.min(1, 1 - this.translucence));
+    }
+    return 1;
+  }
 }
 
 /**
@@ -212,10 +284,15 @@ export class TileMapObject {
    * Call once per frame from the game loop.
    */
   updateAutotiles(currentTimeMs: number): void {
-    if (!this.hasAutotiles || this.autotileWaitMs <= 0) return;
-    const frame = Math.floor(currentTimeMs / this.autotileWaitMs) % AUTOTILE_FRAMES;
+    if (this.hasAutotiles && this.autotileWaitMs > 0) {
+      const frame = Math.floor(currentTimeMs / this.autotileWaitMs) % AUTOTILE_FRAMES;
+      for (const layer of this.layers) {
+        layer.setAutotileFrame(frame);
+      }
+    }
+    // Advance any in-progress show/hide fade transitions (LayerObject.update()).
     for (const layer of this.layers) {
-      layer.setAutotileFrame(frame);
+      if (layer.state) layer.updateTransition(currentTimeMs);
     }
   }
 
@@ -258,7 +335,7 @@ export class TileMapObject {
     const result = this._bgSurface;
 
     for (const layer of this.layers) {
-      if (!layer.visible || layer.foreground || !layer.surface) continue;
+      if (!layer.shouldDraw() || layer.foreground || !layer.surface) continue;
 
       // Compute the overlap between the cull rect and the layer surface
       const srcX = Math.max(0, cullRect.x);
@@ -273,13 +350,18 @@ export class TileMapObject {
       const destX = srcX - cullRect.x;
       const destY = srcY - cullRect.y;
 
+      const alpha = layer.renderAlpha;
+      layer.surface.setAlpha(alpha);
       // Static tiles
       result.blitFrom(layer.surface, srcX, srcY, drawW, drawH, destX, destY);
+      layer.surface.setAlpha(1);
 
       // Autotile overlay
       const autoSurf = layer.getAutotileImage();
       if (autoSurf) {
+        autoSurf.setAlpha(alpha);
         result.blitFrom(autoSurf, srcX, srcY, drawW, drawH, destX, destY);
+        autoSurf.setAlpha(1);
       }
     }
 
@@ -291,7 +373,7 @@ export class TileMapObject {
    * Returns null if no visible foreground layers exist.
    */
   getForegroundImage(cullRect: { x: number; y: number; w: number; h: number }): Surface | null {
-    const hasForeground = this.layers.some(l => l.visible && l.foreground && l.surface);
+    const hasForeground = this.layers.some(l => l.shouldDraw() && l.foreground && l.surface);
     if (!hasForeground) return null;
 
     // Reuse cached surface if dimensions match, otherwise allocate via pool
@@ -306,7 +388,7 @@ export class TileMapObject {
     const result = this._fgSurface;
 
     for (const layer of this.layers) {
-      if (!layer.visible || !layer.foreground || !layer.surface) continue;
+      if (!layer.shouldDraw() || !layer.foreground || !layer.surface) continue;
 
       const srcX = Math.max(0, cullRect.x);
       const srcY = Math.max(0, cullRect.y);
@@ -320,28 +402,56 @@ export class TileMapObject {
       const destX = srcX - cullRect.x;
       const destY = srcY - cullRect.y;
 
+      const alpha = layer.renderAlpha;
+      layer.surface.setAlpha(alpha);
       result.blitFrom(layer.surface, srcX, srcY, drawW, drawH, destX, destY);
+      layer.surface.setAlpha(1);
 
       // Autotile overlay
       const autoSurf = layer.getAutotileImage();
       if (autoSurf) {
+        autoSurf.setAlpha(alpha);
         result.blitFrom(autoSurf, srcX, srcY, drawW, drawH, destX, destY);
+        autoSurf.setAlpha(1);
       }
     }
 
     return result;
   }
 
-  /** Show a layer by NID. */
-  showLayer(nid: string): void {
-    const layer = this.layers.find(l => l.nid === nid);
-    if (layer) layer.visible = true;
+  /** Current autotile frame index (shared across all layers), for test/harness introspection. */
+  getAutotileFrameIndex(): number {
+    const layer = this.layers.find((l) => l.hasAutotiles);
+    return layer ? layer.getAutotileFrameIndex() : 0;
   }
 
-  /** Hide a layer by NID. */
-  hideLayer(nid: string): void {
+  /**
+   * Show a layer by NID. Matches Python show_layer event command: fades in by
+   * default (333ms), unless `transition === 'immediate'` in which case it pops
+   * in instantly (Python's quick_show()).
+   */
+  showLayer(nid: string, transition: 'fade' | 'immediate' = 'fade', nowMs: number = Date.now()): void {
     const layer = this.layers.find(l => l.nid === nid);
-    if (layer) layer.visible = false;
+    if (!layer) return;
+    if (transition === 'immediate') {
+      layer.quickShow();
+    } else {
+      layer.show(nowMs);
+    }
+  }
+
+  /**
+   * Hide a layer by NID. Matches Python hide_layer event command: fades out by
+   * default (333ms), unless `transition === 'immediate'` (Python's quick_hide()).
+   */
+  hideLayer(nid: string, transition: 'fade' | 'immediate' = 'fade', nowMs: number = Date.now()): void {
+    const layer = this.layers.find(l => l.nid === nid);
+    if (!layer) return;
+    if (transition === 'immediate') {
+      layer.quickHide();
+    } else {
+      layer.hide(nowMs);
+    }
   }
 
   /** Add a weather effect by NID. Does nothing if already active. */
