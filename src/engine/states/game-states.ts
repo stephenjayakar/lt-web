@@ -133,6 +133,7 @@ import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
 import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots } from '../save';
 import { getStartingClassSkillNids } from '../learned-skills';
+import { reportUnimplemented } from '../strict-mode';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — set once at bootstrap to break circular deps.
@@ -11692,7 +11693,8 @@ export class EventState extends State {
       }
 
       default:
-        // Unknown/unimplemented command — skip
+        // Unknown/unimplemented command — report and skip
+        reportUnimplemented('command', cmd.type, `EventState dispatch`);
         this.advancePointer();
         return false;
     }

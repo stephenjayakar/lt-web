@@ -179,6 +179,42 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Remove silent skips for known commands/components (P7):** Unrecognized event
+  commands and unimplemented item/skill component NIDs now fail loudly in
+  development (strict mode enabled via `?strict=true` URL param or `import.meta.env.DEV`)
+  while remaining graceful in production builds.
+  1. *Strict-mode module*: New `src/engine/strict-mode.ts` exports
+     `reportUnimplemented(kind, nid, context?)` which deduplicates warnings
+     (console.warn once per unique nid) and throws an Error in strict mode with
+     the NID and context. Consumed at three sites: (a) `GameEvent.parseCommand`
+     (`src/events/event-manager.ts:376`) for unknown commands; (b) `EventState`'s
+     default case (`src/engine/states/game-states.ts:11694`) for dispatched-but-
+     unhandled commands (double-check for late-added commands post-parse); (c)
+     load-time item/skill component inventory warnings (new).
+  2. *Load-time summary*: `loadProject` in `src/data/loaders/load-project.ts` now
+     collects unknown component NIDs from items and skills DB via a new
+     `collectUnknownComponents(db)` helper and logs a single summary line
+     listing them (if any found), helping project authors immediately spot
+     unimplemented dependencies.
+  3. *No strict-flag default in tests*: The `?strict` flag is NOT set by default
+     in harness-mode Playwright tests — bundles may intentionally reference
+     unimplemented components, and strict mode must be opt-in for reproducible
+     CI (tests must stay green). Strict mode is used in the new dedicated spec
+     (`tests/strict-mode.spec.ts`) to verify error behavior, not in general
+     regression harness.
+  4. *Tests*: New `tests/strict-mode.spec.ts` (3 tests) verifies: (a) without
+     strict, unknown-command event warnings deduplicate and advances; (b) with
+     `?strict=true`, same event throws in EventState's dispatch; (c)
+     load-time summary lists an injected bogus item component NID.
+  Files changed: `src/engine/strict-mode.ts` (new), `src/events/event-manager.ts`
+  (wire reportUnimplemented into parseCommand unknown-command path),
+  `src/engine/states/game-states.ts` (wire into EventState default case),
+  `src/data/loaders/load-project.ts` (add collectUnknownComponents + summary log),
+  `tests/strict-mode.spec.ts` (new, 3 tests).
+  Deferred: component-specific strict validation (e.g. verifying component value
+  types match registered schemas) — left for follow-up hardening pass.
+  Full serial gate after changes: green (all 320 baseline tests pass).
+
 - **Resource-path fixtures: URL encoding, chunked/non-chunked fallback, panoramas,
   optional assets (P6):** Structural test suite validating resource loading across
   fixture projects and URI encoding edge cases.
