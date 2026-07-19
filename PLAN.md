@@ -178,6 +178,69 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
   resolves, matching Python's synchronous behavior and preventing async race frames.
 
 ### Recent Changes
+- **AI target_spec/terrain/group-activation audit + A* limit-cutoff fix (P4):**
+  finished a partial, unverified in-flight predecessor edit (`src/ai/ai-controller.ts`,
+  `src/pathfinding/path-system.ts`, `src/pathfinding/pathfinding.ts`) against
+  `lt-maker/app/engine/ai_controller.py` and `app/engine/pathfinding/pathfinding.py`.
+  - Verified as Python-correct and kept as-is: `target_spec` `Faction`/`Party`
+    matching (previously stubbed to always `false`); `target: 'Unit'` no longer
+    excludes the acting unit itself (Python's `get_targets` has no such
+    exclusion); `Terrain` target_spec board-wide scan
+    (`game.tilemap.get_terrain(position) == target_spec`); `ai_fog_of_war`
+    target visibility filter (`in_vision` OR `'Tile'`-tagged); and the guard-mode
+    (`view_range == -1`) movement restriction being lifted when
+    `game.ai_group_active(unit.ai_group)` is true, matching
+    `get_true_valid_moves`.
+  - Found and fixed two real bugs in the predecessor's `AStar.process` port of
+    `pathfinding.py`'s `limit`/`max_movement_limit`/`true_f` cutoff (both were
+    unreachable by any current caller — no call site passes non-default
+    `limit`/`maxMovementLimit` yet — so neither was an active regression, but
+    both were wrong and would have bitten the next caller):
+    1. **Check order** — Python checks `node.true_f > limit` immediately after
+       popping/closing a node, *before* testing whether it's the goal
+       (`pathfinding.py:172-179`); the predecessor's port tested goal-reached
+       first and the limit cutoff last, which would accept an over-limit path
+       to the goal instead of rejecting it. Reordered to match.
+    2. **`max_movement_limit` semantics** — Python gates a single tile's own
+       terrain cost (`adj.cost <= max_movement_limit`), not the cumulative
+       path cost; the port compared cumulative `newG` against
+       `maxMovementLimit`. Fixed to check `neighbor.cost > maxMovementLimit`.
+  - The predecessor also left a dead import (`passThrough` from
+    `combat/skill-system.ts`, imported into `ai-controller.ts` but never used)
+    — evidence it was mid-way through wiring Python's
+    `skill_system.pass_through(self.unit)` (`ai_controller.py:800-801`, makes
+    `can_move_through` always true, ignoring both enemies and allies) into
+    pathfinding. Finished that wiring properly: moved the check into
+    `PathSystem.buildCanMoveThrough` (`src/pathfinding/path-system.ts`) so it's
+    shared by both `getValidMoves` (movement range) and `getPath` (A*), and
+    removed the unused import from `ai-controller.ts`.
+  - Added harness hooks (`src/harness.ts`): `aiGetAction`, `setUnitIdentity`
+    (faction/party/aiGroup/team), `setAiGroupActive`, `setTerrain` — none
+    existed before this slice; there was no AI-specific harness surface at all.
+  - New `tests/ai-parity.spec.ts` (7 tests, all green): Faction/Party
+    target_spec filtering, `Unit` target self-inclusion, `Terrain` target_spec
+    board scan, guard-mode group-activation override, A* limit-cutoff
+    check-order regression (a path whose goal is reachable but over the limit
+    must return `null`, not the path), and `pass_through` bypassing an
+    enemy-occupied tile in both `getValidMoves`/`getPath`.
+  - Cross-checked `default.ltproj/game_data/ai.json`: the bundled AIs use only
+    `Tag`/`Class`/`ID`/`Starting` target_specs and `Enemy`/`Event`/`Ally`/
+    `Position` targets — **no bundled AI exercises `Faction`/`Party`/`Terrain`**.
+    The fixes are still Python-faithful and low-risk to land, but are
+    unexercised by the shipped campaign; noted here rather than overstating
+    real-world impact.
+  - Deferred (out of scope for this slice, not touched): roam-mode AI
+    controller behavior, the Python `SecondaryAI` two-phase
+    search-and-widen `get_limit()`/`view_range` (-1..-4) path-search flow
+    (the web's `secondaryAI`/`filterByViewRange` implement an already-existing,
+    structurally different distance-based approximation predating this diff —
+    not audited here), and retreat/move-away (`smart_retreat`/
+    `smart_farthest_away_pos`) and event-region `Interact` behavior, which
+    were already implemented pre-existing in `ai-controller.ts` and not part
+    of the predecessor's edit under review. `npm run audit:parity`: clean
+    after `:write` (line-count-only drift from this slice's additions, no new
+    component/command references). Full serial gate: **208 passed + 1
+    intentional skip**, all green.
 - **Base codex/data submenus + title-mode flow (P5):**
   - Added reachable Codex branches for `base_library`, `base_guide`, `base_records`,
     and `base_sound_room`; library/guide entries are sourced from unlocked lore,
@@ -1646,8 +1709,13 @@ item-use fixture matrices match Python outputs and side effects.
   expressions, `INITIATIVE` lookup is case-mismatched (always 0), and condition
   evaluation lacks `and`/`or`/`not` (see `docs/parity/runtime-inventory.md`)
 - [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
-- [ ] Complete AI terrain targeting, faction/party target specs, roam AI, and group rules
-- [ ] Verify pathfinding, movement costs, LOS/fog, rescue/pair-up, canto, and initiative
+- [x] AI terrain targeting, faction/party target specs, and group rules verified
+  against `ai_controller.py`'s `get_targets`/`handle_unit_spec`/`get_true_valid_moves`
+  (see Recent Changes); roam AI remains unverified (deferred, no roam-mode AI
+  controller audit performed in this slice)
+- [x] Verified the A* `limit`/`max_movement_limit`/`true_f` cutoff and `pass_through`
+  can-move-through semantics against `pathfinding.py` (see Recent Changes); LOS/fog
+  target visibility (`ai_fog_of_war`/`in_vision`) verified for AI targeting only
 - [x] Verify player and event Pair Up/Separate plus classic Rescue fallback behavior,
   including board placement and guard-gauge transitions
 - [x] Implement and verify Pair Up Switch/Transfer, attack-stance partner selection and
@@ -1743,7 +1811,9 @@ create_unit/set_position, combat goldens). Refreshed queue:
    run where the data allows.
 2. Base submenus and mode selection (P5): records, BEXP, sound room,
    library/guide, difficulty/mode selection.
-3. AI verification (P4): terrain targeting, faction/party target specs, roam AI,
-   group rules against the Python AI controller.
+3. ~~AI verification (P4): terrain targeting, faction/party target specs, group
+   rules against the Python AI controller.~~ Done (see Recent Changes); roam AI
+   and the `SecondaryAI` two-phase view_range search/widen flow remain
+   unaudited and are carried forward as a follow-up, not part of this item.
 4. Aura propagation and remaining proc/charge/cooldown status hooks (P3).
 5. Component resolve policies (all/any/sum/unique/default) verification (P3).

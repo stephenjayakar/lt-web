@@ -12,6 +12,7 @@ export interface PathNode {
   g: number;       // actual distance from start
   h: number;       // heuristic distance to goal (A* only)
   f: number;       // g + h
+  true_f: number;  // g + manhattan distance (used for path cost cutoff)
   parent: PathNode | null;
   reachable: boolean; // false if cost >= 99
 }
@@ -106,6 +107,7 @@ function createGrid(width: number, height: number): PathNode[][] {
         g: Infinity,
         h: 0,
         f: Infinity,
+        true_f: Infinity,
         parent: null,
         reachable: true,
       });
@@ -288,6 +290,13 @@ export class AStar {
     return manhattan + cross * 0.001;
   }
 
+  private trueHeuristic(
+    x1: number, y1: number,
+    x2: number, y2: number,
+  ): number {
+    return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+  }
+
   /**
    * Find the shortest path from start to goal.
    * @param startX         Starting X coordinate
@@ -307,6 +316,7 @@ export class AStar {
     canMoveThrough: (x: number, y: number) => boolean,
     adjGoodEnough: boolean = false,
     limit: number = 0,
+    maxMovementLimit: number = 999,
   ): [number, number][] | null {
     // Reset all nodes
     for (let y = 0; y < this.height; y++) {
@@ -315,6 +325,7 @@ export class AStar {
         node.g = Infinity;
         node.h = 0;
         node.f = Infinity;
+        node.true_f = Infinity;
         node.parent = null;
       }
     }
@@ -326,6 +337,7 @@ export class AStar {
     startNode.g = 0;
     startNode.h = this.heuristic(startX, startY, goalX, goalY, startX, startY);
     startNode.f = startNode.h;
+    startNode.true_f = this.trueHeuristic(startX, startY, goalX, goalY);
 
     const open = new MinHeap();
     open.push(startNode);
@@ -340,6 +352,12 @@ export class AStar {
       if (closed.has(current)) continue;
       closed.add(current);
 
+      // Python behavior: the limit cutoff is checked immediately after
+      // popping/closing a node, before testing whether it's the goal
+      // (uses true_f, not f, since f-ordering with the cross-product nudge
+      // can pop a slightly-worse-true_f node before a better one).
+      if (limit > 0 && current.true_f > limit) return null;
+
       // Check for goal
       if (current.x === goalX && current.y === goalY) {
         return this.reconstructPath(current);
@@ -353,9 +371,6 @@ export class AStar {
           return this.reconstructPath(current);
         }
       }
-
-      // Check cost limit
-      if (limit > 0 && current.g > limit) continue;
 
       for (const [dx, dy] of DIRS) {
         const nx = current.x + dx;
@@ -378,13 +393,17 @@ export class AStar {
 
         if (closed.has(neighbor)) continue;
 
+        // Python: `adj.cost <= max_movement_limit` -- gates on the single
+        // tile's terrain cost, not the cumulative path cost.
+        if (neighbor.cost > maxMovementLimit) continue;
+
         const newG = current.g + neighbor.cost;
-        if (limit > 0 && newG > limit) continue;
 
         if (newG < neighbor.g) {
           neighbor.g = newG;
           neighbor.h = this.heuristic(nx, ny, goalX, goalY, startX, startY);
           neighbor.f = neighbor.g + neighbor.h;
+          neighbor.true_f = neighbor.g + this.trueHeuristic(neighbor.x, neighbor.y, goalX, goalY);
           neighbor.parent = current;
           open.push(neighbor);
         }
