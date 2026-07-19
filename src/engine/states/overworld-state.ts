@@ -111,6 +111,17 @@ export class OverworldFreeState extends State {
     if (ow.prefab.music) {
       void game.audioManager.playMusic(ow.prefab.music);
     }
+
+    // Fire overworld_start trigger (matches Python engine/overworld/overworld_states.py:
+    // OverworldGameState.begin -> trigger('overworld_start')).
+    // Guard on null eventManager (same pattern as on_title_screen in game-states.ts).
+    if (game.eventManager) {
+      const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+      const triggered = game.eventManager.trigger({ type: 'overworld_start' }, ctx);
+      if (triggered) {
+        game.state.change('event');
+      }
+    }
   }
 
   private async setupOverworld(prefab: OverworldPrefab): Promise<void> {

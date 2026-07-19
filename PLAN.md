@@ -179,6 +179,35 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Wire remaining trigger stragglers (P1):** Wired `on_base_convo` and
+  `overworld_start` triggers; deferred `event_after_initiated_combat` and
+  `event_on_remove` as component-based-only (no engine dispatch path).
+  1. *on_base_convo* (triggers.py:282): Fired in BaseConvosState.takeInput when
+     a base conversation is selected; payload includes `base_convo` (the nid)
+     and deprecated `unit` field (same nid). Wire location: `src/engine/states/base-state.ts:481-496`.
+  2. *overworld_start* (triggers.py:73): Fired in OverworldFreeState.start() after
+     setup; no payload fields. Guard on null eventManager (same pattern as
+     on_title_screen). Wire location: `src/engine/states/overworld-state.ts:114-122`.
+  3. *roam_press_start/info/aux* (triggers.py:352-370): **Already wired** in
+     FreeRoamState.checkStart/checkInfo/checkAux as a previous P5 slice; no
+     changes needed. Firing pattern: fires trigger with unit1/unit2, falls back
+     to menu if no event intercepts.
+  4. *event_after_initiated_combat* (triggers.py:445): **Deferred** — this is a
+     hidden, component-based trigger (EventAfterInitiatedCombat skill component
+     calls `trigger_specific_event` directly; Python never unconditionally
+     fires this trigger). No engine dispatch path exists. Web skill component
+     not yet implemented; revisit when porting EventAfterInitiatedCombat.
+  5. *event_on_remove* (triggers.py:460): **Deferred** — this is a hidden,
+     component-based trigger (EventOnRemove skill component calls
+     `trigger_specific_event` directly; Python never unconditionally fires this
+     trigger). No engine dispatch path exists. Web skill component not yet
+     implemented; revisit when porting EventOnRemove.
+  - Updated EventTrigger interface to include `baseConvo`, `unit` fields
+    (on_base_convo payload).
+  - New spec: `tests/trigger-dispatch-3.spec.ts` (5 tests) — base-convo
+    selection, overworld entry, roam key presses with closest-unit placement,
+    each capturing trigger type+payload via monkey-patch.
+
 - **Seeded soak execution (P7):** ran the soak tooling for real across three
   scopes, all green with zero failure artifacts: Sacred Stones suites x3
   iterations (seeds 7000-7002, 42 tests each), harness spec x2 (seeds
