@@ -19,8 +19,10 @@ import type { Surface } from './engine/surface';
 import type { InputEvent, GameButton } from './engine/input';
 import { FRAMETIME, updateAnimationCounters } from './engine/constants';
 import { ItemObject } from './objects/item';
-import { EquipItemAction, RemoveItemFromUnitAction, TradeAction } from './engine/action';
+import { EquipItemAction, RemoveItemFromUnitAction, TradeAction, WarpUnitAction, AddSkillAction, RemoveSkillAction } from './engine/action';
 import { isItemSourcedSkill, computeTargetIcon } from './combat/item-system';
+import { isAuraSourcedSkill } from './combat/aura-system';
+import { SkillObject } from './objects/skill';
 import { MapCombat } from './combat/map-combat';
 import { applyDroppableItemPickups } from './combat/combat-lifecycle';
 import * as saveSystem from './engine/save';
@@ -52,6 +54,12 @@ export interface HarnessAPI {
   tradeItem: (fromNid: string, toNid: string, itemNid: string) => boolean;
   /** Kill a unit by NID (set HP to 0, mark dead). For testing win conditions. */
   killUnit: (unitNid: string) => boolean;
+  /** Warp a unit to a new board position via a reversible WarpUnitAction (turnwheel-safe). */
+  warpUnit: (unitNid: string, x: number, y: number) => boolean;
+  /** Grant a skill (by DB NID) to a unit via a reversible AddSkillAction (turnwheel-safe). */
+  addSkill: (unitNid: string, skillNid: string) => boolean;
+  /** Remove a skill (by DB NID) from a unit via a reversible RemoveSkillAction (turnwheel-safe). */
+  removeSkill: (unitNid: string, skillNid: string) => boolean;
   /** Trigger a game event by firing a trigger. Returns true if events were queued. */
   triggerEvent: (triggerType: string) => boolean;
   /** Get detailed unit state including equipped weapon/accessory and skills. */
@@ -154,6 +162,8 @@ export interface UnitDetail {
   skillNids: string[];
   /** Skill NIDs that were granted by an equipped item (status_on_equip). */
   itemSourcedSkillNids: string[];
+  /** Skill NIDs that were granted by another unit's aura. */
+  auraSourcedSkillNids: string[];
 }
 
 export interface CombatResultSummary {
@@ -381,6 +391,34 @@ export function installHarness(
       return true;
     },
 
+    warpUnit(unitNid: string, x: number, y: number): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit || !unit.position || !game.board) return false;
+      if (!game.board.inBounds(x, y)) return false;
+      game.actionLog.doAction(new WarpUnitAction(unit, [x, y], game.board));
+      return true;
+    },
+
+    addSkill(unitNid: string, skillNid: string): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit) return false;
+      const prefab = game.db?.skills?.get?.(skillNid);
+      if (!prefab) return false;
+      game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(prefab)));
+      game.refreshAuras?.();
+      return true;
+    },
+
+    removeSkill(unitNid: string, skillNid: string): boolean {
+      const unit = game.units.get(unitNid);
+      if (!unit) return false;
+      const skill = unit.skills.find((s) => s.nid === skillNid);
+      if (!skill) return false;
+      game.actionLog.doAction(new RemoveSkillAction(unit, skill));
+      game.refreshAuras?.();
+      return true;
+    },
+
     triggerEvent(triggerType: string): boolean {
       if (!game.eventManager) return false;
       const levelNid = game.currentLevel?.nid ?? '';
@@ -396,6 +434,9 @@ export function installHarness(
       const itemSourcedSkillNids = unit.skills
         .filter((s) => isItemSourcedSkill(s))
         .map((s) => s.nid);
+      const auraSourcedSkillNids = unit.skills
+        .filter((s) => isAuraSourcedSkill(s))
+        .map((s) => s.nid);
       return {
         nid: unit.nid,
         name: unit.name,
@@ -409,6 +450,7 @@ export function installHarness(
         itemNids: unit.items.map((i) => i.nid),
         skillNids: unit.skills.map((s) => s.nid),
         itemSourcedSkillNids,
+        auraSourcedSkillNids,
       };
     },
 

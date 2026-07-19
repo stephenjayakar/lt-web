@@ -11,6 +11,7 @@ import type { ItemObject } from '../objects/item';
 import { SkillObject as SkillObjectCtor, setNextSkillUid, getNextSkillUid } from '../objects/skill';
 import type { SkillObject } from '../objects/skill';
 import { isItemSourcedSkill, dispatchEquipHooks, dispatchHoldHooks, ITEM_SOURCE_KEY, ITEM_SOURCE_TYPE_KEY, ITEM_SOURCE_NID_KEY } from '../combat/item-system';
+import { removeAllAuraSourcedSkills } from '../combat/aura-system';
 import { UnitObject as UnitObjectCtor } from '../objects/unit';
 import type { PartyObject } from './party';
 import { PartyObject as PartyObjectCtor } from './party';
@@ -1512,6 +1513,7 @@ async function restoreLevel(
 
     // Create GameBoard
     game.board = new GameBoard(game.tilemap.width, game.tilemap.height);
+    game.board.onUnitPositionChanged = () => game.refreshAuras();
     game.board.initFromTilemap(game.tilemap);
 
     // Initialize fog grids and opacity
@@ -1528,6 +1530,17 @@ async function restoreLevel(
           console.warn(`restoreLevel: failed to place unit "${unit.nid}" at ${unit.position}:`, err);
         }
       }
+    }
+
+    // Re-derive aura coverage from scratch: auras are purely a function of
+    // live position + skills, so strip any aura-sourced skills that came in
+    // via the raw skill-restore loop above (their tags may be stale) and
+    // recompute fresh now that every unit is placed on the board.
+    for (const unit of unitsByNid.values()) {
+      removeAllAuraSourcedSkills(unit);
+    }
+    if (game.refreshAuras) {
+      game.refreshAuras();
     }
 
     // Recalculate fog of war

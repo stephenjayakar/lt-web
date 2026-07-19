@@ -36,6 +36,7 @@ import { AudioManager } from '../audio/audio-manager';
 import { HUD } from '../ui/hud';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
+import { refreshAuras } from '../combat/aura-system';
 import { MapSprite } from '../rendering/map-sprite';
 import { SupportController } from './support-system';
 import { InitiativeTracker } from './initiative';
@@ -490,6 +491,7 @@ export class GameState {
 
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
+    this.board.onUnitPositionChanged = () => this.refreshAuras();
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
@@ -677,6 +679,7 @@ export class GameState {
 
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
+    this.board.onUnitPositionChanged = () => this.refreshAuras();
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
@@ -1157,6 +1160,20 @@ export class GameState {
     }
 
     this.units.delete(nid);
+  }
+
+  /**
+   * Recompute aura coverage (skills granted by `aura` skill components) for
+   * every unit on the board, adding/removing child skills as needed. Wired
+   * to `board.onUnitPositionChanged` so it runs after any unit arrives,
+   * leaves, moves, or is removed (mirrors Python's `game.arrive`/
+   * `game.leave` aura hooks, but as a full recompute rather than an
+   * incremental per-tile registry). Also safe to call after save/load
+   * restoration to re-derive aura coverage from scratch.
+   */
+  refreshAuras(): void {
+    if (!this.board) return;
+    refreshAuras(this.units.values(), this.board, this.db);
   }
 
   // ========================================================================
