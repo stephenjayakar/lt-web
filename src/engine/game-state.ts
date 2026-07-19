@@ -38,6 +38,7 @@ import { AudioManager } from '../audio/audio-manager';
 import { HUD } from '../ui/hud';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
+import { isCantoSkill } from '../combat/skill-system';
 import { refreshAuras } from '../combat/aura-system';
 import { MapSprite } from '../rendering/map-sprite';
 import { SupportController } from './support-system';
@@ -1120,7 +1121,7 @@ export class GameState {
           unit.skills.push(skill);
 
           // Check for canto
-          if (skill.hasComponent('canto')) {
+          if (isCantoSkill(skill)) {
             unit.hasCanto = true;
           }
         }
@@ -1279,7 +1280,7 @@ export class GameState {
       if (!skillPrefab) continue;
       const skill = new SkillObject(skillPrefab);
       unit.skills.push(skill);
-      if (skill.hasComponent('canto')) unit.hasCanto = true;
+      if (isCantoSkill(skill)) unit.hasCanto = true;
     }
 
     // Auto-level: apply FIXED growth-based stat increases.

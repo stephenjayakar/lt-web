@@ -35,7 +35,13 @@ export class PathSystem {
     const pos = unit.position;
     if (!pos) return [];
 
-    const movement = unit.getStatValue('MOV');
+    // Python: `game_state`/`ai_controller` build movement range from
+    // `unit.movement_left` (engine/objects/unit.py), not the raw MOV stat --
+    // this is what makes a Canto re-move use only the MOV left over from the
+    // unit's first move this turn (movement_components.py Canto.canto_movement).
+    // `unit.movementLeft` mirrors that: it equals full MOV until the unit
+    // moves, then holds the post-move remainder until the turn resets.
+    const movement = unit.movementLeft;
     const movementGroup = this.getMovementGroup(unit);
 
     const dijkstra = this.buildDijkstra(movementGroup, board);
@@ -156,7 +162,7 @@ export class PathSystem {
     const pos = unit.position;
     if (!pos || path.length === 0) return path[0] ?? [0, 0];
 
-    const movement = unit.getStatValue('MOV');
+    const movement = unit.movementLeft;
     const movementGroup = this.getMovementGroup(unit);
     let spent = 0;
     let bestIndex = 0; // default: stay at start of path
@@ -183,6 +189,22 @@ export class PathSystem {
     }
 
     return path[bestIndex];
+  }
+
+  /**
+   * Sum of terrain movement costs for a path, excluding the starting tile.
+   * Used to update `unit.movementLeft` after a move completes, mirroring
+   * Python's per-tile `unit.consume_movement(mcost)` in
+   * unit_path_movement_component.py.
+   */
+  getPathCost(unit: UnitObject, path: [number, number][], board: GameBoard): number {
+    const movementGroup = this.getMovementGroup(unit);
+    let cost = 0;
+    for (let i = 1; i < path.length; i++) {
+      const [x, y] = path[i];
+      cost += board.getMovementCost(x, y, movementGroup, this.db);
+    }
+    return cost;
   }
 
   // ------------------------------------------------------------------

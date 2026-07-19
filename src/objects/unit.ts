@@ -127,6 +127,15 @@ export class UnitObject {
   // -- Canto / post-combat movement ---------------------------------------
   /** Whether this unit has Canto (can move after attacking). */
   hasCanto: boolean;
+  /**
+   * MOV remaining after the unit's most recent move this turn.
+   * Mirrors Python's `unit.movement_left` (engine/objects/unit.py), which is
+   * set by `action.Move`/`action.CantoMove` to `unit.get_movement() - path cost`
+   * and is what `Canto`/`CantoPlus`/`CantoSharp.canto_movement()` return for a
+   * canto re-move (movement_components.py). Reset to full MOV whenever the
+   * unit's turn state resets (start of turn / new level).
+   */
+  movementLeft: number;
 
   // -- Party membership ---------------------------------------------------
   /** Party NID this unit belongs to. Empty string if unassigned. */
@@ -226,6 +235,7 @@ export class UnitObject {
     this.hasGiven = false;
     this.strikePartner = null;
     this.hasCanto = false;
+    this.movementLeft = this.getStatValue('MOV');
     this.party = '';
     this.persistent = true;
     this.statusEffects = [];
@@ -644,5 +654,9 @@ export class UnitObject {
     this.hasTaken = false;
     this.hasGiven = false;
     this.strikePartner = null;
+    // Python: action.Reset.do() sets `unit.movement_left = unit.get_movement()`
+    // (app/engine/action.py) whenever a unit's turn state is reset (new turn /
+    // new level). Full MOV budget is restored until the unit next moves.
+    this.movementLeft = this.getStatValue('MOV');
   }
 }

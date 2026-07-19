@@ -126,6 +126,7 @@ import {
   enemyExpMultiplier,
   wexpMultiplier,
   enemyWexpMultiplier,
+  isCantoSkill,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -1738,6 +1739,15 @@ export class MoveState extends MapState {
           // Move unit on the board
           game.board.moveUnit(unit, pos.x, pos.y);
           unit.hasMoved = true;
+          // Python: unit_path_movement_component consumes MOV tile-by-tile
+          // (unit.consume_movement(mcost)) as the unit follows the path; the
+          // remainder is `unit.movement_left`, which Canto re-moves use as
+          // their budget (movement_components.py). Mirror that here so a
+          // canto follow-up move only gets the leftover MOV, not full MOV.
+          if (path) {
+            const cost = game.pathSystem.getPathCost(unit, path, game.board);
+            unit.movementLeft = Math.max(0, unit.movementLeft - cost);
+          }
 
           // Check if this movement triggers AI group activation
           if (game.aiController && unit.team === 'player') {
@@ -2032,6 +2042,9 @@ export class MenuState extends State {
           game._moveOrigin[1],
         );
         unit.hasMoved = false;
+        // Undoing the move restores the pre-move MOV budget (Python:
+        // action.Move.reverse() restores `self.prev_movement_left`).
+        unit.movementLeft = unit.getStatValue('MOV');
       }
       this.menu = null;
       game.state.back();
@@ -11933,7 +11946,7 @@ export class EventState extends State {
             const skill = new SkillObject(skillPrefab);
             unit.skills.push(skill);
             // Check for canto
-            if (skill.hasComponent('canto')) {
+            if (isCantoSkill(skill)) {
               unit.hasCanto = true;
             }
           }

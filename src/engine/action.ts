@@ -4,7 +4,7 @@ import { SkillObject } from '../objects/skill';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
-import { onPairup, onRemoveRescue, onRescue, onSeparate } from '../combat/skill-system';
+import { onPairup, onRemoveRescue, onRescue, onSeparate, isCantoSkill } from '../combat/skill-system';
 import { autoLevelUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
@@ -2520,7 +2520,7 @@ export class AddSkillAction extends Action {
   execute(): void {
     this.added = !this.unit.skills.some((skill) => skill.nid === this.skill.nid);
     if (this.added) this.unit.skills.push(this.skill);
-    if (this.skill.hasComponent('canto')) this.unit.hasCanto = true;
+    if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
   }
 
   reverse(): void {
@@ -2528,7 +2528,7 @@ export class AddSkillAction extends Action {
       const index = this.unit.skills.indexOf(this.skill);
       if (index >= 0) this.unit.skills.splice(index, 1);
     }
-    this.unit.hasCanto = this.unit.skills.some((skill) => skill.hasComponent('canto'));
+    this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
   }
 }
 
@@ -2547,14 +2547,14 @@ export class RemoveSkillAction extends Action {
   execute(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
-    this.unit.hasCanto = this.unit.skills.some((candidate) => candidate.hasComponent('canto'));
+    this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
   }
 
   reverse(): void {
     if (this.index >= 0 && !this.unit.skills.includes(this.skill)) {
       this.unit.skills.splice(this.index, 0, this.skill);
     }
-    if (this.skill.hasComponent('canto')) this.unit.hasCanto = true;
+    if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
   }
 }
 
