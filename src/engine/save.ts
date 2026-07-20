@@ -89,6 +89,7 @@ export interface UnitSaveData {
    * pre-existing behavior of items falling back to the MANA equation).
    */
   currentMana?: number;
+  currentFatigue?: number;
   hasRescued?: boolean;
   hasDropped?: boolean;
   hasTaken?: boolean;
@@ -489,6 +490,7 @@ function serializeUnit(
     hasGiven: unit.hasGiven,
     skillInstances,
     currentMana: (unit as any).currentMana,
+    currentFatigue: unit.currentFatigue || 0,
   };
 }
 
@@ -1186,6 +1188,9 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.hasDropped = unitData.hasDropped ?? false;
       unit.hasTaken = unitData.hasTaken ?? false;
       unit.hasGiven = unitData.hasGiven ?? false;
+      if (unitData.currentFatigue !== undefined) {
+        unit.currentFatigue = unitData.currentFatigue;
+      }
       if (unitData.currentMana !== undefined) {
         (unit as any).currentMana = unitData.currentMana;
       }

@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 239,
-    "dispatcherPythonNids": 230,
+    "parserRecognizedPythonNids": 241,
+    "dispatcherPythonNids": 232,
     "itemReferencedComponentNids": 135,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 218,
+      "dispatched-unverified": 220,
       "missing-dispatch": 9,
-      "missing-parser": 16,
+      "missing-parser": 14,
       "stub-hint": 12
     }
   },
@@ -2092,12 +2092,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1305
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_unit_field",
@@ -4200,12 +4200,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2735
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "show_layer",

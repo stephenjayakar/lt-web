@@ -92,6 +92,8 @@ import {
   RemoveObjComponentAction,
   RecruitGenericAction,
   MergePartiesAction,
+  ChangeFatigueAction,
+  LeaveMapAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8672,6 +8674,36 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_fatigue': {
+        // add_fatigue;Unit;Fatigue (Python event_functions.py:1305)
+        const unit = game.units.get(args[0] ?? '');
+        const amount = parseInt(args[1] ?? '0', 10) || 0;
+        if (!unit) console.warn(`add_fatigue: couldn't find unit ${args[0]}`);
+        else game.actionLog.doAction(new ChangeFatigueAction(unit, amount));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_generics_from_region': {
+        // remove_generics_from_region;Nid (Python :2735): LeaveMap for every
+        // generic inside the region's rectangle.
+        const region = (game.currentLevel?.regions ?? []).find((r: any) => r.nid === (args[0] ?? ''));
+        if (!region) {
+          console.warn(`remove_generics_from_region: couldn't find region ${args[0]}`);
+        } else {
+          const [rx, ry] = region.position;
+          const [rw, rh] = region.size ?? [1, 1];
+          for (let y = ry; y < ry + rh; y++) {
+            for (let x = rx; x < rx + rw; x++) {
+              const unit = game.board?.getUnit(x, y);
+              if (unit?.generic) game.actionLog.doAction(new LeaveMapAction(game, unit));
+            }
+          }
+        }
         this.advancePointer();
         return false;
       }
