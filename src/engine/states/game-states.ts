@@ -98,6 +98,7 @@ import {
   RemoveAnimFromUnitAction,
   ChangeBgTilemapAction,
   ChangeTeamPaletteAction,
+  ChangeRoamAiAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8697,6 +8698,18 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_roam_ai': {
+        // change_roam_ai;Unit;AI (Python event_functions.py:2180): validated
+        // against db.ai, reversible.
+        const unit = game.units.get(args[0] ?? '');
+        const aiNid = args[1] ?? '';
+        if (!unit) console.warn(`change_roam_ai: couldn't find unit ${args[0]}`);
+        else if (!game.db.ai?.has?.(aiNid)) console.warn(`change_roam_ai: couldn't find AI ${aiNid}`);
+        else game.actionLog.doAction(new ChangeRoamAiAction(unit, aiNid));
         this.advancePointer();
         return false;
       }

@@ -1219,3 +1219,42 @@ test.describe('Event command batch 3p (open_unit_management)', () => {
     expect(after).toBe('yes');
   });
 });
+
+test.describe('Event command batch 3q (change_roam_ai — final command)', () => {
+  test('change_roam_ai sets a validated, reversible roam AI consumed in roam mode', async ({ page }) => {
+    await boot(page);
+    const aiNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return [...(g.db.ai?.keys?.() ?? [])][0] ?? null;
+    });
+    expect(aiNid).not.toBeNull();
+    await runEvent(page, 'TestRoamAi', [`change_roam_ai;Seth;${aiNid}`]);
+    const set = await page.evaluate(() => (window as any).__gameRef.units.get('Seth').roamAi);
+    expect(set).toBe(aiNid);
+    // Invalid AI warns without applying.
+    await runEvent(page, 'TestRoamAiBad', ['change_roam_ai;Seth;NoSuchAI']);
+    const unchanged = await page.evaluate(() => (window as any).__gameRef.units.get('Seth').roamAi);
+    expect(unchanged).toBe(aiNid);
+    // Undo (two groups back: bad no-op event group then the set) restores null.
+    const undone = await page.evaluate(() => {
+      const h = (window as any).__harness;
+      h.turnwheelUndo();
+      const g = (window as any).__gameRef;
+      let v = g.units.get('Seth').roamAi;
+      if (v !== null) { h.turnwheelUndo(); v = g.units.get('Seth').roamAi; }
+      return v;
+    });
+    expect(undone).toBeNull();
+    // Save round trip.
+    await runEvent(page, 'TestRoamAi2', [`change_roam_ai;Seth;${aiNid}`]);
+    const roundTrip = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      const snap = h.saveSnapshot();
+      g.units.get('Seth').roamAi = null;
+      await h.loadSnapshot(snap);
+      return g.units.get('Seth').roamAi;
+    });
+    expect(roundTrip).toBe(aiNid);
+  });
+});

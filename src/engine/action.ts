@@ -1314,6 +1314,20 @@ export class SpendBexpAction extends Action {
   reverse(): void { this.party.bexp += this.amount; }
 }
 
+/** ChangeRoamAiAction - Python action.ChangeRoamAI, reversible. */
+export class ChangeRoamAiAction extends Action {
+  private unit: any;
+  private next: string | null;
+  private prev: string | null = null;
+  constructor(unit: any, next: string | null) {
+    super();
+    this.unit = unit;
+    this.next = next;
+  }
+  execute(): void { this.prev = this.unit.roamAi ?? null; this.unit.roamAi = this.next; }
+  reverse(): void { this.unit.roamAi = this.prev; }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;

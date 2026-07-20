@@ -90,6 +90,7 @@ export interface UnitSaveData {
    */
   currentMana?: number;
   currentFatigue?: number;
+  roamAi?: string | null;
   hasRescued?: boolean;
   hasDropped?: boolean;
   hasTaken?: boolean;
@@ -491,6 +492,7 @@ function serializeUnit(
     skillInstances,
     currentMana: (unit as any).currentMana,
     currentFatigue: unit.currentFatigue || 0,
+    roamAi: unit.roamAi ?? null,
   };
 }
 
@@ -1190,6 +1192,9 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.hasGiven = unitData.hasGiven ?? false;
       if (unitData.currentFatigue !== undefined) {
         unit.currentFatigue = unitData.currentFatigue;
+      }
+      if (unitData.roamAi !== undefined) {
+        unit.roamAi = unitData.roamAi;
       }
       if (unitData.currentMana !== undefined) {
         (unit as any).currentMana = unitData.currentMana;

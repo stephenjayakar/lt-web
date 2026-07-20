@@ -284,12 +284,62 @@ export class FreeRoamState extends MapState {
     }
   }
 
+  /** Per-unit roam-AI bookkeeping: behaviour index + timers. */
+  private npcRoamState: Map<string, { idx: number; waitMs: number; stepMs: number }> = new Map();
+
+  private updateNpcRoamAi(game: any, dt: number): void {
+    for (const unit of game.units.values()) {
+      if (!unit.roamAi || !unit.position || unit.dead) continue;
+      if (unit.nid === game.roamInfo?.roamUnitNid) continue;
+      const aiDef = game.db.ai?.get?.(unit.roamAi);
+      const behaviours = aiDef?.behaviours ?? [];
+      if (behaviours.length === 0) continue;
+      let st = this.npcRoamState.get(unit.nid);
+      if (!st) { st = { idx: 0, waitMs: 0, stepMs: 0 }; this.npcRoamState.set(unit.nid, st); }
+      const b = behaviours[st.idx % behaviours.length];
+      if (!b || b.action === 'None') { st.idx++; continue; }
+      if (b.action === 'Wait') {
+        st.waitMs += dt * 1000;
+        const target = typeof b.target_spec === 'number' ? b.target_spec : 1000;
+        if (st.waitMs >= target) { st.waitMs = 0; st.idx++; }
+      } else if (b.action === 'Move_to') {
+        // Tile-step toward the behaviour's starting position target on a
+        // roam_speed-scaled cadence; other target kinds are deferred.
+        st.stepMs += dt * 1000;
+        const cadence = 400 * (100 / Math.max(1, b.roam_speed ?? 100));
+        if (st.stepMs < cadence) continue;
+        st.stepMs = 0;
+        const target = unit.startingPosition ?? null;
+        if (!target) { st.idx++; continue; }
+        const [ux, uy] = unit.position;
+        const [tx, ty] = target;
+        if (ux === tx && uy === ty) { st.idx++; continue; }
+        const dx = Math.sign(tx - ux);
+        const dy = dx === 0 ? Math.sign(ty - uy) : 0;
+        const nx = ux + dx, ny = uy + dy;
+        if (game.board && !game.board.getUnit(nx, ny) && game.board.checkBounds(nx, ny)) {
+          game.board.removeUnit(unit);
+          unit.position = [nx, ny];
+          game.board.setUnit(nx, ny, unit);
+        }
+      } else {
+        // Interact / Move_away_from etc. — deferred; skip to next behaviour.
+        st.idx++;
+      }
+    }
+  }
+
   override update(): StateResult {
     const game = getGame();
     if (!game || !this.movementComponent) return;
 
     const dt = game.frameDeltaMs / 1000;
     this.movementComponent.update(dt);
+
+    // NPC roam AI (Python free_roam_ai.FreeRoamAIHandler, simplified):
+    // supports Wait and Move_to behaviours, tile-stepped on a cadence rather
+    // than Python's pixel-smooth movement (documented deviation).
+    this.updateNpcRoamAi(game, dt);
 
     // Follow camera to roam unit's sub-tile position
     if (this.roamUnit?.position && this.movementComponent.roamPosition) {
