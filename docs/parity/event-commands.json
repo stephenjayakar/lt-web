@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 219,
-    "dispatcherPythonNids": 210,
+    "parserRecognizedPythonNids": 225,
+    "dispatcherPythonNids": 216,
     "itemReferencedComponentNids": 135,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 198,
+      "dispatched-unverified": 204,
       "missing-dispatch": 9,
-      "missing-parser": 36,
+      "missing-parser": 30,
       "stub-hint": 12
     }
   },
@@ -4983,12 +4983,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3427
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_library",
@@ -5005,12 +5005,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3431
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_guide",
@@ -5027,12 +5027,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3444
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_credits",
@@ -5053,12 +5053,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3457
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_unit_management",
@@ -5101,12 +5101,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3496
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_bexp_menu",
@@ -5192,12 +5192,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3554
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "location_card",
