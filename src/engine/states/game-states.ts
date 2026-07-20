@@ -8671,6 +8671,80 @@ export class EventState extends State {
         return false;
       }
 
+      case 'change_roaming': {
+        // change_roaming;bool (Python event_functions.py:3774): toggles free
+        // roam and resets the turnwheel's first free action like Python.
+        const enabled = (args[0] ?? '').toLowerCase() === 'true';
+        game.actionLog.setFirstFreeAction();
+        game.roamInfo.roam = enabled;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_roaming_unit': {
+        // change_roaming_unit;unit (Python :3778): missing unit clears roam unit
+        const unit = game.units.get(args[0] ?? '');
+        game.roamInfo.roamUnitNid = unit ? unit.nid : null;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'clean_up_roaming': {
+        // clean_up_roaming (Python :3785): removes every on-map unit except the
+        // roam unit (Python FadeOut -> off-map; explicitly not turnwheel-safe).
+        const roamNid = game.roamInfo?.roamUnitNid;
+        for (const unit of game.units.values()) {
+          if (unit.position && unit.nid !== roamNid) {
+            if (game.board) game.board.removeUnit(unit);
+            unit.position = null;
+          }
+        }
+        if (game.db.getConstant('initiative', false) && game.initiative) {
+          game.initiative.clear?.();
+          if (roamNid) game.initiative.insertUnit?.(roamNid);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'trigger_script':
+      case 'trigger_script_with_args': {
+        // trigger_script;Event;Unit1;Unit2 / trigger_script_with_args;Event;k=v,k=v
+        // (Python :3722/:3741): queues the named event and pauses this one.
+        const eventName = args[0] ?? '';
+        const trig: any = { type: eventName };
+        if (cmd.type === 'trigger_script') {
+          const unit1 = args[1] ? game.units.get(args[1]) : this.currentEvent?.trigger?.unit1;
+          const unit2 = args[2] ? game.units.get(args[2]) : this.currentEvent?.trigger?.unit2;
+          if (unit1) trig.unit1 = unit1;
+          if (unit2) trig.unit2 = unit2;
+        } else if (args[1]) {
+          trig.localArgs = new Map<string, any>(
+            args[1].split(',').map((pair: string) => {
+              const [k, ...rest] = pair.split('=');
+              return [k.trim(), rest.join('=').trim()] as [string, any];
+            }),
+          );
+        }
+        // Match by nid first, then by event name (Python get_by_nid_or_name).
+        let targetNid = eventName;
+        if (!game.db.events.has(targetNid)) {
+          const byName = [...game.db.events.values()].find(
+            (ev: any) => ev.name === eventName &&
+              (!ev.level_nid || ev.level_nid === game.currentLevel?.nid),
+          );
+          if (byName) targetNid = byName.nid;
+        }
+        this.advancePointer();
+        const queued = game.eventManager.triggerSpecific(targetNid, trig, true);
+        if (!queued) {
+          console.warn(`trigger_script: no valid event matching "${eventName}"`);
+          return false;
+        }
+        game.state.change('event');
+        return true;
+      }
+
       case 'records_screen': {
         // records_screen (Python event_functions.py:3427) — pause into records
         this.advancePointer();

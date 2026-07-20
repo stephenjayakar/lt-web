@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 3 — roaming + scripts (implemented solo):**
+  `change_roaming` (with Python's first-free-action turnwheel reset),
+  `change_roaming_unit` (missing unit clears), `clean_up_roaming` (off-maps
+  everyone but the roam unit; Python-documented as not turnwheel-safe;
+  initiative reseeded when enabled), and `trigger_script`/
+  `trigger_script_with_args` (nid-or-name lookup, unit1/unit2 context
+  inheritance, k=v local-args parsing, parent event pauses on a nested
+  EventState and resumes after). 4 regressions. `change_roam_ai` deferred:
+  the web has no NPC roam-AI dispatch, so `unit.roam_ai` would be dead state.
+
+
 - **Zero-usage command batch 2 — open_* menus (implemented solo):**
   `records_screen`, `open_library`/`open_guide` (gated on matching unlocked
   lore per Python; direct-entry deviation noted for the non-immediate
