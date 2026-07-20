@@ -74,6 +74,7 @@ import {
   BaseSoundRoomState,
   BaseBexpSelectState,
   BaseBexpAllocateState,
+  PartyTransferState,
   setBaseGameRef,
 } from './engine/states/base-state';
 import {
@@ -565,6 +566,7 @@ async function main(): Promise<void> {
     new BaseSoundRoomState(),
     new BaseBexpSelectState(),
     new BaseBexpAllocateState(),
+    new PartyTransferState(),
     new SettingsMenuState(),
     new MinimapState(),
     new TextEntryState(),

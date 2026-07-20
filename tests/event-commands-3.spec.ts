@@ -1105,3 +1105,55 @@ test.describe('Event command batch 3n (open_bexp_menu)', () => {
     expect(after.expUndone).toBe(alloc.expBefore);
   });
 });
+
+test.describe('Event command batch 3o (party_transfer)', () => {
+  test('party_transfer stages moves with limits/fixed units and applies reversibly', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { PartyObject } = await import('/src/engine/party.ts');
+      g.parties.set('Expedition', new PartyObject('Expedition', 'Expedition', 'Seth', 0, 0));
+      g.db.events.set('TestTransfer', {
+        name: 'TestTransfer', nid: 'TestTransfer', trigger: 'TestTransfer',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          `party_transfer;${g.currentParty};Expedition;Eirika;Main;Away;0;1`,
+          'game_var;after_transfer;yes',
+        ],
+      });
+      g.eventManager.triggerSpecific('TestTransfer', { type: 'TestTransfer' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 6);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name !== 'party_transfer') return { state: st?.name };
+      const fixedBlocked = st.moveUnit('Eirika');       // fixed: refused
+      const sethMoved = st.moveUnit('Seth');            // ok (limit 1)
+      const others = st.listFor(g.currentParty).filter((n: string) => !['Eirika', 'Seth'].includes(n));
+      const limitBlocked = others.length > 0 ? st.moveUnit(others[0]) : null; // over bottom limit
+      st.confirm();
+      return { state: 'party_transfer', fixedBlocked, sethMoved, limitBlocked };
+    });
+    expect(result.state).toBe('party_transfer');
+    expect(result.fixedBlocked).toBe(false);
+    expect(result.sethMoved).toBe(true);
+    if (result.limitBlocked !== null) expect(result.limitBlocked).toBe(false);
+    await stepFrames(page, 15);
+    const after = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const sethParty = g.units.get('Seth').party;
+      const eirikaParty = g.units.get('Eirika').party;
+      const afterVar = g.gameVars.get('after_transfer');
+      (window as any).__harness.turnwheelUndo();
+      const sethUndone = g.units.get('Seth').party;
+      return { sethParty, eirikaParty, afterVar, sethUndone };
+    });
+    expect(after.sethParty).toBe('Expedition');
+    expect(after.eirikaParty).not.toBe('Expedition');
+    expect(after.afterVar).toBe('yes');
+    expect(after.sethUndone).not.toBe('Expedition');
+  });
+});

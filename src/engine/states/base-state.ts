@@ -1829,3 +1829,123 @@ export class BaseBexpAllocateState extends State {
     return surf;
   }
 }
+
+// ============================================================================
+// PartyTransferState — Python party_transfer dual-roster reassignment
+// ============================================================================
+
+/** Reversible single-unit party reassignment used by the transfer confirm. */
+class SetUnitPartyAction {
+  private unit: any;
+  private next: string;
+  private prev = '';
+  constructor(unit: any, next: string) {
+    this.unit = unit;
+    this.next = next;
+  }
+  execute(): void { this.prev = this.unit.party; this.unit.party = this.next; }
+  reverse(): void { this.unit.party = this.prev; }
+}
+
+export class PartyTransferState extends State {
+  readonly name = 'party_transfer';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private topParty = '';
+  private bottomParty = '';
+  private fixedNids: Set<string> = new Set();
+  private topName = '';
+  private bottomName = '';
+  private topLimit = 0;
+  private bottomLimit = 0;
+  /** Staged assignment: unitNid -> party nid (harness-visible). */
+  staged: Map<string, string> = new Map();
+  private cursorList: 'top' | 'bottom' = 'top';
+  private cursorIdx = 0;
+
+  override start(): StateResult {
+    const game = getGame();
+    const params = game.memory.get('party_transfer') ?? [];
+    const [top, bottom, fixed, topName, bottomName, topLimit, bottomLimit] = params;
+    this.topParty = top ?? '';
+    this.bottomParty = bottom ?? '';
+    this.fixedNids = new Set<string>(fixed ?? []);
+    this.topName = topName || this.topParty;
+    this.bottomName = bottomName || this.bottomParty;
+    this.topLimit = topLimit ?? 0;
+    this.bottomLimit = bottomLimit ?? 0;
+    this.staged = new Map();
+    for (const unit of game.units.values()) {
+      if (unit.party === this.topParty || unit.party === this.bottomParty) {
+        this.staged.set(unit.nid, unit.party);
+      }
+    }
+  }
+
+  /** Units currently staged for a side, in registry order. */
+  listFor(party: string): string[] {
+    return [...this.staged.entries()].filter(([, p]) => p === party).map(([nid]) => nid);
+  }
+
+  /** Toggle a unit's staged party; enforces fixed units and side limits.
+   * Returns whether the move applied (harness-callable). */
+  moveUnit(nid: string): boolean {
+    if (this.fixedNids.has(nid) || !this.staged.has(nid)) return false;
+    const from = this.staged.get(nid)!;
+    const to = from === this.topParty ? this.bottomParty : this.topParty;
+    const limit = to === this.topParty ? this.topLimit : this.bottomLimit;
+    if (limit > 0 && this.listFor(to).length >= limit) return false;
+    this.staged.set(nid, to);
+    return true;
+  }
+
+  /** Apply all staged reassignments reversibly and exit (harness-callable). */
+  confirm(): void {
+    const game = getGame();
+    for (const [nid, party] of this.staged) {
+      const unit = game.units.get(nid);
+      if (unit && unit.party !== party) {
+        game.actionLog.doAction(new SetUnitPartyAction(unit, party) as any);
+      }
+    }
+    game.state.back();
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    const list = this.listFor(this.cursorList === 'top' ? this.topParty : this.bottomParty);
+    if (event === 'UP') {
+      this.cursorIdx = Math.max(0, this.cursorIdx - 1);
+    } else if (event === 'DOWN') {
+      this.cursorIdx = Math.min(Math.max(0, list.length - 1), this.cursorIdx + 1);
+    } else if (event === 'LEFT' || event === 'RIGHT') {
+      this.cursorList = this.cursorList === 'top' ? 'bottom' : 'top';
+      this.cursorIdx = 0;
+    } else if (event === 'SELECT') {
+      const nid = list[this.cursorIdx];
+      if (nid) this.moveUnit(nid);
+    } else if (event === 'START') {
+      this.confirm();
+    } else if (event === 'BACK') {
+      game.state.back(); // cancel: staged changes discarded
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.94)');
+    const half = Math.floor(viewport.height / 2);
+    const drawList = (party: string, label: string, y0: number, active: boolean) => {
+      surf.drawText(`${label} (${this.listFor(party).length})`, 8, y0, active ? 'rgba(220,200,128,1)' : 'white', '8px monospace');
+      this.listFor(party).slice(0, 6).forEach((nid, i) => {
+        const marker = active && i === this.cursorIdx ? '>' : ' ';
+        const fixed = this.fixedNids.has(nid) ? ' *' : '';
+        surf.drawText(`${marker}${nid}${fixed}`, 12, y0 + 12 + i * 10, 'white', '7px monospace');
+      });
+    };
+    drawList(this.topParty, this.topName, 6, this.cursorList === 'top');
+    drawList(this.bottomParty, this.bottomName, half + 2, this.cursorList === 'bottom');
+    surf.drawText('Select: move / Start: confirm / Back: cancel', 8, viewport.height - 12, 'rgba(160,160,200,1)', '6px monospace');
+    return surf;
+  }
+}

@@ -179,6 +179,15 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 15 — party_transfer (implemented solo):** new
+  reachable `party_transfer` dual-roster state with staged reassignment,
+  fixed-unit locks, per-side limits (0 = unlimited), cursor navigation,
+  cancel-discard, and confirm applying reversible per-unit party
+  reassignments before resuming the event. 1 end-to-end regression
+  (fixed/limit refusals, apply, resume, undo). Parser 253/255; final 2:
+  open_unit_management and change_roam_ai (roam-AI dispatch).
+
+
 - **Zero-usage command batch 14 — open_bexp_menu + BEXP states (implemented
   solo):** new reachable `base_bexp_select` (party roster with Python's
   maxed/auto-promote exclusion) and `base_bexp_allocate` (stage EXP with
