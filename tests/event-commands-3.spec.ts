@@ -221,3 +221,120 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
     expect(loadedAfter).toBe(false);
   });
 });
+
+test.describe('Event command batch 3b (open_* menu commands)', () => {
+  test('records_screen pauses into base_records and resumes on close', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestRecords', {
+        name: 'TestRecords', nid: 'TestRecords', trigger: 'TestRecords',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['records_screen', 'game_var;after_records;yes'],
+      });
+      g.eventManager.triggerSpecific('TestRecords', { type: 'TestRecords' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 8);
+    const mid = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
+    expect(mid).toBe('base_records');
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 20);
+    const after = await page.evaluate(() => (window as any).__gameRef.gameVars.get('after_records'));
+    expect(after).toBe('yes');
+  });
+
+  test('open_library gates on unlocked non-guide lore', async ({ page }) => {
+    await boot(page);
+    // Without unlocked lore, the command no-ops and the event continues.
+    await runEvent(page, 'TestLibNoLore', ['open_library', 'game_var;lib_skipped;yes']);
+    const skipped = await page.evaluate(() => (window as any).__gameRef.gameVars.get('lib_skipped'));
+    expect(skipped).toBe('yes');
+    // Unlock a non-guide lore entry, then the state opens.
+    const opened = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const lore = [...(g.db.lore?.values?.() ?? [])].find((l: any) => l.category !== 'Guide');
+      if (!lore) return 'no-lore-in-db';
+      g.unlockedLore.push(lore.nid);
+      g.db.events.set('TestLib2', {
+        name: 'TestLib2', nid: 'TestLib2', trigger: 'TestLib2',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['open_library'],
+      });
+      g.eventManager.triggerSpecific('TestLib2', { type: 'TestLib2' }, true);
+      g.state.change('event');
+      return 'ok';
+    });
+    expect(opened).toBe('ok');
+    await stepFrames(page, 8);
+    const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
+    expect(state).toBe('base_library');
+  });
+
+  test('open_credits pauses into the credit state', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestCredits', {
+        name: 'TestCredits', nid: 'TestCredits', trigger: 'TestCredits',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['open_credits;default_background'],
+      });
+      g.eventManager.triggerSpecific('TestCredits', { type: 'TestCredits' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 8);
+    const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
+    expect(state).toBe('credit');
+  });
+
+  test('soundroom pauses into base_sound_room', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestSoundroomPre', ['game_var;pre_sound;yes']);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestSoundroom', {
+        name: 'TestSoundroom', nid: 'TestSoundroom', trigger: 'TestSoundroom',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['soundroom'],
+      });
+      g.eventManager.triggerSpecific('TestSoundroom', { type: 'TestSoundroom' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 8);
+    const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
+    expect(state).toBe('base_sound_room');
+  });
+
+  test('open_trade enters direct item trading between two named units', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestTrade', {
+        name: 'TestTrade', nid: 'TestTrade', trigger: 'TestTrade',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['open_trade;Eirika;Seth'],
+      });
+      g.eventManager.triggerSpecific('TestTrade', { type: 'TestTrade' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 8);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        state: st?.name,
+        phase: st?.phase ?? null,
+        partner: st?.tradePartner?.nid ?? null,
+      };
+    });
+    expect(result.state).toBe('trade');
+    expect(result.phase).toBe('select_items');
+    expect(result.partner).toBe('Seth');
+  });
+});

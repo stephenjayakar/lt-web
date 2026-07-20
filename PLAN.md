@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 2 — open_* menus (implemented solo):**
+  `records_screen`, `open_library`/`open_guide` (gated on matching unlocked
+  lore per Python; direct-entry deviation noted for the non-immediate
+  transition variant), `open_credits`, `soundroom`, and `open_trade`
+  (direct two-unit trade via a new `trade_partner` memory handoff into
+  `TradeState`, bypassing the adjacency menu like Python). 5 regressions
+  added to `tests/event-commands-3.spec.ts`. `open_unit_management` and
+  `open_bexp_menu` remain parser-missing (no unit-management state; BEXP
+  disabled in bundled projects).
+
+
 - **Zero-usage command batch 1 (implemented solo):** `set_skill_data` (reversible
   `SetSkillDataAction`), `set_mode_rng`/`set_mode_autolevels` (validated
   DifficultyModeObject fields incl. hidden/boss routing), `show_minimap`

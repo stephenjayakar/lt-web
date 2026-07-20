@@ -83,6 +83,7 @@ export type EventCommandType =
   | 'add_unit' | 'move_unit' | 'remove_unit' | 'kill_unit' | 'remove_all_units' | 'remove_all_enemies'
   | 'interact_unit' | 'resurrect' | 'set_position'
   | 'set_skill_data' | 'set_mode_rng' | 'set_mode_autolevels' | 'show_minimap'
+  | 'records_screen' | 'open_library' | 'open_guide' | 'open_credits' | 'soundroom' | 'open_trade'
   | 'set_game_board_bounds' | 'remove_game_board_bounds' | 'dump_vars' | 'delete_save'
   // Modify unit properties
   | 'set_name' | 'set_current_hp' | 'set_current_mana'
@@ -183,6 +184,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
   'interact_unit', 'resurrect', 'set_position',
   'set_skill_data', 'set_mode_rng', 'set_mode_autolevels', 'show_minimap',
+  'records_screen', 'open_library', 'open_guide', 'open_credits', 'soundroom', 'open_trade',
   'set_game_board_bounds', 'remove_game_board_bounds', 'dump_vars', 'delete_save',
   // Modify unit properties
   'set_name', 'set_variant', 'set_current_hp', 'set_current_mana',

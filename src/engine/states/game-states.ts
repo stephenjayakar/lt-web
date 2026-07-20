@@ -3264,7 +3264,23 @@ export class TradeState extends State {
   override begin(): StateResult {
     const game = getGame();
     const unit: UnitObject = game.selectedUnit;
-    if (!unit || !unit.position) {
+    if (!unit) {
+      game.state.back();
+      return;
+    }
+
+    // Python's open_trade event command trades two explicit units directly,
+    // bypassing the adjacency/partner menu.
+    const forcedPartner = game.memory?.get?.('trade_partner');
+    if (forcedPartner) {
+      game.memory.delete('trade_partner');
+      this.tradePartner = forcedPartner;
+      this.buildItemMenus(unit);
+      this.phase = 'select_items';
+      return;
+    }
+
+    if (!unit.position) {
       game.state.back();
       return;
     }
@@ -8653,6 +8669,60 @@ export class EventState extends State {
 
         this.advancePointer();
         return false;
+      }
+
+      case 'records_screen': {
+        // records_screen (Python event_functions.py:3427) — pause into records
+        this.advancePointer();
+        game.state.change('base_records');
+        return true;
+      }
+
+      case 'open_library':
+      case 'open_guide': {
+        // Python (:3431/:3444): only opens when matching unlocked lore exists.
+        // Web deviation: 'immediate' vs transition-deferred entry both enter
+        // directly (no transition-state indirection in this port).
+        const wantGuide = cmd.type === 'open_guide';
+        const unlocked: Set<string> = new Set(game.unlockedLore ?? []);
+        const hasMatching = [...(game.db.lore?.values?.() ?? [])].some(
+          (lore: any) => unlocked.has(lore.nid) && (lore.category === 'Guide') === wantGuide,
+        );
+        this.advancePointer();
+        if (!hasMatching) return false;
+        game.state.change(wantGuide ? 'base_guide' : 'base_library');
+        return true;
+      }
+
+      case 'open_credits': {
+        // open_credits;Panorama;flags (Python :3457) — pause into the credit state
+        if (args[0]) game.memory.set('base_bg', args[0]);
+        this.advancePointer();
+        game.state.change('credit');
+        return true;
+      }
+
+      case 'soundroom': {
+        // soundroom;Panorama (Python :3554) — pause into the sound room
+        if (args[0]) game.memory.set('base_bg', args[0]);
+        this.advancePointer();
+        game.state.change('base_sound_room');
+        return true;
+      }
+
+      case 'open_trade': {
+        // open_trade;Unit1;Unit2 (Python :3496) — direct trade between two units
+        const unitA = game.units.get(args[0] ?? '');
+        const unitB = game.units.get(args[1] ?? '');
+        this.advancePointer();
+        if (!unitA || !unitB) {
+          console.warn(`open_trade: could not find unit ${!unitA ? args[0] : args[1]}`);
+          return false;
+        }
+        game.selectedUnit = unitA;
+        game.memory.set('trade_partner', unitB);
+        game.state.change('trade');
+        return true;
       }
 
       case 'set_skill_data': {
