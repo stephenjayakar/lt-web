@@ -1195,6 +1195,56 @@ export class LeaveMapAction extends Action {
   }
 }
 
+/** AddAnimToUnitAction / RemoveAnimFromUnitAction - Python action.py
+ * AddAnimToUnit/RemoveAnimFromUnit: a permanent looping map animation
+ * attached to (following) a unit, reversibly. Runtime-only like Python. */
+export class AddAnimToUnitAction extends Action {
+  private game: any;
+  private anim: any;
+  constructor(game: any, anim: any) {
+    super();
+    this.game = game;
+    this.anim = anim;
+  }
+  execute(): void {
+    if (this.game.tilemap && !this.game.tilemap.animations.includes(this.anim)) {
+      this.anim.done = false;
+      this.game.tilemap.animations.push(this.anim);
+    }
+  }
+  reverse(): void {
+    if (this.game.tilemap) {
+      const idx = this.game.tilemap.animations.indexOf(this.anim);
+      if (idx !== -1) this.game.tilemap.animations.splice(idx, 1);
+    }
+  }
+}
+
+export class RemoveAnimFromUnitAction extends Action {
+  private game: any;
+  private animNid: string;
+  private unit: any;
+  private removed: any[] = [];
+  constructor(game: any, animNid: string, unit: any) {
+    super();
+    this.game = game;
+    this.animNid = animNid;
+    this.unit = unit;
+  }
+  execute(): void {
+    if (!this.game.tilemap) return;
+    this.removed = this.game.tilemap.animations.filter(
+      (a: any) => a.nid === this.animNid && a.followUnit === this.unit,
+    );
+    this.game.tilemap.animations = this.game.tilemap.animations.filter(
+      (a: any) => !this.removed.includes(a),
+    );
+  }
+  reverse(): void {
+    if (this.game.tilemap) this.game.tilemap.animations.push(...this.removed);
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;

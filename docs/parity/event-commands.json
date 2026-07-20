@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 241,
-    "dispatcherPythonNids": 232,
+    "parserRecognizedPythonNids": 243,
+    "dispatcherPythonNids": 234,
     "itemReferencedComponentNids": 135,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 220,
+      "dispatched-unverified": 222,
       "missing-dispatch": 9,
-      "missing-parser": 14,
+      "missing-parser": 12,
       "stub-hint": 12
     }
   },
@@ -4469,12 +4469,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2830
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "remove_unit_map_anim",
@@ -4492,12 +4492,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2857
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "merge_parties",

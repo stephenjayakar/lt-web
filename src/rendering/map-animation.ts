@@ -57,6 +57,16 @@ export class MapAnimation {
   loop: boolean;
   hold: boolean;
 
+  /** When set, the animation re-centers on this unit's tile every update
+   * (Python add_unit_map_anim attachment). */
+  followUnit: { position: [number, number] | null } | null = null;
+
+  /** Re-center pixel position on a tile (used by followUnit tracking). */
+  setTilePosition(tileX: number, tileY: number): void {
+    this.x = tileX * 16 + 8 - this.frameWidth / 2;
+    this.y = tileY * 16 + 8 - this.frameHeight / 2;
+  }
+
   constructor(
     prefab: MapAnimPrefab,
     tileX: number,
