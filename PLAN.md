@@ -179,6 +179,19 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 6 — fatigue + region generics (implemented
+  solo):** `add_fatigue` with a new `UnitObject.currentFatigue` field
+  (reversible `ChangeFatigueAction` clamped at 0, save/load persistence —
+  closes the previously non-applicable `current_fatigue` save-field row) and
+  `remove_generics_from_region` (region-rectangle sweep off-mapping generics
+  via a reversible `LeaveMapAction`, named units untouched). 2 regressions
+  covering floor/undo/round-trip and region-scoped removal with undo.
+  Remaining parser-missing commands (~14) are all blocked on absent
+  subsystems (map-anim overlays, formation/unit-management/BEXP UI, team
+  palettes, pose sprites, time regions, tilemap swap, custom options,
+  party_transfer UI) — each strict-mode loud-fails with documented reasons.
+
+
 - **Zero-usage command batch 5 — party/generic/loop (implemented solo):**
   `recruit_generic` (reversible persistent conversion with registry re-key,
   name set, exact undo), `merge_parties` (reversible composite moving units,

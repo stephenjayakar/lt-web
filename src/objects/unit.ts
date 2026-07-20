@@ -70,6 +70,9 @@ export class UnitObject {
   equippedWeapon: ItemObject | null = null;
   /** Tracked equipped accessory (Python `equipped_accessory`). */
   equippedAccessory: ItemObject | null = null;
+  /** Fatigue accumulator (Python `current_fatigue`); only meaningful when the
+   * project enables the fatigue constant. */
+  currentFatigue: number = 0;
   skills: SkillObject[];
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;

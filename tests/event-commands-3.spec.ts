@@ -615,3 +615,69 @@ test.describe('Event command batch 3e (recruit_generic, merge_parties, loop_unit
     expect(vars.seth).toBe('yes');
   });
 });
+
+test.describe('Event command batch 3f (fatigue + region generics)', () => {
+  test('add_fatigue accumulates with floor 0, undoes, and persists', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestFatigue', [
+      'add_fatigue;Eirika;5',
+      'add_fatigue;Eirika;-99',
+      'add_fatigue;Eirika;3',
+    ]);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      const now = g.units.get('Eirika').currentFatigue;
+      // Undo against the live action log first (undoing after a snapshot
+      // restore would target stale pre-restore objects).
+      h.turnwheelUndo();
+      const afterUndo = g.units.get('Eirika').currentFatigue;
+      // Then prove save/load round-trips the field.
+      g.units.get('Eirika').currentFatigue = 7;
+      const snap = h.saveSnapshot();
+      g.units.get('Eirika').currentFatigue = 0;
+      await h.loadSnapshot(snap);
+      const restored = g.units.get('Eirika').currentFatigue;
+      return { now, afterUndo, restored };
+    });
+    expect(result.now).toBe(3);       // 5 -> floor 0 -> +3
+    expect(result.afterUndo).toBe(0); // undo the +3 back to the floored 0
+    expect(result.restored).toBe(7);
+  });
+
+  test('remove_generics_from_region off-maps generics inside the region only', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      // Place one generic inside a synthetic region and Eirika inside it too.
+      const generic = [...g.units.values()].find((u: any) => u.generic && u.position);
+      if (!generic) return null;
+      g.board.removeUnit(generic);
+      generic.position = [2, 2];
+      g.board.setUnit(2, 2, generic);
+      const eirika = g.units.get('Eirika');
+      g.board.removeUnit(eirika);
+      eirika.position = [3, 2];
+      g.board.setUnit(3, 2, eirika);
+      g.currentLevel.regions.push({
+        nid: 'TestZone', region_type: 'normal', position: [2, 2], size: [2, 1],
+        sub_nid: '', condition: 'True', only_once: false, interrupt_move: false,
+      });
+      return { genericNid: generic.nid };
+    });
+    expect(setup).not.toBeNull();
+    await runEvent(page, 'TestRemoveGenerics', ['remove_generics_from_region;TestZone']);
+    const result = await page.evaluate((genericNid: string) => {
+      const g = (window as any).__gameRef;
+      const genericPos = g.units.get(genericNid)?.position ?? null;
+      const eirikaPos = g.units.get('Eirika').position;
+      const undone = (window as any).__harness.turnwheelUndo();
+      const restoredPos = g.units.get(genericNid)?.position ?? null;
+      return { genericPos, eirikaPos, undone, restoredPos };
+    }, setup!.genericNid);
+    expect(result.genericPos).toBeNull();      // generic removed
+    expect(result.eirikaPos).toEqual([3, 2]);  // named unit untouched
+    expect(result.undone).toBe(true);
+    expect(result.restoredPos).toEqual([2, 2]);
+  });
+});

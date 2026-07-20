@@ -1153,6 +1153,48 @@ export class MergePartiesAction extends Action {
   }
 }
 
+/** ChangeFatigueAction - Python action.ChangeFatigue (clamped at >= 0). */
+export class ChangeFatigueAction extends Action {
+  private unit: any;
+  private amount: number;
+  private old = 0;
+  constructor(unit: any, amount: number) {
+    super();
+    this.unit = unit;
+    this.amount = amount;
+  }
+  execute(): void {
+    this.old = this.unit.currentFatigue ?? 0;
+    this.unit.currentFatigue = Math.max(0, this.old + this.amount);
+  }
+  reverse(): void {
+    this.unit.currentFatigue = this.old;
+  }
+}
+
+/** LeaveMapAction - Python action.LeaveMap: clears position, restores exactly. */
+export class LeaveMapAction extends Action {
+  private game: any;
+  private unit: any;
+  private oldPos: [number, number] | null = null;
+  constructor(game: any, unit: any) {
+    super();
+    this.game = game;
+    this.unit = unit;
+  }
+  execute(): void {
+    this.oldPos = this.unit.position ? [...this.unit.position] as [number, number] : null;
+    if (this.oldPos && this.game.board) this.game.board.removeUnit(this.unit);
+    this.unit.position = null;
+  }
+  reverse(): void {
+    if (this.oldPos) {
+      this.unit.position = this.oldPos;
+      if (this.game.board) this.game.board.setUnit(this.oldPos[0], this.oldPos[1], this.unit);
+    }
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;
