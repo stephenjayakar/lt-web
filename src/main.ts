@@ -362,7 +362,11 @@ function logUnknownComponents(db: Database): void {
   // Log summary if any unknown components found
   const allUnknown = [...unknownItemComponents, ...unknownSkillComponents].sort();
   if (allUnknown.length > 0) {
-    console.log(`[ComponentInventory] Found ${allUnknown.length} unrecognized components: ${allUnknown.join(', ')}`);
+    // The known-set below only tracks exported hook functions; many components
+  // are implemented via direct getComponent() reads (see docs/parity/
+  // resolve-policies.md and the audit's 'consumed' status), so absence here is
+  // NOT an unimplemented claim. Kept at debug level to avoid misleading noise.
+  console.debug(`[ComponentInventory] ${allUnknown.length} component nids without exported hook functions (may be implemented via direct reads): ${allUnknown.join(', ')}`);
   }
 }
 

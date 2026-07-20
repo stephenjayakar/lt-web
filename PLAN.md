@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 12 — set_custom_options (implemented solo):**
+  Python's four reversible game-var writes plus full consumption: the free
+  option menu inserts custom entries before 'Options' (disabled per
+  `_custom_options_disabled`) and selecting one fires its configured event.
+  Also demoted the misleading runtime ComponentInventory log to debug with
+  an honest caption (its hook-export known-set cannot see direct-read
+  implementations). 1 regression (vars + menu insertion + event firing +
+  disabled gating). Parser 250/255; the final 5 are UI subsystem builds
+  (unit management, BEXP, party_transfer, pose sprites, roam-AI dispatch).
+
+
 - **Zero-usage command batch 11 — change_team_palette (implemented solo):**
   runtime team-palette overrides (`GameState.teamPaletteOverrides` with
   `getTeamPalette`/`getTeamCombatColor` helpers consulted ahead of DB team
