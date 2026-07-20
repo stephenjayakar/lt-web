@@ -179,6 +179,16 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 13 — pose_unit (implemented solo):** per-unit
+  `poseOverride` applied set-then-draw in both renderers so cache-shared
+  MapSprite instances stay correct; Python pose mapping (normal clears,
+  active stands, moving/stand_dir require a validated direction;
+  start_cast/end_cast deferred — no cast frames in web map sprites).
+  1 regression (set/validate/clear/deferred-warn). Parser 251/255; the
+  final 4 are large UI builds (unit management, BEXP menu, party_transfer
+  roster, roam-AI dispatch).
+
+
 - **Zero-usage command batch 12 — set_custom_options (implemented solo):**
   Python's four reversible game-var writes plus full consumption: the free
   option menu inserts custom entries before 'Options' (disabled per

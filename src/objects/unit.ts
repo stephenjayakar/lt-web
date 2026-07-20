@@ -73,6 +73,10 @@ export class UnitObject {
   /** Fatigue accumulator (Python `current_fatigue`); only meaningful when the
    * project enables the fatigue constant. */
   currentFatigue: number = 0;
+  /** Sprite pose override from the pose_unit event command
+   * (Python actor.sprite.change_state): applied set-then-draw per frame so
+   * cache-shared sprites stay correct. Null = normal state driving. */
+  poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null = null;
   skills: SkillObject[];
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;

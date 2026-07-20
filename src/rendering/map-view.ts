@@ -267,7 +267,12 @@ export class MapView {
         // The sprite does its own anchor offset calculation internally.
         // Finished units use the 'gray' sprite state (pre-rendered desaturated
         // frames), so no additional overlay is needed.
-        const sprite = unit.sprite as { draw: (s: Surface, wx: number, wy: number, ox: number, oy: number) => void };
+        const sprite = unit.sprite as any;
+        const pose = (unit as any).poseOverride;
+        if (pose) {
+          sprite.state = pose.state;
+          if (pose.direction) sprite.direction = pose.direction;
+        }
         sprite.draw(surf, worldX, worldY, offsetX, offsetY);
       } else {
         // Fallback: draw a colored rectangle placeholder
