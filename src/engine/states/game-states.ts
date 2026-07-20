@@ -90,6 +90,8 @@ import {
   AddObjComponentAction,
   ModifyObjComponentAction,
   RemoveObjComponentAction,
+  RecruitGenericAction,
+  MergePartiesAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8672,6 +8674,69 @@ export class EventState extends State {
 
         this.advancePointer();
         return false;
+      }
+
+      case 'recruit_generic': {
+        // recruit_generic;Unit;Nid;Name (Python event_functions.py:1255):
+        // converts a generic to a persistent named unit with a new nid.
+        const unit = game.units.get(args[0] ?? '');
+        const newNid = args[1] ?? '';
+        if (!unit || !newNid) {
+          console.warn(`recruit_generic: invalid unit/nid (${args.join(';')})`);
+        } else if (game.units.has(newNid)) {
+          console.warn(`recruit_generic: nid ${newNid} already exists`);
+        } else {
+          game.actionLog.doAction(new RecruitGenericAction(game, unit, newNid, args[2] ?? null));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'merge_parties': {
+        // merge_parties;Party1;Party2 (Python :2864): guest merges into host.
+        const [host, guest] = [args[0] ?? '', args[1] ?? ''];
+        if (!game.parties.has(host) || !game.parties.has(guest)) {
+          console.warn(`merge_parties: could not locate party ${!game.parties.has(host) ? host : guest}`);
+        } else {
+          game.actionLog.doAction(new MergePartiesAction(game, host, guest));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'loop_units': {
+        // loop_units;Expression;Event (Python :3755): runs Event once per unit
+        // nid, in order, before this event resumes. Web deviation: the
+        // expression supports a comma-separated nid list or an expression
+        // evaluating to an array/comma-list via evaluateExpression, not
+        // arbitrary Python comprehensions.
+        const rawExpr = args[0] ?? '';
+        const eventName = args[1] ?? '';
+        let list: any = evaluateExpression(rawExpr, this.buildConditionContext());
+        // Fall back to treating the raw text as a comma-separated nid list when
+        // the expression evaluator can't produce a string/array from it.
+        if (list == null || (typeof list !== 'string' && !Array.isArray(list))) list = rawExpr;
+        if (typeof list === 'string') list = list.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (!Array.isArray(list) || list.length === 0) {
+          console.warn(`loop_units: no units for expression "${rawExpr}"`);
+          this.advancePointer();
+          return false;
+        }
+        this.advancePointer();
+        let queuedAny = false;
+        for (const entry of list) {
+          const nid = typeof entry === 'string' ? entry : entry?.nid;
+          const unit = game.units.get(nid);
+          const trig: any = { type: eventName };
+          if (unit) trig.unit1 = unit;
+          if (game.eventManager.triggerSpecific(eventName, trig, true)) queuedAny = true;
+        }
+        if (!queuedAny) {
+          console.warn(`loop_units: event "${eventName}" not found`);
+          return false;
+        }
+        game.state.change('event');
+        return true;
       }
 
       case 'add_item_component':

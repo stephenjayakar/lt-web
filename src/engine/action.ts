@@ -1048,6 +1048,111 @@ export class RemoveObjComponentAction extends Action {
   }
 }
 
+/**
+ * RecruitGenericAction - Python recruit_generic's composite (SetPersistent +
+ * SetNid + SetName + owner re-keys). The web registry keys units by nid, so
+ * the nid change re-keys game.units; item owner references are live object
+ * refs and need no re-keying.
+ */
+export class RecruitGenericAction extends Action {
+  private game: any;
+  private unit: any;
+  private newNid: string;
+  private newName: string | null;
+  private oldNid = '';
+  private oldName = '';
+  private oldPersistent = false;
+
+  constructor(game: any, unit: any, newNid: string, newName: string | null) {
+    super();
+    this.game = game;
+    this.unit = unit;
+    this.newNid = newNid;
+    this.newName = newName;
+  }
+
+  execute(): void {
+    this.oldNid = this.unit.nid;
+    this.oldName = this.unit.name;
+    this.oldPersistent = this.unit.persistent;
+    this.unit.persistent = true;
+    (this.unit as any).nid = this.newNid;
+    if (this.newName) (this.unit as any).name = this.newName;
+    this.game.units.delete(this.oldNid);
+    this.game.units.set(this.newNid, this.unit);
+  }
+
+  reverse(): void {
+    this.game.units.delete(this.newNid);
+    (this.unit as any).nid = this.oldNid;
+    (this.unit as any).name = this.oldName;
+    this.unit.persistent = this.oldPersistent;
+    this.game.units.set(this.oldNid, this.unit);
+  }
+}
+
+/**
+ * MergePartiesAction - Python merge_parties composite: guest units move to the
+ * host party; guest convoy/money/bexp transfer to host. Exact reverse.
+ */
+export class MergePartiesAction extends Action {
+  private game: any;
+  private hostNid: string;
+  private guestNid: string;
+  private movedUnitNids: string[] = [];
+  private movedItems: any[] = [];
+  private movedMoney = 0;
+  private movedBexp = 0;
+
+  constructor(game: any, hostNid: string, guestNid: string) {
+    super();
+    this.game = game;
+    this.hostNid = hostNid;
+    this.guestNid = guestNid;
+  }
+
+  execute(): void {
+    const host = this.game.parties.get(this.hostNid);
+    const guest = this.game.parties.get(this.guestNid);
+    if (!host || !guest) return;
+    this.movedUnitNids = [];
+    for (const unit of this.game.units.values()) {
+      if (unit.party === this.guestNid) {
+        unit.party = this.hostNid;
+        this.movedUnitNids.push(unit.nid);
+      }
+    }
+    this.movedItems = [...guest.convoy];
+    for (const item of this.movedItems) host.convoy.push(item);
+    guest.convoy.length = 0;
+    this.movedMoney = guest.money;
+    this.movedBexp = guest.bexp;
+    host.money += this.movedMoney;
+    guest.money = 0;
+    host.bexp += this.movedBexp;
+    guest.bexp = 0;
+  }
+
+  reverse(): void {
+    const host = this.game.parties.get(this.hostNid);
+    const guest = this.game.parties.get(this.guestNid);
+    if (!host || !guest) return;
+    for (const nid of this.movedUnitNids) {
+      const unit = this.game.units.get(nid);
+      if (unit) unit.party = this.guestNid;
+    }
+    for (const item of this.movedItems) {
+      const idx = host.convoy.indexOf(item);
+      if (idx !== -1) host.convoy.splice(idx, 1);
+      guest.convoy.push(item);
+    }
+    host.money -= this.movedMoney;
+    guest.money += this.movedMoney;
+    host.bexp -= this.movedBexp;
+    guest.bexp += this.movedBexp;
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;
