@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 5 — party/generic/loop (implemented solo):**
+  `recruit_generic` (reversible persistent conversion with registry re-key,
+  name set, exact undo), `merge_parties` (reversible composite moving units,
+  convoy, money, and BEXP guest->host with exact reverse), and `loop_units`
+  (expression or comma-list of nids; queues the target event once per unit
+  in order on nested EventStates, then resumes the parent; arbitrary Python
+  comprehensions remain a documented deviation). 3 regressions incl. the
+  merge round-trip and per-unit loop-body execution. `party_transfer` stays
+  deferred (interactive dual-roster UI).
+
+
 - **Zero-usage command batch 4 — component modification (implemented solo):**
   `add/modify/remove_item_component` and `add/modify/remove_skill_component`
   via a shared reversible action trio over the runtime component Maps

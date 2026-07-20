@@ -498,3 +498,120 @@ test.describe('Event command batch 3d (component modification)', () => {
     expect(removed).toBe(true);
   });
 });
+
+test.describe('Event command batch 3e (recruit_generic, merge_parties, loop_units)', () => {
+  test('recruit_generic converts a generic to a persistent named unit reversibly', async ({ page }) => {
+    await boot(page);
+    const genericNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const generic = [...g.units.values()].find((u: any) => u.generic);
+      return generic?.nid ?? null;
+    });
+    expect(genericNid).not.toBeNull();
+    await runEvent(page, 'TestRecruitGen', [
+      `recruit_generic;${genericNid};Rebecca;Rebecca`,
+    ]);
+    const result = await page.evaluate((oldNid: string) => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Rebecca');
+      const state = unit ? {
+        exists: true, name: unit.name, persistent: unit.persistent,
+        oldGone: !g.units.has(oldNid),
+      } : { exists: false };
+      const undone = (window as any).__harness.turnwheelUndo();
+      return {
+        ...state, undone,
+        restoredOld: g.units.has(oldNid),
+        newGone: !g.units.has('Rebecca'),
+      };
+    }, genericNid);
+    expect(result.exists).toBe(true);
+    expect(result.name).toBe('Rebecca');
+    expect(result.persistent).toBe(true);
+    expect(result.oldGone).toBe(true);
+    expect(result.undone).toBe(true);
+    expect(result.restoredOld).toBe(true);
+    expect(result.newGone).toBe(true);
+  });
+
+  test('merge_parties moves units, convoy, money, and bexp reversibly', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { PartyObject } = await import('/src/engine/party.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const hostNid = [...g.parties.keys()][0];
+      const guest = new PartyObject('GuestParty', 'Guests', 'Seth', 500, 30);
+      const prefab = g.db.items.get('Iron_Sword') ?? [...g.db.items.values()][0];
+      guest.convoy.push(new ItemObject(prefab));
+      g.parties.set('GuestParty', guest);
+      const seth = g.units.get('Seth');
+      seth.party = 'GuestParty';
+      const host = g.parties.get(hostNid);
+      return { hostNid, hostMoney: host.money, hostConvoy: host.convoy.length };
+    });
+    await runEvent(page, 'TestMerge', [`merge_parties;${setup.hostNid};GuestParty`]);
+    const merged = await page.evaluate((s: any) => {
+      const g = (window as any).__gameRef;
+      const host = g.parties.get(s.hostNid);
+      const guest = g.parties.get('GuestParty');
+      return {
+        sethParty: g.units.get('Seth').party,
+        hostMoney: host.money, guestMoney: guest.money,
+        hostConvoyGain: host.convoy.length - s.hostConvoy,
+        guestConvoy: guest.convoy.length,
+        hostBexp: host.bexp,
+      };
+    }, setup);
+    expect(merged.sethParty).toBe(setup.hostNid);
+    expect(merged.hostMoney).toBe(setup.hostMoney + 500);
+    expect(merged.guestMoney).toBe(0);
+    expect(merged.hostConvoyGain).toBe(1);
+    expect(merged.guestConvoy).toBe(0);
+    const undone = await page.evaluate((s: any) => {
+      const g = (window as any).__gameRef;
+      const ok = (window as any).__harness.turnwheelUndo();
+      const host = g.parties.get(s.hostNid);
+      const guest = g.parties.get('GuestParty');
+      return {
+        ok, sethParty: g.units.get('Seth').party,
+        hostMoney: host.money, guestMoney: guest.money, guestConvoy: guest.convoy.length,
+      };
+    }, setup);
+    expect(undone.ok).toBe(true);
+    expect(undone.sethParty).toBe('GuestParty');
+    expect(undone.hostMoney).toBe(setup.hostMoney);
+    expect(undone.guestMoney).toBe(500);
+    expect(undone.guestConvoy).toBe(1);
+  });
+
+  test('loop_units runs the target event once per listed unit in order', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.gameVars.set('loop_log', '');
+      g.db.events.set('LoopBody', {
+        name: 'LoopBody', nid: 'LoopBody', trigger: 'LoopBody',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;loop_{e:unit1.nid};yes'],
+      });
+    });
+    await runEvent(page, 'TestLoopUnits', [
+      'loop_units;Eirika,Seth;LoopBody',
+      'game_var;loop_done;yes',
+    ]);
+    await stepFrames(page, 30);
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        eirika: g.gameVars.get('loop_Eirika'),
+        seth: g.gameVars.get('loop_Seth'),
+        done: g.gameVars.get('loop_done'),
+      };
+    });
+    expect(vars.done).toBe('yes');
+    expect(vars.eirika).toBe('yes');
+    expect(vars.seth).toBe('yes');
+  });
+});
