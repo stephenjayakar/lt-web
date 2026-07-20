@@ -8680,6 +8680,71 @@ export class EventState extends State {
         return false;
       }
 
+      case 'enable_repair_shop': {
+        // enable_repair_shop;bool (Python :694) — plain game-var toggle
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_repair_shop', (args[0] ?? '').toLowerCase() === 'true'));
+        this.advancePointer();
+        return false;
+      }
+
+      case 'force_chapter_clean_up': {
+        // force_chapter_clean_up (Python :748): game.clean_up(full=False) —
+        // per-unit cleanup (heal, off-map, reset turn/rescue state) WITHOUT
+        // the registry hand-off cleanUpLevel() does for level transitions
+        // (Python keeps units registered here).
+        for (const unit of game.units.values()) {
+          if (unit.position && game.board) game.board.removeUnit(unit);
+          if (unit.rescuing) { unit.rescuing.rescuedBy = null; unit.rescuing = null; }
+          if (unit.rescuedBy) { unit.rescuedBy.rescuing = null; unit.rescuedBy = null; }
+          unit.traveler = null;
+          unit.currentHp = unit.stats['HP'] ?? unit.currentHp;
+          unit.position = null;
+          unit.resetTurnState();
+          unit.finished = false;
+          unit.hasAttacked = false;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'arrange_formation': {
+        // arrange_formation (Python :2888): auto-places off-formation player
+        // units onto open formation spots (Required first; Blacklist tag and
+        // travelers excluded; fatigue gate applies when enabled).
+        const formationSpots: [number, number][] = (game.currentLevel?.regions ?? [])
+          .filter((r: any) => r.region_type === 'formation')
+          .flatMap((r: any) => {
+            const [rx, ry] = r.position;
+            const [rw, rh] = r.size ?? [1, 1];
+            const spots: [number, number][] = [];
+            for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) spots.push([x, y]);
+            return spots;
+          });
+        const openSpots = formationSpots.filter(([x, y]) => !game.board?.getUnit(x, y));
+        const onFormation = (pos: [number, number] | null) =>
+          !!pos && formationSpots.some(([x, y]) => x === pos[0] && y === pos[1]);
+        const partyNid = game.currentParty;
+        let candidates = [...game.units.values()].filter((u: any) =>
+          u.team === 'player' && (!partyNid || u.party === partyNid) &&
+          !u.dead && !u.position && !u.tags?.includes('Blacklist') &&
+          ![...game.units.values()].some((o: any) => o.traveler === u.nid),
+        );
+        const fatigueOn = game.db.getConstant('fatigue', false) && game.gameVars.get('_fatigue') === 1;
+        if (fatigueOn) candidates = candidates.filter((u: any) => (u.currentFatigue ?? 0) < (u.getStatValue?.('HP') ?? 99));
+        candidates.sort((a: any, b: any) => (b.tags?.includes('Required') ? 1 : 0) - (a.tags?.includes('Required') ? 1 : 0));
+        const numSlots = game.levelVars.get('_prep_slots') ?? openSpots.length;
+        candidates.slice(0, numSlots).forEach((unit: any, idx: number) => {
+          const spot = openSpots[idx];
+          if (spot) {
+            unit.position = [spot[0], spot[1]];
+            game.board?.setUnit(spot[0], spot[1], unit);
+            unit.finished = false;
+          }
+        });
+        this.advancePointer();
+        return false;
+      }
+
       case 'add_unit_map_anim': {
         // add_unit_map_anim;MapAnim;Unit;Speed;flags (Python :2830).
         // 'permanent' loops and attaches reversibly; otherwise plays once at

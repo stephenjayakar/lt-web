@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 201,
     "webHookExports": 62,
-    "referencedComponentNids": 135,
+    "referencedComponentNids": 136,
     "hookMappedComponentNids": 92,
-    "unreferencedComponentNids": 66,
+    "unreferencedComponentNids": 65,
     "consumedComponentNids": 109,
     "structuralStatuses": {
       "consumed": 37,
       "hook-and-reference": 84,
       "hook-only": 8,
-      "reference-only": 14,
-      "unreferenced": 58
+      "reference-only": 15,
+      "unreferenced": 57
     }
   },
   "webHookExports": [
@@ -98,11 +98,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9513
+          "line": 9578
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9534
+          "line": 9599
         },
         {
           "source": "src/objects/item.ts",
@@ -116,11 +116,11 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9513
+          "line": 9578
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9534
+          "line": 9599
         },
         {
           "source": "src/objects/item.ts",
@@ -2450,11 +2450,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10449
+          "line": 10514
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10475
+          "line": 10540
         },
         {
           "source": "src/events/event-manager.ts",
@@ -3068,11 +3068,16 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 8732
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "effective_damage",
@@ -7056,7 +7061,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11274
+          "line": 11339
         },
         {
           "source": "src/events/event-manager.ts",
@@ -7201,7 +7206,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9012
+          "line": 9077
         }
       ],
       "directReads": [],
