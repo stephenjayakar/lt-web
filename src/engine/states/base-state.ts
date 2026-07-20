@@ -1949,3 +1949,115 @@ export class PartyTransferState extends State {
     return surf;
   }
 }
+
+// ============================================================================
+// BaseManageState — Python prep.PrepManageState/base unit management (subset)
+// ============================================================================
+
+export class BaseManageState extends State {
+  readonly name = 'base_manage';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  /** 'units' -> pick a unit; 'options' -> pick an action; 'partner' -> trade partner. */
+  phase: 'units' | 'options' | 'partner' = 'units';
+  private unitMenu: ChoiceMenu | null = null;
+  private optionMenu: ChoiceMenu | null = null;
+  private partnerMenu: ChoiceMenu | null = null;
+  private selectedNid: string | null = null;
+
+  private partyUnits(): any[] {
+    const game = getGame();
+    const partyNid = game.currentParty;
+    return [...game.units.values()].filter((u: any) =>
+      u.team === 'player' && !u.dead && (!partyNid || !u.party || u.party === partyNid));
+  }
+
+  override begin(): StateResult {
+    if (this.phase === 'units') this.buildUnitMenu();
+  }
+
+  private buildUnitMenu(): void {
+    const options: MenuOption[] = this.partyUnits().map((u: any) => ({
+      label: `${u.name} Lv${u.level}`, value: u.nid, enabled: true,
+      description: 'Manage this unit.',
+    }));
+    options.push({ label: 'Back', value: 'back', enabled: true, description: 'Return.' });
+    this.unitMenu = new ChoiceMenu(options, 8, 20);
+    this.phase = 'units';
+  }
+
+  private buildOptionMenu(): void {
+    // Python offers Trade/Restock/Give all/Optimize/Use/Market; the web
+    // subset is Trade + Supply (documented deviation — the rest need
+    // restock/market plumbing that base lacks).
+    const game = getGame();
+    const options: MenuOption[] = [
+      { label: 'Trade', value: 'trade', enabled: this.partyUnits().length > 1, description: 'Trade items with an ally.' },
+      { label: 'Supply', value: 'supply', enabled: !!game.gameVars.get('_convoy'), description: 'Store and retrieve items.' },
+      { label: 'Back', value: 'back', enabled: true, description: 'Return.' },
+    ];
+    this.optionMenu = new ChoiceMenu(options, 60, 40);
+    this.phase = 'options';
+  }
+
+  private buildPartnerMenu(): void {
+    const options: MenuOption[] = this.partyUnits()
+      .filter((u: any) => u.nid !== this.selectedNid)
+      .map((u: any) => ({ label: u.name, value: u.nid, enabled: true, description: 'Trade with this unit.' }));
+    options.push({ label: 'Back', value: 'back', enabled: true, description: 'Return.' });
+    this.partnerMenu = new ChoiceMenu(options, 100, 40);
+    this.phase = 'partner';
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    const menu = this.phase === 'units' ? this.unitMenu
+      : this.phase === 'options' ? this.optionMenu : this.partnerMenu;
+    if (!menu) return;
+    const result = menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result) {
+      if (this.phase === 'units') game.state.back();
+      else if (this.phase === 'options') this.buildUnitMenu();
+      else this.buildOptionMenu();
+      return;
+    }
+    if (result.selected === 'back') {
+      if (this.phase === 'units') game.state.back();
+      else if (this.phase === 'options') this.buildUnitMenu();
+      else this.buildOptionMenu();
+      return;
+    }
+    if (this.phase === 'units') {
+      this.selectedNid = result.selected;
+      this.buildOptionMenu();
+    } else if (this.phase === 'options') {
+      const unit = game.units.get(this.selectedNid ?? '');
+      if (!unit) { this.buildUnitMenu(); return; }
+      if (result.selected === 'trade') {
+        this.buildPartnerMenu();
+      } else if (result.selected === 'supply') {
+        game.memory.set('supply_unit', unit);
+        game.state.change('supply_items');
+      }
+    } else {
+      const partner = game.units.get(result.selected);
+      const unit = game.units.get(this.selectedNid ?? '');
+      if (unit && partner) {
+        game.selectedUnit = unit;
+        game.memory.set('trade_partner', partner);
+        game.state.change('trade');
+      }
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.94)');
+    surf.drawText('Unit Management', 8, 5, 'rgba(220,200,128,1)', '9px monospace');
+    this.unitMenu?.draw(surf);
+    if (this.phase !== 'units') this.optionMenu?.draw(surf);
+    if (this.phase === 'partner') this.partnerMenu?.draw(surf);
+    return surf;
+  }
+}

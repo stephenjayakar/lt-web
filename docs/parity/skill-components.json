@@ -962,19 +962,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9283
+          "line": 9293
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10595
+          "line": 10605
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12375
+          "line": 12385
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12388
+          "line": 12398
         },
         {
           "source": "src/native.ts",
@@ -1072,23 +1072,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9076
+          "line": 9086
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9081
+          "line": 9091
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9100
+          "line": 9110
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12555
+          "line": 12565
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12578
+          "line": 12588
         }
       ],
       "directReads": [],
@@ -1302,7 +1302,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 324
+          "line": 325
         }
       ],
       "directReads": [
@@ -1337,7 +1337,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 324
+          "line": 325
         }
       ],
       "directReads": [
@@ -1435,7 +1435,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9973
+          "line": 9983
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1502,7 +1502,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 328
+          "line": 329
         }
       ],
       "directReads": [],
@@ -1534,7 +1534,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 329
+          "line": 330
         }
       ],
       "directReads": [],
@@ -1566,7 +1566,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 329
+          "line": 330
         }
       ],
       "directReads": [],
@@ -1660,7 +1660,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 329
+          "line": 330
         }
       ],
       "directReads": [],
@@ -1717,7 +1717,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 332
+          "line": 333
         }
       ],
       "directReads": [
@@ -1762,7 +1762,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 332
+          "line": 333
         }
       ],
       "directReads": [
@@ -1867,7 +1867,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 322
+          "line": 323
         },
         {
           "source": "src/objects/skill.ts",
@@ -1948,7 +1948,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 322
+          "line": 323
         },
         {
           "source": "src/objects/skill.ts",
@@ -2017,7 +2017,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 322
+          "line": 323
         },
         {
           "source": "src/objects/skill.ts",
@@ -2244,7 +2244,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 322
+          "line": 323
         }
       ],
       "directReads": [
@@ -2738,7 +2738,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 324
+          "line": 325
         }
       ],
       "directReads": [
@@ -3239,7 +3239,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 320
+          "line": 321
         }
       ],
       "directReads": [
@@ -3347,7 +3347,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 320
+          "line": 321
         }
       ],
       "directReads": [
@@ -3603,7 +3603,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 305
+          "line": 306
         },
         {
           "source": "src/objects/item.ts",
@@ -3816,7 +3816,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 305
+          "line": 306
         }
       ],
       "directReads": [
@@ -4313,7 +4313,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 322
+          "line": 323
         }
       ],
       "directReads": [
@@ -4350,7 +4350,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 323
+          "line": 324
         }
       ],
       "directReads": [
@@ -4387,7 +4387,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 323
+          "line": 324
         }
       ],
       "directReads": [
@@ -4424,7 +4424,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 323
+          "line": 324
         }
       ],
       "directReads": [
@@ -4566,7 +4566,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 323
+          "line": 324
         }
       ],
       "directReads": [
@@ -4627,7 +4627,7 @@
       "webReferences": [
         {
           "source": "src/main.ts",
-          "line": 327
+          "line": 328
         }
       ],
       "directReads": [],
@@ -4698,7 +4698,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 328
+          "line": 329
         }
       ],
       "directReads": [
@@ -4776,7 +4776,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 327
+          "line": 328
         }
       ],
       "directReads": [
@@ -4854,7 +4854,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 328
+          "line": 329
         }
       ],
       "directReads": [
@@ -5144,7 +5144,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 334
+          "line": 335
         }
       ],
       "directReads": [
@@ -5380,7 +5380,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 325
+          "line": 326
         }
       ],
       "directReads": [
@@ -6089,7 +6089,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 333
+          "line": 334
         }
       ],
       "directReads": [
@@ -6120,7 +6120,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 333
+          "line": 334
         }
       ],
       "directReads": [
@@ -6151,7 +6151,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 333
+          "line": 334
         }
       ],
       "directReads": [
@@ -6178,7 +6178,7 @@
       "webReferences": [
         {
           "source": "src/main.ts",
-          "line": 333
+          "line": 334
         }
       ],
       "directReads": [],
@@ -6200,7 +6200,7 @@
       "webReferences": [
         {
           "source": "src/main.ts",
-          "line": 333
+          "line": 334
         }
       ],
       "directReads": [],
@@ -6255,7 +6255,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 325
+          "line": 326
         }
       ],
       "directReads": [
