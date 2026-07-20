@@ -179,6 +179,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 14 — open_bexp_menu + BEXP states (implemented
+  solo):** new reachable `base_bexp_select` (party roster with Python's
+  maxed/auto-promote exclusion) and `base_bexp_allocate` (stage EXP with
+  +1/-1/max/reset; cost from the BONUS_EXP equation or Python's
+  50*internal+50 default; per-point cost is proportional-with-ceil — the
+  stepped boundary rounding of Python's table is a documented approximation)
+  confirming through reversible SpendBexpAction + GainExpAction (level-ups
+  included). Also closes the P5 base BEXP row. 1 end-to-end regression
+  (select -> stage -> confirm -> double-undo). Parser 252/255; final 3:
+  unit management, party_transfer, roam-AI dispatch.
+
+
 - **Zero-usage command batch 13 — pose_unit (implemented solo):** per-unit
   `poseOverride` applied set-then-draw in both renderers so cache-shared
   MapSprite instances stay correct; Python pose mapping (normal clears,

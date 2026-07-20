@@ -8701,6 +8701,16 @@ export class EventState extends State {
         return false;
       }
 
+      case 'open_bexp_menu': {
+        // open_bexp_menu;Panorama;Music (Python :3517): pause into the BEXP
+        // select/allocate flow.
+        if (args[0]) game.memory.set('base_bg', args[0]);
+        if (args[1]) game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_bexp_menu_music', args[1]));
+        this.advancePointer();
+        game.state.change('base_bexp_select');
+        return true;
+      }
+
       case 'pose_unit': {
         // pose_unit;Unit;Pose;[Direction] (Python event_functions.py:1231).
         // Pose map: normal -> clear override; active -> standing;

@@ -1034,3 +1034,74 @@ test.describe('Event command batch 3m (pose_unit)', () => {
     expect(pose).toBeNull();
   });
 });
+
+test.describe('Event command batch 3n (open_bexp_menu)', () => {
+  test('BEXP flow: select unit, stage exp, confirm spends bexp and grants exp reversibly', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.parties.get(g.currentParty).bexp = 1000;
+      g.db.events.set('TestBexp', {
+        name: 'TestBexp', nid: 'TestBexp', trigger: 'TestBexp',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['open_bexp_menu', 'game_var;after_bexp;yes'],
+      });
+      g.eventManager.triggerSpecific('TestBexp', { type: 'TestBexp' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 6);
+    const select = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name !== 'base_bexp_select') return { state: st?.name };
+      const opts = st['menu'].options.map((o: any) => o.value);
+      const idx = opts.indexOf('Eirika');
+      st['menu'].selectedIndex = idx;
+      return { state: st.name, hasEirika: idx >= 0 };
+    });
+    expect(select.state).toBe('base_bexp_select');
+    expect(select.hasEirika).toBe(true);
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+    const alloc = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name !== 'base_bexp_allocate') return { state: st?.name };
+      st.takeInput('RIGHT'); st.takeInput('RIGHT'); st.takeInput('RIGHT');
+      st.takeInput('LEFT');
+      return {
+        state: st.name, staged: st.expToGain, cost: st.stagedCost(),
+        bexpBefore: g.parties.get(g.currentParty).bexp,
+        expBefore: g.units.get('Eirika').exp,
+      };
+    });
+    expect(alloc.state).toBe('base_bexp_allocate');
+    expect(alloc.staged).toBe(2);
+    expect(alloc.cost).toBeGreaterThan(0);
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 5);
+    // Confirm returns to the select screen; exit it so the event resumes.
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 15);
+    const after = await page.evaluate((prev: any) => {
+      const g = (window as any).__gameRef;
+      const bexpNow = g.parties.get(g.currentParty).bexp;
+      const expNow = g.units.get('Eirika').exp;
+      const h = (window as any).__harness;
+      h.turnwheelUndo(); // undo exp grant
+      h.turnwheelUndo(); // undo bexp spend
+      return {
+        bexpNow, expNow,
+        bexpUndone: g.parties.get(g.currentParty).bexp,
+        expUndone: g.units.get('Eirika').exp,
+        afterVar: g.gameVars.get('after_bexp'),
+      };
+    }, alloc);
+    expect(after.bexpNow).toBe(alloc.bexpBefore - alloc.cost);
+    expect(after.expNow).toBe(alloc.expBefore + 2);
+    expect(after.afterVar).toBe('yes');
+    expect(after.bexpUndone).toBe(alloc.bexpBefore);
+    expect(after.expUndone).toBe(alloc.expBefore);
+  });
+});
