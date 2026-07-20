@@ -790,3 +790,86 @@ test.describe('Event command batch 3h (repair shop, cleanup, formation)', () => 
     expect(placed.inSpot).toBe(true);
   });
 });
+
+test.describe('Event command batch 3i (text_entry)', () => {
+  test('text_entry collects typed text into a game var with limits enforced', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestTextEntry', {
+        name: 'TestTextEntry', nid: 'TestTextEntry', trigger: 'TestTextEntry',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['text_entry;tactician;Name your tactician;8;x,y;Mark;2', 'game_var;after_entry;yes'],
+      });
+      g.eventManager.triggerSpecific('TestTextEntry', { type: 'TestTextEntry' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 6);
+    const driving = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name !== 'text_entry') return { state: st?.name };
+      const startText = st.currentText;         // default string
+      st.appendChar('x');                        // illegal, rejected
+      const afterIllegal = st.currentText;
+      st.appendChar('!'); st.appendChar('!');    // legal chars
+      st.appendChar('a'); st.appendChar('b'); st.appendChar('c'); st.appendChar('d');
+      const afterLimit = st.currentText;         // capped at 8
+      st.backspace();
+      const afterBackspace = st.currentText;
+      const confirmed = st.confirm();
+      return { state: 'text_entry', startText, afterIllegal, afterLimit, afterBackspace, confirmed };
+    });
+    expect(driving.state).toBe('text_entry');
+    expect(driving.startText).toBe('Mark');
+    expect(driving.afterIllegal).toBe('Mark');
+    expect(driving.afterLimit).toBe('Mark!!ab');   // 8-char cap
+    expect(driving.afterBackspace).toBe('Mark!!a');
+    expect(driving.confirmed).toBe(true);
+    await stepFrames(page, 15);
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { tactician: g.gameVars.get('tactician'), after: g.gameVars.get('after_entry') };
+    });
+    expect(vars.tactician).toBe('Mark!!a');
+    expect(vars.after).toBe('yes');
+  });
+
+  test('text_entry rejects below-minimum confirm and honors force_entry cancel gate', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestTextMin', {
+        name: 'TestTextMin', nid: 'TestTextMin', trigger: 'TestTextMin',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['text_entry;mintest;Enter;8;;;3;force_entry'],
+      });
+      g.eventManager.triggerSpecific('TestTextMin', { type: 'TestTextMin' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 6);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name !== 'text_entry') return { state: st?.name };
+      st.appendChar('a');
+      const shortConfirm = st.confirm();          // below min of 3 -> false
+      const stillHere = g.state.getCurrentState()?.name;
+      st.takeInput('AUX');                        // force_entry: cancel blocked
+      const afterAux = g.state.getCurrentState()?.name;
+      st.appendChar('b'); st.appendChar('c');
+      const okConfirm = st.confirm();
+      return { state: 'text_entry', shortConfirm, stillHere, afterAux, okConfirm };
+    });
+    expect(result.state).toBe('text_entry');
+    expect(result.shortConfirm).toBe(false);
+    expect(result.stillHere).toBe('text_entry');
+    expect(result.afterAux).toBe('text_entry');
+    expect(result.okConfirm).toBe(true);
+    await stepFrames(page, 10);
+    const value = await page.evaluate(() => (window as any).__gameRef.gameVars.get('mintest'));
+    expect(value).toBe('abc');
+  });
+});
