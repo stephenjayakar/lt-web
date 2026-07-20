@@ -179,6 +179,16 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 16 — open_unit_management (implemented solo):**
+  new reachable `base_manage` state: party unit list -> per-unit options
+  (Trade with a partner picker feeding the direct-trade path; Supply via the
+  existing supply state). Python's Restock/Give all/Optimize/Use/Market
+  options are documented deviations (no base restock/market plumbing).
+  1 end-to-end regression (unit -> trade partner -> trade state -> back out
+  -> event resume). Parser 254/255; the single remaining command is
+  change_roam_ai, blocked on an NPC roam-AI dispatch subsystem.
+
+
 - **Zero-usage command batch 15 — party_transfer (implemented solo):** new
   reachable `party_transfer` dual-roster state with staged reassignment,
   fixed-unit locks, per-side limits (0 = unlimited), cursor navigation,

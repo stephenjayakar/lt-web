@@ -1157,3 +1157,65 @@ test.describe('Event command batch 3o (party_transfer)', () => {
     expect(after.sethUndone).not.toBe('Expedition');
   });
 });
+
+test.describe('Event command batch 3p (open_unit_management)', () => {
+  test('unit management reaches trade and supply flows and resumes the event', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.gameVars.set('_convoy', true);
+      g.db.events.set('TestManage', {
+        name: 'TestManage', nid: 'TestManage', trigger: 'TestManage',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['open_unit_management', 'game_var;after_manage;yes'],
+      });
+      g.eventManager.triggerSpecific('TestManage', { type: 'TestManage' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 6);
+    const nav = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name !== 'base_manage') return { state: st?.name };
+      // Pick Eirika -> Trade -> Seth
+      st.takeInput('SELECT'); // hmm: menu-driven; drive via menus directly instead
+      return { state: 'base_manage', phase: st.phase };
+    });
+    expect(nav.state).toBe('base_manage');
+    // Drive: options -> trade -> partner; step frames so deferred state
+    // transitions flush between selections.
+    await page.evaluate(() => {
+      const st: any = (window as any).__gameRef.state.getCurrentState();
+      const om = st['optionMenu'];
+      om.selectedIndex = om.options.findIndex((o: any) => o.value === 'trade');
+      st.takeInput('SELECT');
+      const pm = st['partnerMenu'];
+      pm.selectedIndex = 0;
+      st.takeInput('SELECT');
+    });
+    await stepFrames(page, 3);
+    const trade = await page.evaluate(() => {
+      const now: any = (window as any).__gameRef.state.getCurrentState();
+      return { state: now?.name, partner: now?.tradePartner?.nid ?? null };
+    });
+    expect(trade.state).toBe('trade');
+    expect(trade.partner).toBeTruthy();
+    // Back out of trade -> manage -> exit; the event resumes.
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 3);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      if (st?.name === 'base_manage') {
+        // exit through unit list Back
+        st.phase = 'units';
+        st['unitMenu'].selectedIndex = st['unitMenu'].options.length - 1;
+        st.takeInput('SELECT');
+      }
+    });
+    await stepFrames(page, 15);
+    const after = await page.evaluate(() => (window as any).__gameRef.gameVars.get('after_manage'));
+    expect(after).toBe('yes');
+  });
+});

@@ -75,6 +75,7 @@ import {
   BaseBexpSelectState,
   BaseBexpAllocateState,
   PartyTransferState,
+  BaseManageState,
   setBaseGameRef,
 } from './engine/states/base-state';
 import {
@@ -567,6 +568,7 @@ async function main(): Promise<void> {
     new BaseBexpSelectState(),
     new BaseBexpAllocateState(),
     new PartyTransferState(),
+    new BaseManageState(),
     new SettingsMenuState(),
     new MinimapState(),
     new TextEntryState(),

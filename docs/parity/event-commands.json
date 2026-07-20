@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 253,
-    "dispatcherPythonNids": 244,
+    "parserRecognizedPythonNids": 254,
+    "dispatcherPythonNids": 245,
     "itemReferencedComponentNids": 136,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 232,
+      "dispatched-unverified": 233,
       "missing-dispatch": 9,
-      "missing-parser": 2,
+      "missing-parser": 1,
       "stub-hint": 12
     }
   },
@@ -5078,12 +5078,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3481
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "open_trade",

@@ -8701,6 +8701,16 @@ export class EventState extends State {
         return false;
       }
 
+      case 'open_unit_management': {
+        // open_unit_management;Panorama (Python :3481): pause into the base
+        // manage flow (web subset: Trade + Supply; Restock/Give all/Optimize/
+        // Use/Market are documented deviations).
+        if (args[0]) game.memory.set('base_bg', args[0]);
+        this.advancePointer();
+        game.state.change('base_manage');
+        return true;
+      }
+
       case 'party_transfer': {
         // party_transfer;P1;P2;FixedUnits;P1Name;P2Name;P1Limit;P2Limit
         // (Python :3960): pause into the dual-roster transfer state.
