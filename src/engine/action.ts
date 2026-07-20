@@ -1301,6 +1301,19 @@ export class ChangeTeamPaletteAction extends Action {
   }
 }
 
+/** SpendBexpAction - reversible party bonus-EXP spend (Python GiveBexp -N). */
+export class SpendBexpAction extends Action {
+  private party: any;
+  private amount: number;
+  constructor(party: any, amount: number) {
+    super();
+    this.party = party;
+    this.amount = amount;
+  }
+  execute(): void { this.party.bexp -= this.amount; }
+  reverse(): void { this.party.bexp += this.amount; }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;

@@ -1685,3 +1685,147 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
       return false;
   }
 }
+
+// ============================================================================
+// BEXP states — Python base.py BaseBEXPSelectState / BaseBEXPAllocateState
+// ============================================================================
+
+import { GainExpAction, SpendBexpAction } from '../action';
+import { evaluateEquation } from '../../combat/combat-calcs';
+
+/** Bexp needed for this unit's next full level (Python determine_needed_bexp). */
+export function bexpNeededForNextLevel(game: any, unit: any): number {
+  const eq = game.db.getEquation('BONUS_EXP');
+  if (eq) {
+    const v = evaluateEquation(eq, unit);
+    if (v > 0) return Math.max(1, Math.trunc(v));
+  }
+  const internal = unit.getInternalLevel?.() ?? unit.level;
+  return Math.max(1, 50 * Math.trunc(internal) + 50);
+}
+
+export class BaseBexpSelectState extends State {
+  readonly name = 'base_bexp_select';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private menu: ChoiceMenu | null = null;
+
+  override begin(): StateResult {
+    const game = getGame();
+    const partyNid = game.currentParty;
+    const options: MenuOption[] = [];
+    for (const unit of game.units.values()) {
+      if (unit.team !== 'player' || unit.dead) continue;
+      if (partyNid && unit.party && unit.party !== partyNid) continue;
+      const klass = game.db.classes.get(unit.klass);
+      const maxLevel = klass?.max_level ?? 20;
+      const autoPromote = (game.db.getConstant('auto_promote', false) || unit.tags?.includes('AutoPromote'))
+        && (klass?.turns_into?.length ?? 0) > 0 && !unit.tags?.includes('NoAutoPromote');
+      const maxed = unit.level >= maxLevel && !autoPromote;
+      options.push({
+        label: `${unit.name} Lv${unit.level} (${unit.exp} exp)`,
+        value: unit.nid,
+        enabled: !maxed,
+        description: maxed ? 'At max level.' : 'Allocate bonus experience.',
+      });
+    }
+    options.push({ label: 'Back', value: 'back', enabled: true, description: 'Return.' });
+    this.menu = new ChoiceMenu(options, 8, 24);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (!this.menu) return;
+    const result = this.menu.handleInput(event);
+    if (result && 'back' in result) { game.state.back(); return; }
+    if (result && 'selected' in result) {
+      if (result.selected === 'back') { game.state.back(); return; }
+      const unit = game.units.get(result.selected);
+      if (unit) {
+        game.memory.set('current_unit', unit);
+        game.state.change('base_bexp_allocate');
+      }
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.94)');
+    surf.drawText('Bonus EXP', 8, 6, 'rgba(220,200,128,1)', '10px monospace');
+    surf.drawText(`BEXP: ${game.parties.get(game.currentParty)?.bexp ?? 0}`, viewport.width - 90, 6, 'white', '8px monospace');
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
+export class BaseBexpAllocateState extends State {
+  readonly name = 'base_bexp_allocate';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  /** Exp points staged for purchase (harness-visible). */
+  expToGain = 0;
+  private unit: any = null;
+
+  override begin(): StateResult {
+    const game = getGame();
+    this.unit = game.memory.get('current_unit') ?? null;
+    this.expToGain = 0;
+    if (!this.unit) game.state.back();
+  }
+
+  /** Cost in bexp for the currently staged exp (proportional-with-ceil; the
+   * boundary rounding of Python's stepped table is approximated — total for a
+   * full 100 exp is identical). */
+  stagedCost(): number {
+    const game = getGame();
+    const needed = bexpNeededForNextLevel(game, this.unit);
+    return Math.ceil((this.expToGain * needed) / 100);
+  }
+
+  private maxAffordableExp(): number {
+    const game = getGame();
+    const bexp = game.parties.get(game.currentParty)?.bexp ?? 0;
+    const needed = bexpNeededForNextLevel(game, this.unit);
+    const toLevel = 100 - (this.unit?.exp ?? 0);
+    const affordable = Math.floor((bexp * 100) / needed);
+    return Math.max(0, Math.min(toLevel, affordable));
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (!this.unit) { game.state.back(); return; }
+    if (event === 'RIGHT') {
+      if (this.expToGain < this.maxAffordableExp()) this.expToGain++;
+    } else if (event === 'LEFT') {
+      if (this.expToGain > 0) this.expToGain--;
+    } else if (event === 'UP') {
+      this.expToGain = this.maxAffordableExp();
+    } else if (event === 'DOWN') {
+      this.expToGain = 0;
+    } else if (event === 'SELECT') {
+      if (this.expToGain > 0) {
+        const party = game.parties.get(game.currentParty);
+        game.actionLog.doAction(new SpendBexpAction(party, this.stagedCost()));
+        game.actionLog.doAction(new GainExpAction(this.unit, this.expToGain,
+          game.currentMode?.growths ?? 'random'));
+        game.state.back();
+      }
+    } else if (event === 'BACK') {
+      game.state.back();
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.94)');
+    if (this.unit) {
+      surf.drawText(`${this.unit.name}  Lv${this.unit.level}  ${this.unit.exp}exp`, 10, 8, 'white', '8px monospace');
+      surf.drawText(`+${this.expToGain} EXP  (cost ${this.stagedCost()} BEXP)`, 10, 24, 'rgba(220,200,128,1)', '8px monospace');
+      surf.drawText(`BEXP: ${game.parties.get(game.currentParty)?.bexp ?? 0}`, 10, 40, 'white', '8px monospace');
+      surf.drawText('Right +1 / Left -1 / Up max / Down reset / Select confirm', 10, viewport.height - 16, 'rgba(160,160,200,1)', '6px monospace');
+    }
+    return surf;
+  }
+}
