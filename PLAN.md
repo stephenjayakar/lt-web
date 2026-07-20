@@ -179,6 +179,16 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 7 — unit map animations (implemented solo):**
+  `add_unit_map_anim`/`remove_unit_map_anim` on the existing map-animation
+  pipeline: `MapAnimation` gains `followUnit` tile-tracking (re-centered
+  every frame in map-view; auto-finishes if the unit leaves the map),
+  permanent attachments go through reversible `AddAnimToUnitAction`/
+  `RemoveAnimFromUnitAction`, transient plays run once at the unit tile.
+  `blend` compositing remains a documented deviation. 1 regression covering
+  attach/follow/remove/double-undo.
+
+
 - **Zero-usage command batch 6 — fatigue + region generics (implemented
   solo):** `add_fatigue` with a new `UnitObject.currentFatigue` field
   (reversible `ChangeFatigueAction` clamped at 0, save/load persistence —

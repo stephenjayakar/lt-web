@@ -94,6 +94,8 @@ import {
   MergePartiesAction,
   ChangeFatigueAction,
   LeaveMapAction,
+  AddAnimToUnitAction,
+  RemoveAnimFromUnitAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8674,6 +8676,45 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_unit_map_anim': {
+        // add_unit_map_anim;MapAnim;Unit;Speed;flags (Python :2830).
+        // 'permanent' loops and attaches reversibly; otherwise plays once at
+        // the unit's tile. 'blend' compositing is not supported (deviation).
+        const animNid = args[0] ?? '';
+        const unit = game.units.get(args[1] ?? '');
+        const speed = parseFloat(args[2] ?? '1') || 1;
+        const permanent = args.includes('permanent');
+        const prefab = game.db?.mapAnimations?.get(animNid);
+        if (!prefab || !unit?.position) {
+          console.warn(`add_unit_map_anim: invalid anim/unit (${args.join(';')})`);
+          this.advancePointer();
+          return false;
+        }
+        const anim = new MapAnimation(prefab, unit.position[0], unit.position[1], {
+          loop: permanent, speedAdj: speed,
+        });
+        anim.followUnit = unit;
+        void game.resources.loadImage(`resources/animations/${animNid}.png`)
+          .then((img: HTMLImageElement) => { if (img) anim.setImage(img); })
+          .catch(() => console.warn(`add_unit_map_anim: no sprite sheet for "${animNid}"`));
+        if (permanent) {
+          game.actionLog.doAction(new AddAnimToUnitAction(game, anim));
+        } else if (game.tilemap) {
+          game.tilemap.animations.push(anim);
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_unit_map_anim': {
+        // remove_unit_map_anim;MapAnim;Unit (Python :2857), reversible.
+        const unit = game.units.get(args[1] ?? '');
+        if (!unit) console.warn(`remove_unit_map_anim: couldn't find unit ${args[1]}`);
+        else game.actionLog.doAction(new RemoveAnimFromUnitAction(game, args[0] ?? '', unit));
         this.advancePointer();
         return false;
       }

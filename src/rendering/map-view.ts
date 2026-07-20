@@ -126,6 +126,10 @@ export class MapView {
     }
 
     // 3.5. Map animations (below units)
+    for (const anim of tilemap.animations) {
+      if (anim.followUnit?.position) anim.setTilePosition(anim.followUnit.position[0], anim.followUnit.position[1]);
+      else if (anim.followUnit) anim.done = true; // unit left the map
+    }
     tilemap.animations = tilemap.animations.filter(anim => !anim.update());
     for (const anim of tilemap.animations) {
       anim.draw(this.mapSurface, cullRect.x, cullRect.y);

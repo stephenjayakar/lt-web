@@ -681,3 +681,51 @@ test.describe('Event command batch 3f (fatigue + region generics)', () => {
     expect(result.restoredPos).toEqual([2, 2]);
   });
 });
+
+test.describe('Event command batch 3g (unit map animations)', () => {
+  test('add_unit_map_anim attaches, follows, removes, and undoes', async ({ page }) => {
+    await boot(page);
+    const animNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return [...(g.db.mapAnimations?.keys?.() ?? [])][0] ?? null;
+    });
+    expect(animNid).not.toBeNull();
+    await runEvent(page, 'TestUnitAnim', [
+      `add_unit_map_anim;${animNid};Eirika;1;permanent`,
+    ]);
+    const attached = await page.evaluate((animNid: string) => {
+      const g = (window as any).__gameRef;
+      const anim = g.tilemap.animations.find((a: any) => a.nid === animNid);
+      return { present: !!anim, follows: anim?.followUnit?.nid === 'Eirika' };
+    }, animNid);
+    expect(attached.present).toBe(true);
+    expect(attached.follows).toBe(true);
+    // Follow check: move the unit; the anim re-centers on the new tile.
+    const followed = await page.evaluate(async (animNid: string) => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      g.board.removeUnit(eirika);
+      eirika.position = [7, 7];
+      g.board.setUnit(7, 7, eirika);
+      (window as any).__harness.stepFrames(3);
+      const anim = g.tilemap.animations.find((a: any) => a.nid === animNid);
+      // Tile 7 => pixel 7*16+8 center; x is center minus half frame width.
+      return { x: anim.x + (anim.frameWidth ?? 0) / 2, present: !!anim };
+    }, animNid);
+    expect(followed.present).toBe(true);
+    await runEvent(page, 'TestUnitAnimRm', [`remove_unit_map_anim;${animNid};Eirika`]);
+    const result = await page.evaluate((animNid: string) => {
+      const g = (window as any).__gameRef;
+      const gone = !g.tilemap.animations.some((a: any) => a.nid === animNid);
+      const h = (window as any).__harness;
+      h.turnwheelUndo(); // undo remove -> anim back
+      const restored = g.tilemap.animations.some((a: any) => a.nid === animNid);
+      h.turnwheelUndo(); // undo add -> anim gone
+      const goneAgain = !g.tilemap.animations.some((a: any) => a.nid === animNid);
+      return { gone, restored, goneAgain };
+    }, animNid);
+    expect(result.gone).toBe(true);
+    expect(result.restored).toBe(true);
+    expect(result.goneAgain).toBe(true);
+  });
+});
