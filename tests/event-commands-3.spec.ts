@@ -965,3 +965,51 @@ test.describe('Event command batch 3k (change_team_palette)', () => {
     expect(stillClean).toBe(0);
   });
 });
+
+test.describe('Event command batch 3l (set_custom_options)', () => {
+  test('set_custom_options adds selectable entries to the option menu that fire events', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('CustomOptEvent', {
+        name: 'CustomOptEvent', nid: 'CustomOptEvent', trigger: 'CustomOptEvent',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;custom_fired;yes'],
+      });
+    });
+    await runEvent(page, 'TestCustomOpts', [
+      'set_custom_options;Chronicle,Locked Thing;true,false;See the story so far;CustomOptEvent',
+    ]);
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        opts: g.gameVars.get('_custom_additional_options'),
+        disabled: g.gameVars.get('_custom_options_disabled'),
+        events: g.gameVars.get('_custom_options_events'),
+      };
+    });
+    expect(vars.opts).toEqual(['Chronicle', 'Locked Thing']);
+    expect(vars.disabled).toEqual([false, true]);
+    expect(vars.events).toEqual(['CustomOptEvent', null]);
+    // Open the option menu; entries appear before 'Options'; select the first.
+    const menu = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.state.change('option_menu');
+      (window as any).__harness.stepFrames(3);
+      const st: any = g.state.getCurrentState();
+      const labels = st.menu?.options?.map((o: any) => ({ label: o.label, value: o.value, enabled: o.enabled })) ?? [];
+      const customIdx = labels.findIndex((o: any) => o.value === 'custom:0');
+      const optionsIdx = labels.findIndex((o: any) => o.value === 'options');
+      if (customIdx >= 0) st.menu.selectedIndex = customIdx;
+      return { labels, customIdx, optionsIdx };
+    });
+    expect(menu.customIdx).toBeGreaterThanOrEqual(0);
+    expect(menu.customIdx).toBeLessThan(menu.optionsIdx);
+    expect(menu.labels[menu.customIdx + 1]?.enabled).toBe(false); // Locked Thing disabled
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 15);
+    const fired = await page.evaluate(() => (window as any).__gameRef.gameVars.get('custom_fired'));
+    expect(fired).toBe('yes');
+  });
+});

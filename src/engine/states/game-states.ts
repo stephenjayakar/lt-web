@@ -1278,6 +1278,13 @@ export class OptionMenuState extends State {
     options.push({ label: 'Minimap', value: 'minimap', enabled: hasMinimap });
     options.push({ label: 'Save', value: 'save', enabled: true });
     options.push({ label: 'Suspend', value: 'suspend', enabled: true });
+    // Custom options from set_custom_options (Python general_states.py:463):
+    // inserted before 'Options', disabled per _custom_options_disabled.
+    const customOpts: string[] = game.gameVars.get('_custom_additional_options') ?? [];
+    const customDisabled: boolean[] = game.gameVars.get('_custom_options_disabled') ?? [];
+    customOpts.forEach((label: string, idx: number) => {
+      options.push({ label, value: `custom:${idx}`, enabled: !customDisabled[idx] });
+    });
     options.push({ label: 'Options', value: 'options', enabled: true });
 
     // Centre the menu on screen
@@ -1314,6 +1321,18 @@ export class OptionMenuState extends State {
     }
 
     if ('selected' in result) {
+      if (result.selected.startsWith('custom:')) {
+        // Custom option (set_custom_options): fire its configured event.
+        const cIdx = parseInt(result.selected.slice(7), 10);
+        const cEvents: (string | null)[] = getGame().gameVars.get('_custom_options_events') ?? [];
+        const evName = cEvents[cIdx];
+        const game = getGame();
+        game.state.back();
+        if (evName && game.eventManager.triggerSpecific(evName, { type: evName }, true)) {
+          game.state.change('event');
+        }
+        return;
+      }
       switch (result.selected) {
         case 'end_turn': {
           // Mark all player units as finished and trigger turn change
@@ -8678,6 +8697,32 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'set_custom_options': {
+        // set_custom_options;Options;Enabled;Descs;Events (Python :3005) —
+        // four reversible game-var writes consumed by the options menu.
+        const parseList = (s: string | undefined) =>
+          (s ?? '').split(',').map((x: string) => x.trim()).filter(Boolean);
+        const optionsList = parseList(args[0]);
+        const enabledList = parseList(args[1]).map((v: string) => v.toLowerCase() !== 'false');
+        const descList = parseList(args[2]);
+        const eventsListRaw = parseList(args[3]);
+        if (enabledList.length > optionsList.length || descList.length > optionsList.length
+          || eventsListRaw.length > optionsList.length) {
+          console.warn('set_custom_options: list longer than options list');
+          this.advancePointer();
+          return false;
+        }
+        while (enabledList.length < optionsList.length) enabledList.push(true);
+        const descs = optionsList.map((o: string, i: number) => descList[i] ?? `${o}_desc`);
+        const eventsList: (string | null)[] = optionsList.map((_o: string, i: number) => eventsListRaw[i] ?? null);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_custom_options_disabled', enabledList.map((b: boolean) => !b)));
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_custom_info_desc', descs));
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_custom_options_events', eventsList));
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_custom_additional_options', optionsList));
         this.advancePointer();
         return false;
       }
