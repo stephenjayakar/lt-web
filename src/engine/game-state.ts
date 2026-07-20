@@ -91,6 +91,23 @@ export class GameState {
   /** Optional background tilemap drawn beneath the main one (Python
    * level.bg_tilemap, swapped by change_bg_tilemap). */
   bgTilemap: TileMapObject | null = null;
+
+  /** Runtime team-palette overrides (Python change_team_palette):
+   * teamNid -> { palette?, combatColor? }. Consulted ahead of DB team defs. */
+  teamPaletteOverrides: Map<string, { palette?: string; combatColor?: string }> = new Map();
+
+  /** Effective map-sprite palette for a team (override ?? DB def). */
+  getTeamPalette(teamNid: string): string | undefined {
+    return this.teamPaletteOverrides.get(teamNid)?.palette
+      ?? this.db.teams.defs.find((t: any) => t.nid === teamNid)?.palette;
+  }
+
+  /** Effective combat color for a team (override ?? DB def). */
+  getTeamCombatColor(teamNid: string): string {
+    return this.teamPaletteOverrides.get(teamNid)?.combatColor
+      ?? (this.db.teams.defs.find((t: any) => t.nid === teamNid) as any)?.combatColor
+      ?? 'green';
+  }
   turnCount: number;
   gameVars: Map<string, any>;
   levelVars: Map<string, any>;
@@ -1428,7 +1445,7 @@ export class GameState {
    * the renderer draws a colored placeholder rectangle instead (see
    * MapView.drawUnits and UnitRenderer.drawPlaceholder).
    */
-  private async loadAllMapSprites(): Promise<void> {
+  async loadAllMapSprites(): Promise<void> {
     const loadPromises: Promise<void>[] = [];
     // Cache loaded sprites by (spriteNid + teamPalette) to avoid redundant loads
     // when multiple units of the same class/team need the same sprite.
@@ -1448,8 +1465,7 @@ export class GameState {
       }
 
       // Look up team palette for coloring (enemy=red, other=green, etc.)
-      const teamDef = this.db.teams.defs.find(t => t.nid === unit.team);
-      const teamPalette = teamDef?.palette ?? undefined;
+      const teamPalette = this.getTeamPalette(unit.team) ?? undefined;
       const cacheKey = `${spriteNid}__${teamPalette ?? ''}`;
 
       loadPromises.push(

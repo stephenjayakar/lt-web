@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 11 — change_team_palette (implemented solo):**
+  runtime team-palette overrides (`GameState.teamPaletteOverrides` with
+  `getTeamPalette`/`getTeamCombatColor` helpers consulted ahead of DB team
+  defs), reversible `ChangeTeamPaletteAction` that rebuilds map sprites via
+  the palette-keyed cache, and validation warnings matching Python.
+  Combat-variant battle-anim palettes remain a documented deferral.
+  1 regression (override/undo/invalid-team). Parser 249/255; the final 6
+  are UI builds (unit management, BEXP, party_transfer, pose sprites,
+  custom options, roam-AI dispatch).
+
+
 - **Zero-usage command batch 10 — change_bg_tilemap (implemented solo):**
   background tilemaps: `GameState.bgTilemap` mirrored onto a new
   `MapView.bgTilemap` render pass beneath the main layers, a reusable
