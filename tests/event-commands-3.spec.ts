@@ -729,3 +729,64 @@ test.describe('Event command batch 3g (unit map animations)', () => {
     expect(result.goneAgain).toBe(true);
   });
 });
+
+test.describe('Event command batch 3h (repair shop, cleanup, formation)', () => {
+  test('enable_repair_shop toggles the game var reversibly', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestRepair', ['enable_repair_shop;true']);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const on = g.gameVars.get('_repair_shop');
+      (window as any).__harness.turnwheelUndo();
+      const after = g.gameVars.get('_repair_shop');
+      return { on, after };
+    });
+    expect(result.on).toBe(true);
+    expect(result.after).not.toBe(true);
+  });
+
+  test('force_chapter_clean_up heals and resets persistent units', async ({ page }) => {
+    await boot(page);
+    const before = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      eirika.currentHp = 1;
+      eirika.finished = true;
+      return { hp: eirika.currentHp };
+    });
+    expect(before.hp).toBe(1);
+    await runEvent(page, 'TestCleanup', ['force_chapter_clean_up']);
+    const after = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      return { hp: eirika.currentHp, finished: eirika.finished };
+    });
+    expect(after.hp).toBeGreaterThan(1); // healed by cleanup
+    expect(after.finished).toBe(false);
+  });
+
+  test('arrange_formation places off-map party units on open formation spots', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      // Synthetic formation region + one off-map player unit.
+      g.currentLevel.regions.push({
+        nid: 'TestFormation', region_type: 'formation', position: [1, 1], size: [2, 1],
+        sub_nid: '', condition: 'True', only_once: false, interrupt_move: false,
+      });
+      const seth = g.units.get('Seth');
+      if (seth.position) g.board.removeUnit(seth);
+      seth.position = null;
+      return { party: seth.party, team: seth.team };
+    });
+    expect(setup.team).toBe('player');
+    await runEvent(page, 'TestArrange', ['arrange_formation']);
+    const placed = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const pos = g.units.get('Seth').position;
+      const inSpot = pos && pos[1] === 1 && (pos[0] === 1 || pos[0] === 2);
+      return { pos, inSpot };
+    });
+    expect(placed.inSpot).toBe(true);
+  });
+});

@@ -179,6 +179,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 8 — repair shop, cleanup, formation (implemented
+  solo):** `enable_repair_shop` (reversible game-var toggle),
+  `force_chapter_clean_up` (Python clean_up(full=False) per-unit semantics
+  inline — heal/off-map/reset without cleanUpLevel's transition registry
+  hand-off, which Python does not do here), and `arrange_formation`
+  (Required-first placement of eligible off-map party units onto open
+  formation-region spots with Blacklist/traveler/fatigue exclusions).
+  3 regressions. Parser now 246/255; the 9 remaining are all UI/subsystem
+  builds (unit management, BEXP, party_transfer, text_entry, pose sprites,
+  team palettes, custom options, bg-tilemap swap, roam AI).
+
+
 - **Zero-usage command batch 7 — unit map animations (implemented solo):**
   `add_unit_map_anim`/`remove_unit_map_anim` on the existing map-animation
   pipeline: `MapAnimation` gains `followUnit` tile-tracking (re-centered

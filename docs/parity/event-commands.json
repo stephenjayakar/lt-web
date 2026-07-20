@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 243,
-    "dispatcherPythonNids": 234,
-    "itemReferencedComponentNids": 135,
+    "parserRecognizedPythonNids": 246,
+    "dispatcherPythonNids": 237,
+    "itemReferencedComponentNids": 136,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 222,
+      "dispatched-unverified": 225,
       "missing-dispatch": 9,
-      "missing-parser": 12,
+      "missing-parser": 9,
       "stub-hint": 12
     }
   },
@@ -1247,12 +1247,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 694
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "enable_supports",
@@ -1441,12 +1441,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 748
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "skip_save",
@@ -4535,12 +4535,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2888
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "prep",
