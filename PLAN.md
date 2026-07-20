@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 18 — dialog alias family (implemented solo):**
+  `say` (multi-segment {sub_break} join into the speak path), `speak_style`
+  (style registry stored; consumption beyond storage is a documented
+  deviation), `pop_dialog`, `unhold`/`unpause` (single-dialog model resumes
+  a waiting box; multi-box holds deviation), `main_menu` (chapter-end flag),
+  and `change_special_music` (title music persists via localStorage like
+  Python RECORDS; others as reversible game vars). Dispatch now **253/255**;
+  only `ending`/`paired_ending` remain (character-ending card presentation,
+  strict-mode loud-fail with notes). 1 regression across the family.
+
+
 - **Zero-usage command batch 17 — change_roam_ai (implemented solo):
   EVENT-COMMAND SURFACE COMPLETE (255/255 recognized).** `unit.roamAi` field
   with save persistence (closes the deferred roam_ai save row), reversible

@@ -1258,3 +1258,53 @@ test.describe('Event command batch 3q (change_roam_ai — final command)', () =>
     expect(roundTrip).toBe(aiNid);
   });
 });
+
+test.describe('Event command batch 3r (say/dialog alias family)', () => {
+  test('say joins text segments; main_menu and change_special_music set state; pop/unpause manage the dialog', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestAliases', [
+      'main_menu',
+      'change_special_music;promotion;Promotion_Theme',
+      'speak_style;shout;text_speed=0',
+      'game_var;aliases_done;yes',
+    ]);
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        mainMenu: g.levelVars.get('_main_menu'),
+        promoMusic: g.gameVars.get('_music_promotion'),
+        style: !!g.speakStyles?.get?.('shout'),
+        done: g.gameVars.get('aliases_done'),
+      };
+    });
+    expect(vars.mainMenu).toBe(true);
+    expect(vars.promoMusic).toBe('Promotion_Theme');
+    expect(vars.style).toBe(true);
+    expect(vars.done).toBe('yes');
+    // say shows a dialog like speak; pop_dialog clears it and the event ends.
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestSay', {
+        name: 'TestSay', nid: 'TestSay', trigger: 'TestSay',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['say;Eirika;Hello,world', 'pop_dialog', 'game_var;say_done;yes'],
+      });
+      g.eventManager.triggerSpecific('TestSay', { type: 'TestSay' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 8);
+    const mid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return { hasDialog: !!st?.dialog, text: st?.dialog?.fullText ?? st?.dialog?.text ?? '' };
+    });
+    expect(mid.hasDialog).toBe(true);
+    // Advance through the dialog (typing -> waiting -> dismiss).
+    await stepFrames(page, 60, 'SELECT');
+    await stepFrames(page, 30, 'SELECT');
+    await stepFrames(page, 20);
+    const done = await page.evaluate(() => (window as any).__gameRef.gameVars.get('say_done'));
+    expect(done).toBe('yes');
+  });
+});

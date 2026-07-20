@@ -6,14 +6,14 @@
   "summary": {
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 255,
-    "dispatcherPythonNids": 246,
+    "dispatcherPythonNids": 253,
     "itemReferencedComponentNids": 136,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 234,
-      "missing-dispatch": 9,
+      "dispatched-unverified": 241,
+      "missing-dispatch": 2,
       "stub-hint": 12
     }
   },
@@ -358,10 +358,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "add_portrait",
@@ -644,10 +644,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "speak",
@@ -736,10 +736,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "unhold",
@@ -758,10 +758,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "unpause",
@@ -780,10 +780,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "narrate",
@@ -1422,10 +1422,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "force_chapter_clean_up",
@@ -5316,10 +5316,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "unlock",
