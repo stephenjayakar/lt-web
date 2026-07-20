@@ -923,3 +923,45 @@ test.describe('Event command batch 3j (change_bg_tilemap)', () => {
     expect(cleared).toBe(true);
   });
 });
+
+test.describe('Event command batch 3k (change_team_palette)', () => {
+  test('change_team_palette overrides palette/color, rebuilds sprites, and undoes', async ({ page }) => {
+    await boot(page);
+    const paletteNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const enemyDef = g.db.teams.defs.find((t: any) => t.nid === 'enemy');
+      const playerDef = g.db.teams.defs.find((t: any) => t.nid === 'player');
+      // Use the enemy team's palette as the override target for player.
+      return { enemy: enemyDef?.palette ?? null, playerOrig: playerDef?.palette ?? null };
+    });
+    expect(paletteNid.enemy).not.toBeNull();
+    await runEvent(page, 'TestTeamPal', [
+      `change_team_palette;player;${paletteNid.enemy};;red`,
+    ]);
+    const applied = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        palette: g.getTeamPalette('player'),
+        color: g.getTeamCombatColor('player'),
+      };
+    });
+    expect(applied.palette).toBe(paletteNid.enemy);
+    expect(applied.color).toBe('red');
+    const undone = await page.evaluate(() => {
+      (window as any).__harness.turnwheelUndo();
+      const g = (window as any).__gameRef;
+      return {
+        palette: g.getTeamPalette('player'),
+        color: g.getTeamCombatColor('player'),
+      };
+    });
+    expect(undone.palette).toBe(paletteNid.playerOrig);
+    expect(undone.color).not.toBe('red');
+    // Invalid team warns without applying.
+    await runEvent(page, 'TestTeamPalBad', ['change_team_palette;no_such_team;X']);
+    const stillClean = await page.evaluate(
+      () => (window as any).__gameRef.teamPaletteOverrides.size,
+    );
+    expect(stillClean).toBe(0);
+  });
+});

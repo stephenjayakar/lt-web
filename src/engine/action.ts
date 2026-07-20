@@ -1265,6 +1265,42 @@ export class ChangeBgTilemapAction extends Action {
   }
 }
 
+/** ChangeTeamPaletteAction - Python action.ChangeTeamPalette: overrides a
+ * team's map-sprite palette / combat color at runtime, reversibly, and
+ * rebuilds affected map sprites (cache-keyed by palette, so a lazy reload
+ * picks up the new colors). Combat-variant battle-anim palettes are not yet
+ * routed (documented deferral). */
+export class ChangeTeamPaletteAction extends Action {
+  private game: any;
+  private teamNid: string;
+  private next: { palette?: string; combatColor?: string };
+  private hadPrev = false;
+  private prev: { palette?: string; combatColor?: string } | undefined;
+
+  constructor(game: any, teamNid: string, next: { palette?: string; combatColor?: string }) {
+    super();
+    this.game = game;
+    this.teamNid = teamNid;
+    this.next = next;
+  }
+
+  private apply(value: { palette?: string; combatColor?: string } | undefined): void {
+    if (value === undefined) this.game.teamPaletteOverrides.delete(this.teamNid);
+    else this.game.teamPaletteOverrides.set(this.teamNid, value);
+    void this.game.loadAllMapSprites?.();
+  }
+
+  execute(): void {
+    this.hadPrev = this.game.teamPaletteOverrides.has(this.teamNid);
+    this.prev = this.game.teamPaletteOverrides.get(this.teamNid);
+    this.apply(this.next);
+  }
+
+  reverse(): void {
+    this.apply(this.hadPrev ? this.prev : undefined);
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;

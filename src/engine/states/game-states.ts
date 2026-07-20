@@ -97,6 +97,7 @@ import {
   AddAnimToUnitAction,
   RemoveAnimFromUnitAction,
   ChangeBgTilemapAction,
+  ChangeTeamPaletteAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8677,6 +8678,25 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_team_palette': {
+        // change_team_palette;Team;MapSpritePalette;CombatVariantPalette;CombatColor
+        // (Python :3985). Combat-variant battle-anim palettes are a documented
+        // deferral; map-sprite palette + combat color apply reversibly.
+        const teamNid = args[0] ?? '';
+        const isTeam = game.db.teams.defs.some((t: any) => t.nid === teamNid);
+        if (!isTeam) {
+          console.warn(`change_team_palette: ${teamNid} is not a valid team nid`);
+        } else {
+          const next: { palette?: string; combatColor?: string } = {};
+          if (args[1]) next.palette = args[1];
+          if (args[3]) next.combatColor = args[3];
+          if (args[2]) console.warn('change_team_palette: combat variant palettes not yet supported (deferred)');
+          game.actionLog.doAction(new ChangeTeamPaletteAction(game, teamNid, next));
+        }
         this.advancePointer();
         return false;
       }
