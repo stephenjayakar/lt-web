@@ -85,7 +85,7 @@ export type EventCommandType =
   | 'set_skill_data' | 'set_mode_rng' | 'set_mode_autolevels' | 'show_minimap'
   | 'records_screen' | 'open_library' | 'open_guide' | 'open_credits' | 'soundroom' | 'open_trade'
   | 'change_roaming' | 'change_roaming_unit' | 'clean_up_roaming' | 'trigger_script' | 'trigger_script_with_args'
-  | 'recruit_generic' | 'merge_parties' | 'loop_units' | 'add_fatigue' | 'remove_generics_from_region' | 'add_unit_map_anim' | 'remove_unit_map_anim' | 'enable_repair_shop' | 'force_chapter_clean_up' | 'arrange_formation' | 'text_entry' | 'change_bg_tilemap' | 'change_team_palette' | 'set_custom_options'
+  | 'recruit_generic' | 'merge_parties' | 'loop_units' | 'add_fatigue' | 'remove_generics_from_region' | 'add_unit_map_anim' | 'remove_unit_map_anim' | 'enable_repair_shop' | 'force_chapter_clean_up' | 'arrange_formation' | 'text_entry' | 'change_bg_tilemap' | 'change_team_palette' | 'set_custom_options' | 'pose_unit'
   | 'add_item_component' | 'modify_item_component' | 'remove_item_component'
   | 'add_skill_component' | 'modify_skill_component' | 'remove_skill_component'
   | 'set_game_board_bounds' | 'remove_game_board_bounds' | 'dump_vars' | 'delete_save'
@@ -190,7 +190,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'set_skill_data', 'set_mode_rng', 'set_mode_autolevels', 'show_minimap',
   'records_screen', 'open_library', 'open_guide', 'open_credits', 'soundroom', 'open_trade',
   'change_roaming', 'change_roaming_unit', 'clean_up_roaming', 'trigger_script', 'trigger_script_with_args',
-  'recruit_generic', 'merge_parties', 'loop_units', 'add_fatigue', 'remove_generics_from_region', 'add_unit_map_anim', 'remove_unit_map_anim', 'enable_repair_shop', 'force_chapter_clean_up', 'arrange_formation', 'text_entry', 'change_bg_tilemap', 'change_team_palette', 'set_custom_options',
+  'recruit_generic', 'merge_parties', 'loop_units', 'add_fatigue', 'remove_generics_from_region', 'add_unit_map_anim', 'remove_unit_map_anim', 'enable_repair_shop', 'force_chapter_clean_up', 'arrange_formation', 'text_entry', 'change_bg_tilemap', 'change_team_palette', 'set_custom_options', 'pose_unit',
   'add_item_component', 'modify_item_component', 'remove_item_component',
   'add_skill_component', 'modify_skill_component', 'remove_skill_component',
   'set_game_board_bounds', 'remove_game_board_bounds', 'dump_vars', 'delete_save',

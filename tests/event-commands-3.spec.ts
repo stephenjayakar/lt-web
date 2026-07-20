@@ -1013,3 +1013,24 @@ test.describe('Event command batch 3l (set_custom_options)', () => {
     expect(fired).toBe('yes');
   });
 });
+
+test.describe('Event command batch 3m (pose_unit)', () => {
+  test('pose_unit sets, validates, and clears the per-unit pose override', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestPose', ['pose_unit;Eirika;moving;left']);
+    let pose = await page.evaluate(() => (window as any).__gameRef.units.get('Eirika').poseOverride);
+    expect(pose).toEqual({ state: 'moving', direction: 'left' });
+    // Invalid direction rejected; override unchanged.
+    await runEvent(page, 'TestPoseBad', ['pose_unit;Eirika;moving;diagonal']);
+    pose = await page.evaluate(() => (window as any).__gameRef.units.get('Eirika').poseOverride);
+    expect(pose).toEqual({ state: 'moving', direction: 'left' });
+    // normal clears.
+    await runEvent(page, 'TestPoseClear', ['pose_unit;Eirika;normal']);
+    pose = await page.evaluate(() => (window as any).__gameRef.units.get('Eirika').poseOverride);
+    expect(pose).toBeNull();
+    // Deferred cast poses warn without applying.
+    await runEvent(page, 'TestPoseCast', ['pose_unit;Eirika;start_cast']);
+    pose = await page.evaluate(() => (window as any).__gameRef.units.get('Eirika').poseOverride);
+    expect(pose).toBeNull();
+  });
+});

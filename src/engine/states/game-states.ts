@@ -8701,6 +8701,35 @@ export class EventState extends State {
         return false;
       }
 
+      case 'pose_unit': {
+        // pose_unit;Unit;Pose;[Direction] (Python event_functions.py:1231).
+        // Pose map: normal -> clear override; active -> standing;
+        // moving/stand_dir -> moving with required direction. start_cast/
+        // end_cast have no web map-sprite frames (documented deferral).
+        const unit = game.units.get(args[0] ?? '');
+        const pose = (args[1] ?? '').toLowerCase();
+        const dir = (args[2] ?? '').toLowerCase();
+        const validPoses = ['normal', 'active', 'moving', 'stand_dir', 'start_cast', 'end_cast'];
+        const validDirs = ['up', 'down', 'left', 'right'];
+        if (!unit) {
+          console.warn(`pose_unit: couldn't find ${args[0]}`);
+        } else if (!validPoses.includes(pose)) {
+          console.warn(`pose_unit: ${pose} is not a valid sprite pose`);
+        } else if ((pose === 'moving' || pose === 'stand_dir') && !validDirs.includes(dir)) {
+          console.warn(`pose_unit: direction required/invalid for ${pose}`);
+        } else if (pose === 'start_cast' || pose === 'end_cast') {
+          console.warn(`pose_unit: ${pose} not supported by web map sprites (deferred)`);
+        } else if (pose === 'normal') {
+          unit.poseOverride = null;
+        } else if (pose === 'active') {
+          unit.poseOverride = { state: 'standing' };
+        } else {
+          unit.poseOverride = { state: 'moving', direction: dir as any };
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'set_custom_options': {
         // set_custom_options;Options;Enabled;Descs;Events (Python :3005) —
         // four reversible game-var writes consumed by the options menu.

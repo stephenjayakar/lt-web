@@ -75,6 +75,13 @@ export class UnitRenderer {
           sprite.state = 'standing';
         }
 
+        // pose_unit override wins (set-then-draw keeps shared sprites safe).
+        const pose = (unit as any).poseOverride;
+        if (pose) {
+          sprite.state = pose.state;
+          if (pose.direction) sprite.direction = pose.direction;
+        }
+
         sprite.draw(surf, worldX, worldY, cameraOffsetX, cameraOffsetY);
       } else {
         this.drawPlaceholder(surf, unit, worldX, worldY, cameraOffsetX, cameraOffsetY, currentPhaseTeam);
