@@ -873,3 +873,53 @@ test.describe('Event command batch 3i (text_entry)', () => {
     expect(value).toBe('abc');
   });
 });
+
+test.describe('Event command batch 3j (change_bg_tilemap)', () => {
+  test('change_bg_tilemap sets, undoes, and clears the background tilemap', async ({ page }) => {
+    await boot(page);
+    const otherTilemap = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const current = g.tilemap?.nid;
+      return [...g.db.tilemaps.keys()].find((nid: string) => nid !== current) ?? null;
+    });
+    expect(otherTilemap).not.toBeNull();
+    await runEvent(page, 'TestBgTilemap', [
+      `change_bg_tilemap;${otherTilemap}`,
+      'game_var;after_bg;yes',
+    ]);
+    // The bg tilemap applies when its tileset images finish loading — wait on
+    // the state, not a frame count.
+    await page.waitForFunction(
+      (nid: string) => (window as any).__gameRef.bgTilemap?.nid === nid,
+      otherTilemap,
+      { timeout: 15_000 },
+    );
+    const set = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        bg: g.bgTilemap?.nid ?? null,
+        mirrored: g.mapView.bgTilemap?.nid ?? null,
+        after: g.gameVars.get('after_bg'),
+      };
+    });
+    expect(set.bg).toBe(otherTilemap);
+    expect(set.mirrored).toBe(otherTilemap);
+    expect(set.after).toBe('yes');
+    // Undo restores no-background; then a clear command also works.
+    const undone = await page.evaluate(() => {
+      (window as any).__harness.turnwheelUndo();
+      const g = (window as any).__gameRef;
+      return g.bgTilemap === null && g.mapView.bgTilemap === null;
+    });
+    expect(undone).toBe(true);
+    await runEvent(page, 'TestBgSet2', [`change_bg_tilemap;${otherTilemap}`]);
+    await page.waitForFunction(
+      (nid: string) => (window as any).__gameRef.bgTilemap?.nid === nid,
+      otherTilemap,
+      { timeout: 15_000 },
+    );
+    await runEvent(page, 'TestBgClear', ['change_bg_tilemap']);
+    const cleared = await page.evaluate(() => (window as any).__gameRef.bgTilemap === null);
+    expect(cleared).toBe(true);
+  });
+});

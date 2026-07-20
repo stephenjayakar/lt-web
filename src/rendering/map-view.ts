@@ -47,6 +47,10 @@ export interface FogRenderConfig {
  * 8. UI overlay
  */
 export class MapView {
+  /** Optional background tilemap drawn beneath the main one
+   * (set from GameState when change_bg_tilemap applies). */
+  bgTilemap: any | null = null;
+
   private mapSurface: Surface;
   private currentScale: number;
 
@@ -105,6 +109,14 @@ export class MapView {
     // Determine if fog of war is active
     const fogActive = fogConfig &&
       (fogConfig.fogInfo.isActive || fogConfig.board.fogRegionSet.size > 0);
+
+    // 0. Optional background tilemap (Python level.bg_tilemap)
+    const bgTm = this.bgTilemap;
+    if (bgTm) {
+      bgTm.updateAutotiles(Date.now());
+      const bgImg = bgTm.getFullImage(cullRect);
+      if (bgImg) this.mapSurface.ctx.drawImage(bgImg, offsetX, offsetY);
+    }
 
     // 1. Background tilemap layers
     // Update autotile animation frame before rendering

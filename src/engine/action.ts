@@ -1245,6 +1245,26 @@ export class RemoveAnimFromUnitAction extends Action {
   }
 }
 
+/** ChangeBgTilemapAction - Python action.ChangeBGTileMap: swaps the level's
+ * background tilemap object; reverse restores the previous one (or none). */
+export class ChangeBgTilemapAction extends Action {
+  private game: any;
+  private newTilemap: any | null;
+  private oldTilemap: any | null = null;
+  constructor(game: any, newTilemap: any | null) {
+    super();
+    this.game = game;
+    this.newTilemap = newTilemap;
+  }
+  execute(): void {
+    this.oldTilemap = this.game.bgTilemap;
+    this.game.setBgTilemap(this.newTilemap);
+  }
+  reverse(): void {
+    this.game.setBgTilemap(this.oldTilemap);
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;

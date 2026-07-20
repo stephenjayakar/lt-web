@@ -88,6 +88,9 @@ export class GameState {
   items: Map<string, ItemObject>;
   currentLevel: LevelPrefab | null;
   tilemap: TileMapObject | null;
+  /** Optional background tilemap drawn beneath the main one (Python
+   * level.bg_tilemap, swapped by change_bg_tilemap). */
+  bgTilemap: TileMapObject | null = null;
   turnCount: number;
   gameVars: Map<string, any>;
   levelVars: Map<string, any>;
@@ -209,6 +212,7 @@ export class GameState {
     this.items = new Map();
     this.currentLevel = null;
     this.tilemap = null;
+    this.bgTilemap = null;
     this.turnCount = 1;
     this.gameVars = new Map();
     this.levelVars = new Map();
@@ -284,6 +288,41 @@ export class GameState {
    *   - Clear regions, level vars, etc.
    *   - Preserve persistent units and their items for the next level
    */
+
+  /**
+   * Build a runtime TileMapObject for any tilemap nid (loads tilesets and
+   * autotiles). Extracted for change_bg_tilemap; loadLevel uses the same
+   * loading logic inline.
+   */
+  /** Set/clear the background tilemap, mirrored onto the renderer. */
+  setBgTilemap(tm: TileMapObject | null): void {
+    this.bgTilemap = tm;
+    this.mapView.bgTilemap = tm;
+  }
+
+  async buildTilemapObject(tilemapNid: string): Promise<TileMapObject | null> {
+    const tilemapData = this.db.tilemaps.get(tilemapNid);
+    if (!tilemapData) return null;
+    const tilesetImages = new Map<NID, HTMLImageElement>();
+    const autotileImages = new Map<NID, HTMLImageElement>();
+    const tilesetDefs = new Map<NID, import('../data/types').TilesetData>();
+    await Promise.all(
+      tilemapData.tilesets.map(async (tsNid) => {
+        const img = await this.resources.tryLoadImage(`resources/tilesets/${tsNid}.png`);
+        if (img) tilesetImages.set(tsNid, img);
+        const tsDef = this.db.tilesets.get(tsNid);
+        if (tsDef) {
+          tilesetDefs.set(tsNid, tsDef);
+          if (tsDef.autotiles && Object.keys(tsDef.autotiles).length > 0) {
+            const autoImg = await this.resources.tryLoadImage(`resources/tilesets/${tsNid}_autotiles.png`);
+            if (autoImg) autotileImages.set(tsNid, autoImg);
+          }
+        }
+      }),
+    );
+    return TileMapObject.fromPrefab(tilemapData, tilesetImages, tilesetDefs, autotileImages);
+  }
+
   cleanUpLevel(): void {
     // Remove all units from the board
     for (const unit of this.units.values()) {
@@ -367,6 +406,7 @@ export class GameState {
     this.turnCount = 1;
     this.currentLevel = null;
     this.tilemap = null;
+    this.bgTilemap = null;
     this.board = null;
     this.targetSystem = null;
     this.pathSystem = null;
