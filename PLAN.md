@@ -179,6 +179,18 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 17 — change_roam_ai (implemented solo):
+  EVENT-COMMAND SURFACE COMPLETE (255/255 recognized).** `unit.roamAi` field
+  with save persistence (closes the deferred roam_ai save row), reversible
+  `ChangeRoamAiAction` with Python's db.ai validation, and a minimal NPC
+  roam-AI updater in FreeRoamState (Wait and Move_to-starting-position
+  behaviours on a roam_speed cadence; tile-stepped rather than Python's
+  pixel-smooth movement, Interact/Move_away deferred — all documented).
+  1 regression (set/validate/undo/save round trip). Every Python event
+  command is now parser-recognized; strict mode loud-fails nothing but
+  genuinely absent sub-features within implemented commands.
+
+
 - **Zero-usage command batch 16 — open_unit_management (implemented solo):**
   new reachable `base_manage` state: party unit list -> per-unit options
   (Trade with a partner picker feeding the direct-trade path; Supply via the

@@ -5,16 +5,15 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 254,
-    "dispatcherPythonNids": 245,
+    "parserRecognizedPythonNids": 255,
+    "dispatcherPythonNids": 246,
     "itemReferencedComponentNids": 136,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 233,
+      "dispatched-unverified": 234,
       "missing-dispatch": 9,
-      "missing-parser": 1,
       "stub-hint": 12
     }
   },
@@ -3239,12 +3238,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 2180
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": true,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "change_ai_group",

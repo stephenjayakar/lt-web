@@ -77,6 +77,9 @@ export class UnitObject {
    * (Python actor.sprite.change_state): applied set-then-draw per frame so
    * cache-shared sprites stay correct. Null = normal state driving. */
   poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null = null;
+  /** Roam-AI nid override (Python `roam_ai`); consumed by the free-roam NPC
+   * updater when the referenced AI def has roam behaviours. */
+  roamAi: string | null = null;
   skills: SkillObject[];
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;
