@@ -8680,6 +8680,21 @@ export class EventState extends State {
         return false;
       }
 
+      case 'text_entry': {
+        // text_entry;Nid;String;CharLimit;IllegalChars;Default;MinChars;flags
+        // (Python event_functions.py:3276). Pauses into the text_entry state;
+        // the confirmed value lands as a game var via SetGameVarAction.
+        const illegal = (args[3] ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        game.memory.set('text_entry', [
+          args[0] ?? '', args[1] ?? '', parseInt(args[2] ?? '16', 10) || 16,
+          illegal, args.includes('force_entry'), args[4] || null,
+          parseInt(args[5] ?? '0', 10) || 0,
+        ]);
+        this.advancePointer();
+        game.state.change('text_entry');
+        return true;
+      }
+
       case 'enable_repair_shop': {
         // enable_repair_shop;bool (Python :694) — plain game-var toggle
         game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_repair_shop', (args[0] ?? '').toLowerCase() === 'true'));

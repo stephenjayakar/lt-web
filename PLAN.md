@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 9 — text_entry state (implemented solo):**
+  new reachable `text_entry` state (`src/engine/states/text-entry-state.ts`)
+  driven by the `text_entry` event command with Python's full parameter set
+  (var nid, header, character limit, illegal-character list, default string,
+  minimum length, `force_entry` cancel gate). Real-keyboard typing replaces
+  Python's grid letter menu (documented presentation deviation); confirmed
+  text lands reversibly via `SetGameVarAction` exactly like Python. Also
+  checks off the P5 text-entry row. 2 regressions covering limits/illegal
+  chars/backspace/confirm round-trip and min-length + force_entry gating.
+
+
 - **Zero-usage command batch 8 — repair shop, cleanup, formation (implemented
   solo):** `enable_repair_shop` (reversible game-var toggle),
   `force_chapter_clean_up` (Python clean_up(full=False) per-unit semantics

@@ -83,6 +83,10 @@ import {
   setMinimapGameRef,
 } from './engine/states/minimap-state';
 import {
+  TextEntryState,
+  setTextEntryGameRef,
+} from './engine/states/text-entry-state';
+import {
   VictoryState,
   setVictoryGameRef,
 } from './engine/states/victory-state';
@@ -485,6 +489,7 @@ async function main(): Promise<void> {
   setSupplyGameRef(gameState);
   setBaseGameRef(gameState);
   setSettingsGameRef(gameState);
+  setTextEntryGameRef(gameState);
   setMinimapGameRef(gameState);
   setVictoryGameRef(gameState);
   setGameOverGameRef(gameState);
@@ -554,6 +559,7 @@ async function main(): Promise<void> {
     new BaseSoundRoomState(),
     new SettingsMenuState(),
     new MinimapState(),
+    new TextEntryState(),
     new VictoryState(),
     new GameOverState(),
     new CreditState(),
