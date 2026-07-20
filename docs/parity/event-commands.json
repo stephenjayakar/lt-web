@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 225,
-    "dispatcherPythonNids": 216,
+    "parserRecognizedPythonNids": 230,
+    "dispatcherPythonNids": 221,
     "itemReferencedComponentNids": 135,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 204,
+      "dispatched-unverified": 209,
       "missing-dispatch": 9,
-      "missing-parser": 30,
+      "missing-parser": 25,
       "stub-hint": 12
     }
   },
@@ -5406,12 +5406,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3722
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "trigger_script_with_args",
@@ -5430,12 +5430,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3741
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "loop_units",
@@ -5475,12 +5475,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3774
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "change_roaming_unit",
@@ -5497,12 +5497,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3778
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "clean_up_roaming",
@@ -5517,12 +5517,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 3785
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "add_to_initiative",

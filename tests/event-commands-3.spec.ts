@@ -338,3 +338,87 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
     expect(result.partner).toBe('Seth');
   });
 });
+
+test.describe('Event command batch 3c (roaming + trigger_script)', () => {
+  test('change_roaming toggles roam mode and change_roaming_unit assigns/clears', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestRoamOn', [
+      'change_roaming;true',
+      'change_roaming_unit;Eirika',
+    ]);
+    let info = await page.evaluate(() => ({ ...( window as any).__gameRef.roamInfo }));
+    expect(info.roam).toBe(true);
+    expect(info.roamUnitNid).toBe('Eirika');
+    await runEvent(page, 'TestRoamOff', [
+      'change_roaming;false',
+      'change_roaming_unit;NoSuchUnit',
+    ]);
+    info = await page.evaluate(() => ({ ...(window as any).__gameRef.roamInfo }));
+    expect(info.roam).toBe(false);
+    expect(info.roamUnitNid).toBeNull();
+  });
+
+  test('clean_up_roaming removes all on-map units except the roam unit', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestRoamCleanup', [
+      'change_roaming;true',
+      'change_roaming_unit;Eirika',
+      'clean_up_roaming',
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const onMap = [...g.units.values()].filter((u: any) => u.position);
+      return { count: onMap.length, nids: onMap.map((u: any) => u.nid) };
+    });
+    expect(result.nids).toEqual(['Eirika']);
+  });
+
+  test('trigger_script runs a named sub-event with unit context and resumes the parent', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('SubScript', {
+        name: 'A Sub Script', nid: 'SubScript', trigger: 'SubScript',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;sub_ran;yes', 'game_var;sub_unit;{e:unit1}'],
+      });
+    });
+    await runEvent(page, 'TestTriggerScript', [
+      'game_var;parent_before;yes',
+      'trigger_script;SubScript;Eirika',
+      'game_var;parent_after;yes',
+    ]);
+    await stepFrames(page, 20);
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        before: g.gameVars.get('parent_before'),
+        sub: g.gameVars.get('sub_ran'),
+        after: g.gameVars.get('parent_after'),
+      };
+    });
+    expect(vars.before).toBe('yes');
+    expect(vars.sub).toBe('yes');
+    expect(vars.after).toBe('yes');
+  });
+
+  test('trigger_script_with_args passes parsed local args to the sub-event', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('SubArgs', {
+        name: 'SubArgs', nid: 'SubArgs', trigger: 'SubArgs',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;got_arg;{e:reward}'],
+      });
+    });
+    await runEvent(page, 'TestTriggerArgs', [
+      'trigger_script_with_args;SubArgs;reward=Iron_Sword',
+    ]);
+    await stepFrames(page, 20);
+    const got = await page.evaluate(() => (window as any).__gameRef.gameVars.get('got_arg'));
+    expect(got).toBe('Iron_Sword');
+  });
+});
