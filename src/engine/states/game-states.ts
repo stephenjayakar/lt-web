@@ -96,6 +96,7 @@ import {
   LeaveMapAction,
   AddAnimToUnitAction,
   RemoveAnimFromUnitAction,
+  ChangeBgTilemapAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8677,6 +8678,26 @@ export class EventState extends State {
         }
 
         this.advancePointer();
+        return false;
+      }
+
+      case 'change_bg_tilemap': {
+        // change_bg_tilemap;[Tilemap] (Python event_functions.py:884 /
+        // action.ChangeBGTileMap). No arg clears. Blocks until the tilemap's
+        // tilesets finish loading (like change_background's sync semantics).
+        const bgNid = (args[0] ?? '').trim();
+        this.advancePointer();
+        if (!bgNid) {
+          game.actionLog.doAction(new ChangeBgTilemapAction(game, null));
+          return false;
+        }
+        // Python applies synchronously from preloaded prefabs; the web loads
+        // tileset images async and applies on completion (timing-only
+        // deviation — the event does not block on the load).
+        void game.buildTilemapObject(bgNid).then((tm: any) => {
+          if (tm) game.actionLog.doAction(new ChangeBgTilemapAction(game, tm));
+          else console.warn(`change_bg_tilemap: tilemap "${bgNid}" not found`);
+        }).catch((err: any) => console.warn('change_bg_tilemap failed:', err));
         return false;
       }
 

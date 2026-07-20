@@ -179,6 +179,16 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 10 — change_bg_tilemap (implemented solo):**
+  background tilemaps: `GameState.bgTilemap` mirrored onto a new
+  `MapView.bgTilemap` render pass beneath the main layers, a reusable
+  `buildTilemapObject()` loader extracted from level load, and a reversible
+  `ChangeBgTilemapAction` (swap/restore incl. clear). The web applies on
+  async tileset load rather than Python's preloaded-synchronous swap
+  (timing-only deviation documented). 1 regression (set/undo/clear with
+  state-based waits). Parser 248/255; remaining 7 are UI subsystem builds.
+
+
 - **Zero-usage command batch 9 — text_entry state (implemented solo):**
   new reachable `text_entry` state (`src/engine/states/text-entry-state.ts`)
   driven by the `text_entry` event command with Python's full parameter set

@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 247,
-    "dispatcherPythonNids": 238,
+    "parserRecognizedPythonNids": 248,
+    "dispatcherPythonNids": 239,
     "itemReferencedComponentNids": 136,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 226,
+      "dispatched-unverified": 227,
       "missing-dispatch": 9,
-      "missing-parser": 8,
+      "missing-parser": 7,
       "stub-hint": 12
     }
   },
@@ -1640,12 +1640,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 884
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_game_board_bounds",
