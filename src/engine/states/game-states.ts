@@ -8701,6 +8701,25 @@ export class EventState extends State {
         return false;
       }
 
+      case 'party_transfer': {
+        // party_transfer;P1;P2;FixedUnits;P1Name;P2Name;P1Limit;P2Limit
+        // (Python :3960): pause into the dual-roster transfer state.
+        const [p1, p2] = [args[0] ?? '', args[1] ?? ''];
+        if (!game.parties.has(p1) || !game.parties.has(p2)) {
+          console.warn(`party_transfer: unknown party ${!game.parties.has(p1) ? p1 : p2}`);
+          this.advancePointer();
+          return false;
+        }
+        const fixed = (args[2] ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        game.memory.set('party_transfer', [
+          p1, p2, fixed, args[3] ?? '', args[4] ?? '',
+          parseInt(args[5] ?? '0', 10) || 0, parseInt(args[6] ?? '0', 10) || 0,
+        ]);
+        this.advancePointer();
+        game.state.change('party_transfer');
+        return true;
+      }
+
       case 'open_bexp_menu': {
         // open_bexp_menu;Panorama;Music (Python :3517): pause into the BEXP
         // select/allocate flow.
