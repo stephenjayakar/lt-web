@@ -8255,7 +8255,7 @@ export class EventState extends State {
     const unitNid = trigger?.unitNid ?? trigger?.unit1?.nid ?? '';
     const unit2Nid = trigger?.unitB ?? trigger?.unit2?.nid ?? '';
     const expressionContext = this.buildConditionContext();
-    const args = rawArgs.map((arg) => {
+    let args = rawArgs.map((arg) => {
       let value = arg.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid);
       value = value.replace(/\{(?:e|eval):([^{}]+)\}/g, (_match, expression: string) => {
         const result = evaluateExpression(expression, expressionContext);
@@ -8411,8 +8411,14 @@ export class EventState extends State {
       // ----- Blocking commands -----
 
       case 's':           // short alias used in support conversations
+      case 'say':
       case 'speak':
       case 'narrate': {
+        // say;Speaker;Text1,Text2,... (Python :322) = speak with the text
+        // list joined by {sub_break}.
+        if (cmd.type === 'say' && args.length > 2) {
+          args = [args[0] ?? '', args.slice(1).join('{sub_break}')];
+        }
         // In skip mode, auto-advance past all dialogue without showing it
         if (this.skipMode) {
           this.advancePointer();
@@ -8698,6 +8704,60 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'speak_style': {
+        // speak_style;Nid;props... (Python speak style registry). The web
+        // stores styles for future speak consumption; only text_speed and
+        // speaker defaults are consumed today (documented deviation).
+        const styleNid = args[0] ?? '';
+        if (styleNid) {
+          if (!game.speakStyles) game.speakStyles = new Map();
+          game.speakStyles.set(styleNid, args.slice(1));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'pop_dialog': {
+        // pop_dialog (Python :405-ish): removes the current text box.
+        this.dialog = null;
+        this.advancePointer();
+        return false;
+      }
+
+      case 'unhold':
+      case 'unpause': {
+        // unhold;Nid / unpause;[Nid] (Python :411/:416): the web keeps one
+        // active dialog, so both resume it if waiting (multi-box holds are a
+        // documented deviation).
+        if (this.dialog && (this.dialog as any).state === 'waiting') {
+          (this.dialog as any).handleInput?.('SELECT');
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'main_menu': {
+        // main_menu (Python :745): flags the chapter-end flow to return to
+        // the main menu.
+        game.levelVars.set('_main_menu', true);
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_special_music': {
+        // change_special_music;Type;Music (Python :106): title_screen music
+        // persists in records; others are game vars.
+        const kind = args[0] ?? '';
+        const music = args[1] ?? '';
+        if (kind === 'title_screen') {
+          try { localStorage.setItem('_music_title_screen', music); } catch { /* private mode */ }
+        } else if (kind) {
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, `_music_${kind}`, music));
+        }
         this.advancePointer();
         return false;
       }
