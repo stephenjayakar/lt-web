@@ -85,6 +85,8 @@ export type EventCommandType =
   | 'set_skill_data' | 'set_mode_rng' | 'set_mode_autolevels' | 'show_minimap'
   | 'records_screen' | 'open_library' | 'open_guide' | 'open_credits' | 'soundroom' | 'open_trade'
   | 'change_roaming' | 'change_roaming_unit' | 'clean_up_roaming' | 'trigger_script' | 'trigger_script_with_args'
+  | 'add_item_component' | 'modify_item_component' | 'remove_item_component'
+  | 'add_skill_component' | 'modify_skill_component' | 'remove_skill_component'
   | 'set_game_board_bounds' | 'remove_game_board_bounds' | 'dump_vars' | 'delete_save'
   // Modify unit properties
   | 'set_name' | 'set_current_hp' | 'set_current_mana'
@@ -187,6 +189,8 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'set_skill_data', 'set_mode_rng', 'set_mode_autolevels', 'show_minimap',
   'records_screen', 'open_library', 'open_guide', 'open_credits', 'soundroom', 'open_trade',
   'change_roaming', 'change_roaming_unit', 'clean_up_roaming', 'trigger_script', 'trigger_script_with_args',
+  'add_item_component', 'modify_item_component', 'remove_item_component',
+  'add_skill_component', 'modify_skill_component', 'remove_skill_component',
   'set_game_board_bounds', 'remove_game_board_bounds', 'dump_vars', 'delete_save',
   // Modify unit properties
   'set_name', 'set_variant', 'set_current_hp', 'set_current_mana',

@@ -87,6 +87,9 @@ import {
   SetLevelVarAction,
   SetGameBoardBoundsAction,
   SetSkillDataAction,
+  AddObjComponentAction,
+  ModifyObjComponentAction,
+  RemoveObjComponentAction,
   ChangeTeamAction,
   IncrementSupportPointsAction,
   UnlockSupportRankAction,
@@ -8667,6 +8670,79 @@ export class EventState extends State {
           this.currentEvent.trigger.localArgs.set('created_unit', newUnit.nid);
         }
 
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_item_component':
+      case 'modify_item_component':
+      case 'remove_item_component': {
+        // Python event_functions.py:1891/:1907/:1921; reversible component
+        // mutation on a runtime item (unit inventory or convoy; recursive flag
+        // searches subitems like other item commands).
+        const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '', args.includes('recursive'));
+        const compNid = args[2] ?? '';
+        if (!item || !compNid) {
+          console.warn(`${cmd.type}: invalid owner/item/component (${args.join(';')})`);
+          this.advancePointer();
+          return false;
+        }
+        if (cmd.type === 'add_item_component') {
+          const value = args[3] !== undefined
+            ? evaluateExpression(args[3], this.buildConditionContext()) : null;
+          game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
+        } else if (cmd.type === 'modify_item_component') {
+          if (!item.components.has(compNid)) {
+            console.warn(`modify_item_component: item lacks component ${compNid}`);
+          } else {
+            const value = evaluateExpression(args[3] ?? '', this.buildConditionContext());
+            const property = args[4] && !['additive', 'recursive'].includes(args[4]) ? args[4] : null;
+            game.actionLog.doAction(new ModifyObjComponentAction(
+              item, compNid, value, property, args.includes('additive'),
+            ));
+          }
+        } else {
+          game.actionLog.doAction(new RemoveObjComponentAction(item, compNid));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'add_skill_component':
+      case 'modify_skill_component':
+      case 'remove_skill_component': {
+        // Python event_functions.py:1933+/:1955+; 'stack' applies to every
+        // same-nid skill instance on the unit.
+        const unit = game.units.get(args[0] ?? '');
+        const skillNid = args[1] ?? '';
+        const compNid = args[2] ?? '';
+        const stacked = args.includes('stack');
+        const skills = (unit?.skills ?? []).filter((s: any) => s.nid === skillNid);
+        const targets = stacked ? skills : skills.slice(0, 1);
+        if (!unit || targets.length === 0 || !compNid) {
+          console.warn(`${cmd.type}: invalid unit/skill/component (${args.join(';')})`);
+          this.advancePointer();
+          return false;
+        }
+        for (const skill of targets) {
+          if (cmd.type === 'add_skill_component') {
+            const value = args[3] !== undefined
+              ? evaluateExpression(args[3], this.buildConditionContext()) : null;
+            game.actionLog.doAction(new AddObjComponentAction(skill, compNid, value));
+          } else if (cmd.type === 'modify_skill_component') {
+            if (!skill.components.has(compNid)) {
+              console.warn(`modify_skill_component: skill lacks component ${compNid}`);
+              continue;
+            }
+            const value = evaluateExpression(args[3] ?? '', this.buildConditionContext());
+            const property = args[4] && !['additive', 'stack'].includes(args[4]) ? args[4] : null;
+            game.actionLog.doAction(new ModifyObjComponentAction(
+              skill, compNid, value, property, args.includes('additive'),
+            ));
+          } else {
+            game.actionLog.doAction(new RemoveObjComponentAction(skill, compNid));
+          }
+        }
         this.advancePointer();
         return false;
       }

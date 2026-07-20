@@ -5,16 +5,16 @@
   ],
   "summary": {
     "pythonEventNids": 255,
-    "parserRecognizedPythonNids": 230,
-    "dispatcherPythonNids": 221,
+    "parserRecognizedPythonNids": 236,
+    "dispatcherPythonNids": 227,
     "itemReferencedComponentNids": 135,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 209,
+      "dispatched-unverified": 215,
       "missing-dispatch": 9,
-      "missing-parser": 25,
+      "missing-parser": 19,
       "stub-hint": 12
     }
   },
@@ -2820,12 +2820,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1891
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "modify_item_component",
@@ -2850,12 +2850,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1908
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "remove_item_component",
@@ -2876,12 +2876,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1922
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "add_skill_component",
@@ -2904,12 +2904,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1934
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "modify_skill_component",
@@ -2934,12 +2934,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1955
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "remove_skill_component",
@@ -2960,12 +2960,12 @@
         "source": "lt-maker/app/events/event_functions.py",
         "line": 1974
       },
-      "parserRecognized": false,
+      "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
+      "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "missing-parser"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "give_money",

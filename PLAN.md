@@ -179,6 +179,17 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Zero-usage command batch 4 — component modification (implemented solo):**
+  `add/modify/remove_item_component` and `add/modify/remove_skill_component`
+  via a shared reversible action trio over the runtime component Maps
+  (Python action.py Add/Modify/RemoveItemComponent semantics: dict-property
+  targeting, additive numeric mode, exact restore incl. absent-key deletes).
+  Item variants use `findInventoryItem` (convoy + recursive); skill variants
+  honor Python's `stack` flag across same-nid instances. Values evaluate
+  through the shared event `evaluateExpression`. 2 regressions covering the
+  full add→modify→remove→triple-undo ladder and stacked-skill application.
+
+
 - **Zero-usage command batch 3 — roaming + scripts (implemented solo):**
   `change_roaming` (with Python's first-free-action turnwheel reset),
   `change_roaming_unit` (missing unit clears), `clean_up_roaming` (off-maps

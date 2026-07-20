@@ -422,3 +422,79 @@ test.describe('Event command batch 3c (roaming + trigger_script)', () => {
     expect(got).toBe('Iron_Sword');
   });
 });
+
+test.describe('Event command batch 3d (component modification)', () => {
+  test('add/modify/remove_item_component mutate reversibly', async ({ page }) => {
+    await boot(page);
+    const itemNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return g.units.get('Eirika').items[0]?.nid ?? null;
+    });
+    expect(itemNid).not.toBeNull();
+    await runEvent(page, 'TestItemComp', [
+      `add_item_component;Eirika;${itemNid};crit;15`,
+      `modify_item_component;Eirika;${itemNid};crit;10;additive`,
+    ]);
+    const after = await page.evaluate((itemNid: string) => {
+      const g = (window as any).__gameRef;
+      const item = g.units.get('Eirika').items.find((i: any) => i.nid === itemNid);
+      return item.components.get('crit');
+    }, itemNid);
+    expect(after).toBe(25);
+    await runEvent(page, 'TestItemCompRm', [`remove_item_component;Eirika;${itemNid};crit`]);
+    const result = await page.evaluate((itemNid: string) => {
+      const g = (window as any).__gameRef;
+      const item = g.units.get('Eirika').items.find((i: any) => i.nid === itemNid);
+      const removed = !item.components.has('crit');
+      // Turnwheel: undo remove -> 25; undo modify -> 15; undo add -> absent
+      const h = (window as any).__harness;
+      h.turnwheelUndo();
+      const afterUndoRemove = item.components.get('crit');
+      h.turnwheelUndo();
+      const afterUndoModify = item.components.get('crit');
+      h.turnwheelUndo();
+      const afterUndoAdd = item.components.has('crit');
+      return { removed, afterUndoRemove, afterUndoModify, afterUndoAdd };
+    }, itemNid);
+    expect(result.removed).toBe(true);
+    expect(result.afterUndoRemove).toBe(25);
+    expect(result.afterUndoModify).toBe(15);
+    expect(result.afterUndoAdd).toBe(false);
+  });
+
+  test('add/modify/remove_skill_component with stack flag hits all instances', async ({ page }) => {
+    await boot(page);
+    const skillNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return [...g.db.skills.keys()][0] ?? null;
+    });
+    expect(skillNid).not.toBeNull();
+    // Grant two stacked instances.
+    await runEvent(page, 'TestSkillGrant', [
+      `give_skill;Eirika;${skillNid};no_banner`,
+      `give_skill;Eirika;${skillNid};no_banner`,
+    ]);
+    await runEvent(page, 'TestSkillComp', [
+      `add_skill_component;Eirika;${skillNid};charges;3;stack`,
+      `modify_skill_component;Eirika;${skillNid};charges;2;additive;stack`,
+    ]);
+    const values = await page.evaluate((skillNid: string) => {
+      const g = (window as any).__gameRef;
+      return g.units.get('Eirika').skills
+        .filter((s: any) => s.nid === skillNid)
+        .map((s: any) => s.components.get('charges'));
+    }, skillNid);
+    expect(values.length).toBeGreaterThanOrEqual(1);
+    for (const v of values) expect(v).toBe(5);
+    await runEvent(page, 'TestSkillCompRm', [
+      `remove_skill_component;Eirika;${skillNid};charges;stack`,
+    ]);
+    const removed = await page.evaluate((skillNid: string) => {
+      const g = (window as any).__gameRef;
+      return g.units.get('Eirika').skills
+        .filter((s: any) => s.nid === skillNid)
+        .every((s: any) => !s.components.has('charges'));
+    }, skillNid);
+    expect(removed).toBe(true);
+  });
+});

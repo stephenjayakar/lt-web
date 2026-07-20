@@ -949,6 +949,105 @@ export class SetSkillDataAction extends Action {
   }
 }
 
+/**
+ * Component-modification actions (Python action.py AddItemComponent /
+ * ModifyItemComponent / RemoveItemComponent and their skill twins). Web items
+ * and skills both store components as Map<string, any>, so one trio serves
+ * both. Values are raw component values (Python wraps them in component
+ * instances; the web reads values directly).
+ */
+export class AddObjComponentAction extends Action {
+  private hadKey = false;
+  private oldValue: any;
+  private obj: { components: Map<string, any> };
+  private nid: string;
+  private value: any;
+  constructor(obj: { components: Map<string, any> }, nid: string, value: any) {
+    super();
+    this.obj = obj;
+    this.nid = nid;
+    this.value = value;
+  }
+  execute(): void {
+    this.hadKey = this.obj.components.has(this.nid);
+    this.oldValue = this.obj.components.get(this.nid);
+    this.obj.components.set(this.nid, this.value ?? true);
+  }
+  reverse(): void {
+    if (this.hadKey) this.obj.components.set(this.nid, this.oldValue);
+    else this.obj.components.delete(this.nid);
+  }
+}
+
+export class ModifyObjComponentAction extends Action {
+  private prev: any;
+  private hadKey = false;
+  private obj: { components: Map<string, any> };
+  private nid: string;
+  private value: any;
+  private property: string | null;
+  private additive: boolean;
+  constructor(
+    obj: { components: Map<string, any> },
+    nid: string,
+    value: any,
+    property: string | null = null,
+    additive: boolean = false,
+  ) {
+    super();
+    this.obj = obj;
+    this.nid = nid;
+    this.value = value;
+    this.property = property;
+    this.additive = additive;
+  }
+  execute(): void {
+    this.hadKey = this.obj.components.has(this.nid);
+    if (!this.hadKey) return; // Python errors upstream; no-op like a guarded call
+    const current = this.obj.components.get(this.nid);
+    if (this.property && current && typeof current === 'object' && !Array.isArray(current)) {
+      this.prev = current[this.property];
+      current[this.property] = this.additive && typeof this.prev === 'number'
+        ? this.prev + this.value : this.value;
+    } else {
+      this.prev = current;
+      this.obj.components.set(
+        this.nid,
+        this.additive && typeof current === 'number' ? current + this.value : this.value,
+      );
+    }
+  }
+  reverse(): void {
+    if (!this.hadKey) return;
+    const current = this.obj.components.get(this.nid);
+    if (this.property && current && typeof current === 'object' && !Array.isArray(current)) {
+      current[this.property] = this.prev;
+    } else {
+      this.obj.components.set(this.nid, this.prev);
+    }
+  }
+}
+
+export class RemoveObjComponentAction extends Action {
+  private hadKey = false;
+  private oldValue: any;
+  private obj: { components: Map<string, any> };
+  private nid: string;
+  constructor(obj: { components: Map<string, any> }, nid: string) {
+    super();
+    this.obj = obj;
+    this.nid = nid;
+  }
+  execute(): void {
+    this.hadKey = this.obj.components.has(this.nid);
+    this.oldValue = this.obj.components.get(this.nid);
+    this.obj.components.delete(this.nid);
+  }
+  reverse(): void {
+    if (this.hadKey) this.obj.components.set(this.nid, this.oldValue);
+  }
+}
+
 export class OnlyOnceEventAction extends Action {
   private eventNid: string;
   private onceTriggered: Set<string>;
