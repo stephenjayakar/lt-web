@@ -179,6 +179,11 @@ query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
 
 ### Recent Changes
 
+- **Agent workflow made token-efficient:** replaced the historical 576-line
+  architecture narrative in `AGENTS.md` with a focused contribution guide:
+  bounded discovery, Python-to-web routing, risk-based verification, generated
+  artifact ownership, minimal PLAN updates, and dirty-tree-safe staging.
+
 - **Zero-usage command batch 18 — dialog alias family (implemented solo):**
   `say` (multi-segment {sub_break} join into the speak path), `speak_style`
   (style registry stored; consumption beyond storage is a documented
