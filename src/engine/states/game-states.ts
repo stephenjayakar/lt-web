@@ -134,6 +134,9 @@ import {
   stealItemRestrict,
   available as itemAvailable,
   computeTargetIcon,
+  fullPrice as itemFullPrice,
+  buyPrice as itemBuyPrice,
+  sellPrice as itemSellPrice,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -6994,7 +6997,7 @@ export class ShopState extends State {
           this.phase = 'choice';
           return;
         }
-        const sellableItems = this.unit.items.filter(i => i.getValue() > 0);
+        const sellableItems = this.unit.items.filter((item) => this.getFullPrice(item) > 0);
         if (sellableItems.length === 0) {
           this.showMessage('Nothing to sell.');
           this.phase = 'choice';
@@ -7137,7 +7140,7 @@ export class ShopState extends State {
     const startY = 28;
     const rowH = 14;
     const W = surf.width;
-    const sellableItems = this.unit?.items.filter(i => i.getValue() > 0) ?? [];
+    const sellableItems = this.unit?.items.filter((item) => this.getFullPrice(item) > 0) ?? [];
 
     surf.drawText('Item', 20, startY, 'rgba(180,180,220,1)', SMALL);
     surf.drawText('Value', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
@@ -7224,7 +7227,7 @@ export class ShopState extends State {
     this.showMessage(`Sold ${item.name}!`);
 
     // Adjust sell index
-    const remaining = this.unit.items.filter(i => i.getValue() > 0);
+    const remaining = this.unit.items.filter((candidate) => this.getFullPrice(candidate) > 0);
     if (this.sellIndex >= remaining.length) {
       this.sellIndex = Math.max(0, remaining.length - 1);
     }
@@ -7233,17 +7236,47 @@ export class ShopState extends State {
     }
   }
 
+  private getFullPrice(item: ItemObject): number {
+    const game = getGame();
+    return itemFullPrice(this.unit, item, game.db, game) ?? 0;
+  }
+
   private getBuyPrice(item: ItemObject): number {
-    return item.getValue();
+    const game = getGame();
+    const value = itemBuyPrice(this.unit, item, game.db, game);
+    if (!value) return 0;
+    return Math.trunc(value * this.getPriceSkillMultiplier(item, 'change_buy_price'));
   }
 
   private getSellPrice(item: ItemObject): number {
-    // Sell price = half of buy price, adjusted for remaining uses
-    const base = item.getValue();
-    if (item.maxUses > 0 && item.uses > 0) {
-      return Math.floor((base * item.uses) / (item.maxUses * 2));
+    const game = getGame();
+    const value = itemSellPrice(this.unit, item, game.db, game);
+    if (!value) return 0;
+    return Math.trunc(value * this.getPriceSkillMultiplier(item, 'change_sell_price'));
+  }
+
+  private getPriceSkillMultiplier(
+    item: ItemObject,
+    componentNid: 'change_buy_price' | 'change_sell_price',
+  ): number {
+    if (!this.unit) return 1;
+    const game = getGame();
+    let result = 1;
+    for (const skill of this.unit.skills) {
+      const value = skill.getComponent<number>(componentNid);
+      if (value === undefined) continue;
+      const condition = skill.getComponent<string>('condition');
+      if (condition && !evaluateCondition(condition, {
+        game,
+        unit1: this.unit,
+        item,
+        position: this.unit.position ?? undefined,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+      })) continue;
+      result = Number(value);
     }
-    return Math.floor(base / 2);
+    return result;
   }
 
   private showMessage(msg: string): void {

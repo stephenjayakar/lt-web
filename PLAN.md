@@ -133,10 +133,9 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-21 after event-command dispatch completion:
+Queue refreshed 2026-07-21 after shop-pricing parity:
 
-1. Close remaining usage-driven component and subsystem gaps, starting with shop
-   pricing hooks (`full_price`, `buy_price`, and `sell_price`).
-2. Finish deferred trigger paths and their component/event-pump seams.
+1. Finish deferred trigger paths and their component/event-pump seams.
+2. Match remaining event blocking, no-block, immediate, and skip semantics.
 3. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

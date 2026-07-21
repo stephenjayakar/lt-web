@@ -13,6 +13,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import type { ItemPrefab, SkillPrefab } from '../src/data/types';
 
 async function waitForHarness(page: any) {
   await page.waitForFunction(
@@ -211,6 +212,136 @@ test.describe('Roam shop interaction', () => {
     expect(afterBuy.money).toBeLessThan(1000);
     expect(afterBuy.itemNids).toContain('Iron_Sword');
     expect(afterBuy.itemNids.length).toBe(setup.startingItemCount + 1);
+  });
+
+  test('shop price hooks honor overrides, durability, modifiers, and final truncation', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const setup = await page.evaluate(async () => {
+      const game = Reflect.get(window, '__gameRef');
+      const unit = game.units.get('Eirika');
+      if (!unit) return false;
+
+      // This callback runs in Chromium, so runtime classes must come from Vite's browser module graph.
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const itemPrefab = (
+        nid: string,
+        value: number,
+        includeUses: boolean,
+      ): ItemPrefab => ({
+        nid,
+        name: nid,
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components: includeUses ? [['value', value], ['uses', 3]] : [['value', value]],
+      });
+      const skillPrefab = (nid: string, components: SkillPrefab['components']): SkillPrefab => ({
+        nid,
+        name: nid,
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components,
+      });
+
+      const basePrefab = itemPrefab('_PriceBase', 100, true);
+      game.db.items.set(basePrefab.nid, basePrefab);
+      game.db.items.set('_PriceOverrideFirst', itemPrefab('_PriceOverrideFirst', 89, false));
+      game.db.items.set('_PriceOverrideLast', itemPrefab('_PriceOverrideLast', 101, false));
+      game.db.items.set('_PriceOverrideInactive', itemPrefab('_PriceOverrideInactive', 999, false));
+      game.db.constants.set('sell_modifier', 0.4);
+
+      unit.skills = [
+        new SkillObject(skillPrefab('_PriceFirst', [
+          ['item_override', '_PriceOverrideFirst'],
+          ['change_buy_price', 0.4],
+          ['change_sell_price', 0.5],
+        ])),
+        new SkillObject(skillPrefab('_PriceLast', [
+          ['item_override', '_PriceOverrideLast'],
+          ['change_buy_price', 0.8],
+          ['change_sell_price', 0.75],
+        ])),
+        new SkillObject(skillPrefab('_PriceInactive', [
+          ['item_override', '_PriceOverrideInactive'],
+          ['change_buy_price', 0.1],
+          ['change_sell_price', 0.1],
+          ['condition', 'False'],
+        ])),
+      ];
+
+      const shopItem = new ItemObject(basePrefab);
+      const sellItem = new ItemObject(basePrefab);
+      shopItem.setUses(2);
+      sellItem.setUses(2);
+      sellItem.owner = unit;
+      unit.items = [sellItem];
+      game.memory.set('_price_sell_item', sellItem);
+      game.gameVars.set('money', 1000);
+      game.shopUnit = unit;
+      game.shopItems = [shopItem];
+      game.shopStock = [-1];
+      game.state.change('shop');
+      return true;
+    });
+
+    expect(setup).toBe(true);
+    await stepFrames(page, 3);
+
+    const prices = await page.evaluate(async () => {
+      const game = Reflect.get(window, '__gameRef');
+      const shopState = game.state.getCurrentState();
+      const unit = game.units.get('Eirika');
+      const shopItem = Reflect.get(shopState, 'shopItems')[0];
+      const sellItem = game.memory.get('_price_sell_item');
+      // Browser-side import exposes the exact dispatch functions used by ShopState.
+      const itemSystem = await import('/src/combat/item-system.ts');
+
+      const full = Reflect.get(shopState, 'getFullPrice').call(shopState, shopItem);
+      const buy = Reflect.get(shopState, 'getBuyPrice').call(shopState, shopItem);
+      const sell = Reflect.get(shopState, 'getSellPrice').call(shopState, sellItem);
+      const convoyFull = itemSystem.fullPrice(null, shopItem, game.db, game);
+      const convoyBuy = itemSystem.buyPrice(null, shopItem, game.db, game);
+      const convoySell = itemSystem.sellPrice(null, shopItem, game.db, game);
+      const depletedItem = new shopItem.constructor(game.db.items.get('_PriceBase'));
+      depletedItem.setUses(0);
+      const depletedBuy = itemSystem.buyPrice(null, depletedItem, game.db, game);
+
+      Reflect.get(shopState, 'tryBuyItem').call(shopState, game);
+      const moneyAfterBuy = Number(game.gameVars.get('money'));
+      Reflect.get(shopState, 'trySellItem').call(shopState, game, [sellItem]);
+      const moneyAfterSell = Number(game.gameVars.get('money'));
+
+      return {
+        stateName: shopState.name,
+        full,
+        buy,
+        sell,
+        convoyFull,
+        convoyBuy,
+        convoySell,
+        depletedBuy,
+        moneyAfterBuy,
+        moneyAfterSell,
+        inventoryNids: unit.items.map((item: { nid: string }) => item.nid),
+      };
+    });
+
+    expect(prices.stateName).toBe('shop');
+    expect(prices.full).toBe(101);
+    expect(prices.buy).toBe(53);
+    expect(prices.sell).toBe(20);
+    expect(prices.convoyFull).toBe(100);
+    expect(prices.convoyBuy).toBeCloseTo(200 / 3);
+    expect(prices.convoySell).toBeCloseTo(80 / 3);
+    expect(prices.depletedBuy).toBe(100);
+    expect(prices.moneyAfterBuy).toBe(947);
+    expect(prices.moneyAfterSell).toBe(967);
+    expect(prices.inventoryNids).toEqual(['_PriceBase']);
   });
 });
 

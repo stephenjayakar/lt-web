@@ -8,8 +8,8 @@
     "parserRecognizedPythonNids": 255,
     "dispatcherPythonNids": 255,
     "itemReferencedComponentNids": 136,
-    "itemHookMappedComponentNids": 92,
-    "skillReferencedComponentNids": 84,
+    "itemHookMappedComponentNids": 93,
+    "skillReferencedComponentNids": 85,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
       "dispatched-unverified": 243,
