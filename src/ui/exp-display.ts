@@ -241,6 +241,11 @@ export class ExpBar {
  * - Color-cycling underlines (sine wave color blend)
  * - Class name, level number, stat names + values using BMP fonts
  */
+export type LevelUpScreenUpdateResult =
+  | 'animating'
+  | 'entered_level_up_wait'
+  | 'done';
+
 export class LevelUpScreen {
   private unit: UnitObject;
   private statList: number[];
@@ -338,10 +343,10 @@ export class LevelUpScreen {
 
   /**
    * Update the level-up screen animation.
-   * @param currentTime - Current engine time in ms
-   * @returns true when the screen is done (scroll-out complete)
+   * `entered_level_up_wait` is emitted exactly once, on the same update that
+   * exhausts the stat sparks and enters Python's level_up_wait state.
    */
-  update(currentTime: number): boolean {
+  update(currentTime: number): LevelUpScreenUpdateResult {
     switch (this.state) {
       case 'scroll_in': {
         this.unitScrollOffset = Math.max(0, this.unitScrollOffset - 8);
@@ -380,6 +385,7 @@ export class LevelUpScreen {
         if (done) {
           this.state = 'level_up_wait';
           this.startTime = currentTime;
+          return 'entered_level_up_wait';
         } else {
           this.audioManager?.playSfx?.('Stat Up');
           this.underlineOffset = 36;
@@ -408,13 +414,13 @@ export class LevelUpScreen {
         this.unitScrollOffset += 10;
         this.screenScrollOffset += 20;
         if (currentTime - this.startTime > 500) {
-          return true; // Done
+          return 'done';
         }
         break;
       }
     }
 
-    return false;
+    return 'animating';
   }
 
   /** Draw the level-up screen onto the target surface. */

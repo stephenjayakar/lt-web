@@ -970,19 +970,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9592
+          "line": 9620
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10903
+          "line": 10931
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12702
+          "line": 12730
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12715
+          "line": 12743
         },
         {
           "source": "src/native.ts",
@@ -1080,23 +1080,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9385
+          "line": 9413
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9390
+          "line": 9418
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9409
+          "line": 9437
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12882
+          "line": 12910
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12905
+          "line": 12933
         }
       ],
       "directReads": [],
@@ -1443,7 +1443,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10281
+          "line": 10309
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1485,11 +1485,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7271
+          "line": 7299
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7283
+          "line": 7311
         }
       ],
       "directReads": [],
@@ -3616,7 +3616,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5641
+          "line": 5669
         },
         {
           "source": "src/main.ts",
@@ -3829,7 +3829,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5653
+          "line": 5681
         },
         {
           "source": "src/main.ts",
@@ -4184,7 +4184,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7291
+          "line": 7319
         }
       ],
       "directReads": [
@@ -4206,7 +4206,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7291
+          "line": 7319
         }
       ],
       "matchingWebHooks": [],
