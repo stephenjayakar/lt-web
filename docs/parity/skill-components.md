@@ -41,14 +41,14 @@ Summary: 87/241 referenced in web source; 67/241 expose at least one matching we
 | map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  | 1 | src/combat/map-combat.ts:293 |  | consumed |
 | battle_animation_music | BattleAnimMusic | lt-maker/app/engine/skill_components/aesthetic_components.py:230 | AESTHETIC | battle_music |  |  |  |  | unreferenced |
 | modify_ai_priority | ModifyAIPriority | lt-maker/app/engine/skill_components/ai_components.py:14 | ADVANCED | ai_priority_multiplier |  |  |  |  | unreferenced |
-| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:9620<br>src/engine/states/game-states.ts:10931<br>src/engine/states/game-states.ts:12730<br>+2 more |  | reference-only |
+| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:9714<br>src/engine/states/game-states.ts:11020<br>src/engine/states/game-states.ts:12846<br>+2 more |  | reference-only |
 | hidden_if_inactive | HiddenIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:10 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | grey_if_inactive | GreyIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:15 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | is_terrain | TerrainSkill | lt-maker/app/engine/skill_components/attribute_components.py:20 | ATTRIBUTE | condition |  |  |  |  | unreferenced |
 | class_skill | ClassSkill | lt-maker/app/engine/skill_components/attribute_components.py:30 | ATTRIBUTE |  |  |  |  |  | unreferenced |
-| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:9413<br>src/engine/states/game-states.ts:9418<br>src/engine/states/game-states.ts:9437<br>+2 more |  | reference-only |
+| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:9507<br>src/engine/states/game-states.ts:9512<br>src/engine/states/game-states.ts:9531<br>+2 more |  | reference-only |
 | feat | Feat | lt-maker/app/engine/skill_components/attribute_components.py:44 | ATTRIBUTE |  |  |  | src/engine/learned-skills.ts:12 | mention | reference-only |
-| negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 2 | src/combat/item-system.ts:678<br>src/engine/states/game-states.ts:2479 |  | consumed |
+| negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 2 | src/combat/item-system.ts:678<br>src/engine/states/game-states.ts:2480 |  | consumed |
 | global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | negate | Negate | lt-maker/app/engine/skill_components/attribute_components.py:62 | ATTRIBUTE |  |  | 1 | src/combat/item-system.ts:1238 |  | consumed |
 | negate_tags | NegateTags | lt-maker/app/engine/skill_components/attribute_components.py:67 | ATTRIBUTE |  |  | 1 | src/combat/item-system.ts:1239 |  | consumed |
@@ -59,8 +59,8 @@ Summary: 87/241 referenced in web source; 67/241 expose at least one matching we
 | cannot_trade | CannotTrade | lt-maker/app/engine/skill_components/base_components.py:32 | BASE | no_trade |  |  |  |  | unreferenced |
 | additional_accessories | AdditionalAccessories | lt-maker/app/engine/skill_components/base_components.py:40 | BASE | num_items_offset, num_accessories_offset |  |  |  |  | unreferenced |
 | ignore_alliances | IgnoreAlliances | lt-maker/app/engine/skill_components/base_components.py:54 | BASE | check_ally, check_enemy |  |  |  |  | unreferenced |
-| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:10309<br>src/events/event-manager.ts:102<br>src/events/event-manager.ts:207<br>+2 more |  | reference-only |
-| change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/engine/states/game-states.ts:7299<br>src/engine/states/game-states.ts:7311 |  | reference-only |
+| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:10403<br>src/events/event-manager.ts:102<br>src/events/event-manager.ts:207<br>+2 more |  | reference-only |
+| change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/engine/states/game-states.ts:7300<br>src/engine/states/game-states.ts:7312 |  | reference-only |
 | exp_multiplier | ExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:85 | BASE | exp_multiplier | expMultiplier |  | src/combat/skill-system.ts:586<br>src/main.ts:329 |  | hook-and-reference |
 | enemy_exp_multiplier | EnemyExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:95 | BASE | enemy_exp_multiplier | enemyExpMultiplier |  | src/combat/skill-system.ts:590<br>src/main.ts:330 |  | hook-and-reference |
 | wexp_multiplier | WexpMultiplier | lt-maker/app/engine/skill_components/base_components.py:105 | BASE | wexp_multiplier | wexpMultiplier |  | src/combat/skill-system.ts:594<br>src/main.ts:330 |  | hook-and-reference |
@@ -123,7 +123,7 @@ Summary: 87/241 referenced in web source; 67/241 expose at least one matching we
 | post_combat_splash_aoe | PostCombatSplashAOE | lt-maker/app/engine/skill_components/combat2_components.py:679 | COMBAT2 | end_combat |  |  |  |  | unreferenced |
 | all_brave | AllBrave | lt-maker/app/engine/skill_components/combat2_components.py:710 | COMBAT2 | dynamic_multiattacks | dynamicMultiattacks |  |  |  | hook-only |
 | devil_axe_gba | DevilAxeGBA | lt-maker/app/engine/skill_components/combat2_components.py:719 | COMBAT2 | after_strike, after_take_strike |  |  |  |  | unreferenced |
-| stat_change | StatChange | lt-maker/app/engine/skill_components/combat_components.py:8 | COMBAT | stat_change, tile_def | statChange | 1 | src/combat/skill-system.ts:323<br>src/combat/skill-system.ts:328<br>src/combat/terrain-bonuses.ts:27<br>+1 more |  | hook-and-reference |
+| stat_change | StatChange | lt-maker/app/engine/skill_components/combat_components.py:8 | COMBAT | stat_change, tile_def | statChange | 1 | src/combat/skill-system.ts:323<br>src/combat/skill-system.ts:328<br>src/combat/terrain-bonuses.ts:27<br>+4 more |  | hook-and-reference |
 | stat_change_expression | StatChangeExpression | lt-maker/app/engine/skill_components/combat_components.py:26 | COMBAT | stat_change | statChange |  |  |  | hook-only |
 | stat_multiplier | StatMultiplier | lt-maker/app/engine/skill_components/combat_components.py:42 | COMBAT | stat_change | statChange |  |  |  | hook-only |
 | subtle_stat_change | SubtleStatChange | lt-maker/app/engine/skill_components/combat_components.py:53 | COMBAT | stat_change, subtle_stat_change | statChange |  |  |  | hook-only |
