@@ -793,8 +793,75 @@ export function rangeRestrict(
 }
 
 // ============================================================
-// Value hooks (UNIQUE — return the first/only defined value)
+// Value hooks (UNIQUE — the last defining component wins)
 // ============================================================
+
+/**
+ * Resolve the built-in Value component through Python's UNIQUE hook order.
+ *
+ * Ordinary item components come first. Active item_override skills are then
+ * considered from the end of the unit's skill list, with the first override
+ * defining `value` winning. This is equivalent to Python's reverse scan plus
+ * component-NID deduplication before `utils.unique(values)` selects the last
+ * defining component.
+ */
+function resolvePriceValue(
+  unit: UnitObject | null,
+  item: ItemObject,
+  db: Database,
+  game?: unknown,
+): number | null {
+  if (unit) {
+    for (let index = unit.skills.length - 1; index >= 0; index--) {
+      const skill = unit.skills[index];
+      const overrideNid = skill.getComponent<string>('item_override');
+      if (!overrideNid || !skillCondition(skill, unit, game)) continue;
+      const override = db.items.get(overrideNid);
+      if (!override) continue;
+      const overrideValue = override.components.find(([nid]) => nid === 'value')?.[1];
+      if (overrideValue !== undefined) return Number(overrideValue);
+    }
+  }
+
+  const value = item.getComponent<number>('value');
+  return value === undefined ? null : Number(value);
+}
+
+/** Python item_system.full_price: unscaled Value component, or None. */
+export function fullPrice(
+  unit: UnitObject | null,
+  item: ItemObject,
+  db: Database,
+  game?: unknown,
+): number | null {
+  return resolvePriceValue(unit, item, db, game);
+}
+
+/** Python item_system.buy_price: Value scaled by ordinary remaining uses. */
+export function buyPrice(
+  unit: UnitObject | null,
+  item: ItemObject,
+  db: Database,
+  game?: unknown,
+): number | null {
+  const value = resolvePriceValue(unit, item, db, game);
+  if (value === null) return null;
+  if (item.uses) {
+    return value * item.uses / Number(item.data.get('starting_uses'));
+  }
+  return value;
+}
+
+/** Python item_system.sell_price: buy scaling followed by sell_modifier. */
+export function sellPrice(
+  unit: UnitObject | null,
+  item: ItemObject,
+  db: Database,
+  game?: unknown,
+): number | null {
+  const value = buyPrice(unit, item, db, game);
+  return value === null ? null : value * Number(db.getConstant('sell_modifier', 0.5));
+}
 
 /** Get the weapon type NID, or undefined. */
 export function weaponType(_unit: UnitObject, item: ItemObject): string | undefined {

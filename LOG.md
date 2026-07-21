@@ -122,6 +122,14 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Shop pricing hooks:** implemented Python-compatible `full_price`,
+  `buy_price`, and `sell_price` resolution, including last-active item
+  overrides, conditional buy/sell skill modifiers, remaining-use scaling,
+  configurable sell modifier, and final truncation. Shop display,
+  affordability, purchase, and sale paths now share the same pricing policy.
+  Covered by the focused `shop price hooks` regression; build and parity audit
+  pass.
+
 - **Agent workflow made token-efficient:** replaced the historical 576-line
   architecture narrative in `AGENTS.md` with a focused contribution guide:
   bounded discovery, Python-to-web routing, risk-based verification, generated
