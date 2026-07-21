@@ -117,7 +117,11 @@ import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../.
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
-import { queueCombatItemEvents, applyDroppableItemPickups } from '../../combat/combat-lifecycle';
+import {
+  queueAfterInitiatedCombatEvents,
+  queueCombatItemEvents,
+  applyDroppableItemPickups,
+} from '../../combat/combat-lifecycle';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
@@ -4634,6 +4638,25 @@ export class CombatState extends State {
         // Pass real delta to combat (skip mode is handled inside AnimationCombat)
         const done = activeCombat.update(realDelta);
         if (done) {
+          const initiatedPartner = activeCombat.attacker.strikePartner;
+          queueAfterInitiatedCombatEvents(
+            game,
+            activeCombat.attacker,
+            activeCombat.defender,
+            activeCombat.attackItem,
+            activeCombat.defenseItem,
+            'attack',
+          );
+          if (initiatedPartner) {
+            queueAfterInitiatedCombatEvents(
+              game,
+              initiatedPartner,
+              activeCombat.defender,
+              activeCombat.attackItem,
+              activeCombat.defenseItem,
+              'attack',
+            );
+          }
           this.results = activeCombat.applyResults(game.actionLog);
           queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
@@ -11900,6 +11923,25 @@ export class EventState extends State {
             // Run combat to completion instantly
             while (mc.state !== 'done') {
               mc.update(16);
+            }
+            const initiatedPartner = iuAttacker.strikePartner;
+            queueAfterInitiatedCombatEvents(
+              game,
+              iuAttacker,
+              targetGroup.representative,
+              attackItem,
+              defItem,
+              'attack',
+            );
+            if (initiatedPartner) {
+              queueAfterInitiatedCombatEvents(
+                game,
+                initiatedPartner,
+                targetGroup.representative,
+                attackItem,
+                defItem,
+                'attack',
+              );
             }
             const results = mc.applyResults(game.actionLog);
             queueCombatItemEvents(game, mc.strikes);
