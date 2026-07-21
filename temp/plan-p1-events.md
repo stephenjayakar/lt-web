@@ -35,3 +35,18 @@ Primary sources: `lt-maker/app/events/event.py`, `event_functions.py`, `overworl
    - Required seam: `ActionLog.doAction`, `RemoveSkillAction`, and event `remove_skill` migration in `game-states.ts`.
 
 Focused coverage should exercise real producers rather than directly calling EventManager: a combat level-up ordering spec and a hidden event-hook spec covering attack-only payload/order plus remove undo/redo semantics.
+
+## Completion (2026-07-21)
+
+All three deferred paths are implemented:
+
+- `event_after_initiated_combat` runs for the initiating attacker and strike
+  partner before item end-combat events, with exact specific-event locals.
+- `event_on_remove` runs after true action-backed removal exactly once on first
+  do, not reverse or redo.
+- `during_unit_level_up` interrupts at `level_up_wait` and resumes the same
+  screen for combat EXP, stat change, class change, and promotion sources,
+  followed by the late `unit_level_up` trigger.
+
+Evidence: `tests/hidden-event-hooks.spec.ts`,
+`tests/level-up-triggers.spec.ts`, build, and parity audit.

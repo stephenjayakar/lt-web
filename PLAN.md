@@ -49,8 +49,7 @@ live in `LOG.md`.
 
 Detailed 2026-07-21 audit notes for the remaining roadmap are staged as working
 documents under `temp/plan-*.md`. They record source-grounded gaps and proposed
-test seams; they are not completion evidence. Current work is intentionally
-limited to Active Next Slice item 1 before returning to later phases.
+test seams; they are not completion evidence.
 
 ## Current State
 
@@ -81,9 +80,6 @@ archived in `LOG.md`.
 ### P1 — Event Runtime and Reversible Mutations
 
 - [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
-- [ ] Implement the deferred `during_unit_level_up`,
-  `event_after_initiated_combat`, and `event_on_remove` trigger paths; the latter
-  two depend on their hidden skill-component hooks.
 
 **Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
 by parser plus behavioral tests; unsupported commands fail loudly in development.
@@ -138,9 +134,8 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-21 after shop-pricing parity:
+Queue refreshed 2026-07-21 after deferred-trigger completion:
 
-1. Finish deferred trigger paths and their component/event-pump seams.
-2. Match remaining event blocking, no-block, immediate, and skip semantics.
-3. Continue the open roadmap in dependency order; keep generated inventories as
+1. Match remaining event blocking, no-block, immediate, and skip semantics.
+2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

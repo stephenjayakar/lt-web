@@ -122,6 +122,15 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Deferred trigger paths complete:** wired `event_after_initiated_combat`
+  through the real attacker/strike-partner skill-before-item combat lifecycle,
+  and `event_on_remove` through a first-do-only reversible removal seam.
+  `during_unit_level_up` now interrupts and resumes the level screen at
+  `level_up_wait` for combat EXP, stat changes, class changes, and promotions,
+  then preserves the late `unit_level_up` order. Focused hidden-hook and
+  level-up-trigger browser specs cover payloads, ordering, resume, and
+  undo/redo; build and parity audit pass.
+
 - **Shop pricing hooks:** implemented Python-compatible `full_price`,
   `buy_price`, and `sell_price` resolution, including last-active item
   overrides, conditional buy/sell skill modifiers, remaining-use scaling,

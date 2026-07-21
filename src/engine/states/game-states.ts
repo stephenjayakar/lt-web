@@ -2392,13 +2392,13 @@ export function performPromotionOrClassChange(
   newKlass: string,
   game: any,
   kind: 'promote' | 'change_class' = 'promote',
-): void {
+): { statChanges: Record<string, number> } {
   const action = kind === 'promote'
     ? new PromoteAction(unit, newKlass)
     : new ClassChangeAction(unit, newKlass);
   game.actionLog.doAction(action);
 
-  const { newWexp } = action.getData();
+  const { statChanges, newWexp } = action.getData();
   for (const [weaponNid, value] of Object.entries(newWexp)) {
     if (value > 0) {
       game.actionLog.doAction(new GainWexpAction(unit, weaponNid, value));
@@ -2416,6 +2416,7 @@ export function performPromotionOrClassChange(
       }
     }
   }
+  return { statChanges: { ...statChanges } };
 }
 
 function applyCoreTargetedEffects(
@@ -7363,6 +7364,16 @@ type EndingCardPresentation = {
   waitTimerMs: number;
 };
 
+type EventLevelUpSource = 'stat_change' | 'class_change' | 'promote';
+
+type EventLevelUpPresentation = {
+  owner: GameEvent;
+  unit: UnitObject;
+  statChanges: Record<string, number>;
+  source: EventLevelUpSource;
+  screen: LevelUpScreenClass;
+};
+
 /** Maximum instant commands processed per frame to prevent infinite loops. */
 const MAX_BURST = 100;
 
@@ -7390,6 +7401,8 @@ export class EventState extends State {
   private bannerIsAlert: boolean = false;  // true if banner is from 'alert' command (allows early dismiss)
   private waitTimer: number = 0;
   private waiting: boolean = false;
+  /** Non-combat Python ExpState level screen owned by the command that opened it. */
+  private levelUpPresentation: EventLevelUpPresentation | null = null;
 
   // Transition fade state
   private transitionAlpha: number = 0;
@@ -7647,6 +7660,19 @@ export class EventState extends State {
 
     // Block while a level transition is loading asynchronously
     if (this.levelTransitionInProgress) {
+      return;
+    }
+
+    const presentation = this.levelUpPresentation;
+    if (presentation && presentation.owner === this.currentEvent) {
+      const result = presentation.screen.update(performance.now());
+      if (result === 'entered_level_up_wait') {
+        this.dispatchEventLevelUpTrigger('during_unit_level_up', presentation, true);
+      } else if (result === 'done') {
+        this.dispatchEventLevelUpTrigger('unit_level_up', presentation, false);
+        this.levelUpPresentation = null;
+        this.advancePointer();
+      }
       return;
     }
 
@@ -8025,6 +8051,10 @@ export class EventState extends State {
       surf.drawText(lc.text, lcX + lcPad, lcY + Math.floor(lcPad / 2), `rgba(255,240,200,${lc.alpha})`, lcFont);
     }
 
+    if (this.levelUpPresentation) {
+      this.levelUpPresentation.screen.draw(surf, performance.now());
+    }
+
     return surf;
   }
 
@@ -8037,6 +8067,70 @@ export class EventState extends State {
     if (this.currentEvent) {
       this.currentEvent.commandPointer++;
     }
+  }
+
+  /**
+   * Open the common non-combat level screen after its action has already
+   * applied the displayed changes, matching Python ExpState.
+   */
+  private startEventLevelUpPresentation(
+    unit: UnitObject,
+    statChanges: Record<string, number>,
+    source: EventLevelUpSource,
+    oldLevel: number,
+  ): boolean {
+    if (!this.currentEvent) return false;
+    const game = getGame();
+    this.levelUpPresentation = {
+      owner: this.currentEvent,
+      unit,
+      statChanges: { ...statChanges },
+      source,
+      screen: new LevelUpScreenClass(
+        unit,
+        statChanges,
+        oldLevel,
+        unit.level,
+        game.db?.stats ?? [],
+        game.audioManager,
+      ),
+    };
+    return true;
+  }
+
+  /**
+   * Dispatch a level-screen hook with a fresh payload copy. Mid-screen events
+   * are moved ahead of their suspended producer event in the queue so this
+   * EventState can run them immediately, then resume the same screen instance.
+   */
+  private dispatchEventLevelUpTrigger(
+    type: 'during_unit_level_up' | 'unit_level_up',
+    presentation: EventLevelUpPresentation,
+    interrupt: boolean,
+  ): void {
+    const game = getGame();
+    if (!game.eventManager) return;
+    const queue = game.eventManager.eventQueue as GameEvent[];
+    const priorLength = queue.length;
+    const triggered = game.eventManager.trigger(
+      {
+        type,
+        levelNid: game.currentLevel?.nid ?? '',
+        unitNid: presentation.unit.nid,
+        unit1: presentation.unit,
+        statChanges: { ...presentation.statChanges },
+        source: presentation.source,
+      },
+      this.buildConditionContext(),
+    );
+    if (!interrupt || !triggered || !this.currentEvent || queue.length <= priorLength) return;
+
+    const owner = this.currentEvent;
+    const queuedInterrupts = queue.splice(priorLength);
+    const ownerIndex = queue.indexOf(owner);
+    if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
+    queue.unshift(...queuedInterrupts, owner);
+    this.loadNextEvent(game);
   }
 
   /** Track whether we are in the middle of handling a level end sequence. */
@@ -10381,23 +10475,18 @@ export class EventState extends State {
       }
 
       case 'change_stats': {
-        // change_stats;unit_nid;HP,2,STR,1,DEF,-1
-        const unitNid = args[0] ?? '';
-        const changes = args[1] ?? '';
-        const unit = this.findUnit(unitNid);
-        if (unit && changes) {
-          const parts = changes.split(',');
-          for (let i = 0; i < parts.length - 1; i += 2) {
-            const stat = parts[i].trim();
-            const delta = parseInt(parts[i + 1], 10);
-            if (stat && !isNaN(delta) && unit.stats[stat] !== undefined) {
-              unit.stats[stat] += delta;
-              // If HP stat changed, adjust currentHp
-              if (stat === 'HP') {
-                unit.currentHp = Math.min(unit.currentHp + Math.max(0, delta), unit.maxHp);
-              }
-            }
-          }
+        const unit = this.findUnit(args[0] ?? '');
+        const requested = this.parseNumberRecord(args[1] ?? '');
+        if (!unit || Object.keys(requested).length === 0) {
+          this.advancePointer();
+          return false;
+        }
+        const action = new ApplyStatChangesAction(unit, requested);
+        game.actionLog.doAction(action);
+        const applied = action.getAppliedChanges();
+        const immediate = args.some((arg: string) => arg.toLowerCase() === 'immediate');
+        if (!immediate && this.startEventLevelUpPresentation(unit, applied, 'stat_change', unit.level)) {
+          return true;
         }
         this.advancePointer();
         return false;
@@ -10963,20 +11052,24 @@ export class EventState extends State {
       }
 
       case 'set_stats': {
-        // set_stats;unit_nid;HP,STR,MAG,SKL,SPD,LCK,DEF,RES
-        const unitNid6 = args[0] ?? '';
-        const statsStr = args[1] ?? '';
-        const unit6 = this.findUnit(unitNid6);
-        if (unit6 && statsStr) {
-          const statNames = ['hp', 'str', 'mag', 'skl', 'spd', 'lck', 'def', 'res'];
-          const values = statsStr.split(',').map((v: string) => parseInt(v, 10));
-          for (let i = 0; i < Math.min(values.length, statNames.length); i++) {
-            if (!isNaN(values[i])) {
-              (unit6 as any)[statNames[i]] = values[i];
-            }
-          }
-          // Clamp HP
-          if (unit6.currentHp > unit6.maxHp) unit6.currentHp = unit6.maxHp;
+        const unit = this.findUnit(args[0] ?? '');
+        const requestedValues = this.parseNumberRecord(args[1] ?? '');
+        if (!unit || Object.keys(requestedValues).length === 0) {
+          this.advancePointer();
+          return false;
+        }
+        const deltas = Object.fromEntries(
+          Object.entries(requestedValues).map(([stat, value]) => [
+            stat,
+            value - (unit.stats[stat] ?? 0),
+          ]),
+        );
+        const action = new ApplyStatChangesAction(unit, deltas);
+        game.actionLog.doAction(action);
+        const applied = action.getAppliedChanges();
+        const immediate = args.some((arg: string) => arg.toLowerCase() === 'immediate');
+        if (!immediate && this.startEventLevelUpPresentation(unit, applied, 'stat_change', unit.level)) {
+          return true;
         }
         this.advancePointer();
         return false;
@@ -11008,8 +11101,8 @@ export class EventState extends State {
 
       case 'promote': {
         // promote;unit_nid;[class_nid1,class_nid2,...];[silent]
-        // If silent + single class: apply immediately with stat changes
-        // If not silent or multiple classes: for now, treat as silent with first class
+        // Silent applies the action without presentation; otherwise the shared
+        // non-combat level screen presents the action's copied stat changes.
         const promoUnitNid = args[0] ?? '';
         const promoUnit = this.findUnit(promoUnitNid);
         if (promoUnit) {
@@ -11028,14 +11121,25 @@ export class EventState extends State {
           }
 
           if (klassList.length > 0) {
-            // Use the first class. A full 'promotion_choice' UI is not
-            // wired into the event-command flow (deferred); the item-driven
-            // flow (ItemTargetingState -> 'promotion_choice') covers that.
+            // A choice UI is not yet available in the event-command flow, so
+            // preserve the existing first-option fallback.
             const newKlass = klassList[0];
-            performPromotionOrClassChange(promoUnit, newKlass, game, 'promote');
-
-            // Reload map sprite for new class
+            const oldLevel = promoUnit.level;
+            const { statChanges } = performPromotionOrClassChange(
+              promoUnit,
+              newKlass,
+              game,
+              'promote',
+            );
             this.loadMapSpriteForUnit(promoUnit, game);
+            if (!isSilent && this.startEventLevelUpPresentation(
+              promoUnit,
+              statChanges,
+              'promote',
+              oldLevel,
+            )) {
+              return true;
+            }
           } else {
             console.warn(`promote: no promotion classes available for unit "${promoUnitNid}"`);
           }
@@ -11046,8 +11150,8 @@ export class EventState extends State {
 
       case 'change_class': {
         // change_class;unit_nid;[class_nid1,class_nid2,...];[silent]
-        // If silent + single class: apply immediately with stat changes
-        // If not silent or multiple classes: for now, treat as silent with first class
+        // Silent applies the action without presentation; otherwise the shared
+        // non-combat level screen presents the action's copied stat changes.
         const ccUnitNid = args[0] ?? '';
         const ccUnit = this.findUnit(ccUnitNid);
         if (ccUnit) {
@@ -11068,10 +11172,22 @@ export class EventState extends State {
           if (ccKlassList.length > 0) {
             const newKlass = ccKlassList[0];
             if (newKlass !== ccUnit.klass) {
-              performPromotionOrClassChange(ccUnit, newKlass, game, 'change_class');
-
-              // Reload map sprite for new class
+              const oldLevel = ccUnit.level;
+              const { statChanges } = performPromotionOrClassChange(
+                ccUnit,
+                newKlass,
+                game,
+                'change_class',
+              );
               this.loadMapSpriteForUnit(ccUnit, game);
+              if (!ccIsSilent && this.startEventLevelUpPresentation(
+                ccUnit,
+                statChanges,
+                'class_change',
+                oldLevel,
+              )) {
+                return true;
+              }
             }
           } else {
             console.warn(`change_class: no class options available for unit "${ccUnitNid}"`);
