@@ -47,6 +47,11 @@ Run `npm run audit:parity` for the current source inventory. Generated coverage
 counts live under `docs/parity/`; completed milestones and the historical baseline
 live in `LOG.md`.
 
+Detailed 2026-07-21 audit notes for the remaining roadmap are staged as working
+documents under `temp/plan-*.md`. They record source-grounded gaps and proposed
+test seams; they are not completion evidence. Current work is intentionally
+limited to Active Next Slice item 1 before returning to later phases.
+
 ## Current State
 
 The engine is playable through the current Sacred Stones coverage and has strong

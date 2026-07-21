@@ -1,4 +1,4 @@
-import type { EventManager, EventTrigger } from '../events/event-manager';
+import { evaluateCondition, type EventManager, type EventTrigger } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
 import type { CombatStrike } from './combat-solver';
@@ -13,6 +13,8 @@ import {
 interface CombatLifecycleGame {
   eventManager: EventManager | null;
   currentLevel?: { nid: string } | null;
+  gameVars?: Map<string, unknown>;
+  levelVars?: Map<string, unknown>;
 }
 
 interface DroppableGame {
@@ -117,6 +119,55 @@ function triggerForStrike(strike: CombatStrike, _attackIndex: number): EventTrig
       ['item2', item2],
     ]),
   };
+}
+
+/**
+ * Queue hidden EventAfterInitiatedCombat skill hooks at Python's
+ * skill-system end-combat point. Only active skills on the initiating side
+ * participate; defenders are deliberately not scanned.
+ */
+export function queueAfterInitiatedCombatEvents(
+  game: CombatLifecycleGame,
+  bearer: UnitObject,
+  target: UnitObject,
+  item: ItemObject,
+  item2: ItemObject | null,
+  mode: string,
+): number {
+  const manager = game.eventManager;
+  if (!manager || mode !== 'attack') return 0;
+
+  let queued = 0;
+  for (const skill of bearer.skills) {
+    const nid = skill.getComponent<unknown>('event_after_initiated_combat');
+    if (typeof nid !== 'string' || nid.length === 0) continue;
+    const condition = skill.getComponent<string>('condition');
+    if (condition && !evaluateCondition(condition, {
+      game,
+      unit1: bearer,
+      unit2: target,
+      position: bearer.position ?? undefined,
+      item,
+      gameVars: game.gameVars,
+      levelVars: game.levelVars,
+    })) continue;
+
+    if (manager.triggerSpecific(nid, {
+      type: 'event_after_initiated_combat',
+      unit1: bearer,
+      unit2: target,
+      unitNid: bearer.nid,
+      position: bearer.position
+        ? [...bearer.position] as [number, number]
+        : undefined,
+      localArgs: new Map<string, unknown>([
+        ['item', item],
+        ['item2', item2],
+        ['mode', mode],
+      ]),
+    })) queued++;
+  }
+  return queued;
 }
 
 /**
