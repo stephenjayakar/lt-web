@@ -1,576 +1,188 @@
-# AGENTS.md -- How the Engine Was Designed and Built
+# AGENTS.md — Efficient contribution guide
 
-This document describes how the Lex Talionis web engine was architected
-and built across multiple AI-assisted sessions, covering the analysis strategy,
-design decisions, parallelization approach, and the full set of implemented
-systems. The engine currently spans **53,630 lines of TypeScript across 95
-source files**.
+This file is an operational guide, not a history of the port. Keep it short and
+stable. `PLAN.md` owns project status; generated inventories under `docs/parity/`
+own coverage counts; git history owns the change log.
 
-When making modifications, you should generally plan out what to do in PLAN.md, and update what you accomplished in there. Also, make sure to keep this file up to date with the architecture of the project.
+## Non-negotiable rules
 
-**Important:** Always update PLAN.md when you complete tasks (check off items, update line counts, add to "Recent Changes") or discover new tasks/bugs (add them to the appropriate section). PLAN.md is the source of truth for project status.
+- `lt-maker/` is the behavioral reference. Before changing engine behavior, read
+  the corresponding Python implementation and preserve its ordering, defaults,
+  edge cases, and payload shape unless the web port documents a deliberate
+  deviation.
+- Persistent gameplay mutations must normally be `Action` subclasses with exact
+  `execute()`/`reverse()` behavior so turnwheel replay remains deterministic.
+- Preserve existing user changes. Start and finish with `git status --short`;
+  never stage with `git add -A` in a dirty tree. Stage only task-owned paths or
+  hunks.
+- After any completed repo change (code, docs, config, or maintenance), commit
+  and push the current branch without asking. If verification or push fails,
+  report the exact blocker instead of claiming completion.
+- TypeScript is strict and uses `erasableSyntaxOnly`; do not use enums or
+  constructor parameter properties.
 
-**Commit policy:** Always commit and push changes without asking for confirmation. Do not prompt the user before committing or pushing.
-After finishing implementation work, create a commit and push it to the current branch.
-This applies to all sessions and all change scopes (code, docs, config, and maintenance edits).
+## Start with bounded discovery
 
----
+Do not read `PLAN.md`, `AGENTS.md`, `game-states.ts`, `action.ts`, or a large
+Python module front to back. Locate first, then read a narrow window.
 
-## 0. Reference Codebase
-
-The original **Lex Talionis** Python codebase (lt-maker) is checked into
-this repo at `lt-maker/`. Use it as the authoritative reference for how
-any feature should work. Key directories:
-
-- `lt-maker/app/engine/` — core engine (state machine, rendering, game systems)
-- `lt-maker/app/events/` — event scripting (commands, functions, portraits)
-- `lt-maker/app/data/` — data loading and database
-- `lt-maker/app/editor/` — editor UI (not relevant for the web port)
-- `lt-maker/default.ltproj/` — default Sacred Stones project data
-- `lt-maker/AGENTS.md` — comprehensive technical reference for the
-  original engine (architecture, data model, all systems, conventions)
-
-When implementing a new feature, **always read the corresponding Python
-source first** to understand the original behavior before writing TypeScript.
-The `lt-maker/AGENTS.md` file is an excellent starting point for understanding
-any system before diving into the Python source.
-
----
-
-## 1. Analysis Phase: Three Parallel Deep Dives
-
-The original Lex Talionis codebase is approximately 80,000+ lines of
-Python across 200+ files. Reading it sequentially would have been
-prohibitively slow, so the analysis was split into three parallel
-`explore` agents, each given a different cross-section of the codebase:
-
-| Agent | Focus Area | Key Discoveries |
-|-------|-----------|-----------------|
-| **Architecture Agent** | Entry points, game loop, state machine, rendering pipeline, `engine.py`, `driver.py`, `state_machine.py`, `map_view.py` | Stack-based state machine with deferred transitions; 240x160 fixed resolution scaled to display; `engine.py` is the Pygame abstraction seam; immediate-mode rendering (no scene graph); module-level singletons everywhere |
-| **Data Agent** | `.ltproj` structure, JSON formats, serialization, resource loading, tilemap format, sprite organization | Chunked vs non-chunked data; `.orderkeys` for ordering; terrain grid uses `"x,y"` string keys; component-based items/skills; tileset sprite grids reference `[tileset_nid, [x, y]]` |
-| **Game Logic Agent** | Combat, AI, pathfinding, movement, turns, events, input, UI | CombatPhaseSolver with attacker/defender state machine; 4 RNG modes; AI utility evaluation with offense/defense bias; Dijkstra for movement ranges + A* for paths; semicolon-delimited event scripting |
-
-Each agent returned a detailed architectural summary with file paths and
-line numbers for every key component. These three summaries formed the
-"mental model" used for all subsequent design decisions.
-
-**Why three agents instead of one?** The codebase is too large for a
-single exploration pass to cover thoroughly. By splitting along
-architectural boundaries (infrastructure / data / logic), each agent
-could read files in depth rather than skimming. The results were
-complementary with minimal overlap.
-
----
-
-## 2. Architecture Decisions
-
-### 2.1 Canvas, Not WebGL
-
-The original engine renders at 240x160 pixels and uses immediate-mode
-compositing (every frame, blit layers onto surfaces from scratch). This
-maps directly to the HTML5 Canvas 2D API. WebGL would be overkill for
-this resolution and would add complexity for no visual benefit.
-
-The `Surface` class wraps `OffscreenCanvas` to provide the same API as
-Pygame's `Surface`: `blit`, `fill`, `subsurface`, `getPixel`, `copy`,
-`flipH`, `flipV`, `makeGray`, `makeTranslucent`, and `colorConvert`.
-This makes the rendering code a near-direct translation from Python.
-
-### 2.2 Singleton Game State (Faithful Translation)
-
-The original engine uses a module-level `game = GameState()` singleton
-imported everywhere. Rather than fighting this pattern with dependency
-injection (which would have required rewriting every system's API), the
-port preserves it:
-
-```
-engine/game-state.ts  -> export let game: GameState
-                      -> export function initGameState(...)
+```bash
+git status --short --branch
+rg -n "Active Next Slice|Known Bugs|<feature>" PLAN.md
+rg -n "<symbol-or-nid>" src tests lt-maker/app
+sed -n '<start>,<end>p' <located-file>
+rg -n "test\.(describe|test)|test\(" tests/*.spec.ts
 ```
 
-Game states use a lazy reference (`setGameRef` / `getGame`) to avoid
-circular import issues that would arise from `game-states.ts` importing
-`game-state.ts` which transitively imports everything.
+Use `rg --files <dir>` when filenames are unknown. Batch independent read-only
+lookups into one command. Avoid broad recursive dumps, repeated `git diff`
+prints, and full generated JSON/Markdown reads. If command output is large,
+filter it at the source rather than rereading a truncated result.
 
-### 2.3 Stack-Based State Machine (Direct Port)
+For a normal change, the minimum useful context is:
 
-The state machine is the backbone of LT. Every game mode (title screen,
-free cursor, movement, combat, AI turn, events) is a `State` on the
-stack. The port preserves this exactly:
+1. the user request and relevant `PLAN.md` checkbox/bug;
+2. the authoritative Python function/class;
+3. the web call site plus the types it directly consumes;
+4. one nearby regression or harness helper.
 
-- States have lifecycle methods: `start`, `begin`, `takeInput`, `update`,
-  `draw`, `end`, `finish`
-- Transitions are deferred: `change(name)` / `back()` / `clear()` queue
-  operations processed at end of frame
-- Transparency: transparent states (menus, combat overlay, events) let
-  states beneath them draw too
-- `'repeat'` return: any lifecycle method can return `'repeat'` to re-run
-  the state machine in the same frame (enables instant state chains)
+Do not perform repo-wide architecture audits or delegate work unless the user
+explicitly requests them. Expand scope only when a focused test exposes a
+cross-cutting defect.
 
-### 2.4 Data Loading Over HTTP
+## Reference-to-web map
 
-The original engine loads `.ltproj` data from the local filesystem. For
-the web, assets are served as static files and fetched over HTTP:
+| Change | Python reference | Web implementation | Typical tests |
+|---|---|---|---|
+| Event syntax/metadata | `lt-maker/app/events/event_commands.py` | `src/events/event-manager.ts` | `tests/event-commands-*.spec.ts`, `tests/command-flags.spec.ts` |
+| Event behavior | `lt-maker/app/events/event_functions.py` | `src/engine/states/game-states.ts` | `tests/event-flow.spec.ts`, event command specs |
+| Reversible mutation | `lt-maker/app/engine/action.py` | `src/engine/action.ts` | `tests/turnwheel-breadth.spec.ts`, feature spec |
+| Items/skills | `lt-maker/app/engine/item_components/`, `skill_components/` | `src/combat/item-system.ts`, `skill-system.ts` | component/lifecycle specs |
+| Targeting/range | Python item/skill systems and target helpers | `src/engine/target-system.ts` | feature spec, `tests/resolve-policies.spec.ts` |
+| Combat | `lt-maker/app/engine/combat/` | `src/combat/` | `tests/combat-goldens.spec.ts`, focused combat specs |
+| AI/pathfinding | `ai_controller.py`, `pathfinding/` | `src/ai/`, `src/pathfinding/` | `tests/ai-parity.spec.ts`, `movement-parity.spec.ts` |
+| Save/restore | `game_state.py`, serializer code | `src/engine/save.ts`, object classes | `tests/save-fields.spec.ts`, feature save spec |
+| UI/state flow | `lt-maker/app/engine/*_state.py` | `src/engine/states/`, `src/ui/`, `src/main.ts` | closest state/UI spec |
+| Rendering/resources | Python engine/resource code | `src/rendering/`, `src/data/` | rendering/resource specs |
 
-```
-/game-data/default.ltproj/
-  metadata.json
-  game_data/
-    constants.json
-    items/.orderkeys
-    items/Iron_Sword.json
-    ...
-  resources/
-    tilesets/Prologue.png
-    map_sprites/Eirika_Lord-stand.png
-    ...
-```
+Read `lt-maker/AGENTS.md` only when the relevant Python file is unclear or the
+change crosses several Python subsystems.
 
-The `ResourceManager` handles all fetching with caching and deduplication.
-The `Database` loads chunked data by reading `.orderkeys` first, then
-fetching each chunk in parallel.
+## Architecture invariants
 
-### 2.5 TypeScript Constraints
+- `GameState` is a shared singleton. State classes use the existing lazy game
+  reference to avoid circular imports.
+- The top-level state machine is a deferred, stack-based machine. Lifecycle
+  methods may return `'repeat'`; transparent states allow lower states to draw.
+- Items and skills are component bags. Runtime components are often `Map` based,
+  while project JSON values may be tuples/lists; verify the real serialized shape
+  before parsing it.
+- Items may form recursive `subitems`/`parentItem` graphs. Ownership, save keys,
+  and transfer logic must preserve object identity.
+- Combat and growth RNG streams are persistent. Never replace them with
+  `Math.random()` or consume extra rolls during preview/playback.
+- Combat has solver, map presentation, animation presentation, lifecycle, and
+  result-action layers. A change affecting strike semantics may need all of them;
+  do not assume changing only the solver is sufficient.
+- Canvas rendering targets a 240x160 logical scene. Browser CSS/DPR size is not
+  the same as logical engine size.
+- Missing optional assets may degrade gracefully; missing required behavioral
+  support should fail loudly in development strict mode.
 
-The project uses `erasableSyntaxOnly: true` (a recent TypeScript strict
-mode option). This disallows constructor parameter properties
-(`constructor(private x: number)`) and enums, requiring explicit field
-declarations. All agents were instructed about this constraint.
+## Editing workflow
 
----
+1. Write down the reference contract in a few facts: inputs, mutation order,
+   blocking/resume behavior, event payloads, and reversal/save requirements.
+2. Trace the existing web path with `rg`; reuse current helpers and action/state
+   patterns instead of creating a parallel subsystem.
+3. Patch the smallest coherent surface. Use `apply_patch`; do not rewrite whole
+   large files with ad hoc Python or shell scripts.
+4. Add or extend the narrowest relevant regression. Prefer the dedicated spec;
+   do not keep adding unrelated cases to `tests/harness.spec.ts`.
+5. Run the focused test first. Diagnose a failure with that single test before
+   running broader gates.
+6. Update generated parity artifacts only if their source surface changed.
+7. Update `PLAN.md` minimally, verify, review the diff, then commit and push.
 
-## 3. Build Phase: Parallel Agent Batches
+Event commands usually require checking all four surfaces: parser/alias metadata
+in `event-manager.ts`, blocking registration and dispatch in `EventState`, an
+`Action` for reversible mutations, and a regression proving command chaining or
+resume. Save-affecting work should test a real round trip; action-backed work
+should test undo and redo, not just `execute()`.
 
-After analysis, the engine was built in **5 batches**, each batch
-launching 2-3 `general` agents in parallel. Each agent was given:
+## Verification matrix
 
-1. A list of files to write with detailed API signatures
-2. Knowledge of the LT architecture from the analysis phase
-3. The TypeScript constraint (`erasableSyntaxOnly`)
-4. Instructions to read existing files for API compatibility
+Use the cheapest gate that can falsify the change, then broaden once at the end.
 
-### Batch 1: Foundations (4 files written directly)
-- `constants.ts`, `surface.ts`, `input.ts`, `state.ts`
-- Written directly (not via agents) since they're small and foundational
+| Change scope | Required verification |
+|---|---|
+| Docs only (`AGENTS.md`, prose-only `PLAN.md`) | `git diff --check` |
+| Local TypeScript behavior | `npm run build` + one focused Playwright spec/test |
+| Event parser/dispatcher or item/skill hook surface | focused spec + `npm run audit:parity:write` + `npm run audit:parity` + build |
+| Save, action log, RNG, state-machine, combat sequencing | focused spec(s) + build + one full serial Playwright run at the end |
+| Rendering/layout | focused spec + inspect the produced screenshot/render, then build |
+| Release/large cross-system task | build + audit + full serial Playwright suite + `git diff --check` |
 
-### Batch 2: Three Agents in Parallel
-| Agent | Files | Lines |
-|-------|-------|------:|
-| State Machine + Camera + Cursor | `state-machine.ts`, `camera.ts`, `cursor.ts` | ~470 |
-| Data Types + Game Objects | `types.ts`, `unit.ts`, `item.ts`, `skill.ts` | ~625 |
-| Resource Manager + Database | `resource-manager.ts`, `database.ts` | ~684 |
+Compact commands:
 
-### Batch 3: Three Agents in Parallel
-| Agent | Files | Lines |
-|-------|-------|------:|
-| Tilemap + Map View + Highlights | `tilemap.ts`, `map-view.ts`, `highlight.ts` | ~520 |
-| Pathfinding + Movement | `pathfinding.ts`, `path-system.ts`, `movement-system.ts` | ~779 |
-| Game Board + Phase + Actions | `game-board.ts`, `phase.ts`, `action.ts` | ~500 |
+```bash
+# Discover exact title before using -g
+rg -n "test\(|test\.describe" tests/<area>.spec.ts
 
-### Batch 4: Three Agents in Parallel
-| Agent | Files | Lines |
-|-------|-------|------:|
-| Combat System | `combat-calcs.ts`, `combat-solver.ts`, `map-combat.ts` | ~861 |
-| AI System | `ai-controller.ts` | ~413 |
-| Map Sprite + Unit Renderer | `map-sprite.ts`, `unit-renderer.ts` | ~306 |
+# Focused loop
+npx playwright test tests/<area>.spec.ts --workers=1 --reporter=dot
+npx playwright test -g "<exact title>" --workers=1 --reporter=dot
 
-### Batch 5: Two Agents in Parallel
-| Agent | Files | Lines |
-|-------|-------|------:|
-| UI System | `menu.ts`, `hud.ts`, `health-bar.ts`, `dialog.ts`, `banner.ts` | ~699 |
-| Events + Audio | `event-manager.ts`, `audio-manager.ts` | ~630 |
-
-### Batch 6: Two Agents in Parallel (Integration)
-| Agent | Files | Lines |
-|-------|-------|------:|
-| GameState Singleton | `game-state.ts` | ~405 |
-| All Game States | `game-states.ts` | ~1353 |
-
-### Batch 7: One Agent (Entry Point)
-| Agent | Files | Lines |
-|-------|-------|------:|
-| Main Entry Point | `main.ts` | ~308 |
-
-**Total: ~15 agent invocations across 7 batches**, plus direct file
-writes for the smallest files.
-
----
-
-## 4. Agent Communication Pattern
-
-Each agent was given a self-contained task with:
-
-- **Exact file paths** to write
-- **API signatures** (interfaces, method signatures, constructor shapes)
-- **Implementation notes** (algorithm details, LT-specific behavior)
-- **Constraints** (no constructor parameter properties, import paths)
-- **Verification**: agents were told to read existing files first to match
-  APIs, and the project was type-checked after each batch
-
-The key challenge was **cross-file API compatibility**. When Agent A
-writes `PathSystem` and Agent B writes `GameBoard`, they both need to
-agree on the `GameBoard` API. This was handled by:
-
-1. Writing foundational types first (`types.ts`, `unit.ts`, `item.ts`)
-2. Specifying exact API contracts in agent prompts
-3. Having later agents read earlier files before writing
-4. Running `tsc --noEmit` after each batch to catch mismatches
-
-No batch produced type errors. The final build was clean on the first
-try.
-
----
-
-## 5. Design Patterns Used
-
-### Immediate-Mode Rendering
-Every frame, the entire visible scene is redrawn from scratch. There is
-no retained scene graph. This matches LT's Pygame rendering and is
-simple to reason about:
-
-```
-MapView.draw() {
-  blit background tilemap
-  draw highlights
-  draw grid
-  draw units (Y-sorted)
-  draw foreground tilemap
-  draw cursor
-}
+# Final cross-system gate (run once, not after every edit)
+npm run build
+npm run audit:parity
+npx playwright test --workers=1 --reporter=dot
+git diff --check
 ```
 
-### Command Pattern (Actions)
-Every game mutation is an `Action` with `execute()` and `reverse()`.
-This enables the turnwheel (time-rewind) feature and makes the game
-state fully deterministic.
+On failure, rerun only the failing spec/title with a verbose reporter or trace.
+Do not rerun the full suite merely to obtain a readable error. Use the shell's
+configured Node/npm; do not prepend a hard-coded NVM path unless `command -v
+node` shows the tool is genuinely unavailable.
 
-### Component-Based Items/Skills
-Items and skills are bags of named components (`[name, value]` pairs).
-The component name determines behavior (e.g., `"weapon"`, `"brave"`,
-`"damage"`, `"uses"`). This is an entity-component pattern without the
-"system" -- components are queried directly by the combat/targeting code.
+`npm run audit:parity:write` owns these generated files:
 
-### State Machine for Everything
-Combat resolution, AI decision-making, event execution, and even the
-map combat visual presentation all use internal state machines. The
-top-level game state machine manages which of these is active.
+- `docs/parity/event-commands.{json,md}`
+- `docs/parity/item-components.{json,md}`
+- `docs/parity/skill-components.{json,md}`
 
----
+Do not hand-edit them. Do not run the write command for unrelated changes. After
+regeneration, inspect `git diff --stat` and the relevant rows, not the whole files.
 
-## 6. What Worked Well
+## PLAN.md policy
 
-- **Parallel analysis** saved significant time. Three agents exploring
-  different parts of the codebase simultaneously produced a comprehensive
-  understanding in one round-trip.
-- **Batch parallelism** for writing files was highly effective. Independent
-  modules (pathfinding, combat, AI, UI) can be written simultaneously
-  without conflicts.
-- **Specifying exact APIs in prompts** prevented most cross-file
-  compatibility issues. Type-checking after each batch caught the rest.
-- **Faithful architectural translation** (keeping the singleton pattern,
-  stack-based state machine, and immediate-mode rendering) avoided the
-  need to redesign the game's control flow, which would have been the
-  biggest risk.
+`PLAN.md` is the status source of truth, but it is not a session transcript.
 
-## 7. What Could Be Improved
+- At startup, read only the matching checkbox/bug and `Active Next Slice` if the
+  user did not provide a task. A direct user request takes priority over the queue.
+- On completion, update an existing checkbox/bug and add at most one concise
+  `Recent Changes` bullet describing behavior, tests, and deliberate deferrals.
+- Add discovered work as a short unchecked item in the relevant phase. Do not
+  paste investigation logs, repeated audit tables, or per-attempt narratives.
+- Do not manually maintain TypeScript line counts, source-file counts, state
+  counts, or test totals in `AGENTS.md`. Put generated coverage facts in parity
+  artifacts; mention exact totals in `PLAN.md` only when the task changes a
+  tracked baseline.
+- Architecture details belong here only when they are stable and necessary for
+  future edits. Feature completion details belong in `PLAN.md` and git history.
 
-- **The `any` type** is used in a few places (the lazy game reference in
-  `game-states.ts`, the `MapSprite = unknown` type alias). These should
-  be replaced with proper typed interfaces to prevent runtime surprises.
-- **Agent prompt size** became a challenge for the larger files
-  (`game-states.ts` at 1353 lines). Extremely detailed prompts were
-  needed to get all 11 states correct in a single pass.
-- **Duplicate combat-calcs.** Two agents independently wrote
-  `combat-calcs.ts` with slightly different APIs. This was resolved by
-  keeping the more complete version, but better coordination (or writing
-  shared interfaces first) would have prevented it.
+## Final review and git
 
-### Known Bugs
+Before staging:
 
-All previously tracked bugs have been resolved. See PLAN.md "Known Bugs"
-section for the full resolution history.
+```bash
+git status --short
+git diff --stat
+git diff -- <task-owned paths>
+git diff --check
+```
 
----
-
-## 8. Implemented Systems
-
-This section summarizes all major systems that have been implemented
-across multiple development sessions. For detailed change logs, see
-`PLAN.md`.
-
-### 8.1 Core Gameplay (Phase 0 + 1)
-
-All foundation and core gameplay systems are complete:
-
-- **State machine**: Stack-based with 21+ states (Title, Free, Move, Menu,
-  Targeting, Combat, AI, TurnChange, PhaseChange, Movement, Event, Shop,
-  Prep, Base, Settings, Minimap, Victory, Credits, Turnwheel, Info, Overworld, etc.)
-- **Tilemap rendering**: Multi-layer tilemaps with autotile animation, weather
-  particles (7 types), foreground layers, layer show/hide, map animations
-- **Unit system**: Full UnitObject with stats, items, skills, status effects,
-  rescue/carry, canto, affinity, party assignment, portrait NID
-- **Action menu**: Dynamic options (Attack, Item, Trade, Rescue, Drop, Visit,
-  Shop, Seize, Talk, Wait) with eligibility checks
-- **Combat**: Full combat calcs with weapon triangle, terrain bonuses, support
-  bonuses, component dispatch, scripted combat (`interact_unit`), both
-  MapCombat and AnimationCombat paths, action-backed deterministic result replay,
-  persistent LT combat RNG, scoped attack/defense/pre-proc skills and charges,
-  and Python-ordered start/end/death/item-event lifecycle payloads
-- **AI**: Behaviour iteration with primary/secondary fallback, all view_range
-  modes, target_spec filtering, guard/defend/retreat, group activation,
-  healing item/staff use, Interact behaviour for destructible regions
-- **Experience/leveling**: Growth-based stat rolls, animated EXP bar, level-up
-  display, random and fixed growth modes
-- **Win/loss conditions**: Rout, Defeat Boss, Seize, Survive X turns,
-  specific unit death, Lord death
-
-### 8.2 Event System (~100+ Commands)
-
-The event system supports both semicolon-delimited (EVNT) and Python-syntax
-(PYEV1) event scripts. Key command categories:
-
-- **Dialog**: `speak`/`s`, `narrate`, `choice`/`unchoice`, `alert`,
-  `chapter_title`, `location_card`, `change_background`
-- **Portraits**: `add_portrait`, `multi_add_portrait`, `remove_portrait`,
-  `multi_remove_portrait`, `remove_all_portraits`, `move_portrait`,
-  `bop_portrait`/`bop`, `mirror_portrait`, `expression`
-- **Units**: `add_unit`, `load_unit`, `make_generic`, `remove_unit`,
-  `kill_unit`, `move_unit`, `add_group`, `spawn_group`, `remove_group`,
-  `move_group`, `set_name`, `equip_item`, `set_stats`, `change_class`,
-  `promote`, `has_visited`
-- **Items/Money**: `give_item`, `remove_item`, `give_money`, `give_exp`,
-  `give_bexp`, `unlock`
-- **Map**: `show_layer`, `hide_layer`, `change_tilemap`, `add_region`,
-  `remove_region`, `region_condition`, `map_anim`, `remove_map_anim`,
-  `add_weather`, `remove_weather`, `screen_shake`
-- **Flow**: `if`/`elif`/`else`/`end`, `for`/`endf`, `transition`,
-  `wait`, `end_turn`, `win_game`, `lose_game`
-- **Audio**: `music`, `sound`, `music_fade_back`, `music_clear`,
-  `change_music`
-- **Camera**: `center_cursor`, `move_cursor`, `disp_cursor`, `flicker_cursor`
-- **Game state**: `set_game_var`, `inc_game_var`, `modify_game_var`,
-  `change_objective`, `change_team`, `add_talk`, `remove_talk`
-- **Combat**: `interact_unit` (scripted combat with forced outcomes), `shop`
-- **Prep/Base**: `prep`, `base`, `add_base_convo`, `add_market_item`
-- **Overworld**: 11 commands (`overworld_cinematic`, `reveal_overworld_node`,
-  `overworld_move_unit`, `set_overworld_position`, etc.)
-- **Fog/Turnwheel**: `enable_fog_of_war`, `set_fog_of_war`,
-  `enable_turnwheel`, `activate_turnwheel`, `clear_turnwheel`
-- **Initiative**: `add_to_initiative`, `move_in_initiative`
-- **Records**: `create_record`, `update_record`, `add_achievement`,
-  `complete_achievement`
-- **Save**: `battle_save`, `battle_save_prompt`, `skip_save`, `suspend`
-- **Roam**: `set_roam`, `set_roam_unit`
-
-### 8.3 Visual Polish (Phase 2)
-
-- **GBA-style combat animations**: ~2,600 lines across 5 files. Full pose
-  playback, weapon animation resolution, combat effects (spell/weapon),
-  terrain panorama backgrounds, platform images, viewbox iris transition,
-  screen shake, damage numbers (bounce physics), hit/crit sparks
-- **Bitmap font rendering**: 23 font variants with variable-width glyphs,
-  19 color palette variants, stacked rendering
-- **Portrait system**: Sprite sheet compositing (face + mouth + eyes),
-  automatic blinking, talking animation, expressions, transitions
-- **9-slice menu backgrounds**: Arbitrarily-sized window backgrounds from
-  24x24 source tiles
-- **Icon rendering**: 16x16 and 32x32 icon sheets for item display
-- **Team palette swap**: Color conversion on map sprites for team colors
-- **Weather**: 7 particle types (rain, snow, sand, light, dark, night, sunset)
-- **Autotile animation**: 16-frame cycling for animated water/lava tiles
-- **Map animations**: Spritesheet-based animations at map positions
-- **Enemy threat zones**: All-enemy and individual-enemy range overlays
-- **Cursor sprite**: Animated 3-frame bounce from actual sprite sheet
-
-### 8.4 Advanced Game Systems (Phase 3)
-
-- **Support system**: Adjacency-based support points, rank progression,
-  5 affinity bonus methods, combat stat bonuses, per-chapter limits
-- **Fog of war**: GBA/Thracia/Hybrid modes, per-team vision grids, Bresenham
-  LOS, torch/thief sight bonuses, fog overlay rendering
-- **Turnwheel / Divine Pulse**: Full undo/redo of game actions, action groups,
-  navigation UI, lock mechanism, recording control
-- **Initiative turn system**: Speed-based per-unit turn order as alternative
-  to standard phase cycle, auto-insert/remove on spawn/death
-- **Pair-up / Rescue**: Project-constant-aware Pair Up versus classic Rescue,
-  reversible Pair Up/Separate/Switch/Transfer/Rescue/Drop/RemovePartner actions,
-  guard-gauge merge/split/build/decay, automatic and AUX-selected attack stance,
-  half-damage partner phases/rewards, sourced bonuses/penalties, player menus,
-  events, turnwheel branches, and save restoration
-- **Overworld map**: FE8-style world map with nodes, roads, Dijkstra pathfinding,
-  animated entity movement, level entry, 11 event commands
-- **Free roam mode**: ARPG-style direct unit control with physics-based
-  movement, collision detection, NPC/region interaction
-- **Promotion / class change**: Full stat recalculation with sentinel values,
-  growth changes, wexp gain, class skill granting
-- **Difficulty modes**: Runtime difficulty with permadeath, growths, RNG mode,
-  base stat bonuses, autolevel counters
-- **Party/Convoy**: Multi-party support with separate inventories, 7 convoy
-  action classes, money/bexp management
-- **Save/Load**: IndexedDB storage with localStorage fallback, full game state
-  serialization (units/items/skills/levels/parties/supports), 15-step
-  ordered restoration, suspend/resume
-- **Records**: Per-save statistics (kills, damage, healing, etc.),
-  cross-save persistent records, achievement system
-- **Achievements**: Canonical create/update/complete/clear/open event commands,
-  project-global localStorage persistence, completion queries and notifications,
-  hidden-entry browser UI, and blocking event resume
-- **Query engine**: 28 Python-compatible query functions with camelCase and
-  snake_case aliases for event condition evaluation
-- **Python events (PYEV1)**: Line-by-line interpreter with indentation-based
-  blocks, if/elif/else/for/while, Python-to-JS expression translation
-- **Equation evaluator**: Python ternary expressions, unit tag checks,
-  DB constant/equation references, JS fallback for complex expressions
-
-### 8.5 Mobile / Distribution (Phase 4)
-
-- **Touch controls**: Tap-to-move, pinch-to-zoom, drag-to-pan
-- **Responsive scaling**: Dynamic viewport, orientation-aware, DPR-aware HUD
-- **PWA**: Service worker with precaching, offline support, install prompt,
-  update detection, connectivity tracking
-- **Asset bundling**: Client-side zip parser, transparent ResourceManager
-  interceptors, zero external dependencies
-- **Performance profiling**: Frame budget monitor, per-function timing,
-  histogram, profiling sessions (F4), exportable JSON reports
-- **Capacitor / TWA**: iOS/Android wrapper config, wake lock, status bar,
-  pause/resume lifecycle, back button handling, safe area insets
-
----
-
-## 9. File Architecture
-
-### Core Engine (`src/engine/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `game-state.ts` | ~1480 | Singleton hub: subsystem refs, level loading/cleanup, generic learned skills, win/loss, difficulty, unit persistence |
-| `target-system.ts` | ~250 | Availability-gated target union, range/LOS/fog/restriction/count filtering, splash expansion, recursive sequence guards, and automatic attack-stance partner scoring |
-| `state-machine.ts` | ~207 | Stack-based state machine with deferred transitions |
-| `action.ts` | ~3127 | All game actions, including reversible game variables, board/initiative death, inventory, metadata, Pair Up/Switch/Transfer/Separate/Rescue/Drop, guard upkeep, and sourced traveler effects |
-| `leveling.ts` | ~290 | LT growth methods, deterministic per-level RNG, and autolevel calculations |
-| `learned-skills.ts` | ~80 | Class/inherited learned-skill traversal and generic Feat selection |
-| `static-random.ts` | ~99 | LT LCG plus persisted combat and shared growth-random streams |
-| `camera.ts` | ~180 | Smooth scrolling, map bounds, screen shake (5 patterns) |
-| `cursor.ts` | ~194 | Tile-grid cursor with sprite animation |
-| `initiative.ts` | ~210 | Initiative-based turn system tracker |
-| `difficulty.ts` | ~135 | Difficulty mode runtime class |
-| `save.ts` | ~1510 | IndexedDB save/load with canonical item identities, recursive subitem graphs, pair roles/gauges, and per-skill source metadata |
-| `records.ts` | ~907 | Recordkeeper plus project-global persistent achievements with immediate localStorage writes |
-| `query-engine.ts` | ~868 | Python-compatible query functions, including persistent achievement completion and runtime subitem lookup |
-| `support-system.ts` | ~500 | Support pairs, ranks, affinity bonuses |
-| `line-of-sight.ts` | ~170 | Bresenham LOS for fog of war |
-| `perf-monitor.ts` | ~440 | Frame budget monitor, profiling |
-
-### Game States (`src/engine/states/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `game-states.ts` | ~10899 | Core states and event dispatch, including achievement commands, Pair Up/Switch/Transfer/Rescue menus, attack-partner cycling, availability-gated items, grouped combat, and persistent RNG |
-| `prep-state.ts` | ~499 | GBA-style preparation screen |
-| `base-state.ts` | ~801 | Base hub/conversations, reachable Codex submenu, and the hidden-aware responsive persistent achievement browser |
-| `settings-state.ts` | ~621 | Settings menu (Config/Controls) |
-| `minimap-state.ts` | ~355 | Minimap overlay |
-| `victory-state.ts` | ~332 | Victory screen |
-| `credit-state.ts` | ~438 | Credits screen |
-| `info-menu-state.ts` | ~621 | Unit info/status screen |
-| `save-load-state.ts` | ~300 | Save/Load UI |
-| `overworld-state.ts` | ~668 | Overworld map (3 states) |
-| `turnwheel-state.ts` | ~300 | Turnwheel undo/redo UI |
-
-### Combat (`src/combat/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `combat-calcs.ts` | ~794 | Hit, normal/half-assist damage, crit, avoid, Python-shaped weapon-triangle ranks/reavers/overrides/defender bonuses, splash mode, and alternate formulas |
-| `combat-solver.ts` | ~769 | Single/grouped and attack-stance strike sequencing, exact attack-info tuples, guard gauges, persistent RNG, scoped procs, counters, splash, vantage/desperation/miracle |
-| `combat-components.ts` | ~319 | Shared grouped on-hit status, Steal selection, fixed and standard/Gompertz level EXP, main/partner WEXP, class-cap, and weapon-rank resolution |
-| `animation-combat.ts` | ~1352 | GBA-style animation combat state machine with reversible RNG/proc setup, guard gauges, deferred result commit, and shared per-strike durability/component lifecycle |
-| `battle-animation.ts` | ~763 | Frame-by-frame pose playback |
-| `map-combat.ts` | ~851 | Map-mode single/grouped/attack-stance combat with partner animation/rewards, guard gauges, reversible RNG setup, per-defender HP state, and action-backed results |
-| `combat-lifecycle.ts` | ~87 | Python-ordered specific item combat events with target, mode, attack-info, and item payloads |
-| `combat-result-action.ts` | ~132 | Exact before/after combat mutation snapshots for deterministic turnwheel undo/redo |
-| `combat-skill-lifecycle.ts` | ~371 | Combat RNG transition records, skill conditions, temporary attack/defense/pre-procs, item overrides, grouped sharing, and charge cleanup |
-| `sprite-loader.ts` | ~453 | Palette conversion, spritesheet extraction |
-| `item-system.ts` | ~1068 | Item availability/cost/rank/prf/condition/override/parent dispatch, unlock-region targeting, blast/shape/line/cleave/global AOE geometry and previews, utility/repair/unload/Steal restrictions, spell combat rules, triangle modifiers, and uses-options durability resolution |
-| `skill-system.ts` | ~567 | Skill dispatch, including sourced Pair Up/Rescue lifecycles, proc modifiers, alternate AOE, formula priority, forced movement, and EXP/WEXP hooks |
-
-### Events (`src/events/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `event-manager.ts` | ~1402 | Event parser/queue, Pair Up/Rescue and legacy achievement aliases, condition evaluator, combat-local payload context, and item-target expressions |
-| `event-portrait.ts` | ~700 | Portrait compositing, blinking, talking, expressions |
-| `python-events.ts` | ~995 | PYEV1 Python-syntax event interpreter |
-| `screen-positions.ts` | ~117 | Named screen position resolver |
-
-### Data (`src/data/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `database.ts` | ~479 | All game data loading (chunked + non-chunked JSON) |
-| `resource-manager.ts` | ~309 | HTTP asset loader with caching |
-| `types.ts` | ~371 | TypeScript interfaces for all LT data formats |
-| `asset-bundle.ts` | ~497 | Client-side zip parser for bundled assets |
-
-### Rendering (`src/rendering/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `tilemap.ts` | ~360 | Multi-layer tilemap, autotile, weather management |
-| `map-view.ts` | ~287 | Full rendering pipeline (tilemap, units, fog, weather) |
-| `bmp-font.ts` | ~526 | Bitmap font system (23 variants, 19 color palettes) |
-| `map-sprite.ts` | ~294 | Unit map sprites with team palette swap |
-| `weather.ts` | ~238 | Weather particle system (7 types) |
-| `map-animation.ts` | ~169 | Spritesheet-based map animations |
-
-### AI (`src/ai/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `ai-controller.ts` | ~1266 | Full AI: availability-gated combat/support choices, behaviours, targeting, healing, value-based Steal selection, group activation |
-
-### UI (`src/ui/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `dialog.ts` | ~367 | Dialog boxes with portrait awareness, word-wrap |
-| `hud.ts` | ~253 | Unit info + terrain info panels |
-| `base-surf.ts` | ~228 | 9-slice menu window backgrounds |
-| `menu.ts` | ~204 | Choice menu with mouse/touch support |
-| `icons.ts` | ~151 | Item icon rendering (16x16/32x32) |
-| `banner.ts` | ~113 | Phase/alert banners |
-
-### Platform (`src/`)
-| File | Lines | Purpose |
-|------|------:|---------|
-| `main.ts` | ~670 | Bootstrap, canvas, game loop, state registration |
-| `pwa.ts` | ~310 | Service worker, install prompt, connectivity |
-| `native.ts` | ~210 | Capacitor/TWA platform detection, lifecycle |
-
----
-
-## 10. Testing
-
-See [TESTING.md](./TESTING.md) for the full testing guide.
-
-## 11. Runtime Parity Workflow
-
-`PLAN.md` is organized around behavioral parity with the checked-in Python
-runtime. Run `npm run audit:parity:write` after changing event parsing or dispatch;
-it regenerates the event-command, item-component, and skill-component JSON/Markdown
-manifests under `docs/parity/`. Run `npm run audit:parity` to check those artifacts,
-inventory counts, and monotonic coverage thresholds. The parity-audit GitHub workflow
-runs the same guard. Component manifests record Python source/hooks, matching web hook
-surfaces, and exact TypeScript string references. These counts are discovery aids,
-not semantic coverage percentages; each mapped behavior still requires comparison
-with the corresponding Python source and a regression test.
-
-Event-driven persistent mutations should use `Action` subclasses so turnwheel
-reversal remains possible. The event runtime currently includes reversible WEXP,
-displayed-level, autolevel, learned-skill, resurrection, lore, unit metadata,
-faction, growth/stat-cap, custom-field, categorized-note, and item-property mutations.
-Inventory movement/removal uses reversible actions across unit and named-party convoy
-routes. Save serialization assigns item keys from current containers by object identity,
-so transfers cannot leave stale owner-derived references.
-`ItemObject` also carries recursive `subitems`/`parentItem` links. Creation expands
-`multi_item` and `sequence_item` prefab components, ownership propagates down the tree,
-and save restoration reconnects the graph before assigning unit/convoy ownership.
-`leveling.ts` ports LT's deterministic level RNG and Fixed/Random/Dynamic/Lucky/BEXP
-autolevel methods. `static-random.ts` owns LT's shared growth LCG, while
-`learned-skills.ts` applies class inheritance and database-ordered, non-duplicating
-generic Feat selection during spawning and `autolevel_to`. Dynamic
-`UnitObject.growthPoints`, unit metadata/fields/notes,
-mutable item text/data/uses, and `GameState.unlockedLore` are serialized with
-optional save fields so older saves continue to load.
+Confirm no debug files, screenshots, test artifacts, or unrelated generated
+changes are included. Stage explicit paths; use patch staging for a shared dirty
+file. Commit with a behavior-focused message, push the current branch, and report
+the focused/full gates actually run plus any remaining deviation.
