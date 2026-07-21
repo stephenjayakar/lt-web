@@ -402,3 +402,180 @@ test('hidden initiated-combat hooks preserve Python payload, ordering, partners,
   expect(immediate.eventRuns).toBe(3);
   expect(immediate.parentResumed).toBe('yes');
 });
+
+test('remove-skill hook fires once after true removal and event command resumes', async ({ page }) => {
+  await openFixture(page);
+
+  const immediate = await page.evaluate(async () => {
+    const game = (window as any).__gameRef;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    const { RemoveSkillAction } = await import('/src/engine/action.ts');
+    const unit = game.units.get('Eirika');
+    if (!unit) throw new Error('remove-skill fixture unit missing');
+
+    const directEventNid = '_RemoveSkillDirectEvent';
+    const scriptedEventNid = '_RemoveSkillScriptedEvent';
+    const parentEventNid = '_RemoveSkillParentEvent';
+    const missingEventNid = '_RemoveSkillMissingEvent';
+    for (const [nid, source] of [
+      [directEventNid, ['inc_game_var;_remove_direct_event_runs']],
+      [scriptedEventNid, ['inc_game_var;_remove_scripted_event_runs']],
+      [parentEventNid, [
+        'remove_skill;Eirika;_RemoveScriptedSkill;no_banner',
+        'game_var;_remove_parent_resumed;yes',
+      ]],
+    ] as Array<[string, string[]]>) {
+      game.db.events.set(nid, {
+        nid,
+        name: nid,
+        trigger: 'never',
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'False',
+        only_once: false,
+        priority: 0,
+        _source: source,
+      });
+    }
+
+    const makeSkill = (nid: string, eventNid?: string) => new SkillObject({
+      nid,
+      name: nid,
+      desc: '',
+      icon_nid: '',
+      icon_index: [0, 0],
+      components: eventNid ? [['event_on_remove', eventNid]] : [],
+    } as any);
+    const unrelatedSkill = makeSkill('_RemoveUnrelatedSkill');
+    const directSkill = makeSkill('_RemoveDirectSkill', directEventNid);
+    const missingEventSkill = makeSkill('_RemoveMissingEventSkill', missingEventNid);
+    unit.skills.push(unrelatedSkill, directSkill, missingEventSkill);
+    const directIndex = unit.skills.indexOf(directSkill);
+
+    game.eventManager.eventQueue.length = 0;
+    game.gameVars.delete('_remove_direct_event_runs');
+    game.gameVars.delete('_remove_scripted_event_runs');
+    game.gameVars.delete('_remove_parent_resumed');
+    game.actionLog.clear();
+
+    const calls: Array<{
+      nid: string;
+      trigger: any;
+      removedSkillAbsent: boolean;
+    }> = [];
+    const originalTriggerSpecific = game.eventManager.triggerSpecific.bind(game.eventManager);
+    game.eventManager.triggerSpecific = (nid: string, trigger: any, force?: boolean) => {
+      const removedNid = nid === directEventNid
+        ? directSkill.nid
+        : nid === scriptedEventNid
+          ? '_RemoveScriptedSkill'
+          : missingEventSkill.nid;
+      calls.push({
+        nid,
+        trigger,
+        removedSkillAbsent: !unit.skills.some((skill: any) => skill.nid === removedNid),
+      });
+      return originalTriggerSpecific(nid, trigger, force);
+    };
+
+    const removeActions: any[] = [];
+    const originalDoAction = game.actionLog.doAction.bind(game.actionLog);
+    game.actionLog.doAction = (action: any) => {
+      if (action instanceof RemoveSkillAction) removeActions.push(action);
+      originalDoAction(action);
+    };
+
+    const directAction = new RemoveSkillAction(unit, directSkill);
+    game.actionLog.doAction(directAction);
+    const callsAfterFirstDo = calls.length;
+    const absentAfterDo = !unit.skills.includes(directSkill);
+
+    const undoneAction = game.actionLog.undo();
+    const callsAfterUndo = calls.length;
+    const exactSkillRestored = undoneAction === directAction &&
+      unit.skills[directIndex] === directSkill;
+
+    directAction.execute();
+    const callsAfterRedo = calls.length;
+    const absentAfterRedo = !unit.skills.includes(directSkill);
+
+    game.actionLog.doAction(new RemoveSkillAction(unit, unrelatedSkill));
+    game.actionLog.doAction(new RemoveSkillAction(unit, missingEventSkill));
+    const removalActionsBeforeParent = removeActions.length;
+
+    const scriptedSkill = makeSkill('_RemoveScriptedSkill', scriptedEventNid);
+    unit.skills.push(scriptedSkill);
+    originalTriggerSpecific(parentEventNid, { type: parentEventNid }, true);
+    game.state.clear();
+    game.state.change('event');
+
+    (window as any).__removeSkillHookResult = {
+      calls,
+      removeActions,
+      removalActionsBeforeParent,
+      directAction,
+      scriptedSkill,
+    };
+    return {
+      callsAfterFirstDo,
+      callsAfterUndo,
+      callsAfterRedo,
+      absentAfterDo,
+      exactSkillRestored,
+      absentAfterRedo,
+    };
+  });
+
+  expect(immediate).toEqual({
+    callsAfterFirstDo: 1,
+    callsAfterUndo: 1,
+    callsAfterRedo: 1,
+    absentAfterDo: true,
+    exactSkillRestored: true,
+    absentAfterRedo: true,
+  });
+
+  await stepFrames(page, 400);
+  const completed = await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const result = (window as any).__removeSkillHookResult;
+    return {
+      calls: result.calls.map((call: any) => ({
+        nid: call.nid,
+        type: call.trigger.type,
+        unit1: call.trigger.unit1?.nid ?? null,
+        triggerKeys: Object.keys(call.trigger).sort(),
+        removedSkillAbsent: call.removedSkillAbsent,
+      })),
+      scriptedRemovalActions:
+        result.removeActions.length - result.removalActionsBeforeParent,
+      scriptedSkillAbsent: !game.units.get('Eirika').skills.includes(result.scriptedSkill),
+      directRuns: Number(game.gameVars.get('_remove_direct_event_runs') ?? 0),
+      scriptedRuns: Number(game.gameVars.get('_remove_scripted_event_runs') ?? 0),
+      parentResumed: game.gameVars.get('_remove_parent_resumed') ?? null,
+    };
+  });
+
+  expect(completed).toEqual({
+    calls: [
+      {
+        nid: '_RemoveSkillDirectEvent',
+        type: 'event_on_remove',
+        unit1: 'Eirika',
+        triggerKeys: ['type', 'unit1'],
+        removedSkillAbsent: true,
+      },
+      {
+        nid: '_RemoveSkillScriptedEvent',
+        type: 'event_on_remove',
+        unit1: 'Eirika',
+        triggerKeys: ['type', 'unit1'],
+        removedSkillAbsent: true,
+      },
+    ],
+    scriptedRemovalActions: 1,
+    scriptedSkillAbsent: true,
+    directRuns: 1,
+    scriptedRuns: 1,
+    parentResumed: 'yes',
+  });
+});

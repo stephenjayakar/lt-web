@@ -10165,12 +10165,11 @@ export class EventState extends State {
         const skillNid = args[1] ?? '';
         const unit = this.findUnit(unitNid);
         const rsBannerFlag = !args.includes('no_banner');
-        let rsRemovedSkill: { name: string } | undefined;
+        let rsRemovedSkill: SkillObject | undefined;
         if (unit) {
-          const idx = unit.skills.findIndex((s: any) => s.nid === skillNid);
-          if (idx !== -1) {
-            rsRemovedSkill = unit.skills[idx];
-            unit.skills.splice(idx, 1);
+          rsRemovedSkill = unit.skills.find((skill: SkillObject) => skill.nid === skillNid);
+          if (rsRemovedSkill) {
+            game.actionLog.doAction(new RemoveSkillAction(unit, rsRemovedSkill));
           }
         }
         if (rsBannerFlag && rsRemovedSkill && unit && !this.skipMode) {
