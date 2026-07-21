@@ -4863,7 +4863,7 @@ export class CombatState extends State {
           const fadeDone = this.expBar.update();
           if (fadeDone) {
             // If level-up pending, continue to level_up phase
-            if (this.levelUpGains && Object.values(this.levelUpGains).some(v => v !== 0)) {
+            if (this.levelUpGains) {
               this.phase = 'level_up';
               this.phaseTimer = 0;
               this.levelUpSoundPlayed = false;
@@ -4919,8 +4919,10 @@ export class CombatState extends State {
         // Update the LevelUpScreen animation
         const now = performance.now();
         if (this.levelUpScreen) {
-          const done = this.levelUpScreen.update(now);
-          if (done) {
+          const result = this.levelUpScreen.update(now);
+          if (result === 'entered_level_up_wait') {
+            this.fireDuringUnitLevelUpTrigger();
+          } else if (result === 'done') {
             this.fireUnitLevelUpTrigger();
             this.startRankUpOrCleanup();
           }
@@ -5160,6 +5162,32 @@ export class CombatState extends State {
 
     this.phase = 'exp_init';
     this.phaseTimer = 0;
+  }
+
+  /**
+   * Fire Python's mid-screen trigger at LevelUpScreen's once-only transition
+   * into level_up_wait. EventState covers CombatState, leaving this exact
+   * screen instance paused until the event finishes.
+   */
+  private fireDuringUnitLevelUpTrigger(): void {
+    const game = getGame();
+    const activeCombat = this.getActiveCombat();
+    const unit = activeCombat?.attacker;
+    if (!game?.eventManager || !unit || !this.levelUpGains) return;
+    const triggered = game.eventManager.trigger(
+      {
+        type: 'during_unit_level_up',
+        levelNid: game.currentLevel?.nid ?? '',
+        unitNid: unit.nid,
+        unit1: unit,
+        statChanges: { ...this.levelUpGains },
+        source: 'exp_gain',
+      },
+      { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
+    );
+    if (triggered && game.eventManager.hasActiveEvents()) {
+      game.state.change('event');
+    }
   }
 
   /**
