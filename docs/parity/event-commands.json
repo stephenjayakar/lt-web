@@ -6,14 +6,13 @@
   "summary": {
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 255,
-    "dispatcherPythonNids": 253,
+    "dispatcherPythonNids": 255,
     "itemReferencedComponentNids": 136,
     "itemHookMappedComponentNids": 92,
     "skillReferencedComponentNids": 84,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 241,
-      "missing-dispatch": 2,
+      "dispatched-unverified": 243,
       "stub-hint": 12
     }
   },
@@ -5268,10 +5267,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
-      "webBlocking": false,
+      "dispatcherCase": true,
+      "webBlocking": true,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "paired_ending",
@@ -5296,10 +5295,10 @@
       },
       "parserRecognized": true,
       "nicknameRecognized": null,
-      "dispatcherCase": false,
-      "webBlocking": false,
+      "dispatcherCase": true,
+      "webBlocking": true,
       "lexicalTestMention": false,
-      "status": "missing-dispatch"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "pop_dialog",

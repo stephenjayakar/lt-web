@@ -323,9 +323,9 @@ export class Dialog {
     }
   }
 
-  /** Draw the dialog box */
-  draw(surf: Surface): void {
-    if (this.state === 'done') return;
+  /** Draw the dialog box. Completed ending cards may retain their final text. */
+  draw(surf: Surface, showCompleted: boolean = false): void {
+    if (this.state === 'done' && !showCompleted) return;
 
     const isTransitionIn = this.state === 'transition_in';
     const transT = this.transitionProgress;
@@ -459,6 +459,11 @@ export class Dialog {
   isTyping(): boolean {
     return this.state === 'typing';
   }
+  /** True while the dialog is waiting for input. */
+  isWaiting(): boolean {
+    return this.state === 'waiting';
+  }
+
 
   /** Finish typing the current line instantly. */
   private _finishCurrentLine(): void {

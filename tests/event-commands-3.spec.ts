@@ -1308,3 +1308,212 @@ test.describe('Event command batch 3r (say/dialog alias family)', () => {
     expect(done).toBe('yes');
   });
 });
+
+test.describe('Event command batch 3s (ending cards — dispatch complete)', () => {
+  test('ending and paired_ending show a card with typed text and resume on dismiss', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirikaPortrait = g.db.units.get('Eirika').portrait_nid;
+      const directMeta = g.db.portraits.get(eirikaPortrait);
+      g.db.portraits.set('DirectEirika', { ...directMeta, nid: 'DirectEirika' });
+      g.db.portraits.set('BrokenPortrait', { ...directMeta, nid: 'BrokenPortrait' });
+      const loadPortrait = g.resources.loadPortrait.bind(g.resources);
+      g.resources.loadPortrait = (nid: string) => {
+        if (nid === 'DirectEirika') return loadPortrait(eirikaPortrait);
+        if (nid === 'BrokenPortrait') return Promise.reject(new Error('intentional test failure'));
+        return loadPortrait(nid);
+      };
+      g.db.events.set('TestEnding', {
+        name: 'TestEnding', nid: 'TestEnding', trigger: 'TestEnding',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'ending;Eirika;Eirika - Restoration Queen;She rebuilt her homeland.;wait_for_input',
+          'game_var;solo_resumed;yes',
+          'wait;500',
+          'pop_dialog',
+          'game_var;solo_popped;yes',
+          'wait;500',
+          'paired_ending;DirectEirika;Seth;Left Distinct;Right Distinct;They ruled together.;wait_for_input',
+          'game_var;paired_resumed;yes',
+          'wait;500',
+          'pop_dialog',
+          'game_var;paired_popped;yes',
+          'wait;500',
+          'ending;MissingPortrait;Missing;Must not block.',
+          'game_var;invalid_continued;yes',
+          'ending;BrokenPortrait;Broken;Must not deadlock.',
+          'game_var;load_failed_continued;yes',
+          'ending;Eirika;Timed Ending;Default timeout resumes.',
+          'game_var;default_resumed;yes',
+          'wait;5000',
+          'pop_dialog',
+          'game_var;ending_done;yes',
+        ],
+      });
+      g.eventManager.triggerSpecific('TestEnding', { type: 'TestEnding' }, true);
+      g.state.change('event');
+    });
+
+    await stepFrames(page, 90);
+    await page.waitForTimeout(10);
+    await stepFrames(page, 90);
+    const solo = await page.evaluate(() => {
+      const st: any = (window as any).__gameRef.state.getCurrentState();
+      const portrait = st?.endingCard?.portraits?.[0];
+      return {
+        hasBlockingDialog: !!st?.dialog,
+        title: st?.endingCard?.leftTitle ?? null,
+        text: st?.endingCard?.dialog?.displayedText ?? '',
+        position: portrait?.position ?? null,
+        alpha: portrait?.alpha ?? null,
+        flipped: portrait?.flipped ?? null,
+        unitResolved: portrait?.resolvedThroughUnit ?? null,
+      };
+    });
+    expect(solo).toEqual({
+      hasBlockingDialog: true,
+      title: 'Eirika - Restoration Queen',
+      text: 'She rebuilt her homeland.',
+      position: [136, 57],
+      alpha: 0.8,
+      flipped: false,
+      unitResolved: true,
+    });
+
+    for (let i = 0; i < 12; i++) {
+      if (await page.evaluate(() => (window as any).__gameRef.gameVars.get('solo_resumed') === 'yes')) break;
+      await stepFrames(page, 1, 'SELECT');
+      await stepFrames(page, 6);
+    }
+    const soloPersisted = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        resumed: g.gameVars.get('solo_resumed'),
+        hasBlockingDialog: !!st?.dialog,
+        title: st?.endingCard?.leftTitle ?? null,
+        text: st?.endingCard?.dialog?.displayedText ?? '',
+      };
+    });
+    expect(soloPersisted).toEqual({
+      resumed: 'yes',
+      hasBlockingDialog: false,
+      title: 'Eirika - Restoration Queen',
+      text: 'She rebuilt her homeland.',
+    });
+
+    await stepFrames(page, 40);
+    const soloPopped = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        popped: g.gameVars.get('solo_popped'),
+        hasCard: !!st?.endingCard,
+      };
+    });
+    expect(soloPopped).toEqual({ popped: 'yes', hasCard: false });
+
+    await stepFrames(page, 70);
+    await page.waitForTimeout(10);
+    await stepFrames(page, 70);
+    const paired = await page.evaluate(() => {
+      const st: any = (window as any).__gameRef.state.getCurrentState();
+      return {
+        leftTitle: st?.endingCard?.leftTitle ?? null,
+        rightTitle: st?.endingCard?.rightTitle ?? null,
+        text: st?.endingCard?.dialog?.displayedText ?? '',
+        portraits: st?.endingCard?.portraits?.map((portrait: any) => ({
+          position: portrait.position,
+          alpha: portrait.alpha,
+          flipped: portrait.flipped,
+          unitResolved: portrait.resolvedThroughUnit,
+        })) ?? [],
+      };
+    });
+    expect(paired).toEqual({
+      leftTitle: 'Left Distinct',
+      rightTitle: 'Right Distinct',
+      text: 'They ruled together.',
+      portraits: [
+        { position: [8, 49], alpha: 0.5, flipped: false, unitResolved: false },
+        { position: [136, 49], alpha: 0.5, flipped: false, unitResolved: true },
+      ],
+    });
+
+    for (let i = 0; i < 12; i++) {
+      if (await page.evaluate(() => (window as any).__gameRef.gameVars.get('paired_resumed') === 'yes')) break;
+      await stepFrames(page, 1, 'SELECT');
+      await stepFrames(page, 6);
+    }
+    const pairedPersisted = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        resumed: g.gameVars.get('paired_resumed'),
+        leftTitle: st?.endingCard?.leftTitle ?? null,
+        rightTitle: st?.endingCard?.rightTitle ?? null,
+        hasBlockingDialog: !!st?.dialog,
+      };
+    });
+    expect(pairedPersisted).toEqual({
+      resumed: 'yes',
+      leftTitle: 'Left Distinct',
+      rightTitle: 'Right Distinct',
+      hasBlockingDialog: false,
+    });
+
+    await stepFrames(page, 40);
+    const pairedPopped = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return { popped: g.gameVars.get('paired_popped'), hasCard: !!st?.endingCard };
+    });
+    expect(pairedPopped).toEqual({ popped: 'yes', hasCard: false });
+
+    await stepFrames(page, 100);
+    await page.waitForTimeout(10);
+    await stepFrames(page, 100);
+    await page.waitForTimeout(10);
+    await stepFrames(page, 100);
+    const timed = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        invalidContinued: g.gameVars.get('invalid_continued'),
+        loadFailedContinued: g.gameVars.get('load_failed_continued'),
+        defaultResumed: g.gameVars.get('default_resumed'),
+        title: st?.endingCard?.leftTitle ?? null,
+        text: st?.endingCard?.dialog?.displayedText ?? '',
+      };
+    });
+    expect(timed).toEqual({
+      invalidContinued: 'yes',
+      loadFailedContinued: 'yes',
+      defaultResumed: undefined,
+      title: 'Timed Ending',
+      text: 'Default timeout resumes.',
+    });
+
+    await stepFrames(page, 300);
+    const timedPersisted = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        resumed: g.gameVars.get('default_resumed'),
+        title: st?.endingCard?.leftTitle ?? null,
+        hasBlockingDialog: !!st?.dialog,
+      };
+    });
+    expect(timedPersisted).toEqual({
+      resumed: 'yes',
+      title: 'Timed Ending',
+      hasBlockingDialog: false,
+    });
+
+    await stepFrames(page, 320);
+    const done = await page.evaluate(() => (window as any).__gameRef.gameVars.get('ending_done'));
+    expect(done).toBe('yes');
+  });
+});

@@ -8,7 +8,7 @@
  */
 
 import { State, MapState, type StateResult } from '../state';
-import type { Surface } from '../surface';
+import { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import {
   WINWIDTH,
@@ -16,6 +16,7 @@ import {
   TILEWIDTH,
   TILEHEIGHT,
   FRAMETIME,
+  COLORKEY,
 } from '../constants';
 import { viewport, isSmallScreen } from '../viewport';
 
@@ -7256,9 +7257,27 @@ export class ShopState extends State {
  * All other commands are "instant" and processed in burst within a single frame.
  */
 const BLOCKING_COMMANDS: Set<string> = new Set([
-  'speak', 'wait', 'transition', 'alert',
+  'speak', 'wait', 'transition', 'alert', 'ending', 'paired_ending',
   'add_portrait', 'remove_portrait', 'music', 'change_music',
 ]);
+
+type EndingPortraitPresentation = {
+  surface: Surface;
+  nid: string;
+  position: [number, number];
+  alpha: number;
+  flipped: boolean;
+  resolvedThroughUnit: boolean;
+};
+
+type EndingCardPresentation = {
+  leftTitle: string;
+  rightTitle: string | null;
+  dialog: Dialog;
+  portraits: EndingPortraitPresentation[];
+  waitForInput: boolean;
+  waitTimerMs: number;
+};
 
 /** Maximum instant commands processed per frame to prevent infinite loops. */
 const MAX_BURST = 100;
@@ -7281,6 +7300,8 @@ export class EventState extends State {
 
   // Blocking-command state
   private dialog: Dialog | null = null;
+  /** Persistent ending-card presentation; active blocking is tracked by dialog. */
+  private endingCard: EndingCardPresentation | null = null;
   private banner: Banner | null = null;
   private bannerIsAlert: boolean = false;  // true if banner is from 'alert' command (allows early dismiss)
   private waitTimer: number = 0;
@@ -7393,6 +7414,7 @@ export class EventState extends State {
     if (isNewEvent) {
       // Full reset for a new event
       this.dialog = null;
+      this.endingCard = null;
       this.banner = null;
       this.bannerIsAlert = false;
       this.waitTimer = 0;
@@ -7451,6 +7473,7 @@ export class EventState extends State {
         // remaining speak/narrate commands in the current event
         this.skipMode = true;
         this.dialog = null;
+        this.endingCard = null;
         if (this.speakingPortrait) {
           this.speakingPortrait.stopTalking();
           this.speakingPortrait = null;
@@ -7550,6 +7573,7 @@ export class EventState extends State {
       if (this.skipMode) {
         // Skip mode: instantly dismiss dialog
         this.dialog = null;
+        this.endingCard = null;
         if (this.speakingPortrait) {
           this.speakingPortrait.stopTalking();
           this.speakingPortrait = null;
@@ -7567,7 +7591,19 @@ export class EventState extends State {
           }
         }
         this.wasDialogTyping = isTyping;
-        return;
+        if (this.endingCard?.dialog === this.dialog &&
+            !this.endingCard.waitForInput &&
+            this.dialog.isWaiting()) {
+          this.endingCard.waitTimerMs += FRAMETIME;
+          if (this.endingCard.waitTimerMs >= 5000) {
+            this.dialog = null;
+            this.advancePointer();
+          } else {
+            return;
+          }
+        } else {
+          return;
+        }
       }
     }
 
@@ -7819,8 +7855,32 @@ export class EventState extends State {
       portrait.draw(surf);
     }
 
-    // UI on top of portraits
-    if (this.dialog) {
+    // Ending cards persist independently of the currently blocking dialog.
+    if (this.endingCard) {
+      surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(12,8,32,0.96)');
+      for (const portrait of this.endingCard.portraits) {
+        surf.blit(portrait.surface, portrait.position[0], portrait.position[1]);
+      }
+      const titleCenter = Math.floor(viewport.width / 2);
+      surf.drawText(
+        this.endingCard.leftTitle,
+        titleCenter - this.endingCard.leftTitle.length * 3,
+        this.endingCard.rightTitle === null ? 24 : 12,
+        'rgba(220,200,128,1)',
+        '6px monospace',
+      );
+      if (this.endingCard.rightTitle !== null) {
+        surf.drawText(
+          this.endingCard.rightTitle,
+          titleCenter - this.endingCard.rightTitle.length * 3,
+          24,
+          'rgba(220,200,128,1)',
+          '6px monospace',
+        );
+      }
+      this.endingCard.dialog.draw(surf, true);
+    }
+    if (this.dialog && this.dialog !== this.endingCard?.dialog) {
       this.dialog.draw(surf);
     }
     if (this.banner) {
@@ -7972,6 +8032,7 @@ export class EventState extends State {
     if (next) {
       this.currentEvent = next;
       this.dialog = null;
+      this.endingCard = null;
       this.banner = null;
       this.waitTimer = 0;
       this.waiting = false;
@@ -7987,6 +8048,7 @@ export class EventState extends State {
       this.locationCard = null;
     } else {
       this.currentEvent = null;
+      this.endingCard = null;
       this.portraits.clear();
       this.pendingPortraitLoads = 0;
       this.background = null;
@@ -8098,6 +8160,46 @@ export class EventState extends State {
     const fromRegistry = game.units.get(nid);
     if (fromRegistry) return fromRegistry;
     return game.board?.getAllUnits().find((u: UnitObject) => u.nid === nid);
+  }
+  private resolveEndingPortrait(
+    portraitArg: string,
+  ): { nid: string; resolvedThroughUnit: boolean } | null {
+    const game = getGame();
+    const runtimeUnit = this.findUnit(portraitArg);
+    const unitPrefab = game.db?.units.get(portraitArg);
+    const unitPortraitNid = runtimeUnit?.portraitNid || unitPrefab?.portrait_nid;
+    if (unitPortraitNid) {
+      return { nid: unitPortraitNid, resolvedThroughUnit: true };
+    }
+    return game.db?.portraits.has(portraitArg)
+      ? { nid: portraitArg, resolvedThroughUnit: false }
+      : null;
+  }
+
+  private createEndingPortrait(
+    image: HTMLImageElement,
+    nid: string,
+    position: [number, number],
+    alpha: number,
+    flipped: boolean,
+    resolvedThroughUnit: boolean,
+  ): EndingPortraitPresentation {
+    let portraitSurface = new Surface(96, 80);
+    portraitSurface.blitImage(image, 0, 0, 96, 80, 0, 0);
+    const imageData = portraitSurface.getImageData();
+    const pixels = imageData.data;
+    const [keyR, keyG, keyB] = COLORKEY;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (Math.abs(pixels[i] - keyR) <= 2 &&
+          Math.abs(pixels[i + 1] - keyG) <= 2 &&
+          Math.abs(pixels[i + 2] - keyB) <= 2) {
+        pixels[i + 3] = 0;
+      }
+    }
+    portraitSurface.putImageData(imageData);
+    if (flipped) portraitSurface = portraitSurface.flipH();
+    portraitSurface.setAlpha(alpha);
+    return { surface: portraitSurface, nid, position, alpha, flipped, resolvedThroughUnit };
   }
 
   /** Resolve an item by NID from a unit inventory or the current party convoy. */
@@ -8708,6 +8810,73 @@ export class EventState extends State {
         return false;
       }
 
+      case 'ending':
+      case 'paired_ending': {
+        // ending;Portrait;Title;Text / paired_ending;L;R;LT;RT;Text
+        if (this.skipMode) { this.advancePointer(); return false; }
+        const isPaired = cmd.type === 'paired_ending';
+        const requiredArgs = isPaired ? 5 : 3;
+        const waitForInput = args.slice(requiredArgs)
+          .some((flag) => flag.toLowerCase() === 'wait_for_input');
+        const portraitArgs = isPaired
+          ? [args[0] ?? '', args[1] ?? '']
+          : [args[0] ?? ''];
+        const resolved = portraitArgs.map((portraitArg) =>
+          this.resolveEndingPortrait(portraitArg));
+        const invalidIndex = resolved.findIndex((portrait) => portrait === null);
+        if (invalidIndex >= 0) {
+          console.warn(`${cmd.type}: couldn't find unit or portrait "${portraitArgs[invalidIndex]}"`);
+          this.advancePointer();
+          return false;
+        }
+
+        this.pendingPortraitLoads++;
+        Promise.all(resolved.map((portrait) => game.resources.loadPortrait(portrait!.nid)))
+          .then((images: HTMLImageElement[]) => {
+            const dialog = new Dialog(
+              isPaired ? (args[4] ?? '') : (args[2] ?? ''),
+              '',
+              undefined,
+              this.getDialogTextSpeedMs(),
+            );
+            const portraits = images.map((image, index) => {
+              const portrait = resolved[index]!;
+              const position: [number, number] = isPaired
+                ? (index === 0 ? [8, 49] : [136, 49])
+                : [136, 57];
+              const flipped = isPaired && index === 0 && portrait.resolvedThroughUnit;
+              return this.createEndingPortrait(
+                image,
+                portrait.nid,
+                position,
+                isPaired ? 0.5 : 0.8,
+                flipped,
+                portrait.resolvedThroughUnit,
+              );
+            });
+            this.endingCard = {
+              leftTitle: isPaired ? (args[2] ?? '') : (args[1] ?? ''),
+              rightTitle: isPaired ? (args[3] ?? '') : null,
+              dialog,
+              portraits,
+              waitForInput,
+              waitTimerMs: 0,
+            };
+            this.dialog = dialog;
+            this.wasDialogTyping = false;
+          })
+          .catch(() => {
+            console.warn(`${cmd.type}: failed to load portrait image`);
+            this.advancePointer();
+          })
+          .finally(() => {
+            this.pendingPortraitLoads--;
+          });
+        // The load blocks on this pointer. Success installs the dialog; failure
+        // advances here exactly once so a missing image cannot deadlock.
+        return true;
+      }
+
       case 'speak_style': {
         // speak_style;Nid;props... (Python speak style registry). The web
         // stores styles for future speak consumption; only text_speed and
@@ -8724,6 +8893,7 @@ export class EventState extends State {
       case 'pop_dialog': {
         // pop_dialog (Python :405-ish): removes the current text box.
         this.dialog = null;
+        this.endingCard = null;
         this.advancePointer();
         return false;
       }
