@@ -36,6 +36,13 @@ export abstract class Action {
    */
   persistThroughMenuCancel: boolean = false;
 
+  /**
+   * Apply an action during normal gameplay. Turnwheel replay calls execute()
+   * directly, so actions may override this seam for first-do-only effects.
+   */
+  do(): void {
+    this.execute();
+  }
   abstract execute(): void;
   abstract reverse(): void;
 }
@@ -262,7 +269,7 @@ export class ActionLog {
    */
   doAction(action: Action): void {
     this.actionDepth += 1;
-    action.execute();
+    action.do();
     this.actionDepth -= 1;
     if (this.isRecording() && this.actionDepth <= 0) {
       this.append(action);
@@ -2978,6 +2985,23 @@ export class RemoveSkillAction extends Action {
     this.skill = skill;
   }
 
+  private didRunOnRemoveHook: boolean = false;
+
+  override do(): void {
+    this.execute();
+    if (this.didRunOnRemoveHook || this.index < 0) return;
+    this.didRunOnRemoveHook = true;
+
+    const eventNid = this.skill.getComponent<unknown>('event_on_remove');
+    if (typeof eventNid !== 'string' || eventNid.length === 0) return;
+
+    const game = _getGame?.();
+    if (!game?.db?.events?.has?.(eventNid)) return;
+    game.eventManager?.triggerSpecific(eventNid, {
+      type: 'event_on_remove',
+      unit1: this.unit,
+    });
+  }
   execute(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);

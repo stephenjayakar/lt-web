@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 57,
-    "referencedComponentNids": 86,
+    "referencedComponentNids": 87,
     "hookMappedComponentNids": 67,
-    "unreferencedComponentNids": 155,
-    "consumedComponentNids": 49,
+    "unreferencedComponentNids": 154,
+    "consumedComponentNids": 50,
     "structuralStatuses": {
-      "consumed": 26,
+      "consumed": 27,
       "hook-and-reference": 48,
       "hook-only": 19,
       "reference-only": 12,
-      "unreferenced": 136
+      "unreferenced": 135
     }
   },
   "webHookExports": [
@@ -974,15 +974,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10904
+          "line": 10903
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12703
+          "line": 12702
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12716
+          "line": 12715
         },
         {
           "source": "src/native.ts",
@@ -1092,11 +1092,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12883
+          "line": 12882
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12906
+          "line": 12905
         }
       ],
       "directReads": [],
@@ -1443,7 +1443,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10282
+          "line": 10281
         },
         {
           "source": "src/events/event-manager.ts",
@@ -6732,11 +6732,25 @@
       "methods": [
         "after_true_remove"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/engine/action.ts",
+          "line": 2995
+        },
+        {
+          "source": "src/engine/action.ts",
+          "line": 3001
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/engine/action.ts",
+          "line": 2995
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "event_on_wait",
