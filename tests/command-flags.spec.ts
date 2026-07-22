@@ -198,3 +198,31 @@ test.describe('Event command flag matching: no_banner', () => {
     expect(await getGameVar(page, 'marker2')).toBe('done');
   });
 });
+
+test.describe('Event command flag matching: skip', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('end_skip restores blocking for subsequent commands', async ({ page }) => {
+    await installAndRunEvent(page, 'test_end_skip', [
+      'wait;1000',
+      'end_skip',
+      'wait;1000',
+      'game_var;after_end_skip;done',
+    ], 5);
+
+    await page.evaluate(() => {
+      const harnessWindow = window as Window & {
+        __harness: { stepFrames(count: number, input: string | null): void };
+      };
+      harnessWindow.__harness.stepFrames(1, 'BACK');
+    });
+    expect(await getGameVar(page, 'after_end_skip')).toBeUndefined();
+
+    await stepFrames(page, 70);
+    expect(await getGameVar(page, 'after_end_skip')).toBe('done');
+  });
+});

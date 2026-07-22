@@ -970,19 +970,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9714
+          "line": 9721
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11020
+          "line": 11027
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12846
+          "line": 12853
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12859
+          "line": 12866
         },
         {
           "source": "src/native.ts",
@@ -1080,23 +1080,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9507
+          "line": 9514
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9512
+          "line": 9519
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9531
+          "line": 9538
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13026
+          "line": 13033
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13049
+          "line": 13056
         }
       ],
       "directReads": [],
@@ -1443,7 +1443,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10403
+          "line": 10410
         },
         {
           "source": "src/events/event-manager.ts",
@@ -3260,11 +3260,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10488
+          "line": 10495
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11071
+          "line": 11078
         },
         {
           "source": "src/main.ts",
