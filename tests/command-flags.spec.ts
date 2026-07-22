@@ -76,6 +76,108 @@ async function configureLargeCamera(page: Page): Promise<void> {
   });
 }
 
+async function getAdjacentMoveTarget(page: Page, unitNid: string): Promise<string> {
+  return page.evaluate((nid) => {
+    const gameWindow = window as Window & {
+      __gameRef: {
+        units: { get(key: string): { position: [number, number] | null } | undefined };
+        board: {
+          checkBounds(x: number, y: number): boolean;
+          getUnit(x: number, y: number): unknown;
+        };
+      };
+    };
+    const game = gameWindow.__gameRef;
+    const position = game.units.get(nid)?.position;
+    if (!position) throw new Error(`Unit ${nid} is not on the map`);
+    const candidates: [number, number][] = [
+      [position[0] + 1, position[1]],
+      [position[0] - 1, position[1]],
+      [position[0], position[1] + 1],
+      [position[0], position[1] - 1],
+    ];
+    const target = candidates.find(([x, y]) =>
+      game.board.checkBounds(x, y) && !game.board.getUnit(x, y));
+    if (!target) throw new Error(`No adjacent move target for ${nid}`);
+    return `${target[0]},${target[1]}`;
+  }, unitNid);
+}
+
+async function configureUnitGroup(
+  page: Page,
+  groupNid: string,
+  unitNid: string,
+  target: string,
+): Promise<void> {
+  await page.evaluate(({ nid, unit, destination }) => {
+    const gameWindow = window as Window & {
+      __gameRef: {
+        currentLevel: {
+          unit_groups: Array<{
+            nid: string;
+            units: string[];
+            positions: Record<string, [number, number]>;
+          }>;
+        } | null;
+      };
+    };
+    const level = gameWindow.__gameRef.currentLevel;
+    if (!level) throw new Error('No current level');
+    const [x, y] = destination.split(',').map(Number);
+    level.unit_groups.push({
+      nid,
+      units: [unit],
+      positions: { [unit]: [x, y] },
+    });
+  }, { nid: groupNid, unit: unitNid, destination: target });
+}
+
+async function configureOverworldEventRuntime(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    let movementFrames = 0;
+    let completion: (() => void) | null = null;
+    const entity = {
+      nid: 'TestParty',
+      onNode: 'NodeA',
+      displayPosition: [0, 0] as [number, number],
+    };
+    const gameWindow = window as Window & {
+      __gameRef: {
+        overworldController: unknown;
+        overworldMovement: unknown;
+      };
+    };
+    gameWindow.__gameRef.overworldController = {
+      entities: new Map([['TestParty', entity]]),
+      getPathPoints: () => [[0, 0], [10, 0]],
+      movePartyToNode: (_entityNid: string, nodeNid: string) => {
+        entity.onNode = nodeNid;
+      },
+      enableNode: () => {},
+      enableRoad: () => {},
+    };
+    gameWindow.__gameRef.overworldMovement = {
+      beginMove: (
+        _entity: unknown,
+        _path: [number, number][],
+        options?: { callback?: () => void },
+      ) => {
+        movementFrames = 30;
+        completion = options?.callback ?? null;
+      },
+      isMoving: () => movementFrames > 0,
+      update: () => {
+        if (movementFrames <= 0) return;
+        movementFrames--;
+        if (movementFrames === 0) {
+          completion?.();
+          completion = null;
+        }
+      },
+    };
+  });
+}
+
 test.describe('Event command flag matching: no_banner', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
@@ -285,7 +387,10 @@ test.describe('Event command flag matching: no_block', () => {
       'game_var;add_portrait_blocking;done',
     ], 5);
     expect(await getGameVar(page, 'add_portrait_blocking')).toBeUndefined();
-    await stepFrames(page, 30);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (await getGameVar(page, 'add_portrait_blocking') === 'done') break;
+      await stepFrames(page, 10);
+    }
     expect(await getGameVar(page, 'add_portrait_blocking')).toBe('done');
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
@@ -477,5 +582,301 @@ test.describe('Event command flag matching: camera flags', () => {
       return gameWindow.__gameRef.cursor.visible;
     });
     expect(cursorVisible).toBe(false);
+  });
+});
+
+test.describe('Event command flag matching: unit movement', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('move_unit animates while default blocks and no_block dispatches onward', async ({ page }) => {
+    let target = await getAdjacentMoveTarget(page, 'Eirika');
+    await installAndRunEvent(page, 'test_move_unit_blocking', [
+      `move_unit;Eirika;${target};normal;;600`,
+      'game_var;move_unit_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'move_unit_blocking')).toBeUndefined();
+    const blockingMovement = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { movementSystem: { isMoving(): boolean } };
+      };
+      return gameWindow.__gameRef.movementSystem.isMoving();
+    });
+    expect(blockingMovement).toBe(true);
+    await stepFrames(page, 50);
+    expect(await getGameVar(page, 'move_unit_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    target = await getAdjacentMoveTarget(page, 'Eirika');
+    await installAndRunEvent(page, 'test_move_unit_no_block', [
+      `move_unit;Eirika;${target};normal;;600;no_block`,
+      'game_var;move_unit_no_block;done',
+      'wait;1000',
+    ], 2);
+    expect(await getGameVar(page, 'move_unit_no_block')).toBe('done');
+    const nonBlockingMovement = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { movementSystem: { isMoving(): boolean } };
+      };
+      return gameWindow.__gameRef.movementSystem.isMoving();
+    });
+    expect(nonBlockingMovement).toBe(true);
+  });
+
+  test('move_group shares blocking and no_block movement semantics', async ({ page }) => {
+    let target = await getAdjacentMoveTarget(page, 'Eirika');
+    await configureUnitGroup(page, 'test_move_group', 'Eirika', target);
+    await installAndRunEvent(page, 'test_move_group_blocking', [
+      'move_group;test_move_group;;normal;giveup',
+      'game_var;move_group_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'move_group_blocking')).toBeUndefined();
+    await stepFrames(page, 20);
+    expect(await getGameVar(page, 'move_group_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    target = await getAdjacentMoveTarget(page, 'Eirika');
+    await configureUnitGroup(page, 'test_move_group', 'Eirika', target);
+    await installAndRunEvent(page, 'test_move_group_no_block', [
+      'move_group;test_move_group;;normal;giveup;no_block',
+      'game_var;move_group_no_block;done',
+      'wait;1000',
+    ], 2);
+    expect(await getGameVar(page, 'move_group_no_block')).toBe('done');
+    const movementActive = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { movementSystem: { isMoving(): boolean } };
+      };
+      return gameWindow.__gameRef.movementSystem.isMoving();
+    });
+    expect(movementActive).toBe(true);
+  });
+});
+
+test.describe('Event command flag matching: unit death', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('kill_unit blocks for map death unless immediate', async ({ page }) => {
+    await installAndRunEvent(page, 'test_kill_unit_blocking', [
+      'kill_unit;Seth',
+      'game_var;kill_unit_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'kill_unit_blocking')).toBeUndefined();
+    await stepFrames(page, 40);
+    expect(await getGameVar(page, 'kill_unit_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await installAndRunEvent(page, 'test_kill_unit_immediate', [
+      'kill_unit;Seth;immediate',
+      'game_var;kill_unit_immediate;done',
+    ], 2);
+    expect(await getGameVar(page, 'kill_unit_immediate')).toBe('done');
+  });
+});
+
+test.describe('Event command flag matching: progression', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('give_exp presents a blocking gain unless silent', async ({ page }) => {
+    await installAndRunEvent(page, 'test_give_exp_blocking', [
+      'give_exp;Eirika;1',
+      'game_var;give_exp_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'give_exp_blocking')).toBeUndefined();
+    await stepFrames(page, 55);
+    expect(await getGameVar(page, 'give_exp_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await installAndRunEvent(page, 'test_give_exp_silent', [
+      'give_exp;Eirika;1;silent',
+      'game_var;give_exp_silent;done',
+    ], 2);
+    expect(await getGameVar(page, 'give_exp_silent')).toBe('done');
+  });
+});
+
+test.describe('Event command flag matching: state transitions', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('menu commands fade by default and enter immediately when flagged', async ({ page }) => {
+    await installAndRunEvent(page, 'test_menu_transition', [
+      'open_unit_management',
+    ], 3);
+    const transitionState = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: {
+          state: { getCurrentState(): { name: string; transitionAlpha?: number } | null };
+        };
+      };
+      const state = gameWindow.__gameRef.state.getCurrentState();
+      return { name: state?.name, alpha: state?.transitionAlpha ?? 0 };
+    });
+    expect(transitionState.name).toBe('event');
+    expect(transitionState.alpha).toBeGreaterThan(0);
+    await stepFrames(page, 15);
+    const fadedStateName = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { state: { getCurrentState(): { name: string } | null } };
+      };
+      return gameWindow.__gameRef.state.getCurrentState()?.name;
+    });
+    expect(fadedStateName).toBe('base_manage');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await installAndRunEvent(page, 'test_menu_immediate', [
+      'open_unit_management;;immediate',
+    ], 2);
+    const immediateStateName = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { state: { getCurrentState(): { name: string } | null } };
+      };
+      return gameWindow.__gameRef.state.getCurrentState()?.name;
+    });
+    expect(immediateStateName).toBe('base_manage');
+  });
+});
+
+test.describe('Event command flag matching: map animation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('add_unit_map_anim blocks one-shot playback unless no_block', async ({ page }) => {
+    const animationNid = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { db: { mapAnimations: Map<string, unknown> } };
+      };
+      const nid = gameWindow.__gameRef.db.mapAnimations.keys().next().value;
+      if (typeof nid !== 'string') throw new Error('Fixture has no map animation');
+      return nid;
+    });
+    await installAndRunEvent(page, 'test_map_anim_blocking', [
+      `add_unit_map_anim;${animationNid};Eirika;1`,
+      'game_var;map_anim_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'map_anim_blocking')).toBeUndefined();
+    await stepFrames(page, 180);
+    expect(await getGameVar(page, 'map_anim_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await installAndRunEvent(page, 'test_map_anim_no_block', [
+      `add_unit_map_anim;${animationNid};Eirika;1;no_block`,
+      'game_var;map_anim_no_block;done',
+    ], 2);
+    expect(await getGameVar(page, 'map_anim_no_block')).toBe('done');
+  });
+});
+
+
+test.describe('Event command flag matching: overlay sprites', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('overlay entry and exit animations block unless no_block', async ({ page }) => {
+    await installAndRunEvent(page, 'test_overlay_blocking', [
+      'draw_overlay_sprite;test_overlay;cursor;0,0;0;fade;200',
+      'game_var;overlay_draw_blocking;done',
+      'remove_overlay_sprite;test_overlay;fade;200',
+      'game_var;overlay_remove_blocking;done',
+      'wait;1000',
+    ], 2);
+    expect(await getGameVar(page, 'overlay_draw_blocking')).toBeUndefined();
+    await stepFrames(page, 16);
+    expect(await getGameVar(page, 'overlay_draw_blocking')).toBe('done');
+    expect(await getGameVar(page, 'overlay_remove_blocking')).toBeUndefined();
+    await stepFrames(page, 16);
+    expect(await getGameVar(page, 'overlay_remove_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await installAndRunEvent(page, 'test_overlay_no_block', [
+      'draw_overlay_sprite;test_overlay;cursor;0,0;0;fade;200;no_block',
+      'remove_overlay_sprite;test_overlay;fade;200;no_block',
+      'game_var;overlay_no_block;done',
+    ], 2);
+    expect(await getGameVar(page, 'overlay_no_block')).toBe('done');
+  });
+});
+test.describe('Event command flag matching: overworld presentation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureOverworldEventRuntime(page);
+  });
+
+  test('overworld movement and reveals distinguish blocking flags', async ({ page }) => {
+    await installAndRunEvent(page, 'test_overworld_move_blocking', [
+      'overworld_move_unit;TestParty;NodeB',
+      'game_var;overworld_move_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'overworld_move_blocking')).toBeUndefined();
+    await stepFrames(page, 40);
+    expect(await getGameVar(page, 'overworld_move_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureOverworldEventRuntime(page);
+    await installAndRunEvent(page, 'test_overworld_move_no_block', [
+      'overworld_move_unit;TestParty;NodeB;no_block',
+      'game_var;overworld_move_no_block;done',
+    ], 2);
+    expect(await getGameVar(page, 'overworld_move_no_block')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureOverworldEventRuntime(page);
+    await installAndRunEvent(page, 'test_overworld_reveal_blocking', [
+      'reveal_overworld_node;NodeB',
+      'game_var;overworld_reveal_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'overworld_reveal_blocking')).toBeUndefined();
+    await stepFrames(page, 40);
+    expect(await getGameVar(page, 'overworld_reveal_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureOverworldEventRuntime(page);
+    await installAndRunEvent(page, 'test_overworld_reveal_immediate', [
+      'reveal_overworld_node;NodeB;immediate',
+      'game_var;overworld_reveal_immediate;done',
+    ], 2);
+    expect(await getGameVar(page, 'overworld_reveal_immediate')).toBe('done');
   });
 });

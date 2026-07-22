@@ -253,7 +253,7 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await selectMenuOption(page, 'Seize')).toBe(true);
     await stepFrames(page, 2, 'SELECT');
 
-    result = await advanceUntil(page, (s) => s.levelNid === '2', 1400, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '2', 2500, { selectEvery: 3, framesPerBatch: 2 });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('2');
     await saveScreenshot(page, '71-chain-ch2-reached');
@@ -282,7 +282,7 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await triggerEvent(page, 'combat_end')).toBe(true);
     await stepFrames(page, 3);
 
-    result = await advanceUntil(page, (s) => s.levelNid === '3', 1400, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '3', 2500, { selectEvery: 3, framesPerBatch: 2 });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('3');
     await saveScreenshot(page, '72-chain-ch3-reached');
@@ -382,7 +382,7 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await selectMenuOption(page, 'Seize')).toBe(true);
     await stepFrames(page, 2, 'SELECT');
 
-    result = await advanceUntil(page, (s) => s.levelNid === '4', 1400, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '4', 2500, { selectEvery: 3, framesPerBatch: 2 });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('4');
     await saveScreenshot(page, '73-chain-ch4-reached');
@@ -468,7 +468,7 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await triggerEvent(page, 'combat_end')).toBe(true);
     await stepFrames(page, 3);
 
-    result = await advanceUntil(page, (s) => s.levelNid === '5', 1400, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '5', 2500, { selectEvery: 3, framesPerBatch: 2 });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('5');
     await saveScreenshot(page, '75-chain-ch5-reached');

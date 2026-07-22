@@ -79,7 +79,7 @@ archived in `LOG.md`.
 
 ### P1 — Event Runtime and Reversible Mutations
 
-- [ ] Match blocking/no-block, no-banner, immediate, and skip flags per command
+- [x] Match blocking/no-block, no-banner, immediate, and skip flags per command
 
 **Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
 by parser plus behavioral tests; unsupported commands fail loudly in development.
@@ -134,8 +134,8 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-22 after skip, transition, portrait, dialog, and cursor parity:
+Queue refreshed 2026-07-22 after completing event command flag parity:
 
-1. Match remaining event blocking, no-block, immediate, and skip semantics.
+1. Route remaining persistent event and gameplay mutations through reversible actions.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

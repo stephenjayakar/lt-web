@@ -12,8 +12,8 @@
     "skillReferencedComponentNids": 87,
     "skillHookMappedComponentNids": 67,
     "structuralStatuses": {
-      "dispatched-unverified": 243,
-      "stub-hint": 12
+      "dispatched-unverified": 248,
+      "stub-hint": 7
     }
   },
   "commands": [
@@ -4750,7 +4750,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "table",
@@ -4784,7 +4784,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": true,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "remove_table",
@@ -4806,7 +4806,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "text_entry",
@@ -4890,7 +4890,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "remove_overlay_sprite",
@@ -4918,7 +4918,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "alert",
