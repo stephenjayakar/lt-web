@@ -122,6 +122,13 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Forced reclass items:** `force_class_change` is now a real core item-use
+  effect, applies the existing reversible class-change mechanics to each
+  resolved target, and participates in normal use consumption and unit wait
+  finalization. The focused item-flow regression drives the self-target menu
+  path and proves class, level, EXP, item ownership, and turn state across
+  undo/redo.
+
 - **Post-combat mana items:** `gain_mana_after_combat` now evaluates once for
   each item used in combat with Python's unit/target/position context, truncates
   the result, clamps against the `MANA` equation, and records a reversible mana
