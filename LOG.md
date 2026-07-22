@@ -122,6 +122,13 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Combat formula components:** damage, critical hit/avoid, attack speed, and
+  defense speed now honor Python's exact skill-override, item-override,
+  skill-alternate, item-alternate, default precedence. Missing item and skill
+  hook surfaces are wired, defensive formulas receive the attacking item, and
+  critical accuracy defaults to `CRIT_HIT`. A pure regression covers all four
+  precedence layers for each formula family.
+
 - **Item fatigue hooks:** `fatigue` now records a reversible bounded fatigue
   action after direct item use and once per item that participates in initiated
   combat; counterattack-only use remains excluded like Python. Focused item-flow

@@ -979,6 +979,14 @@ export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
 // Formula hooks (UNIQUE)
 // ============================================================
 
+export function damageFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_damage_formula');
+}
+
+export function damageFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('damage_formula_override');
+}
+
 export function accuracyFormula(_unit: UnitObject, item: ItemObject): string | undefined {
   return item.getComponent<string>('alternate_accuracy_formula');
 }
@@ -1001,6 +1009,38 @@ export function resistFormula(_unit: UnitObject, item: ItemObject): string | und
 
 export function resistFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
   return item.getComponent<string>('resist_formula_override');
+}
+
+export function critAccuracyFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_crit_accuracy_formula');
+}
+
+export function critAccuracyFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('crit_accuracy_formula_override');
+}
+
+export function critAvoidFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_crit_avoid_formula');
+}
+
+export function critAvoidFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('crit_avoid_formula_override');
+}
+
+export function attackSpeedFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_attack_speed_formula');
+}
+
+export function attackSpeedFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('attack_speed_formula_override');
+}
+
+export function defenseSpeedFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('alternate_defense_speed_formula');
+}
+
+export function defenseSpeedFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
+  return item.getComponent<string>('defense_speed_formula_override');
 }
 
 /** Does this item ignore weapon advantage? */

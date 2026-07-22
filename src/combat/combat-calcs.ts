@@ -473,12 +473,14 @@ export function damage(unit: UnitObject, item: ItemObject, db: Database): number
   // Utility spells without a damage hook are non-damaging in LT; they do not
   // inherit STR/MAG merely because they enter the combat lifecycle.
   if (!item.hasComponent('damage') && !item.hasComponent('equation_damage')) return 0;
-  // Check for skill formula override
-  const formulaOverride = skillSystem.damageFormula(unit);
+  const eqName = skillSystem.damageFormulaOverride(unit) ??
+    itemSystem.damageFormulaOverride(unit, item) ??
+    skillSystem.damageFormula(unit) ??
+    itemSystem.damageFormula(unit, item) ??
+    'DAMAGE';
 
   const magic = isMagic(item);
   const defaultExpr = magic ? 'MAG' : 'STR';
-  const eqName = formulaOverride ?? 'DAMAGE';
   const baseDmg = resolveEquation(db, eqName, defaultExpr, unit);
   const itemDmg = item.getDamage();
 
@@ -514,8 +516,11 @@ export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, 
 
 /** Calculate attack speed (for doubling checks). */
 export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): number {
-  // Check for skill formula override
-  const formulaOverride = skillSystem.attackSpeedFormula(unit);
+  const formula = skillSystem.attackSpeedFormulaOverride(unit) ??
+    itemSystem.attackSpeedFormulaOverride(unit, item) ??
+    skillSystem.attackSpeedFormula(unit) ??
+    itemSystem.attackSpeedFormula(unit, item) ??
+    'ATTACK_SPEED';
 
   const spd = unit.getStatValue('SPD');
   const con = unit.getStatValue('CON');
@@ -524,11 +529,11 @@ export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): n
   let baseAS: number;
 
   // Try DB equation first
-  const asExpr = db.getEquation(formulaOverride ?? 'ATTACK_SPEED');
+  const asExpr = db.getEquation(formula);
   if (asExpr) {
     // Replace 'weight' token if present
     const processed = asExpr.replace(/\bweight\b/gi, String(weight));
-    baseAS = evaluateEquation(processed, unit);
+    baseAS = evaluateEquation(processed, unit, { db, item });
   } else {
     // Default: SPD - max(0, weight - CON)
     baseAS = spd - Math.max(0, weight - con);
@@ -542,24 +547,30 @@ export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): n
 }
 
 /** Calculate defense speed (for doubling checks on the defender side). */
-export function defenseSpeed(unit: UnitObject, item: ItemObject, db: Database): number {
-  // Check for skill formula override
-  const formulaOverride = skillSystem.defenseSpeedFormula(unit);
+export function defenseSpeed(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  itemToAvoid?: ItemObject | null,
+): number {
+  const formula = skillSystem.defenseSpeedFormulaOverride(unit) ??
+    (itemToAvoid ? itemSystem.defenseSpeedFormulaOverride(unit, itemToAvoid) : undefined) ??
+    skillSystem.defenseSpeedFormula(unit) ??
+    (itemToAvoid ? itemSystem.defenseSpeedFormula(unit, itemToAvoid) : undefined) ??
+    'DEFENSE_SPEED';
 
-  // If there's a dedicated defense speed formula, use it; otherwise same as attack speed
-  const asExpr = db.getEquation(formulaOverride ?? 'DEFENSE_SPEED');
-  if (asExpr) {
+  const speedExpr = db.getEquation(formula);
+  let base: number;
+  if (speedExpr) {
     const weight = item.getWeight();
-    const processed = asExpr.replace(/\bweight\b/gi, String(weight));
-    const base = evaluateEquation(processed, unit);
-    const skillMod = skillSystem.modifyDefenseSpeed(unit, item);
-    return base + skillMod;
+    const processed = speedExpr.replace(/\bweight\b/gi, String(weight));
+    base = evaluateEquation(processed, unit, { db, item });
+  } else {
+    const spd = unit.getStatValue('SPD');
+    const con = unit.getStatValue('CON');
+    base = spd - Math.max(0, item.getWeight() - con);
   }
-
-  // Fallback: use attack speed + defense speed modifier from skills
-  const base = attackSpeed(unit, item, db);
-  const defSpeedMod = skillSystem.modifyDefenseSpeed(unit, item);
-  return base + defSpeedMod;
+  return base + skillSystem.modifyDefenseSpeed(unit, item);
 }
 
 // ------------------------------------------------------------------
@@ -686,7 +697,7 @@ export function canDouble(
   // Use defense speed for the defender's side
   const defenderWeapon = defenseItem ?? defender.items.find((i) => i.isWeapon()) ?? null;
   const defenderAS = defenderWeapon
-    ? defenseSpeed(defender, defenderWeapon, db)
+    ? defenseSpeed(defender, defenderWeapon, db, attackItem)
     : defender.getStatValue('SPD');
 
   const thresholdExpr = db.getEquation('SPEED_TO_DOUBLE');
@@ -862,9 +873,19 @@ export function computeCrit(
   game?: any,
   _mode: 'attack' | 'defense' | 'splash' = 'attack',
 ): number {
-  const baseCrit = resolveEquation(db, 'CRIT', 'SKL // 2', attacker);
+  const critFormula = skillSystem.critAccuracyFormulaOverride(attacker) ??
+    itemSystem.critAccuracyFormulaOverride(attacker, attackItem) ??
+    skillSystem.critAccuracyFormula(attacker) ??
+    itemSystem.critAccuracyFormula(attacker, attackItem) ??
+    'CRIT_HIT';
+  const avoidFormula = skillSystem.critAvoidFormulaOverride(defender) ??
+    itemSystem.critAvoidFormulaOverride(attacker, attackItem) ??
+    skillSystem.critAvoidFormula(defender) ??
+    itemSystem.critAvoidFormula(attacker, attackItem) ??
+    'CRIT_AVOID';
+  const baseCrit = resolveEquation(db, critFormula, 'SKL // 2', attacker);
   const itemCrit = attackItem.getComponent<number>('crit') ?? 0;
-  const critAvoid = resolveEquation(db, 'CRIT_AVOID', 'LCK', defender);
+  const critAvoid = resolveEquation(db, avoidFormula, 'LCK', defender);
 
   // Skill modifiers
   const skillCritAcc = skillSystem.modifyCritAccuracy(attacker, attackItem);

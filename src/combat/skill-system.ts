@@ -538,6 +538,10 @@ export function damageFormula(unit: UnitObject): string | undefined {
     getSkillValue<string>(unit, 'alternate_damage_formula');
 }
 
+export function damageFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'damage_formula_override');
+}
+
 /** Override the resist formula name. */
 export function resistFormula(unit: UnitObject): string | undefined {
   return getSkillValue<string>(unit, 'resist_formula') ??
@@ -568,14 +572,42 @@ export function avoidFormulaOverride(unit: UnitObject): string | undefined {
   return getSkillValue<string>(unit, 'avoid_formula_override');
 }
 
+export function critAccuracyFormula(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'crit_accuracy_formula') ??
+    getSkillValue<string>(unit, 'alternate_crit_accuracy_formula');
+}
+
+export function critAccuracyFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'crit_accuracy_formula_override');
+}
+
+export function critAvoidFormula(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'crit_avoid_formula') ??
+    getSkillValue<string>(unit, 'alternate_crit_avoid_formula');
+}
+
+export function critAvoidFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'crit_avoid_formula_override');
+}
+
 /** Override the attack speed formula name. */
 export function attackSpeedFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'attack_speed_formula');
+  return getSkillValue<string>(unit, 'attack_speed_formula') ??
+    getSkillValue<string>(unit, 'alternate_attack_speed_formula');
+}
+
+export function attackSpeedFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'attack_speed_formula_override');
 }
 
 /** Override the defense speed formula name. */
 export function defenseSpeedFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'defense_speed_formula');
+  return getSkillValue<string>(unit, 'defense_speed_formula') ??
+    getSkillValue<string>(unit, 'alternate_defense_speed_formula');
+}
+
+export function defenseSpeedFormulaOverride(unit: UnitObject): string | undefined {
+  return getSkillValue<string>(unit, 'defense_speed_formula_override');
 }
 
 // ============================================================

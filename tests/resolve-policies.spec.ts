@@ -22,8 +22,12 @@
 
 import { test, expect } from '@playwright/test';
 import { SkillObject } from '../src/objects/skill';
+import { ItemObject } from '../src/objects/item';
 import * as skillSystem from '../src/combat/skill-system';
-import type { SkillPrefab } from '../src/data/types';
+import * as combatCalcs from '../src/combat/combat-calcs';
+import type { Database } from '../src/data/database';
+import type { ItemPrefab, SkillPrefab } from '../src/data/types';
+import type { UnitObject } from '../src/objects/unit';
 
 function makeSkill(nid: string, components: [string, any][]): SkillObject {
   const prefab: SkillPrefab = {
@@ -131,5 +135,106 @@ test.describe('ALL_DEFAULT_TRUE / ALL_DEFAULT_FALSE resolve policies', () => {
   test('noDouble (ALL_DEFAULT_FALSE-shaped OR-of-booleans): false by default, true if any skill sets it', () => {
     expect(skillSystem.noDouble(fakeUnit([]))).toBe(false);
     expect(skillSystem.noDouble(fakeUnit([makeSkill('a', [['no_double', true]])]))).toBe(true);
+  });
+});
+
+test.describe('item and skill formula precedence', () => {
+  test('skill override beats item override, skill alternate, item alternate, and default', () => {
+    const equations = new Map<string, string>([
+      ['DAMAGE', '1'],
+      ['ITEM_DAMAGE_LOW', '11'],
+      ['ITEM_DAMAGE_HIGH', '22'],
+      ['SKILL_DAMAGE_LOW', '33'],
+      ['SKILL_DAMAGE_HIGH', '44'],
+      ['ATTACK_SPEED', '1'],
+      ['ITEM_SPEED_LOW', '10'],
+      ['ITEM_SPEED_HIGH', '20'],
+      ['SKILL_SPEED_LOW', '30'],
+      ['SKILL_SPEED_HIGH', '40'],
+      ['CRIT_HIT', '1'],
+      ['ITEM_CRIT_LOW', '50'],
+      ['ITEM_CRIT_HIGH', '60'],
+      ['SKILL_CRIT_LOW', '70'],
+      ['SKILL_CRIT_HIGH', '90'],
+      ['CRIT_AVOID', '1'],
+      ['ITEM_DODGE_LOW', '10'],
+      ['ITEM_DODGE_HIGH', '20'],
+      ['SKILL_DODGE_LOW', '25'],
+      ['SKILL_DODGE_HIGH', '30'],
+    ]);
+    const db = {
+      classes: new Map(),
+      weapons: [],
+      getEquation: (nid: string) => equations.get(nid),
+      getEquationNames: () => [...equations.keys()],
+      getConstant: (_nid: string, fallback: unknown) => fallback,
+    } as unknown as Database;
+    const makeUnit = (skills: SkillObject[]): UnitObject => ({
+      nid: 'FormulaUnit',
+      level: 1,
+      klass: '',
+      tags: [],
+      skills,
+      items: [],
+      wexp: {},
+      position: null,
+      getStatValue: (nid: string) => nid === 'SPD' ? 9 : nid === 'CON' ? 5 : 0,
+    }) as unknown as UnitObject;
+    const item = new ItemObject({
+      nid: 'FormulaItem',
+      name: 'FormulaItem',
+      desc: '',
+      icon_nid: '',
+      icon_index: [0, 0],
+      components: [
+        ['damage', 0],
+        ['crit', 0],
+        ['weight', 0],
+        ['alternate_damage_formula', 'ITEM_DAMAGE_LOW'],
+        ['damage_formula_override', 'ITEM_DAMAGE_HIGH'],
+        ['alternate_attack_speed_formula', 'ITEM_SPEED_LOW'],
+        ['attack_speed_formula_override', 'ITEM_SPEED_HIGH'],
+        ['alternate_defense_speed_formula', 'ITEM_SPEED_LOW'],
+        ['defense_speed_formula_override', 'ITEM_SPEED_HIGH'],
+        ['alternate_crit_accuracy_formula', 'ITEM_CRIT_LOW'],
+        ['crit_accuracy_formula_override', 'ITEM_CRIT_HIGH'],
+        ['alternate_crit_avoid_formula', 'ITEM_DODGE_LOW'],
+        ['crit_avoid_formula_override', 'ITEM_DODGE_HIGH'],
+      ],
+    } as ItemPrefab);
+    const attacker = makeUnit([
+      makeSkill('low', [
+        ['damage_formula', 'SKILL_DAMAGE_LOW'],
+        ['attack_speed_formula', 'SKILL_SPEED_LOW'],
+        ['crit_accuracy_formula', 'SKILL_CRIT_LOW'],
+      ]),
+      makeSkill('high', [
+        ['damage_formula_override', 'SKILL_DAMAGE_HIGH'],
+        ['attack_speed_formula_override', 'SKILL_SPEED_HIGH'],
+        ['crit_accuracy_formula_override', 'SKILL_CRIT_HIGH'],
+      ]),
+    ]);
+    const defender = makeUnit([
+      makeSkill('def_low', [
+        ['defense_speed_formula', 'SKILL_SPEED_LOW'],
+        ['crit_avoid_formula', 'SKILL_DODGE_LOW'],
+      ]),
+      makeSkill('def_high', [
+        ['defense_speed_formula_override', 'SKILL_SPEED_HIGH'],
+        ['crit_avoid_formula_override', 'SKILL_DODGE_HIGH'],
+      ]),
+    ]);
+
+    expect(combatCalcs.damage(attacker, item, db)).toBe(44);
+    expect(combatCalcs.attackSpeed(attacker, item, db)).toBe(40);
+    expect(combatCalcs.defenseSpeed(defender, item, db, item)).toBe(40);
+    expect(combatCalcs.computeCrit(attacker, item, defender, db)).toBe(60);
+
+    attacker.skills = [];
+    defender.skills = [];
+    expect(combatCalcs.damage(attacker, item, db)).toBe(22);
+    expect(combatCalcs.attackSpeed(attacker, item, db)).toBe(20);
+    expect(combatCalcs.defenseSpeed(defender, item, db, item)).toBe(20);
+    expect(combatCalcs.computeCrit(attacker, item, defender, db)).toBe(40);
   });
 });
