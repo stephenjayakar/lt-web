@@ -23,7 +23,7 @@ import { Cursor } from './cursor';
 import { ArrowRenderer } from '../rendering/movement-arrows';
 import { UnitMarkerIcons } from '../rendering/unit-markers';
 import { PhaseController } from './phase';
-import { ActionLog } from './action';
+import { ActionLog, type MoveAction } from './action';
 import { GameBoard } from '../objects/game-board';
 import { UnitObject } from '../objects/unit';
 import { ItemObject, createItemTree } from '../objects/item';
@@ -139,8 +139,10 @@ export class GameState {
   shopUnit: any | null;
   shopItems: any[] | null;
   shopStock: number[] | null;
+  shopId: string | null;
   currentEvent: GameEvent | null;
   _moveOrigin: [number, number] | null;
+  _moveAction: MoveAction | null;
   _pendingAfterMovement: string | null;
 
   /**
@@ -248,8 +250,10 @@ export class GameState {
     this.shopUnit = null;
     this.shopItems = null;
     this.shopStock = null;
+    this.shopId = null;
     this.currentEvent = null;
     this._moveOrigin = null;
+    this._moveAction = null;
     this._pendingAfterMovement = null;
     this.memory = new Map();
 
@@ -442,8 +446,10 @@ export class GameState {
     this.shopUnit = null;
     this.shopItems = null;
     this.shopStock = null;
+    this.shopId = null;
     this.currentEvent = null;
     this._moveOrigin = null;
+    this._moveAction = null;
     this._pendingAfterMovement = null;
 
     // Reset turnwheel uses
@@ -506,8 +512,10 @@ export class GameState {
     this.shopUnit = null;
     this.shopItems = null;
     this.shopStock = null;
+    this.shopId = null;
     this.currentEvent = null;
     this._moveOrigin = null;
+    this._moveAction = null;
     this._pendingAfterMovement = null;
 
     // a2. Initialize parties and set current party from level ----------------

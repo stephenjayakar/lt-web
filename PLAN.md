@@ -86,10 +86,10 @@ by parser plus behavioral tests; unsupported commands fail loudly in development
 
 ### P2 — Actions, Save/Restore, and Turnwheel
 
-- [ ] Route all event and gameplay mutations through reversible actions
-- [ ] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
+- [x] Route all event and gameplay mutations through reversible actions
+- [x] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
   initiative, roam, overworld, records, achievements, and in-progress events
-- [ ] Verify suspend deletion, battle saves, restart saves, and migration defaults
+- [x] Verify suspend deletion, battle saves, restart saves, and migration defaults
 
 **Gate:** save round trips are lossless for in-scope state and every logged mutation
 returns to byte-equivalent state after reverse/redo where the Python action does.
@@ -134,8 +134,9 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-22 after completing event command flag parity:
+Queue refreshed 2026-07-22 after completing action and save/restore parity:
 
-1. Route remaining persistent event and gameplay mutations through reversible actions.
+1. Implement remaining item target/restriction/use/end-combat hooks and
+   multi/sub-item behavior.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

@@ -165,6 +165,90 @@ export class SetGameVarAction extends Action {
   }
 }
 
+export class DeleteMapValueAction extends Action {
+  private values: Map<string, any>;
+  private nid: string;
+  private existed: boolean;
+  private oldValue: any;
+
+  constructor(values: Map<string, any>, nid: string) {
+    super();
+    this.values = values;
+    this.nid = nid;
+    this.existed = values.has(nid);
+    this.oldValue = values.get(nid);
+  }
+
+  execute(): void {
+    this.values.delete(this.nid);
+  }
+
+  reverse(): void {
+    if (this.existed) this.values.set(this.nid, this.oldValue);
+  }
+}
+
+export class ClearMapAction extends Action {
+  private values: Map<string, any>;
+  private oldEntries: Array<[string, any]>;
+
+  constructor(values: Map<string, any>) {
+    super();
+    this.values = values;
+    this.oldEntries = [...values.entries()];
+  }
+
+  execute(): void {
+    this.values.clear();
+  }
+
+  reverse(): void {
+    this.values.clear();
+    for (const [key, value] of this.oldEntries) this.values.set(key, value);
+  }
+}
+
+interface PersistentStore<T> {
+  save(): T[];
+  restore(entries: T[]): void;
+  persist(): void;
+}
+
+/** Reversible mutation of a localStorage-backed records or achievement store. */
+export class UpdatePersistentStoreAction<T, R = void> extends Action {
+  private store: PersistentStore<T>;
+  private mutate: () => R;
+  private before: T[];
+  private after: T[] | null = null;
+  private mutationResult: R | undefined;
+
+  constructor(store: PersistentStore<T>, mutate: () => R) {
+    super();
+    this.store = store;
+    this.mutate = mutate;
+    this.before = structuredClone(store.save());
+  }
+
+  execute(): void {
+    if (this.after) {
+      this.store.restore(structuredClone(this.after));
+      this.store.persist();
+      return;
+    }
+    this.mutationResult = this.mutate();
+    this.after = structuredClone(this.store.save());
+  }
+
+  get result(): R | undefined {
+    return this.mutationResult;
+  }
+
+  reverse(): void {
+    this.store.restore(structuredClone(this.before));
+    this.store.persist();
+  }
+}
+
 // ------------------------------------------------------------------
 // Action group types for turnwheel navigation
 // ------------------------------------------------------------------
@@ -753,28 +837,37 @@ export class MoveAction extends Action {
   private oldPos: [number, number];
   private newPos: [number, number];
   private board: GameBoard;
+  private previousMovementLeft: number;
+  private newMovementLeft: number;
+  private previousHasMoved: boolean;
 
   constructor(
     unit: UnitObject,
     oldPos: [number, number],
     newPos: [number, number],
     board: GameBoard,
+    movementCost: number = 0,
   ) {
     super();
     this.unit = unit;
     this.oldPos = oldPos;
     this.newPos = newPos;
     this.board = board;
+    this.previousMovementLeft = unit.movementLeft;
+    this.newMovementLeft = Math.max(0, unit.movementLeft - movementCost);
+    this.previousHasMoved = unit.hasMoved;
   }
 
   execute(): void {
     this.board.moveUnit(this.unit, this.newPos[0], this.newPos[1]);
+    this.unit.movementLeft = this.newMovementLeft;
     this.unit.hasMoved = true;
   }
 
   reverse(): void {
     this.board.moveUnit(this.unit, this.oldPos[0], this.oldPos[1]);
-    this.unit.hasMoved = false;
+    this.unit.movementLeft = this.previousMovementLeft;
+    this.unit.hasMoved = this.previousHasMoved;
   }
 }
 
@@ -851,6 +944,28 @@ export class HealAction extends Action {
 
   reverse(): void {
     this.unit.currentHp = Math.max(0, this.unit.currentHp - this.amount);
+  }
+}
+
+/** Set current HP to an exact clamped value and restore the prior value. */
+export class SetCurrentHpAction extends Action {
+  private unit: UnitObject;
+  private oldHp: number;
+  private newHp: number;
+
+  constructor(unit: UnitObject, hp: number) {
+    super();
+    this.unit = unit;
+    this.oldHp = unit.currentHp;
+    this.newHp = Math.max(0, Math.min(hp, unit.maxHp));
+  }
+
+  execute(): void {
+    this.unit.currentHp = this.newHp;
+  }
+
+  reverse(): void {
+    this.unit.currentHp = this.oldHp;
   }
 }
 
@@ -1098,6 +1213,28 @@ export class RecruitGenericAction extends Action {
   }
 }
 
+/** Reassign one unit to a party and restore its prior party exactly. */
+export class SetUnitPartyAction extends Action {
+  private unit: UnitObject;
+  private nextParty: string;
+  private oldParty: string;
+
+  constructor(unit: UnitObject, nextParty: string) {
+    super();
+    this.unit = unit;
+    this.nextParty = nextParty;
+    this.oldParty = unit.party;
+  }
+
+  execute(): void {
+    this.unit.party = this.nextParty;
+  }
+
+  reverse(): void {
+    this.unit.party = this.oldParty;
+  }
+}
+
 /**
  * MergePartiesAction - Python merge_parties composite: guest units move to the
  * host party; guest convoy/money/bexp transfer to host. Exact reverse.
@@ -1184,6 +1321,9 @@ export class LeaveMapAction extends Action {
   private game: any;
   private unit: any;
   private oldPos: [number, number] | null = null;
+  private initiativeLine: string[] | null = null;
+  private initiativeValues: number[] | null = null;
+  private initiativeIndex = -1;
   constructor(game: any, unit: any) {
     super();
     this.game = game;
@@ -1191,6 +1331,12 @@ export class LeaveMapAction extends Action {
   }
   execute(): void {
     this.oldPos = this.unit.position ? [...this.unit.position] as [number, number] : null;
+    if (this.game.initiative) {
+      this.initiativeLine = [...this.game.initiative.unitLine];
+      this.initiativeValues = [...this.game.initiative.initiativeLine];
+      this.initiativeIndex = this.game.initiative.currentIdx;
+      this.game.initiative.removeUnit(this.unit);
+    }
     if (this.oldPos && this.game.board) this.game.board.removeUnit(this.unit);
     this.unit.position = null;
   }
@@ -1199,12 +1345,62 @@ export class LeaveMapAction extends Action {
       this.unit.position = this.oldPos;
       if (this.game.board) this.game.board.setUnit(this.oldPos[0], this.oldPos[1], this.unit);
     }
+    if (this.game.initiative && this.initiativeLine && this.initiativeValues) {
+      this.game.initiative.unitLine = [...this.initiativeLine];
+      this.game.initiative.initiativeLine = [...this.initiativeValues];
+      this.game.initiative.currentIdx = this.initiativeIndex;
+    }
   }
 }
 
-/** AddAnimToUnitAction / RemoveAnimFromUnitAction - Python action.py
- * AddAnimToUnit/RemoveAnimFromUnit: a permanent looping map animation
- * attached to (following) a unit, reversibly. Runtime-only like Python. */
+/** Place a unit on the map and restore its prior board position on rewind. */
+export class ArriveOnMapAction extends Action {
+  private game: any;
+  private unit: UnitObject;
+  private position: [number, number];
+  private oldPosition: [number, number] | null;
+  private addToInitiative: boolean;
+  private addedToInitiative = false;
+
+  constructor(
+    game: any,
+    unit: UnitObject,
+    position: [number, number],
+    addToInitiative: boolean = false,
+  ) {
+    super();
+    this.game = game;
+    this.unit = unit;
+    this.position = position;
+    this.oldPosition = unit.position ? [...unit.position] as [number, number] : null;
+    this.addToInitiative = addToInitiative;
+  }
+
+  execute(): void {
+    if (this.unit.position && this.game.board) this.game.board.removeUnit(this.unit);
+    this.unit.position = [...this.position];
+    this.game.board?.setUnit(this.position[0], this.position[1], this.unit);
+    if (this.addToInitiative && this.game.initiative &&
+        !this.game.initiative.unitLine.includes(this.unit.nid)) {
+      this.game.initiative.insertUnit(this.unit, this.game.db);
+      this.addedToInitiative = true;
+    }
+  }
+
+  reverse(): void {
+    if (this.unit.position && this.game.board) this.game.board.removeUnit(this.unit);
+    if (this.addedToInitiative && this.game.initiative) {
+      this.game.initiative.removeUnit(this.unit);
+      this.addedToInitiative = false;
+    }
+    this.unit.position = this.oldPosition ? [...this.oldPosition] : null;
+    if (this.oldPosition) {
+      this.game.board?.setUnit(this.oldPosition[0], this.oldPosition[1], this.unit);
+    }
+  }
+}
+
+/** Add one permanent unit-following map animation, reversibly. */
 export class AddAnimToUnitAction extends Action {
   private game: any;
   private anim: any;
@@ -1366,21 +1562,35 @@ export class CreateUnitAction extends Action {
   private game: any;
   private unit: UnitObject;
   private position: [number, number] | null;
+  private addToInitiative: boolean;
 
-  constructor(game: any, unit: UnitObject, position: [number, number] | null) {
+  constructor(
+    game: any,
+    unit: UnitObject,
+    position: [number, number] | null,
+    addToInitiative: boolean = false,
+  ) {
     super();
     this.game = game;
     this.unit = unit;
     this.position = position;
+    this.addToInitiative = addToInitiative;
   }
 
   execute(): void {
     this.game.registerUnit(this.unit, this.position);
+    if (this.addToInitiative && this.game.initiative &&
+        !this.game.initiative.unitLine.includes(this.unit.nid)) {
+      this.game.initiative.insertUnit(this.unit, this.game.db);
+    }
   }
 
   reverse(): void {
     if (this.unit.position && this.game.board) {
       this.game.board.removeUnit(this.unit);
+    }
+    if (this.addToInitiative && this.game.initiative) {
+      this.game.initiative.removeUnit(this.unit);
     }
     this.game.units.delete(this.unit.nid);
   }
@@ -1449,6 +1659,41 @@ export class RemoveRegionAction extends Action {
     if (!this.removed) return;
     const idx = Math.min(this.removedIndex, this.regions.length);
     this.regions.splice(idx, 0, this.removed);
+  }
+}
+
+/** Advance one unit's timed status effects and restore HP/durations exactly. */
+export class ProcessStatusEffectsAction extends Action {
+  private unit: UnitObject;
+  private oldHp: number;
+  private oldEffects: UnitObject['statusEffects'];
+  damage = 0;
+
+  constructor(unit: UnitObject) {
+    super();
+    this.unit = unit;
+    this.oldHp = unit.currentHp;
+    this.oldEffects = unit.statusEffects.map((effect) => ({
+      ...effect,
+      statMods: { ...effect.statMods },
+    }));
+  }
+
+  execute(): void {
+    this.unit.currentHp = this.oldHp;
+    this.unit.statusEffects = this.oldEffects.map((effect) => ({
+      ...effect,
+      statMods: { ...effect.statMods },
+    }));
+    this.damage = this.unit.processStatusEffects();
+  }
+
+  reverse(): void {
+    this.unit.currentHp = this.oldHp;
+    this.unit.statusEffects = this.oldEffects.map((effect) => ({
+      ...effect,
+      statMods: { ...effect.statMods },
+    }));
   }
 }
 
@@ -1697,8 +1942,6 @@ export class TradeAction extends Action {
 
     this.unitA.autoequip();
     this.unitB.autoequip();
-    this.unitA.hasTraded = true;
-    this.unitB.hasTraded = true;
   }
 
   reverse(): void {
@@ -1733,8 +1976,6 @@ export class TradeAction extends Action {
 
     this.unitA.autoequip();
     this.unitB.autoequip();
-    this.unitA.hasTraded = false;
-    this.unitB.hasTraded = false;
   }
 }
 
@@ -2376,6 +2617,7 @@ export class WeaponUsesAction extends Action {
       if (idx !== -1) {
         this.unit.items.splice(idx, 1);
       }
+
       if (this.unit.equippedWeapon === this.item || this.unit.equippedAccessory === this.item) {
         this.unit.unequip(this.item);
       }
@@ -2390,6 +2632,40 @@ export class WeaponUsesAction extends Action {
       this.unit.onAddItem(this.item);
     }
     this.item.setUses(this.usesBefore);
+    this.unit.autoequip();
+  }
+}
+
+/** Give a newly-created item to a unit and remove it exactly on rewind. */
+export class GiveItemAction extends Action {
+  private unit: UnitObject;
+  private item: ItemObject;
+  private index: number;
+
+  constructor(unit: UnitObject, item: ItemObject) {
+    super();
+    this.unit = unit;
+    this.item = item;
+    this.index = unit.items.length;
+  }
+
+  execute(): void {
+    if (!this.unit.items.includes(this.item)) {
+      this.unit.items.splice(Math.min(this.index, this.unit.items.length), 0, this.item);
+    }
+    this.item.owner = this.unit;
+    this.unit.onAddItem(this.item);
+    this.unit.autoequip();
+  }
+
+  reverse(): void {
+    const index = this.unit.items.indexOf(this.item);
+    if (index >= 0) this.unit.items.splice(index, 1);
+    if (this.unit.equippedWeapon === this.item || this.unit.equippedAccessory === this.item) {
+      this.unit.unequip(this.item);
+    }
+    this.item.owner = null;
+    this.unit.onRemoveItem(this.item);
     this.unit.autoequip();
   }
 }
@@ -2905,6 +3181,28 @@ export class SetUnitLevelAction extends Action {
   }
 }
 
+/** Set EXP without applying a level-up, matching Python SetExp. */
+export class SetUnitExpAction extends Action {
+  private unit: UnitObject;
+  private oldExp: number;
+  private newExp: number;
+
+  constructor(unit: UnitObject, exp: number) {
+    super();
+    this.unit = unit;
+    this.oldExp = unit.exp;
+    this.newExp = Math.max(0, Math.min(99, exp));
+  }
+
+  execute(): void {
+    this.unit.exp = this.newExp;
+  }
+
+  reverse(): void {
+    this.unit.exp = this.oldExp;
+  }
+}
+
 /** Apply LT autolevel stat changes without changing displayed level. */
 export class AutoLevelAction extends Action {
   private unit: UnitObject;
@@ -3159,7 +3457,7 @@ export class RefreshUnitAction extends Action {
 }
 
 type MutableUnitAttribute =
-  | 'name' | 'desc' | 'variant' | 'aiGroup' | 'portraitNid' | 'affinity';
+  | 'name' | 'desc' | 'variant' | 'ai' | 'aiGroup' | 'portraitNid' | 'affinity';
 
 /** Reversibly set a scalar UnitObject property used by event commands. */
 export class SetUnitAttributeAction extends Action {
@@ -4153,6 +4451,7 @@ export class AddToInitiativeAction extends Action {
   }
 
   execute(): void {
+
     if (this.oldIdx < 0) return;
     const idx = this.initiative.unitLine.indexOf(this.unitNid);
     if (idx >= 0) {
@@ -4170,5 +4469,203 @@ export class AddToInitiativeAction extends Action {
       this.initiative.initiativeLine.splice(idx, 1);
     }
     this.initiative.insertAt(this.unitNid, this.oldIdx, this.initiativeValue);
+  }
+}
+
+export class SetRoamInfoAction extends Action {
+  private roamInfo: { roam: boolean; roamUnitNid: string | null };
+  private key: 'roam' | 'roamUnitNid';
+  private value: boolean | string | null;
+  private oldValue: boolean | string | null;
+
+  constructor(
+    roamInfo: { roam: boolean; roamUnitNid: string | null },
+    key: 'roam' | 'roamUnitNid',
+    value: boolean | string | null,
+  ) {
+    super();
+    this.roamInfo = roamInfo;
+    this.key = key;
+    this.value = value;
+    this.oldValue = roamInfo[key];
+  }
+
+  execute(): void {
+    if (this.key === 'roam') this.roamInfo.roam = this.value as boolean;
+    else this.roamInfo.roamUnitNid = this.value as string | null;
+  }
+
+  reverse(): void {
+    if (this.key === 'roam') this.roamInfo.roam = this.oldValue as boolean;
+    else this.roamInfo.roamUnitNid = this.oldValue as string | null;
+  }
+}
+
+export class EnableOverworldElementAction extends Action {
+  private collection: Set<string>;
+  private nid: string;
+  private existed: boolean;
+
+  constructor(collection: Set<string>, nid: string) {
+    super();
+    this.collection = collection;
+    this.nid = nid;
+    this.existed = collection.has(nid);
+  }
+
+  execute(): void {
+    this.collection.add(this.nid);
+  }
+
+  reverse(): void {
+    if (!this.existed) this.collection.delete(this.nid);
+  }
+}
+
+export class MoveOverworldEntityAction extends Action {
+  private manager: any;
+  private entityNid: string;
+  private nodeNid: string | null;
+  private position: [number, number] | null;
+  private oldNode: string | null;
+  private oldPosition: [number, number] | null;
+
+  constructor(
+    manager: any,
+    entityNid: string,
+    destination: string | [number, number],
+  ) {
+    super();
+    this.manager = manager;
+    this.entityNid = entityNid;
+    this.nodeNid = typeof destination === 'string' ? destination : null;
+    this.position = typeof destination === 'string' ? null : [...destination];
+    const entity = manager.entities.get(entityNid);
+    this.oldNode = entity?.onNode ?? null;
+    this.oldPosition = entity?.displayPosition
+      ? [entity.displayPosition[0], entity.displayPosition[1]]
+      : null;
+  }
+
+  execute(): void {
+    if (this.nodeNid) {
+      this.manager.movePartyToNode(this.entityNid, this.nodeNid);
+    } else {
+      const entity = this.manager.entities.get(this.entityNid);
+      if (entity && this.position) entity.displayPosition = [...this.position];
+    }
+  }
+
+  reverse(): void {
+    const entity = this.manager.entities.get(this.entityNid);
+    if (!entity) return;
+    entity.onNode = this.oldNode;
+    entity.displayPosition = this.oldPosition ? [...this.oldPosition] : null;
+  }
+}
+
+export class CreateOverworldEntityAction extends Action {
+  private manager: any;
+  private args: [string, string, string, string, string | null];
+  private previous: any;
+  private created: any = null;
+
+  constructor(
+    manager: any,
+    nid: string,
+    dtype: string,
+    dnid: string,
+    team: string,
+    nodeNid: string | null,
+  ) {
+    super();
+    this.manager = manager;
+    this.args = [nid, dtype, dnid, team, nodeNid];
+    this.previous = manager.entities.get(nid) ?? null;
+  }
+
+  execute(): void {
+    if (!this.created) this.created = this.manager.createEntity(...this.args);
+    else this.manager.entities.set(this.args[0], this.created);
+  }
+
+  reverse(): void {
+    this.manager.removeEntity(this.args[0]);
+    if (this.previous) this.manager.entities.set(this.args[0], this.previous);
+  }
+}
+
+export class RemoveOverworldEntityAction extends Action {
+  private manager: any;
+  private nid: string;
+  private removed: any;
+  private oldSelected: string | null;
+
+  constructor(manager: any, nid: string) {
+    super();
+    this.manager = manager;
+    this.nid = nid;
+    this.removed = manager.entities.get(nid) ?? null;
+    this.oldSelected = manager.selectedPartyNid;
+  }
+
+  execute(): void {
+    this.manager.removeEntity(this.nid);
+  }
+
+  reverse(): void {
+    if (this.removed) this.manager.entities.set(this.nid, this.removed);
+    this.manager.selectedPartyNid = this.oldSelected;
+  }
+}
+
+export class DisableOverworldEntityAction extends Action {
+  private entity: any;
+  private oldNode: string | null;
+  private oldPosition: [number, number] | null;
+
+  constructor(entity: any) {
+    super();
+    this.entity = entity;
+    this.oldNode = entity.onNode ?? null;
+    this.oldPosition = entity.displayPosition
+      ? [entity.displayPosition[0], entity.displayPosition[1]]
+      : null;
+  }
+
+  execute(): void {
+    this.entity.onNode = null;
+    this.entity.displayPosition = null;
+  }
+
+  reverse(): void {
+    this.entity.onNode = this.oldNode;
+    this.entity.displayPosition = this.oldPosition ? [...this.oldPosition] : null;
+  }
+}
+
+export class SetOverworldMenuOptionAction extends Action {
+  private options: Map<string, boolean>;
+  private optionNid: string;
+  private value: boolean;
+  private existed: boolean;
+  private oldValue: boolean | undefined;
+
+  constructor(options: Map<string, boolean>, optionNid: string, value: boolean) {
+    super();
+    this.options = options;
+    this.optionNid = optionNid;
+    this.value = value;
+    this.existed = options.has(optionNid);
+    this.oldValue = options.get(optionNid);
+  }
+
+  execute(): void {
+    this.options.set(this.optionNid, this.value);
+  }
+
+  reverse(): void {
+    if (this.existed) this.options.set(this.optionNid, this.oldValue!);
+    else this.options.delete(this.optionNid);
   }
 }

@@ -1389,6 +1389,10 @@ export class EventManager {
     return true;
   }
 
+  getPrefab(eventNid: NID): EventPrefab | undefined {
+    return this.allEvents.get(eventNid);
+  }
+
   /** Get the current event being processed (front of queue). */
   getCurrentEvent(): GameEvent | null {
     if (this.eventQueue.length === 0) return null;

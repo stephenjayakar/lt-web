@@ -24,10 +24,12 @@ import { SupportController } from './support-system';
 import { GameBoard } from '../objects/game-board';
 import { PathSystem } from '../pathfinding/path-system';
 import { PhaseController } from './phase';
-import { EventManager } from '../events/event-manager';
+import { EventManager, GameEvent, type EventTrigger } from '../events/event-manager';
 import { AIController } from '../ai/ai-controller';
 import { MapSprite as MapSpriteCtor } from '../rendering/map-sprite';
 import { RoamInfo } from './roam-info';
+import { InitiativeTracker } from './initiative';
+import { OverworldManager } from './overworld/overworld-manager';
 
 // ============================================================================
 // Save Data Interfaces
@@ -198,6 +200,35 @@ export interface SupportPairSaveData {
   ranksGainedThisChapter: number;
 }
 
+export interface InitiativeSaveData {
+  unitLine: string[];
+  initiativeLine: number[];
+  currentIdx: number;
+  drawMe: boolean;
+}
+
+export interface OverworldSaveData {
+  prefabNid: string;
+  enabledNodes: string[];
+  enabledRoads: string[];
+  entities: Array<[string, any]>;
+  enabledMenuOptions: Array<[string, Array<[string, boolean]>]>;
+  visibleMenuOptions: Array<[string, Array<[string, boolean]>]>;
+  selectedPartyNid: string | null;
+  nodeProperties: Array<[string, string[]]>;
+  nextLevel: string | null;
+}
+
+export interface EventSaveData {
+  nid: string;
+  trigger: EventTrigger;
+  commandPointer: number;
+  state: 'running' | 'waiting' | 'done';
+  currentDialog: { speaker: string; text: string } | null;
+  waitingForInput: boolean;
+  pyev1State?: any;
+}
+
 export interface SaveDict {
   units: UnitSaveData[];
   items: ItemSaveData[];
@@ -225,6 +256,9 @@ export interface SaveDict {
   overworldRegistry: [string, any][];
   memory: [string, any][];
   /** NIDs of only_once events already triggered. Optional for legacy saves (defaults to empty). */
+  initiative?: InitiativeSaveData | null;
+  overworld?: OverworldSaveData | null;
+  eventQueue?: EventSaveData[];
   alreadyTriggeredEvents?: string[];
   /** Movement bounds override on the game board (Python game_state 'bounds'). */
   boardBounds?: [number, number, number, number];
@@ -729,14 +763,7 @@ export function buildSaveDict(game: any): SaveDict {
     parties.push(serializeParty(party, itemKeyByObject));
   }
 
-  // Serialize state stack
-  const stateStack: string[] = [];
-  // Access the state machine's internal stack via getCurrentState or iteration
-  // The StateMachine doesn't expose its stack directly, so we store the current state name
-  const currentState = game.state?.getCurrentState?.();
-  if (currentState) {
-    stateStack.push(currentState.name);
-  }
+  const stateStack: string[] = game.state?.getStackNames?.() ?? [];
 
   // Serialize supports
   let supports: SupportPairSaveData[] | null = null;
@@ -795,6 +822,55 @@ export function buildSaveDict(game: any): SaveDict {
     }
   }
 
+  const initiative: InitiativeSaveData | null = game.initiative
+    ? {
+        unitLine: [...game.initiative.unitLine],
+        initiativeLine: [...game.initiative.initiativeLine],
+        currentIdx: game.initiative.currentIdx,
+        drawMe: game.initiative.drawMe,
+      }
+    : null;
+
+  const overworldController = game.overworldController as OverworldManager | null;
+  const overworld: OverworldSaveData | null = overworldController
+    ? {
+        prefabNid: overworldController.prefab.nid,
+        enabledNodes: [...overworldController.enabledNodes],
+        enabledRoads: [...overworldController.enabledRoads],
+        entities: [...overworldController.entities.entries()].map(([nid, entity]) => [
+          nid,
+          {
+            nid: entity.nid,
+            dtype: entity.dtype,
+            dnid: entity.dnid,
+            onNode: entity.onNode,
+            team: entity.team,
+            displayPosition: entity.displayPosition ? [...entity.displayPosition] : null,
+          },
+        ]),
+        enabledMenuOptions: [...overworldController.enabledMenuOptions.entries()]
+          .map(([nid, options]) => [nid, [...options.entries()]]),
+        visibleMenuOptions: [...overworldController.visibleMenuOptions.entries()]
+          .map(([nid, options]) => [nid, [...options.entries()]]),
+        selectedPartyNid: overworldController.selectedPartyNid,
+        nodeProperties: [...overworldController.nodeProperties.entries()]
+          .map(([nid, properties]) => [nid, [...properties]]),
+        nextLevel: overworldController.nextLevel,
+      }
+    : null;
+
+  const eventQueue: EventSaveData[] = game.eventManager
+    ? (game.eventManager as EventManager).eventQueue.map((event) => ({
+        nid: event.nid,
+        trigger: structuredClone(event.trigger),
+        commandPointer: event.commandPointer,
+        state: event.state,
+        currentDialog: event.currentDialog ? { ...event.currentDialog } : null,
+        waitingForInput: event.waitingForInput,
+        pyev1State: event.pyev1Processor?.saveState?.(),
+      }))
+    : [];
+
   return {
     units,
     items,
@@ -826,11 +902,16 @@ export function buildSaveDict(game: any): SaveDict {
       (game.overworldRegistry as Map<string, any>).entries(),
     ),
     memory: Array.from((game.memory as Map<string, any>).entries()),
+    initiative,
+    overworld,
+    eventQueue,
     // Persist the skill uid counter so subsequent constructions stay monotonic
     // and restored uids don't collide with new ones (Python set_next_uids).
     skillCounter: getNextSkillUid(),
-boardBounds: game.board ? ([...game.board.bounds] as [number, number, number, number]) : undefined,
-        alreadyTriggeredEvents: game.eventManager
+    boardBounds: game.board
+      ? ([...game.board.bounds] as [number, number, number, number])
+      : undefined,
+    alreadyTriggeredEvents: game.eventManager
       ? Array.from((game.eventManager as EventManager).getOnceTriggered())
       : [],
     talkHidden: game.eventManager
@@ -887,6 +968,23 @@ export async function saveGame(
     await idbSet(saveKey, saveDict);
     await idbSet(metaKey, meta);
 
+
+    const restartKey = `${gameNid}-restart-${slot}`;
+    if (kind === 'start') {
+      await idbSet(restartKey, structuredClone(saveDict));
+      await idbSet(`${restartKey}.meta`, structuredClone(meta));
+    } else if (
+      typeof game.currentSaveSlot === 'number' &&
+      game.currentSaveSlot !== slot
+    ) {
+      const oldRestartKey = `${gameNid}-restart-${game.currentSaveSlot}`;
+      const oldRestart: SaveDict | undefined = await idbGet(oldRestartKey);
+      const oldRestartMeta: SaveMetadata | undefined = await idbGet(`${oldRestartKey}.meta`);
+      if (oldRestart && oldRestartMeta) {
+        await idbSet(restartKey, structuredClone(oldRestart));
+        await idbSet(`${restartKey}.meta`, structuredClone(oldRestartMeta));
+      }
+    }
     console.log(`Game saved to slot ${slot} (kind: ${kind})`);
   } catch (err) {
     console.error('Failed to save game:', err);
@@ -1017,6 +1115,9 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   game.currentEvent = null;
   game._moveOrigin = null;
   game._pendingAfterMovement = null;
+  game.initiative = null;
+  game.overworldController = null;
+  game.overworldMovement = null;
 
   // 2. Restore game vars and level vars
   game.gameVars = new Map(s.gameVars);
@@ -1423,6 +1524,68 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
     game.board.setBounds(...s.boardBounds);
   }
 
+  if (s.initiative) {
+    game.initiative = new InitiativeTracker();
+    game.initiative.unitLine = [...s.initiative.unitLine];
+    game.initiative.initiativeLine = [...s.initiative.initiativeLine];
+    game.initiative.currentIdx = s.initiative.currentIdx;
+    game.initiative.drawMe = s.initiative.drawMe;
+  } else if (game.db?.getConstant?.('initiative', false)) {
+    game.initiative = new InitiativeTracker();
+    game.initiative.start(
+      [...unitsByNid.values()].filter((unit) => unit.position && !unit.isDead()),
+      game.db,
+    );
+  }
+
+  if (s.overworld) {
+    const prefab = game.db?.overworlds?.get?.(s.overworld.prefabNid);
+    if (prefab) {
+      const overworld = new OverworldManager(prefab);
+      overworld.enabledNodes = new Set(s.overworld.enabledNodes);
+      overworld.enabledRoads = new Set(s.overworld.enabledRoads);
+      overworld.entities = new Map(structuredClone(s.overworld.entities));
+      overworld.enabledMenuOptions = new Map(
+        s.overworld.enabledMenuOptions.map(([nid, options]) => [nid, new Map(options)]),
+      );
+      overworld.visibleMenuOptions = new Map(
+        s.overworld.visibleMenuOptions.map(([nid, options]) => [nid, new Map(options)]),
+      );
+      overworld.selectedPartyNid = s.overworld.selectedPartyNid;
+      overworld.nodeProperties = new Map(
+        s.overworld.nodeProperties.map(([nid, properties]) => [nid, new Set(properties)]),
+      );
+      overworld.nextLevel = s.overworld.nextLevel;
+      game.overworldController = overworld;
+    } else {
+      console.warn(`Failed to restore overworld "${s.overworld.prefabNid}": prefab missing`);
+    }
+  }
+
+  if (game.eventManager && s.eventQueue) {
+    game.eventManager.eventQueue = [];
+    for (const savedEvent of s.eventQueue) {
+      const prefab = game.eventManager.getPrefab(savedEvent.nid);
+      if (!prefab) {
+        console.warn(`Failed to restore event "${savedEvent.nid}": prefab missing`);
+        continue;
+      }
+      const event = new GameEvent(prefab, structuredClone(savedEvent.trigger), () => game);
+      event.commandPointer = savedEvent.commandPointer;
+      event.state = savedEvent.state;
+      event.currentDialog = savedEvent.currentDialog ? { ...savedEvent.currentDialog } : null;
+      event.waitingForInput = savedEvent.waitingForInput;
+      if (savedEvent.pyev1State && event.pyev1Processor?.restoreState) {
+        event.pyev1Processor.restoreState(savedEvent.pyev1State);
+      }
+      game.eventManager.eventQueue.push(event);
+    }
+  }
+
+  if (s.stateStack?.length && game.state?.restoreStack) {
+    game.state.restoreStack(s.stateStack);
+  }
+
   // 16. Restore overworld registry
   game.overworldRegistry = new Map(s.overworldRegistry);
 }
@@ -1687,6 +1850,19 @@ export async function loadGame(game: any, slot: number): Promise<boolean> {
   }
 }
 
+export async function loadRestart(game: any, slot: number): Promise<boolean> {
+  try {
+    const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
+    const saveDict: SaveDict | undefined = await idbGet(`${gameNid}-restart-${slot}`);
+    if (!saveDict) return false;
+    await restoreGameState(game, saveDict);
+    return true;
+  } catch (err) {
+    console.error(`Failed to load restart save ${slot}:`, err);
+    return false;
+  }
+}
+
 /**
  * Load a suspend (quicksave). The suspend is deleted after successful load.
  */
@@ -1789,6 +1965,8 @@ export async function deleteSave(
     await idbDelete(`${gameNid}-${slot}`);
     await idbDelete(`${gameNid}-${slot}.meta`);
     console.log(`Save slot ${slot} deleted`);
+    await idbDelete(`${gameNid}-restart-${slot}`);
+    await idbDelete(`${gameNid}-restart-${slot}.meta`);
   } catch (err) {
     console.error(`Failed to delete save slot ${slot}:`, err);
   }

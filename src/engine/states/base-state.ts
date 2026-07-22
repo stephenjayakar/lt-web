@@ -1629,7 +1629,7 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
       const nid = args[0].trim();
       // Only add if not already present (don't reset viewed status)
       if (!game.baseConvos.has(nid)) {
-        game.baseConvos.set(nid, false);
+        game.actionLog.doAction(new SetGameVarAction(game.baseConvos, nid, false));
       }
       return true;
     }
@@ -1640,7 +1640,7 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
         return true;
       }
       const nid = args[0].trim();
-      game.baseConvos.set(nid, true);
+      game.actionLog.doAction(new SetGameVarAction(game.baseConvos, nid, true));
       return true;
     }
 
@@ -1650,7 +1650,7 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
         return true;
       }
       const nid = args[0].trim();
-      game.baseConvos.delete(nid);
+      game.actionLog.doAction(new DeleteMapValueAction(game.baseConvos, nid));
       return true;
     }
 
@@ -1662,7 +1662,9 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
       const itemNid = args[0].trim();
       // Stock defaults to -1 (infinite) if not provided
       const stock = args.length >= 2 ? parseInt(args[1], 10) : -1;
-      game.marketItems.set(itemNid, isNaN(stock) ? -1 : stock);
+      game.actionLog.doAction(
+        new SetGameVarAction(game.marketItems, itemNid, isNaN(stock) ? -1 : stock),
+      );
       return true;
     }
 
@@ -1672,12 +1674,12 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
         return true;
       }
       const itemNid = args[0].trim();
-      game.marketItems.delete(itemNid);
+      game.actionLog.doAction(new DeleteMapValueAction(game.marketItems, itemNid));
       return true;
     }
 
     case 'clear_market_items': {
-      game.marketItems.clear();
+      game.actionLog.doAction(new ClearMapAction(game.marketItems));
       return true;
     }
 
@@ -1690,7 +1692,14 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
 // BEXP states — Python base.py BaseBEXPSelectState / BaseBEXPAllocateState
 // ============================================================================
 
-import { Action, GainExpAction, SpendBexpAction } from '../action';
+import {
+  ClearMapAction,
+  DeleteMapValueAction,
+  GainExpAction,
+  SetGameVarAction,
+  SetUnitPartyAction,
+  SpendBexpAction,
+} from '../action';
 import { evaluateEquation } from '../../combat/combat-calcs';
 
 /** Bexp needed for this unit's next full level (Python determine_needed_bexp). */
@@ -1834,22 +1843,6 @@ export class BaseBexpAllocateState extends State {
 // PartyTransferState — Python party_transfer dual-roster reassignment
 // ============================================================================
 
-/** Reversible single-unit party reassignment used by the transfer confirm. */
-class SetUnitPartyAction extends Action {
-  private unit: { party: string };
-  private next: string;
-  private prev: string;
-
-  constructor(unit: { party: string }, next: string) {
-    super();
-    this.unit = unit;
-    this.next = next;
-    this.prev = unit.party;
-  }
-
-  execute(): void { this.prev = this.unit.party; this.unit.party = this.next; }
-  reverse(): void { this.unit.party = this.prev; }
-}
 
 export class PartyTransferState extends State {
   readonly name = 'party_transfer';

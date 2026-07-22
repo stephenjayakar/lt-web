@@ -44,6 +44,7 @@ async function exposeActionCtors(page: Page): Promise<void> {
         MarkActionGroupStart: m.MarkActionGroupStart,
         MarkActionGroupEnd: m.MarkActionGroupEnd,
         AddSkillAction: m.AddSkillAction,
+        ProcessStatusEffectsAction: m.ProcessStatusEffectsAction,
       };
     });
   });
@@ -315,6 +316,102 @@ test.describe('Turnwheel breadth verification (P2)', () => {
     expect(result.afterExecute[0]).toBe(result.moverNid);
     expect(result.afterExecute).not.toEqual(result.before);
     expect(result.afterUndo).toEqual(result.before);
+  });
+
+  test('status ticks undo and redo HP plus duration expiry exactly', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await exposeActionCtors(page);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const A = (window as any).__A;
+      const unit = g.units.get('Eirika');
+      unit.currentHp = 10;
+      unit.statusEffects = [{
+        nid: '__test_dot',
+        name: 'Test DOT',
+        turnsRemaining: 1,
+        statMods: { DEF: -1 },
+        dotDamage: 3,
+        immobilize: false,
+        stun: false,
+      }];
+      const snapshot = () => ({
+        hp: unit.currentHp,
+        effects: unit.statusEffects.map((effect: any) => ({
+          ...effect,
+          statMods: { ...effect.statMods },
+        })),
+      });
+      const before = snapshot();
+      const action = new A.ProcessStatusEffectsAction(unit);
+      g.actionLog.doAction(action);
+      const changed = snapshot();
+      g.actionLog.undo();
+      const undone = snapshot();
+      g.actionLog.doAction(action);
+      const redone = snapshot();
+      g.actionLog.undo();
+      return { before, changed, undone, redone, damage: action.damage };
+    });
+
+    expect(result.damage).toBe(3);
+    expect(result.changed).toEqual({ hp: 7, effects: [] });
+    expect(result.undone).toEqual(result.before);
+    expect(result.redone).toEqual(result.changed);
+  });
+
+  test('turn change support growth is action-backed and reversible', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const pair = [...g.supports.pairs.values()].find((candidate: any) =>
+        g.units.has(candidate.unit1Nid) && g.units.has(candidate.unit2Nid));
+      if (!pair) return null;
+      const unit1 = g.units.get(pair.unit1Nid);
+      const unit2 = g.units.get(pair.unit2Nid);
+      for (const unit of g.units.values()) {
+        if (unit.position && unit !== unit1 && unit !== unit2) g.board.removeUnit(unit);
+      }
+      if (unit1.position) g.board.removeUnit(unit1);
+      if (unit2.position) g.board.removeUnit(unit2);
+      unit1.team = 'player';
+      unit2.team = 'player';
+      unit1.position = [1, 1];
+      unit2.position = [2, 1];
+      g.board.setUnit(1, 1, unit1);
+      g.board.setUnit(2, 1, unit2);
+      g.gameVars.set('_supports', true);
+      g.actionLog.clear();
+
+      const before = pair.points;
+      const { TurnChangeState } = await import('/src/engine/states/game-states.ts');
+      new TurnChangeState().begin();
+      const changed = pair.points;
+      const action = g.actionLog.undo();
+      const undone = pair.points;
+      action?.execute();
+      const redone = pair.points;
+      action?.reverse();
+      return {
+        before,
+        changed,
+        undone,
+        redone,
+        actionName: action?.constructor?.name ?? null,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.changed).toBeGreaterThan(result!.before);
+    expect(result!.undone).toBe(result!.before);
+    expect(result!.redone).toBe(result!.changed);
+    expect(result!.actionName).toBe('IncrementSupportPointsAction');
   });
 
   test('composite event: multi-command scripted sequence undone as a single group', async ({ page }) => {

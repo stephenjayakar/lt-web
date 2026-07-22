@@ -122,6 +122,16 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Action and save/restore parity complete:** persistent event, base, shop,
+  roam, overworld, record, achievement, support, phase, combat, and unit
+  mutations now use reversible actions with exact undo/redo regressions. Saves
+  now preserve full state stacks, queued standard/PYEV1 event progress,
+  initiative order, active overworld state, records, supports, fog, and roam;
+  suspend saves delete after load, start saves retain restart snapshots, and
+  legacy saves default missing aggregate fields safely. Focused save, command,
+  achievement, roam, and overworld suites plus the serial full-suite gate cover
+  the cutover.
+
 - **Event command flag parity complete:** `end_skip` restores normal blocking;
  transitions, dialogs, portraits, camera commands, unit/group/overworld movement,
  death, EXP, map animations, overlay sprites, and event-owned menu entry now

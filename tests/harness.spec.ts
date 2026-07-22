@@ -359,16 +359,23 @@ test.describe('Event command parity', () => {
       const records = await import('/src/engine/records.ts');
       const { GameQueryEngine } = await import('/src/engine/query-engine.ts');
       const query = new GameQueryEngine();
+      const newActions = (game.actionLog as any).actions.slice(beforeActionIndex + 1);
+      const persistentActions = newActions.filter(
+        (action: any) => action.constructor.name === 'UpdatePersistentStoreAction',
+      );
+      for (const action of [...persistentActions].reverse()) action.reverse();
+      const undoneEntries = records.ACHIEVEMENTS.save();
+      for (const action of persistentActions) action.execute();
+      const redoneEntries = records.ACHIEVEMENTS.save();
       return {
-        entries: records.ACHIEVEMENTS.save(),
+        entries: redoneEntries,
+        undoneEntries,
         aHiddenForDisplay: records.ACHIEVEMENTS.getHidden('A'),
         autoHiddenForDisplay: records.ACHIEVEMENTS.getHidden('Auto'),
         hasA: query.hasAchievement('A'),
         hasMissing: query.hasAchievement('Missing'),
         actionIndex: game.actionLog.actionIndex,
-        newActionTypes: (game.actionLog as any).actions
-          .slice(beforeActionIndex + 1)
-          .map((action: any) => action.constructor.name),
+        newActionTypes: newActions.map((action: any) => action.constructor.name),
       };
     }, setup.beforeActionIndex);
 
@@ -392,8 +399,10 @@ test.describe('Event command parity', () => {
     expect(mutated.autoHiddenForDisplay).toBe(false);
     expect(mutated.hasA).toBe(true);
     expect(mutated.hasMissing).toBe(false);
-    // Returning to FreeState records its ordinary marker; the achievement commands add none.
-    expect(mutated.newActionTypes.every((name: string) => name === 'MarkActionGroupEnd')).toBe(true);
+    expect(mutated.undoneEntries).toEqual([]);
+    expect(mutated.newActionTypes.filter(
+      (name: string) => name === 'UpdatePersistentStoreAction',
+    )).toHaveLength(10);
 
     await page.reload();
     await waitForHarness(page);
@@ -453,7 +462,7 @@ test.describe('Event command parity', () => {
       pointer: 0,
       state: 'event',
       sfx: ['Item'],
-      actionIndex: bannerSetup,
+      actionIndex: bannerSetup + 1,
     });
 
     await stepFrames(page, 140);
@@ -494,7 +503,7 @@ test.describe('Event command parity', () => {
     expect(afterClear.live).toEqual([]);
     expect(afterClear.persisted).toEqual([]);
     expect(afterClear.query).toBe(false);
-    expect(afterClear.newActionTypes.every((name: string) => name === 'MarkActionGroupEnd')).toBe(true);
+    expect(afterClear.newActionTypes).toContain('UpdatePersistentStoreAction');
   });
 
   test('open_achievements blocks into a navigable hidden-aware browser and resumes the event', async ({ page }) => {
@@ -602,7 +611,11 @@ test.describe('Event command parity', () => {
     }, setup.beforeActionIndex);
     expect(resumed.state).toBe('free');
     expect(resumed.value).toBe('1');
-    expect(resumed.newActionTypes).toEqual(['SetGameVarAction', 'MarkActionGroupEnd']);
+    expect(resumed.newActionTypes).toEqual([
+      'SetGameVarAction',
+      'SetGameVarAction',
+      'MarkActionGroupEnd',
+    ]);
 
     const rewind = await page.evaluate((beforeActionIndex: number) => {
       const game = (window as any).__gameRef;
@@ -5487,15 +5500,17 @@ test.describe('Event command parity', () => {
           _source: ['level_var;_weapon_rank_triggered;{e:rank}'],
         });
       }
+      const beforeActionIndex = game.actionLog.actionIndex;
       const event = new GameEvent({
         nid: '_test_wexp_command', name: 'WEXP Command', trigger: 'test', level_nid: '0',
         condition: '', only_once: false, priority: 0, _source: [sourceLine],
       }, { type: 'test', levelNid: '0', unit1: unit });
       game.eventManager.eventQueue.push(event);
       game.state.change('event');
+      return beforeActionIndex;
     }, source);
 
-    await queueWexp('set_wexp;Eirika;Sword;31;no_banner');
+    const beforeActionIndex = await queueWexp('set_wexp;Eirika;Sword;31;no_banner');
     await settle(page, 300);
     let result = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -5503,16 +5518,26 @@ test.describe('Event command parity', () => {
     });
     expect(result).toEqual({ wexp: 31, rank: 'D' });
 
-    const rewind = await page.evaluate(() => {
+    const rewind = await page.evaluate((baseline: number) => {
       const game = (window as any).__gameRef;
       const actionLog = game.actionLog as any;
-      actionLog.runActionBackward();
-      const reversed = game.units.get('Eirika').wexp.Sword;
-      actionLog.runActionForward();
-      const redone = game.units.get('Eirika').wexp.Sword;
+      const finalActionIndex = actionLog.actionIndex;
+      while (actionLog.actionIndex > baseline) actionLog.runActionBackward();
+      const reversed = {
+        wexp: game.units.get('Eirika').wexp.Sword,
+        rank: game.levelVars.get('_weapon_rank_triggered') ?? null,
+      };
+      while (actionLog.actionIndex < finalActionIndex) actionLog.runActionForward();
+      const redone = {
+        wexp: game.units.get('Eirika').wexp.Sword,
+        rank: game.levelVars.get('_weapon_rank_triggered') ?? null,
+      };
       return { reversed, redone };
+    }, beforeActionIndex);
+    expect(rewind).toEqual({
+      reversed: { wexp: 1, rank: null },
+      redone: { wexp: 31, rank: 'D' },
     });
-    expect(rewind).toEqual({ reversed: 1, redone: 31 });
 
     await queueWexp('set_wexp;Eirika;Sword;71');
     await stepFrames(page, 2);

@@ -23,6 +23,7 @@ import type { OverworldNodeObject } from '../overworld/overworld-objects';
 import type { OverworldPrefab, TilemapData } from '../../data/types';
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { TileMapObject } from '../../rendering/tilemap';
+import { MoveOverworldEntityAction } from '../action';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -268,7 +269,7 @@ export class OverworldFreeState extends State {
         moveMgr.beginMove(selected, pathPoints, {
           follow: true,
           callback: () => {
-            ow.movePartyToNode(selected.nid, node.nid);
+            game.actionLog.doAction(new MoveOverworldEntityAction(ow, selected.nid, node.nid));
           },
         });
         game.state.change('overworld_movement');

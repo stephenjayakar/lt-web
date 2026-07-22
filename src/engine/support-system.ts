@@ -580,28 +580,30 @@ export class SupportController {
    * Called at end of turn: for each pair where both units are on the same
    * team (or allied), check if within growth_range, and add end_turn_points.
    */
-  incrementEndTurnSupports(team: string, game: any): void {
+  getEndTurnIncrements(team: string, game: any, unitNid?: string): Array<[SupportPair, number]> {
     const pts = this.endTurnPoints;
-    if (pts <= 0) return;
+    if (pts <= 0 || !game?.gameVars?.get('_supports')) return [];
 
+    const increments: Array<[SupportPair, number]> = [];
     for (const pair of this.pairs.values()) {
+      if (unitNid && pair.unit1Nid !== unitNid && pair.unit2Nid !== unitNid) continue;
       const unit1 = game?.getUnit?.(pair.unit1Nid) ?? game?.units?.get(pair.unit1Nid);
       const unit2 = game?.getUnit?.(pair.unit2Nid) ?? game?.units?.get(pair.unit2Nid);
-
-      if (!unit1 || !unit2) continue;
-      if (!unit1.position || !unit2.position) continue;
+      if (!unit1 || !unit2 || !unit1.position || !unit2.position) continue;
       if (unit1.isDead?.() || unit2.isDead?.()) continue;
 
-      // Both units must be on the team or allied with the team
       const db = game?.db as Database | undefined;
       const onTeam1 = unit1.team === team || (db?.areAllied(unit1.team, team) ?? false);
       const onTeam2 = unit2.team === team || (db?.areAllied(unit2.team, team) ?? false);
-      if (!onTeam1 || !onTeam2) continue;
+      if (!onTeam1 || !onTeam2 || !this.isWithinGrowthRange(unit1, unit2, game)) continue;
+      increments.push([pair, pts]);
+    }
+    return increments;
+  }
 
-      // Check range
-      if (!this.isWithinGrowthRange(unit1, unit2, game)) continue;
-
-      this.incrementPoints(pair, pts);
+  incrementEndTurnSupports(team: string, game: any, unitNid?: string): void {
+    for (const [pair, points] of this.getEndTurnIncrements(team, game, unitNid)) {
+      this.incrementPoints(pair, points);
     }
   }
 

@@ -133,6 +133,7 @@ test.describe('Roam shop interaction', () => {
       eirika.position = [3, 3];
       const startingItemCount = eirika.items.length;
       game.gameVars.set('money', 1000);
+      game.getParty().money = 1000;
 
       const region = {
         nid: '_test_shop_region',
@@ -282,6 +283,7 @@ test.describe('Roam shop interaction', () => {
       unit.items = [sellItem];
       game.memory.set('_price_sell_item', sellItem);
       game.gameVars.set('money', 1000);
+      game.getParty().money = 1000;
       game.shopUnit = unit;
       game.shopItems = [shopItem];
       game.shopStock = [-1];

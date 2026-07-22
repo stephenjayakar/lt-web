@@ -19,10 +19,9 @@
  *  - `pass_through` skill makes `can_move_through` always true for both
  *    movement range and A* pathing.
  *
- * These are exercised through direct `game.aiController.getAction()`/
- * `pathSystem` calls via the harness rather than a full UI turn, following
- * the `resolveCombatAesthetics`/`computeTargetIcon` pattern (pure-state
- * assertions, no frame stepping needed for determinism).
+ * Pure decision/pathfinding cases use direct controller calls. The final case
+ * drives AIState itself to prove that a resolved move and wait are recorded as
+ * reversible gameplay actions.
  */
 
 import { test, expect } from '@playwright/test';
@@ -30,6 +29,10 @@ import type { Page } from '@playwright/test';
 
 async function waitForHarness(page: Page): Promise<void> {
   await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
+}
+
+async function stepFrames(page: Page, count: number): Promise<void> {
+  await page.evaluate((frames) => (window as any).__harness.stepFrames(frames, null), count);
 }
 
 test.describe('AI parity', () => {
@@ -217,5 +220,91 @@ test.describe('AI parity', () => {
       };
     });
     expect(result?.passFound).toBe(true);
+  });
+
+  test('AIState records movement and wait for exact undo and redo', async ({ page }) => {
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Bone');
+      if (!unit?.position) return null;
+      unit.resetTurnState();
+      const origin: [number, number] = [...unit.position];
+      const destination = g.pathSystem.getValidMoves(unit, g.board).find(
+        ([x, y]: [number, number]) =>
+          (x !== origin[0] || y !== origin[1]) && !g.board.getUnit(x, y),
+      );
+      if (!destination) return null;
+      const path = g.pathSystem.getPath(unit, destination[0], destination[1], g.board);
+      if (!path) return null;
+      const before = unit.movementLeft;
+      const cost = g.pathSystem.getPathCost(unit, path, g.board);
+      g.aiController.getAction = () => ({ type: 'move', targetPosition: destination, movePath: path });
+      g.state.change('ai');
+      return { origin, destination, before, cost };
+    });
+    expect(setup).not.toBeNull();
+    await stepFrames(page, 1);
+
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const state: any = g.state.getCurrentState();
+      state.aiUnits = [g.units.get('Bone')];
+      state.currentAiIndex = 0;
+      state.frameCounter = 5;
+    });
+    await stepFrames(page, 1);
+    for (let attempt = 0; attempt < 180; attempt++) {
+      const finished = await page.evaluate(() => (window as any).__gameRef.units.get('Bone').finished);
+      if (finished) break;
+      await stepFrames(page, 1);
+    }
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Bone');
+      const snapshot = () => ({
+        position: [...unit.position],
+        movementLeft: unit.movementLeft,
+        hasMoved: unit.hasMoved,
+        finished: unit.finished,
+      });
+      const moved = snapshot();
+      const actions = [
+        g.actionLog.undo(),
+        g.actionLog.undo(),
+        g.actionLog.undo(),
+        g.actionLog.undo(),
+      ];
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        moved,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.moved).toEqual({
+      position: setup!.destination,
+      movementLeft: Math.max(0, setup!.before - setup!.cost),
+      hasMoved: true,
+      finished: true,
+    });
+    expect(result.undone).toEqual({
+      position: setup!.origin,
+      movementLeft: setup!.before,
+      hasMoved: false,
+      finished: false,
+    });
+    expect(result.redone).toEqual(result.moved);
+    expect(result.actionNames).toEqual([
+      'MarkActionGroupEnd',
+      'WaitAction',
+      'MoveAction',
+      'MarkActionGroupStart',
+    ]);
   });
 });

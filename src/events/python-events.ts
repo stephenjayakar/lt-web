@@ -93,6 +93,32 @@ export class PythonEventProcessor {
     return this._finished;
   }
 
+  saveState(): {
+    pointer: number;
+    finished: boolean;
+    localVars: [string, any][];
+    pendingCommands: EventCommand[];
+  } {
+    return {
+      pointer: this.pointer,
+      finished: this._finished,
+      localVars: structuredClone([...this.localVars.entries()]),
+      pendingCommands: structuredClone(this._pendingCommands),
+    };
+  }
+
+  restoreState(state: {
+    pointer: number;
+    finished: boolean;
+    localVars: [string, any][];
+    pendingCommands: EventCommand[];
+  }): void {
+    this.pointer = state.pointer;
+    this._finished = state.finished;
+    this.localVars = new Map(structuredClone(state.localVars));
+    this._pendingCommands = structuredClone(state.pendingCommands);
+  }
+
   /**
    * Fetch the next event command to execute.
    * Returns null when there are no more commands (script finished).

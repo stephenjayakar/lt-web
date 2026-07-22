@@ -28,6 +28,13 @@ async function waitForHarness(page: Page): Promise<void> {
   await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
 }
 
+async function stepFrames(page: Page, count: number, input: string | null = null): Promise<void> {
+  await page.evaluate(
+    ({ count, input }) => (window as any).__harness.stepFrames(count, input),
+    { count, input },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 1. Movement cost table fixtures (uses the real loaded DB via the harness).
 // ---------------------------------------------------------------------------
@@ -233,58 +240,85 @@ test.describe('line of sight', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('canto movement-left semantics', () => {
-  test('movementLeft equals full MOV before any move, and the remainder after moving', async ({ page }) => {
+  test('player movement is action-backed with exact movement budget undo and redo', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
+    await stepFrames(page, 5);
 
-    const result = await page.evaluate(async () => {
+    const selected = await page.evaluate(() => {
       const g = (window as any).__gameRef;
-      const { PathSystem } = await import('/src/pathfinding/path-system.ts');
       const eirika = g.units.get('Eirika');
-      const mov = eirika.getStatValue('MOV');
+      if (!eirika?.position) return false;
+      eirika.resetTurnState();
+      g.cursor.setPos(eirika.position[0], eirika.position[1]);
+      return true;
+    });
+    expect(selected).toBe(true);
 
-      const before = eirika.movementLeft;
+    await stepFrames(page, 1, 'SELECT');
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('move');
 
-      // Simulate a move using the real PathSystem + board, then apply the
-      // same movementLeft bookkeeping MoveState does (game-states.ts).
-      const pathSystem: any = new PathSystem(g.db);
-      const validMoves = pathSystem.getValidMoves(eirika, g.board);
-      // Pick a reachable tile that isn't the unit's own position, if any.
-      const dest = validMoves.find(
-        ([x, y]: [number, number]) => x !== eirika.position[0] || y !== eirika.position[1],
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      const origin: [number, number] = [...eirika.position];
+      const destination = g.pathSystem.getValidMoves(eirika, g.board).find(
+        ([x, y]: [number, number]) =>
+          (x !== origin[0] || y !== origin[1]) && !g.board.getUnit(x, y),
       );
+      if (!destination) return null;
+      const path = g.pathSystem.getPath(eirika, destination[0], destination[1], g.board);
+      const cost = path ? g.pathSystem.getPathCost(eirika, path, g.board) : 0;
+      g.cursor.setPos(destination[0], destination[1]);
+      return { origin, destination, before: eirika.movementLeft, cost };
+    });
+    expect(setup).not.toBeNull();
 
-      let after = null;
-      let costSpent = null;
-      let resetAfter = null;
-      if (dest) {
-        const origin = [eirika.position[0], eirika.position[1]];
-        const path = pathSystem.getPath(eirika, dest[0], dest[1], g.board);
-        g.board.moveUnit(eirika, dest[0], dest[1]);
-        eirika.hasMoved = true;
-        if (path) {
-          costSpent = pathSystem.getPathCost(eirika, path, g.board);
-          eirika.movementLeft = Math.max(0, eirika.movementLeft - costSpent);
-        }
-        after = eirika.movementLeft;
+    await stepFrames(page, 1, 'SELECT');
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
+      if (state === 'menu') break;
+      await stepFrames(page, 1);
+    }
 
-        // Turn reset restores full MOV (Python action.Reset.do()).
-        eirika.resetTurnState();
-        resetAfter = eirika.movementLeft;
-
-        // Put the unit back where the test found it.
-        g.board.moveUnit(eirika, origin[0], origin[1]);
-        eirika.hasMoved = false;
-      }
-
-      return { mov, before, after, costSpent, resetAfter, hadDest: !!dest };
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      const moved = {
+        position: [...unit.position],
+        movementLeft: unit.movementLeft,
+        hasMoved: unit.hasMoved,
+      };
+      const moveAction = g.actionLog.undo();
+      const undone = {
+        action: moveAction?.constructor?.name ?? null,
+        position: [...unit.position],
+        movementLeft: unit.movementLeft,
+        hasMoved: unit.hasMoved,
+      };
+      moveAction?.execute();
+      const redone = {
+        position: [...unit.position],
+        movementLeft: unit.movementLeft,
+        hasMoved: unit.hasMoved,
+      };
+      moveAction?.reverse();
+      g.actionLog.undo(); // remove the action-group start marker
+      return { moved, undone, redone };
     });
 
-    expect(result.before).toBe(result.mov); // full MOV before any move this turn
-    expect(result.hadDest).toBe(true);
-    expect(result.after).toBe(Math.max(0, result.mov - (result.costSpent ?? 0)));
-    expect(result.after).toBeLessThanOrEqual(result.mov);
-    expect(result.resetAfter).toBe(result.mov); // reset restores full MOV
+    expect(result.moved).toEqual({
+      position: setup!.destination,
+      movementLeft: Math.max(0, setup!.before - setup!.cost),
+      hasMoved: true,
+    });
+    expect(result.undone).toEqual({
+      action: 'MoveAction',
+      position: setup!.origin,
+      movementLeft: setup!.before,
+      hasMoved: false,
+    });
+    expect(result.redone).toEqual(result.moved);
   });
 
   test('a canto re-move is bounded by leftover MOV, not full MOV', async ({ page }) => {
