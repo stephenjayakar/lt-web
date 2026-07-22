@@ -268,7 +268,7 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
       return 'ok';
     });
     expect(opened).toBe('ok');
-    await stepFrames(page, 8);
+    await stepFrames(page, 16);
     const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
     expect(state).toBe('base_library');
   });
@@ -286,7 +286,7 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
       g.eventManager.triggerSpecific('TestCredits', { type: 'TestCredits' }, true);
       g.state.change('event');
     });
-    await stepFrames(page, 8);
+    await stepFrames(page, 16);
     const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
     expect(state).toBe('credit');
   });
@@ -305,7 +305,7 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
       g.eventManager.triggerSpecific('TestSoundroom', { type: 'TestSoundroom' }, true);
       g.state.change('event');
     });
-    await stepFrames(page, 8);
+    await stepFrames(page, 16);
     const state = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
     expect(state).toBe('base_sound_room');
   });
@@ -1050,7 +1050,7 @@ test.describe('Event command batch 3n (open_bexp_menu)', () => {
       g.eventManager.triggerSpecific('TestBexp', { type: 'TestBexp' }, true);
       g.state.change('event');
     });
-    await stepFrames(page, 6);
+    await stepFrames(page, 14);
     const select = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       const st: any = g.state.getCurrentState();
@@ -1173,7 +1173,7 @@ test.describe('Event command batch 3p (open_unit_management)', () => {
       g.eventManager.triggerSpecific('TestManage', { type: 'TestManage' }, true);
       g.state.change('event');
     });
-    await stepFrames(page, 6);
+    await stepFrames(page, 14);
     const nav = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       const st: any = g.state.getCurrentState();

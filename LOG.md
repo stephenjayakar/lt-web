@@ -122,12 +122,12 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
-- **Event presentation flags:** `end_skip` restores ordinary blocking after
-  skip mode; transitions continue fading under `no_block`; portrait and cursor
-  commands now distinguish blocking, `no_block`, and `immediate` behavior;
-  nonblocking speak/say/narrate dialogs dispatch onward and auto-close after
-  typing. Portrait movement uses Python's distance step and speed multiplier.
-  Focused regressions contrast blocking and nonblocking paths.
+- **Event command flag parity complete:** `end_skip` restores normal blocking;
+ transitions, dialogs, portraits, camera commands, unit/group/overworld movement,
+ death, EXP, map animations, overlay sprites, and event-owned menu entry now
+ distinguish their Python blocking, `no_block`, `immediate`, `silent`, and skip
+ boundaries. No-banner mutations remain action-backed. The focused suite covers
+ blocking and nonblocking command chaining across all presentation categories.
 
 - **Deferred trigger paths complete:** wired `event_after_initiated_combat`
   through the real attacker/strike-partner skill-before-item combat lifecycle,

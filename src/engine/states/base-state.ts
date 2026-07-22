@@ -1690,7 +1690,7 @@ export function handleBaseEventCommand(cmd: string, args: string[], game: any): 
 // BEXP states — Python base.py BaseBEXPSelectState / BaseBEXPAllocateState
 // ============================================================================
 
-import { GainExpAction, SpendBexpAction } from '../action';
+import { Action, GainExpAction, SpendBexpAction } from '../action';
 import { evaluateEquation } from '../../combat/combat-calcs';
 
 /** Bexp needed for this unit's next full level (Python determine_needed_bexp). */
@@ -1835,14 +1835,18 @@ export class BaseBexpAllocateState extends State {
 // ============================================================================
 
 /** Reversible single-unit party reassignment used by the transfer confirm. */
-class SetUnitPartyAction {
-  private unit: any;
+class SetUnitPartyAction extends Action {
+  private unit: { party: string };
   private next: string;
-  private prev = '';
-  constructor(unit: any, next: string) {
+  private prev: string;
+
+  constructor(unit: { party: string }, next: string) {
+    super();
     this.unit = unit;
     this.next = next;
+    this.prev = unit.party;
   }
+
   execute(): void { this.prev = this.unit.party; this.unit.party = this.next; }
   reverse(): void { this.unit.party = this.prev; }
 }
@@ -1906,7 +1910,7 @@ export class PartyTransferState extends State {
     for (const [nid, party] of this.staged) {
       const unit = game.units.get(nid);
       if (unit && unit.party !== party) {
-        game.actionLog.doAction(new SetUnitPartyAction(unit, party) as any);
+        game.actionLog.doAction(new SetUnitPartyAction(unit, party));
       }
     }
     game.state.back();

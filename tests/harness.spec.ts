@@ -6149,7 +6149,7 @@ test.describe('Sacred Stones Chapter Mechanics', () => {
     await stepFrames(page, 2, 'SELECT');
 
     // Let seize event + level transition run.
-    for (let i = 0; i < 1400; i++) {
+    for (let i = 0; i < 2500; i++) {
       await stepFrames(page, 2, i % 3 === 0 ? 'SELECT' : null);
       const state = await getState(page);
       if (state.levelNid === '4') break;

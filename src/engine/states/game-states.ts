@@ -8,6 +8,7 @@
  */
 
 import { State, MapState, type StateResult } from '../state';
+import type { GameState } from '../game-state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import {
@@ -22,7 +23,13 @@ import { viewport, isSmallScreen } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
-import type { RegionData, DifficultyMode } from '../../data/types';
+import type {
+  RegionData,
+  DifficultyMode,
+  UnitGroupData,
+  UniqueUnitData,
+  GenericUnitData,
+} from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
 import { evaluateCondition, evaluateExpression, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
@@ -7374,6 +7381,14 @@ type EventLevelUpPresentation = {
   screen: LevelUpScreenClass;
 };
 
+type EventOverlaySprite = {
+  nid: string;
+  image: HTMLImageElement | null;
+  position: [number, number];
+  zLevel: number;
+  foreground: boolean;
+};
+
 /** Maximum instant commands processed per frame to prevent infinite loops. */
 const MAX_BURST = 100;
 
@@ -7405,6 +7420,7 @@ export class EventState extends State {
   private waitingForCamera: boolean = false;
   private cameraWaitStartsFlicker: boolean = false;
   private cursorFlickerTimer: number = 0;
+  private blockingEventMovements: number = 0;
   /** Non-combat Python ExpState level screen owned by the command that opened it. */
   private levelUpPresentation: EventLevelUpPresentation | null = null;
 
@@ -7418,6 +7434,7 @@ export class EventState extends State {
   private transitionBlocksCommands: boolean = true;
   private transitionColor: string = '0,0,0';    // fade color as "r,g,b"
 
+  private stateAfterTransition: string | null = null;
   // Choice menu state
   private choiceMenu: ChoiceMenu | null = null;
   private choiceResult: string | null = null;
@@ -7433,6 +7450,7 @@ export class EventState extends State {
   private portraitPriorityCounter: number = 1;
   /** Count of portrait image loads in flight — blocks command processing until 0. */
   private pendingPortraitLoads: number = 0;
+  private overlaySprites: Map<string, EventOverlaySprite> = new Map();
 
   // Currently speaking portrait (for talk animation)
   private speakingPortrait: EventPortrait | null = null;
@@ -7526,6 +7544,7 @@ export class EventState extends State {
       this.waitingForCamera = false;
       this.cameraWaitStartsFlicker = false;
       this.cursorFlickerTimer = 0;
+      this.blockingEventMovements = 0;
       // If starting from a level transition, keep the screen black so
       // chapter_title + transition;Open work as expected. Otherwise reset.
       if (!this.startWithBlackScreen) {
@@ -7537,6 +7556,7 @@ export class EventState extends State {
       this.transitionFadingIn = false;
       this.transitionFadingOut = false;
       this.transitionHoldBlack = false;
+      this.stateAfterTransition = null;
       this.choiceMenu = null;
       this.choiceResult = null;
       this.forLoopStack = [];
@@ -7544,6 +7564,7 @@ export class EventState extends State {
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
+      this.overlaySprites.clear();
       this.speakingPortrait = null;
       this.wasDialogTyping = false;
       this.background = null;
@@ -7747,6 +7768,10 @@ export class EventState extends State {
       return;
     }
 
+    if (this.blockingEventMovements > 0) {
+      return;
+    }
+
 
     // --- Handle active blocking UI elements first ---
 
@@ -7842,7 +7867,13 @@ export class EventState extends State {
         this.transitionFadingIn = false;
         this.transitionHoldBlack = true;
         if (this.transitionBlocksCommands) {
+          const nextState = this.stateAfterTransition;
+          this.stateAfterTransition = null;
           this.advancePointer();
+          if (nextState) {
+            game.state.change(nextState);
+            return;
+          }
         }
       } else {
         this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / this.transitionDurationMs);
@@ -7850,7 +7881,13 @@ export class EventState extends State {
           this.transitionFadingIn = false;
           this.transitionHoldBlack = true;
           if (this.transitionBlocksCommands) {
+            const nextState = this.stateAfterTransition;
+            this.stateAfterTransition = null;
             this.advancePointer();
+            if (nextState) {
+              game.state.change(nextState);
+              return;
+            }
           }
           // Don't return — allow burst to continue while holding black
         } else if (this.transitionBlocksCommands) {
@@ -8059,6 +8096,8 @@ export class EventState extends State {
       portrait.draw(surf);
     }
 
+    this.drawEventOverlaySprites(surf, false);
+
     // Ending cards persist independently of the currently blocking dialog.
     if (this.endingCard) {
       surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(12,8,32,0.96)');
@@ -8148,6 +8187,8 @@ export class EventState extends State {
     if (this.levelUpPresentation) {
       this.levelUpPresentation.screen.draw(surf, performance.now());
     }
+
+    this.drawEventOverlaySprites(surf, true);
 
     return surf;
   }
@@ -8520,6 +8561,30 @@ export class EventState extends State {
     return null;
   }
 
+  /** Start a path-backed event move, keeping board occupancy at the destination. */
+  private beginEventMove(
+    unit: UnitObject,
+    target: [number, number],
+    speedMs: number,
+    game: GameState,
+    onComplete: () => void,
+  ): boolean {
+    if (!unit.position || !game.board || !game.pathSystem) return false;
+    const path = game.pathSystem.getPath(unit, target[0], target[1], game.board);
+    if (!path || path.length <= 1) {
+      game.board.moveUnit(unit, target[0], target[1]);
+      return false;
+    }
+    game.board.moveUnit(unit, target[0], target[1]);
+    game.movementSystem.beginMove(
+      unit,
+      path,
+      1000 / Math.max(1, speedMs),
+      onComplete,
+    );
+    return true;
+  }
+
   /** Parse LT's comma-delimited key/value number records (for example HP,5,STR,-1). */
   private parseNumberRecord(source: string): Record<string, number> {
     const record: Record<string, number> = {};
@@ -8539,6 +8604,47 @@ export class EventState extends State {
       if (Number.isFinite(value)) record[key] = value;
     }
     return record;
+  }
+
+  /** Open an event-owned state directly or after the standard fade-to-black. */
+  private openStateWithTransition(
+    targetState: string,
+    commandArgs: string[],
+    game: GameState,
+  ): boolean {
+    const immediate = commandArgs.some(arg => arg.toLowerCase().trim() === 'immediate');
+    if (immediate || this.skipMode) {
+      this.advancePointer();
+      game.state.change(targetState);
+      return true;
+    }
+    this.stateAfterTransition = targetState;
+    this.transitionBlocksCommands = true;
+    this.transitionFadingIn = true;
+    this.transitionFadingOut = false;
+    this.transitionHoldBlack = false;
+    this.transitionDurationMs = 133;
+    this.transitionAlpha = 0;
+    return true;
+  }
+
+  private drawEventOverlaySprites(surf: Surface, foreground: boolean): void {
+    const overlays = [...this.overlaySprites.values()]
+      .filter(overlay => overlay.foreground === foreground && overlay.image)
+      .sort((left, right) => left.zLevel - right.zLevel);
+    for (const overlay of overlays) {
+      const image = overlay.image;
+      if (!image) continue;
+      surf.blitImage(
+        image,
+        0,
+        0,
+        image.width,
+        image.height,
+        overlay.position[0],
+        overlay.position[1],
+      );
+    }
   }
 
   /**
@@ -8944,64 +9050,110 @@ export class EventState extends State {
       // ----- Unit commands (instant) -----
 
       case 'move_unit': {
-        // move_unit;UnitNid;x,y  or  move_unit;UnitNid (uses starting_position)
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit && game.board) {
-          let targetPos: [number, number] | null = null;
-          // Try parsing explicit position
-          const posStr = args[1] ?? '';
-          if (posStr) {
-            const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
-            if (posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
-              targetPos = [posParts[0], posParts[1]];
-            }
-          }
-          // Fallback to starting position if no explicit position given
-          if (!targetPos && unit.startingPosition) {
-            targetPos = [unit.startingPosition[0], unit.startingPosition[1]];
-          }
-          if (targetPos) {
-            game.board.moveUnit(unit, targetPos[0], targetPos[1]);
+        let targetPos: [number, number] | null = null;
+        const posStr = args[1] ?? '';
+        if (posStr) {
+          const posParts = posStr.split(',').map((part: string) => parseInt(part.trim(), 10));
+          if (posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
+            targetPos = [posParts[0], posParts[1]];
           }
         }
-        this.advancePointer();
-        return false;
-      }
-
-      case 'add_unit': {
-        // add_unit;unit_nid;x,y  or  add_unit;unit_nid;starting
-        const unitNid = args[0] ?? '';
-        const posArg = args[1] ?? 'starting';
-
-        // Skip if unit already exists in the game
-        if (game.units.has(unitNid)) {
+        if (!targetPos && unit?.startingPosition) {
+          targetPos = [unit.startingPosition[0], unit.startingPosition[1]];
+        }
+        if (!unit || !unit.position || !targetPos || !game.board) {
           this.advancePointer();
           return false;
         }
 
-        // Look up unit data from the level definition
+        const movementType = (args[2] || 'normal').toLowerCase();
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        const noFollow = args.some(arg => arg.toLowerCase().trim() === 'no_follow');
+        const parsedSpeed = parseInt(args[4] ?? '', 10);
+        const speedMs = Number.isFinite(parsedSpeed) && parsedSpeed > 0 ? parsedSpeed : 120;
+        if (!noFollow) game.camera?.focusTile(targetPos[0], targetPos[1]);
+        if (this.skipMode || movementType === 'immediate') {
+          game.board.moveUnit(unit, targetPos[0], targetPos[1]);
+          this.advancePointer();
+          return false;
+        }
+        if (movementType !== 'normal') {
+          game.board.moveUnit(unit, targetPos[0], targetPos[1]);
+          if (noBlock) {
+            this.advancePointer();
+            return false;
+          }
+          this.waiting = true;
+          this.waitTimer = 333;
+          return true;
+        }
+
+        const blocks = !noBlock;
+        if (blocks) this.blockingEventMovements = 1;
+        const started = this.beginEventMove(unit, targetPos, speedMs, game, () => {
+          if (blocks) {
+            this.blockingEventMovements = 0;
+            this.advancePointer();
+          }
+        });
+        if (!started) {
+          this.blockingEventMovements = 0;
+          this.advancePointer();
+          return false;
+        }
+        if (noBlock) {
+          this.advancePointer();
+          return false;
+        }
+        return true;
+      }
+
+      case 'add_unit': {
+        const unitNid = args[0] ?? '';
+        const posArg = args[1] ?? 'starting';
+        const placement = (args[3] || 'giveup').toLowerCase().trim();
+        const existing = game.units.get(unitNid);
+        if (existing?.position || existing?.isDead()) {
+          this.advancePointer();
+          return false;
+        }
+
+        let requestedPosition: [number, number] | null = null;
+        if (posArg !== 'starting' && posArg !== '' && posArg !== 'immediate') {
+          const parts = posArg.split(',').map((part: string) => parseInt(part.trim(), 10));
+          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            requestedPosition = [parts[0], parts[1]];
+          }
+        }
+
+        if (existing) {
+          requestedPosition ??= existing.startingPosition
+            ? [existing.startingPosition[0], existing.startingPosition[1]]
+            : null;
+          const finalPosition = requestedPosition
+            ? this._checkPlacement(requestedPosition, placement, game)
+            : null;
+          if (finalPosition && game.board) {
+            game.board.moveUnit(existing, finalPosition[0], finalPosition[1]);
+          } else {
+            console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
+          }
+          this.advancePointer();
+          return false;
+        }
+
         const levelUnits = game.currentLevel?.units ?? [];
-        const unitData = levelUnits.find((u: any) => u.nid === unitNid);
+        const unitData = levelUnits.find(
+          (candidate: UniqueUnitData | GenericUnitData) => candidate.nid === unitNid,
+        );
         if (!unitData) {
           console.warn(`EventState add_unit: unit "${unitNid}" not found in level data`);
           this.advancePointer();
           return false;
         }
-
-        // Determine position override
-        let posOverride: [number, number] | null = null;
-        if (posArg !== 'starting' && posArg !== '' && posArg !== 'immediate') {
-          const cleanPos = posArg.replace(/;.*/, ''); // strip trailing modifiers like ;immediate;stack
-          const parts = cleanPos.split(',').map((s: string) => parseInt(s.trim(), 10));
-          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            posOverride = [parts[0], parts[1]];
-          }
-        }
-
-        // Spawn the unit — handle both unique and generic
-        this.spawnUnitFromLevelData(unitData, posOverride, game);
-
+        this.spawnUnitFromLevelData(unitData, requestedPosition, game);
         this.advancePointer();
         return false;
       }
@@ -9255,18 +9407,12 @@ export class EventState extends State {
       }
 
       case 'open_unit_management': {
-        // open_unit_management;Panorama (Python :3481): pause into the base
-        // manage flow (web subset: Trade + Supply; Restock/Give all/Optimize/
-        // Use/Market are documented deviations).
+        // open_unit_management;Panorama — pause into the base manage flow.
         if (args[0]) game.memory.set('base_bg', args[0]);
-        this.advancePointer();
-        game.state.change('base_manage');
-        return true;
+        return this.openStateWithTransition('base_manage', args, game);
       }
 
       case 'party_transfer': {
-        // party_transfer;P1;P2;FixedUnits;P1Name;P2Name;P1Limit;P2Limit
-        // (Python :3960): pause into the dual-roster transfer state.
         const [p1, p2] = [args[0] ?? '', args[1] ?? ''];
         if (!game.parties.has(p1) || !game.parties.has(p2)) {
           console.warn(`party_transfer: unknown party ${!game.parties.has(p1) ? p1 : p2}`);
@@ -9284,20 +9430,16 @@ export class EventState extends State {
       }
 
       case 'open_bexp_menu': {
-        // open_bexp_menu;Panorama;Music (Python :3517): pause into the BEXP
-        // select/allocate flow.
         if (args[0]) game.memory.set('base_bg', args[0]);
-        if (args[1]) game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_bexp_menu_music', args[1]));
-        this.advancePointer();
-        game.state.change('base_bexp_select');
-        return true;
+        if (args[1]) {
+          game.actionLog.doAction(
+            new SetGameVarAction(game.gameVars, '_bexp_menu_music', args[1]),
+          );
+        }
+        return this.openStateWithTransition('base_bexp_select', args, game);
       }
 
       case 'pose_unit': {
-        // pose_unit;Unit;Pose;[Direction] (Python event_functions.py:1231).
-        // Pose map: normal -> clear override; active -> standing;
-        // moving/stand_dir -> moving with required direction. start_cast/
-        // end_cast have no web map-sprite frames (documented deferral).
         const unit = game.units.get(args[0] ?? '');
         const pose = (args[1] ?? '').toLowerCase();
         const dir = (args[2] ?? '').toLowerCase();
@@ -9307,10 +9449,10 @@ export class EventState extends State {
           console.warn(`pose_unit: couldn't find ${args[0]}`);
         } else if (!validPoses.includes(pose)) {
           console.warn(`pose_unit: ${pose} is not a valid sprite pose`);
-        } else if ((pose === 'moving' || pose === 'stand_dir') && !validDirs.includes(dir)) {
-          console.warn(`pose_unit: direction required/invalid for ${pose}`);
         } else if (pose === 'start_cast' || pose === 'end_cast') {
           console.warn(`pose_unit: ${pose} not supported by web map sprites (deferred)`);
+        } else if ((pose === 'moving' || pose === 'stand_dir') && !validDirs.includes(dir)) {
+          console.warn(`pose_unit: ${dir} is not a valid direction`);
         } else if (pose === 'normal') {
           unit.poseOverride = null;
         } else if (pose === 'active') {
@@ -9492,6 +9634,12 @@ export class EventState extends State {
           game.actionLog.doAction(new AddAnimToUnitAction(game, anim));
         } else if (game.tilemap) {
           game.tilemap.animations.push(anim);
+        }
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        if (!permanent && !noBlock && !this.skipMode) {
+          this.waiting = true;
+          this.waitTimer = Math.max(FRAMETIME, anim.getDuration());
+          return true;
         }
         this.advancePointer();
         return false;
@@ -9755,38 +9903,33 @@ export class EventState extends State {
 
       case 'open_library':
       case 'open_guide': {
-        // Python (:3431/:3444): only opens when matching unlocked lore exists.
-        // Web deviation: 'immediate' vs transition-deferred entry both enter
-        // directly (no transition-state indirection in this port).
         const wantGuide = cmd.type === 'open_guide';
         const unlocked: Set<string> = new Set(game.unlockedLore ?? []);
         const hasMatching = [...(game.db.lore?.values?.() ?? [])].some(
           (lore: any) => unlocked.has(lore.nid) && (lore.category === 'Guide') === wantGuide,
         );
-        this.advancePointer();
-        if (!hasMatching) return false;
-        game.state.change(wantGuide ? 'base_guide' : 'base_library');
-        return true;
+        if (!hasMatching) {
+          this.advancePointer();
+          return false;
+        }
+        return this.openStateWithTransition(
+          wantGuide ? 'base_guide' : 'base_library',
+          args,
+          game,
+        );
       }
 
       case 'open_credits': {
-        // open_credits;Panorama;flags (Python :3457) — pause into the credit state
         if (args[0]) game.memory.set('base_bg', args[0]);
-        this.advancePointer();
-        game.state.change('credit');
-        return true;
+        return this.openStateWithTransition('credit', args, game);
       }
 
       case 'soundroom': {
-        // soundroom;Panorama (Python :3554) — pause into the sound room
         if (args[0]) game.memory.set('base_bg', args[0]);
-        this.advancePointer();
-        game.state.change('base_sound_room');
-        return true;
+        return this.openStateWithTransition('base_sound_room', args, game);
       }
 
       case 'open_trade': {
-        // open_trade;Unit1;Unit2 (Python :3496) — direct trade between two units
         const unitA = game.units.get(args[0] ?? '');
         const unitB = game.units.get(args[1] ?? '');
         this.advancePointer();
@@ -9801,21 +9944,18 @@ export class EventState extends State {
       }
 
       case 'set_skill_data': {
-        // set_skill_data;GlobalUnit;Skill;Nid;Expression (Python event_functions.py:2158)
         const unitNid = args[0] ?? '';
         const skillNid = args[1] ?? '';
         const dataKey = args[2] ?? '';
         const rawExpr = args[3] ?? '';
         const unit = game.units.get(unitNid);
-        const skill = unit?.skills?.find((s: any) => s.nid === skillNid);
+        const skill = unit?.skills?.find((candidate: SkillObject) => candidate.nid === skillNid);
         if (!unit || !skill || !dataKey) {
           console.warn(`set_skill_data: invalid unit/skill/key (${unitNid}/${skillNid}/${dataKey})`);
           this.advancePointer();
           return false;
         }
-        // Python evaluates a full expression; the web supports numeric/bool
-        // literals plus already-{e:}-substituted values (documented deviation).
-        let value: any = rawExpr;
+        let value: unknown = rawExpr;
         if (/^-?\d+(\.\d+)?$/.test(rawExpr)) value = Number(rawExpr);
         else if (rawExpr === 'True' || rawExpr === 'true') value = true;
         else if (rawExpr === 'False' || rawExpr === 'false') value = false;
@@ -9957,26 +10097,24 @@ export class EventState extends State {
       case 'kill_unit': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
+        const wasOnMap = !!unit?.position;
         if (unit) {
-          // Remove from initiative tracker if active
-          if (game.initiative) {
-            game.initiative.removeUnit(unit);
-          }
+          if (game.initiative) game.initiative.removeUnit(unit);
           unit.dead = true;
           unit.currentHp = 0;
-          if (game.board) {
-            game.board.removeUnit(unit);
-          }
+          if (game.board) game.board.removeUnit(unit);
         }
-        this.advancePointer();
-        return false;
+        const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
+        if (this.skipMode || immediate || !wasOnMap) {
+          this.advancePointer();
+          return false;
+        }
+        this.waiting = true;
+        this.waitTimer = 500;
+        return true;
       }
 
       case 'add_group': {
-        // add_group;GroupNid;StartingGroup;EntryType;Placement
-        // StartingGroup: empty=group's own positions, 'starting'=unit.startingPosition,
-        //   'x,y'=literal coords (all units), or another group NID's positions
-        // EntryType: fade (default), immediate, warp, swoosh
         // Placement: giveup (default), stack, closest, push
         const groupNid = args[0] ?? '';
         const startingGroup = args[1] ?? '';
@@ -10030,77 +10168,103 @@ export class EventState extends State {
       }
 
       case 'spawn_group': {
-        // spawn_group;GroupNid;CardinalDirection;StartingGroup;MovementType;Placement
-        // Units appear at map edge, then walk to their destination position.
         const groupNid = args[0] ?? '';
         const direction = (args[1] ?? 'south').toLowerCase().trim();
         const startingGroup = args[2] ?? '';
-        // args[3] = movement type (normal/immediate/warp/fade; all treated as immediate for now)
+        const movementType = (args[3] || 'normal').toLowerCase().trim();
         const placement = (args[4] ?? 'giveup').toLowerCase().trim();
-        const groups: any[] = game.currentLevel?.unit_groups ?? [];
-        const group = groups.find((g: any) => g.nid === groupNid);
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        const noFollow = args.some(arg => arg.toLowerCase().trim() === 'no_follow');
+        const groups = game.currentLevel?.unit_groups ?? [];
+        const group = groups.find((groupCandidate: UnitGroupData) => groupCandidate.nid === groupNid);
         if (!group) {
           console.warn(`EventState spawn_group: group "${groupNid}" not found`);
           this.advancePointer();
           return false;
         }
 
-        const unitNids: string[] = group.units ?? [];
         const levelUnits = game.currentLevel?.units ?? [];
-        const tilemap = game.tilemap;
-        const mapW = tilemap?.width ?? 20;
-        const mapH = tilemap?.height ?? 20;
-
-        for (const uNid of unitNids) {
-          const existing = this.findUnit(uNid);
+        const mapW = game.tilemap?.width ?? 20;
+        const mapH = game.tilemap?.height ?? 20;
+        const moves: Array<{ unit: UnitObject; target: [number, number] }> = [];
+        for (const unitNid of group.units) {
+          const existing = this.findUnit(unitNid);
           if (existing?.position || existing?.isDead()) continue;
+          const destination = this._getGroupPosition(
+            startingGroup,
+            unitNid,
+            group,
+            groups,
+            game,
+          );
+          if (!destination) continue;
+          const finalDestination = this._checkPlacement(destination, placement, game);
+          if (!finalDestination) continue;
 
-          const destPos = this._getGroupPosition(startingGroup, uNid, group, groups, game);
-          if (!destPos) continue;
+          let edgePosition: [number, number];
+          if (direction === 'north') edgePosition = [finalDestination[0], 0];
+          else if (direction === 'south') edgePosition = [finalDestination[0], mapH - 1];
+          else if (direction === 'west') edgePosition = [0, finalDestination[1]];
+          else edgePosition = [mapW - 1, finalDestination[1]];
 
-          const finalDest = this._checkPlacement(destPos, placement, game);
-          if (!finalDest) continue;
-
-          // Compute edge spawn position
-          let edgePos: [number, number];
-          if (direction === 'north') {
-            edgePos = [finalDest[0], 0];
-          } else if (direction === 'south') {
-            edgePos = [finalDest[0], mapH - 1];
-          } else if (direction === 'west') {
-            edgePos = [0, finalDest[1]];
-          } else {
-            edgePos = [mapW - 1, finalDest[1]]; // east
-          }
-
-          // Spawn or place the unit at the edge first
           if (!existing) {
-            let unitData = levelUnits.find((u: any) => u.nid === uNid);
+            let unitData = levelUnits.find(
+              (candidate: UniqueUnitData | GenericUnitData) => candidate.nid === unitNid,
+            );
             if (!unitData) {
-              const dbUnit = game.db.units.get(uNid);
-              if (dbUnit) {
-                unitData = { ...dbUnit, generic: false, team: 'enemy', ai: 'Normal' };
-              } else {
-                continue;
-              }
+              const dbUnit = game.db.units.get(unitNid);
+              if (!dbUnit) continue;
+              unitData = { ...dbUnit, generic: false, team: 'enemy', ai: 'Normal' };
             }
-            this.spawnUnitFromLevelData(unitData, edgePos, game);
+            this.spawnUnitFromLevelData(unitData, edgePosition, game);
           } else {
-            if (game.board) {
-              game.board.moveUnit(existing, edgePos[0], edgePos[1]);
-            }
+            game.board?.moveUnit(existing, edgePosition[0], edgePosition[1]);
           }
 
-          // Now move the unit from edge to destination
-          const spawnedUnit = this.findUnit(uNid);
-          if (spawnedUnit && game.board) {
-            game.board.moveUnit(spawnedUnit, finalDest[0], finalDest[1]);
+          const spawnedUnit = this.findUnit(unitNid);
+          if (!spawnedUnit || !game.board) continue;
+          if (this.skipMode || movementType !== 'normal') {
+            game.board.moveUnit(spawnedUnit, finalDestination[0], finalDestination[1]);
+          } else {
+            moves.push({ unit: spawnedUnit, target: finalDestination });
           }
         }
-        // TODO: In Python, spawn_group pauses for movement animation unless no_block.
-        // For now, units teleport instantly. Movement animation can be added later.
-        this.advancePointer();
-        return false;
+
+        if (moves.length === 0) {
+          this.advancePointer();
+          return false;
+        }
+        if (!noFollow) {
+          const target = moves[moves.length - 1].target;
+          game.camera?.focusTile(target[0], target[1]);
+        }
+        const blocks = !noBlock;
+        if (blocks) this.blockingEventMovements = moves.length;
+        let startedMoves = 0;
+        for (const move of moves) {
+          const started = this.beginEventMove(move.unit, move.target, 120, game, () => {
+            if (blocks) {
+              this.blockingEventMovements--;
+              if (this.blockingEventMovements === 0) this.advancePointer();
+            }
+          });
+          if (started) startedMoves++;
+          else if (blocks) this.blockingEventMovements--;
+        }
+        if (startedMoves === 0) {
+          this.blockingEventMovements = 0;
+          this.advancePointer();
+          return false;
+        }
+        if (noBlock) {
+          this.advancePointer();
+          return false;
+        }
+        if (this.blockingEventMovements === 0) {
+          this.advancePointer();
+          return false;
+        }
+        return true;
       }
 
       case 'remove_group': {
@@ -10128,27 +10292,75 @@ export class EventState extends State {
       }
 
       case 'move_group': {
-        // move_group;GroupNid;StartingGroup;MovementType;Placement
         const groupNid = args[0] ?? '';
         const startingGroup = args[1] ?? '';
-        // args[2] = movement type (ignored — all teleport for now)
+        const movementType = (args[2] || 'normal').toLowerCase().trim();
         const placement = (args[3] ?? 'giveup').toLowerCase().trim();
-        const groups: any[] = game.currentLevel?.unit_groups ?? [];
-        const group = groups.find((g: any) => g.nid === groupNid);
-        if (group && game.board) {
-          const unitNids: string[] = group.units ?? [];
-          for (const uNid of unitNids) {
-            const unit = this.findUnit(uNid);
-            if (!unit?.position) continue; // skip units not on map
-            const destPos = this._getGroupPosition(startingGroup, uNid, group, groups, game);
-            if (!destPos) continue;
-            const finalPos = this._checkPlacement(destPos, placement, game);
-            if (!finalPos) continue;
-            game.board.moveUnit(unit, finalPos[0], finalPos[1]);
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        const noFollow = args.some(arg => arg.toLowerCase().trim() === 'no_follow');
+        const groups = game.currentLevel?.unit_groups ?? [];
+        const group = groups.find((groupCandidate: UnitGroupData) => groupCandidate.nid === groupNid);
+        if (!group || !game.board) {
+          this.advancePointer();
+          return false;
+        }
+
+        const moves: Array<{ unit: UnitObject; target: [number, number] }> = [];
+        for (const unitNid of group.units) {
+          const unit = this.findUnit(unitNid);
+          if (!unit?.position) continue;
+          const destination = this._getGroupPosition(
+            startingGroup,
+            unitNid,
+            group,
+            groups,
+            game,
+          );
+          if (!destination) continue;
+          const finalPosition = this._checkPlacement(destination, placement, game);
+          if (!finalPosition) continue;
+          if (this.skipMode || movementType !== 'normal') {
+            game.board.moveUnit(unit, finalPosition[0], finalPosition[1]);
+          } else {
+            moves.push({ unit, target: finalPosition });
           }
         }
-        this.advancePointer();
-        return false;
+
+        if (moves.length === 0) {
+          this.advancePointer();
+          return false;
+        }
+        if (!noFollow) {
+          const target = moves[moves.length - 1].target;
+          game.camera?.focusTile(target[0], target[1]);
+        }
+        const blocks = !noBlock;
+        if (blocks) this.blockingEventMovements = moves.length;
+        let startedMoves = 0;
+        for (const move of moves) {
+          const started = this.beginEventMove(move.unit, move.target, 120, game, () => {
+            if (blocks) {
+              this.blockingEventMovements--;
+              if (this.blockingEventMovements === 0) this.advancePointer();
+            }
+          });
+          if (started) startedMoves++;
+          else if (blocks) this.blockingEventMovements--;
+        }
+        if (startedMoves === 0) {
+          this.blockingEventMovements = 0;
+          this.advancePointer();
+          return false;
+        }
+        if (noBlock) {
+          this.advancePointer();
+          return false;
+        }
+        if (this.blockingEventMovements === 0) {
+          this.advancePointer();
+          return false;
+        }
+        return true;
       }
 
       // ----- Item / Skill commands (instant) -----
@@ -10459,6 +10671,12 @@ export class EventState extends State {
             unit.exp -= 100;
             unit.levelUp();
           }
+        }
+        const silent = args.some(arg => arg.toLowerCase().trim() === 'silent');
+        if (!silent && !this.skipMode) {
+          this.waiting = true;
+          this.waitTimer = 750;
+          return true;
         }
         this.advancePointer();
         return false;
@@ -12559,20 +12777,30 @@ export class EventState extends State {
       }
 
       case 'reveal_overworld_node': {
-        // args[0] = node NID
         const nodeNid = args[0];
         if (nodeNid && game.overworldController) {
           game.overworldController.enableNode(nodeNid);
+          const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
+          if (!immediate && !this.skipMode) {
+            this.waiting = true;
+            this.waitTimer = 500;
+            return true;
+          }
         }
         this.advancePointer();
         return false;
       }
 
       case 'reveal_overworld_road': {
-        // args[0] = road NID (format "nodeA-nodeB")
         const roadNid = args[0];
         if (roadNid && game.overworldController) {
           game.overworldController.enableRoad(roadNid);
+          const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
+          if (!immediate && !this.skipMode) {
+            this.waiting = true;
+            this.waitTimer = 500;
+            return true;
+          }
         }
         this.advancePointer();
         return false;
@@ -12595,9 +12823,9 @@ export class EventState extends State {
                   owCtrl.movePartyToNode(entityNid, targetNodeNid);
                 },
               });
-              // Block until movement finishes — update loop will unblock
               this.advancePointer();
-              return true;
+              const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+              return !noBlock;
             } else {
               // No path or no movement manager — instant move
               owCtrl.movePartyToNode(entityNid, targetNodeNid);
@@ -12821,12 +13049,60 @@ export class EventState extends State {
         return false;
       }
 
-      case 'draw_overlay_sprite':
-      case 'remove_overlay_sprite':
+      case 'draw_overlay_sprite': {
+        const nid = args[0] ?? '';
+        const spriteNid = args[1] ?? '';
+        const positionParts = (args[2] || '0,0').split(',').map(part => parseInt(part.trim(), 10));
+        const position: [number, number] = [
+          Number.isFinite(positionParts[0]) ? positionParts[0] : 0,
+          Number.isFinite(positionParts[1]) ? positionParts[1] : 0,
+        ];
+        const zLevel = parseInt(args[3] ?? '0', 10) || 0;
+        const animation = (args[4] ?? '').toLowerCase().trim();
+        const speed = parseInt(args[5] ?? '1000', 10) || 1000;
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        const foreground = args.some(arg => arg.toLowerCase().trim() === 'foreground');
+        const overlay: EventOverlaySprite = {
+          nid,
+          image: null,
+          position,
+          zLevel,
+          foreground,
+        };
+        this.overlaySprites.set(nid, overlay);
+        void game.resources.loadSystemSprite(spriteNid)
+          .then((image: HTMLImageElement) => {
+            if (this.overlaySprites.get(nid) === overlay) overlay.image = image;
+          })
+          .catch(() => console.warn(`draw_overlay_sprite: no sprite "${spriteNid}"`));
+        if (animation && !noBlock && !this.skipMode) {
+          this.waiting = true;
+          this.waitTimer = speed;
+          return true;
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_overlay_sprite': {
+        const nid = args[0] ?? '';
+        const animation = (args[1] ?? '').toLowerCase().trim();
+        const speed = parseInt(args[2] ?? '1000', 10) || 1000;
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        this.overlaySprites.delete(nid);
+        if (animation && !noBlock && !this.skipMode) {
+          this.waiting = true;
+          this.waitTimer = speed;
+          return true;
+        }
+        this.advancePointer();
+        return false;
+      }
+
       case 'table':
       case 'remove_table':
       case 'textbox': {
-        // Advanced features not yet implemented — skip
+        console.warn(`${cmd.type}: event UI component is not implemented`);
         this.advancePointer();
         return false;
       }
