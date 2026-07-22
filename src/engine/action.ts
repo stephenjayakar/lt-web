@@ -969,6 +969,53 @@ export class SetCurrentHpAction extends Action {
   }
 }
 
+/** Change current mana by a bounded amount and restore the exact prior state. */
+export class ChangeManaAction extends Action {
+  private unit: UnitObject;
+  private oldMana: number | undefined;
+  private newMana: number;
+
+  constructor(unit: UnitObject, amount: number, maximum: number) {
+    super();
+    this.unit = unit;
+    this.oldMana = unit.currentMana;
+    const current = unit.currentMana ?? maximum;
+    this.newMana = Math.trunc(Math.max(0, Math.min(maximum, current + amount)));
+  }
+
+  execute(): void {
+    this.unit.currentMana = this.newMana;
+  }
+
+  reverse(): void {
+    if (this.oldMana === undefined) delete this.unit.currentMana;
+    else this.unit.currentMana = this.oldMana;
+  }
+}
+
+/** Set current mana to an exact bounded value and restore the exact prior state. */
+export class SetCurrentManaAction extends Action {
+  private unit: UnitObject;
+  private oldMana: number | undefined;
+  private newMana: number;
+
+  constructor(unit: UnitObject, mana: number, maximum: number) {
+    super();
+    this.unit = unit;
+    this.oldMana = unit.currentMana;
+    this.newMana = Math.trunc(Math.max(0, Math.min(maximum, mana)));
+  }
+
+  execute(): void {
+    this.unit.currentMana = this.newMana;
+  }
+
+  reverse(): void {
+    if (this.oldMana === undefined) delete this.unit.currentMana;
+    else this.unit.currentMana = this.oldMana;
+  }
+}
+
 /**
  * HasAttackedAction - Mark a unit as having attacked this turn.
  */

@@ -91,6 +91,8 @@ export class UnitObject {
   /** Accumulated weapon experience per weapon-type NID. */
   wexp: Record<string, number>;
 
+  /** Optional mana pool; absent legacy values fall back to the MANA equation. */
+  currentMana?: number;
   /** Optional renderer-managed map sprite handle. */
   sprite: MapSprite | null;
 

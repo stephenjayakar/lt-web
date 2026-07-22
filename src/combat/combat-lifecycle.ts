@@ -1,20 +1,31 @@
-import { evaluateCondition, type EventManager, type EventTrigger } from '../events/event-manager';
+import {
+  evaluateCondition,
+  evaluateExpression,
+  type EventManager,
+  type EventTrigger,
+} from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
 import type { CombatStrike } from './combat-solver';
 import type { CombatResults } from './map-combat';
 import type { ActionLog } from '../engine/action';
 import {
+  ChangeManaAction,
   SetItemDroppableAction,
   MoveItemBetweenUnitsAction,
   RemoveItemFromUnitAction,
 } from '../engine/action';
+import { evaluateEquation } from './combat-calcs';
 
 interface CombatLifecycleGame {
   eventManager: EventManager | null;
   currentLevel?: { nid: string } | null;
   gameVars?: Map<string, unknown>;
   levelVars?: Map<string, unknown>;
+  actionLog?: Pick<ActionLog, 'doAction'>;
+  db?: {
+    getEquation: (nid: string) => string | undefined;
+  };
 }
 
 interface DroppableGame {
@@ -168,6 +179,44 @@ export function queueAfterInitiatedCombatEvents(
     })) queued++;
   }
   return queued;
+}
+
+/** Apply item end-combat resource hooks once per item that participated. */
+export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
+  if (!game.actionLog || !game.db) return 0;
+  const processed = new Set<ItemObject>();
+  let applied = 0;
+  for (const strike of strikes) {
+    if (processed.has(strike.item)) continue;
+    processed.add(strike.item);
+    const expression = strike.item.getComponent<unknown>('gain_mana_after_combat');
+    if (typeof expression !== 'string' || expression.length === 0) continue;
+    try {
+      const amount = Math.trunc(Number(evaluateExpression(expression, {
+        game,
+        unit1: strike.attacker,
+        unit2: strike.defender,
+        position: strike.attacker.position ?? undefined,
+        item: strike.item,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+      })));
+      if (!Number.isFinite(amount)) continue;
+      const manaExpression = game.db.getEquation('MANA') ?? '0';
+      const maximum = Math.max(
+        0,
+        Math.trunc(evaluateEquation(manaExpression, strike.attacker, {
+          db: game.db as any,
+          item: strike.item,
+        })),
+      );
+      game.actionLog.doAction(new ChangeManaAction(strike.attacker, amount, maximum));
+      applied++;
+    } catch (error) {
+      console.error(`Could not evaluate ${expression}`, error);
+    }
+  }
+  return applied;
 }
 
 /**

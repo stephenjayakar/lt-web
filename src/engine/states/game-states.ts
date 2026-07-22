@@ -75,6 +75,7 @@ import {
   HealAction,
   WeaponUsesAction,
   SetCurrentHpAction,
+  SetCurrentManaAction,
   GainExpAction,
   DeathAction,
   SetUnitExpAction,
@@ -147,6 +148,7 @@ import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import {
   queueAfterInitiatedCombatEvents,
+  applyCombatItemEndHooks,
   queueCombatItemEvents,
   applyDroppableItemPickups,
 } from '../../combat/combat-lifecycle';
@@ -4703,6 +4705,7 @@ export class CombatState extends State {
             );
           }
           this.results = activeCombat.applyResults(game.actionLog);
+          applyCombatItemEndHooks(game, activeCombat.strikes);
           queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
             const stolenItem = this.results.stolenItem;
@@ -11330,7 +11333,12 @@ export class EventState extends State {
         const mana = parseInt(args[1], 10);
         const unit3 = this.findUnit(unitNid3);
         if (unit3 && !isNaN(mana)) {
-          (unit3 as any).currentMana = Math.max(0, mana);
+          const manaExpression = game.db.getEquation('MANA') ?? '0';
+          const maximum = Math.max(
+            0,
+            Math.trunc(evaluateEquation(manaExpression, unit3, { db: game.db })),
+          );
+          game.actionLog.doAction(new SetCurrentManaAction(unit3, mana, maximum));
         }
         this.advancePointer();
         return false;
@@ -12494,6 +12502,7 @@ export class EventState extends State {
               );
             }
             const results = mc.applyResults(game.actionLog);
+            applyCombatItemEndHooks(game, mc.strikes);
             queueCombatItemEvents(game, mc.strikes);
             // Handle deaths
             for (const deadDefender of results.defenderDeaths ??

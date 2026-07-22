@@ -3393,7 +3393,10 @@ test.describe('Event command parity', () => {
       const { UnitObject } = await import('/src/objects/unit.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
       const { MapCombat } = await import('/src/combat/map-combat.ts');
-      const { queueCombatItemEvents } = await import('/src/combat/combat-lifecycle.ts');
+      const {
+        applyCombatItemEndHooks,
+        queueCombatItemEvents,
+      } = await import('/src/combat/combat-lifecycle.ts');
       const template = game.units.get('Eirika');
       const klass = template ? game.db.classes.get(template.klass) : null;
       if (!template || !klass) return null;
@@ -3427,6 +3430,9 @@ test.describe('Event command parity', () => {
       const attacker = makeUnit('_LifecycleAttacker', 'player');
       const defender = makeUnit('_LifecycleDefender', 'enemy');
       attacker.position = [2, 2];
+      attacker.currentMana = 1;
+      const oldManaEquation = game.db.equations.get('MANA');
+      game.db.equations.set('MANA', '10');
       defender.position = [3, 2];
       const item = new ItemObject({
         nid: '_LifecycleEvents', name: '_LifecycleEvents', desc: '', icon_nid: '', icon_index: [0, 0],
@@ -3436,6 +3442,7 @@ test.describe('Event command parity', () => {
           ['event_after_use', eventNids[2]], ['event_after_combat', eventNids[3]],
           ['event_after_combat_on_hit', eventNids[4]],
           ['event_after_combat_even_miss', eventNids[5]],
+          ['gain_mana_after_combat', 'target.level + 2'],
         ],
       });
       attacker.items.push(item);
@@ -3443,6 +3450,17 @@ test.describe('Event command parity', () => {
         attacker, item, defender, null, game.db, 'grandmaster', null, ['hit1', 'miss1'],
       );
       combat.applyResults(game.actionLog);
+      const beforeManaHookIndex = game.actionLog.actionIndex;
+      const manaHookCount = applyCombatItemEndHooks(game, combat.strikes);
+      const manaAfter = attacker.currentMana;
+      const manaActionName = (game.actionLog as any).actions.at(-1)?.constructor.name;
+      (game.actionLog as any).runActionBackward();
+      const manaReversed = attacker.currentMana;
+      (game.actionLog as any).runActionForward();
+      const manaRedone = attacker.currentMana;
+      const manaActionDelta = game.actionLog.actionIndex - beforeManaHookIndex;
+      if (oldManaEquation === undefined) game.db.equations.delete('MANA');
+      else game.db.equations.set('MANA', oldManaEquation);
       const count = queueCombatItemEvents(game, combat.strikes);
       const order = game.eventManager.eventQueue.map((event: any) => event.nid);
       const payloads = game.eventManager.eventQueue.map((event: any) => ({
@@ -3452,10 +3470,30 @@ test.describe('Event command parity', () => {
         attackInfo: event.trigger.localArgs.get('attack_info'),
       }));
       game.state.change('event');
-      return { count, order, payloads };
+      return {
+        count,
+        order,
+        payloads,
+        mana: {
+          manaActionDelta,
+          manaHookCount,
+          manaAfter,
+          manaActionName,
+          manaReversed,
+          manaRedone,
+        },
+      };
     });
     expect(queued).not.toBeNull();
     expect(queued!.count).toBe(6);
+    expect(queued!.mana).toEqual({
+      manaActionDelta: 1,
+      manaHookCount: 1,
+      manaAfter: 4,
+      manaActionName: 'ChangeManaAction',
+      manaReversed: 1,
+      manaRedone: 4,
+    });
     expect(queued!.order).toEqual([
       '_EventOnUse', '_EventOnHit', '_EventAfterUse',
       '_EventAfterCombat', '_EventAfterHit', '_EventAfterAny',
