@@ -2065,6 +2065,7 @@ test.describe('Event command parity', () => {
       const liveUnits = game.board.getAllUnits().filter((other: any) => other.position && !other.isDead());
       const allies = liveUnits.filter((other: any) => game.db.areAllied(unit.team, other.team));
       const enemies = liveUnits.filter((other: any) => !game.db.areAllied(unit.team, other.team));
+      const [ux, uy] = unit.position;
 
       const enemyItem = makeItem('_TargetEnemy', [
         ['target_enemy', null], ['min_range', 0], ['max_range', maxRange],
@@ -2081,11 +2082,22 @@ test.describe('Event command parity', () => {
       const unionItem = makeItem('_TargetUnion', [
         ['target_enemy', null], ['target_ally', null], ['min_range', 0], ['max_range', maxRange],
       ]);
+      const specificPosition: [number, number] = [
+        Math.min(game.board.width - 1, ux + 1),
+        uy,
+      ];
+      const specificItem = makeItem('_TargetSpecific', [
+        [
+          'target_specific_tile',
+          `[[unit.position], [unit.position], [[${specificPosition[0]}, ${specificPosition[1]}]], [[-1, -1]], ["bad"]]`,
+        ],
+        ['min_range', 0],
+        ['max_range', maxRange],
+      ]);
       const parent = makeItem('_TargetMulti', [['multi_item', []]]);
       parent.subitems = [enemyItem, allyItem];
       for (const child of parent.subitems) child.parentItem = parent;
 
-      const [ux, uy] = unit.position;
       const expectedTiles: [number, number][] = [];
       for (let x = 0; x < game.board.width; x++) {
         for (let y = 0; y < game.board.height; y++) {
@@ -2106,6 +2118,8 @@ test.describe('Event command parity', () => {
         expectedTiles: positions(expectedTiles),
         union: positions(game.targetSystem.getValidTargets(unit, unionItem)),
         recursive: positions(game.targetSystem.getValidTargetsRecursive(unit, parent)),
+        specific: positions(game.targetSystem.getValidTargets(unit, specificItem)),
+        expectedSpecific: positions([unit.position, specificPosition]),
       };
     });
 
@@ -2116,6 +2130,7 @@ test.describe('Event command parity', () => {
     expect(result!.allUnits).toEqual(result!.expectedAllUnits);
     expect(result!.tiles).toEqual(result!.expectedTiles);
     expect(result!.union).toEqual(result!.expectedAllUnits);
+    expect(result!.specific).toEqual(result!.expectedSpecific);
     expect(result!.recursive).toEqual(result!.expectedAllUnits);
   });
 

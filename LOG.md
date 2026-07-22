@@ -122,6 +122,13 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Expression-driven item targets:** `target_specific_tile` now evaluates its
+  Python expression with the acting unit, item, position, game, and variable
+  context; recursively flattens nested position lists; and rejects malformed
+  or off-map results before normal range and restriction filtering. The focused
+  target-system regression covers nested, duplicate, malformed, and off-map
+  results.
+
 - **Action and save/restore parity complete:** persistent event, base, shop,
   roam, overworld, record, achievement, support, phase, combat, and unit
   mutations now use reversible actions with exact undo/redo regressions. Saves
