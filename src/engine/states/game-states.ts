@@ -2752,6 +2752,29 @@ export class ItemUseState extends State {
 
   private menu: ChoiceMenu | null = null;
   private usableItems: ItemObject[] = [];
+  private topLevelItems: ItemObject[] = [];
+  private parentItem: ItemObject | null = null;
+
+  private setItemMenu(items: ItemObject[], unit: UnitObject): void {
+    const game = getGame();
+    this.usableItems = items;
+    const options: MenuOption[] = items.map((item, i) => ({
+      label: item.name,
+      value: `item_${i}`,
+      enabled: itemAvailable(unit, item, game.db, game) &&
+        (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
+    }));
+    const cameraOffset = game.camera.getOffset();
+    const menuX = unit.position
+      ? unit.position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4
+      : viewport.width / 2;
+    const menuY = unit.position
+      ? unit.position[1] * TILEHEIGHT - cameraOffset[1]
+      : viewport.height / 2;
+    const clampedX = Math.min(menuX, viewport.width - 70);
+    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
+    this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
+  }
 
   override begin(): StateResult {
     const game = getGame();
@@ -2766,34 +2789,16 @@ export class ItemUseState extends State {
       return 'repeat';
     }
 
-    this.usableItems = unit.getUsableItems().filter((item) =>
+    this.parentItem = null;
+    this.topLevelItems = unit.getUsableItems().filter((item) =>
       itemAvailable(unit, item, game.db, game) &&
       (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
     );
-    if (this.usableItems.length === 0) {
+    if (this.topLevelItems.length === 0) {
       game.state.back();
       return;
     }
-
-    const options: MenuOption[] = this.usableItems.map((item, i) => ({
-      label: item.name,
-      value: `item_${i}`,
-      enabled: true,
-    }));
-
-    // Position near the unit
-    const cameraOffset = game.camera.getOffset();
-    const menuX = unit.position
-      ? unit.position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4
-      : viewport.width / 2;
-    const menuY = unit.position
-      ? unit.position[1] * TILEHEIGHT - cameraOffset[1]
-      : viewport.height / 2;
-
-    const clampedX = Math.min(menuX, viewport.width - 70);
-    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
-
-    this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
+    this.setItemMenu(this.topLevelItems, unit);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -2813,6 +2818,11 @@ export class ItemUseState extends State {
     if (!result) return;
 
     if ('back' in result) {
+      if (this.parentItem) {
+        this.parentItem = null;
+        this.setItemMenu(this.topLevelItems, game.selectedUnit);
+        return;
+      }
       this.menu = null;
       game.state.back();
       return;
@@ -2824,6 +2834,17 @@ export class ItemUseState extends State {
       const unit: UnitObject = game.selectedUnit;
 
       if (item && unit) {
+        if (!this.parentItem && item.hasComponent('multi_item') && item.subitems.length > 0) {
+          const hideUnavailable = item.hasComponent('multi_item_hides_unavailable');
+          const children = hideUnavailable
+            ? item.subitems.filter((child) => itemAvailable(unit, child, game.db, game))
+            : [...item.subitems];
+          if (children.length > 0) {
+            this.parentItem = item;
+            this.setItemMenu(children, unit);
+          }
+          return;
+        }
         const targets = game.targetSystem?.getValidTargetsRecursive(unit, item) ?? [];
         // Promotion items always route through ItemTargetingState so that
         // multi-option promotions can present the choice menu, even when

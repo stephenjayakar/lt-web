@@ -122,6 +122,13 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Multi-item child menus:** selecting a `multi_item` now opens its real child
+  list, BACK returns to the parent inventory menu, and choosing a child routes
+  that child through normal targeting or direct-use resolution. Parents with
+  `multi_item_hides_unavailable` omit unusable children; ordinary parents keep
+  them visible but disabled. The focused browser regression covers both policies
+  and completes a child heal end to end.
+
 - **Expression-driven item targets:** `target_specific_tile` now evaluates its
   Python expression with the acting unit, item, position, game, and variable
   context; recursively flattens nested position lists; and rejects malformed
