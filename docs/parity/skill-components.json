@@ -978,11 +978,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12895
+          "line": 12950
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12908
+          "line": 12963
         },
         {
           "source": "src/native.ts",
@@ -1092,11 +1092,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13075
+          "line": 13130
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13098
+          "line": 13153
         }
       ],
       "directReads": [],

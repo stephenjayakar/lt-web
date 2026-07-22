@@ -263,4 +263,91 @@ test.describe('Event command flag matching: no_block', () => {
     await stepFrames(page, 70);
     expect(await getGameVar(page, 'blocking_marker')).toBe('done');
   });
+
+  test('add_portrait blocks for its fade unless no_block is set', async ({ page }) => {
+    await installAndRunEvent(page, 'test_add_portrait_blocking', [
+      'add_portrait;Eirika;Left',
+      'game_var;add_portrait_blocking;done',
+    ], 5);
+    expect(await getGameVar(page, 'add_portrait_blocking')).toBeUndefined();
+    await stepFrames(page, 20);
+    expect(await getGameVar(page, 'add_portrait_blocking')).toBe('done');
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    await installAndRunEvent(page, 'test_add_portrait_no_block', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'game_var;add_portrait_no_block;done',
+    ], 15);
+    await stepFrames(page, 1);
+    expect(await getGameVar(page, 'add_portrait_no_block')).toBe('done');
+  });
+
+  test('remove_portrait blocks for its fade unless no_block is set', async ({ page }) => {
+    await installAndRunEvent(page, 'test_remove_portrait_blocking', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'remove_portrait;Eirika',
+      'game_var;remove_portrait_blocking;done',
+    ], 5);
+    expect(await getGameVar(page, 'remove_portrait_blocking')).toBeUndefined();
+    await stepFrames(page, 20);
+    expect(await getGameVar(page, 'remove_portrait_blocking')).toBe('done');
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    await installAndRunEvent(page, 'test_remove_portrait_no_block', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'remove_portrait;Eirika;;;no_block',
+      'game_var;remove_portrait_no_block;done',
+    ], 15);
+    await stepFrames(page, 1);
+    expect(await getGameVar(page, 'remove_portrait_no_block')).toBe('done');
+  });
+
+  test('move_portrait blocks for travel unless no_block is set', async ({ page }) => {
+    await installAndRunEvent(page, 'test_move_portrait_blocking', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'move_portrait;Eirika;Right',
+      'game_var;move_portrait_blocking;done',
+    ], 5);
+    expect(await getGameVar(page, 'move_portrait_blocking')).toBeUndefined();
+    await stepFrames(page, 40);
+    expect(await getGameVar(page, 'move_portrait_blocking')).toBe('done');
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    await installAndRunEvent(page, 'test_move_portrait_no_block', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'move_portrait;Eirika;Right;;no_block',
+      'game_var;move_portrait_no_block;done',
+    ], 15);
+    await stepFrames(page, 1);
+    expect(await getGameVar(page, 'move_portrait_no_block')).toBe('done');
+  });
+
+  test('bop and mirror portrait commands honor no_block', async ({ page }) => {
+    await installAndRunEvent(page, 'test_bop_portrait_blocking', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'bop_portrait;Eirika;1;100',
+      'game_var;bop_portrait_blocking;done',
+    ], 5);
+    expect(await getGameVar(page, 'bop_portrait_blocking')).toBeUndefined();
+    await stepFrames(page, 30);
+    expect(await getGameVar(page, 'bop_portrait_blocking')).toBe('done');
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    await installAndRunEvent(page, 'test_mirror_portrait_no_block', [
+      'add_portrait;Eirika;Left;;;;no_block',
+      'mirror_portrait;Eirika;;no_block',
+      'bop_portrait;Eirika;1;100;no_block',
+      'game_var;portrait_no_block;done',
+    ], 15);
+    await stepFrames(page, 1);
+    expect(await getGameVar(page, 'portrait_no_block')).toBe('done');
+  });
 });

@@ -11632,6 +11632,10 @@ export class EventState extends State {
 
         const slideArg = pArgs[0] ?? '';
         const expressionArg = pArgs[1] ?? '';
+        const parsedSpeedMult = parseFloat(pArgs[2] ?? '');
+        const speedMult = Number.isFinite(parsedSpeedMult) && parsedSpeedMult > 0
+          ? parsedSpeedMult
+          : 1;
 
         if (!portraitNid) {
           this.advancePointer();
@@ -11666,10 +11670,12 @@ export class EventState extends State {
 
         // Check flags
         const isMirror = pFlags.includes('mirror') ? !autoMirror : autoMirror;
-        const immediate = pFlags.includes('immediate');
+        const immediate = pFlags.includes('immediate') || this.skipMode;
         const lowPriority = pFlags.includes('low_priority');
+        const blocks = !immediate && !pFlags.includes('no_block');
 
-        const priority = lowPriority ? 0 : this.portraitPriorityCounter++;
+        let priority = this.portraitPriorityCounter++;
+        if (lowPriority) priority -= 1000;
 
         // Load portrait image asynchronously. Block command processing until
         // the image is ready — in the original Python engine, image loads are
@@ -11689,19 +11695,28 @@ export class EventState extends State {
               slide,
               mirror: isMirror,
               expressions,
-              speedMult: 1,
+              speedMult,
             },
           );
           this.portraits.set(portraitNid, portrait);
           this.pendingPortraitLoads--;
+          if (blocks) {
+            this.waiting = true;
+            this.waitTimer = (14 * FRAMETIME) / speedMult + 33;
+          }
         }).catch(() => {
           console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
           this.pendingPortraitLoads--;
+          if (blocks) {
+            this.advancePointer();
+          }
         });
 
-        this.advancePointer();
-        // Return true to break the burst loop — the pending portrait load
-        // check in update() will block until the image is ready.
+        if (!blocks) {
+          this.advancePointer();
+        }
+        // Always break the burst while the synchronous-reference portrait load
+        // is emulated asynchronously. Blocking transitions advance via waitTimer.
         return true;
       }
 
@@ -11743,21 +11758,29 @@ export class EventState extends State {
       }
 
       case 'remove_portrait': {
-        // remove_portrait;PortraitNid;[SpeedMult];[Slide];[immediate]
+        // remove_portrait;PortraitNid;[SpeedMult];[Slide];[flags]
         const removeNid = args[0] ?? '';
         const removeExtraArgs = args.slice(1).map(s => s.toLowerCase().trim());
-        const removeImmediate = removeExtraArgs.includes('immediate');
-        const speedMultStr = removeExtraArgs.find(a => !isNaN(parseFloat(a)) && a !== 'immediate');
-        const speedMult = speedMultStr ? parseFloat(speedMultStr) : 1;
+        const removeImmediate = removeExtraArgs.includes('immediate') || this.skipMode;
+        const removeNoBlock = removeExtraArgs.includes('no_block');
+        const speedMultStr = removeExtraArgs.find(a => !isNaN(parseFloat(a)));
+        const speedMult = Math.max(0.001, speedMultStr ? parseFloat(speedMultStr) : 1);
         const removeSlide = removeExtraArgs.find(a => a === 'left' || a === 'right') as 'left' | 'right' | undefined;
 
         const portrait = this.portraits.get(removeNid);
-        if (portrait) {
-          if (removeImmediate) {
-            this.portraits.delete(removeNid);
-          } else {
-            portrait.end(speedMult, removeSlide);
-          }
+        if (!portrait) {
+          this.advancePointer();
+          return false;
+        }
+        if (removeImmediate) {
+          this.portraits.delete(removeNid);
+        } else {
+          portrait.end(speedMult, removeSlide);
+        }
+        if (!removeImmediate && !removeNoBlock) {
+          this.waiting = true;
+          this.waitTimer = (14 * FRAMETIME) / speedMult + 33;
+          return true;
         }
         this.advancePointer();
         return false;
@@ -11796,18 +11819,31 @@ export class EventState extends State {
       }
 
       case 'move_portrait': {
-        // move_portrait;PortraitNid;ScreenPosition;[SpeedMult];[immediate]
+        // move_portrait;PortraitNid;ScreenPosition;[SpeedMult];[flags]
         const moveNid = args[0] ?? '';
         const movePos = args[1] ?? 'Left';
-        const moveImmediate = args.slice(2).some(a => a.toLowerCase().trim() === 'immediate');
+        const moveExtraArgs = args.slice(2).map(a => a.toLowerCase().trim());
+        const moveImmediate = moveExtraArgs.includes('immediate') || this.skipMode;
+        const moveNoBlock = moveExtraArgs.includes('no_block');
+        const parsedMoveSpeed = parseFloat(args[2] ?? '');
+        const moveSpeed = Number.isFinite(parsedMoveSpeed) && parsedMoveSpeed > 0
+          ? parsedMoveSpeed
+          : 1;
 
         const portrait = this.portraits.get(moveNid);
-        if (portrait) {
-          const { position: newPos } = parseScreenPosition(movePos);
-          if (moveImmediate) {
-            portrait.quickMove(newPos);
-          } else {
-            portrait.move(newPos);
+        if (!portrait) {
+          this.advancePointer();
+          return false;
+        }
+        const { position: newPos } = parseScreenPosition(movePos);
+        if (moveImmediate) {
+          portrait.quickMove(newPos);
+        } else {
+          const travelTime = portrait.move(newPos, moveSpeed);
+          if (!moveNoBlock) {
+            this.waiting = true;
+            this.waitTimer = travelTime + 66;
+            return true;
           }
         }
         this.advancePointer();
@@ -11816,25 +11852,44 @@ export class EventState extends State {
 
       case 'bop':           // short alias
       case 'bop_portrait': {
-        // bop_portrait;PortraitNid;[NumBops];[Time]
+        // bop_portrait;PortraitNid;[NumBops];[Time];[flags]
         const bopNid = args[0] ?? '';
         const numBops = parseInt(args[1], 10) || 2;
-        const bopTime = parseInt(args[2], 10) || undefined;
+        const bopTime = parseInt(args[2], 10) || 8 * FRAMETIME;
+        const bopNoBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
 
         const portrait = this.portraits.get(bopNid);
-        if (portrait) {
-          portrait.bop(numBops, 2, bopTime);
+        if (!portrait) {
+          this.advancePointer();
+          return false;
+        }
+        portrait.bop(numBops, 2, bopTime);
+        if (!bopNoBlock) {
+          this.waiting = true;
+          this.waitTimer = (2 * numBops + 1) * bopTime;
+          return true;
         }
         this.advancePointer();
         return false;
       }
 
       case 'mirror_portrait': {
-        // mirror_portrait;PortraitNid
+        // mirror_portrait;PortraitNid;[SpeedMult];[flags]
         const mirrorNid = args[0] ?? '';
         const portrait = this.portraits.get(mirrorNid);
-        if (portrait) {
-          portrait.mirror = !portrait.mirror;
+        if (!portrait) {
+          this.advancePointer();
+          return false;
+        }
+        const parsedMirrorSpeed = parseFloat(args[1] ?? '');
+        const mirrorSpeed = Number.isFinite(parsedMirrorSpeed) && parsedMirrorSpeed > 0
+          ? parsedMirrorSpeed
+          : 1;
+        portrait.mirror = !portrait.mirror;
+        if (!this.skipMode && !args.some(arg => arg.toLowerCase().trim() === 'no_block')) {
+          this.waiting = true;
+          this.waitTimer = (14 * FRAMETIME) / mirrorSpeed + 33;
+          return true;
         }
         this.advancePointer();
         return false;
