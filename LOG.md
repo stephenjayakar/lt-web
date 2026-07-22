@@ -122,6 +122,11 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **On-hit status/resource hooks:** `self_status_on_hit`, `statuses_on_hit`, and
+  `fatigue_on_hit` now apply once per successful strike in item-component order.
+  Combat result snapshots include fatigue, so target fatigue and all granted
+  statuses reverse and redo with the rest of combat.
+
 - **Extra damage item hooks:** `damage_on_miss` now computes and applies its
   configured fraction of normal damage on misses, while `eclipse_fe7` reduces a
   hit target to 1 HP. Map and full-animation result paths share the behavior;
