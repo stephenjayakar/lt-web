@@ -83,10 +83,13 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
       const g = (window as any).__gameRef;
       const unit = g.units.get('Eirika');
       unit.currentHp = unit.maxHp;
+      unit.currentMana = 2;
+      g.db.equations.set('MANA', '10');
       unit.exp = 10;
       unit.resetTurnState();
       return {
         hp: unit.currentHp,
+        mana: unit.currentMana,
         exp: unit.exp,
         ai: unit.ai,
         hasAttacked: unit.hasAttacked,
@@ -97,6 +100,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
 
     await runEvent(page, 'TestActionBackedUnitMutations', [
       'set_current_hp;Eirika;1',
+      'set_current_mana;Eirika;50',
       'give_exp;Eirika;5;silent',
       'change_ai;Eirika;__test_ai',
       'has_attacked;Eirika',
@@ -110,6 +114,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
       const unit = g.units.get('Eirika');
       const snapshot = () => ({
         hp: unit.currentHp,
+        mana: unit.currentMana,
         exp: unit.exp,
         ai: unit.ai,
         hasAttacked: unit.hasAttacked,
@@ -117,7 +122,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
         finished: unit.finished,
       });
       const changed = snapshot();
-      const actions = Array.from({ length: 7 }, () => g.actionLog.undo());
+      const actions = Array.from({ length: 8 }, () => g.actionLog.undo());
       const undone = snapshot();
       for (const action of [...actions].reverse()) action?.execute();
       const redone = snapshot();
@@ -132,6 +137,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
 
     expect(result.changed).toEqual({
       hp: 1,
+      mana: 10,
       exp: 42,
       ai: '__test_ai',
       hasAttacked: true,
@@ -147,6 +153,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
       'HasAttackedAction',
       'SetUnitAttributeAction',
       'GainExpAction',
+      'SetCurrentManaAction',
       'SetCurrentHpAction',
     ]);
   });

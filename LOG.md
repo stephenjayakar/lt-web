@@ -122,6 +122,13 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Post-combat mana items:** `gain_mana_after_combat` now evaluates once for
+  each item used in combat with Python's unit/target/position context, truncates
+  the result, clamps against the `MANA` equation, and records a reversible mana
+  action. `set_current_mana` now uses the same bounded action contract instead
+  of mutating a dynamic field directly. Focused lifecycle and event-command
+  regressions cover multi-strike de-duplication, clamping, undo, and redo.
+
 - **Multi-item child menus:** selecting a `multi_item` now opens its real child
   list, BACK returns to the parent inventory menu, and choosing a child routes
   that child through normal targeting or direct-use resolution. Parents with
