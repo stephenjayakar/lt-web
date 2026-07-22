@@ -38,7 +38,7 @@ Summary: 95/241 referenced in web source; 74/241 expose at least one matching we
 | change_variant | ChangeVariant | lt-maker/app/engine/skill_components/aesthetic_components.py:170 | AESTHETIC | after_add, after_add_from_restore, after_remove, change_variant |  |  |  |  | unreferenced |
 | change_map_palette | ChangeMapPalette | lt-maker/app/engine/skill_components/aesthetic_components.py:190 | AESTHETIC | after_add, after_add_from_restore, after_remove, change_map_palette |  |  |  |  | unreferenced |
 | change_animation | ChangeAnimation | lt-maker/app/engine/skill_components/aesthetic_components.py:210 | AESTHETIC | change_animation |  |  |  |  | unreferenced |
-| map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  | 1 | src/combat/map-combat.ts:293 |  | consumed |
+| map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  | 1 | src/combat/map-combat.ts:301 |  | consumed |
 | battle_animation_music | BattleAnimMusic | lt-maker/app/engine/skill_components/aesthetic_components.py:230 | AESTHETIC | battle_music |  |  |  |  | unreferenced |
 | modify_ai_priority | ModifyAIPriority | lt-maker/app/engine/skill_components/ai_components.py:14 | ADVANCED | ai_priority_multiplier |  |  |  |  | unreferenced |
 | hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10002<br>src/engine/states/game-states.ts:11398<br>src/engine/states/game-states.ts:13394<br>+2 more |  | reference-only |
@@ -81,12 +81,12 @@ Summary: 95/241 referenced in web source; 74/241 expose at least one matching we
 | gain_mana | GainMana | lt-maker/app/engine/skill_components/charge_components.py:141 | CHARGE | start_combat |  |  |  |  | unreferenced |
 | cost_mana | CostMana | lt-maker/app/engine/skill_components/charge_components.py:159 | CHARGE | condition, start_combat |  |  |  |  | unreferenced |
 | check_mana | CheckMana | lt-maker/app/engine/skill_components/charge_components.py:177 | CHARGE | condition |  |  |  |  | unreferenced |
-| miracle | Miracle | lt-maker/app/engine/skill_components/combat2_components.py:15 | COMBAT2 | cleanup_combat |  | 1 | src/combat/combat-solver.ts:59<br>src/combat/combat-solver.ts:103<br>src/combat/map-combat.ts:167<br>+6 more |  | consumed |
+| miracle | Miracle | lt-maker/app/engine/skill_components/combat2_components.py:15 | COMBAT2 | cleanup_combat |  | 1 | src/combat/combat-solver.ts:60<br>src/combat/combat-solver.ts:104<br>src/combat/map-combat.ts:175<br>+6 more |  | consumed |
 | TrueMiracle | TrueMiracle | lt-maker/app/engine/skill_components/combat2_components.py:27 | COMBAT2 | after_take_strike |  |  |  |  | unreferenced |
 | ignore_damage | IgnoreDamage | lt-maker/app/engine/skill_components/combat2_components.py:44 | COMBAT2 | after_take_strike |  |  |  |  | unreferenced |
 | live_to_serve | LiveToServe | lt-maker/app/engine/skill_components/combat2_components.py:61 | COMBAT2 | after_strike |  |  |  |  | unreferenced |
 | lifetaker | Lifetaker | lt-maker/app/engine/skill_components/combat2_components.py:84 | COMBAT2 | end_combat |  |  |  |  | unreferenced |
-| lifelink | Lifelink | lt-maker/app/engine/skill_components/combat2_components.py:108 | COMBAT2 | after_strike |  | 1 | src/combat/item-system.ts:1640 |  | consumed |
+| lifelink | Lifelink | lt-maker/app/engine/skill_components/combat2_components.py:108 | COMBAT2 | after_strike |  | 1 | src/combat/item-system.ts:1668 |  | consumed |
 | ally_lifelink | AllyLifelink | lt-maker/app/engine/skill_components/combat2_components.py:132 | COMBAT2 | after_strike |  |  |  |  | unreferenced |
 | armsthrift | Armsthrift | lt-maker/app/engine/skill_components/combat2_components.py:164 | COMBAT2 | after_strike, post_combat |  |  |  |  | unreferenced |
 | limit_maximum_range | LimitMaximumRange | lt-maker/app/engine/skill_components/combat2_components.py:233 | COMBAT2 | limit_maximum_range |  |  |  |  | unreferenced |
@@ -132,11 +132,11 @@ Summary: 95/241 referenced in web source; 74/241 expose at least one matching we
 | damage | Damage | lt-maker/app/engine/skill_components/combat_components.py:89 | COMBAT | modify_damage | modifyDamage | 3 | src/combat/combat-calcs.ts:475<br>src/combat/combat-calcs.ts:835<br>src/combat/combat-calcs.ts:843<br>+9 more | mention | hook-and-reference |
 | eval_damage | EvalDamage | lt-maker/app/engine/skill_components/combat_components.py:100 | COMBAT | modify_damage | modifyDamage |  |  |  | hook-only |
 | resist | Resist | lt-maker/app/engine/skill_components/combat_components.py:115 | COMBAT | modify_resist | modifyResist |  | src/combat/combat-calcs.ts:835<br>src/combat/combat-calcs.ts:844<br>src/combat/skill-system.ts:369 | mention | hook-and-reference |
-| hit | Hit | lt-maker/app/engine/skill_components/combat_components.py:126 | COMBAT | modify_accuracy | modifyAccuracy | 7 | src/combat/animation-combat.ts:124<br>src/combat/animation-combat.ts:228<br>src/combat/animation-combat.ts:879<br>+16 more | mention | hook-and-reference |
+| hit | Hit | lt-maker/app/engine/skill_components/combat_components.py:126 | COMBAT | modify_accuracy | modifyAccuracy | 7 | src/combat/animation-combat.ts:132<br>src/combat/animation-combat.ts:236<br>src/combat/animation-combat.ts:887<br>+16 more | mention | hook-and-reference |
 | eval_hit | EvalHit | lt-maker/app/engine/skill_components/combat_components.py:137 | COMBAT | modify_accuracy | modifyAccuracy |  |  |  | hook-only |
 | avoid | Avoid | lt-maker/app/engine/skill_components/combat_components.py:152 | COMBAT | modify_avoid, tile_avoid | modifyAvoid |  | src/combat/combat-calcs.ts:835<br>src/combat/combat-calcs.ts:840<br>src/combat/skill-system.ts:379<br>+1 more |  | hook-and-reference |
 | eval_avoid | EvalAvoid | lt-maker/app/engine/skill_components/combat_components.py:166 | COMBAT | modify_avoid | modifyAvoid |  |  |  | hook-only |
-| crit | Crit | lt-maker/app/engine/skill_components/combat_components.py:181 | COMBAT | modify_crit_accuracy | modifyCritAccuracy | 2 | src/combat/animation-combat.ts:124<br>src/combat/animation-combat.ts:228<br>src/combat/animation-combat.ts:910<br>+11 more |  | hook-and-reference |
+| crit | Crit | lt-maker/app/engine/skill_components/combat_components.py:181 | COMBAT | modify_crit_accuracy | modifyCritAccuracy | 2 | src/combat/animation-combat.ts:132<br>src/combat/animation-combat.ts:236<br>src/combat/animation-combat.ts:918<br>+11 more |  | hook-and-reference |
 | eval_crit | EvalCrit | lt-maker/app/engine/skill_components/combat_components.py:192 | COMBAT | modify_crit_accuracy | modifyCritAccuracy |  |  |  | hook-only |
 | crit_avoid | CritAvoid | lt-maker/app/engine/skill_components/combat_components.py:207 | COMBAT | modify_crit_avoid | modifyCritAvoid |  | src/combat/skill-system.ts:389 |  | hook-and-reference |
 | attack_speed | AttackSpeed | lt-maker/app/engine/skill_components/combat_components.py:218 | COMBAT | modify_attack_speed | modifyAttackSpeed |  | src/combat/skill-system.ts:399 |  | hook-and-reference |

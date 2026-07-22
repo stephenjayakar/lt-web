@@ -4,7 +4,15 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
-import { usesConsumedByStrikes, hasEclipse, eclipseDamage, lifelinkHealForStrike } from './item-system';
+import {
+  hasDamageOnMiss,
+  eclipseDamage,
+  eclipseFe7Damage,
+  hasEclipse,
+  hasEclipseFe7,
+  lifelinkHealForStrike,
+  usesConsumedByStrikes,
+} from './item-system';
 import {
   applyGroupCombatComponents,
   grantPartnerCombatWexp,
@@ -408,14 +416,15 @@ export class MapCombat {
     const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
 
     for (const strike of this.strikes) {
-      if (!strike.hit) continue;
-      // Eclipse on_hit overrides damage to floor(targetCurrentHp/2).
+      if (!strike.hit && !hasDamageOnMiss(strike.item)) continue;
       let damage = strike.damage;
-      if (hasEclipse(strike.item)) {
+      if (strike.hit && (hasEclipseFe7(strike.item) || hasEclipse(strike.item))) {
         const targetHp = strike.defender === this.attacker
           ? atkHp
           : (defenderHps.get(strike.defender) ?? strike.defender.currentHp);
-        damage = eclipseDamage(targetHp);
+        damage = hasEclipseFe7(strike.item)
+          ? eclipseFe7Damage(targetHp)
+          : eclipseDamage(targetHp);
       }
       if (strike.defender === this.attacker) {
         atkHp -= damage;
@@ -670,7 +679,7 @@ export class MapCombat {
 
         // Flash on the target at the moment of impact (peak of lunge)
         if (this.frameTimer >= LUNGE_DURATION_MS * 0.8 && this.frameTimer <= LUNGE_DURATION_MS * 1.2) {
-          if (strike.hit) {
+          if (strike.hit || hasDamageOnMiss(strike.item)) {
             targetAnim.flashAlpha = strike.crit ? 0.8 : 0.5;
 
             // map_hit_add_blend / map_hit_sub_blend (Python `on_hit` playback
@@ -727,7 +736,7 @@ export class MapCombat {
       for (const [unit, hp] of this.defenderDisplayHps) {
         this.defenderDrainStartHps.set(unit, hp);
       }
-      if (strike && strike.hit) {
+      if (strike && (strike.hit || hasDamageOnMiss(strike.item))) {
         // Record drain animation start points
         this.hpDrainStartAttacker = this.attackerTargetHp;
         if (strike.defender === this.attacker) {

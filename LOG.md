@@ -122,6 +122,11 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Extra damage item hooks:** `damage_on_miss` now computes and applies its
+  configured fraction of normal damage on misses, while `eclipse_fe7` reduces a
+  hit target to 1 HP. Map and full-animation result paths share the behavior;
+  focused goldens cover forced misses and exact FE7 Eclipse HP.
+
 - **Forced-movement items:** combat hits now apply `shove`, `swap`, `pivot`, and
   `draw_back` through shared terrain/occupancy destination rules; end-combat
   shove/swap variants run once per participating item. Movement is action-backed,
