@@ -39,6 +39,40 @@ export function validTargets(
     targets.set(`${position[0]},${position[1]}`, position);
   };
 
+  const specificTargetExpression = item.getComponent<string>('target_specific_tile');
+  if (specificTargetExpression) {
+    try {
+      const resolved = evaluateExpression(specificTargetExpression, {
+        game,
+        unit1: unit,
+        item,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+      });
+      const pending: unknown[] = [resolved];
+      while (pending.length > 0) {
+        const candidate = pending.pop();
+        if (!Array.isArray(candidate)) continue;
+        if (candidate.length === 2 &&
+            candidate.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))) {
+          const position: TargetPosition = [candidate[0], candidate[1]];
+          if (position[0] >= 0 && position[0] < board.width &&
+              position[1] >= 0 && position[1] < board.height) {
+            add(position);
+          }
+        } else {
+          pending.push(...candidate);
+        }
+      }
+    } catch (error) {
+      console.error(
+        `target_specific_tile component failed to evaluate expression ${specificTargetExpression}`,
+        error,
+      );
+    }
+  }
+
   if (item.hasComponent('target_tile')) {
     for (let x = 0; x < board.width; x++) {
       for (let y = 0; y < board.height; y++) add([x, y]);
