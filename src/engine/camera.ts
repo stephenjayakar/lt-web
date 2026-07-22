@@ -96,6 +96,17 @@ export class Camera {
     const py = tileY * TILEHEIGHT + TILEHEIGHT / 2 - viewport.height / 2;
     this.forcePosition(px, py);
   }
+  /** Whether interpolation has reached the current target. */
+  isAtTarget(): boolean {
+    return Math.abs(this.targetX - this.x) < SNAP_THRESHOLD &&
+      Math.abs(this.targetY - this.y) < SNAP_THRESHOLD;
+  }
+
+  /** Finish the active pan immediately without changing its target. */
+  snapToTarget(): void {
+    this.x = this.targetX;
+    this.y = this.targetY;
+  }
 
   update(): void {
     const dx = this.targetX - this.x;

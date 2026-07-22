@@ -7402,6 +7402,9 @@ export class EventState extends State {
   private bannerIsAlert: boolean = false;  // true if banner is from 'alert' command (allows early dismiss)
   private waitTimer: number = 0;
   private waiting: boolean = false;
+  private waitingForCamera: boolean = false;
+  private cameraWaitStartsFlicker: boolean = false;
+  private cursorFlickerTimer: number = 0;
   /** Non-combat Python ExpState level screen owned by the command that opened it. */
   private levelUpPresentation: EventLevelUpPresentation | null = null;
 
@@ -7520,6 +7523,9 @@ export class EventState extends State {
       this.bannerIsAlert = false;
       this.waitTimer = 0;
       this.waiting = false;
+      this.waitingForCamera = false;
+      this.cameraWaitStartsFlicker = false;
+      this.cursorFlickerTimer = 0;
       // If starting from a level transition, keep the screen black so
       // chapter_title + transition;Open work as expected. Otherwise reset.
       if (!this.startWithBlackScreen) {
@@ -7708,6 +7714,39 @@ export class EventState extends State {
       }
       return;
     }
+    if (this.waitingForCamera) {
+      if (this.skipMode) {
+        game.camera?.snapToTarget();
+      }
+      if (game.camera?.isAtTarget() ?? true) {
+        this.waitingForCamera = false;
+        if (this.cameraWaitStartsFlicker && !this.skipMode) {
+          this.cameraWaitStartsFlicker = false;
+          if (game.cursor) game.cursor.visible = true;
+          this.cursorFlickerTimer = 1000;
+        } else {
+          this.cameraWaitStartsFlicker = false;
+          if (this.skipMode && game.cursor) game.cursor.visible = false;
+          this.advancePointer();
+        }
+      } else {
+        return;
+      }
+    }
+
+    if (this.cursorFlickerTimer > 0) {
+      if (this.skipMode) {
+        this.cursorFlickerTimer = 0;
+      } else {
+        this.cursorFlickerTimer -= FRAMETIME;
+      }
+      if (this.cursorFlickerTimer <= 0) {
+        if (game.cursor) game.cursor.visible = false;
+        this.advancePointer();
+      }
+      return;
+    }
+
 
     // --- Handle active blocking UI elements first ---
 
@@ -10777,12 +10816,27 @@ export class EventState extends State {
         // center_cursor;x,y or center_cursor;UnitNid
         const posOrUnit = args[0] ?? '';
         const resolved = this.resolvePosition(posOrUnit, game);
-        if (resolved) {
-          game.cursor?.setPos(resolved[0], resolved[1]);
-          game.camera?.focusTile(resolved[0], resolved[1]);
+        if (!resolved) {
+          this.advancePointer();
+          return false;
         }
-        this.advancePointer();
-        return false;
+        const immediate = this.skipMode ||
+          args.some(arg => arg.toLowerCase().trim() === 'immediate');
+        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        game.cursor?.setPos(resolved[0], resolved[1]);
+        if (immediate) {
+          game.camera?.forceTile(resolved[0], resolved[1]);
+          this.advancePointer();
+          return false;
+        }
+        game.camera?.focusTile(resolved[0], resolved[1]);
+        if (noBlock || (game.camera?.isAtTarget() ?? true)) {
+          this.advancePointer();
+          return false;
+        }
+        this.waitingForCamera = true;
+        this.cameraWaitStartsFlicker = false;
+        return true;
       }
 
       case 'disp_cursor': {
@@ -10824,15 +10878,33 @@ export class EventState extends State {
       }
 
       case 'flicker_cursor': {
-        // Briefly highlight a tile — move camera and cursor there
         const flickerTarget = args[0] ?? '';
         const flickerPos = this.resolvePosition(flickerTarget, game);
-        if (flickerPos) {
-          game.cursor?.setPos(flickerPos[0], flickerPos[1]);
-          game.camera?.focusTile(flickerPos[0], flickerPos[1]);
+        if (!flickerPos) {
+          this.advancePointer();
+          return false;
         }
-        this.advancePointer();
-        return false;
+        const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
+        game.cursor?.setPos(flickerPos[0], flickerPos[1]);
+        if (this.skipMode) {
+          game.camera?.forceTile(flickerPos[0], flickerPos[1]);
+          if (game.cursor) game.cursor.visible = false;
+          this.advancePointer();
+          return false;
+        }
+        if (immediate) {
+          game.camera?.forceTile(flickerPos[0], flickerPos[1]);
+        } else {
+          game.camera?.focusTile(flickerPos[0], flickerPos[1]);
+          if (!(game.camera?.isAtTarget() ?? true)) {
+            this.waitingForCamera = true;
+            this.cameraWaitStartsFlicker = true;
+            return true;
+          }
+        }
+        if (game.cursor) game.cursor.visible = true;
+        this.cursorFlickerTimer = 1000;
+        return true;
       }
 
       // ----- Objective changes -----
