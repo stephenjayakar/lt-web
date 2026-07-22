@@ -463,6 +463,65 @@ test.describe('combat golden matrix', () => {
     expect(r.strikeDetails[0].damage).toBe(22);
   });
 
+  test('damage_on_miss deals its fraction of normal damage on a forced miss', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const result = await setupAndResolve(
+      page,
+      {
+        eirika: {
+          weaponNid: 'Iron_Sword',
+          str: 10,
+          def: 0,
+          spd: 5,
+          hp: 999,
+          weaponComponents: [['damage_on_miss', 0.5]],
+        },
+        bone: { weaponNid: null, str: 8, def: 2, spd: 5, hp: 999 },
+      },
+      ['miss1', 'end'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.strikeDetails).toHaveLength(1);
+    expect(result.strikeDetails[0].hit).toBe(false);
+    expect(result.defenderHp).toBe(993);
+  });
+
+  test('eclipse_fe7 reduces the target to one HP on hit', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const result = await setupAndResolve(
+      page,
+      {
+        eirika: {
+          weaponNid: 'Iron_Sword',
+          str: 10,
+          def: 0,
+          spd: 5,
+          hp: 999,
+          weaponComponents: [['eclipse_fe7', null]],
+        },
+        bone: {
+          weaponNid: null,
+          str: 8,
+          def: 2,
+          spd: 5,
+          hp: 37,
+          currentHp: 37,
+        },
+      },
+      ['hit1', 'end'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.strikeDetails).toHaveLength(1);
+    expect(result.strikeDetails[0].hit).toBe(true);
+    expect(result.defenderHp).toBe(1);
+  });
+
   test('scripted combat: forced hit1/hit2 tokens control strike order and outcome', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);

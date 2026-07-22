@@ -6,17 +6,17 @@
   ],
   "summary": {
     "pythonComponentNids": 201,
-    "webHookExports": 78,
-    "referencedComponentNids": 158,
+    "webHookExports": 82,
+    "referencedComponentNids": 160,
     "hookMappedComponentNids": 103,
-    "unreferencedComponentNids": 43,
-    "consumedComponentNids": 130,
+    "unreferencedComponentNids": 41,
+    "consumedComponentNids": 132,
     "structuralStatuses": {
-      "consumed": 42,
+      "consumed": 44,
       "hook-and-reference": 100,
       "hook-only": 3,
       "reference-only": 16,
-      "unreferenced": 40
+      "unreferenced": 38
     }
   },
   "webHookExports": [
@@ -95,6 +95,10 @@
     "removeAllItemSourcedSkills",
     "dispatchHoldHooks",
     "eclipseDamage",
+    "eclipseFe7Damage",
+    "hasEclipseFe7",
+    "hasDamageOnMiss",
+    "damageOnMiss",
     "hasEclipse",
     "lifelinkHealForStrike",
     "computeTargetIcon"
@@ -544,13 +548,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 678
+          "line": 687
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 678
+          "line": 687
         }
       ],
       "matchingWebHooks": [],
@@ -575,13 +579,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 679
+          "line": 688
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 679
+          "line": 688
         }
       ],
       "matchingWebHooks": [],
@@ -629,13 +633,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 706
+          "line": 715
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 706
+          "line": 715
         }
       ],
       "matchingWebHooks": [],
@@ -662,13 +666,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 293
+          "line": 301
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 293
+          "line": 301
         }
       ],
       "matchingWebHooks": [],
@@ -716,13 +720,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 287
+          "line": 295
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 287
+          "line": 295
         }
       ],
       "matchingWebHooks": [],
@@ -747,13 +751,13 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 798
+          "line": 806
         }
       ],
       "directReads": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 798
+          "line": 806
         }
       ],
       "matchingWebHooks": [],
@@ -799,13 +803,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 291
+          "line": 299
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 291
+          "line": 299
         }
       ],
       "matchingWebHooks": [],
@@ -872,19 +876,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1661
+          "line": 1689
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1678
+          "line": 1706
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1682
+          "line": 1710
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1683
+          "line": 1711
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -902,7 +906,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1682
+          "line": 1710
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -931,11 +935,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1686
+          "line": 1714
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1687
+          "line": 1715
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -945,11 +949,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1686
+          "line": 1714
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1687
+          "line": 1715
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -2829,11 +2833,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 699
+          "line": 703
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 712
+          "line": 716
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3312,13 +3316,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1640
+          "line": 1668
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1640
+          "line": 1668
         }
       ],
       "matchingWebHooks": [],
@@ -3340,11 +3344,29 @@
       "methods": [
         "on_miss"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1618
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1624
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1618
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1624
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "eclipse",
@@ -3364,13 +3386,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1607
+          "line": 1635
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1607
+          "line": 1635
         }
       ],
       "matchingWebHooks": [],
@@ -3392,11 +3414,21 @@
       "methods": [
         "on_hit"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1612
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1612
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "no_double",
@@ -6490,15 +6522,15 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1109
+          "line": 1118
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1126
+          "line": 1135
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 477
+          "line": 486
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -6508,15 +6540,15 @@
       "directReads": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1109
+          "line": 1118
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1126
+          "line": 1135
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 477
+          "line": 486
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -8018,23 +8050,23 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 124
+          "line": 132
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 228
+          "line": 236
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 879
+          "line": 887
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 810
+          "line": 814
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 835
+          "line": 839
         },
         {
           "source": "src/combat/item-system.ts",
@@ -8096,11 +8128,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 810
+          "line": 814
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 835
+          "line": 839
         },
         {
           "source": "src/combat/item-system.ts",
@@ -8241,15 +8273,15 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 124
+          "line": 132
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 228
+          "line": 236
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 910
+          "line": 918
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -8257,7 +8289,7 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 265
+          "line": 266
         },
         {
           "source": "src/combat/item-system.ts",

@@ -4,6 +4,7 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
+import { damageOnMiss, hasDamageOnMiss } from './item-system';
 import {
   CombatSkillLifecycle,
   type CombatProcMark,
@@ -267,12 +268,15 @@ export class CombatPhaseSolver {
     const crit = !guarded && isCrit;
 
     let dmg = 0;
-    if (hit) {
-      if (!guarded) {
-        const baseDmg = calcs.computeDamage(
-          striker, item, target, db, board, this.game, mode, assist,
-        );
-        dmg = baseDmg + wt.damageBonus;
+    if (!guarded && (hit || hasDamageOnMiss(item))) {
+      const baseDmg = calcs.computeDamage(
+        striker, item, target, db, board, this.game, mode, assist,
+      );
+      const normalDamage = baseDmg + wt.damageBonus;
+      if (!hit) {
+        dmg = damageOnMiss(item, normalDamage) ?? 0;
+      } else {
+        dmg = normalDamage;
         if (crit) {
           const critDmgMod = skillSystem.modifyCritDamage(striker, item);
           const baseCritMult = 3;
@@ -835,14 +839,17 @@ export class CombatPhaseSolver {
     const glancing = hit && !guarded && !crit && item.hasComponent('hit') &&
       glancingBand > 0 && roll >= effectiveHit - glancingBand;
 
-    // Compute damage (0 on miss)
+    // Compute hit damage, or the independent damage_on_miss hook on a miss.
     let dmg = 0;
-    if (hit) {
-      if (!guarded) {
-        const baseDmg = calcs.computeDamage(
-          striker, item, target, db, board, this.game, mode, assist,
-        );
-        dmg = baseDmg + wt.damageBonus;
+    if (!guarded && (hit || hasDamageOnMiss(item))) {
+      const baseDmg = calcs.computeDamage(
+        striker, item, target, db, board, this.game, mode, assist,
+      );
+      const normalDamage = baseDmg + wt.damageBonus;
+      if (!hit) {
+        dmg = damageOnMiss(item, normalDamage) ?? 0;
+      } else {
+        dmg = normalDamage;
 
         // Crit damage
         if (crit) {
@@ -851,24 +858,16 @@ export class CombatPhaseSolver {
           dmg = dmg * baseCritMult + critDmgMod;
         }
 
-        // Grandmaster mode scales damage by to-hit% instead of a binary
-        // miss (weapon_components.py Damage.on_hit/on_glancing_hit/on_crit:
-        // "Reduce damage if in Grandmaster Mode" -> damage = int(damage *
-        // hit / 100), using the same clamped compute_hit value -- `finalHit`
-        // here already matches that, including the weapon-triangle bonus
-        // which Python's compute_hit folds in internally).
+        // Grandmaster mode scales hit damage by to-hit%; DamageOnMiss calls
+        // compute_damage directly and therefore does not use this scaling.
         if (rngMode === 'grandmaster') {
           dmg = Math.trunc(dmg * finalHit / 100);
         }
 
-        // Glancing hit: half damage, truncated toward zero (weapon_components.py
-        // Damage.on_glancing_hit: `damage //= 2`, applied after Grandmaster
-        // scaling). Mutually exclusive with crit (Python's elif).
         if (glancing) {
           dmg = Math.trunc(dmg / 2);
         }
       }
-
       dmg = Math.max(0, dmg);
     }
 

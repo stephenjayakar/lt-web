@@ -908,13 +908,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 293
+          "line": 301
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 293
+          "line": 301
         }
       ],
       "matchingWebHooks": [],
@@ -2236,19 +2236,19 @@
       "webReferences": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 59
+          "line": 60
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 103
+          "line": 104
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 167
+          "line": 175
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 170
+          "line": 178
         },
         {
           "source": "src/combat/skill-system.ts",
@@ -2383,13 +2383,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1640
+          "line": 1668
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1640
+          "line": 1668
         }
       ],
       "matchingWebHooks": [],
@@ -3583,23 +3583,23 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 124
+          "line": 132
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 228
+          "line": 236
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 879
+          "line": 887
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 810
+          "line": 814
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 835
+          "line": 839
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3661,11 +3661,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 810
+          "line": 814
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 835
+          "line": 839
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3800,15 +3800,15 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 124
+          "line": 132
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 228
+          "line": 236
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 910
+          "line": 918
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -3816,7 +3816,7 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 265
+          "line": 266
         },
         {
           "source": "src/combat/item-system.ts",

@@ -8,7 +8,15 @@ import type { CombatEffectData, PaletteData } from './battle-anim-types';
 import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
 import { convertSpritesheetToFrames } from './sprite-loader';
 import { computeHit, computeDamage, computeCrit } from './combat-calcs';
-import { usesConsumedByStrikes, hasEclipse, eclipseDamage, lifelinkHealForStrike } from './item-system';
+import {
+  hasDamageOnMiss,
+  eclipseDamage,
+  eclipseFe7Damage,
+  hasEclipse,
+  hasEclipseFe7,
+  lifelinkHealForStrike,
+  usesConsumedByStrikes,
+} from './item-system';
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
@@ -697,7 +705,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     );
     const isLeftDefending = (defAnim === this.leftAnim);
 
-    if (strike.hit) {
+    if (strike.hit || hasDamageOnMiss(strike.item)) {
       // Apply damage to target HP
       if (isLeftDefending) {
         this.leftTargetHp = Math.max(0, this.leftTargetHp - strike.damage);
@@ -1061,12 +1069,13 @@ export class AnimationCombat implements AnimationCombatOwner {
     const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
 
     for (const strike of this.strikes) {
-      if (!strike.hit) continue;
+      if (!strike.hit && !hasDamageOnMiss(strike.item)) continue;
       let damage = strike.damage;
-      // Eclipse on_hit overrides damage to floor(targetCurrentHp/2).
-      if (hasEclipse(strike.item)) {
+      if (strike.hit && (hasEclipseFe7(strike.item) || hasEclipse(strike.item))) {
         const targetHp = strike.attacker === this.attacker ? defHp : atkHp;
-        damage = eclipseDamage(targetHp);
+        damage = hasEclipseFe7(strike.item)
+          ? eclipseFe7Damage(targetHp)
+          : eclipseDamage(targetHp);
       }
       if (strike.attacker === this.attacker) {
         // Lifelink after_strike: heal per hitting strike, clamping the

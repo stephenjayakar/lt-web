@@ -7,7 +7,7 @@
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 255,
     "dispatcherPythonNids": 255,
-    "itemReferencedComponentNids": 158,
+    "itemReferencedComponentNids": 160,
     "itemHookMappedComponentNids": 103,
     "skillReferencedComponentNids": 95,
     "skillHookMappedComponentNids": 74,

@@ -1602,6 +1602,34 @@ export function eclipseDamage(currentHp: number): number {
   return Math.floor(currentHp / 2);
 }
 
+/** Eclipse FE7 on_hit reduces the target to exactly 1 HP. */
+export function eclipseFe7Damage(currentHp: number): number {
+  return Math.max(0, currentHp - 1);
+}
+
+/** Whether `item` (or its subitem tree) carries an eclipse_fe7 component. */
+export function hasEclipseFe7(item: ItemObject): boolean {
+  if (item.hasComponent('eclipse_fe7')) return true;
+  return item.subitems.some((subitem) => hasEclipseFe7(subitem));
+}
+
+/** Whether `item` (or its subitem tree) carries a damage_on_miss component. */
+export function hasDamageOnMiss(item: ItemObject): boolean {
+  if (item.hasComponent('damage_on_miss')) return true;
+  return item.subitems.some((subitem) => hasDamageOnMiss(subitem));
+}
+
+/** Damage dealt by damage_on_miss, or null when the item tree lacks the hook. */
+export function damageOnMiss(item: ItemObject, normalDamage: number): number | null {
+  const multiplier = item.getComponent<number>('damage_on_miss');
+  if (typeof multiplier === 'number') return Math.trunc(normalDamage * multiplier);
+  for (const subitem of item.subitems) {
+    const damage = damageOnMiss(subitem, normalDamage);
+    if (damage !== null) return damage;
+  }
+  return null;
+}
+
 /** Whether `item` (or its subitem tree) carries an eclipse component. */
 export function hasEclipse(item: ItemObject): boolean {
   if (item.hasComponent('eclipse')) return true;
