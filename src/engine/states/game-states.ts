@@ -7395,6 +7395,7 @@ export class EventState extends State {
 
   // Blocking-command state
   private dialog: Dialog | null = null;
+  private dialogBlocksCommands: boolean = true;
   /** Persistent ending-card presentation; active blocking is tracked by dialog. */
   private endingCard: EndingCardPresentation | null = null;
   private banner: Banner | null = null;
@@ -7511,6 +7512,7 @@ export class EventState extends State {
     const isNewEvent = nextEvent !== this.currentEvent;
     this.currentEvent = nextEvent;
     if (isNewEvent) {
+      this.dialogBlocksCommands = true;
       // Full reset for a new event
       this.dialog = null;
       this.endingCard = null;
@@ -7567,9 +7569,10 @@ export class EventState extends State {
 
     // Forward input to dialog if active
     if (this.dialog) {
+      const dialogBlocksCommands = this.dialogBlocksCommands;
       if (effective === 'BACK') {
         // Enable skip mode — dismiss this dialog and auto-skip all
-        // remaining speak/narrate commands in the current event
+        // remaining speak/narrate commands in the current event.
         this.skipMode = true;
         this.dialog = null;
         this.endingCard = null;
@@ -7578,7 +7581,9 @@ export class EventState extends State {
           this.speakingPortrait = null;
         }
         this.wasDialogTyping = false;
-        this.advancePointer();
+        if (dialogBlocksCommands) {
+          this.advancePointer();
+        }
         return;
       }
       const done = this.dialog.handleInput(effective);
@@ -7589,7 +7594,9 @@ export class EventState extends State {
           this.speakingPortrait = null;
         }
         this.wasDialogTyping = false;
-        this.advancePointer();
+        if (dialogBlocksCommands) {
+          this.advancePointer();
+        }
       }
       return;
     }
@@ -7706,6 +7713,7 @@ export class EventState extends State {
 
     // Dialog typewriter
     if (this.dialog) {
+      const dialogBlocksCommands = this.dialogBlocksCommands;
       if (this.skipMode) {
         // Skip mode: instantly dismiss dialog
         this.dialog = null;
@@ -7715,7 +7723,9 @@ export class EventState extends State {
           this.speakingPortrait = null;
         }
         this.wasDialogTyping = false;
-        this.advancePointer();
+        if (dialogBlocksCommands) {
+          this.advancePointer();
+        }
       } else {
         this.dialog.update(FRAMETIME);
         const isTyping = this.dialog.isTyping();
@@ -7727,9 +7737,18 @@ export class EventState extends State {
           }
         }
         this.wasDialogTyping = isTyping;
-        if (this.endingCard?.dialog === this.dialog &&
-            !this.endingCard.waitForInput &&
-            this.dialog.isWaiting()) {
+        if (this.dialog.isDone()) {
+          this.dialog = null;
+          if (this.speakingPortrait) {
+            this.speakingPortrait.stopTalking();
+            this.speakingPortrait = null;
+          }
+          if (dialogBlocksCommands) {
+            this.advancePointer();
+          }
+        } else if (this.endingCard?.dialog === this.dialog &&
+                   !this.endingCard.waitForInput &&
+                   this.dialog.isWaiting()) {
           this.endingCard.waitTimerMs += FRAMETIME;
           if (this.endingCard.waitTimerMs >= 5000) {
             this.dialog = null;
@@ -7737,7 +7756,7 @@ export class EventState extends State {
           } else {
             return;
           }
-        } else {
+        } else if (dialogBlocksCommands) {
           return;
         }
       }
@@ -8738,9 +8757,24 @@ export class EventState extends State {
       case 'speak':
       case 'narrate': {
         // say;Speaker;Text1,Text2,... (Python :322) = speak with the text
-        // list joined by {sub_break}.
+        // list joined by {sub_break}. Preserve recognized trailing flags.
+        const dialogFlagNames: Record<string, true> = {
+          low_priority: true,
+          hold: true,
+          no_popup: true,
+          fit: true,
+          no_block: true,
+          no_talk: true,
+          no_sound: true,
+          autogray: true,
+        };
+        let flagArgs = args.slice(2)
+          .map(s => s.toLowerCase())
+          .filter(flag => dialogFlagNames[flag]);
         if (cmd.type === 'say' && args.length > 2) {
-          args = [args[0] ?? '', args.slice(1).join('{sub_break}')];
+          const textParts = args.slice(1)
+            .filter(value => !dialogFlagNames[value.toLowerCase()]);
+          args = [args[0] ?? '', textParts.join('{sub_break}'), ...flagArgs];
         }
         // In skip mode, auto-advance past all dialogue without showing it
         if (this.skipMode) {
@@ -8760,8 +8794,11 @@ export class EventState extends State {
         const portrait = this.portraits.get(speaker) ?? null;
 
         // Check flags (flags are extra args like 'no_talk', 'low_priority', 'hold')
-        const flagArgs = args.slice(2).map(s => s.toLowerCase());
+        flagArgs = args.slice(2)
+          .map(s => s.toLowerCase())
+          .filter(flag => dialogFlagNames[flag]);
         const noTalk = flagArgs.includes('no_talk');
+        const noBlock = flagArgs.includes('no_block');
 
         if (portrait && !noTalk && cmd.type !== 'narrate') {
           this.speakingPortrait = portrait;
@@ -8781,10 +8818,16 @@ export class EventState extends State {
           portrait ?? undefined,
           this.getDialogTextSpeedMs(),
           dialogSpeedMult,
+          noBlock,
         );
+        this.dialogBlocksCommands = !noBlock;
         this.wasDialogTyping = false;
 
-        // Don't advance pointer — it's advanced when dialog finishes (in takeInput)
+        if (noBlock) {
+          this.advancePointer();
+          return false;
+        }
+        // Blocking dialogs advance when dismissed.
         return true;
       }
 
@@ -9089,6 +9132,7 @@ export class EventState extends State {
               waitForInput,
               waitTimerMs: 0,
             };
+            this.dialogBlocksCommands = true;
             this.dialog = dialog;
             this.wasDialogTyping = false;
           })

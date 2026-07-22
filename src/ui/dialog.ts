@@ -104,6 +104,7 @@ export class Dialog {
   private frameCounter: number;
   private charProgress: number;
   private waitingForInput: boolean;
+  private autoClose: boolean;
   private lines: string[];
   private currentLine: number;
 
@@ -122,6 +123,7 @@ export class Dialog {
     portrait?: EventPortrait,
     textSpeedMs?: number,
     speedMult?: number,
+    autoClose: boolean = false,
   ) {
     this.text = text;
     this.displayedText = '';
@@ -134,6 +136,7 @@ export class Dialog {
     this.frameCounter = 0;
     this.charProgress = 0;
     this.waitingForInput = false;
+    this.autoClose = autoClose;
     this.currentLine = 0;
     this.portrait = portrait ?? null;
 
@@ -234,6 +237,9 @@ export class Dialog {
           // There's another segment after this | separator — wait for input
           this.state = 'waiting';
           this.waitingForInput = true;
+        } else if (this.autoClose) {
+          this.state = 'done';
+          this.waitingForInput = false;
         } else {
           this.state = 'waiting';
           this.waitingForInput = true;
@@ -486,6 +492,9 @@ export class Dialog {
     if (this.currentLine < this.lines.length - 1) {
       this.state = 'waiting';
       this.waitingForInput = true;
+    } else if (this.autoClose) {
+      this.state = 'done';
+      this.waitingForInput = false;
     } else {
       this.state = 'waiting';
       this.waitingForInput = true;

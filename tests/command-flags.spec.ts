@@ -350,4 +350,40 @@ test.describe('Event command flag matching: no_block', () => {
     await stepFrames(page, 1);
     expect(await getGameVar(page, 'portrait_no_block')).toBe('done');
   });
+
+  test('dialog commands continue and auto-close under no_block', async ({ page }) => {
+    await installAndRunEvent(page, 'test_speak_blocking', [
+      'speak;Narrator;Blocking line',
+      'game_var;speak_blocking;done',
+    ], 5);
+    expect(await getGameVar(page, 'speak_blocking')).toBeUndefined();
+
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await installAndRunEvent(page, 'test_dialog_no_block', [
+      'speak;Narrator;First line;no_block',
+      'game_var;speak_no_block;done',
+      'say;Narrator;Second;line;no_block',
+      'game_var;say_no_block;done',
+      'narrate;Narrator;Third line;no_block',
+      'game_var;narrate_no_block;done',
+      'wait;1000',
+    ], 5);
+    expect(await getGameVar(page, 'speak_no_block')).toBe('done');
+    expect(await getGameVar(page, 'say_no_block')).toBe('done');
+    expect(await getGameVar(page, 'narrate_no_block')).toBe('done');
+
+    await stepFrames(page, 30);
+    const dialogActive = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { state: { getCurrentState(): unknown } };
+      };
+      const state = gameWindow.__gameRef.state.getCurrentState() as {
+        dialog?: unknown;
+      };
+      return state.dialog != null;
+    });
+    expect(dialogActive).toBe(false);
+  });
 });
