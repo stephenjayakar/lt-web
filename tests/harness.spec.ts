@@ -2047,6 +2047,107 @@ test.describe('Event command parity', () => {
     expect(roundTrip).toEqual({ loaded: true, children: result.changed });
   });
 
+  test('multi-item menu selects children and hides unavailable entries on the parent flag', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 3);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      if (!unit?.position) return false;
+      const { createItemTree } = await import('/src/objects/item.ts');
+      const prefabs = new Map([
+        ['_MultiMenu', {
+          nid: '_MultiMenu', name: 'Magic', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [
+            ['multi_item', ['_AvailableChild', '_UnavailableChild']],
+            ['multi_item_hides_unavailable', null],
+          ],
+        }],
+        ['_AvailableChild', {
+          nid: '_AvailableChild', name: 'Heal', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [
+            ['heal', 10], ['target_ally', null], ['min_range', 0], ['global_range', null],
+          ],
+        }],
+        ['_UnavailableChild', {
+          nid: '_UnavailableChild', name: 'Other Only', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [
+            ['heal', 10], ['target_ally', null], ['min_range', 0], ['global_range', null],
+            ['prf_unit', ['Seth']],
+          ],
+        }],
+      ] as [string, any][]);
+      const parent = createItemTree(prefabs.get('_MultiMenu'), (nid: string) => prefabs.get(nid));
+      parent.owner = unit;
+      unit.currentHp = Math.max(1, unit.getStatValue('HP') - 1);
+      for (const child of parent.subitems) child.owner = unit;
+      unit.items = [parent];
+      game.selectedUnit = unit;
+      game.state.change('item_use');
+      return true;
+    });
+    expect(setup).toBe(true);
+    await stepFrames(page, 3);
+
+    const topMenu = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        labels: state?.menu?.options.map((option: any) => option.label),
+      };
+    });
+    expect(topMenu).toEqual({ state: 'item_use', labels: ['Magic'] });
+
+    await stepFrames(page, 1, 'SELECT');
+    const childMenu = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state?.menu?.options.map((option: any) => ({
+        label: option.label,
+        enabled: option.enabled,
+      }));
+    });
+    expect(childMenu).toEqual([{ label: 'Heal', enabled: true }]);
+
+    await stepFrames(page, 1, 'BACK');
+    const restoredMenu = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state?.menu?.options.map((option: any) => option.label);
+    });
+    expect(restoredMenu).toEqual(['Magic']);
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.units.get('Eirika').items[0].components.delete('multi_item_hides_unavailable');
+    });
+
+    await stepFrames(page, 1, 'SELECT');
+    const unhiddenChildMenu = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state?.menu?.options.map((option: any) => ({
+        label: option.label,
+        enabled: option.enabled,
+      }));
+    });
+    expect(unhiddenChildMenu).toEqual([
+      { label: 'Heal', enabled: true },
+      { label: 'Other Only', enabled: false },
+    ]);
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    const selected = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      return {
+        state: game.state.getCurrentState()?.name,
+        hp: unit.currentHp,
+        maxHp: unit.getStatValue('HP'),
+      };
+    });
+    expect(selected).toEqual({ state: 'free', hp: selected.maxHp, maxHp: selected.maxHp });
+  });
+
   test('item target hooks union enemy, ally, unit, and tile positions with range filtering', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
