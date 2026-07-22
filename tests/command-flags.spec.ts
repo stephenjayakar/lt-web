@@ -61,6 +61,21 @@ async function getGameVar(page: Page, key: string): Promise<any> {
   return page.evaluate((key) => (window as any).__gameRef.gameVars.get(key), key);
 }
 
+async function configureLargeCamera(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const gameWindow = window as Window & {
+      __gameRef: {
+        camera: {
+          setMapSize(widthTiles: number, heightTiles: number): void;
+          forceTile(tileX: number, tileY: number): void;
+        };
+      };
+    };
+    gameWindow.__gameRef.camera.setMapSize(40, 30);
+    gameWindow.__gameRef.camera.forceTile(0, 0);
+  });
+}
+
 test.describe('Event command flag matching: no_banner', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
@@ -270,7 +285,7 @@ test.describe('Event command flag matching: no_block', () => {
       'game_var;add_portrait_blocking;done',
     ], 5);
     expect(await getGameVar(page, 'add_portrait_blocking')).toBeUndefined();
-    await stepFrames(page, 20);
+    await stepFrames(page, 30);
     expect(await getGameVar(page, 'add_portrait_blocking')).toBe('done');
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
@@ -385,5 +400,82 @@ test.describe('Event command flag matching: no_block', () => {
       return state.dialog != null;
     });
     expect(dialogActive).toBe(false);
+  });
+});
+
+test.describe('Event command flag matching: camera flags', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=1&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureLargeCamera(page);
+  });
+
+  test('move and center cursor distinguish blocking, no_block, and immediate', async ({ page }) => {
+    await installAndRunEvent(page, 'test_cursor_no_block', [
+      'move_cursor;17,15;;no_block',
+      'game_var;cursor_no_block;done',
+      'wait;1000',
+    ], 2);
+    expect(await getGameVar(page, 'cursor_no_block')).toBe('done');
+    const movingCamera = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: {
+          camera: { getPosition(): [number, number]; getTarget(): [number, number] };
+        };
+      };
+      const camera = gameWindow.__gameRef.camera;
+      return { position: camera.getPosition(), target: camera.getTarget() };
+    });
+    expect(movingCamera.position).not.toEqual(movingCamera.target);
+
+    await page.goto('/?harness=true&level=1&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureLargeCamera(page);
+    await installAndRunEvent(page, 'test_cursor_blocking', [
+      'move_cursor;17,15',
+      'game_var;cursor_blocking;done',
+    ], 2);
+    expect(await getGameVar(page, 'cursor_blocking')).toBeUndefined();
+    await stepFrames(page, 100);
+    expect(await getGameVar(page, 'cursor_blocking')).toBe('done');
+
+    await page.goto('/?harness=true&level=1&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await configureLargeCamera(page);
+    await installAndRunEvent(page, 'test_cursor_immediate', [
+      'center_cursor;17,15;;immediate',
+      'game_var;cursor_immediate;done',
+    ], 2);
+    expect(await getGameVar(page, 'cursor_immediate')).toBe('done');
+    const snappedCamera = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: {
+          camera: { getPosition(): [number, number]; getTarget(): [number, number] };
+        };
+      };
+      const camera = gameWindow.__gameRef.camera;
+      return { position: camera.getPosition(), target: camera.getTarget() };
+    });
+    expect(snappedCamera.position).toEqual(snappedCamera.target);
+  });
+
+  test('flicker_cursor immediate snaps before its mandatory display wait', async ({ page }) => {
+    await installAndRunEvent(page, 'test_flicker_immediate', [
+      'flicker_cursor;17,15;immediate',
+      'game_var;flicker_done;yes',
+    ], 5);
+    expect(await getGameVar(page, 'flicker_done')).toBeUndefined();
+    await stepFrames(page, 70);
+    expect(await getGameVar(page, 'flicker_done')).toBe('yes');
+    const cursorVisible = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { cursor: { visible: boolean } };
+      };
+      return gameWindow.__gameRef.cursor.visible;
+    });
+    expect(cursorVisible).toBe(false);
   });
 });
