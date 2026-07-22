@@ -152,6 +152,7 @@ import {
   queueCombatItemEvents,
   applyDroppableItemPickups,
 } from '../../combat/combat-lifecycle';
+import { internalLevel } from '../../combat/combat-components';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
@@ -2651,7 +2652,12 @@ function effectUnits(
   return [...units.values()];
 }
 
-function finishCoreItemUse(unit: UnitObject, item: ItemObject, targets: UnitObject[] = []): void {
+function finishCoreItemUse(
+  unit: UnitObject,
+  item: ItemObject,
+  targets: UnitObject[] = [],
+  healingDone: Map<UnitObject, number> = new Map(),
+): void {
   const game = getGame();
   const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
   const weaponType = item.getComponent<string>('weapon_type');
@@ -2681,6 +2687,24 @@ function finishCoreItemUse(unit: UnitObject, item: ItemObject, targets: UnitObje
     }
   }
 
+  if (unit.team === 'player' && item.hasComponent('heal_exp')) {
+    const promoteReset = game.db.getConstant('promote_level_reset', false);
+    const unitLevel = promoteReset ? internalLevel(unit, game.db) : unit.level;
+    const curve = Number(game.db.getConstant('heal_curve', 0));
+    const magnitude = Number(game.db.getConstant('heal_magnitude', 0));
+    const offset = Number(game.db.getConstant('heal_offset', 11));
+    const minimum = Number(game.db.getConstant('heal_min', 11));
+    let amount = 0;
+    for (const healed of healingDone.values()) {
+      if (healed <= 0) continue;
+      amount += Math.max(curve * (healed - unitLevel + offset) + magnitude, minimum);
+    }
+    amount = Math.max(0, Math.min(100, Math.trunc(amount)));
+    if (amount > 0) {
+      game.actionLog.doAction(new GainExpAction(unit, amount, game.currentMode?.growths ?? 'random'));
+    }
+  }
+
   const fatigue = item.getComponent<number>('fatigue');
   if (typeof fatigue === 'number' && fatigue !== 0) {
     game.actionLog.doAction(new ChangeFatigueAction(unit, fatigue));
@@ -2704,8 +2728,12 @@ export function applyCoreTargetedItem(
   targetItem: ItemObject | null = null,
 ): boolean {
   const targets = effectUnits(unit, item, position);
+  const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
   if (!applyCoreTargetedEffects(unit, item, position, targetItem)) return false;
-  finishCoreItemUse(unit, item, targets);
+  const healingDone = new Map(
+    targets.map((target) => [target, Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp))]),
+  );
+  finishCoreItemUse(unit, item, targets, healingDone);
   return true;
 }
 
@@ -2717,12 +2745,22 @@ export function applyCoreMultiTargetedItem(
 ): boolean {
   let applied = false;
   const targets = new Map<string, UnitObject>();
+  const hpBefore = new Map<UnitObject, number>();
   for (const position of positions) {
-    for (const target of effectUnits(unit, item, position)) targets.set(target.nid, target);
+    for (const target of effectUnits(unit, item, position)) {
+      targets.set(target.nid, target);
+      if (!hpBefore.has(target)) hpBefore.set(target, target.currentHp);
+    }
     applied = applyCoreTargetedEffects(unit, item, position) || applied;
   }
   if (!applied) return false;
-  finishCoreItemUse(unit, item, [...targets.values()]);
+  const healingDone = new Map(
+    [...targets.values()].map((target) => [
+      target,
+      Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp)),
+    ]),
+  );
+  finishCoreItemUse(unit, item, [...targets.values()], healingDone);
   return true;
 }
 

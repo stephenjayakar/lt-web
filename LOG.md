@@ -122,6 +122,11 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Healing item EXP:** `heal_exp` now rewards actual HP restored, summed across
+  unique targets with Python's internal-level and heal-constant formula. Direct
+  and multi-target healing capture pre-use HP, and the existing action group
+  reverses/redoes HP, EXP, uses, and wait state together.
+
 - **On-hit status/resource hooks:** `self_status_on_hit`, `statuses_on_hit`, and
   `fatigue_on_hit` now apply once per successful strike in item-component order.
   Combat result snapshots include fatigue, so target fatigue and all granted

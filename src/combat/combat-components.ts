@@ -183,7 +183,7 @@ export function grantPartnerCombatWexp(
   ).rankUp;
 }
 
-function internalLevel(unit: UnitObject, db: Database): number {
+export function internalLevel(unit: UnitObject, db: Database): number {
   let klass = db.classes.get(unit.klass);
   if (!klass) return unit.level;
   if (klass.tier === 0) return unit.level - klass.max_level;

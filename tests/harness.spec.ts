@@ -4926,7 +4926,7 @@ test.describe('Event command parity', () => {
     });
   });
 
-  test('healing staff flows through item menu, mouse targeting, and reversible actions', async ({ page }) => {
+  test('healing staff grants heal EXP and reverses menu, HP, EXP, and uses', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -4940,13 +4940,14 @@ test.describe('Event command parity', () => {
       caster.finished = false;
       caster.hasAttacked = false;
       caster.currentHp = caster.maxHp;
+      caster.exp = 10;
       target.currentHp = Math.max(1, target.maxHp - 12);
       const item = new ItemObject({
         nid: '_TargetedHealStaff', name: 'Targeted Heal Staff', desc: '',
         icon_nid: '', icon_index: [0, 0], components: [
           ['spell', null], ['target_ally', null], ['min_range', 1], ['max_range', 99],
           ['uses', 2], ['uses_options', { lose_uses_on_miss: false, one_loss_per_combat: false }],
-          ['equation_heal', 'HEAL'], ['magic', null],
+          ['equation_heal', 'HEAL'], ['heal_exp', null], ['magic', null],
         ],
       });
       item.owner = caster;
@@ -4964,6 +4965,15 @@ test.describe('Event command parity', () => {
       game.cursor.setPos(caster.position[0], caster.position[1]);
       const beforeActionIndex = game.actionLog.actionIndex;
       const expectedHeal = evaluateEquation(game.db.getEquation('HEAL'), caster, { db: game.db, item });
+      const healingDone = Math.max(0, Math.min(expectedHeal, target.maxHp - target.currentHp));
+      const promoteReset = game.db.getConstant('promote_level_reset', false);
+      const unitLevel = promoteReset ? game.queryEngine.getInternalLevel(caster) : caster.level;
+      const expectedExp = Math.max(0, Math.min(100, Math.trunc(Math.max(
+        Number(game.db.getConstant('heal_curve', 0)) *
+          (healingDone - unitLevel + Number(game.db.getConstant('heal_offset', 11))) +
+          Number(game.db.getConstant('heal_magnitude', 0)),
+        Number(game.db.getConstant('heal_min', 11)),
+      ))));
       game.state.change('item_use');
       return {
         casterNid: caster.nid,
@@ -4971,6 +4981,8 @@ test.describe('Event command parity', () => {
         targetPosition: [...target.position],
         hpBefore: target.currentHp,
         expectedHeal,
+        expBefore: caster.exp,
+        expectedExp,
         beforeActionIndex,
         casterPosition: `${caster.position[0]},${caster.position[1]}`,
         zeroRangeTargets,
@@ -5009,6 +5021,7 @@ test.describe('Event command parity', () => {
         state: game.state.getCurrentState()?.name,
         hp: target.currentHp,
         uses: item?.uses,
+        exp: caster.exp,
         finished: caster.finished,
       };
     }, setup!);
@@ -5018,6 +5031,7 @@ test.describe('Event command parity', () => {
       setup!.hpBefore + 12,
     ));
     expect(applied.uses).toBe(1);
+    expect(applied.exp).toBe(setup!.expBefore + setup!.expectedExp);
     expect(applied.finished).toBe(true);
 
     const turnwheel = await page.evaluate(({ casterNid, targetNid, beforeActionIndex }) => {
@@ -5028,6 +5042,7 @@ test.describe('Event command parity', () => {
       const snapshot = () => ({
         hp: target.currentHp,
         uses: caster.items.find((candidate: any) => candidate.nid === '_TargetedHealStaff')?.uses,
+        exp: caster.exp,
         finished: caster.finished,
       });
       while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
@@ -5039,8 +5054,12 @@ test.describe('Event command parity', () => {
       game.items.delete('_test_targeted_heal');
       return { reversed, redone };
     }, setup!);
-    expect(turnwheel.reversed).toEqual({ hp: setup!.hpBefore, uses: 2, finished: false });
-    expect(turnwheel.redone).toEqual({ hp: applied.hp, uses: 1, finished: true });
+    expect(turnwheel.reversed).toEqual({
+      hp: setup!.hpBefore, exp: setup!.expBefore, uses: 2, finished: false,
+    });
+    expect(turnwheel.redone).toEqual({
+      hp: applied.hp, exp: applied.exp, uses: 1, finished: true,
+    });
   });
 
   test('targeted status, restore, and refresh effects undo, redo, and save', async ({ page }) => {

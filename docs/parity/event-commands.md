@@ -156,7 +156,7 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | autolevel_to | AutolevelTo | autolevel_to:2333 | MODIFY_UNIT_PROPERTIES |  | GlobalUnit, Level, GrowthMethod? | hidden | yes | yes | no | mention | dispatched-unverified |
 | set_mode_autolevels | SetModeAutolevels | set_mode_autolevels:2367 | GAME_VARS |  | Level | hidden, boss | yes | yes | no |  | dispatched-unverified |
 | set_mode_rng | SetModeRNG | set_mode_rng:2382 | GAME_VARS |  | rng |  | yes | yes | no |  | dispatched-unverified |
-| promote | Promote | promote:2391 | MODIFY_UNIT_PROPERTIES |  | GlobalUnit, KlassList? | silent | yes | yes | no |  | dispatched-unverified |
+| promote | Promote | promote:2391 | MODIFY_UNIT_PROPERTIES |  | GlobalUnit, KlassList? | silent | yes | yes | no | mention | dispatched-unverified |
 | change_class | ChangeClass | change_class:2453 | MODIFY_UNIT_PROPERTIES |  | GlobalUnit, KlassList? | silent | yes | yes | no |  | dispatched-unverified |
 | add_tag | AddTag | add_tag:2517 | MODIFY_UNIT_PROPERTIES |  | GlobalUnit, Tag |  | yes | yes | no |  | dispatched-unverified |
 | remove_tag | RemoveTag | remove_tag:2525 | MODIFY_UNIT_PROPERTIES |  | GlobalUnit, Tag |  | yes | yes | no |  | dispatched-unverified |
