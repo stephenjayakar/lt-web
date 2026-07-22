@@ -113,6 +113,7 @@ export class EventPortrait {
   // --- Movement ---
   private moveTarget: [number, number] | null = null;
   private moving: boolean = false;
+  private moveSpeedMult: number = 1;
 
   // --- Bop ---
   private bopActive: boolean = false;
@@ -220,10 +221,13 @@ export class EventPortrait {
     this.expressions.add(expr);
   }
 
-  /** Move portrait to a new position with animation. */
-  move(target: [number, number], _speedMult: number = 1): void {
+  /** Start moving and return the Python-compatible travel duration in ms. */
+  move(target: [number, number], speedMult: number = 1): number {
+    const distance = Math.hypot(target[0] - this.position[0], target[1] - this.position[1]);
     this.moveTarget = [target[0], target[1]];
     this.moving = true;
+    this.moveSpeedMult = Math.max(0.001, speedMult);
+    return this.determineTravelTime(distance) / this.moveSpeedMult;
   }
 
   /** Instant teleport to new position. */
@@ -617,20 +621,30 @@ export class EventPortrait {
 
     const dx = this.moveTarget[0] - this.position[0];
     const dy = this.moveTarget[1] - this.position[1];
-    const dist = Math.abs(dx) + Math.abs(dy);
+    const distance = Math.hypot(dx, dy);
 
-    if (dist < 1) {
+    if (distance <= 0.001) {
       this.position = [this.moveTarget[0], this.moveTarget[1]];
       this.moving = false;
       this.moveTarget = null;
       return;
     }
 
-    // Approach algorithm: move clamp(dist/8, 1, 8) pixels per frame
-    const speed = Math.max(1, Math.min(8, dist / 8));
+    const baseMagnitude = Math.max(1, Math.min(8, Math.round(distance / 8)));
+    const magnitude = Math.min(this.moveSpeedMult * baseMagnitude, distance);
     const angle = Math.atan2(dy, dx);
-    this.position[0] += Math.cos(angle) * speed;
-    this.position[1] += Math.sin(angle) * speed;
+    this.position[0] += Math.cos(angle) * magnitude;
+    this.position[1] += Math.sin(angle) * magnitude;
+  }
+
+  private determineTravelTime(distance: number): number {
+    let frames = 0;
+    while (distance > 0.001) {
+      const magnitude = Math.max(1, Math.min(8, Math.round(distance / 8)));
+      distance = Math.max(0, distance - magnitude);
+      frames++;
+    }
+    return frames2ms(frames);
   }
 
   // ------------------------------------------------------------------

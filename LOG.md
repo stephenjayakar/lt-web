@@ -122,10 +122,12 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
-- **Event flow boundaries:** `end_skip` now clears ordinary event skip mode,
-  restoring blocking for subsequent commands; `transition;...;no_block` keeps
-  its fade active while command dispatch continues. Focused command-flags
-  regressions contrast each path with normal blocking behavior.
+- **Event presentation flags:** `end_skip` restores ordinary blocking after
+  skip mode; `transition;...;no_block` keeps its fade active while dispatch
+  continues; single-portrait add/remove/move/bop/mirror commands now match
+  Python blocking, `no_block`, and `immediate` boundaries. Portrait movement
+  also uses Python's distance step and speed multiplier. Focused command-flags
+  regressions contrast blocking and nonblocking paths.
 
 - **Deferred trigger paths complete:** wired `event_after_initiated_combat`
   through the real attacker/strike-partner skill-before-item combat lifecycle,
