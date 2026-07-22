@@ -15,7 +15,17 @@ import {
   SetItemDroppableAction,
   MoveItemBetweenUnitsAction,
   RemoveItemFromUnitAction,
+  WarpUnitAction,
+  SwapUnitsAction,
 } from '../engine/action';
+import type { Database } from '../data/database';
+import type { GameBoard } from '../objects/game-board';
+import {
+  drawBackDestinations,
+  pivotDestination,
+  shoveDestination,
+} from './item-system';
+import { ignoreForcedMovement } from './skill-system';
 import { evaluateEquation } from './combat-calcs';
 
 interface CombatLifecycleGame {
@@ -24,9 +34,8 @@ interface CombatLifecycleGame {
   gameVars?: Map<string, unknown>;
   levelVars?: Map<string, unknown>;
   actionLog?: Pick<ActionLog, 'doAction'>;
-  db?: {
-    getEquation: (nid: string) => string | undefined;
-  };
+  board?: GameBoard | null;
+  db?: Database;
 }
 
 interface DroppableGame {
@@ -190,6 +199,66 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
   for (const strike of strikes) {
     if (processed.has(strike.item)) continue;
     processed.add(strike.item);
+    const itemMarks = strikes.filter((candidate) => candidate.item === strike.item);
+    const firstMark = itemMarks[0];
+    const hitMarks = [...new Map(
+      itemMarks
+        .filter((candidate) => candidate.hit)
+        .map((candidate) => [candidate.defender.nid, candidate]),
+    ).values()];
+    if (game.board) {
+      for (const componentNid of strike.item.components.keys()) {
+        const marks = componentNid === 'shove_on_end_combat' ||
+          componentNid === 'swap_on_end_combat'
+          ? [firstMark]
+          : hitMarks;
+        for (const mark of marks) {
+          if ((componentNid === 'shove' || componentNid === 'shove_on_end_combat') &&
+              mark.attacker.position && !ignoreForcedMovement(mark.defender)) {
+            const destination = shoveDestination(
+              mark.defender,
+              mark.attacker.position,
+              Number(strike.item.getComponent<number>(componentNid) ?? 1),
+              { board: game.board, db: game.db, game },
+            );
+            if (destination) {
+              game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
+              applied++;
+            }
+          } else if ((componentNid === 'swap' || componentNid === 'swap_on_end_combat') &&
+              mark.attacker.position && mark.defender.position &&
+              !ignoreForcedMovement(mark.attacker) && !ignoreForcedMovement(mark.defender) &&
+              (!mark.isCounter || componentNid === 'swap')) {
+            game.actionLog.doAction(new SwapUnitsAction(mark.attacker, mark.defender, game.board));
+            applied++;
+          } else if (componentNid === 'pivot' && mark.defender.position &&
+              !ignoreForcedMovement(mark.attacker)) {
+            const destination = pivotDestination(
+              mark.attacker,
+              mark.defender.position,
+              Number(strike.item.getComponent<number>('pivot') ?? 1),
+              { board: game.board, db: game.db, game },
+            );
+            if (destination) {
+              game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
+              applied++;
+            }
+          } else if (componentNid === 'draw_back' && !ignoreForcedMovement(mark.defender)) {
+            const destinations = drawBackDestinations(
+              mark.attacker,
+              mark.defender,
+              Number(strike.item.getComponent<number>('draw_back') ?? 1),
+              { board: game.board, db: game.db, game },
+            );
+            if (destinations) {
+              game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
+              game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
+              applied += 2;
+            }
+          }
+        }
+      }
+    }
     const fatigue = strike.item.getComponent<number>('fatigue');
     if (!strike.isCounter && typeof fatigue === 'number' && fatigue !== 0) {
       game.actionLog.doAction(new ChangeFatigueAction(strike.attacker, fatigue));

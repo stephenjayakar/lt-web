@@ -3553,6 +3553,177 @@ test.describe('Event command parity', () => {
     });
   });
 
+
+  test('forced-movement combat items validate destinations and reverse actions', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const {
+        applyCombatItemEndHooks,
+      } = await import('/src/combat/combat-lifecycle.ts');
+      const {
+        targetRestrict,
+      } = await import('/src/combat/item-system.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+
+      let origin: [number, number] | null = null;
+      for (let y = 0; y < game.board.height && !origin; y++) {
+        for (let x = 1; x < game.board.width - 2; x++) {
+          const cells = [x - 1, x, x + 1, x + 2];
+          if (cells.every((cellX) =>
+            !game.board.getUnit(cellX, y) &&
+            game.board.getMovementCost(
+              cellX,
+              y,
+              klass.movement_group ?? 'Infantry',
+              game.db,
+            ) < 99)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return null;
+
+      const makeUnit = (nid: string) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { ...klass.bases }, growths: {}, stat_cap_modifiers: {},
+          starting_items: [], learned_skills: [], unit_notes: [], fields: [],
+          wexp_gain: {}, portrait_nid: '', affinity: '',
+        }, klass);
+        unit.team = 'player';
+        unit.finished = false;
+        return unit;
+      };
+      const mover = makeUnit('_MovementUser');
+      const target = makeUnit('_MovementTarget');
+      const blocker = makeUnit('_MovementBlocker');
+      const [x, y] = origin;
+      game.board.setUnit(x, y, mover);
+      game.board.setUnit(x + 1, y, target);
+
+      const positions = () => ({
+        mover: mover.position ? [...mover.position] : null,
+        target: target.position ? [...target.position] : null,
+        finished: mover.finished,
+      });
+      const reset = () => {
+        game.board.removeUnit(mover);
+        game.board.removeUnit(target);
+        game.board.removeUnit(blocker);
+        game.board.setUnit(x, y, mover);
+        game.board.setUnit(x + 1, y, target);
+        mover.finished = false;
+      };
+      const makeItem = (nid: string, component: string, value: number | null = null) => {
+        const item = new ItemObject({
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [
+            ['target_ally', null], ['min_range', 1], ['max_range', 1],
+            [component, value],
+          ],
+        });
+        item.owner = mover;
+        return item;
+      };
+      const runCombat = (component: string, hit = true) => {
+        reset();
+        const beforeIndex = game.actionLog.actionIndex;
+        const item = makeItem(`_${component}`, component, 1);
+        const count = applyCombatItemEndHooks(game, [{
+          attacker: mover,
+          defender: target,
+          item,
+          hit,
+          isCounter: false,
+        }]);
+        const changed = positions();
+        const finalIndex = game.actionLog.actionIndex;
+        const actionNames = game.actionLog.actions
+          .slice(beforeIndex + 1, finalIndex + 1)
+          .map((action: any) => action.constructor.name);
+        while (game.actionLog.actionIndex > beforeIndex) game.actionLog.runActionBackward();
+        const reversed = positions();
+        while (game.actionLog.actionIndex < finalIndex) game.actionLog.runActionForward();
+        const redone = positions();
+        return { applied: count > 0, count, changed, reversed, redone, actionNames };
+      };
+
+      const shove = runCombat('shove');
+      const swap = runCombat('swap');
+      const pivot = runCombat('pivot');
+      const drawBack = runCombat('draw_back');
+
+      reset();
+      const restrictItem = makeItem('_ShoveRestrict', 'shove_target_restrict', 1);
+      const restrictOpen = targetRestrict(
+        mover, restrictItem, [x + 1, y], [], { board: game.board, db: game.db, game },
+      );
+      game.board.setUnit(x + 2, y, blocker);
+      const restrictBlocked = targetRestrict(
+        mover, restrictItem, [x + 1, y], [], { board: game.board, db: game.db, game },
+      );
+      game.board.removeUnit(blocker);
+
+      const endShove = runCombat('shove_on_end_combat', false);
+
+
+      game.board.removeUnit(mover);
+      game.board.removeUnit(target);
+      game.board.removeUnit(blocker);
+      return {
+        origin,
+        shove,
+        swap,
+        pivot,
+        drawBack,
+        restrictOpen,
+        restrictBlocked,
+        endShove,
+      };
+    });
+    expect(result).not.toBeNull();
+    const [x, y] = result!.origin;
+    const initial = { mover: [x, y], target: [x + 1, y], finished: false };
+
+    expect(result!.shove.changed).toEqual({
+      mover: [x, y], target: [x + 2, y], finished: false,
+    });
+    expect(result!.shove.actionNames).toContain('WarpUnitAction');
+    expect(result!.swap.changed).toEqual({
+      mover: [x + 1, y], target: [x, y], finished: false,
+    });
+    expect(result!.swap.actionNames).toContain('SwapUnitsAction');
+    expect(result!.pivot.changed).toEqual({
+      mover: [x + 2, y], target: [x + 1, y], finished: false,
+    });
+    expect(result!.drawBack.changed).toEqual({
+      mover: [x - 1, y], target: [x, y], finished: false,
+    });
+    for (const outcome of [
+      result!.shove, result!.swap, result!.pivot, result!.drawBack,
+    ]) {
+      expect(outcome.applied).toBe(true);
+      expect(outcome.reversed).toEqual(initial);
+      expect(outcome.redone).toEqual(outcome.changed);
+    }
+    expect(result!.restrictOpen).toBe(true);
+    expect(result!.restrictBlocked).toBe(false);
+    expect(result!.endShove.count).toBe(1);
+    expect(result!.endShove.changed).toEqual({
+      mover: [x, y], target: [x + 2, y], finished: false,
+    });
+    expect(result!.endShove.reversed).toEqual(initial);
+    expect(result!.endShove.redone).toEqual(result!.endShove.changed);
+  });
+
   test('persistent combat LCG, proc charge, turnwheel, and save restore match LT state', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);

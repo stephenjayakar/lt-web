@@ -122,6 +122,12 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Forced-movement items:** combat hits now apply `shove`, `swap`, `pivot`, and
+  `draw_back` through shared terrain/occupancy destination rules; end-combat
+  shove/swap variants run once per participating item. Movement is action-backed,
+  target restrictions suppress invalid commands, and focused coverage verifies
+  blocked destinations plus hit/end-combat undo and redo.
+
 - **Combat formula components:** damage, critical hit/avoid, attack speed, and
   defense speed now honor Python's exact skill-override, item-override,
   skill-alternate, item-alternate, default precedence. Missing item and skill
