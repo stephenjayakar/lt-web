@@ -2558,6 +2558,15 @@ function applyCoreTargetedEffects(
       }
     }
   }
+  const forcedClass = item.getComponent<string>('force_class_change');
+  if (forcedClass && game.db.classes.has(forcedClass)) {
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      if (!target) continue;
+      performPromotionOrClassChange(target, forcedClass, game, 'change_class');
+      applied = true;
+    }
+  }
 
 
   // Generated item hooks run in component insertion order. Preserve that

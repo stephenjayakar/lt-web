@@ -414,4 +414,104 @@ test.describe('Promotion item flow', () => {
     expect(roundTrip.wexp).toEqual(beforeSave.wexp);
     expect(roundTrip.skillNids).toEqual(beforeSave.skillNids);
   });
+
+  test('force_class_change item reclasses once and reverses through the item action group', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Eirika');
+      const sourceClass = game.db.classes.get('Fighter');
+      const targetKlass = game.db.classes.has('Cavalier')
+        ? 'Cavalier'
+        : [...game.db.classes.keys()].find((nid: string) => nid !== 'Fighter');
+      if (!unit || !sourceClass || !targetKlass || !unit.position) return null;
+
+      unit.klass = 'Fighter';
+      unit.stats = { ...sourceClass.bases };
+      unit.maxStats = { ...sourceClass.max_stats };
+      unit.level = 10;
+      unit.exp = 25;
+      unit.wexp = {};
+      unit.skills = [];
+      unit.currentHp = sourceClass.bases.HP;
+      unit.resetTurnState();
+      const item = new ItemObject({
+        nid: '_ForceClassChangeItem',
+        name: 'Reclass Seal',
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components: [
+          ['force_class_change', targetKlass],
+          ['target_ally', null],
+          ['min_range', 0],
+          ['max_range', 0],
+          ['uses', 1],
+        ],
+      });
+      item.owner = unit;
+      unit.items = [item];
+      game.selectedUnit = unit;
+      game.cursor.setPos(unit.position[0], unit.position[1]);
+      const beforeActionIndex = game.actionLog.actionIndex;
+      game.state.change('item_use');
+      return { targetKlass, beforeActionIndex };
+    });
+    expect(setup).not.toBeNull();
+
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('item_use');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+
+    const result = await page.evaluate(({ targetKlass, beforeActionIndex }) => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Eirika');
+      const actionLog = game.actionLog as any;
+      const snapshot = () => ({
+        klass: unit.klass,
+        level: unit.level,
+        exp: unit.exp,
+        itemPresent: unit.items.some((item: any) => item.nid === '_ForceClassChangeItem'),
+        finished: unit.finished,
+      });
+      const changed = snapshot();
+      const finalActionIndex = actionLog.actionIndex;
+      const actionNames = actionLog.actions
+        .slice(beforeActionIndex + 1, finalActionIndex + 1)
+        .map((action: any) => action.constructor.name);
+      while (actionLog.actionIndex > beforeActionIndex) actionLog.runActionBackward();
+      const reversed = snapshot();
+      while (actionLog.actionIndex < finalActionIndex) actionLog.runActionForward();
+      return {
+        targetKlass,
+        state: game.state.getCurrentState()?.name,
+        changed,
+        reversed,
+        redone: snapshot(),
+        actionNames,
+      };
+    }, setup!);
+
+    expect(result.changed).toMatchObject({
+      klass: result.targetKlass,
+      level: 10,
+      exp: 25,
+      itemPresent: false,
+      finished: true,
+    });
+    expect(result.reversed).toMatchObject({
+      klass: 'Fighter',
+      level: 10,
+      exp: 25,
+      itemPresent: true,
+      finished: false,
+    });
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toContain('ClassChangeAction');
+    expect(result.state).toBe('free');
+  });
 });
