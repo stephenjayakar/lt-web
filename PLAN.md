@@ -134,7 +134,7 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-22 after skip, transition, and portrait flag parity:
+Queue refreshed 2026-07-22 after skip, transition, portrait, and dialog flag parity:
 
 1. Match remaining event blocking, no-block, immediate, and skip semantics.
 2. Continue the open roadmap in dependency order; keep generated inventories as
