@@ -7410,6 +7410,8 @@ export class EventState extends State {
   private transitionFadingOut: boolean = false; // true = fading from black
   private transitionHoldBlack: boolean = false; // true = holding black between open/close
   private transitionDurationMs: number = 133;   // fade duration in ms (Python: transitions.py:14)
+  /** Whether the active fade owns command-pointer advancement. */
+  private transitionBlocksCommands: boolean = true;
   private transitionColor: string = '0,0,0';    // fade color as "r,g,b"
 
   // Choice menu state
@@ -7651,12 +7653,36 @@ export class EventState extends State {
     }
   }
 
+  /** Advance fades that intentionally do not pause event command dispatch. */
+  private updateNonBlockingTransition(): void {
+    if (this.transitionBlocksCommands) return;
+
+    if (this.transitionFadingIn) {
+      this.transitionAlpha = this.skipMode
+        ? 1
+        : Math.min(1, this.transitionAlpha + FRAMETIME / this.transitionDurationMs);
+      if (this.transitionAlpha >= 1) {
+        this.transitionFadingIn = false;
+        this.transitionHoldBlack = true;
+      }
+    } else if (this.transitionFadingOut) {
+      this.transitionAlpha = this.skipMode
+        ? 0
+        : Math.max(0, this.transitionAlpha - FRAMETIME / this.transitionDurationMs);
+      if (this.transitionAlpha <= 0) {
+        this.transitionFadingOut = false;
+        this.transitionHoldBlack = false;
+      }
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Update — burst-processes instant commands each frame
   // -----------------------------------------------------------------------
 
   override update(): StateResult {
     const game = getGame();
+    this.updateNonBlockingTransition();
 
     // Block while a level transition is loading asynchronously
     if (this.levelTransitionInProgress) {
@@ -7752,38 +7778,48 @@ export class EventState extends State {
     }
 
     // Transition fade animation
-    if (this.transitionFadingIn) {
+    if (this.transitionFadingIn && this.transitionBlocksCommands) {
       if (this.skipMode) {
         this.transitionAlpha = 1;
         this.transitionFadingIn = false;
         this.transitionHoldBlack = true;
-        this.advancePointer();
+        if (this.transitionBlocksCommands) {
+          this.advancePointer();
+        }
       } else {
         this.transitionAlpha = Math.min(1, this.transitionAlpha + FRAMETIME / this.transitionDurationMs);
         if (this.transitionAlpha >= 1) {
           this.transitionFadingIn = false;
           this.transitionHoldBlack = true;
-          this.advancePointer();
+          if (this.transitionBlocksCommands) {
+            this.advancePointer();
+          }
           // Don't return — allow burst to continue while holding black
-        } else {
+        } else if (this.transitionBlocksCommands) {
           return;
         }
       }
     }
-    if (this.transitionFadingOut) {
+    if (this.transitionFadingOut && this.transitionBlocksCommands) {
       if (this.skipMode) {
         this.transitionAlpha = 0;
         this.transitionFadingOut = false;
         this.transitionHoldBlack = false;
-        this.advancePointer();
+        if (this.transitionBlocksCommands) {
+          this.advancePointer();
+        }
       } else {
         this.transitionAlpha = Math.max(0, this.transitionAlpha - FRAMETIME / this.transitionDurationMs);
         if (this.transitionAlpha <= 0) {
           this.transitionFadingOut = false;
           this.transitionHoldBlack = false;
-          this.advancePointer();
+          if (this.transitionBlocksCommands) {
+            this.advancePointer();
+          }
         }
-        return;
+        if (this.transitionBlocksCommands) {
+          return;
+        }
       }
     }
 
@@ -8794,15 +8830,21 @@ export class EventState extends State {
           return false;
         }
         const direction = (args[0] ?? 'close').toLowerCase();
+        this.transitionBlocksCommands = !args.some(arg => arg.toLowerCase() === 'no_block');
         if (direction === 'open') {
+          this.transitionFadingIn = false;
           this.transitionFadingOut = true;
           this.transitionAlpha = 1;
         } else {
           // 'close' — fade to black
           this.transitionFadingIn = true;
+          this.transitionFadingOut = false;
           this.transitionAlpha = 0;
         }
-        return true;
+        if (!this.transitionBlocksCommands) {
+          this.advancePointer();
+        }
+        return this.transitionBlocksCommands;
       }
 
       case 'alert': {
