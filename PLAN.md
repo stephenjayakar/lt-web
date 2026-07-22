@@ -134,7 +134,7 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-22 after completing action and save/restore parity:
+Queue refreshed 2026-07-22 after forced-movement item parity:
 
 1. Implement remaining item target/restriction/use/end-combat hooks and
    multi/sub-item behavior.

@@ -896,6 +896,41 @@ export class WarpUnitAction extends Action {
   }
 }
 
+/** Atomically exchange two on-map units without changing their turn flags. */
+export class SwapUnitsAction extends Action {
+  private first: UnitObject;
+  private second: UnitObject;
+  private board: GameBoard;
+  private firstPosition: [number, number];
+  private secondPosition: [number, number];
+
+  constructor(first: UnitObject, second: UnitObject, board: GameBoard) {
+    super();
+    if (!first.position || !second.position) {
+      throw new Error('Cannot swap an off-map unit');
+    }
+    this.first = first;
+    this.second = second;
+    this.board = board;
+    this.firstPosition = [first.position[0], first.position[1]];
+    this.secondPosition = [second.position[0], second.position[1]];
+  }
+
+  execute(): void {
+    this.board.removeUnit(this.first);
+    this.board.removeUnit(this.second);
+    this.board.setUnit(this.secondPosition[0], this.secondPosition[1], this.first);
+    this.board.setUnit(this.firstPosition[0], this.firstPosition[1], this.second);
+  }
+
+  reverse(): void {
+    this.board.removeUnit(this.first);
+    this.board.removeUnit(this.second);
+    this.board.setUnit(this.firstPosition[0], this.firstPosition[1], this.first);
+    this.board.setUnit(this.secondPosition[0], this.secondPosition[1], this.second);
+  }
+}
+
 /**
  * DamageAction - Apply damage to a unit (reduce currentHp).
  * Clamps HP to a minimum of 0.

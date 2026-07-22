@@ -686,6 +686,89 @@ export function usesConsumedByStrikes(
   return qualifying.length;
 }
 
+function movementGroup(unit: UnitObject, db: Database): string {
+  return db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+}
+
+export function shoveDestination(
+  target: UnitObject,
+  anchor: TargetPosition,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): TargetPosition | null {
+  if (!target.position || magnitude <= 0) return null;
+  const dx = target.position[0] - anchor[0];
+  const dy = target.position[1] - anchor[1];
+  if (dx === 0 && dy === 0) return null;
+  const step: TargetPosition = Math.abs(dx) >= Math.abs(dy)
+    ? [dx > 0 ? 1 : -1, 0]
+    : [0, dy > 0 ? 1 : -1];
+  let destination: TargetPosition = [target.position[0], target.position[1]];
+  for (let index = 1; index <= magnitude; index++) {
+    const candidate: TargetPosition = [
+      target.position[0] + step[0] * index,
+      target.position[1] + step[1] * index,
+    ];
+    if (!context.board.inBounds(candidate[0], candidate[1])) return null;
+    const occupant = context.board.getUnit(candidate[0], candidate[1]);
+    if (occupant && occupant !== target) return null;
+    if (context.board.getMovementCost(
+      candidate[0], candidate[1], movementGroup(target, context.db), context.db,
+    ) >= 99) return null;
+    destination = candidate;
+  }
+  return destination;
+}
+
+export function pivotDestination(
+  unit: UnitObject,
+  anchor: TargetPosition,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): TargetPosition | null {
+  if (!unit.position || magnitude <= 0) return null;
+  const dx = Math.max(-1, Math.min(1, unit.position[0] - anchor[0]));
+  const dy = Math.max(-1, Math.min(1, unit.position[1] - anchor[1]));
+  const destination: TargetPosition = [anchor[0] - dx * magnitude, anchor[1] - dy * magnitude];
+  if (!context.board.inBounds(destination[0], destination[1]) ||
+      context.board.getUnit(destination[0], destination[1])) return null;
+  const cost = context.board.getMovementCost(
+    destination[0], destination[1], movementGroup(unit, context.db), context.db,
+  );
+  return cost <= unit.getMovement() ? destination : null;
+}
+
+export function drawBackDestinations(
+  unit: UnitObject,
+  target: UnitObject,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): [TargetPosition, TargetPosition] | null {
+  if (!unit.position || !target.position || magnitude <= 0) return null;
+  const dx = Math.max(-1, Math.min(1, target.position[0] - unit.position[0]));
+  const dy = Math.max(-1, Math.min(1, target.position[1] - unit.position[1]));
+  const unitDestination: TargetPosition = [
+    unit.position[0] - dx * magnitude,
+    unit.position[1] - dy * magnitude,
+  ];
+  const targetDestination: TargetPosition = [
+    target.position[0] - dx * magnitude,
+    target.position[1] - dy * magnitude,
+  ];
+  if (!context.board.inBounds(unitDestination[0], unitDestination[1]) ||
+      !context.board.inBounds(targetDestination[0], targetDestination[1]) ||
+      context.board.getUnit(unitDestination[0], unitDestination[1])) return null;
+  const unitCost = context.board.getMovementCost(
+    unitDestination[0], unitDestination[1], movementGroup(unit, context.db), context.db,
+  );
+  const targetCost = context.board.getMovementCost(
+    targetDestination[0], targetDestination[1], movementGroup(target, context.db), context.db,
+  );
+  return unitCost <= unit.getMovement() && targetCost <= target.getMovement()
+    ? [unitDestination, targetDestination]
+    : null;
+}
+
 /** Apply every component target restriction (ALL policy). */
 export function targetRestrict(
   unit: UnitObject,
@@ -776,6 +859,30 @@ export function targetRestrict(
     const movementGroup = context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
     const movementCost = context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db);
     if (movementCost > unit.getMovement()) return false;
+  }
+
+  if (item.hasComponent('shove_target_restrict')) {
+    const magnitude = Number(item.getComponent<number>('shove_target_restrict') ?? 1);
+    const canShove = affectedUnits.some((target) =>
+      !target.skills.some((skill) => skill.hasComponent('ignore_forced_movement')) &&
+      !!unit.position && !!shoveDestination(target, unit.position, magnitude, context));
+    if (!canShove) return false;
+  }
+
+  if (item.hasComponent('pivot_target_restrict')) {
+    const magnitude = Number(item.getComponent<number>('pivot_target_restrict') ?? 1);
+    const canPivot = affectedUnits.some((target) =>
+      !unit.skills.some((skill) => skill.hasComponent('ignore_forced_movement')) &&
+      !!target.position && !!pivotDestination(unit, target.position, magnitude, context));
+    if (!canPivot) return false;
+  }
+
+  if (item.hasComponent('draw_back_target_restrict')) {
+    const magnitude = Number(item.getComponent<number>('draw_back_target_restrict') ?? 1);
+    const canDrawBack = affectedUnits.some((target) =>
+      !target.skills.some((skill) => skill.hasComponent('ignore_forced_movement')) &&
+      !!drawBackDestinations(unit, target, magnitude, context));
+    if (!canDrawBack) return false;
   }
 
   const expression = item.getComponent<string>('eval_target_restrict_2');
