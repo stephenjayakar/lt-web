@@ -510,7 +510,7 @@ export class CombatPhaseSolver {
       attacker, attackItem, defender, defenseItem,
     );
     const defenderStrikeCount = defenseItem
-      ? calcs.computeStrikeCount(defender, defenseItem, attacker, attackItem)
+      ? calcs.computeStrikeCount(defender, defenseItem, attacker, attackItem, 'defense')
       : 1;
 
     // Check for skill-based ordering
@@ -541,7 +541,9 @@ export class CombatPhaseSolver {
       const partnerWeapon = partner.items.find((candidate) => candidate.isWeapon());
       if (!partnerWeapon) return;
       const targetWeapon = target.items.find((candidate) => candidate.isWeapon()) ?? null;
-      const count = calcs.computeStrikeCount(partner, partnerWeapon, target, targetWeapon);
+      const count = calcs.computeStrikeCount(
+        partner, partnerWeapon, target, targetWeapon, isCounter ? 'defense' : 'attack',
+      );
       for (let index = 0; index < count; index++) {
         if (targetHpRef.hp <= 0) break;
         const strike = this.resolveStrike(

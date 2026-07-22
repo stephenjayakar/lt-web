@@ -122,6 +122,12 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Attack-only brave weapons:** strike-count calculation now preserves
+  initiating-versus-defending combat mode, so `brave_on_attack` adds one strike
+  only when its wielder initiates. The focused combat golden proves the same
+  weapon remains single-strike on a counterattack while ordinary brave behavior
+  remains unchanged.
+
 - **Forced reclass items:** `force_class_change` is now a real core item-use
   effect, applies the existing reversible class-change mechanics to each
   resolved target, and participates in normal use consumption and unit wait

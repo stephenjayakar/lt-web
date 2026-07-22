@@ -1288,12 +1288,12 @@ export function dynamicMultiattacks(
   item: ItemObject,
   _target: UnitObject,
   _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
+  mode: string,
+  _attackInfo: unknown,
   _baseValue: number,
 ): number {
-  // Brave: weapon hits twice per attack
   if (item.hasComponent('brave')) return 1;
+  if (item.hasComponent('brave_on_attack') && mode === 'attack') return 1;
   return 0;
 }
 
