@@ -122,6 +122,12 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Item fatigue hooks:** `fatigue` now records a reversible bounded fatigue
+  action after direct item use and once per item that participates in initiated
+  combat; counterattack-only use remains excluded like Python. Focused item-flow
+  and lifecycle regressions cover consumption, wait finalization, counter
+  exclusion, and combined mana/fatigue undo and redo.
+
 - **Attack-only brave weapons:** strike-count calculation now preserves
   initiating-versus-defending combat mode, so `brave_on_attack` adds one strike
   only when its wielder initiates. The focused combat golden proves the same

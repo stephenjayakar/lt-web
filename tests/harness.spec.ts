@@ -3431,6 +3431,7 @@ test.describe('Event command parity', () => {
       const defender = makeUnit('_LifecycleDefender', 'enemy');
       attacker.position = [2, 2];
       attacker.currentMana = 1;
+      attacker.currentFatigue = 2;
       const oldManaEquation = game.db.equations.get('MANA');
       game.db.equations.set('MANA', '10');
       defender.position = [3, 2];
@@ -3443,22 +3444,49 @@ test.describe('Event command parity', () => {
           ['event_after_combat_on_hit', eventNids[4]],
           ['event_after_combat_even_miss', eventNids[5]],
           ['gain_mana_after_combat', 'target.level + 2'],
+          ['fatigue', 3],
         ],
       });
+      const defenseItem = new ItemObject({
+        nid: '_LifecycleDefense', name: '_LifecycleDefense', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['weapon', null], ['weapon_type', 'Sword'], ['target_enemy', null],
+          ['damage', 0], ['hit', 100], ['uses', 5], ['fatigue', 7],
+        ],
+      });
+      defender.items.push(defenseItem);
+      defender.currentFatigue = 4;
       attacker.items.push(item);
       const combat = new MapCombat(
-        attacker, item, defender, null, game.db, 'grandmaster', null, ['hit1', 'miss1'],
+        attacker, item, defender, defenseItem, game.db, 'grandmaster', null, ['hit1', 'miss1', 'hit2'],
       );
       combat.applyResults(game.actionLog);
-      const beforeManaHookIndex = game.actionLog.actionIndex;
-      const manaHookCount = applyCombatItemEndHooks(game, combat.strikes);
-      const manaAfter = attacker.currentMana;
-      const manaActionName = (game.actionLog as any).actions.at(-1)?.constructor.name;
+      const beforeResourceHookIndex = game.actionLog.actionIndex;
+      const resourceHookCount = applyCombatItemEndHooks(game, combat.strikes);
+      const resourceAfter = {
+        mana: attacker.currentMana,
+        fatigue: attacker.currentFatigue,
+      };
+      const resourceActionNames = (game.actionLog as any).actions
+        .slice(beforeResourceHookIndex + 1)
+        .map((action: any) => action.constructor.name);
       (game.actionLog as any).runActionBackward();
-      const manaReversed = attacker.currentMana;
+      const afterFatigueUndo = {
+        mana: attacker.currentMana,
+        fatigue: attacker.currentFatigue,
+      };
+      (game.actionLog as any).runActionBackward();
+      const resourcesReversed = {
+        mana: attacker.currentMana,
+        fatigue: attacker.currentFatigue,
+      };
       (game.actionLog as any).runActionForward();
-      const manaRedone = attacker.currentMana;
-      const manaActionDelta = game.actionLog.actionIndex - beforeManaHookIndex;
+      (game.actionLog as any).runActionForward();
+      const resourcesRedone = {
+        mana: attacker.currentMana,
+        fatigue: attacker.currentFatigue,
+      };
+      const resourceActionDelta = game.actionLog.actionIndex - beforeResourceHookIndex;
       if (oldManaEquation === undefined) game.db.equations.delete('MANA');
       else game.db.equations.set('MANA', oldManaEquation);
       const count = queueCombatItemEvents(game, combat.strikes);
@@ -3474,25 +3502,29 @@ test.describe('Event command parity', () => {
         count,
         order,
         payloads,
-        mana: {
-          manaActionDelta,
-          manaHookCount,
-          manaAfter,
-          manaActionName,
-          manaReversed,
-          manaRedone,
+        defenderFatigue: defender.currentFatigue,
+        resources: {
+          resourceActionDelta,
+          resourceHookCount,
+          resourceAfter,
+          resourceActionNames,
+          afterFatigueUndo,
+          resourcesReversed,
+          resourcesRedone,
         },
       };
     });
     expect(queued).not.toBeNull();
     expect(queued!.count).toBe(6);
-    expect(queued!.mana).toEqual({
-      manaActionDelta: 1,
-      manaHookCount: 1,
-      manaAfter: 4,
-      manaActionName: 'ChangeManaAction',
-      manaReversed: 1,
-      manaRedone: 4,
+    expect(queued!.defenderFatigue).toBe(4);
+    expect(queued!.resources).toEqual({
+      resourceActionDelta: 2,
+      resourceHookCount: 2,
+      resourceAfter: { mana: 4, fatigue: 5 },
+      resourceActionNames: ['ChangeFatigueAction', 'ChangeManaAction'],
+      afterFatigueUndo: { mana: 1, fatigue: 5 },
+      resourcesReversed: { mana: 1, fatigue: 2 },
+      resourcesRedone: { mana: 4, fatigue: 5 },
     });
     expect(queued!.order).toEqual([
       '_EventOnUse', '_EventOnHit', '_EventAfterUse',

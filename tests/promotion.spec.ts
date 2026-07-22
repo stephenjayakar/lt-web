@@ -437,6 +437,7 @@ test.describe('Promotion item flow', () => {
       unit.wexp = {};
       unit.skills = [];
       unit.currentHp = sourceClass.bases.HP;
+      unit.currentFatigue = 2;
       unit.resetTurnState();
       const item = new ItemObject({
         nid: '_ForceClassChangeItem',
@@ -449,6 +450,7 @@ test.describe('Promotion item flow', () => {
           ['target_ally', null],
           ['min_range', 0],
           ['max_range', 0],
+          ['fatigue', 3],
           ['uses', 1],
         ],
       });
@@ -475,6 +477,7 @@ test.describe('Promotion item flow', () => {
         klass: unit.klass,
         level: unit.level,
         exp: unit.exp,
+        fatigue: unit.currentFatigue,
         itemPresent: unit.items.some((item: any) => item.nid === '_ForceClassChangeItem'),
         finished: unit.finished,
       });
@@ -500,6 +503,7 @@ test.describe('Promotion item flow', () => {
       klass: result.targetKlass,
       level: 10,
       exp: 25,
+      fatigue: 5,
       itemPresent: false,
       finished: true,
     });
@@ -507,11 +511,13 @@ test.describe('Promotion item flow', () => {
       klass: 'Fighter',
       level: 10,
       exp: 25,
+      fatigue: 2,
       itemPresent: true,
       finished: false,
     });
     expect(result.redone).toEqual(result.changed);
     expect(result.actionNames).toContain('ClassChangeAction');
+    expect(result.actionNames).toContain('ChangeFatigueAction');
     expect(result.state).toBe('free');
   });
 });

@@ -2681,6 +2681,11 @@ function finishCoreItemUse(unit: UnitObject, item: ItemObject, targets: UnitObje
     }
   }
 
+  const fatigue = item.getComponent<number>('fatigue');
+  if (typeof fatigue === 'number' && fatigue !== 0) {
+    game.actionLog.doAction(new ChangeFatigueAction(unit, fatigue));
+  }
+
   if (item.maxUses > 0) {
     const nextUses = Math.max(0, item.uses - 1);
     game.actionLog.doAction(new SetItemUsesAction(item, nextUses));
