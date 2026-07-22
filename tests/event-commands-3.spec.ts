@@ -76,6 +76,162 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
     expect(result.afterUndo).toBe(false);
   });
 
+
+  test('unit mutation commands undo and redo exact state through actions', async ({ page }) => {
+    await boot(page);
+    const before = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      unit.currentHp = unit.maxHp;
+      unit.exp = 10;
+      unit.resetTurnState();
+      return {
+        hp: unit.currentHp,
+        exp: unit.exp,
+        ai: unit.ai,
+        hasAttacked: unit.hasAttacked,
+        hasTraded: unit.hasTraded,
+        finished: unit.finished,
+      };
+    });
+
+    await runEvent(page, 'TestActionBackedUnitMutations', [
+      'set_current_hp;Eirika;1',
+      'give_exp;Eirika;5;silent',
+      'change_ai;Eirika;__test_ai',
+      'has_attacked;Eirika',
+      'has_finished;Eirika',
+      'has_traded;Eirika',
+      'set_exp;Eirika;42',
+    ]);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      const snapshot = () => ({
+        hp: unit.currentHp,
+        exp: unit.exp,
+        ai: unit.ai,
+        hasAttacked: unit.hasAttacked,
+        hasTraded: unit.hasTraded,
+        finished: unit.finished,
+      });
+      const changed = snapshot();
+      const actions = Array.from({ length: 7 }, () => g.actionLog.undo());
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.changed).toEqual({
+      hp: 1,
+      exp: 42,
+      ai: '__test_ai',
+      hasAttacked: true,
+      hasTraded: true,
+      finished: true,
+    });
+    expect(result.undone).toEqual(before);
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual([
+      'SetUnitExpAction',
+      'HasTradedAction',
+      'WaitAction',
+      'HasAttackedAction',
+      'SetUnitAttributeAction',
+      'GainExpAction',
+      'SetCurrentHpAction',
+    ]);
+  });
+
+  test('event variables, visited state, and map removal undo and redo through actions', async ({ page }) => {
+    await boot(page);
+    const before = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      unit.resetTurnState();
+      g.gameVars.set('__action_gvar', 'old');
+      g.levelVars.set('__action_lvar', 'old');
+      g.gameVars.set('_supports', false);
+      g.gameVars.set('_turnwheel', true);
+      const snapshot = () => ({
+        gameVar: g.gameVars.get('__action_gvar'),
+        levelVar: g.levelVars.get('__action_lvar'),
+        supports: g.gameVars.get('_supports'),
+        turnwheel: g.gameVars.get('_turnwheel'),
+        position: unit.position ? [...unit.position] : null,
+        boardUnit: unit.position ? g.board.getUnit(...unit.position)?.nid ?? null : null,
+        hasAttacked: unit.hasAttacked,
+        finished: unit.finished,
+      });
+      return snapshot();
+    });
+
+    await runEvent(page, 'TestActionBackedEventState', [
+      'modify_game_var;__action_gvar;7',
+      'modify_level_var;__action_lvar;8',
+      'enable_supports',
+      'enable_turnwheel;false',
+      'has_visited;Eirika;attacked',
+      'remove_unit;Eirika;immediate',
+    ]);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      const snapshot = () => ({
+        gameVar: g.gameVars.get('__action_gvar'),
+        levelVar: g.levelVars.get('__action_lvar'),
+        supports: g.gameVars.get('_supports'),
+        turnwheel: g.gameVars.get('_turnwheel'),
+        position: unit.position ? [...unit.position] : null,
+        boardUnit: unit.position ? g.board.getUnit(...unit.position)?.nid ?? null : null,
+        hasAttacked: unit.hasAttacked,
+        finished: unit.finished,
+      });
+      const changed = snapshot();
+      const actions = Array.from({ length: 7 }, () => g.actionLog.undo());
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.changed).toEqual({
+      gameVar: 7,
+      levelVar: 8,
+      supports: true,
+      turnwheel: false,
+      position: null,
+      boardUnit: null,
+      hasAttacked: true,
+      finished: true,
+    });
+    expect(result.undone).toEqual(before);
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual([
+      'LeaveMapAction',
+      'WaitAction',
+      'HasAttackedAction',
+      'SetGameVarAction',
+      'SetGameVarAction',
+      'SetLevelVarAction',
+      'SetGameVarAction',
+    ]);
+  });
   test('set_mode_rng changes the difficulty mode rng and rejects invalid options', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'TestSetRng', ['set_mode_rng;grandmaster']);
@@ -310,10 +466,19 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
     expect(state).toBe('base_sound_room');
   });
 
-  test('open_trade enters direct item trading between two named units', async ({ page }) => {
+  test('open_trade item swap and turn consumption are reversible actions', async ({ page }) => {
     await boot(page);
-    await page.evaluate(() => {
+    const before = await page.evaluate(() => {
       const g = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const eirika = g.units.get('Eirika');
+      const seth = g.units.get('Seth');
+      eirika.resetTurnState();
+      seth.resetTurnState();
+      eirika.items = [];
+      seth.items = [];
+      harness.giveItem('Eirika', 'Iron_Sword');
+      harness.giveItem('Seth', 'Vulnerary');
       g.db.events.set('TestTrade', {
         name: 'TestTrade', nid: 'TestTrade', trigger: 'TestTrade',
         level_nid: g.currentLevel?.nid ?? null,
@@ -322,9 +487,16 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
       });
       g.eventManager.triggerSpecific('TestTrade', { type: 'TestTrade' }, true);
       g.state.change('event');
+      return {
+        eirikaItem: eirika.items[0]?.nid ?? null,
+        sethItem: seth.items[0]?.nid ?? null,
+      };
     });
+    expect(before.eirikaItem).not.toBeNull();
+    expect(before.sethItem).not.toBeNull();
+
     await stepFrames(page, 8);
-    const result = await page.evaluate(() => {
+    const opened = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       const st: any = g.state.getCurrentState();
       return {
@@ -333,9 +505,47 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
         partner: st?.tradePartner?.nid ?? null,
       };
     });
-    expect(result.state).toBe('trade');
-    expect(result.phase).toBe('select_items');
-    expect(result.partner).toBe('Seth');
+    expect(opened).toEqual({ state: 'trade', phase: 'select_items', partner: 'Seth' });
+
+    await stepFrames(page, 1, 'SELECT');
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      const seth = g.units.get('Seth');
+      const snapshot = () => ({
+        eirikaItem: eirika.items[0]?.nid ?? null,
+        sethItem: seth.items[0]?.nid ?? null,
+        hasTraded: eirika.hasTraded,
+        finished: eirika.finished,
+      });
+      const traded = snapshot();
+      const actions = [g.actionLog.undo(), g.actionLog.undo(), g.actionLog.undo()];
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        traded,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.traded).toEqual({
+      eirikaItem: before.sethItem,
+      sethItem: before.eirikaItem,
+      hasTraded: true,
+      finished: true,
+    });
+    expect(result.undone).toEqual({
+      eirikaItem: before.eirikaItem,
+      sethItem: before.sethItem,
+      hasTraded: false,
+      finished: false,
+    });
+    expect(result.redone).toEqual(result.traded);
+    expect(result.actionNames).toEqual(['WaitAction', 'HasTradedAction', 'TradeAction']);
   });
 });
 
@@ -496,6 +706,43 @@ test.describe('Event command batch 3d (component modification)', () => {
         .every((s: any) => !s.components.has('charges'));
     }, skillNid);
     expect(removed).toBe(true);
+  });
+});
+
+test.describe('Action-backed event unit creation', () => {
+  test('make_generic registration undoes and redoes the same unit object', async ({ page }) => {
+    await boot(page);
+    const klassNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.actionLog.clear();
+      return g.units.get('Eirika').klass;
+    });
+    await runEvent(page, 'TestMakeGenericAction', [
+      `make_generic;__ActionGeneric;${klassNid};1;enemy;None`,
+    ]);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const created = g.units.get('__ActionGeneric');
+      const action = g.actionLog.undo();
+      const absent = !g.units.has('__ActionGeneric');
+      action?.execute();
+      const redone = g.units.get('__ActionGeneric');
+      action?.reverse();
+      return {
+        created: !!created,
+        absent,
+        sameObject: redone === created,
+        actionName: action?.constructor?.name ?? null,
+      };
+    });
+
+    expect(result).toEqual({
+      created: true,
+      absent: true,
+      sameObject: true,
+      actionName: 'CreateUnitAction',
+    });
   });
 });
 
@@ -693,6 +940,7 @@ test.describe('Event command batch 3g (unit map animations)', () => {
     await runEvent(page, 'TestUnitAnim', [
       `add_unit_map_anim;${animNid};Eirika;1;permanent`,
     ]);
+
     const attached = await page.evaluate((animNid: string) => {
       const g = (window as any).__gameRef;
       const anim = g.tilemap.animations.find((a: any) => a.nid === animNid);
@@ -727,6 +975,161 @@ test.describe('Event command batch 3g (unit map animations)', () => {
     expect(result.gone).toBe(true);
     expect(result.restored).toBe(true);
     expect(result.goneAgain).toBe(true);
+  });
+});
+
+test.describe('Action-backed base records', () => {
+  test('base conversations and market inventory undo and redo through actions', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.baseConvos = new Map();
+      g.marketItems = new Map();
+      g.actionLog.clear();
+    });
+    await runEvent(page, 'TestActionBackedBaseData', [
+      'add_base_convo;TestConvo',
+      'ignore_base_convo;TestConvo',
+      'add_market_item;Iron_Sword;3',
+      'clear_market_items',
+    ]);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const snapshot = () => ({
+        convos: [...g.baseConvos.entries()],
+        market: [...g.marketItems.entries()],
+      });
+      const changed = snapshot();
+      const actions = Array.from({ length: 4 }, () => g.actionLog.undo());
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.changed).toEqual({ convos: [['TestConvo', true]], market: [] });
+    expect(result.undone).toEqual({ convos: [], market: [] });
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual([
+      'ClearMapAction',
+      'SetGameVarAction',
+      'SetGameVarAction',
+      'SetGameVarAction',
+    ]);
+  });
+});
+
+test.describe('Action-backed persistent records', () => {
+  test('record commands undo and redo localStorage-backed state', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const records = await import('/src/engine/records.ts');
+      records.RECORDS.clear();
+      g.actionLog.clear();
+    });
+    await runEvent(page, 'TestActionBackedPersistentRecords', [
+      'create_record;TestRecord;1',
+      'update_record;TestRecord;2',
+      'replace_record;TestRecord;3',
+      'unlock_difficulty;TestDifficulty',
+      'unlock_song;TestSong',
+      'delete_record;TestRecord',
+    ]);
+
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const records = await import('/src/engine/records.ts');
+      const changed = records.RECORDS.save();
+      const actions = Array.from({ length: 6 }, () => g.actionLog.undo());
+      const undone = records.RECORDS.save();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = records.RECORDS.save();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.changed).toEqual([
+      { nid: 'TestDifficulty', value: true },
+      { nid: 'TestSong', value: true },
+    ]);
+    expect(result.undone).toEqual([]);
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual(Array(6).fill('UpdatePersistentStoreAction'));
+  });
+});
+
+test.describe('Action-backed shop transactions', () => {
+  test('buying an item routes money, records, trade state, and inventory through actions', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      while (unit.items.length >= 4) unit.items.pop();
+      unit.resetTurnState();
+      const party = g.getParty();
+      party.money = 10000;
+      g.gameVars.set('money', 10000);
+      g.actionLog.clear();
+    });
+    await runEvent(page, 'TestActionBackedShop', ['shop;Eirika;Iron_Sword;armory;2;TestShop']);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const state = g.state.getCurrentState();
+      const unit = g.units.get('Eirika');
+      const party = g.getParty();
+      const snapshot = () => ({
+        money: party.money,
+        bought: g.gameVars.get('__shop_TestShop_Iron_Sword'),
+        legacyMoney: g.gameVars.get('money'),
+        items: unit.items.map((item: any) => item.nid),
+        hasTraded: unit.hasTraded,
+      });
+      const before = snapshot();
+      state.tryBuyItem(g);
+      const changed = snapshot();
+      const actions = Array.from({ length: 6 }, () => g.actionLog.undo());
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        before,
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.changed.money).toBeLessThan(result.before.money);
+    expect(result.changed.legacyMoney).toBe(result.changed.money);
+    expect(result.changed.items).toEqual([...result.before.items, 'Iron_Sword']);
+    expect(result.changed.bought).toBe(1);
+    expect(result.changed.hasTraded).toBe(true);
+    expect(result.undone).toEqual(result.before);
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual([
+      'GiveItemAction',
+      'SetGameVarAction',
+      'SetGameVarAction',
+      'UpdateRecordsAction',
+      'GainMoneyAction',
+      'HasTradedAction',
+    ]);
   });
 });
 
@@ -783,11 +1186,32 @@ test.describe('Event command batch 3h (repair shop, cleanup, formation)', () => 
     await runEvent(page, 'TestArrange', ['arrange_formation']);
     const placed = await page.evaluate(() => {
       const g = (window as any).__gameRef;
-      const pos = g.units.get('Seth').position;
-      const inSpot = pos && pos[1] === 1 && (pos[0] === 1 || pos[0] === 2);
-      return { pos, inSpot };
+      const unit = g.units.get('Seth');
+      const snapshot = () => ({
+        pos: unit.position ? [...unit.position] : null,
+        boardUnit: unit.position ? g.board.getUnit(...unit.position)?.nid ?? null : null,
+        finished: unit.finished,
+      });
+      const changed = snapshot();
+      const inSpot = changed.pos && changed.pos[1] === 1 &&
+        (changed.pos[0] === 1 || changed.pos[0] === 2);
+      const actions = [g.actionLog.undo(), g.actionLog.undo()];
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        inSpot,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
     });
     expect(placed.inSpot).toBe(true);
+    expect(placed.undone).toEqual({ pos: null, boardUnit: null, finished: false });
+    expect(placed.redone).toEqual(placed.changed);
+    expect(placed.actionNames).toEqual(['ResetAllAction', 'ArriveOnMapAction']);
   });
 });
 
@@ -1074,6 +1498,7 @@ test.describe('Event command batch 3n (open_bexp_menu)', () => {
         state: st.name, staged: st.expToGain, cost: st.stagedCost(),
         bexpBefore: g.parties.get(g.currentParty).bexp,
         expBefore: g.units.get('Eirika').exp,
+        actionIndex: g.actionLog.actionIndex,
       };
     });
     expect(alloc.state).toBe('base_bexp_allocate');
@@ -1088,14 +1513,15 @@ test.describe('Event command batch 3n (open_bexp_menu)', () => {
       const g = (window as any).__gameRef;
       const bexpNow = g.parties.get(g.currentParty).bexp;
       const expNow = g.units.get('Eirika').exp;
-      const h = (window as any).__harness;
-      h.turnwheelUndo(); // undo exp grant
-      h.turnwheelUndo(); // undo bexp spend
+      const afterVar = g.gameVars.get('after_bexp');
+      while (g.actionLog.actionIndex > prev.actionIndex) {
+        (window as any).__harness.turnwheelUndo();
+      }
       return {
         bexpNow, expNow,
         bexpUndone: g.parties.get(g.currentParty).bexp,
         expUndone: g.units.get('Eirika').exp,
-        afterVar: g.gameVars.get('after_bexp'),
+        afterVar,
       };
     }, alloc);
     expect(after.bexpNow).toBe(alloc.bexpBefore - alloc.cost);
@@ -1133,24 +1559,27 @@ test.describe('Event command batch 3o (party_transfer)', () => {
       const fixedBlocked = st.moveUnit('Eirika');       // fixed: refused
       const sethMoved = st.moveUnit('Seth');            // ok (limit 1)
       const others = st.listFor(g.currentParty).filter((n: string) => !['Eirika', 'Seth'].includes(n));
+      const actionIndex = g.actionLog.actionIndex;
       const limitBlocked = others.length > 0 ? st.moveUnit(others[0]) : null; // over bottom limit
       st.confirm();
-      return { state: 'party_transfer', fixedBlocked, sethMoved, limitBlocked };
+      return { state: 'party_transfer', fixedBlocked, sethMoved, limitBlocked, actionIndex };
     });
     expect(result.state).toBe('party_transfer');
     expect(result.fixedBlocked).toBe(false);
     expect(result.sethMoved).toBe(true);
     if (result.limitBlocked !== null) expect(result.limitBlocked).toBe(false);
     await stepFrames(page, 15);
-    const after = await page.evaluate(() => {
+    const after = await page.evaluate((actionIndex: number) => {
       const g = (window as any).__gameRef;
       const sethParty = g.units.get('Seth').party;
       const eirikaParty = g.units.get('Eirika').party;
       const afterVar = g.gameVars.get('after_transfer');
-      (window as any).__harness.turnwheelUndo();
+      while (g.actionLog.actionIndex > actionIndex) {
+        (window as any).__harness.turnwheelUndo();
+      }
       const sethUndone = g.units.get('Seth').party;
       return { sethParty, eirikaParty, afterVar, sethUndone };
-    });
+    }, result.actionIndex);
     expect(after.sethParty).toBe('Expedition');
     expect(after.eirikaParty).not.toBe('Expedition');
     expect(after.afterVar).toBe('yes');
@@ -1256,6 +1685,43 @@ test.describe('Event command batch 3q (change_roam_ai — final command)', () =>
       return g.units.get('Seth').roamAi;
     });
     expect(roundTrip).toBe(aiNid);
+  });
+
+  test('set_roam and set_roam_unit undo and redo through actions', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.roamInfo.roam = false;
+      g.roamInfo.roamUnitNid = null;
+      g.actionLog.clear();
+    });
+    await runEvent(page, 'TestRoamStateActions', [
+      'set_roam;true',
+      'set_roam_unit;Eirika',
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const snapshot = () => ({
+        roam: g.roamInfo.roam,
+        roamUnitNid: g.roamInfo.roamUnitNid,
+      });
+      const changed = snapshot();
+      const actions = [g.actionLog.undo(), g.actionLog.undo()];
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+    expect(result.changed).toEqual({ roam: true, roamUnitNid: 'Eirika' });
+    expect(result.undone).toEqual({ roam: false, roamUnitNid: null });
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual(['SetRoamInfoAction', 'SetRoamInfoAction']);
   });
 });
 

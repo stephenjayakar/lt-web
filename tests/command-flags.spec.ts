@@ -136,10 +136,62 @@ async function configureOverworldEventRuntime(page: Page): Promise<void> {
   await page.evaluate(() => {
     let movementFrames = 0;
     let completion: (() => void) | null = null;
-    const entity = {
-      nid: 'TestParty',
-      onNode: 'NodeA',
-      displayPosition: [0, 0] as [number, number],
+    const nodes = new Map([
+      ['NodeA', { nid: 'NodeA', position: [0, 0] as [number, number] }],
+      ['NodeB', { nid: 'NodeB', position: [10, 0] as [number, number] }],
+    ]);
+    const entities = new Map<string, any>([[
+      'TestParty',
+      {
+        nid: 'TestParty',
+        onNode: 'NodeA',
+        displayPosition: [0, 0] as [number, number],
+      },
+    ]]);
+    const controller = {
+      nodes,
+      roads: new Map([[
+        'NodeA-NodeB',
+        { nid: 'NodeA-NodeB', node1: 'NodeA', node2: 'NodeB' },
+      ]]),
+      enabledNodes: new Set<string>(),
+      enabledRoads: new Set<string>(),
+      enabledMenuOptions: new Map([['NodeA', new Map([['TestOption', true]])]]),
+      visibleMenuOptions: new Map([['NodeA', new Map([['TestOption', true]])]]),
+      entities,
+      selectedPartyNid: 'TestParty',
+      getNode: (nid: string) => nodes.get(nid),
+      getPathPoints: () => [[0, 0], [10, 0]],
+      movePartyToNode: (entityNid: string, nodeNid: string) => {
+        const moved = entities.get(entityNid);
+        const node = nodes.get(nodeNid);
+        if (moved && node) {
+          moved.onNode = nodeNid;
+          moved.displayPosition = [...node.position];
+        }
+      },
+      createEntity: (
+        nid: string,
+        dtype: string,
+        dnid: string,
+        team: string,
+        nodeNid: string | null,
+      ) => {
+        const created = {
+          nid,
+          dtype,
+          dnid,
+          team,
+          onNode: nodeNid,
+          displayPosition: nodeNid ? [...nodes.get(nodeNid)!.position] : null,
+        };
+        entities.set(nid, created);
+        return created;
+      },
+      removeEntity: (nid: string) => {
+        entities.delete(nid);
+        if (controller.selectedPartyNid === nid) controller.selectedPartyNid = null;
+      },
     };
     const gameWindow = window as Window & {
       __gameRef: {
@@ -147,15 +199,7 @@ async function configureOverworldEventRuntime(page: Page): Promise<void> {
         overworldMovement: unknown;
       };
     };
-    gameWindow.__gameRef.overworldController = {
-      entities: new Map([['TestParty', entity]]),
-      getPathPoints: () => [[0, 0], [10, 0]],
-      movePartyToNode: (_entityNid: string, nodeNid: string) => {
-        entity.onNode = nodeNid;
-      },
-      enableNode: () => {},
-      enableRoad: () => {},
-    };
+    gameWindow.__gameRef.overworldController = controller;
     gameWindow.__gameRef.overworldMovement = {
       beginMove: (
         _entity: unknown,
@@ -878,5 +922,109 @@ test.describe('Event command flag matching: overworld presentation', () => {
       'game_var;overworld_reveal_immediate;done',
     ], 2);
     expect(await getGameVar(page, 'overworld_reveal_immediate')).toBe('done');
+
+  });
+
+  test('overworld reveals and movement undo and redo through actions', async ({ page }) => {
+    await page.evaluate(() => (window as any).__gameRef.actionLog.clear());
+    await installAndRunEvent(page, 'test_overworld_reveal_action', [
+      'reveal_overworld_node;NodeB;immediate',
+    ], 3);
+    const reveal = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const action = game.actionLog.undo();
+      const undone = !game.overworldController.enabledNodes.has('NodeB');
+      action?.execute();
+      const redone = game.overworldController.enabledNodes.has('NodeB');
+      action?.reverse();
+      return { undone, redone, actionName: action?.constructor?.name ?? null };
+    });
+    expect(reveal).toEqual({
+      undone: true,
+      redone: true,
+      actionName: 'EnableOverworldElementAction',
+    });
+
+    await page.evaluate(() => (window as any).__gameRef.actionLog.clear());
+    await installAndRunEvent(page, 'test_overworld_move_action', [
+      'overworld_move_unit;TestParty;NodeB',
+    ], 3);
+    await stepFrames(page, 40);
+    const movement = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const entity = game.overworldController.entities.get('TestParty');
+      const changed = entity.onNode;
+      const action = game.actionLog.undo();
+      const undone = entity.onNode;
+      action?.execute();
+      const redone = entity.onNode;
+      action?.reverse();
+      return { changed, undone, redone, actionName: action?.constructor?.name ?? null };
+    });
+    expect(movement).toEqual({
+      changed: 'NodeB',
+      undone: 'NodeA',
+      redone: 'NodeB',
+      actionName: 'MoveOverworldEntityAction',
+    });
+
+    await page.evaluate(() => (window as any).__gameRef.actionLog.clear());
+    await installAndRunEvent(page, 'test_overworld_data_actions', [
+      'reveal_overworld_road;NodeA;NodeB;immediate',
+      'set_overworld_menu_option_enabled;NodeA;TestOption;False',
+      'set_overworld_menu_option_visible;NodeA;TestOption;False',
+      'create_overworld_entity;TestCreated;Eirika;player',
+      'create_overworld_entity;TestCreated;;;delete',
+      'disable_overworld_entity;TestParty;no_animate',
+    ], 8);
+    const data = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const ow = game.overworldController;
+      const snapshot = () => ({
+        road: ow.enabledRoads.has('NodeA-NodeB'),
+        enabled: ow.enabledMenuOptions.get('NodeA').get('TestOption'),
+        visible: ow.visibleMenuOptions.get('NodeA').get('TestOption'),
+        created: ow.entities.has('TestCreated'),
+        partyNode: ow.entities.get('TestParty').onNode,
+        partyPosition: ow.entities.get('TestParty').displayPosition,
+      });
+      const changed = snapshot();
+      const actions = Array.from({ length: 6 }, () => game.actionLog.undo());
+      const undone = snapshot();
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = snapshot();
+      for (const action of actions) action?.reverse();
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+    expect(data.changed).toEqual({
+      road: true,
+      enabled: false,
+      visible: false,
+      created: false,
+      partyNode: null,
+      partyPosition: null,
+    });
+    expect(data.undone).toEqual({
+      road: false,
+      enabled: true,
+      visible: true,
+      created: false,
+      partyNode: 'NodeA',
+      partyPosition: [0, 0],
+    });
+    expect(data.redone).toEqual(data.changed);
+    expect(data.actionNames).toEqual([
+      'DisableOverworldEntityAction',
+      'RemoveOverworldEntityAction',
+      'CreateOverworldEntityAction',
+      'SetOverworldMenuOptionAction',
+      'SetOverworldMenuOptionAction',
+      'EnableOverworldElementAction',
+    ]);
   });
 });

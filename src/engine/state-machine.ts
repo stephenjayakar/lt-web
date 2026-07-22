@@ -50,6 +50,24 @@ export class StateMachine {
     return this.stack.length > 0 ? this.stack[this.stack.length - 1] : undefined;
   }
 
+  /** Stable stack snapshot used by save/load. */
+  getStackNames(): string[] {
+    return this.stack.map((state) => state.name);
+  }
+
+  /** Restore a previously saved stack without running stale lifecycle state. */
+  restoreStack(names: string[]): void {
+    this.tempState = [];
+    this.stack = [];
+    for (const name of names) {
+      const state = this.allStates.get(name);
+      if (!state) continue;
+      state.started = false;
+      state.processed = false;
+      this.stack.push(state);
+    }
+  }
+
   /**
    * Run one frame of the state lifecycle.
    *

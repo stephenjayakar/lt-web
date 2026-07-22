@@ -36,6 +36,7 @@ import { evaluateCondition, evaluateExpression, type ConditionContext, type Game
 import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
 import {
   MarkActionGroupStart,
+  MoveAction,
   MarkActionGroupEnd,
   MarkPhase,
   LockTurnwheel,
@@ -61,6 +62,8 @@ import {
   UpdateRecordsAction,
   SetItemDataAction,
   SetItemUsesAction,
+  GiveItemAction,
+  PutItemInConvoy,
   StoreItemAction,
   TakeItemFromConvoy,
   MoveItemBetweenUnitsAction,
@@ -70,11 +73,19 @@ import {
   AddSubItemAction,
   RemoveSubItemAction,
   HealAction,
+  WeaponUsesAction,
+  SetCurrentHpAction,
   GainExpAction,
   DeathAction,
+  SetUnitExpAction,
   HasAttackedAction,
+  TradeAction,
   HasTradedAction,
   WaitAction,
+  ResetAllAction,
+  ProcessStatusEffectsAction,
+  GainMoneyAction,
+  GiveBexpAction,
   ApplyStatChangesAction,
   RemoveSkillAction,
   RefreshUnitAction,
@@ -100,8 +111,10 @@ import {
   RemoveObjComponentAction,
   RecruitGenericAction,
   MergePartiesAction,
+  SetUnitPartyAction,
   ChangeFatigueAction,
   LeaveMapAction,
+  ArriveOnMapAction,
   AddAnimToUnitAction,
   RemoveAnimFromUnitAction,
   ChangeBgTilemapAction,
@@ -113,6 +126,14 @@ import {
   DisableSupportRankAction,
   MoveInInitiativeAction,
   AddToInitiativeAction,
+  EnableOverworldElementAction,
+  MoveOverworldEntityAction,
+  CreateOverworldEntityAction,
+  RemoveOverworldEntityAction,
+  DisableOverworldEntityAction,
+  SetOverworldMenuOptionAction,
+  UpdatePersistentStoreAction,
+  SetRoamInfoAction,
 } from '../action';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
@@ -1354,7 +1375,7 @@ export class OptionMenuState extends State {
           // Mark all player units as finished and trigger turn change
           const playerUnits: UnitObject[] = game.board?.getTeamUnits('player') ?? [];
           for (const unit of playerUnits) {
-            unit.finished = true;
+            game.actionLog.doAction(new WaitAction(unit));
           }
           this.menu = null;
           game.state.back();
@@ -1788,6 +1809,8 @@ export class MoveState extends MapState {
         );
         if (isValid) {
           const unit: UnitObject = game.selectedUnit;
+          const origin = this.previousPosition ?? unit.position;
+          if (!origin) break;
 
           // Compute path from the unit's current position (before moving on the board)
           const path = game.pathSystem.getPath(
@@ -1797,18 +1820,18 @@ export class MoveState extends MapState {
             game.board,
           );
 
-          // Move unit on the board
-          game.board.moveUnit(unit, pos.x, pos.y);
-          unit.hasMoved = true;
-          // Python: unit_path_movement_component consumes MOV tile-by-tile
-          // (unit.consume_movement(mcost)) as the unit follows the path; the
-          // remainder is `unit.movement_left`, which Canto re-moves use as
-          // their budget (movement_components.py). Mirror that here so a
-          // canto follow-up move only gets the leftover MOV, not full MOV.
-          if (path) {
-            const cost = game.pathSystem.getPathCost(unit, path, game.board);
-            unit.movementLeft = Math.max(0, unit.movementLeft - cost);
-          }
+          const movementCost = path
+            ? game.pathSystem.getPathCost(unit, path, game.board)
+            : 0;
+          const moveAction = new MoveAction(
+            unit,
+            [origin[0], origin[1]],
+            [pos.x, pos.y],
+            game.board,
+            movementCost,
+          );
+          game.actionLog.doAction(moveAction);
+          game._moveAction = moveAction;
 
           // Check if this movement triggers AI group activation
           if (game.aiController && unit.team === 'player') {
@@ -2109,17 +2132,15 @@ export class MenuState extends State {
     if (!result) return;
 
     if ('back' in result) {
-      // Undo move — put unit back at original position
+      // Remove the uncommitted move and its action-group marker. The fallback
+      // supports harness-created menu states that did not originate in MoveState.
       const unit: UnitObject = game.selectedUnit;
-      if (unit && game._moveOrigin) {
-        game.board.moveUnit(
-          unit,
-          game._moveOrigin[0],
-          game._moveOrigin[1],
-        );
+      if (game._moveAction) {
+        game.actionLog.reverseMoveToActionGroupStart(game._moveAction);
+        game._moveAction = null;
+      } else if (unit && game._moveOrigin) {
+        game.board.moveUnit(unit, game._moveOrigin[0], game._moveOrigin[1]);
         unit.hasMoved = false;
-        // Undoing the move restores the pre-move MOV budget (Python:
-        // action.Move.reverse() restores `self.prev_movement_left`).
         unit.movementLeft = unit.getStatValue('MOV');
       }
       this.menu = null;
@@ -2231,7 +2252,7 @@ export class MenuState extends State {
             game.actionLog.doAction(new RemoveRegionAction(sibling.nid, game.currentLevel.regions));
           }
         }
-        if (unit) unit.finished = true;
+        if (unit) game.actionLog.doAction(new WaitAction(unit));
         this.menu = null;
         // Seize also checks win condition immediately
         if (subNid === 'Seize') {
@@ -2282,7 +2303,7 @@ export class MenuState extends State {
             ctx,
           );
         }
-        if (unit) unit.finished = true;
+        if (unit) game.actionLog.doAction(new WaitAction(unit));
         this.menu = null;
         if (game.eventManager?.hasActiveEvents()) {
           game.state.change('event');
@@ -2338,7 +2359,7 @@ export class MenuState extends State {
           }
         }
         // Should not reach here if menu option is properly gated
-        if (unit) unit.finished = true;
+        if (unit) game.actionLog.doAction(new WaitAction(unit));
         this.menu = null;
         if (game.eventManager?.hasActiveEvents()) {
           game.state.change('event');
@@ -2364,7 +2385,7 @@ export class MenuState extends State {
         }
         // Record end of action group (turnwheel marker)
         game.actionLog.doAction(new MarkActionGroupEnd('menu'));
-        if (unit) unit.finished = true;
+        if (unit) game.actionLog.doAction(new WaitAction(unit));
         this.menu = null;
         game.state.back();
         if (game.eventManager?.hasActiveEvents()) {
@@ -3411,8 +3432,8 @@ export class TradeState extends State {
       if (event === 'BACK') {
         const unit: UnitObject = game.selectedUnit;
         if (unit) {
-          unit.hasTraded = true;
-          unit.finished = true;
+          game.actionLog.doAction(new HasTradedAction(unit));
+          game.actionLog.doAction(new WaitAction(unit));
         }
         game.state.back();
         return;
@@ -3423,16 +3444,11 @@ export class TradeState extends State {
         const unit: UnitObject = game.selectedUnit;
         const partner = this.tradePartner;
         if (unit && partner && unit.items.length > 0 && partner.items.length > 0) {
-          const itemA = unit.items[0];
-          const itemB = partner.items[0];
-          unit.items[0] = itemB;
-          partner.items[0] = itemA;
-          itemA.owner = partner;
-          itemB.owner = unit;
+          game.actionLog.doAction(new TradeAction(unit, 0, partner, 0));
         }
         if (unit) {
-          unit.hasTraded = true;
-          unit.finished = true;
+          game.actionLog.doAction(new HasTradedAction(unit));
+          game.actionLog.doAction(new WaitAction(unit));
         }
         game.state.back();
       }
@@ -4976,10 +4992,8 @@ export class CombatState extends State {
         if (!attacker.isDead()) {
           game.actionLog.doAction(new HasAttackedAction(attacker));
 
-          // Check for Canto: if the unit has canto, don't mark as finished
-          if (hasCanto) {
-            attacker.finished = false;
-          } else {
+          // Canto keeps the unit actionable; all other attacks consume the turn.
+          if (!hasCanto) {
             game.actionLog.doAction(new WaitAction(attacker));
           }
         }
@@ -6029,6 +6043,25 @@ export class AIState extends MapState {
   private pendingCombatTarget: UnitObject | null = null;
   private pendingCombatWeapon: ItemObject | null = null;
 
+  private moveWithAction(
+    game: any,
+    unit: UnitObject,
+    target: [number, number],
+    path?: [number, number][] | null,
+  ): boolean {
+    if (!unit.position) return false;
+    const origin: [number, number] = [unit.position[0], unit.position[1]];
+    if (origin[0] === target[0] && origin[1] === target[1]) return false;
+    const movementCost = path
+      ? game.pathSystem.getPathCost(unit, path, game.board)
+      : 0;
+    game.actionLog.doAction(
+      new MoveAction(unit, origin, [target[0], target[1]], game.board, movementCost),
+    );
+    game.camera.focusTile(target[0], target[1]);
+    return true;
+  }
+
   override begin(): StateResult {
     const game = getGame();
 
@@ -6085,7 +6118,7 @@ export class AIState extends MapState {
         this.waitingForCombat = false;
         // AI units with canto should still be marked finished
         if (unit.hasAttacked && !unit.finished && !unit.isDead()) {
-          unit.finished = true;
+          game.actionLog.doAction(new WaitAction(unit));
         }
         this.advanceToNextUnit();
       }
@@ -6155,15 +6188,7 @@ export class AIState extends MapState {
               action.targetPosition[1] !== prevPos[1])
           ) {
             // Animate movement
-            game.board.moveUnit(
-              unit,
-              action.targetPosition[0],
-              action.targetPosition[1],
-            );
-            game.camera.focusTile(
-              action.targetPosition[0],
-              action.targetPosition[1],
-            );
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
 
             this.waitingForMovement = true;
             this.pendingCombatTarget = action.targetUnit!;
@@ -6179,13 +6204,7 @@ export class AIState extends MapState {
             );
           } else {
             // Already at position, attack directly
-            if (action.targetPosition) {
-              game.board.moveUnit(
-                unit,
-                action.targetPosition[0],
-                action.targetPosition[1],
-              );
-            }
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
             this.beginAICombat(
               unit,
               action.targetUnit!,
@@ -6193,7 +6212,7 @@ export class AIState extends MapState {
             );
           }
         } else {
-          unit.finished = true;
+          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
@@ -6205,30 +6224,21 @@ export class AIState extends MapState {
             ? [unit.position[0], unit.position[1]]
             : null;
 
-          game.board.moveUnit(
-            unit,
-            action.targetPosition[0],
-            action.targetPosition[1],
-          );
-          game.camera.focusTile(
-            action.targetPosition[0],
-            action.targetPosition[1],
-          );
+          this.moveWithAction(game, unit, action.targetPosition, action.movePath);
 
           if (action.movePath && action.movePath.length > 1 && prevPos) {
             this.waitingForMovement = true;
             game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
-              unit.finished = true;
+              game.actionLog.doAction(new WaitAction(unit));
               this.waitingForMovement = false;
               this.advanceToNextUnit();
             });
           } else {
-            unit.hasMoved = true;
-            unit.finished = true;
+            game.actionLog.doAction(new WaitAction(unit));
             this.advanceToNextUnit();
           }
         } else {
-          unit.finished = true;
+          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
@@ -6246,16 +6256,10 @@ export class AIState extends MapState {
             const item = action.item!;
             // Apply healing
             if (item.isHealing()) {
-              const healAmount = item.getHealAmount();
-              unit.currentHp = Math.min(unit.maxHp, unit.currentHp + healAmount);
+              game.actionLog.doAction(new HealAction(unit, item.getHealAmount()));
             }
-            // Decrement uses
-            const broken = item.decrementUses();
-            if (broken) {
-              const itemIdx = unit.items.indexOf(item);
-              if (itemIdx !== -1) unit.items.splice(itemIdx, 1);
-            }
-            unit.finished = true;
+            game.actionLog.doAction(new WeaponUsesAction(item, unit));
+            game.actionLog.doAction(new WaitAction(unit));
             this.advanceToNextUnit();
           };
 
@@ -6266,32 +6270,18 @@ export class AIState extends MapState {
             (action.targetPosition[0] !== prevPos[0] ||
               action.targetPosition[1] !== prevPos[1])
           ) {
-            game.board.moveUnit(
-              unit,
-              action.targetPosition[0],
-              action.targetPosition[1],
-            );
-            game.camera.focusTile(
-              action.targetPosition[0],
-              action.targetPosition[1],
-            );
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
             this.waitingForMovement = true;
             game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
               this.waitingForMovement = false;
               applyItem();
             });
           } else {
-            if (action.targetPosition) {
-              game.board.moveUnit(
-                unit,
-                action.targetPosition[0],
-                action.targetPosition[1],
-              );
-            }
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
             applyItem();
           }
         } else {
-          unit.finished = true;
+          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
@@ -6392,8 +6382,8 @@ export class AIState extends MapState {
               }
             }
 
-            unit.hasAttacked = true;
-            unit.finished = true;
+            game.actionLog.doAction(new HasAttackedAction(unit));
+            game.actionLog.doAction(new WaitAction(unit));
             if (!this.waitingForEvent) {
               this.advanceToNextUnit();
             }
@@ -6407,32 +6397,18 @@ export class AIState extends MapState {
               action.targetPosition[1] !== prevPos[1])
           ) {
             // Move first, then interact
-            game.board.moveUnit(
-              unit,
-              action.targetPosition[0],
-              action.targetPosition[1],
-            );
-            game.camera.focusTile(
-              action.targetPosition[0],
-              action.targetPosition[1],
-            );
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
             this.waitingForMovement = true;
             game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
               this.waitingForMovement = false;
               triggerInteract();
             });
           } else {
-            if (action.targetPosition) {
-              game.board.moveUnit(
-                unit,
-                action.targetPosition[0],
-                action.targetPosition[1],
-              );
-            }
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
             triggerInteract();
           }
         } else {
-          unit.finished = true;
+          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
@@ -6456,7 +6432,7 @@ export class AIState extends MapState {
             ctx,
           );
         }
-        unit.finished = true;
+        game.actionLog.doAction(new WaitAction(unit));
         if (game.eventManager?.hasActiveEvents()) {
           this.waitingForEvent = true;
           game.state.change('event');
@@ -6556,7 +6532,9 @@ export class TurnChangeState extends State {
       if (curUnitNid) {
         const curUnit = game.getUnit(curUnitNid);
         if (curUnit && curUnit.team === 'player' && game.supports) {
-          game.supports.incrementEndTurnSupports?.(curUnit);
+          for (const [pair, points] of game.supports.getEndTurnIncrements('player', game, curUnit.nid)) {
+            game.actionLog.doAction(new IncrementSupportPointsAction(pair, points));
+          }
         }
       }
 
@@ -6593,7 +6571,9 @@ export class TurnChangeState extends State {
 
     // Handle end-turn supports for standard mode
     if (game.phase?.getCurrent() === 'player' && game.supports) {
-      game.supports.incrementEndTurnSupportsForTeam?.('player');
+      for (const [pair, points] of game.supports.getEndTurnIncrements('player', game)) {
+        game.actionLog.doAction(new IncrementSupportPointsAction(pair, points));
+      }
     }
     game.memory.set('previous_cursor_position', game.cursor.getPosition());
 
@@ -6853,11 +6833,11 @@ export class PhaseChangeState extends State {
       if (unitNid) {
         const unit = game.getUnit(unitNid);
         if (unit && !unit.isDead()) {
-          unit.resetTurnState();
-          const dotDamage = unit.processStatusEffects();
-          if (dotDamage > 0 && unit.currentHp <= 0) {
-            unit.dead = true;
-            game.board.removeUnit(unit);
+          game.actionLog.doAction(new ResetAllAction([unit]));
+          const statusAction = new ProcessStatusEffectsAction(unit);
+          game.actionLog.doAction(statusAction);
+          if (statusAction.damage > 0 && unit.currentHp <= 0) {
+            game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
           }
         }
       }
@@ -6872,15 +6852,11 @@ export class PhaseChangeState extends State {
       // Standard mode: reset all units of the team
       const teamUnits: UnitObject[] = game.board.getTeamUnits(currentTeam);
       for (const unit of teamUnits) {
-        unit.resetTurnState();
-        // Process status effects (DOT damage, duration tick-down)
-        const dotDamage = unit.processStatusEffects();
-        if (dotDamage > 0) {
-          // Unit took status damage — check if they died from it
-          if (unit.currentHp <= 0) {
-            unit.dead = true;
-            game.board.removeUnit(unit);
-          }
+        game.actionLog.doAction(new ResetAllAction([unit]));
+        const statusAction = new ProcessStatusEffectsAction(unit);
+        game.actionLog.doAction(statusAction);
+        if (statusAction.damage > 0 && unit.currentHp <= 0) {
+          game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
         }
       }
     }
@@ -6971,6 +6947,7 @@ export class ShopState extends State {
   private unit: UnitObject | null = null;
   private shopItems: ItemObject[] = [];
   private shopStock: number[] = []; // -1 = unlimited
+  private shopId: string | null = null;
   private money: number = 0;
 
   // Buy/sell menu selection
@@ -6989,7 +6966,8 @@ export class ShopState extends State {
     this.unit = game.shopUnit ?? game.selectedUnit;
     this.shopItems = game.shopItems ?? [];
     this.shopStock = game.shopStock ?? this.shopItems.map(() => -1);
-    this.money = Number(game.gameVars.get('money') ?? 0);
+    this.shopId = game.shopId;
+    this.money = Number(game.getMoney());
     this.phase = 'choice';
     this.menuIndex = 0;
     this.sellIndex = 0;
@@ -7001,6 +6979,7 @@ export class ShopState extends State {
     game.shopUnit = null;
     game.shopItems = null;
     game.shopStock = null;
+    game.shopId = null;
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -7245,23 +7224,27 @@ export class ShopState extends State {
       return;
     }
 
-    // Deduct money
-    this.money -= price;
-    game.gameVars.set('money', this.money);
+    const party = game.getParty();
+    if (!party) return;
+    game.actionLog.doAction(new HasTradedAction(this.unit));
+    game.actionLog.doAction(new GainMoneyAction(-price, party.nid));
+    game.actionLog.doAction(new UpdateRecordsAction('money', party.nid, -price));
+    this.money = game.getMoney();
+    game.actionLog.doAction(new SetGameVarAction(game.gameVars, 'money', this.money));
 
-    // Decrement stock
     if (stock > 0) {
       this.shopStock[this.menuIndex] = stock - 1;
+      if (this.shopId) {
+        const boughtKey = `__shop_${this.shopId}_${item.nid}`;
+        const bought = Number(game.gameVars.get(boughtKey) ?? 0);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, boughtKey, bought + 1));
+      }
     }
 
-    // Create new item and give to unit
     const prefab = game.db?.items?.get(item.nid);
     if (prefab) {
       const newItem = new ItemObjectClass(prefab);
-      newItem.owner = this.unit;
-      this.unit.items.push(newItem);
-      this.unit.onAddItem(newItem);
-      this.unit.autoequip();
+      game.actionLog.doAction(new GiveItemAction(this.unit, newItem));
       this.showMessage(`Bought ${item.name}!`);
     }
   }
@@ -7271,17 +7254,14 @@ export class ShopState extends State {
     if (!item || !this.unit) return;
     const price = this.getSellPrice(item);
 
-    // Gain money
-    this.money += price;
-    game.gameVars.set('money', this.money);
-
-    // Remove item from unit
-    const idx = this.unit.items.indexOf(item);
-    if (idx >= 0) {
-      this.unit.items.splice(idx, 1);
-    }
-    this.unit.onRemoveItem(item);
-    this.unit.autoequip();
+    const party = game.getParty();
+    if (!party) return;
+    game.actionLog.doAction(new HasTradedAction(this.unit));
+    game.actionLog.doAction(new GainMoneyAction(price, party.nid));
+    game.actionLog.doAction(new UpdateRecordsAction('money', party.nid, price));
+    this.money = game.getMoney();
+    game.actionLog.doAction(new SetGameVarAction(game.gameVars, 'money', this.money));
+    game.actionLog.doAction(new RemoveItemFromUnitAction(this.unit, item));
 
     this.showMessage(`Sold ${item.name}!`);
 
@@ -9136,7 +9116,7 @@ export class EventState extends State {
             ? this._checkPlacement(requestedPosition, placement, game)
             : null;
           if (finalPosition && game.board) {
-            game.board.moveUnit(existing, finalPosition[0], finalPosition[1]);
+            game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPosition, true));
           } else {
             console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
           }
@@ -9375,7 +9355,7 @@ export class EventState extends State {
       case 'main_menu': {
         // main_menu (Python :745): flags the chapter-end flow to return to
         // the main menu.
-        game.levelVars.set('_main_menu', true);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_main_menu', true));
         this.advancePointer();
         return false;
       }
@@ -9597,12 +9577,11 @@ export class EventState extends State {
         if (fatigueOn) candidates = candidates.filter((u: any) => (u.currentFatigue ?? 0) < (u.getStatValue?.('HP') ?? 99));
         candidates.sort((a: any, b: any) => (b.tags?.includes('Required') ? 1 : 0) - (a.tags?.includes('Required') ? 1 : 0));
         const numSlots = game.levelVars.get('_prep_slots') ?? openSpots.length;
-        candidates.slice(0, numSlots).forEach((unit: any, idx: number) => {
+        candidates.slice(0, numSlots).forEach((unit: UnitObject, idx: number) => {
           const spot = openSpots[idx];
           if (spot) {
-            unit.position = [spot[0], spot[1]];
-            game.board?.setUnit(spot[0], spot[1], unit);
-            unit.finished = false;
+            game.actionLog.doAction(new ArriveOnMapAction(game, unit, spot));
+            game.actionLog.doAction(new ResetAllAction([unit]));
           }
         });
         this.advancePointer();
@@ -9844,8 +9823,7 @@ export class EventState extends State {
         const roamNid = game.roamInfo?.roamUnitNid;
         for (const unit of game.units.values()) {
           if (unit.position && unit.nid !== roamNid) {
-            if (game.board) game.board.removeUnit(unit);
-            unit.position = null;
+            game.actionLog.doAction(new LeaveMapAction(game, unit));
           }
         }
         if (game.db.getConstant('initiative', false) && game.initiative) {
@@ -10080,15 +10058,8 @@ export class EventState extends State {
         // future levels; only the map/board presence is cleared here.
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit && unit.position) {
-          // Remove from initiative tracker if active
-          if (game.initiative) {
-            game.initiative.removeUnit(unit);
-          }
-          if (game.board) {
-            game.board.removeUnit(unit);
-          }
-          unit.position = null;
+        if (unit?.position) {
+          game.actionLog.doAction(new LeaveMapAction(game, unit));
         }
         this.advancePointer();
         return false;
@@ -10099,10 +10070,8 @@ export class EventState extends State {
         const unit = this.findUnit(unitNid);
         const wasOnMap = !!unit?.position;
         if (unit) {
-          if (game.initiative) game.initiative.removeUnit(unit);
-          unit.dead = true;
-          unit.currentHp = 0;
-          if (game.board) game.board.removeUnit(unit);
+          game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
+          game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
         }
         const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
         if (this.skipMode || immediate || !wasOnMap) {
@@ -10158,9 +10127,7 @@ export class EventState extends State {
             this.spawnUnitFromLevelData(unitData, finalPos, game);
           } else {
             // Unit exists but not on map — place them
-            if (game.board) {
-              game.board.moveUnit(existing, finalPos[0], finalPos[1]);
-            }
+            game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPos, true));
           }
         }
         this.advancePointer();
@@ -10218,13 +10185,13 @@ export class EventState extends State {
             }
             this.spawnUnitFromLevelData(unitData, edgePosition, game);
           } else {
-            game.board?.moveUnit(existing, edgePosition[0], edgePosition[1]);
+            game.actionLog.doAction(new ArriveOnMapAction(game, existing, edgePosition, true));
           }
 
           const spawnedUnit = this.findUnit(unitNid);
           if (!spawnedUnit || !game.board) continue;
           if (this.skipMode || movementType !== 'normal') {
-            game.board.moveUnit(spawnedUnit, finalDestination[0], finalDestination[1]);
+            game.actionLog.doAction(new ArriveOnMapAction(game, spawnedUnit, finalDestination));
           } else {
             moves.push({ unit: spawnedUnit, target: finalDestination });
           }
@@ -10280,10 +10247,8 @@ export class EventState extends State {
           const unitNids: string[] = group.units ?? [];
           for (const uNid of unitNids) {
             const unit = this.findUnit(uNid);
-            if (unit && unit.position) {
-              if (game.initiative) game.initiative.removeUnit(unit);
-              if (game.board) game.board.removeUnit(unit);
-              unit.position = null;
+            if (unit?.position) {
+              game.actionLog.doAction(new LeaveMapAction(game, unit));
             }
           }
         }
@@ -10375,27 +10340,17 @@ export class EventState extends State {
         let giBannerText: string | undefined;
         if (giItemPrefab) {
           const giItem = createItemTree(giItemPrefab, (nid) => game.db.items.get(nid));
-          const registerTree = (node: ItemObject, key: string) => {
-            game.items.set(key, node);
-            node.subitems.forEach((child, index) => registerTree(child, `${key}_sub_${index}_${child.nid}`));
-          };
+          game.actionLog.doAction(new SetItemDroppableAction(giItem, args.includes('droppable')));
           if (giUnitNid.toLowerCase() === 'convoy') {
-            // Put directly in convoy
-            const giParty = game.getParty();
+            const giParty = game.getParty(args[2] || undefined);
             if (giParty) {
-              giItem.owner = null;
-              giParty.convoy.push(giItem);
-              registerTree(giItem, `convoy_${giItem.nid}_${giParty.convoy.length}`);
+              game.actionLog.doAction(new PutItemInConvoy(giItem, giParty.nid));
               giBannerText = `${giItem.name} sent to convoy.`;
             }
           } else {
             const giUnit = this.findUnit(giUnitNid);
             if (giUnit) {
-              giItem.owner = giUnit;
-              giUnit.items.push(giItem);
-              giUnit.onAddItem(giItem);
-              giUnit.autoequip();
-              registerTree(giItem, `${giUnit.nid}_${giItem.nid}_${giUnit.items.length}`);
+              game.actionLog.doAction(new GiveItemAction(giUnit, giItem));
               const giArticle = /^[aeiou]/i.test(giItem.name) ? 'an' : 'a';
               giBannerText = `${giUnit.name} got ${giArticle} ${giItem.name}.`;
             }
@@ -10610,10 +10565,9 @@ export class EventState extends State {
         const gsBannerFlag = !args.includes('no_banner');
         let gsAdded = false;
         if (unit && skillPrefab) {
-          // Don't add duplicate skills
-          if (!unit.skills.some((s: any) => s.nid === skillNid)) {
+          if (!unit.skills.some((s: SkillObject) => s.nid === skillNid)) {
             const skill = new SkillObject(skillPrefab);
-            unit.skills.push(skill);
+            game.actionLog.doAction(new AddSkillAction(unit, skill));
             gsAdded = true;
           }
         }
@@ -10654,7 +10608,7 @@ export class EventState extends State {
         const hpValue = parseInt(args[1], 10);
         const unit = this.findUnit(unitNid);
         if (unit && !isNaN(hpValue)) {
-          unit.currentHp = Math.max(0, Math.min(hpValue, unit.maxHp));
+          game.actionLog.doAction(new SetCurrentHpAction(unit, hpValue));
         }
         this.advancePointer();
         return false;
@@ -10665,12 +10619,9 @@ export class EventState extends State {
         const amount = parseInt(args[1], 10) || 0;
         const unit = this.findUnit(unitNid);
         if (unit) {
-          unit.exp = (unit.exp ?? 0) + amount;
-          // Level up if exp >= 100
-          while (unit.exp >= 100) {
-            unit.exp -= 100;
-            unit.levelUp();
-          }
+          game.actionLog.doAction(
+            new GainExpAction(unit, amount, game.currentMode?.growths ?? 'random'),
+          );
         }
         const silent = args.some(arg => arg.toLowerCase().trim() === 'silent');
         if (!silent && !this.skipMode) {
@@ -10755,7 +10706,7 @@ export class EventState extends State {
         const aiNid = args[1] ?? 'None';
         const unit = this.findUnit(unitNid);
         if (unit) {
-          unit.ai = aiNid;
+          game.actionLog.doAction(new SetUnitAttributeAction(unit, 'ai', aiNid));
         }
         this.advancePointer();
         return false;
@@ -10872,7 +10823,7 @@ export class EventState extends State {
         const varName = args[0] ?? '';
         const value = args[1] ?? 'true';
         if (varName && game.gameVars) {
-          game.gameVars.set(varName, value);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, value));
         }
         this.advancePointer();
         return false;
@@ -10882,7 +10833,7 @@ export class EventState extends State {
         const varName = args[0] ?? '';
         if (varName && game.gameVars) {
           const current = Number(game.gameVars.get(varName) ?? 0);
-          game.gameVars.set(varName, current + 1);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, current + 1));
         }
         this.advancePointer();
         return false;
@@ -10896,7 +10847,7 @@ export class EventState extends State {
           if (!game.db.levels.has(chapterNid)) {
             console.warn(`set_next_chapter: "${chapterNid}" is not a valid chapter nid`);
           } else {
-            game.gameVars.set('_goto_level', chapterNid);
+            game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_goto_level', chapterNid));
           }
         }
         this.advancePointer();
@@ -10907,7 +10858,7 @@ export class EventState extends State {
         const varName = args[0] ?? '';
         const value = args[1] ?? 'true';
         if (varName && game.levelVars) {
-          game.levelVars.set(varName, value);
+          game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, value));
         }
         this.advancePointer();
         return false;
@@ -10917,7 +10868,7 @@ export class EventState extends State {
         const varName = args[0] ?? '';
         if (varName && game.levelVars) {
           const current = Number(game.levelVars.get(varName) ?? 0);
-          game.levelVars.set(varName, current + 1);
+          game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, current + 1));
         }
         this.advancePointer();
         return false;
@@ -10965,13 +10916,13 @@ export class EventState extends State {
         // Matches Python: just set the flag — the actual level transition
         // happens in finishAndDequeue() after the event completes, allowing
         // remaining event commands (e.g., dialog, transitions) to run first.
-        game.levelVars.set('_win_game', true);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_win_game', true));
         this.advancePointer();
         return false;
       }
 
       case 'lose_game': {
-        game.levelVars.set('_lose_game', true);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_lose_game', true));
         this.advancePointer();
         return false;
       }
@@ -10981,7 +10932,7 @@ export class EventState extends State {
       case 'has_attacked': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) unit.hasAttacked = true;
+        if (unit) game.actionLog.doAction(new HasAttackedAction(unit));
         this.advancePointer();
         return false;
       }
@@ -10989,7 +10940,7 @@ export class EventState extends State {
       case 'has_finished': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) unit.finished = true;
+        if (unit) game.actionLog.doAction(new WaitAction(unit));
         this.advancePointer();
         return false;
       }
@@ -10997,7 +10948,7 @@ export class EventState extends State {
       case 'reset': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) unit.resetTurnState();
+        if (unit) game.actionLog.doAction(new RefreshUnitAction(unit));
         this.advancePointer();
         return false;
       }
@@ -11164,11 +11115,12 @@ export class EventState extends State {
         const gmBannerFlag = !args.includes('no_banner');
         const party = game.getParty(moneyPartyNid);
         if (party) {
-          const clampedAmount = party.money + amount < 0 ? -party.money : amount;
-          party.money += clampedAmount;
+          game.actionLog.doAction(new GainMoneyAction(amount, party.nid));
+          game.actionLog.doAction(new UpdateRecordsAction('money', party.nid, amount));
+          game.actionLog.doAction(
+            new SetGameVarAction(game.gameVars, 'money', game.getMoney()),
+          );
         }
-        // Also update legacy gameVars for backward compatibility
-        game.gameVars.set('money', game.getMoney());
         if (gmBannerFlag && !this.skipMode) {
           const text = amount >= 0 ? `Got ${amount} gold.` : `Lost ${-amount} gold.`;
           this.banner = new Banner(text, undefined, 3000);
@@ -11186,10 +11138,11 @@ export class EventState extends State {
         const gbBannerFlag = !args.includes('no_banner');
         const bexpParty = game.getParty(bexpPartyNid);
         if (bexpParty) {
-          bexpParty.bexp = Math.max(0, bexpParty.bexp + bexpAmount);
+          game.actionLog.doAction(new GiveBexpAction(bexpAmount, bexpParty.nid));
+          game.actionLog.doAction(
+            new SetGameVarAction(game.gameVars, 'bexp', game.getBexp()),
+          );
         }
-        // Also update legacy gameVars for backward compatibility
-        game.gameVars.set('bexp', game.getBexp());
         if (gbBannerFlag && !this.skipMode) {
           this.banner = new Banner(`Got ${bexpAmount} BEXP.`, undefined, 3000);
           this.bannerIsAlert = true;
@@ -11204,13 +11157,13 @@ export class EventState extends State {
       case 'enable_convoy': {
         // enable_convoy — enables or disables convoy access
         // Sets the _convoy game variable
-        game.gameVars.set('_convoy', true);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_convoy', true));
         this.advancePointer();
         return false;
       }
 
       case 'disable_convoy': {
-        game.gameVars.set('_convoy', false);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_convoy', false));
         this.advancePointer();
         return false;
       }
@@ -11220,8 +11173,8 @@ export class EventState extends State {
         const cpUnitNid = args[0] ?? '';
         const cpPartyNid = args[1] ?? '';
         const cpUnit = this.findUnit(cpUnitNid);
-        if (cpUnit && cpPartyNid) {
-          cpUnit.party = cpPartyNid;
+        if (cpUnit && cpPartyNid && game.parties.has(cpPartyNid)) {
+          game.actionLog.doAction(new SetUnitPartyAction(cpUnit, cpPartyNid));
         }
         this.advancePointer();
         return false;
@@ -11342,10 +11295,9 @@ export class EventState extends State {
         const itemNid = args[1] ?? '';
         const unit2 = this.findUnit(unitNid2);
         if (unit2) {
-          const idx = unit2.items.findIndex((it: any) => it.nid === itemNid);
-          if (idx > 0) {
-            const [item] = unit2.items.splice(idx, 1);
-            unit2.items.unshift(item);
+          const item = unit2.items.find((candidate: ItemObject) => candidate.nid === itemNid);
+          if (item && unit2.canEquip(item)) {
+            game.actionLog.doAction(new EquipItemAction(unit2, item));
           }
         }
         this.advancePointer();
@@ -11366,7 +11318,7 @@ export class EventState extends State {
       case 'has_traded': {
         const unitNid4 = args[0] ?? '';
         const unit4 = this.findUnit(unitNid4);
-        if (unit4) unit4.hasTraded = true;
+        if (unit4) game.actionLog.doAction(new HasTradedAction(unit4));
         this.advancePointer();
         return false;
       }
@@ -11376,7 +11328,7 @@ export class EventState extends State {
         const expVal = parseInt(args[1], 10);
         const unit5 = this.findUnit(unitNid5);
         if (unit5 && !isNaN(expVal)) {
-          unit5.exp = Math.max(0, Math.min(99, expVal));
+          game.actionLog.doAction(new SetUnitExpAction(unit5, expVal));
         }
         this.advancePointer();
         return false;
@@ -11616,8 +11568,7 @@ export class EventState extends State {
         // unit registry. See 'remove_unit' above for rationale.
         const enemies = game.board?.getTeamUnits('enemy') ?? [];
         for (const enemy of enemies) {
-          game.board?.removeUnit(enemy);
-          enemy.position = null;
+          game.actionLog.doAction(new LeaveMapAction(game, enemy));
         }
         this.advancePointer();
         return false;
@@ -11628,9 +11579,8 @@ export class EventState extends State {
         // (action.LeaveMap clears position); never deletes from the unit
         // registry. See 'remove_unit' above for rationale.
         const allUnits = game.board?.getAllUnits() ?? [];
-        for (const u of allUnits) {
-          game.board?.removeUnit(u);
-          u.position = null;
+        for (const unit of allUnits) {
+          game.actionLog.doAction(new LeaveMapAction(game, unit));
         }
         this.advancePointer();
         return false;
@@ -11878,7 +11828,7 @@ export class EventState extends State {
         const gvarExpr = args[1] ?? '0';
         const gvarVal = parseInt(gvarExpr, 10);
         if (!isNaN(gvarVal)) {
-          game.gameVars.set(gvarName, gvarVal);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, gvarName, gvarVal));
         }
         this.advancePointer();
         return false;
@@ -11889,7 +11839,7 @@ export class EventState extends State {
         const lvarExpr = args[1] ?? '0';
         const lvarVal = parseInt(lvarExpr, 10);
         if (!isNaN(lvarVal)) {
-          game.levelVars.set(lvarName, lvarVal);
+          game.actionLog.doAction(new SetLevelVarAction(game.levelVars, lvarName, lvarVal));
         }
         this.advancePointer();
         return false;
@@ -11925,7 +11875,7 @@ export class EventState extends State {
           currentIndex: 0,
           startPointer: this.currentEvent!.commandPointer + 1,
         });
-        game.gameVars.set(forVar, forValues[0]);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, forVar, forValues[0]));
         this.advancePointer();
         return false;
       }
@@ -11936,7 +11886,9 @@ export class EventState extends State {
           loopCtx.currentIndex++;
           if (loopCtx.currentIndex < loopCtx.values.length) {
             // Set next value and jump back to loop start
-            game.gameVars.set(loopCtx.varName, loopCtx.values[loopCtx.currentIndex]);
+            game.actionLog.doAction(
+              new SetGameVarAction(game.gameVars, loopCtx.varName, loopCtx.values[loopCtx.currentIndex]),
+            );
             this.currentEvent!.commandPointer = loopCtx.startPointer;
             return false;
           } else {
@@ -12358,13 +12310,12 @@ export class EventState extends State {
         const hvUnit = this.findUnit(hvUnitNid);
         if (hvUnit) {
           if (hvFlags.includes('attacked')) {
-            hvUnit.hasAttacked = true;
+            game.actionLog.doAction(new HasAttackedAction(hvUnit));
           } else {
-            hvUnit.hasTraded = true;
+            game.actionLog.doAction(new HasTradedAction(hvUnit));
           }
-          // If the unit doesn't have Canto, mark them as finished
           if (!hvUnit.hasCanto) {
-            hvUnit.finished = true;
+            game.actionLog.doAction(new WaitAction(hvUnit));
           }
         }
         this.advancePointer();
@@ -12390,11 +12341,9 @@ export class EventState extends State {
             return false;
           });
           if (keyItem && keyItem.uses !== undefined && keyItem.uses > 0) {
-            keyItem.uses--;
-            if (keyItem.uses <= 0) {
-              // Remove broken item
-              const idx = unlockUnit.items.indexOf(keyItem);
-              if (idx >= 0) unlockUnit.items.splice(idx, 1);
+            game.actionLog.doAction(new WeaponUsesAction(keyItem, unlockUnit));
+            if ((keyItem.uses ?? 0) <= 0) {
+              game.actionLog.doAction(new RemoveItemFromUnitAction(unlockUnit, keyItem));
             }
           }
           // If no key item, check for Locktouch skill (no item consumed)
@@ -12459,16 +12408,15 @@ export class EventState extends State {
             const itemPrefab = game.db.items?.get(iuAbilityNid);
             if (itemPrefab) {
               abilityItem = new ItemObjectClass(itemPrefab);
-              iuAttacker.items.unshift(abilityItem);
+              game.actionLog.doAction(new GiveItemAction(iuAttacker, abilityItem));
             }
           }
           if (abilityItem) {
             iuAbilityItem = abilityItem;
             // Move to front of inventory (equip)
-            const idx = iuAttacker.items.indexOf(abilityItem);
-            if (idx > 0) {
-              iuAttacker.items.splice(idx, 1);
-              iuAttacker.items.unshift(abilityItem);
+            game.actionLog.doAction(new BringToTopItemAction(iuAttacker, abilityItem));
+            if (iuAttacker.canEquip(abilityItem)) {
+              game.actionLog.doAction(new EquipItemAction(iuAttacker, abilityItem));
             }
           }
         }
@@ -12622,7 +12570,10 @@ export class EventState extends State {
         };
         game.spawnGenericUnit(mgData);
         const mgUnit = game.units.get(mgNid);
-        if (mgUnit) this.loadMapSpriteForUnit(mgUnit, game);
+        if (mgUnit) {
+          game.actionLog.doAction(new CreateUnitAction(game, mgUnit, null));
+          this.loadMapSpriteForUnit(mgUnit, game);
+        }
         this.advancePointer();
         return false;
       }
@@ -12692,6 +12643,7 @@ export class EventState extends State {
         game.shopUnit = shopUnit;
         game.shopItems = shopItems;
         game.shopStock = shopStock;
+        game.shopId = shopId || null;
 
         // Push shop state
         game.state.change('shop');
@@ -12714,7 +12666,7 @@ export class EventState extends State {
         // args[0]: pick units enabled ('True'/'False'), default True
         // args[1]: music track to play during prep
         const pickEnabled = args[0] !== 'False' && args[0] !== 'false';
-        game.levelVars.set('_prep_pick', pickEnabled);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_prep_pick', pickEnabled));
 
         if (args[1]) {
           void game.audioManager.playMusic(args[1]);
@@ -12733,14 +12685,14 @@ export class EventState extends State {
         const baseBg = args[0] || '';
         const baseMusic = args[1] || '';
         if (baseBg) {
-          game.gameVars.set('_base_bg_name', baseBg);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_bg_name', baseBg));
         }
         if (baseMusic) {
-          game.gameVars.set('_base_music', baseMusic);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_music', baseMusic));
         }
         // Check for show_map flag
         if (args[0] === 'show_map' || args[0] === 'True') {
-          game.gameVars.set('_base_transparent', true);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_transparent', true));
         }
         this.advancePointer();
         game.state.change('base_main');
@@ -12769,7 +12721,9 @@ export class EventState extends State {
           }
           if (prefab && !game.overworldController) {
             // Store the prefab NID so the overworld state can pick it up
-            game.gameVars.set('_overworld_cinematic_nid', prefab.nid);
+            game.actionLog.doAction(
+              new SetGameVarAction(game.gameVars, '_overworld_cinematic_nid', prefab.nid),
+            );
           }
         }
         this.advancePointer();
@@ -12779,7 +12733,9 @@ export class EventState extends State {
       case 'reveal_overworld_node': {
         const nodeNid = args[0];
         if (nodeNid && game.overworldController) {
-          game.overworldController.enableNode(nodeNid);
+          game.actionLog.doAction(
+            new EnableOverworldElementAction(game.overworldController.enabledNodes, nodeNid),
+          );
           const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
           if (!immediate && !this.skipMode) {
             this.waiting = true;
@@ -12792,9 +12748,17 @@ export class EventState extends State {
       }
 
       case 'reveal_overworld_road': {
-        const roadNid = args[0];
-        if (roadNid && game.overworldController) {
-          game.overworldController.enableRoad(roadNid);
+        const [node1, node2] = args;
+        const owCtrl = game.overworldController;
+        const road = node1 && node2 && owCtrl
+          ? [...owCtrl.roads.values()].find((candidate: any) =>
+              (candidate.node1 === node1 && candidate.node2 === node2) ||
+              (candidate.node1 === node2 && candidate.node2 === node1))
+          : null;
+        if (road) {
+          game.actionLog.doAction(
+            new EnableOverworldElementAction(owCtrl.enabledRoads, road.nid),
+          );
           const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
           if (!immediate && !this.skipMode) {
             this.waiting = true;
@@ -12820,7 +12784,9 @@ export class EventState extends State {
               game.overworldMovement.beginMove(entity, pathPoints, {
                 follow: true,
                 callback: () => {
-                  owCtrl.movePartyToNode(entityNid, targetNodeNid);
+                  game.actionLog.doAction(
+                    new MoveOverworldEntityAction(owCtrl, entityNid, targetNodeNid),
+                  );
                 },
               });
               this.advancePointer();
@@ -12828,7 +12794,9 @@ export class EventState extends State {
               return !noBlock;
             } else {
               // No path or no movement manager — instant move
-              owCtrl.movePartyToNode(entityNid, targetNodeNid);
+              game.actionLog.doAction(
+                new MoveOverworldEntityAction(owCtrl, entityNid, targetNodeNid),
+              );
             }
           }
         }
@@ -12844,7 +12812,7 @@ export class EventState extends State {
         if (entityNid && posArg && owCtrl) {
           const node = owCtrl.getNode(posArg);
           if (node) {
-            owCtrl.movePartyToNode(entityNid, posArg);
+            game.actionLog.doAction(new MoveOverworldEntityAction(owCtrl, entityNid, posArg));
           } else {
             // Try x,y format
             const coords = posArg.split(',');
@@ -12853,7 +12821,7 @@ export class EventState extends State {
               const y = parseInt(coords[1], 10);
               const entity = owCtrl.entities.get(entityNid);
               if (entity && !isNaN(x) && !isNaN(y)) {
-                entity.displayPosition = [x, y];
+                game.actionLog.doAction(new MoveOverworldEntityAction(owCtrl, entityNid, [x, y]));
               }
             }
           }
@@ -12863,26 +12831,38 @@ export class EventState extends State {
       }
 
       case 'create_overworld_entity': {
-        // args[0] = entity NID, args[1] = dtype ('party'/'unit'),
-        // args[2] = data NID (party/unit NID), args[3] = team, args[4] = node NID
+        // Python: create_overworld_entity;Nid;[Unit];[Team], or delete via flag.
         const owCtrl = game.overworldController;
-        if (owCtrl && args[0]) {
-          const eNid = args[0];
-          const dtype = args[1] || 'party';
-          const dnid = args[2] || eNid;
-          const team = args[3] || 'player';
-          const nodeNid = args[4] || null;
-          owCtrl.createEntity(eNid, dtype, dnid, team, nodeNid);
+        const eNid = args[0];
+        if (owCtrl && eNid) {
+          const deleteEntity = args.some(arg => arg.toLowerCase().trim() === 'delete');
+          if (deleteEntity) {
+            if (owCtrl.entities.has(eNid)) {
+              game.actionLog.doAction(new RemoveOverworldEntityAction(owCtrl, eNid));
+            }
+          } else {
+            const unitNid = args[1];
+            const requestedTeam = args[2] || 'player';
+            const team = game.db.teams?.has?.(requestedTeam) ? requestedTeam : 'player';
+            const unitExists = unitNid &&
+              (game.units.has(unitNid) || game.db.units?.has?.(unitNid));
+            if (unitExists && !owCtrl.entities.has(eNid)) {
+              game.actionLog.doAction(
+                new CreateOverworldEntityAction(owCtrl, eNid, 'unit', unitNid, team, null),
+              );
+            }
+          }
         }
         this.advancePointer();
         return false;
       }
 
       case 'disable_overworld_entity': {
-        // args[0] = entity NID
+        // Python disables the entity on-map without deleting its identity.
         const owCtrl = game.overworldController;
-        if (owCtrl && args[0]) {
-          owCtrl.removeEntity(args[0]);
+        const entity = args[0] ? owCtrl?.entities.get(args[0]) : null;
+        if (entity) {
+          game.actionLog.doAction(new DisableOverworldEntityAction(entity));
         }
         this.advancePointer();
         return false;
@@ -12893,7 +12873,10 @@ export class EventState extends State {
         const owCtrl = game.overworldController;
         if (owCtrl && args[0] && args[1]) {
           const enabled = args[2] !== 'False' && args[2] !== 'false';
-          owCtrl.toggleMenuOptionEnabled(args[0], args[1], enabled);
+          const options = owCtrl.enabledMenuOptions.get(args[0]);
+          if (options) {
+            game.actionLog.doAction(new SetOverworldMenuOptionAction(options, args[1], enabled));
+          }
         }
         this.advancePointer();
         return false;
@@ -12904,7 +12887,10 @@ export class EventState extends State {
         const owCtrl = game.overworldController;
         if (owCtrl && args[0] && args[1]) {
           const visible = args[2] !== 'False' && args[2] !== 'false';
-          owCtrl.toggleMenuOptionVisible(args[0], args[1], visible);
+          const options = owCtrl.visibleMenuOptions.get(args[0]);
+          if (options) {
+            game.actionLog.doAction(new SetOverworldMenuOptionAction(options, args[1], visible));
+          }
         }
         this.advancePointer();
         return false;
@@ -12916,7 +12902,7 @@ export class EventState extends State {
         if (owCtrl) {
           const levelNid = args[0] || owCtrl.nextLevel;
           if (levelNid) {
-            game.gameVars.set('_overworld_level', levelNid);
+            game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_overworld_level', levelNid));
             game.state.change('overworld_level_transition');
             this.advancePointer();
             return true; // Block until level transition completes
@@ -12958,7 +12944,7 @@ export class EventState extends State {
 
       case 'enable_supports': {
         // Sets the _supports game var to enable supports
-        game.gameVars.set('_supports', true);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_supports', true));
         this.advancePointer();
         return false;
       }
@@ -13011,7 +12997,7 @@ export class EventState extends State {
       case 'enable_turnwheel': {
         // enable_turnwheel;true/false
         const activated = args[0]?.toLowerCase() !== 'false';
-        game.gameVars.set('_turnwheel', activated);
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_turnwheel', activated));
         this.advancePointer();
         return false;
       }
@@ -13248,7 +13234,9 @@ export class EventState extends State {
       case 'set_roam': {
         // set_roam;true/false
         const val = (args[0] ?? 'true').toLowerCase();
-        game.roamInfo.roam = val !== 'false' && val !== '0';
+        game.actionLog.doAction(
+          new SetRoamInfoAction(game.roamInfo, 'roam', val !== 'false' && val !== '0'),
+        );
         console.log(`Event: set_roam -> ${game.roamInfo.roam}`);
         this.advancePointer();
         return false;
@@ -13256,7 +13244,9 @@ export class EventState extends State {
 
       case 'set_roam_unit': {
         // set_roam_unit;UnitNid
-        game.roamInfo.roamUnitNid = args[0] || null;
+        game.actionLog.doAction(
+          new SetRoamInfoAction(game.roamInfo, 'roamUnitNid', args[0] || null),
+        );
         console.log(`Event: set_roam_unit -> ${game.roamInfo.roamUnitNid}`);
         this.advancePointer();
         return false;
@@ -13273,7 +13263,9 @@ export class EventState extends State {
             if (value === 'True' || value === 'true') evaluated = true;
             else if (value === 'False' || value === 'false') evaluated = false;
             else if (!isNaN(Number(value))) evaluated = Number(value);
-            RECORDS.create(nid, evaluated);
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.create(nid, evaluated)),
+            );
           }
         } catch (e) { console.warn('create_record error:', e); }
         this.advancePointer();
@@ -13288,7 +13280,9 @@ export class EventState extends State {
             if (value === 'True' || value === 'true') evaluated = true;
             else if (value === 'False' || value === 'false') evaluated = false;
             else if (!isNaN(Number(value))) evaluated = Number(value);
-            RECORDS.update(nid, evaluated);
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.update(nid, evaluated)),
+            );
           }
         } catch (e) { console.warn('update_record error:', e); }
         this.advancePointer();
@@ -13303,7 +13297,9 @@ export class EventState extends State {
             if (value === 'True' || value === 'true') evaluated = true;
             else if (value === 'False' || value === 'false') evaluated = false;
             else if (!isNaN(Number(value))) evaluated = Number(value);
-            RECORDS.replace(nid, evaluated);
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.replace(nid, evaluated)),
+            );
           }
         } catch (e) { console.warn('replace_record error:', e); }
         this.advancePointer();
@@ -13311,21 +13307,33 @@ export class EventState extends State {
       }
       case 'delete_record': {
         try {
-          if (args[0] && RECORDS) RECORDS.delete(args[0]);
+          if (args[0] && RECORDS) {
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.delete(args[0])),
+            );
+          }
         } catch (e) { console.warn('delete_record error:', e); }
         this.advancePointer();
         return false;
       }
       case 'unlock_difficulty': {
         try {
-          if (args[0] && RECORDS) RECORDS.unlockDifficulty(args[0]);
+          if (args[0] && RECORDS) {
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.unlockDifficulty(args[0])),
+            );
+          }
         } catch (e) { console.warn('unlock_difficulty error:', e); }
         this.advancePointer();
         return false;
       }
       case 'unlock_song': {
         try {
-          if (args[0] && RECORDS) RECORDS.unlockSong(args[0]);
+          if (args[0] && RECORDS) {
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.unlockSong(args[0])),
+            );
+          }
         } catch (e) { console.warn('unlock_song error:', e); }
         this.advancePointer();
         return false;
@@ -13340,7 +13348,12 @@ export class EventState extends State {
             const flags = new Set(args.slice(3).map((flag) => flag.toLowerCase()));
             const complete = flags.has('completed');
             const hidden = flags.has('hidden');
-            ACHIEVEMENTS.add(nid, name, desc, complete, hidden);
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(
+                ACHIEVEMENTS,
+                () => ACHIEVEMENTS.add(nid, name, desc, complete, hidden),
+              ),
+            );
           } else {
             console.warn(`Event create_achievement: missing required argument (${args.join(';')})`);
           }
@@ -13353,7 +13366,12 @@ export class EventState extends State {
         try {
           if (args[0] && args[1] !== undefined && args[2] !== undefined && ACHIEVEMENTS) {
             const hidden = args.slice(3).some((flag) => flag.toLowerCase() === 'hidden');
-            ACHIEVEMENTS.updateAchievement(args[0], args[1], args[2], hidden);
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(
+                ACHIEVEMENTS,
+                () => ACHIEVEMENTS.updateAchievement(args[0], args[1], args[2], hidden),
+              ),
+            );
           } else {
             console.warn(`Event update_achievement: missing required argument (${args.join(';')})`);
           }
@@ -13366,7 +13384,12 @@ export class EventState extends State {
         try {
           const complete = parseEventBool(args[1]);
           if (args[0] && complete !== null && ACHIEVEMENTS) {
-            const changedToComplete = ACHIEVEMENTS.complete(args[0], complete);
+            const action = new UpdatePersistentStoreAction(
+              ACHIEVEMENTS,
+              () => ACHIEVEMENTS.complete(args[0], complete),
+            );
+            game.actionLog.doAction(action);
+            const changedToComplete = action.result;
             const banner = args.slice(2).some((flag) => flag.toLowerCase() === 'banner');
             if (changedToComplete && banner && !this.skipMode) {
               const achievement = ACHIEVEMENTS.getAchievement(args[0]);
@@ -13387,7 +13410,11 @@ export class EventState extends State {
       }
       case 'clear_achievements': {
         try {
-          ACHIEVEMENTS?.clear();
+          if (ACHIEVEMENTS) {
+            game.actionLog.doAction(
+              new UpdatePersistentStoreAction(ACHIEVEMENTS, () => ACHIEVEMENTS.clear()),
+            );
+          }
         } catch (e) { console.warn('clear_achievements error:', e); }
         this.advancePointer();
         return false;
@@ -13573,7 +13600,7 @@ export class EventState extends State {
               const ny = position[1] + dy;
               if (game.tilemap && !game.tilemap.checkBounds(nx, ny)) continue;
               if (!game.board?.getUnit(nx, ny)) {
-                game.board.moveUnit(occupant, nx, ny);
+                game.actionLog.doAction(new ArriveOnMapAction(game, occupant, [nx, ny]));
                 return position;
               }
             }
@@ -13604,11 +13631,8 @@ export class EventState extends State {
       game.spawnGenericUnit(data);
       const spawned = game.units.get(unitData.nid);
       if (spawned) {
+        game.actionLog.doAction(new CreateUnitAction(game, spawned, pos, true));
         this.loadMapSpriteForUnit(spawned, game);
-        // Insert into initiative tracker if active
-        if (game.initiative) {
-          game.initiative.insertUnit(spawned, game.db);
-        }
       }
     } else {
       // Unique unit — look up prefab from db
@@ -13620,11 +13644,8 @@ export class EventState extends State {
           pos,
           unitData.ai ?? 'None',
         );
+        game.actionLog.doAction(new CreateUnitAction(game, spawned, pos, true));
         this.loadMapSpriteForUnit(spawned, game);
-        // Insert into initiative tracker if active
-        if (game.initiative) {
-          game.initiative.insertUnit(spawned, game.db);
-        }
       } else {
         console.warn(`EventState: unique unit prefab "${unitData.nid}" not found in db`);
       }
@@ -13697,12 +13718,7 @@ export class EventState extends State {
         if (!hasSkill) {
           const skillPrefab = game.db.skills.get(classSkillNid);
           if (skillPrefab) {
-            const skill = new SkillObject(skillPrefab);
-            unit.skills.push(skill);
-            // Check for canto
-            if (isCantoSkill(skill)) {
-              unit.hasCanto = true;
-            }
+            game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(skillPrefab)));
           }
         }
       }
