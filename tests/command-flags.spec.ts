@@ -226,3 +226,41 @@ test.describe('Event command flag matching: skip', () => {
     expect(await getGameVar(page, 'after_end_skip')).toBe('done');
   });
 });
+
+test.describe('Event command flag matching: no_block', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+  });
+
+  test('transition continues the script during a no_block fade, but otherwise blocks', async ({ page }) => {
+    await installAndRunEvent(page, 'test_transition_no_block', [
+      'transition;close;1000;;;no_block',
+      'game_var;no_block_marker;done',
+      'wait;1000',
+    ], 5);
+    expect(await getGameVar(page, 'no_block_marker')).toBe('done');
+    const fadeAlpha = await page.evaluate(() => {
+      const gameWindow = window as Window & {
+        __gameRef: { state: { getCurrentState(): unknown } };
+      };
+      const state = gameWindow.__gameRef.state.getCurrentState() as {
+        transitionAlpha?: unknown;
+      };
+      return typeof state.transitionAlpha === 'number' ? state.transitionAlpha : null;
+    });
+    expect(fadeAlpha).not.toBeNull();
+    expect(fadeAlpha!).toBeGreaterThan(0);
+    expect(fadeAlpha!).toBeLessThan(1);
+    await stepFrames(page, 70);
+
+    await installAndRunEvent(page, 'test_transition_blocking', [
+      'transition;close;1000',
+      'game_var;blocking_marker;done',
+    ], 5);
+    expect(await getGameVar(page, 'blocking_marker')).toBeUndefined();
+    await stepFrames(page, 70);
+    expect(await getGameVar(page, 'blocking_marker')).toBe('done');
+  });
+});

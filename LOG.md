@@ -122,9 +122,10 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
-- **Event skip boundary:** `end_skip` now clears ordinary event skip mode,
-  restoring blocking for subsequent commands as in Python. The focused
-  command-flags regression covers skip activation, boundary reset, and resume.
+- **Event flow boundaries:** `end_skip` now clears ordinary event skip mode,
+  restoring blocking for subsequent commands; `transition;...;no_block` keeps
+  its fade active while command dispatch continues. Focused command-flags
+  regressions contrast each path with normal blocking behavior.
 
 - **Deferred trigger paths complete:** wired `event_after_initiated_combat`
   through the real attacker/strike-partner skill-before-item combat lifecycle,
