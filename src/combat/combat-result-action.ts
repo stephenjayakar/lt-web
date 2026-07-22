@@ -6,6 +6,7 @@ import type { StatusEffect, UnitObject } from '../objects/unit';
 interface UnitMutationSnapshot {
   currentHp: number;
   dead: boolean;
+  currentFatigue: number;
   exp: number;
   level: number;
   stats: Record<string, number>;
@@ -50,6 +51,7 @@ function capture(units: UnitObject[], explicitItems: ItemObject[]): CombatMutati
     units: new Map(uniqueUnits.map((unit) => [unit, {
       currentHp: unit.currentHp,
       dead: unit.dead,
+      currentFatigue: unit.currentFatigue,
       exp: unit.exp,
       level: unit.level,
       stats: { ...unit.stats },
@@ -77,6 +79,7 @@ function restore(snapshot: CombatMutationSnapshot): void {
   for (const [unit, state] of snapshot.units) {
     unit.currentHp = state.currentHp;
     unit.dead = state.dead;
+    unit.currentFatigue = state.currentFatigue;
     unit.exp = state.exp;
     unit.level = state.level;
     unit.stats = { ...state.stats };

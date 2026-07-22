@@ -3279,7 +3279,7 @@ test.describe('Event command parity', () => {
     });
   });
 
-  test('combat result and death actions restore HP, EXP, skills, uses, WEXP, board, and initiative', async ({ page }) => {
+  test('combat result and death actions restore HP, EXP, statuses, fatigue, uses, WEXP, board, and initiative', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -3309,16 +3309,26 @@ test.describe('Event command parity', () => {
         nid: '_CombatResultStatus', name: 'Result Status', desc: '',
         icon_nid: '', icon_index: [0, 0], components: [],
       });
+      for (const nid of ['_CombatSelfStatus', '_CombatListStatusA', '_CombatListStatusB']) {
+        game.db.skills.set(nid, {
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components: [],
+        });
+      }
       const attacker = makeUnit('_ResultAttacker', 'player', 20);
       const defender = makeUnit('_ResultDefender', 'enemy', 1);
       attacker.exp = 90;
       attacker.wexp.Sword = 0;
+      attacker.currentFatigue = 1;
+      defender.currentFatigue = 2;
       const item = new ItemObject({
         nid: '_ResultSpell', name: '_ResultSpell', desc: '', icon_nid: '', icon_index: [0, 0],
         components: [
           ['spell', null], ['target_enemy', null], ['damage', 20], ['hit', 100],
           ['uses', 2], ['weapon_type', 'Sword'], ['wexp', 1], ['exp', 20],
           ['status_on_hit', '_CombatResultStatus'], ['min_range', 1], ['max_range', 2],
+          ['self_status_on_hit', '_CombatSelfStatus'],
+          ['statuses_on_hit', ['_CombatListStatusA', '_CombatListStatusB']],
+          ['fatigue_on_hit', 3],
         ],
       });
       attacker.items.push(item);
@@ -3343,10 +3353,13 @@ test.describe('Event command parity', () => {
           hp: attacker.currentHp, exp: attacker.exp, level: attacker.level,
           stats: { ...attacker.stats }, wexp: { ...attacker.wexp },
           uses: item.uses, hasAttacked: attacker.hasAttacked, finished: attacker.finished,
+          fatigue: attacker.currentFatigue,
+          selfStatus: attacker.skills.some((skill: any) => skill.nid === '_CombatSelfStatus'),
         },
         defender: {
           hp: defender.currentHp, dead: defender.dead, position: defender.position,
-          status: defender.skills.some((skill: any) => skill.nid === '_CombatResultStatus'),
+          fatigue: defender.currentFatigue,
+          statuses: defender.skills.map((skill: any) => skill.nid).sort(),
         },
         boardDefender: board.getUnit(3, 2)?.nid ?? null,
         initiative: {
@@ -3365,17 +3378,23 @@ test.describe('Event command parity', () => {
     expect(result).not.toBeNull();
     expect(result!.applied.attacker).toMatchObject({
       exp: 50, level: 2, wexp: { Sword: 2 }, uses: 1,
-      hasAttacked: true, finished: true,
+      hasAttacked: true, finished: true, fatigue: 1, selfStatus: true,
     });
-    expect(result!.applied.defender).toEqual({ hp: 0, dead: true, position: null, status: true });
+    expect(result!.applied.defender).toEqual({
+      hp: 0,
+      dead: true,
+      position: null,
+      fatigue: 5,
+      statuses: ['_CombatListStatusA', '_CombatListStatusB', '_CombatResultStatus'],
+    });
     expect(result!.applied.boardDefender).toBeNull();
     expect(result!.applied.initiative).toEqual({ units: ['_ResultAttacker'], values: [10], index: 0 });
     expect(result!.reversed.attacker).toMatchObject({
       hp: 20, exp: 90, level: 1, wexp: { Sword: 0 }, uses: 2,
-      hasAttacked: false, finished: false,
+      hasAttacked: false, finished: false, fatigue: 1, selfStatus: false,
     });
     expect(result!.reversed.defender).toEqual({
-      hp: 1, dead: false, position: [3, 2], status: false,
+      hp: 1, dead: false, position: [3, 2], fatigue: 2, statuses: [],
     });
     expect(result!.reversed.boardDefender).toBe('_ResultDefender');
     expect(result!.reversed.initiative).toEqual({
