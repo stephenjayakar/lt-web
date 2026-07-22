@@ -76,6 +76,7 @@ function makeSkillSetup() {
 interface UnitSpec {
   weaponNid: string | null;
   str?: number;
+  weaponComponents?: Array<[string, unknown]>;
   def?: number;
   spd?: number;
   hp?: number;
@@ -121,6 +122,9 @@ async function setupAndResolve(
           unit.wexp[item.getWeaponType?.() ?? ''] = 200;
           unit.equippedWeapon = item;
           item.uses = 99;
+          for (const [nid, value] of spec.weaponComponents ?? []) {
+            item.components.set(nid, value);
+          }
           item.maxUses = 99;
         }
       }
@@ -250,6 +254,37 @@ test.describe('combat golden matrix', () => {
     expect(r.strikeDetails[0].damage).toBe(11);
     expect(r.strikeDetails[1].damage).toBe(11);
     expect(r.strikeDetails[2].isCounter).toBe(true);
+  });
+
+  test('brave_on_attack doubles only the initiating unit, not a counterattack', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const initiating = await setupAndResolve(page, {
+      eirika: {
+        weaponNid: 'Iron_Sword',
+        weaponComponents: [['brave_on_attack', null]],
+        str: 10, def: 0, spd: 5, hp: 999,
+      },
+      bone: { weaponNid: 'Iron_Sword', str: 8, def: 2, spd: 5, hp: 999 },
+    });
+    expect(initiating).not.toBeNull();
+    expect(initiating.strikeDetails.map((strike: any) => strike.striker))
+      .toEqual(['attacker', 'attacker', 'defender']);
+
+    const countering = await setupAndResolve(page, {
+      eirika: { weaponNid: 'Iron_Sword', str: 10, def: 0, spd: 5, hp: 999 },
+      bone: {
+        weaponNid: 'Iron_Sword',
+        weaponComponents: [['brave_on_attack', null]],
+        str: 8, def: 2, spd: 5, hp: 999,
+      },
+    });
+    expect(countering).not.toBeNull();
+    expect(countering.strikeDetails.map((strike: any) => strike.striker))
+      .toEqual(['attacker', 'defender']);
+    expect(countering.strikeDetails[1].isCounter).toBe(true);
   });
 
   test('vantage: defender with vantage strikes first', async ({ page }) => {

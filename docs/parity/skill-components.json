@@ -3588,11 +3588,11 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 808
+          "line": 810
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 833
+          "line": 835
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3654,11 +3654,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 808
+          "line": 810
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 833
+          "line": 835
         },
         {
           "source": "src/combat/item-system.ts",

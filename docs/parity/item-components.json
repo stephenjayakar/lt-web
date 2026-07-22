@@ -7,14 +7,14 @@
   "summary": {
     "pythonComponentNids": 201,
     "webHookExports": 65,
-    "referencedComponentNids": 141,
+    "referencedComponentNids": 142,
     "hookMappedComponentNids": 93,
-    "unreferencedComponentNids": 60,
-    "consumedComponentNids": 113,
+    "unreferencedComponentNids": 59,
+    "consumedComponentNids": 114,
     "structuralStatuses": {
       "consumed": 39,
-      "hook-and-reference": 86,
-      "hook-only": 7,
+      "hook-and-reference": 87,
+      "hook-only": 6,
       "reference-only": 16,
       "unreferenced": 53
     }
@@ -2816,11 +2816,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 697
+          "line": 699
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 710
+          "line": 712
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3216,13 +3216,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1296
+          "line": 1295
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1296
+          "line": 1295
         }
       ],
       "matchingWebHooks": [
@@ -3246,13 +3246,23 @@
       "methods": [
         "dynamic_multiattacks"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1296
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1296
+        }
+      ],
       "matchingWebHooks": [
         "dynamicMultiattacks"
       ],
       "lexicalTestMention": false,
-      "status": "hook-only"
+      "status": "hook-and-reference"
     },
     {
       "nid": "lifelink",
@@ -7722,11 +7732,11 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 808
+          "line": 810
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 833
+          "line": 835
         },
         {
           "source": "src/combat/item-system.ts",
@@ -7788,11 +7798,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 808
+          "line": 810
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 833
+          "line": 835
         },
         {
           "source": "src/combat/item-system.ts",

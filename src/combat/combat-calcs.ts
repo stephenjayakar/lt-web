@@ -890,15 +890,16 @@ export function computeStrikeCount(
   item: ItemObject,
   target: UnitObject,
   defenseItem: ItemObject | null,
+  mode: 'attack' | 'defense' = 'attack',
 ): number {
   let count = 1;
 
   // Brave from items
-  const itemExtra = itemSystem.dynamicMultiattacks(unit, item, target, defenseItem, 'attack', null, 0);
+  const itemExtra = itemSystem.dynamicMultiattacks(unit, item, target, defenseItem, mode, null, 0);
   count += itemExtra;
 
   // Dynamic multiattacks from skills
-  const skillExtra = skillSystem.dynamicMultiattacks(unit, item, target, defenseItem, 'attack', null, 0);
+  const skillExtra = skillSystem.dynamicMultiattacks(unit, item, target, defenseItem, mode, null, 0);
   count += skillExtra;
 
   return count;
