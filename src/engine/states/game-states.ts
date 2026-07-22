@@ -8682,8 +8682,15 @@ export class EventState extends State {
         return false;
       }
 
-      case 'comment':
+      case 'comment': {
+        this.advancePointer();
+        return false;
+      }
+
       case 'end_skip': {
+        // Python end_skip clears ordinary event skipping so subsequent
+        // blocking commands resume normal presentation.
+        this.skipMode = false;
         this.advancePointer();
         return false;
       }
