@@ -13,7 +13,6 @@ import type { StateResult } from '../state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
-import { ANIMATION_COUNTERS } from '../constants';
 import type { UnitObject } from '../../objects/unit';
 import { drawItemIcon, drawIcon16 } from '../../ui/icons';
 import {
@@ -206,7 +205,7 @@ export class InfoMenuState extends State {
     // Panel background
     surf.fillRect(0, 0, LEFT_PANEL_W, vh, PANEL_BG);
 
-    // Portrait area (placeholder — filled rectangle with initials)
+    // Portrait area
     const portraitX = 8;
     const portraitY = 8;
     const portraitW = 80;
@@ -236,11 +235,22 @@ export class InfoMenuState extends State {
     }
 
     if (!drewPortrait) {
-      // Placeholder with unit initials
+      // Prefer the already-loaded class map sprite while an optional portrait
+      // is absent/loading. This avoids flashing debug initials for units whose
+      // project resources are otherwise available.
       surf.fillRect(portraitX, portraitY, portraitW, portraitH, 'rgba(40,44,80,1)');
       surf.drawRect(portraitX, portraitY, portraitW, portraitH, DIVIDER_COLOR);
-      const initials = unit.name.substring(0, 2).toUpperCase();
-      this.drawTextCentered(surf, initials, portraitX + portraitW / 2, portraitY + portraitH / 2 - 6, COLOR_WHITE, 'text');
+      const sprite = unit.sprite as any;
+      const frame = sprite?.getCurrentFrame?.();
+      if (frame instanceof Surface) {
+        surf.blit(frame, portraitX + Math.floor((portraitW - frame.width) / 2), portraitY + 14);
+      } else {
+        // Neutral pixel silhouette for projects that genuinely omit both.
+        surf.fillRect(portraitX + 34, portraitY + 17, 12, 12, COLOR_GREY);
+        surf.fillRect(portraitX + 28, portraitY + 31, 24, 25, COLOR_GREY);
+        surf.fillRect(portraitX + 23, portraitY + 37, 5, 17, COLOR_GREY);
+        surf.fillRect(portraitX + 52, portraitY + 37, 5, 17, COLOR_GREY);
+      }
     }
 
     // Unit name (centered)
@@ -273,9 +283,9 @@ export class InfoMenuState extends State {
     surf.fillRect(barX, barY, Math.floor(barW * hpFrac), barH, hpColor);
 
     // Animated map sprite at bottom of left panel
-    if (unit.sprite && typeof unit.sprite === 'object' && 'getFrame' in unit.sprite) {
+    if (unit.sprite && typeof unit.sprite === 'object' && 'getCurrentFrame' in unit.sprite) {
       const spr = unit.sprite as any;
-      const frame = spr.getFrame('standing', ANIMATION_COUNTERS.passive);
+      const frame = spr.getCurrentFrame();
       if (frame) {
         const spriteX = LEFT_PANEL_W / 2 - 16;
         const spriteY = vh - 28;
