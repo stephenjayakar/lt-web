@@ -39,6 +39,12 @@ lookups into one command. Avoid broad recursive dumps, repeated `git diff`
 prints, and full generated JSON/Markdown reads. If command output is large,
 filter it at the source rather than rereading a truncated result.
 
+Treat prior successful checks as a verification cache. Record which paths changed
+after each green focused test, build, audit, or full suite; rerun a check only
+when one of its relevant inputs changed, it failed, or the final gate explicitly
+requires a fresh result. `LOG.md` and agent/chat transcripts are archives: search
+them for a specific term or commit and never read them front to back.
+
 For a normal change, the minimum useful context is:
 
 1. the user request and relevant `PLAN.md` checkbox/bug;
@@ -102,7 +108,8 @@ change crosses several Python subsystems.
 5. Run the focused test first. Diagnose a failure with that single test before
    running broader gates.
 6. Update generated parity artifacts only if their source surface changed.
-7. Update `PLAN.md` minimally, verify, review the diff, then commit and push.
+7. Update `PLAN.md`/`LOG.md` only when tracked roadmap status changes, then
+   verify, review the diff, commit, and push.
 
 Event commands usually require checking all four surfaces: parser/alias metadata
 in `event-manager.ts`, blocking registration and dispatch in `EventState`, an
@@ -145,6 +152,12 @@ Do not rerun the full suite merely to obtain a readable error. Use the shell's
 configured Node/npm; do not prepend a hard-coded NVM path unless `command -v
 node` shows the tool is genuinely unavailable.
 
+For a long goal containing several related slices, a "final" full-suite gate
+means once before the next pause or handoff, after the last relevant source
+change—not once per slice. Focused tests and the build are the per-commit gates;
+coalesce related edits into coherent commits and do not repeat an unchanged
+green build, audit, or full suite during review/staging.
+
 `npm run audit:parity:write` owns these generated files:
 
 - `docs/parity/event-commands.{json,md}`
@@ -160,8 +173,9 @@ regeneration, inspect `git diff --stat` and the relevant rows, not the whole fil
 
 - At startup, read only the matching checkbox/bug and `Active Next Slice` if the
   user did not provide a task. A direct user request takes priority over the queue.
-- On completion, update an existing checkbox/bug and add at most one concise
-  `Recent Changes` bullet describing behavior, tests, and deliberate deferrals.
+- Routine slices do not require a planning-file edit. On completion, change only
+  the affected roadmap checkbox/queue text. Move an item to `LOG.md` only when
+  removing completed detail from `PLAN.md`; git history owns routine change notes.
 - Add discovered work as a short unchecked item in the relevant phase. Do not
   paste investigation logs, repeated audit tables, or per-attempt narratives.
 - Do not manually maintain TypeScript line counts, source-file counts, state
@@ -169,7 +183,19 @@ regeneration, inspect `git diff --stat` and the relevant rows, not the whole fil
   artifacts; mention exact totals in `PLAN.md` only when the task changes a
   tracked baseline.
 - Architecture details belong here only when they are stable and necessary for
-  future edits. Feature completion details belong in `PLAN.md` and git history.
+  future edits. Completed milestones belong in `LOG.md`; routine details belong
+  in git history.
+
+## Delegation when explicitly requested
+
+- Give each agent one bounded seam with exact allowed paths and one focused
+  acceptance check. Do not launch overlapping repo-wide audits and implementations.
+- Point agents at files/symbols instead of pasting source. Ask for a compact
+  contract, changed paths, and test result; put reusable long research in one
+  named `temp/plan-*.md` file rather than returning it through chat.
+- The parent reviews the diff/result, not the agent transcript. Avoid duplicate
+  peer messages plus structured yields, and do not make agents run broad gates,
+  update planning files, commit, or push; integration owns those once.
 
 ## Final review and git
 
