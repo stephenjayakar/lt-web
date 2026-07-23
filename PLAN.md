@@ -126,7 +126,7 @@ mouse, touch, cancel/back, transition, and resume tests.
 ### P6 — Rendering, Animation, Audio, and Resources
 
 - [ ] Complete combat-animation fallback behavior without debug placeholder art
-- [ ] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
+- [x] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
 - [ ] Add screenshot/golden tolerances for representative maps and combat scenes
 
 **Gate:** required assets load across fixture projects and visual/audio state transitions
@@ -136,9 +136,7 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Render attack/defense/pre-proc playback marks with Python-timed icons and
-   effects.
-2. Implement remaining item target/restriction/use/end-combat hooks and
+1. Implement remaining item target/restriction/use/end-combat hooks and
    multi/sub-item behavior.
-3. Continue the open roadmap in dependency order; keep generated inventories as
+2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
