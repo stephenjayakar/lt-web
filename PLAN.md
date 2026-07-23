@@ -140,21 +140,3 @@ Queue refreshed 2026-07-22 after healing item EXP parity:
    multi/sub-item behavior.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
-
-### Paused Progress — 2026-07-22
-
-- Pushed forced-movement item parity (`e4d9dff`): shared shove/pivot/draw-back
-  destination checks, reversible swaps, combat/end-combat hooks, target
-  restrictions, and undo/redo coverage.
-- Pushed extra damage hooks (`ed2e500`): `damage_on_miss` and `eclipse_fe7`
-  across map and full-animation combat, with focused combat goldens.
-- Pushed on-hit status/resource hooks (`7162e73`): `self_status_on_hit`,
-  `statuses_on_hit`, and `fatigue_on_hit`, including fatigue in reversible
-  combat snapshots.
-- Healing item EXP is implemented in the current tree: `heal_exp` uses actual
-  restored HP, Python internal-level/constant math, unique multi-target totals,
-  and the existing reversible item-use action group. Parity audit, build, and
-  the focused heal-EXP Playwright regression pass.
-- Verification still required before marking healing item EXP complete: the
-  final serial Playwright run was stopped after it began. The latest completed
-  full gate, after the preceding on-hit slice, was 452 passed and 1 skipped.
