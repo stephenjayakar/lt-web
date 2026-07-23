@@ -2882,3 +2882,12 @@ many components, while one switch case can still omit flags or blocking behavior
   proc skills, charge state, and combat RNG during turnwheel undo/redo.
 - This closes the P3 charge/cooldown, conditional, proc, and status-hook row;
   the remaining P3 work is the cross-component fixture matrix.
+
+## 2026-07-23 — P3 item/skill fixture gate
+
+- Closed the component-interaction gate with fixtures spanning nested and
+  sequence items, conditional target restrictions, status/charge grants,
+  mana check/gain/spend order, turn charge/time/resource combinations, proc
+  presentation, equip-linked behavior, and action-log/save restoration.
+- The focused skill interaction batch passes serially; the generated parity
+  inventories remain the source of truth for editor-only and hook coverage.
