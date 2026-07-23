@@ -2970,3 +2970,12 @@ many components, while one switch case can still omit flags or blocking behavior
   silhouette when a project genuinely omits both portrait and sprite.
 - Added focused resource coverage and visually inspected the missing-portrait
   path, closing P5.
+
+## 2026-07-23 — Combat-animation asset fallback
+
+- Replaced missing full-animation debug blocks with each combatant's real,
+  team-paletted map sprite positioned on the battle platform.
+- Retained a neutral silhouette only for projects missing both battle and map
+  sprite resources, without duplicating combatants for absent child effects.
+- Added a focused missing-frame regression and visually inspected the rendered
+  240x160 combat scene.

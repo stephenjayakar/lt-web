@@ -497,8 +497,8 @@ export class AnimationCombat implements AnimationCombatOwner {
       return false;
     }
 
-    // Fail-safe: if assets are still missing after a short wait, continue so
-    // combat cannot stall forever due to missing/invalid resources.
+    // Fail-safe: if assets are still missing after a short wait, continue with
+    // the renderer's real map-sprite fallback so combat cannot stall forever.
     if (this.stateTimer >= SPRITE_LOAD_WAIT_MS) {
       this.transition('fade_in');
     }
