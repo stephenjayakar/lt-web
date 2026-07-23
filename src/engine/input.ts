@@ -136,6 +136,9 @@ export class InputManager {
   private _setupListeners(canvas: HTMLCanvasElement): void {
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
+      if (e.target instanceof HTMLElement && e.target.closest('button, a, input, select, textarea')) {
+        return;
+      }
       e.preventDefault();
       this.keysDown.add(e.code);
       const btn = this.keyMap[e.code];
@@ -339,6 +342,21 @@ export class InputManager {
       case 2: return 'BACK';
       case 1: return 'INFO';
       default: return null;
+    }
+  }
+
+  /** Press a browser-native control while preserving normal input ordering. */
+  pressVirtual(button: GameButton): void {
+    if (!this.buttonsDown.has(button)) {
+      this.buttonJustPressed.add(button);
+    }
+    this.buttonsDown.add(button);
+  }
+
+  /** Release a browser-native control. */
+  releaseVirtual(button: GameButton): void {
+    if (this.buttonsDown.delete(button)) {
+      this.buttonJustReleased.add(button);
     }
   }
 

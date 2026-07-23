@@ -10,6 +10,8 @@ import { FRAMETIME, updateAnimationCounters } from './engine/constants';
 import { viewport } from './engine/viewport';
 import { Surface } from './engine/surface';
 import { InputManager } from './engine/input';
+import { installWebControls } from './ui/web-controls';
+import './web-shell.css';
 import { ResourceManager } from './data/resource-manager';
 import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
@@ -249,45 +251,58 @@ function showProjectPicker(): Promise<string> {
   if (projects.length === 0) return Promise.resolve('default.ltproj');
   if (projects.length === 1) return Promise.resolve(projects[0]);
 
-  // Build a simple DOM-based picker overlay
   return new Promise<string>((resolve) => {
     const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed; inset: 0; z-index: 9999;
-      background: #101020; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; font-family: monospace;
+    overlay.className = 'project-picker';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-labelledby', 'project-picker-title');
+
+    const card = document.createElement('main');
+    card.className = 'project-picker__card';
+    card.innerHTML = `
+      <p class="project-picker__eyebrow">Lex Talionis · Web Player</p>
+      <h1 id="project-picker-title">Choose your campaign</h1>
+      <p class="project-picker__lede">Select a project to launch. Your campaign fills the browser and supports keyboard, pointer, touch, and gamepad input.</p>
     `;
 
-    const title = document.createElement('div');
-    title.textContent = 'Select Project';
-    title.style.cssText = 'color: #aaaacc; font-size: 24px; margin-bottom: 32px;';
-    overlay.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'project-picker__list';
+    list.setAttribute('aria-label', 'Available campaigns');
 
-    for (const proj of projects) {
+    projects.forEach((proj, index) => {
       const btn = document.createElement('button');
-      // Display name: strip .ltproj suffix, replace underscores with spaces
-      const displayName = proj.replace(/\.ltproj$/, '').replace(/_/g, ' ');
-      btn.textContent = displayName;
-      btn.style.cssText = `
-        background: #1a1a30; color: #ccccee; border: 1px solid #333355;
-        padding: 12px 32px; margin: 6px; font-size: 16px; font-family: monospace;
-        cursor: pointer; border-radius: 4px; min-width: 240px; text-align: center;
-      `;
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = '#2a2a50';
-        btn.style.borderColor = '#5555aa';
-      });
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = '#1a1a30';
-        btn.style.borderColor = '#333355';
-      });
+      const rawName = proj.replace(/\.ltproj$/, '').replace(/_/g, ' ');
+      const displayName = rawName === 'default'
+        ? 'Default Campaign'
+        : rawName.replace(/\b\w/g, (letter) => letter.toUpperCase());
+      btn.className = 'project-picker__button';
+      btn.type = 'button';
+      btn.setAttribute('aria-label', `Launch ${displayName}`);
+      const number = document.createElement('span');
+      number.className = 'project-picker__number';
+      number.textContent = String(index + 1).padStart(2, '0');
+      const name = document.createElement('span');
+      name.className = 'project-picker__name';
+      name.textContent = displayName;
+      const arrow = document.createElement('span');
+      arrow.className = 'project-picker__arrow';
+      arrow.setAttribute('aria-hidden', 'true');
+      arrow.textContent = '→';
+      btn.append(number, name, arrow);
       btn.addEventListener('click', () => {
         overlay.remove();
         resolve(proj);
       });
-      overlay.appendChild(btn);
-    }
+      list.appendChild(btn);
+    });
 
+    const support = document.createElement('p');
+    support.className = 'project-picker__support';
+    support.textContent = 'Runs locally in your browser';
+
+    card.appendChild(list);
+    card.appendChild(support);
+    overlay.appendChild(card);
     document.body.appendChild(overlay);
   });
 }
@@ -596,6 +611,8 @@ async function main(): Promise<void> {
   const inputManager = new InputManager(canvas);
   inputManager.setDisplayScale(viewport.cssScale);
   gameState.input = inputManager;
+  const showWebControls = !harnessMode || params.get('controls') === 'true';
+  if (showWebControls) installWebControls(inputManager);
 
   // --- Game surface (dynamic size) ---
   let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);

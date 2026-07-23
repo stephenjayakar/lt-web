@@ -122,6 +122,11 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Web player shell:** the campaign launcher now has a responsive, accessible
+  tactical presentation instead of an internal project list. Desktop play adds
+  discoverable control help and fullscreen; touch play adds visible directional,
+  select, back, info, and menu controls wired through the engine input queue.
+
 - **Healing item EXP:** `heal_exp` now rewards actual HP restored, summed across
   unique targets with Python's internal-level and heal-constant formula. Direct
   and multi-target healing capture pre-use HP, and the existing action group
