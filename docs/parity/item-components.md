@@ -7,7 +7,7 @@ Summary: 166/201 referenced in web source; 107/201 expose at least one matching 
 
 | NID | Python class | Python source | Tag | Python hooks | Matching web hooks | Direct reads | Exact web references | Test | Structural status |
 |---|---|---|---|---|---|---|---|---|---|
-| multi_item | MultiItem | lt-maker/app/engine/item_components/advanced_components.py:9 | ADVANCED |  |  | 5 | src/engine/states/game-states.ts:2921<br>src/engine/states/game-states.ts:10730<br>src/engine/states/game-states.ts:10751<br>+2 more | mention | consumed |
+| multi_item | MultiItem | lt-maker/app/engine/item_components/advanced_components.py:9 | ADVANCED |  |  | 5 | src/engine/states/game-states.ts:2921<br>src/engine/states/game-states.ts:10749<br>src/engine/states/game-states.ts:10770<br>+2 more | mention | consumed |
 | multi_item_hides_unavailable | MultiItemHidesUnusableChildren | lt-maker/app/engine/item_components/advanced_components.py:16 | ADVANCED |  |  | 1 | src/engine/states/game-states.ts:2922 | mention | consumed |
 | sequence_item | SequenceItem | lt-maker/app/engine/item_components/advanced_components.py:21 | ADVANCED |  |  | 11 | src/engine/states/game-states.ts:2804<br>src/engine/states/game-states.ts:2940<br>src/engine/states/game-states.ts:3003<br>+8 more | mention | consumed |
 | multi_target | MultiTarget | lt-maker/app/engine/item_components/advanced_components.py:28 | ADVANCED | num_targets | numTargets | 1 | src/combat/item-system.ts:688 | mention | hook-and-reference |
@@ -81,7 +81,7 @@ Summary: 166/201 referenced in web source; 107/201 expose at least one matching 
 | level_exp | LevelExp | lt-maker/app/engine/item_components/exp_components.py:85 | EXP | exp |  | 1 | src/combat/combat-components.ts:254 | mention | consumed |
 | heal_exp | HealExp | lt-maker/app/engine/item_components/exp_components.py:121 | EXP | exp |  | 1 | src/engine/states/game-states.ts:2720 | mention | consumed |
 | wexp | Wexp | lt-maker/app/engine/item_components/exp_components.py:152 | EXP | wexp |  | 3 | src/combat/combat-components.ts:109<br>src/combat/combat-components.ts:143<br>src/engine/states/game-states.ts:2694 | mention | consumed |
-| fatigue | Fatigue | lt-maker/app/engine/item_components/exp_components.py:163 | EXP | end_combat |  | 2 | src/combat/combat-lifecycle.ts:401<br>src/engine/states/game-states.ts:2738<br>src/engine/states/game-states.ts:9839 | mention | consumed |
+| fatigue | Fatigue | lt-maker/app/engine/item_components/exp_components.py:163 | EXP | end_combat |  | 2 | src/combat/combat-lifecycle.ts:401<br>src/engine/states/game-states.ts:2738<br>src/engine/states/game-states.ts:9858 | mention | consumed |
 | effective_damage | EffectiveDamage | lt-maker/app/engine/item_components/extra_components.py:10 | EXTRA | tags, multiplier, bonus_damage, show_flash, weapon_effectiveness_multiplied, item_icon_mod, target_icon, dynamic_damage | dynamicDamage | 1 | src/combat/item-system.ts:1324 |  | hook-and-reference |
 | brave | Brave | lt-maker/app/engine/item_components/extra_components.py:95 | EXTRA | dynamic_multiattacks | dynamicMultiattacks | 1 | src/combat/item-system.ts:1502 | mention | hook-and-reference |
 | brave_on_attack | BraveOnAttack | lt-maker/app/engine/item_components/extra_components.py:103 | EXTRA | dynamic_multiattacks | dynamicMultiattacks | 1 | src/combat/item-system.ts:1503 |  | hook-and-reference |

@@ -41,12 +41,12 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  | 1 | src/combat/map-combat.ts:312 |  | consumed |
 | battle_animation_music | BattleAnimMusic | lt-maker/app/engine/skill_components/aesthetic_components.py:230 | AESTHETIC | battle_music |  |  |  |  | unreferenced |
 | modify_ai_priority | ModifyAIPriority | lt-maker/app/engine/skill_components/ai_components.py:14 | ADVANCED | ai_priority_multiplier |  |  |  |  | unreferenced |
-| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10227<br>src/engine/states/game-states.ts:11623<br>src/engine/states/game-states.ts:13620<br>+2 more |  | reference-only |
+| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10246<br>src/engine/states/game-states.ts:11642<br>src/engine/states/game-states.ts:13639<br>+2 more |  | reference-only |
 | hidden_if_inactive | HiddenIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:10 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | grey_if_inactive | GreyIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:15 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | is_terrain | TerrainSkill | lt-maker/app/engine/skill_components/attribute_components.py:20 | ATTRIBUTE | condition |  |  |  |  | unreferenced |
 | class_skill | ClassSkill | lt-maker/app/engine/skill_components/attribute_components.py:30 | ATTRIBUTE |  |  |  |  |  | unreferenced |
-| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10029<br>src/engine/states/game-states.ts:10034<br>src/engine/states/game-states.ts:10053<br>+2 more |  | reference-only |
+| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10048<br>src/engine/states/game-states.ts:10053<br>src/engine/states/game-states.ts:10072<br>+2 more |  | reference-only |
 | feat | Feat | lt-maker/app/engine/skill_components/attribute_components.py:44 | ATTRIBUTE |  |  |  | src/engine/learned-skills.ts:12 | mention | reference-only |
 | negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 2 | src/combat/item-system.ts:847<br>src/engine/states/game-states.ts:2529 |  | consumed |
 | global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  |  |  | unreferenced |
@@ -59,8 +59,8 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | cannot_trade | CannotTrade | lt-maker/app/engine/skill_components/base_components.py:32 | BASE | no_trade |  |  |  |  | unreferenced |
 | additional_accessories | AdditionalAccessories | lt-maker/app/engine/skill_components/base_components.py:40 | BASE | num_items_offset, num_accessories_offset |  |  |  |  | unreferenced |
 | ignore_alliances | IgnoreAlliances | lt-maker/app/engine/skill_components/base_components.py:54 | BASE | check_ally, check_enemy |  |  |  |  | unreferenced |
-| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:10967<br>src/events/event-manager.ts:102<br>src/events/event-manager.ts:207<br>+2 more |  | reference-only |
-| change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/engine/states/game-states.ts:7545<br>src/engine/states/game-states.ts:7557 |  | reference-only |
+| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:10986<br>src/events/event-manager.ts:102<br>src/events/event-manager.ts:207<br>+2 more |  | reference-only |
+| change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/engine/states/game-states.ts:7564<br>src/engine/states/game-states.ts:7576 |  | reference-only |
 | exp_multiplier | ExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:85 | BASE | exp_multiplier | expMultiplier |  | src/combat/skill-system.ts:627<br>src/main.ts:362 |  | hook-and-reference |
 | enemy_exp_multiplier | EnemyExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:95 | BASE | enemy_exp_multiplier | enemyExpMultiplier |  | src/combat/skill-system.ts:631<br>src/main.ts:363 |  | hook-and-reference |
 | wexp_multiplier | WexpMultiplier | lt-maker/app/engine/skill_components/base_components.py:105 | BASE | wexp_multiplier | wexpMultiplier |  | src/combat/skill-system.ts:635<br>src/main.ts:363 |  | hook-and-reference |

@@ -5725,7 +5725,7 @@ export class CombatState extends State {
     // Helper to draw a single BattleAnimDrawData
     const drawBattleSprite = (
       draw: BattleAnimDrawData,
-      fallbackColor: string,
+      fallbackUnit: UnitObject | null,
       platformX: number,
       platformY: number,
       rangeOffset: number,
@@ -5739,7 +5739,7 @@ export class CombatState extends State {
         surf.ctx.globalCompositeOperation = 'lighter';
       }
 
-       // Left-side sprites (right=false) need horizontal flip since
+      // Left-side sprites (right=false) need horizontal flip since
       // animation frames are authored facing left (for right-side position).
       const flipSprite = !draw.right;
 
@@ -5766,14 +5766,27 @@ export class CombatState extends State {
       // Draw main frame
       if (draw.mainFrame) {
         this.drawAnimFrame(surf, draw.mainFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
-      } else {
-        // Stub placeholder: colored rectangle on the platform
-        const STUB_W = 32;
-        const STUB_H = 40;
-        const stubX = platformX + (PLAT_W - STUB_W) / 2;
-        const stubY = platformY - STUB_H;
-        surf.fillRect(stubX, stubY, STUB_W, STUB_H, `rgba(${fallbackColor},${alpha.toFixed(2)})`);
-        surf.fillRect(stubX + STUB_W / 2 - 4, stubY + 2, 8, 8, `rgba(200,180,150,${alpha.toFixed(2)})`);
+      } else if (fallbackUnit) {
+        // Missing battle animation: use the unit's real, team-paletted map
+        // sprite on the battle platform. Only projects missing both resources
+        // receive the neutral silhouette.
+        const mapFrame = (fallbackUnit.sprite as any)?.getCurrentFrame?.();
+        if (mapFrame instanceof Surface) {
+          const previousAlpha = mapFrame.getAlpha();
+          mapFrame.setAlpha(alpha);
+          surf.blit(
+            mapFrame,
+            platformX + Math.floor((PLAT_W - mapFrame.width) / 2),
+            platformY - mapFrame.height + 8,
+          );
+          mapFrame.setAlpha(previousAlpha);
+        } else {
+          const centerX = platformX + Math.floor(PLAT_W / 2);
+          const baseY = platformY + 5;
+          surf.fillRect(centerX - 5, baseY - 31, 10, 10, `rgba(174,183,199,${alpha.toFixed(2)})`);
+          surf.fillRect(centerX - 10, baseY - 20, 20, 22, `rgba(126,139,162,${alpha.toFixed(2)})`);
+          surf.fillRect(centerX - 12, baseY, 24, 2, `rgba(231,189,105,${alpha.toFixed(2)})`);
+        }
       }
 
       // Draw over-frame on top
@@ -5808,10 +5821,10 @@ export class CombatState extends State {
 
       // Draw child effects (under first, then over)
       for (const ue of draw.underEffects) {
-        drawBattleSprite(ue, fallbackColor, platformX, platformY, rangeOffset);
+        drawBattleSprite(ue, null, platformX, platformY, rangeOffset);
       }
       for (const e of draw.effects) {
-        drawBattleSprite(e, fallbackColor, platformX, platformY, rangeOffset);
+        drawBattleSprite(e, null, platformX, platformY, rangeOffset);
       }
 
       // Restore composite mode
@@ -5819,9 +5832,15 @@ export class CombatState extends State {
     };
 
     // Draw left combatant (Python: left_range_offset = -24 - pan_max for ranged, 0 for melee)
-    drawBattleSprite(leftDraw, '80,120,200', leftPlatX, leftPlatY, rs.leftRangeOffset);
+    const leftUnit = this.animCombat!.leftIsAttacker
+      ? this.animCombat!.attacker
+      : this.animCombat!.defender;
+    const rightUnit = this.animCombat!.leftIsAttacker
+      ? this.animCombat!.defender
+      : this.animCombat!.attacker;
+    drawBattleSprite(leftDraw, leftUnit, leftPlatX, leftPlatY, rs.leftRangeOffset);
     // Draw right combatant (Python: right_range_offset = 24 + pan_max for ranged, 0 for melee)
-    drawBattleSprite(rightDraw, '200,80,80', rightPlatX, rightPlatY, rs.rightRangeOffset);
+    drawBattleSprite(rightDraw, rightUnit, rightPlatX, rightPlatY, rs.rightRangeOffset);
 
     // --- Name tags ---
     // --- Name tags (top of screen, matching Python layout) ---

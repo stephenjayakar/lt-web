@@ -125,7 +125,7 @@ mouse, touch, cancel/back, transition, and resume tests.
 
 ### P6 — Rendering, Animation, Audio, and Resources
 
-- [ ] Complete combat-animation fallback behavior without debug placeholder art
+- [x] Complete combat-animation fallback behavior without debug placeholder art
 - [x] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
 - [ ] Add screenshot/golden tolerances for representative maps and combat scenes
 
@@ -134,8 +134,8 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
+Queue refreshed 2026-07-23 after the combat-animation fallback pass:
 
-1. Complete combat-animation fallback behavior without debug placeholder art.
+1. Add screenshot/golden tolerances for representative maps and combat scenes.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
