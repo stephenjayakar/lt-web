@@ -2873,3 +2873,12 @@ many components, while one switch case can still omit flags or blocking behavior
   charge use to the same reversible phase lifecycle.
 - Skill instances now initialize time counters consistently with charge data;
   focused coverage proves phase effects and complete undo/redo restoration.
+
+## 2026-07-23 — Combat mana skill hooks
+
+- Added `gain_mana`, `cost_mana`, and `check_mana` to combat skill activation
+  with component-order gain/spend behavior and maximum-mana clamping.
+- Extended the combat lifecycle snapshot to restore current mana alongside
+  proc skills, charge state, and combat RNG during turnwheel undo/redo.
+- This closes the P3 charge/cooldown, conditional, proc, and status-hook row;
+  the remaining P3 work is the cross-component fixture matrix.

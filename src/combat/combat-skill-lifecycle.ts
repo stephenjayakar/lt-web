@@ -5,7 +5,7 @@ import {
   setCombatRandomState,
   type RandomGameState,
 } from '../engine/static-random';
-import { evaluateCondition } from '../events/event-manager';
+import { evaluateCondition, evaluateExpression } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
@@ -34,18 +34,21 @@ interface ActiveProc extends CombatProcMark {
 interface SkillSnapshot {
   skills: SkillObject[];
   data: Map<SkillObject, Map<string, any>>;
+  currentMana: number | undefined;
 }
 
 function captureSkills(units: UnitObject[]): Map<UnitObject, SkillSnapshot> {
   return new Map([...new Set(units)].map((unit) => [unit, {
     skills: [...unit.skills],
     data: new Map(unit.skills.map((skill) => [skill, new Map(skill.data)])),
+    currentMana: unit.currentMana,
   }]));
 }
 
 function restoreSkills(snapshot: Map<UnitObject, SkillSnapshot>): void {
   for (const [unit, state] of snapshot) {
     unit.skills = [...state.skills];
+    unit.currentMana = state.currentMana;
     for (const [skill, data] of state.data) skill.data = new Map(data);
   }
 }
@@ -189,11 +192,55 @@ export class CombatSkillLifecycle {
     if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
       if (Number(skill.data.get('charge') ?? 0) <= 0) return false;
     }
+    const mana = Number(unit.currentMana ?? 0);
+    const requiredMana = skill.getComponent<number>('cost_mana') ??
+      skill.getComponent<number>('check_mana');
+    if (typeof requiredMana === 'number' && mana < requiredMana) return false;
     const condition = skill.getComponent<string>('condition');
     if (condition && !this.evaluateSkillExpression(
       condition, unit, null, item, null, '', skill,
     )) return false;
     return true;
+  }
+
+  private maximumMana(unit: UnitObject): number {
+    return Math.max(0, Math.trunc(evaluateEquation(
+      this.db.getEquation('MANA') ?? '0',
+      unit,
+      { db: this.db },
+    )));
+  }
+
+  private applyStartCombatResources(
+    unit: UnitObject,
+    item: ItemObject | null,
+    target: UnitObject,
+  ): void {
+    for (const skill of unit.skills) {
+      if (!this.active(skill, unit, item)) continue;
+      for (const [component, rawValue] of skill.components) {
+        if (component === 'gain_mana' && typeof rawValue === 'string') {
+          const amount = Number(evaluateExpression(rawValue, {
+            game: this.game,
+            unit1: unit,
+            unit2: target,
+            item,
+            position: unit.position ?? undefined,
+            gameVars: this.game?.gameVars,
+            levelVars: this.game?.levelVars,
+            localArgs: new Map([['skill', skill]]),
+          }));
+          if (Number.isFinite(amount)) {
+            unit.currentMana = Math.max(
+              0,
+              Math.min(this.maximumMana(unit), Number(unit.currentMana ?? 0) + Math.trunc(amount)),
+            );
+          }
+        } else if (component === 'cost_mana' && typeof rawValue === 'number') {
+          unit.currentMana = Math.max(0, Number(unit.currentMana ?? 0) - Math.trunc(rawValue));
+        }
+      }
+    }
   }
 
   private weaponAllowed(skill: SkillObject, unit: UnitObject, item: ItemObject | null): boolean {
@@ -307,6 +354,14 @@ export class CombatSkillLifecycle {
         attacker,
         item,
         'defense',
+      );
+    }
+    if (mainTarget) this.applyStartCombatResources(attacker, item, mainTarget);
+    for (const defender of defenders) {
+      this.applyStartCombatResources(
+        defender,
+        defenseItems.get(defender) ?? null,
+        attacker,
       );
     }
     if (mainTarget) {
