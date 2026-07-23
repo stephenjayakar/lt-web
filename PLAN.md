@@ -138,8 +138,8 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Finish the web-player UX pass, prioritizing loading/error recovery and
-   touch-safe core menus.
+1. Continue the web-player UX pass with touch-safe core menus and clearer
+   focus/feedback during play.
 2. Render attack/defense/pre-proc playback marks with Python-timed icons and
    effects.
 3. Continue the open roadmap in dependency order; keep generated inventories as
