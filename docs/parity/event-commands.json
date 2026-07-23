@@ -9,7 +9,7 @@
     "dispatcherPythonNids": 255,
     "itemReferencedComponentNids": 166,
     "itemHookMappedComponentNids": 107,
-    "skillReferencedComponentNids": 110,
+    "skillReferencedComponentNids": 115,
     "skillHookMappedComponentNids": 74,
     "structuralStatuses": {
       "dispatched-unverified": 248,

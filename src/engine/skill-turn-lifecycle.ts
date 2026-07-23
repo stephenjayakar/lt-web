@@ -1,11 +1,16 @@
 import type { ActionLog } from './action';
 import {
+  ChangeManaAction,
+  DamageAction,
+  HealAction,
   RemoveSkillAction,
   SetSkillDataAction,
 } from './action';
 import type { UnitObject } from '../objects/unit';
 import type { SkillObject } from '../objects/skill';
 import { evaluateCondition } from '../events/event-manager';
+import type { Database } from '../data/database';
+import { evaluateEquation } from '../combat/combat-calcs';
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
 
@@ -19,6 +24,7 @@ export interface SkillTurnEffect {
 
 interface SkillTurnGame {
   actionLog: ActionLog;
+  db?: Database;
   gameVars?: Map<string, unknown>;
   levelVars?: Map<string, unknown>;
 }
@@ -29,8 +35,19 @@ function isConditionActive(
   skill: SkillObject,
 ): boolean {
   const condition = skill.getComponent<string>('condition');
-  if (!condition) return true;
-  return evaluateCondition(condition, {
+  if (skill.hasComponent('build_charge') &&
+      Number(skill.data.get('charge') ?? 0) < Number(skill.data.get('total_charge') ?? 0)) {
+    return false;
+  }
+  if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+      Number(skill.data.get('charge') ?? 0) <= 0) {
+    return false;
+  }
+  const mana = Number(unit.currentMana ?? 0);
+  const manaRequirement = skill.getComponent<number>('cost_mana') ??
+    skill.getComponent<number>('check_mana');
+  if (typeof manaRequirement === 'number' && mana < manaRequirement) return false;
+  return !condition || evaluateCondition(condition, {
     game,
     unit1: unit,
     position: unit.position ?? undefined,
@@ -38,6 +55,20 @@ function isConditionActive(
     levelVars: game.levelVars,
     localArgs: new Map([['skill', skill]]),
   });
+}
+
+function maximumMana(game: SkillTurnGame, unit: UnitObject): number {
+  if (!game.db) return Math.max(0, Number(unit.currentMana ?? 0));
+  const expression = game.db.getEquation('MANA') ?? '0';
+  return Math.max(0, Math.trunc(evaluateEquation(expression, unit, { db: game.db })));
+}
+
+function triggerCharge(game: SkillTurnGame, skill: SkillObject): void {
+  if (skill.hasComponent('build_charge')) {
+    setData(game, skill, 'charge', 0);
+  } else if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    setData(game, skill, 'charge', Number(skill.data.get('charge') ?? 0) - 1);
+  }
 }
 
 function setData(
@@ -99,6 +130,25 @@ export function applySkillTurnHooks(
           const value = Number(skill.data.get('counter') ?? 0) + 1;
           setData(game, skill, 'counter', value);
           effects.push({ unit, skill, component, value });
+        } else if (phase === 'upkeep' && component === 'regeneration' && conditional) {
+          const amount = Math.trunc(unit.maxHp * Number(rawValue ?? 0));
+          if (amount > 0 && unit.currentHp < unit.maxHp) {
+            game.actionLog.doAction(new HealAction(unit, amount));
+            effects.push({ unit, skill, component, value: amount });
+          }
+        } else if (phase === 'upkeep' && component === 'mana_regeneration' && conditional) {
+          const amount = Math.trunc(Number(rawValue ?? 0));
+          if (amount !== 0) {
+            game.actionLog.doAction(new ChangeManaAction(unit, amount, maximumMana(game, unit)));
+            effects.push({ unit, skill, component, value: amount });
+          }
+        } else if (phase === 'upkeep' && component === 'upkeep_damage' && conditional) {
+          const amount = Math.max(0, Math.trunc(Number(rawValue ?? 0)));
+          if (amount > 0) {
+            game.actionLog.doAction(new DamageAction(unit, amount));
+            triggerCharge(game, skill);
+            effects.push({ unit, skill, component, value: -amount });
+          }
         }
       }
 

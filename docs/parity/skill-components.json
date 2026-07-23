@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 64,
-    "referencedComponentNids": 110,
+    "referencedComponentNids": 115,
     "hookMappedComponentNids": 74,
-    "unreferencedComponentNids": 131,
-    "consumedComponentNids": 70,
+    "unreferencedComponentNids": 126,
+    "consumedComponentNids": 72,
     "structuralStatuses": {
-      "consumed": 35,
+      "consumed": 37,
       "hook-and-reference": 58,
       "hook-only": 16,
-      "reference-only": 17,
-      "unreferenced": 115
+      "reference-only": 20,
+      "unreferenced": 110
     }
   },
   "webHookExports": [
@@ -1988,6 +1988,14 @@
           "line": 274
         },
         {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 38
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 67
+        },
+        {
           "source": "src/main.ts",
           "line": 348
         },
@@ -2028,6 +2036,14 @@
         {
           "source": "src/combat/skill-system.ts",
           "line": 274
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 38
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 67
         }
       ],
       "matchingWebHooks": [],
@@ -2085,6 +2101,14 @@
           "line": 276
         },
         {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 42
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 69
+        },
+        {
           "source": "src/main.ts",
           "line": 348
         },
@@ -2117,6 +2141,14 @@
         {
           "source": "src/combat/skill-system.ts",
           "line": 276
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 42
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 69
         }
       ],
       "matchingWebHooks": [],
@@ -2171,7 +2203,15 @@
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 76
+          "line": 42
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 69
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 107
         },
         {
           "source": "src/main.ts",
@@ -2206,6 +2246,14 @@
         {
           "source": "src/combat/skill-system.ts",
           "line": 276
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 42
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 69
         }
       ],
       "matchingWebHooks": [],
@@ -2230,7 +2278,7 @@
       "webReferences": [
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 69
+          "line": 100
         }
       ],
       "directReads": [],
@@ -2338,11 +2386,21 @@
         "condition",
         "start_combat"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 47
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 47
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "check_mana",
@@ -2359,11 +2417,21 @@
       "methods": [
         "condition"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 48
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 48
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "miracle",
@@ -4404,7 +4472,7 @@
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 31
+          "line": 37
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -4434,7 +4502,7 @@
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 31
+          "line": 37
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -6726,11 +6794,16 @@
       "methods": [
         "on_upkeep"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 133
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "mana_regeneration",
@@ -6747,11 +6820,16 @@
       "methods": [
         "on_upkeep"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 139
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "upkeep_damage",
@@ -6768,11 +6846,16 @@
       "methods": [
         "on_upkeep"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 145
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "endstep_damage",
@@ -6907,7 +6990,7 @@
       "webReferences": [
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 81
+          "line": 112
         },
         {
           "source": "src/objects/skill.ts",
@@ -6943,7 +7026,7 @@
       "webReferences": [
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 82
+          "line": 113
         },
         {
           "source": "src/objects/skill.ts",
@@ -6981,11 +7064,11 @@
       "webReferences": [
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 81
+          "line": 112
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 82
+          "line": 113
         },
         {
           "source": "src/objects/skill.ts",
@@ -7025,7 +7108,7 @@
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 96
+          "line": 127
         },
         {
           "source": "src/objects/skill.ts",
@@ -7064,7 +7147,7 @@
       "webReferences": [
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 90
+          "line": 121
         }
       ],
       "directReads": [],
@@ -7092,7 +7175,7 @@
       "webReferences": [
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
-          "line": 89
+          "line": 120
         }
       ],
       "directReads": [],

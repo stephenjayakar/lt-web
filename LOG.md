@@ -2869,5 +2869,7 @@ many components, while one switch case can still omit flags or blocking behavior
   initiative turns.
 - Implemented charge growth/reset, time/end-time/combined-time countdowns,
   upkeep-scaled stat changes, and upkeep/endstep expiry in component order.
+- Added conditional regeneration, mana regeneration, and upkeep damage with
+  charge use to the same reversible phase lifecycle.
 - Skill instances now initialize time counters consistently with charge data;
   focused coverage proves phase effects and complete undo/redo restoration.
