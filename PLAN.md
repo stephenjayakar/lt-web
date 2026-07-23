@@ -56,9 +56,9 @@ test seams; they are not completion evidence.
 The engine is playable through the current Sacred Stones coverage and has strong
 foundations: Canvas rendering, a stack state machine, combat/AI/movement, EVNT and
 PYEV1 interpreters, save/load, turnwheel, supports, fog, initiative, overworld,
-roam, PWA/native wrappers, and a deterministic Playwright harness. It is **not yet
-feature-complete relative to the Python runtime**. The roadmap below replaces the
-older broad “phase complete” assessment.
+roam, PWA/native wrappers, and a deterministic Playwright harness. The in-scope
+execution roadmap is complete; remaining differences from Python are classified
+in the parity report as out of scope or accepted deviations.
 
 ### Multi-Project Support
 
@@ -127,15 +127,17 @@ mouse, touch, cancel/back, transition, and resume tests.
 
 - [x] Complete combat-animation fallback behavior without debug placeholder art
 - [x] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
-- [ ] Add screenshot/golden tolerances for representative maps and combat scenes
+- [x] Add screenshot/golden tolerances for representative maps and combat scenes
 
 **Gate:** required assets load across fixture projects and visual/audio state transitions
 match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-23 after the combat-animation fallback pass:
+Queue refreshed 2026-07-23 after completing the execution roadmap:
 
-1. Add screenshot/golden tolerances for representative maps and combat scenes.
-2. Continue the open roadmap in dependency order; keep generated inventories as
-   the authoritative coverage counts.
+1. No open roadmap slices remain. Keep generated inventories as the authoritative
+   coverage counts and add newly discovered work as a focused unchecked item.
+
+Completion gate refreshed 2026-07-23: build, parity/state audits, diff check, and
+the full serial browser suite are green (474 passed, 1 intentional skip).

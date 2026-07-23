@@ -2979,3 +2979,22 @@ many components, while one switch case can still omit flags or blocking behavior
   sprite resources, without duplicating combatants for absent child effects.
 - Added a focused missing-frame regression and visually inspected the rendered
   240x160 combat scene.
+
+## 2026-07-23 — Visual regression completion
+
+- Added committed combat baselines for resource-backed battle animation and the
+  map-sprite fallback, each with a 1% maximum differing-pixel tolerance.
+- Re-ran the representative map baselines at their documented 2% tolerance,
+  covering autotiles, layer fades, weather, and camera placement.
+- Visually inspected both combat references and closed the final execution-
+  roadmap item.
+
+## 2026-07-23 — Roadmap completion gate
+
+- Refreshed the final production build, parity audit, generated state audit,
+  whitespace check, and full serial browser suite.
+- The clean browser run passed 474 tests with one intentional Ch.6+ placeholder
+  skip. Restarting the reused Vite server removed hot-reload singleton
+  duplication that had produced false failures in state-construction tests.
+- Updated two stale regressions to follow the current contracts: bounded
+  portrait-travel polling and the explicit source/destination/finish trade flow.

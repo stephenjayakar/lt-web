@@ -477,7 +477,10 @@ test.describe('Event command flag matching: no_block', () => {
       'game_var;move_portrait_blocking;done',
     ], 5);
     expect(await getGameVar(page, 'move_portrait_blocking')).toBeUndefined();
-    await stepFrames(page, 40);
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (await getGameVar(page, 'move_portrait_blocking') === 'done') break;
+      await stepFrames(page, 10);
+    }
     expect(await getGameVar(page, 'move_portrait_blocking')).toBe('done');
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
