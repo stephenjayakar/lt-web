@@ -287,6 +287,7 @@ export class AnimationCombat implements AnimationCombatOwner {
   // -- Audio (optional, set after construction to enable combat SFX) --------
   audioManager: { playSfx(name: string): void } | null = null;
   private game: any;
+  private participants: UnitObject[];
 
   constructor(
     attacker: UnitObject,
@@ -311,6 +312,12 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.defenseItem = defenseItem;
     this.db = db;
     this.game = randomGame as any;
+    this.participants = [...new Set([
+      attacker,
+      defender,
+      ...(attacker.rescuing ? [attacker.rescuing] : []),
+      ...(defender.rescuing ? [defender.rescuing] : []),
+    ])];
     this.leftAnim = leftAnim;
     this.rightAnim = rightAnim;
     this.leftIsAttacker = leftIsAttacker;
@@ -339,7 +346,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     // Solve strikes and retain the already-applied RNG/proc/charge transition
     // as a reversible setup action.
     this.lifecycleRecord = new CombatLifecycleRecord(
-      [attacker, defender],
+      this.participants,
       randomGame ?? null,
     );
     const solver = new CombatPhaseSolver(
@@ -1125,7 +1132,7 @@ export class AnimationCombat implements AnimationCombatOwner {
         this.lifecycleRecorded = true;
       }
       const action = new CombatResultAction<CombatResults>(
-        [this.attacker, this.defender],
+        this.participants,
         [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],
         () => this.computeResults(),
       );
@@ -1243,6 +1250,12 @@ export class AnimationCombat implements AnimationCombatOwner {
         levelUps.push(gains);
       }
     }
+    if (this.attacker.rescuing && this.attacker.rescuing.team === 'player') {
+      this.grantGuardFollowerExp(this.attacker, this.attacker.rescuing, growthMode);
+    }
+    if (this.defender.rescuing && this.defender.rescuing.team === 'player') {
+      this.grantGuardFollowerExp(this.defender, this.defender.rescuing, growthMode);
+    }
 
     // Python (simple_combat.handle_item_gain): every droppable item on the
     // killed unit transfers to the killer, not just the first.
@@ -1290,6 +1303,25 @@ export class AnimationCombat implements AnimationCombatOwner {
       exp += Math.round(KILL_BONUS * levelScale);
     }
     return Math.max(1, Math.min(100, exp));
+  }
+
+  private grantGuardFollowerExp(
+    leader: UnitObject,
+    follower: UnitObject,
+    growthMode: string,
+  ): void {
+    const guardedHits = this.strikes.filter(
+      (strike) => strike.guarded && strike.defender === leader,
+    ).length;
+    if (guardedHits <= 0) return;
+    const minimum = Number(this.db.getConstant('min_exp', 0));
+    const magnitude = Number(this.db.getConstant('exp_magnitude', 10));
+    follower.exp += Math.max(minimum, Math.min(100, guardedHits * magnitude));
+    while (follower.exp >= 100) {
+      follower.exp -= 100;
+      if (this.game) levelUpUnit(follower, growthMode, this.game);
+      else follower.levelUp(growthMode);
+    }
   }
 
   // ================================================================

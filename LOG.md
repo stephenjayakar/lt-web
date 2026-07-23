@@ -2911,3 +2911,12 @@ many components, while one switch case can still omit flags or blocking behavior
 - Added a regression that makes legacy random use throw, then proves Dynamic
   growth-point mutation and exact rewind/redo; the existing autolevel goldens
   remain green.
+
+## 2026-07-23 — Scripted Pair Up and animation rewards
+
+- Scripted attacker/defender tokens now retain their corresponding attack-stance
+  partner phases, including half-damage assist semantics and counter identity.
+- Full battle-animation result snapshots now include carried guard followers
+  and award guarded-hit EXP with deterministic level-ups and exact rewind/redo.
+- Added focused golden coverage for both scripted partner ordering and
+  animation-path follower rewards, closing P4.

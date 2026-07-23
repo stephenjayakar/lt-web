@@ -107,7 +107,7 @@ item-use fixture matrices match Python outputs and side effects.
 
 - [x] Compare combat strike ordering, playback, EXP/WEXP, death, and post-combat events
 - [x] Finish dynamic/fixed level-up algorithms and growth-point persistence
-- [ ] Extend Pair Up golden coverage to scripted-combat partner phases and guard-follower
+- [x] Extend Pair Up golden coverage to scripted-combat partner phases and guard-follower
   rewards in the full battle-animation presentation
 
 **Gate:** deterministic scenario outputs and action/playback order match Python.
@@ -136,7 +136,6 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Extend Pair Up golden coverage to scripted-combat partner phases and
-   guard-follower rewards in the full battle-animation presentation.
+1. Inventory Python state names and map them to web states or documented mergers.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
