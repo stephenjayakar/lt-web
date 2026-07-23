@@ -2,7 +2,12 @@ import type { NID, UnitPrefab, KlassDef, AlliancePair } from '../data/types';
 import type { ItemObject } from './item';
 import type { SkillObject } from './skill';
 import type { Database } from '../data/database';
-import { available as itemAvailable, dispatchEquipHooks, dispatchHoldHooks } from '../combat/item-system';
+import {
+  available as itemAvailable,
+  canUnlock as itemCanUnlock,
+  dispatchEquipHooks,
+  dispatchHoldHooks,
+} from '../combat/item-system';
 
 /** Lazy game ref so unit equip hooks can reach the db without a circular import. */
 let _getGameForUnits: (() => any) | null = null;
@@ -372,13 +377,17 @@ export class UnitObject {
   /** Return all items including multi_item subitems (Python `get_all_items`). */
   private getAllItems(): ItemObject[] {
     const result: ItemObject[] = [];
-    for (const item of this.items) {
+    const visited = new Set<ItemObject>();
+    const append = (item: ItemObject): void => {
+      if (visited.has(item)) return;
+      visited.add(item);
       if (item.hasComponent('multi_item') && item.subitems.length > 0) {
-        result.push(...item.subitems);
+        for (const child of item.subitems) append(child);
       } else {
         result.push(item);
       }
-    }
+    };
+    for (const item of this.items) append(item);
     return result;
   }
   /** True if the unit can currently equip `item` (Python `can_equip`). */
@@ -507,6 +516,17 @@ export class UnitObject {
   /** Whether this unit has any usable items (healing/consumables). */
   hasUsableItems(): boolean {
     return this.getUsableItems().length > 0;
+  }
+
+  /** Python unit_funcs.can_unlock: active Locktouch or an available key item. */
+  canUnlock(region: any): boolean {
+    const game = gameForUnits();
+    if (!game?.db) return false;
+    if (this.skills.some((skill) => skill.hasComponent('locktouch'))) return true;
+    return this.getAllItems().some((item) =>
+      itemAvailable(this, item, game.db, game) &&
+      itemCanUnlock(this, item, region, game),
+    );
   }
 
   /** Get adjacent ally positions for trading. */

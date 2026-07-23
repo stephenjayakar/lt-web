@@ -583,6 +583,7 @@ export function evaluateCondition(
     const unit = context.unit1;
     const region = context.region;
     if (!unit) return false;
+    if (typeof unit.canUnlock === 'function') return unit.canUnlock(region);
     const items = unit.items ?? [];
 
     const canUnlockByExpr = (expr: unknown): boolean => {

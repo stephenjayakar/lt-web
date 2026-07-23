@@ -249,6 +249,41 @@ export function available(
   return true;
 }
 
+/** Python item_system.can_unlock: evaluate this item's region restriction. */
+export function canUnlock(
+  unit: UnitObject,
+  item: ItemObject,
+  region: any,
+  game?: any,
+): boolean {
+  const expression = item.getComponent<unknown>('can_unlock');
+  if (expression === undefined) return false;
+  if (typeof expression !== 'string') return !!expression;
+  const trimmed = expression.trim();
+  if (trimmed === 'True' || trimmed === 'true') return true;
+  if (trimmed === 'False' || trimmed === 'false') return false;
+
+  const startsWith = trimmed.match(
+    /^region\.nid\.startswith\(\s*(['"])(.*?)\1\s*\)$/,
+  );
+  if (startsWith) return String(region?.nid ?? '').startsWith(startsWith[2]);
+
+  try {
+    return evaluateCondition(trimmed, {
+      game,
+      unit1: unit,
+      region,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    });
+  } catch (error) {
+    console.error(`Could not evaluate can_unlock expression ${trimmed}`, error);
+    return false;
+  }
+}
+
 /** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
 export function isRepairableItem(item: ItemObject): boolean {
   return item.maxUses > 0 && item.uses < item.maxUses && !item.hasComponent('unrepairable');
