@@ -2819,3 +2819,15 @@ many components, while one switch case can still omit flags or blocking behavior
   exposing their container as a key.
 - Added a focused fixture covering door-only and chest-only keys, restricted
   keys, Locktouch, condition evaluation, and nested multi-item ownership.
+
+## 2026-07-23 — Trade-item flow and inventory UI
+
+- Successful `trade` item hits now route from combat cleanup into a forced-
+  partner trade screen, preserving the long-range Trade staff behavior.
+- Replaced the first-item-only placeholder with a two-pane exchange: choose a
+  source row, choose a destination row, swap or transfer through an empty slot,
+  cancel the pending selection, and finish explicitly. The active pane and
+  instruction text are visually distinct at 240x160.
+- Added focused coverage for hit/miss routing, selected-row behavior, action-log
+  reversal, and the rendered active-pane treatment; the visual fixture was
+  inspected at 3x nearest-neighbor scale.

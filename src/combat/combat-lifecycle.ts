@@ -42,6 +42,16 @@ interface DroppableGame {
   getConstant: (nid: string, fallback?: any) => any;
 }
 
+/** Resolve Python Trade.end_combat's successful user/target pair. */
+export function combatTradePair(
+  strikes: CombatStrike[],
+): { unit: UnitObject; partner: UnitObject } | null {
+  const hit = strikes.find((strike) =>
+    strike.hit && strike.item.hasComponent('trade') && !strike.attacker.isDead() &&
+    !strike.defender.isDead());
+  return hit ? { unit: hit.attacker, partner: hit.defender } : null;
+}
+
 /** Matches Python banner.AcquiredItem: "{name} got {article} {item}." with no article for possessive names. */
 export function droppableAcquiredBannerText(unit: UnitObject, item: ItemObject): string {
   if (item.name.includes("'")) return `${unit.name} got ${item.name}.`;

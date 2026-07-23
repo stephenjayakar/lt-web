@@ -151,6 +151,7 @@ import {
   applyCombatItemEndHooks,
   queueCombatItemEvents,
   applyDroppableItemPickups,
+  combatTradePair,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { supplyAvailableOnMap } from './supply-state';
@@ -3403,6 +3404,7 @@ export class TradeState extends State {
   private itemMenuA: ChoiceMenu | null = null;
   private itemMenuB: ChoiceMenu | null = null;
   private selectedIndexA: number = -1;
+  private activeTradeSide: 'a' | 'b' = 'a';
   private phase: 'select_partner' | 'select_items' = 'select_partner';
 
   override begin(): StateResult {
@@ -3462,9 +3464,10 @@ export class TradeState extends State {
       enabled: true,
     }));
     // Add empty slot
-    optionsA.push({ label: '---', value: 'a_empty', enabled: false });
+    optionsA.push({ label: '---', value: 'a_empty', enabled: true });
 
     this.itemMenuA = new ChoiceMenu(optionsA, 4, 20);
+    this.itemMenuA.width = viewport.width / 2 - 8;
 
     // Build items list for unit B (trade partner)
     const optionsB: MenuOption[] = partner.items.map((item, i) => ({
@@ -3472,10 +3475,12 @@ export class TradeState extends State {
       value: `b_${i}`,
       enabled: true,
     }));
-    optionsB.push({ label: '---', value: 'b_empty', enabled: false });
+    optionsB.push({ label: '---', value: 'b_empty', enabled: true });
 
     this.itemMenuB = new ChoiceMenu(optionsB, viewport.width / 2 + 4, 20);
+    this.itemMenuB.width = viewport.width / 2 - 8;
     this.selectedIndexA = -1;
+    this.activeTradeSide = 'a';
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -3504,8 +3509,16 @@ export class TradeState extends State {
     }
 
     if (this.phase === 'select_items') {
-      // Simplified trade: BACK exits, otherwise just swap first items
-      if (event === 'BACK') {
+      const activeMenu = this.activeTradeSide === 'a' ? this.itemMenuA : this.itemMenuB;
+      const result = activeMenu?.handleInput(event) ?? null;
+      if (!result) return;
+
+      if ('back' in result) {
+        if (this.selectedIndexA >= 0) {
+          this.selectedIndexA = -1;
+          this.activeTradeSide = 'a';
+          return;
+        }
         const unit: UnitObject = game.selectedUnit;
         if (unit) {
           game.actionLog.doAction(new HasTradedAction(unit));
@@ -3515,19 +3528,29 @@ export class TradeState extends State {
         return;
       }
 
-      // For now, a simple swap of the first items from each unit
-      if (event === 'SELECT') {
-        const unit: UnitObject = game.selectedUnit;
-        const partner = this.tradePartner;
-        if (unit && partner && unit.items.length > 0 && partner.items.length > 0) {
-          game.actionLog.doAction(new TradeAction(unit, 0, partner, 0));
-        }
-        if (unit) {
-          game.actionLog.doAction(new HasTradedAction(unit));
-          game.actionLog.doAction(new WaitAction(unit));
-        }
-        game.state.back();
+      if (this.activeTradeSide === 'a') {
+        this.selectedIndexA = result.selected === 'a_empty'
+          ? game.selectedUnit.items.length
+          : Number(result.selected.slice(2));
+        this.activeTradeSide = 'b';
+        return;
       }
+
+      const unit: UnitObject = game.selectedUnit;
+      const partner = this.tradePartner;
+      const selectedIndexB = result.selected === 'b_empty'
+        ? partner?.items.length ?? 0
+        : Number(result.selected.slice(2));
+      if (unit && partner && this.selectedIndexA >= 0 &&
+          (this.selectedIndexA < unit.items.length || selectedIndexB < partner.items.length)) {
+        game.actionLog.doAction(new TradeAction(
+          unit,
+          this.selectedIndexA,
+          partner,
+          selectedIndexB,
+        ));
+      }
+      this.buildItemMenus(unit);
     }
   }
 
@@ -3537,31 +3560,33 @@ export class TradeState extends State {
     }
 
     if (this.phase === 'select_items') {
-      // Draw a simplified trade UI
+      // Two-column inventory exchange. The active pane gets a bright frame;
+      // selecting the empty row transfers instead of swapping.
       surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(0,0,32,0.7)');
 
       const game = getGame();
       const unit: UnitObject = game.selectedUnit;
       const partner = this.tradePartner;
 
-      // Unit A items
       surf.drawText(unit?.name ?? '', 4, 4, 'white', '8px monospace');
-      if (unit) {
-        unit.items.forEach((item, i) => {
-          surf.drawText(item.name, 8, 16 + i * 12, 'rgba(200,200,255,1)', '7px monospace');
-        });
-      }
-
-      // Unit B items
       const bx = viewport.width / 2 + 4;
       surf.drawText(partner?.name ?? '', bx, 4, 'white', '8px monospace');
-      if (partner) {
-        partner.items.forEach((item, i) => {
-          surf.drawText(item.name, bx + 4, 16 + i * 12, 'rgba(200,200,255,1)', '7px monospace');
-        });
+      this.itemMenuA?.draw(surf);
+      this.itemMenuB?.draw(surf);
+      const active = this.activeTradeSide === 'a' ? this.itemMenuA : this.itemMenuB;
+      if (active) {
+        surf.drawRect(
+          active.x - 1,
+          active.y - 1,
+          active.width + 2,
+          active.options.length * 16 + 10,
+          'rgba(255,218,92,0.95)',
+        );
       }
-
-      surf.drawText('SELECT to swap, BACK to finish', 4, viewport.height - 12, 'rgba(160,160,200,1)', '7px monospace');
+      const prompt = this.activeTradeSide === 'a'
+        ? 'Choose an item'
+        : 'Choose its destination';
+      surf.drawText(`${prompt}   BACK: finish`, 4, viewport.height - 28, 'rgba(210,218,245,1)', '7px monospace');
     }
 
     return surf;
@@ -5065,6 +5090,7 @@ export class CombatState extends State {
         const defender = this.getPrimaryCombatDefender() ?? activeCombat!.defender;
         const combatDefenders = this.getCombatDefenders();
         const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
+        const tradePair = combatTradePair(activeCombat!.strikes);
 
         if (!attacker.isDead()) {
           game.actionLog.doAction(new HasAttackedAction(attacker));
@@ -5212,6 +5238,16 @@ export class CombatState extends State {
         // Matches Python's handle_state_stack which does `pass` for event_combat.
         if (!wasEventCombat && game.eventManager?.hasActiveEvents()) {
           game.state.change('event');
+        }
+        // Trade staves open the same two-column inventory flow as Python's
+        // Trade.end_combat, even when the units are no longer adjacent.
+        else if (!wasEventCombat && tradePair) {
+          game.selectedUnit = tradePair.unit;
+          if (tradePair.partner.position) {
+            game.cursor.setPos(tradePair.partner.position[0], tradePair.partner.position[1]);
+          }
+          game.memory.set('trade_partner', tradePair.partner);
+          game.state.change('trade');
         }
         // If Canto, re-enter move state for remaining movement
         else if (!wasEventCombat && hasCanto) {
