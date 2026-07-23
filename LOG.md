@@ -2941,3 +2941,11 @@ many components, while one switch case can still omit flags or blocking behavior
   compact-landscape touch controls no longer cover the 240x160 game scene.
 - Visually inspected both new screens at the deterministic browser viewport;
   focused objective/dialog and shell tests pass.
+
+## 2026-07-23 — Base support/launch gate verification
+
+- Closed the remaining base-flow checkbox against the existing field/base
+  support conversation implementation, event `base` command, and overworld
+  Base Camp entry.
+- Focused regressions confirm the Supports submenu is registered/reachable and
+  the party-node Base Camp path enters `base_main`.
