@@ -117,7 +117,7 @@ item-use fixture matrices match Python outputs and side effects.
 - [x] Inventory Python state names and map them to web states or documented mergers
 - [x] Implement remaining trade/item-targeting variants and objective/dialog-log flows
 - [x] Complete base supports and base-menu launch plumbing
-- [ ] Add growth/support/WEXP info
+- [x] Add growth/support/WEXP info
 - [ ] Remove remaining placeholder portraits/sprites where resources exist
 
 **Gate:** every in-scope Python state has an equivalent reachable flow with keyboard,
@@ -136,6 +136,6 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Add growth/support/WEXP info.
+1. Remove remaining placeholder portraits/sprites where resources exist.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

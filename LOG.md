@@ -2949,3 +2949,13 @@ many components, while one switch case can still omit flags or blocking behavior
   Base Camp entry.
 - Focused regressions confirm the Supports submenu is registered/reachable and
   the party-node Base Camp path enters `base_main`.
+
+## 2026-07-23 — Unit growth, bond, and mastery info
+
+- Expanded the unit info screen to four pages with a visually verified
+  `Growth & Bonds` page: effective growth rates, dynamic growth points, support
+  partners, unlocked ranks, and ready-conversation markers.
+- Upgraded weapon mastery from rank letters to current/next WEXP values and
+  progress grooves while keeping the skill list inside the 240x160 frame.
+- Added a public read-only support-pair query for UI consumers and focused
+  navigation/render coverage for both new information surfaces.

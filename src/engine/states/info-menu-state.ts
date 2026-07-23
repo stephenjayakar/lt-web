@@ -25,6 +25,7 @@ import {
   getEquippedWeapon,
 } from '../../combat/combat-calcs';
 import { FONT } from '../../rendering/bmp-font';
+import { growthChange } from '../../combat/skill-system';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — matches the pattern from game-states.ts
@@ -45,8 +46,8 @@ function getGame(): any {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAGE_COUNT = 3;
-const PAGE_NAMES = ['Personal Data', 'Equipment', 'Skills'];
+const PAGE_COUNT = 4;
+const PAGE_NAMES = ['Personal Data', 'Equipment', 'Skills', 'Growth & Bonds'];
 
 /** Left panel width in game pixels. */
 const LEFT_PANEL_W = 96;
@@ -182,6 +183,9 @@ export class InfoMenuState extends State {
         break;
       case 2:
         this.drawSkills(surf, vw, vh);
+        break;
+      case 3:
+        this.drawGrowthAndSupports(surf, vw, vh);
         break;
     }
 
@@ -480,7 +484,7 @@ export class InfoMenuState extends State {
     this.drawSmallText(surf, 'Weapon Rank', rightX, startY, COLOR_YELLOW);
 
     const wexpY = startY + 14;
-    const wexpEntries = Object.entries(unit.wexp);
+    const wexpEntries = Object.entries(unit.wexp).filter(([, value]) => value > 0).slice(0, 4);
     if (wexpEntries.length === 0) {
       this.drawSmallText(surf, '(none)', rightX + 4, wexpY, COLOR_GREY);
     } else {
@@ -490,20 +494,28 @@ export class InfoMenuState extends State {
         const col = i % 2;
         const row = Math.floor(i / 2);
         const x = rightX + col * colW;
-        const y = wexpY + row * 12;
+        const y = wexpY + row * 32;
 
         // Weapon type name
         this.drawSmallText(surf, wtype, x, y, COLOR_GREY);
 
         // Rank letter
-        const rank = this.getWexpRank(wexpValue, game);
-        this.drawSmallTextRight(surf, rank, x + colW - 4, y, COLOR_WHITE);
+        const progress = this.getWexpProgress(wexpValue, game);
+        const progressText = progress.next
+          ? `${progress.rank} ${wexpValue}/${progress.next}`
+          : `${progress.rank} MAX`;
+        this.drawSmallText(surf, progressText, x, y + 14, COLOR_WHITE);
+        const barX = x;
+        const barY = y + 25;
+        const barW = colW - 5;
+        surf.fillRect(barX, barY, barW, 2, COLOR_BAR_BG);
+        surf.fillRect(barX, barY, Math.floor(barW * progress.fraction), 2, COLOR_BAR_FILL);
       }
     }
 
     // --- Skills list ---
     const wexpRows = Math.ceil(wexpEntries.length / 2);
-    const skillHeaderY = wexpY + Math.max(wexpRows, 1) * 12 + 8;
+    const skillHeaderY = wexpY + Math.max(wexpRows, 1) * 32 + 4;
 
     // Separator
     surf.fillRect(rightX, skillHeaderY - 2, rightW, 1, DIVIDER_COLOR);
@@ -544,6 +556,99 @@ export class InfoMenuState extends State {
       }
     }
     return bestRank;
+  }
+
+  private getWexpProgress(
+    wexp: number,
+    game: any,
+  ): { rank: string; next: number | null; fraction: number } {
+    const ranks = [...(game.db.weaponRanks ?? [])]
+      .sort((left: any, right: any) => left.requirement - right.requirement);
+    let current = ranks[0] ?? null;
+    let next = null;
+    for (const rank of ranks) {
+      if (wexp >= rank.requirement) current = rank;
+      else {
+        next = rank;
+        break;
+      }
+    }
+    if (!current) return { rank: '-', next: null, fraction: 0 };
+    if (!next) return { rank: current.rank, next: null, fraction: 1 };
+    const span = Math.max(1, next.requirement - current.requirement);
+    return {
+      rank: current.rank,
+      next: next.requirement,
+      fraction: Math.max(0, Math.min(1, (wexp - current.requirement) / span)),
+    };
+  }
+
+  // =======================================================================
+  // Page 3: Growth rates + support partners
+  // =======================================================================
+
+  private drawGrowthAndSupports(surf: Surface, vw: number, _vh: number): void {
+    const unit = this.unit!;
+    const game = getGame();
+    const rightX = LEFT_PANEL_W + 6;
+    const rightW = vw - LEFT_PANEL_W - 12;
+    const colW = Math.floor(rightW / 2);
+    const stats = [...STATS_LEFT, ...STATS_RIGHT].filter((nid) =>
+      Object.prototype.hasOwnProperty.call(unit.growths, nid));
+    const klass = game.db.classes.get(unit.klass);
+    const difficulty = game.currentMode && game.mode
+      ? game.currentMode.getGrowthBonus(unit, game.getAlliedTeams(), game.mode)
+      : {};
+
+    this.drawSmallText(surf, 'Growth Rates', rightX, 24, COLOR_YELLOW);
+    stats.slice(0, 8).forEach((nid, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = rightX + col * colW;
+      const y = 38 + row * 12;
+      const value = (unit.growths[nid] ?? 0) +
+        (klass?.growth_bonus?.[nid] ?? 0) +
+        (difficulty?.[nid] ?? 0) +
+        growthChange(unit, nid);
+      this.drawSmallText(surf, nid, x, y, COLOR_GREY);
+      this.drawSmallTextRight(surf, `${value}%`, x + colW - 4, y, value >= 50 ? COLOR_GREEN : COLOR_BLUE);
+    });
+    const pointParts = Object.entries(unit.growthPoints)
+      .filter(([, value]) => Number(value) !== 0)
+      .slice(0, 2)
+      .map(([nid, value]) => `${nid} ${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}`);
+    if (pointParts.length > 0) {
+      this.drawSmallText(surf, `Growth pts  ${pointParts.join('  ')}`, rightX, 88, COLOR_GREY);
+    }
+
+    const supportY = 108;
+    surf.fillRect(rightX, supportY - 4, rightW, 1, DIVIDER_COLOR);
+    this.drawSmallText(surf, 'Supports', rightX, supportY, COLOR_YELLOW);
+    const pairs = game.gameVars.get('_supports') && game.supports
+      ? game.supports.getPairsForUnit(unit.nid).filter((pair: any) =>
+        pair.unlockedRanks.length > 0 || pair.lockedRanks.length > 0)
+      : [];
+    if (pairs.length === 0) {
+      this.drawSmallText(surf, '(none)', rightX + 4, supportY + 14, COLOR_GREY);
+      return;
+    }
+    pairs.slice(0, 6).forEach((pair: any, index: number) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = rightX + col * colW;
+      const y = supportY + 14 + row * 13;
+      const partnerNid = pair.unit1Nid === unit.nid ? pair.unit2Nid : pair.unit1Nid;
+      const partner = game.getUnit(partnerNid);
+      const rank = pair.unlockedRanks.at(-1) ?? pair.lockedRanks[0] ?? '-';
+      this.drawSmallText(surf, (partner?.name ?? partnerNid).slice(0, 10), x, y, COLOR_WHITE);
+      this.drawSmallTextRight(
+        surf,
+        pair.unlockedRanks.length ? rank : `${rank}!`,
+        x + colW - 4,
+        y,
+        pair.unlockedRanks.length ? COLOR_YELLOW : COLOR_GREEN,
+      );
+    });
   }
 
   // =======================================================================

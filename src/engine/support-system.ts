@@ -156,6 +156,13 @@ export class SupportController {
     return null;
   }
 
+  /** Read-only ordered runtime pairs involving a unit, for info/base UI. */
+  getPairsForUnit(unitNid: string): SupportPair[] {
+    return this.getPairNidsForUnit(unitNid)
+      .map((nid) => this.pairs.get(nid))
+      .filter((pair): pair is SupportPair => !!pair);
+  }
+
   /** Get all pair NIDs involving a given unit. */
   private getPairNidsForUnit(unitNid: string): string[] {
     return this.unitPairIndex.get(unitNid) ?? [];
