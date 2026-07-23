@@ -108,8 +108,9 @@ change crosses several Python subsystems.
 5. Run the focused test first. Diagnose a failure with that single test before
    running broader gates.
 6. Update generated parity artifacts only if their source surface changed.
-7. Update `PLAN.md`/`LOG.md` only when tracked roadmap status changes, then
-   verify, review the diff, commit, and push.
+7. For every completed roadmap task, update its `PLAN.md` checkbox/status and
+   `Active Next Slice`; update `LOG.md` only when archiving completed detail.
+   Then verify, review the diff, commit, and push.
 
 Event commands usually require checking all four surfaces: parser/alias metadata
 in `event-manager.ts`, blocking registration and dispatch in `EventState`, an
@@ -173,8 +174,9 @@ regeneration, inspect `git diff --stat` and the relevant rows, not the whole fil
 
 - At startup, read only the matching checkbox/bug and `Active Next Slice` if the
   user did not provide a task. A direct user request takes priority over the queue.
-- Routine slices do not require a planning-file edit. On completion, change only
-  the affected roadmap checkbox/queue text. Move an item to `LOG.md` only when
+- Every completed roadmap task must update its checkbox/status and, when needed,
+  `Active Next Slice`. Keep this to the affected lines. Untracked maintenance
+  does not need a synthetic roadmap entry. Move an item to `LOG.md` only when
   removing completed detail from `PLAN.md`; git history owns routine change notes.
 - Add discovered work as a short unchecked item in the relevant phase. Do not
   paste investigation logs, repeated audit tables, or per-attempt narratives.
