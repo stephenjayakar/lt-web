@@ -122,6 +122,11 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Touch-safe game layout:** responsive viewport sizing now preserves the
+  engine's 240×160 minimum logical scene, preventing portrait layouts from
+  clipping authored menus. Touch controls live in a dedicated dock outside the
+  canvas, keeping dialogue, portraits, maps, and menus unobscured.
+
 - **Startup feedback and recovery:** campaign startup now has a responsive,
   accessible progress surface with live status text. Database failures keep the
   error visible and offer focused Retry and Choose another campaign actions.

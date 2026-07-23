@@ -18,6 +18,9 @@ import { TILEWIDTH, TILEHEIGHT } from './constants';
 
 /** Default number of tiles visible across the narrower screen dimension at zoom=1. */
 const DEFAULT_TILES_ACROSS = 8;
+/** Minimum logical scene size required by GBA-authored menus and layouts. */
+const MIN_VIEWPORT_WIDTH = 240;
+const MIN_VIEWPORT_HEIGHT = 160;
 
 /** Zoom limits (in terms of tiles visible across the narrow axis). */
 const MIN_TILES_ACROSS = 4;   // zoomed all the way in
@@ -51,9 +54,17 @@ export class Viewport {
     this.screenW = screenW;
     this.screenH = screenH;
 
-    // The narrow axis determines cssScale: tilesAcross tiles * TILEWIDTH game-px = narrowAxis CSS-px
+    // The requested zoom is constrained by the minimum GBA-authored scene size.
+    // On a portrait phone, honoring eight tiles across literally would create a
+    // ~128px-wide viewport and clip menus that require 240px. In that case we
+    // show more tiles instead, preserving the complete UI.
     const narrowAxis = Math.min(screenW, screenH);
-    this.cssScale = narrowAxis / (this.tilesAcross * TILEWIDTH);
+    const zoomScale = narrowAxis / (this.tilesAcross * TILEWIDTH);
+    const layoutScale = Math.min(
+      screenW / MIN_VIEWPORT_WIDTH,
+      screenH / MIN_VIEWPORT_HEIGHT,
+    );
+    this.cssScale = Math.max(0.01, Math.min(zoomScale, layoutScale));
 
     // Viewport in game pixels = screen CSS pixels / cssScale
     this.width = Math.ceil(screenW / this.cssScale);
