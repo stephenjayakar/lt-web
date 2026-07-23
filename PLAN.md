@@ -119,6 +119,8 @@ item-use fixture matrices match Python outputs and side effects.
 - [ ] Complete base supports and base-menu launch plumbing
 - [ ] Add growth/support/WEXP info
 - [ ] Remove remaining placeholder portraits/sprites where resources exist
+- [ ] Finish the web-player UX pass: polished loading/error recovery, touch-safe
+  menu layouts, and clear focus/feedback across the core play flow
 
 **Gate:** every in-scope Python state has an equivalent reachable flow with keyboard,
 mouse, touch, cancel/back, transition, and resume tests.
@@ -134,9 +136,11 @@ match the reference within documented browser tolerances.
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-22 after healing item EXP parity:
+Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Implement remaining item target/restriction/use/end-combat hooks and
-   multi/sub-item behavior.
-2. Continue the open roadmap in dependency order; keep generated inventories as
+1. Finish the web-player UX pass, prioritizing loading/error recovery and
+   touch-safe core menus.
+2. Render attack/defense/pre-proc playback marks with Python-timed icons and
+   effects.
+3. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
