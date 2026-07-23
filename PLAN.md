@@ -118,7 +118,7 @@ item-use fixture matrices match Python outputs and side effects.
 - [x] Implement remaining trade/item-targeting variants and objective/dialog-log flows
 - [x] Complete base supports and base-menu launch plumbing
 - [x] Add growth/support/WEXP info
-- [ ] Remove remaining placeholder portraits/sprites where resources exist
+- [x] Remove remaining placeholder portraits/sprites where resources exist
 
 **Gate:** every in-scope Python state has an equivalent reachable flow with keyboard,
 mouse, touch, cancel/back, transition, and resume tests.
@@ -136,6 +136,6 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Remove remaining placeholder portraits/sprites where resources exist.
+1. Complete combat-animation fallback behavior without debug placeholder art.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

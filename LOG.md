@@ -2959,3 +2959,14 @@ many components, while one switch case can still omit flags or blocking behavior
   progress grooves while keeping the skill list inside the 240x160 frame.
 - Added a public read-only support-pair query for UI consumers and focused
   navigation/render coverage for both new information surfaces.
+
+## 2026-07-23 — Resource-backed unit art cleanup
+
+- Audited every deployed bundled-campaign unit after the asynchronous sprite
+  load; all class-backed map sprites resolve successfully.
+- Fixed the info screen's stale `getFrame` check so its loaded animated map
+  sprite appears both as the optional-portrait fallback and at the panel foot.
+- Replaced debug initials with that real class art, retaining only a neutral
+  silhouette when a project genuinely omits both portrait and sprite.
+- Added focused resource coverage and visually inspected the missing-portrait
+  path, closing P5.
