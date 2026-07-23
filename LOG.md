@@ -2808,3 +2808,14 @@ many components, while one switch case can still omit flags or blocking behavior
   gold proc spark instead of disappearing.
 - Added focused timing/order/visibility coverage and a visually inspected
   240x160 badge fixture.
+
+## 2026-07-23 — Door/chest unlock contracts
+
+- Implemented the item `can_unlock` hook with Python expression semantics for
+  region-specific keys, and routed `unit.can_unlock(region)` through available
+  inventory items plus the `locktouch` skill.
+- Availability now matters: class/unit-locked keys no longer unlock regions for
+  an ineligible bearer. Recursive multi-item children participate without
+  exposing their container as a key.
+- Added a focused fixture covering door-only and chest-only keys, restricted
+  keys, Locktouch, condition evaluation, and nested multi-item ownership.
