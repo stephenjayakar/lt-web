@@ -2831,3 +2831,13 @@ many components, while one switch case can still omit flags or blocking behavior
 - Added focused coverage for hit/miss routing, selected-row behavior, action-log
   reversal, and the rendered active-pane treatment; the visual fixture was
   inspected at 3x nearest-neighbor scale.
+
+## 2026-07-23 — Post-combat item menus
+
+- Implemented `menu_after_combat` and `attack_after_combat` dispatch. Player
+  items can return to the unit menu without prematurely waiting; ordinary
+  menu-after items keep Attack unavailable, while attack-after items reversibly
+  restore Attack and consume Trade access like LT Maker.
+- Added the reversible `HasNotAttackedAction`, a one-shot menu-resume marker,
+  and a focused regression for hook resolution, turn flags, undo, and the
+  post-combat menu's option filtering.

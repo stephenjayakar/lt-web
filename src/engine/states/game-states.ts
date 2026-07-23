@@ -80,6 +80,7 @@ import {
   DeathAction,
   SetUnitExpAction,
   HasAttackedAction,
+  HasNotAttackedAction,
   TradeAction,
   HasTradedAction,
   WaitAction,
@@ -174,6 +175,8 @@ import {
   fullPrice as itemFullPrice,
   buyPrice as itemBuyPrice,
   sellPrice as itemSellPrice,
+  menuAfterCombat,
+  canAttackAfterCombat,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -1936,6 +1939,9 @@ export class MenuState extends State {
   override begin(): StateResult {
     const game = getGame();
     const unit: UnitObject = game.selectedUnit;
+    const resumedAfterCombat = unit &&
+      game.memory.get('menu_after_combat') === unit.nid;
+    if (resumedAfterCombat) game.memory.delete('menu_after_combat');
     if (!unit || !unit.position) {
       game.state.back();
       return 'repeat';
@@ -1943,7 +1949,7 @@ export class MenuState extends State {
 
     // If the unit already finished (returned from a sub-state like ItemUse/Trade),
     // pop back so MoveState can clean up and return to FreeState.
-    if (unit.finished || !unit.canStillAct()) {
+    if (!resumedAfterCombat && (unit.finished || !unit.canStillAct())) {
       this.menu = null;
       game.state.back();
       return 'repeat';
@@ -1956,7 +1962,7 @@ export class MenuState extends State {
     const uy = unit.position[1];
 
     // Attack option — only if enemies are in weapon range from current position
-    const targets = [...new Set(getAvailableCombatItems(unit)
+    const targets = unit.hasAttacked ? [] : [...new Set(getAvailableCombatItems(unit)
       .flatMap((item) => getTargetsInRange(unit, ux, uy, item)))];
     if (targets.length > 0) {
       options.push({ label: 'Attack', value: 'attack', enabled: true });
@@ -5091,12 +5097,20 @@ export class CombatState extends State {
         const combatDefenders = this.getCombatDefenders();
         const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
         const tradePair = combatTradePair(activeCombat!.strikes);
+        const returnsToMenu = attacker.team === 'player' &&
+          menuAfterCombat(attacker, activeCombat!.attackItem);
+        const retainsAttack = returnsToMenu &&
+          canAttackAfterCombat(attacker, activeCombat!.attackItem);
 
         if (!attacker.isDead()) {
           game.actionLog.doAction(new HasAttackedAction(attacker));
+          if (retainsAttack) {
+            game.actionLog.doAction(new HasNotAttackedAction(attacker));
+            game.actionLog.doAction(new HasTradedAction(attacker));
+          }
 
           // Canto keeps the unit actionable; all other attacks consume the turn.
-          if (!hasCanto) {
+          if (!hasCanto && !returnsToMenu) {
             game.actionLog.doAction(new WaitAction(attacker));
           }
         }
@@ -5248,6 +5262,11 @@ export class CombatState extends State {
           }
           game.memory.set('trade_partner', tradePair.partner);
           game.state.change('trade');
+        }
+        else if (!wasEventCombat && returnsToMenu && !attacker.isDead()) {
+          game.selectedUnit = attacker;
+          game.memory.set('menu_after_combat', attacker.nid);
+          game.state.change('menu');
         }
         // If Canto, re-enter move state for remaining movement
         else if (!wasEventCombat && hasCanto) {
