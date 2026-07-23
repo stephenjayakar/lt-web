@@ -152,6 +152,7 @@ function itemComponentsAvailable(
   game?: any,
 ): boolean {
   if ((components.has('uses') || components.has('c_uses')) && item.uses <= 0) return false;
+  if (components.has('no_attack_after_move') && unit.hasMoved) return false;
   const hpCost = components.get('hp_cost');
   if (typeof hpCost === 'number' && unit.currentHp <= hpCost) return false;
   if (components.has('cooldown') && Number(item.data.get('cooldown') ?? 0) !== 0) return false;
@@ -293,6 +294,11 @@ export function menuAfterCombat(_unit: UnitObject, item: ItemObject): boolean {
 /** Python can_attack_after_combat hook. */
 export function canAttackAfterCombat(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('attack_after_combat');
+}
+
+/** Python no_attack_after_move hook. */
+export function noAttackAfterMove(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('no_attack_after_move');
 }
 
 /** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
@@ -858,6 +864,14 @@ export function targetRestrict(
   if (item.hasComponent('force_promote')) {
     const defender = context.board.getUnit(defPos[0], defPos[1]);
     if (!defender) return false;
+  }
+
+  if (item.hasComponent('class_change')) {
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const prefab = defender ? context.db.units.get(defender.nid) as any : null;
+    if (!defender || defender.generic ||
+        !Array.isArray(prefab?.alternate_classes) ||
+        prefab.alternate_classes.length === 0) return false;
   }
 
   if (item.hasComponent('permanent_stat_change')) {

@@ -2567,6 +2567,18 @@ function applyCoreTargetedEffects(
       }
     }
   }
+  if (item.hasComponent('class_change')) {
+    for (const targetPosition of positions.values()) {
+      const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
+      const prefab = target ? game.db.units.get(target.nid) as any : null;
+      const options = Array.isArray(prefab?.alternate_classes)
+        ? [...prefab.alternate_classes] as string[]
+        : [];
+      if (!target || target.generic || options.length !== 1) continue;
+      performPromotionOrClassChange(target, options[0], game, 'change_class');
+      applied = true;
+    }
+  }
   const forcedClass = item.getComponent<string>('force_class_change');
   if (forcedClass && game.db.classes.has(forcedClass)) {
     for (const targetPosition of positions.values()) {
@@ -2912,7 +2924,9 @@ export class ItemUseState extends State {
         // multi-option promotions can present the choice menu, even when
         // (as with the default project's crests/seals) the only valid
         // target is the user.
-        const needsPromotionRouting = item.hasComponent('promote') || item.hasComponent('force_promote');
+        const needsPromotionRouting = item.hasComponent('promote') ||
+          item.hasComponent('force_promote') ||
+          item.hasComponent('class_change');
         if (item.hasCoreUseEffect() && !item.hasComponent('sequence_item') && !needsPromotionRouting &&
             targets.length === 1 && unit.position &&
             targets[0][0] === unit.position[0] && targets[0][1] === unit.position[1]) {
@@ -3047,20 +3061,32 @@ export class ItemTargetingState extends MapState {
     }
 
     if (activeItem === this.item &&
-        (activeItem.hasComponent('promote') || activeItem.hasComponent('force_promote'))) {
+        (activeItem.hasComponent('promote') || activeItem.hasComponent('force_promote') ||
+         activeItem.hasComponent('class_change'))) {
       const defender = game.board.getUnit(target[0], target[1]);
       if (!defender) return;
       const forceKlass = activeItem.getComponent<string>('force_promote');
+      const isClassChange = activeItem.hasComponent('class_change');
       let options: string[];
       if (forceKlass) {
         options = [forceKlass];
+      } else if (isClassChange) {
+        const prefab = game.db.units.get(defender.nid) as any;
+        options = !defender.generic && Array.isArray(prefab?.alternate_classes)
+          ? [...prefab.alternate_classes]
+          : [];
       } else {
         const klass = game.db.classes.get(defender.klass);
         options = klass?.turns_into ? [...klass.turns_into] : [];
       }
       if (options.length === 0) return;
       if (options.length === 1) {
-        performPromotionOrClassChange(defender, options[0], game, 'promote');
+        performPromotionOrClassChange(
+          defender,
+          options[0],
+          game,
+          isClassChange ? 'change_class' : 'promote',
+        );
         finishCoreItemUse(unit, this.item, [defender]);
         game.memory.delete('item_use_item');
         game.highlight.clear();
@@ -3073,6 +3099,10 @@ export class ItemTargetingState extends MapState {
       game.memory.set('promotion_choice_options', options);
       game.memory.set('promotion_choice_item', this.item);
       game.memory.set('promotion_choice_actor', unit);
+      game.memory.set(
+        'promotion_choice_source',
+        isClassChange ? 'change_class' : 'promote',
+      );
       game.highlight.clear();
       game.state.change('promotion_choice');
       return;
@@ -3339,6 +3369,7 @@ export class PromotionChoiceState extends State {
     game.memory.delete('promotion_choice_options');
     game.memory.delete('promotion_choice_item');
     game.memory.delete('promotion_choice_actor');
+    game.memory.delete('promotion_choice_source');
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -3371,8 +3402,11 @@ export class PromotionChoiceState extends State {
       const target = this.targetUnit;
       const item: ItemObject | null = game.memory.get('promotion_choice_item') ?? null;
       const actor: UnitObject | null = game.memory.get('promotion_choice_actor') ?? null;
+      const source = game.memory.get('promotion_choice_source') === 'change_class'
+        ? 'change_class'
+        : 'promote';
       if (target && item && actor) {
-        performPromotionOrClassChange(target, newKlass, game, 'promote');
+        performPromotionOrClassChange(target, newKlass, game, source);
         finishCoreItemUse(actor, item, [target]);
       }
       this.cleanupMemory();

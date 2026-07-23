@@ -204,7 +204,7 @@ export class ItemObject {
       this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair') ||
       this.hasComponent('store_unit') || this.hasComponent('unload_unit') ||
       this.hasComponent('promote') || this.hasComponent('force_promote') ||
-      this.hasComponent('force_class_change');
+      this.hasComponent('class_change') || this.hasComponent('force_class_change');
     return directEffect || this.subitems.some((subitem) => subitem.hasCoreUseEffect());
   }
 

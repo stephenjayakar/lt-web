@@ -2841,3 +2841,15 @@ many components, while one switch case can still omit flags or blocking behavior
 - Added the reversible `HasNotAttackedAction`, a one-shot menu-resume marker,
   and a focused regression for hook resolution, turn flags, undo, and the
   post-combat menu's option filtering.
+
+## 2026-07-23 — Item-hook umbrella completion
+
+- Implemented `class_change` items from unique-unit `alternate_classes`, sharing
+  the existing reversible class-change core and multi-option choice state.
+  Generic units or units without alternate classes are rejected before use.
+- Implemented `no_attack_after_move` in item availability, so the menu,
+  targeting, and AI all inherit the same restriction after movement.
+- Focused coverage proves target restriction, class/uses/inventory/wait
+  undo, and movement-dependent availability. Together with the prior target,
+  multi/sequence, event, status, forced-movement, Trade, and post-combat slices,
+  this completes the P3 item target/restriction/use/end-combat roadmap row.
