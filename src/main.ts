@@ -156,7 +156,16 @@ interface DisplayInfo {
  */
 function applySize(display: DisplayInfo): void {
   const screenW = window.innerWidth;
-  const screenH = window.innerHeight;
+  const hasTouchControls = !!document.getElementById('web-controls') &&
+    window.matchMedia('(pointer: coarse), (max-width: 700px)').matches;
+  const dockHeight = hasTouchControls
+    ? Math.round(Math.min(
+      window.innerWidth > window.innerHeight ? 128 : 184,
+      window.innerHeight * (window.innerWidth > window.innerHeight ? 0.33 : 0.23),
+    ))
+    : 0;
+  const screenH = Math.max(1, window.innerHeight - dockHeight);
+  document.documentElement.style.setProperty('--touch-dock-height', `${dockHeight}px`);
 
   viewport.recalculate(screenW, screenH);
 
@@ -619,7 +628,11 @@ async function main(): Promise<void> {
   inputManager.setDisplayScale(viewport.cssScale);
   gameState.input = inputManager;
   const showWebControls = !harnessMode || params.get('controls') === 'true';
-  if (showWebControls) installWebControls(inputManager);
+  if (showWebControls) {
+    installWebControls(inputManager);
+    applySize(display);
+    inputManager.setDisplayScale(viewport.cssScale);
+  }
 
   // --- Game surface (dynamic size) ---
   let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);

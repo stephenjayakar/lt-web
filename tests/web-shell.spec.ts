@@ -53,6 +53,33 @@ test.describe('Web player shell', () => {
     expect(inputEvent).toBe('SELECT');
   });
 
+  test('portrait play preserves the minimum logical menu width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false&controls=true');
+    await waitForHarness(page);
+
+    const dimensions = await page.evaluate(async () => {
+      const { viewport } = await import('/src/engine/viewport.ts');
+      return { width: viewport.width, height: viewport.height };
+    });
+
+    expect(dimensions.width).toBeGreaterThanOrEqual(240);
+    expect(dimensions.height).toBeGreaterThanOrEqual(160);
+  });
+
+  test('touch controls occupy a dock outside the game canvas', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false&controls=true');
+    await waitForHarness(page);
+
+    const canvasBox = await page.locator('#game-canvas').boundingBox();
+    const controlsBox = await page.getByLabel('Touch game controls').boundingBox();
+    expect(canvasBox).not.toBeNull();
+    expect(controlsBox).not.toBeNull();
+    expect(canvasBox!.height).toBeLessThan(844);
+    expect(controlsBox!.y).toBeGreaterThanOrEqual(canvasBox!.y + canvasBox!.height);
+  });
+
   test('startup status reports progress and offers recovery actions', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
     await waitForHarness(page);
