@@ -1,0 +1,916 @@
+{
+  "generatedBy": "scripts/state-parity.mjs",
+  "summary": {
+    "python": 113,
+    "exact": 41,
+    "merged": 69,
+    "open": 3,
+    "web": 55
+  },
+  "rows": [
+    {
+      "name": "ability_multi_item_choice",
+      "className": "AbilityMultiItemChoiceState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "ability_submenu_choice",
+      "className": "AbilitySubmenuChoiceState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "ai",
+      "className": "AIState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "ai",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "alert",
+      "className": "AlertState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "event",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "attacker",
+      "className": "AttackerState",
+      "source": "lt-maker/app/engine/combat/solver.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "attacker_partner",
+      "className": "AttackerPartnerState",
+      "source": "lt-maker/app/engine/combat/solver.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "base_achievement",
+      "className": "BaseAchievementState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_achievement",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_bexp_allocate",
+      "className": "BaseBEXPAllocateState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_bexp_allocate",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_bexp_select",
+      "className": "BaseBEXPSelectState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_bexp_select",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_codex_child",
+      "className": "BaseCodexChildState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "merged",
+      "webState": "base_codex",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_convos_child",
+      "className": "BaseConvosChildState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "merged",
+      "webState": "base_convos",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_guide",
+      "className": "BaseGuideState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "merged",
+      "webState": "base_codex",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_library",
+      "className": "BaseLibraryState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "merged",
+      "webState": "base_codex",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_main",
+      "className": "BaseMainState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_main",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_market_select",
+      "className": "BaseMarketSelectState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "merged",
+      "webState": "shop",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "base_records",
+      "className": "BaseRecordsState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_records",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_sound_room",
+      "className": "BaseSoundRoomState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_sound_room",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "base_supports",
+      "className": "BaseSupportsState",
+      "source": "lt-maker/app/engine/base.py",
+      "status": "exact",
+      "webState": "base_supports",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "canto_wait",
+      "className": "CantoWaitState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "chapter_title",
+      "className": "ChapterTitleState",
+      "source": "lt-maker/app/engine/chapter_title.py",
+      "status": "open",
+      "webState": null,
+      "webSource": null
+    },
+    {
+      "name": "class_change",
+      "className": "ClassChangeState",
+      "source": "lt-maker/app/engine/promotion.py",
+      "status": "merged",
+      "webState": "item_use",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "class_change_choice",
+      "className": "ClassChangeChoiceState",
+      "source": "lt-maker/app/engine/promotion.py",
+      "status": "merged",
+      "webState": "promotion_choice",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "combat",
+      "className": "CombatState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "combat_targeting",
+      "className": "CombatTargetingState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "targeting",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "combat_trade",
+      "className": "CombatTradeState",
+      "source": "lt-maker/app/engine/trade.py",
+      "status": "merged",
+      "webState": "trade",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "credit",
+      "className": "CreditState",
+      "source": "lt-maker/app/engine/credit_state.py",
+      "status": "exact",
+      "webState": "credit",
+      "webSource": "src/engine/states/credit-state.ts"
+    },
+    {
+      "name": "defender",
+      "className": "DefenderState",
+      "source": "lt-maker/app/engine/combat/solver.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "defender_partner",
+      "className": "DefenderPartnerState",
+      "source": "lt-maker/app/engine/combat/solver.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "dialog_log",
+      "className": "DialogLogState",
+      "source": "lt-maker/app/engine/dialog_log.py",
+      "status": "open",
+      "webState": null,
+      "webSource": null
+    },
+    {
+      "name": "dying",
+      "className": "DyingState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "exp",
+      "className": "ExpState",
+      "source": "lt-maker/app/engine/level_up.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "feat_choice",
+      "className": "FeatChoiceState",
+      "source": "lt-maker/app/engine/feat_choice.py",
+      "status": "merged",
+      "webState": "promotion_choice",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "free",
+      "className": "FreeState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "free",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "free_roam",
+      "className": "FreeRoamState",
+      "source": "lt-maker/app/engine/roam/free_roam_state.py",
+      "status": "exact",
+      "webState": "free_roam",
+      "webSource": "src/engine/states/roam-state.ts"
+    },
+    {
+      "name": "free_roam_rationalize",
+      "className": "FreeRoamRationalizeState",
+      "source": "lt-maker/app/engine/roam/free_roam_rationalize.py",
+      "status": "exact",
+      "webState": "free_roam_rationalize",
+      "webSource": "src/engine/states/roam-state.ts"
+    },
+    {
+      "name": "game_over",
+      "className": "GameOverState",
+      "source": "lt-maker/app/engine/game_over.py",
+      "status": "exact",
+      "webState": "game_over",
+      "webSource": "src/engine/states/game-over-state.ts"
+    },
+    {
+      "name": "info_menu",
+      "className": "InfoMenuState",
+      "source": "lt-maker/app/engine/info_menu/info_menu_state.py",
+      "status": "exact",
+      "webState": "info_menu",
+      "webSource": "src/engine/states/info-menu-state.ts"
+    },
+    {
+      "name": "init",
+      "className": "InitState",
+      "source": "lt-maker/app/engine/combat/solver.py",
+      "status": "merged",
+      "webState": "combat",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "initiative_upkeep",
+      "className": "InitiativeUpkeep",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "initiative_upkeep",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "item",
+      "className": "ItemState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "item_child",
+      "className": "ItemChildState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "item_discard",
+      "className": "ItemDiscardState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "item_discard",
+      "webSource": "src/engine/states/supply-state.ts"
+    },
+    {
+      "name": "item_targeting",
+      "className": "ItemTargetingState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "item_targeting",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "menu",
+      "className": "MenuState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "minimap",
+      "className": "MinimapState",
+      "source": "lt-maker/app/engine/minimap.py",
+      "status": "exact",
+      "webState": "minimap",
+      "webSource": "src/engine/states/minimap-state.ts"
+    },
+    {
+      "name": "move",
+      "className": "MoveState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "move",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "move_camera",
+      "className": "MoveCameraState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "movement",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "movement",
+      "className": "MovementState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "movement",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "objective_menu",
+      "className": "ObjectiveMenuState",
+      "source": "lt-maker/app/engine/objective_menu.py",
+      "status": "open",
+      "webState": null,
+      "webSource": null
+    },
+    {
+      "name": "optimize_all_choice",
+      "className": "OptimizeAllChoiceState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "prep_pick",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "option_child",
+      "className": "OptionChildState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "option_menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "option_menu",
+      "className": "OptionMenuState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "option_menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "overworld",
+      "className": "OverworldFreeState",
+      "source": "lt-maker/app/engine/overworld/overworld_states.py",
+      "status": "exact",
+      "webState": "overworld",
+      "webSource": "src/engine/states/overworld-state.ts"
+    },
+    {
+      "name": "overworld_game_option_menu",
+      "className": "OverworldGameOptionMenuState",
+      "source": "lt-maker/app/engine/overworld/overworld_states.py",
+      "status": "exact",
+      "webState": "overworld_game_option_menu",
+      "webSource": "src/engine/states/overworld-state.ts"
+    },
+    {
+      "name": "overworld_movement",
+      "className": "OverworldMovementState",
+      "source": "lt-maker/app/engine/overworld/overworld_states.py",
+      "status": "exact",
+      "webState": "overworld_movement",
+      "webSource": "src/engine/states/overworld-state.ts"
+    },
+    {
+      "name": "overworld_next_level",
+      "className": "OverworldLevelTransition",
+      "source": "lt-maker/app/engine/overworld/overworld_states.py",
+      "status": "exact",
+      "webState": "overworld_next_level",
+      "webSource": "src/engine/states/overworld-state.ts"
+    },
+    {
+      "name": "overworld_on_node",
+      "className": "OverworldNodeTransition",
+      "source": "lt-maker/app/engine/overworld/overworld_states.py",
+      "status": "merged",
+      "webState": "overworld",
+      "webSource": "src/engine/states/overworld-state.ts"
+    },
+    {
+      "name": "overworld_party_option_menu",
+      "className": "OverworldPartyOptionMenu",
+      "source": "lt-maker/app/engine/overworld/overworld_states.py",
+      "status": "merged",
+      "webState": "overworld_game_option_menu",
+      "webSource": "src/engine/states/overworld-state.ts"
+    },
+    {
+      "name": "party_transfer",
+      "className": "PartyTransferState",
+      "source": "lt-maker/app/engine/party_transfer.py",
+      "status": "exact",
+      "webState": "party_transfer",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "party_transfer_confirm",
+      "className": "PartyTransferConfirmState",
+      "source": "lt-maker/app/engine/party_transfer.py",
+      "status": "merged",
+      "webState": "party_transfer",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "phase_change",
+      "className": "PhaseChangeState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "phase_change",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "player_choice",
+      "className": "PlayerChoiceState",
+      "source": "lt-maker/app/engine/player_choice.py",
+      "status": "merged",
+      "webState": "event",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "prep_formation",
+      "className": "PrepFormationState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "prep_map",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_formation_menu",
+      "className": "PrepFormationMenuState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "prep_map",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_formation_select",
+      "className": "PrepFormationSelectState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "prep_map",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_gba_main",
+      "className": "PrepGBAMainState",
+      "source": "lt-maker/app/engine/prep_gba.py",
+      "status": "merged",
+      "webState": "prep_main",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_gba_map",
+      "className": "PrepGBAMapState",
+      "source": "lt-maker/app/engine/prep_gba.py",
+      "status": "merged",
+      "webState": "prep_map",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_items",
+      "className": "PrepItemsState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "base_manage",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "prep_main",
+      "className": "PrepMainState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "exact",
+      "webState": "prep_main",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_manage",
+      "className": "PrepManageState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "base_manage",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "prep_manage_select",
+      "className": "PrepManageSelectState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "base_manage",
+      "webSource": "src/engine/states/base-state.ts"
+    },
+    {
+      "name": "prep_market",
+      "className": "PrepMarketState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "shop",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "prep_pick_units",
+      "className": "PrepPickUnitsState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "prep_pick",
+      "webSource": "src/engine/states/prep-state.ts"
+    },
+    {
+      "name": "prep_restock",
+      "className": "PrepRestockState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "supply_items",
+      "webSource": "src/engine/states/supply-state.ts"
+    },
+    {
+      "name": "prep_trade",
+      "className": "PrepTradeState",
+      "source": "lt-maker/app/engine/trade.py",
+      "status": "merged",
+      "webState": "trade",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "prep_trade_select",
+      "className": "PrepTradeSelectState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "trade",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "prep_use",
+      "className": "PrepUseState",
+      "source": "lt-maker/app/engine/prep.py",
+      "status": "merged",
+      "webState": "item_use",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "promotion",
+      "className": "PromotionState",
+      "source": "lt-maker/app/engine/promotion.py",
+      "status": "merged",
+      "webState": "promotion_choice",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "promotion_choice",
+      "className": "PromotionChoiceState",
+      "source": "lt-maker/app/engine/promotion.py",
+      "status": "exact",
+      "webState": "promotion_choice",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "repair_shop",
+      "className": "RepairShopState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "shop",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "settings_menu",
+      "className": "SettingsMenuState",
+      "source": "lt-maker/app/engine/settings.py",
+      "status": "exact",
+      "webState": "settings_menu",
+      "webSource": "src/engine/states/settings-state.ts"
+    },
+    {
+      "name": "shop",
+      "className": "ShopState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "shop",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "spell_choice",
+      "className": "SpellChoiceState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "weapon_choice",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "start_level_asset_loading",
+      "className": "LoadingState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "title",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "status_upkeep",
+      "className": "StatusUpkeepState",
+      "source": "lt-maker/app/engine/status_upkeep.py",
+      "status": "merged",
+      "webState": "phase_change",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "subitem_child",
+      "className": "SubItemChildState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "targeting",
+      "className": "TargetingState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "targeting",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "text_confirm",
+      "className": "TextConfirmState",
+      "source": "lt-maker/app/engine/text_entry.py",
+      "status": "merged",
+      "webState": "text_entry",
+      "webSource": "src/engine/states/text-entry-state.ts"
+    },
+    {
+      "name": "text_entry",
+      "className": "TextEntryState",
+      "source": "lt-maker/app/engine/text_entry.py",
+      "status": "exact",
+      "webState": "text_entry",
+      "webSource": "src/engine/states/text-entry-state.ts"
+    },
+    {
+      "name": "title_all_saves",
+      "className": "TitleAllSavesState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "load_menu",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "title_extras",
+      "className": "TitleExtrasState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "title_main",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "title_load",
+      "className": "TitleLoadState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "load_menu",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "title_main",
+      "className": "TitleMainState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "exact",
+      "webState": "title_main",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "title_mode",
+      "className": "TitleModeState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "exact",
+      "webState": "title_mode",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "title_new",
+      "className": "TitleNewState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "level_select",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "title_new_child",
+      "className": "TitleNewChildState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "level_select",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "title_restart",
+      "className": "TitleRestartState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "load_menu",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "title_save",
+      "className": "TitleSaveState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "save_menu",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "title_start",
+      "className": "TitleStartState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "title",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "title_wait",
+      "className": "TitleWaitState",
+      "source": "lt-maker/app/engine/title_screen.py",
+      "status": "merged",
+      "webState": "title",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "trade",
+      "className": "TradeState",
+      "source": "lt-maker/app/engine/trade.py",
+      "status": "exact",
+      "webState": "trade",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "transition_double_pop",
+      "className": "TransitionDoublePopState",
+      "source": "lt-maker/app/engine/transitions.py",
+      "status": "merged",
+      "webState": "state-machine",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "transition_in",
+      "className": "TransitionInState",
+      "source": "lt-maker/app/engine/transitions.py",
+      "status": "merged",
+      "webState": "state-machine",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "transition_out",
+      "className": "TransitionOutState",
+      "source": "lt-maker/app/engine/transitions.py",
+      "status": "merged",
+      "webState": "state-machine",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "transition_pop",
+      "className": "TransitionPopState",
+      "source": "lt-maker/app/engine/transitions.py",
+      "status": "merged",
+      "webState": "state-machine",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "transition_to",
+      "className": "TransitionToState",
+      "source": "lt-maker/app/engine/transitions.py",
+      "status": "merged",
+      "webState": "state-machine",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "transition_to_with_pop",
+      "className": "TransitionToWithPopState",
+      "source": "lt-maker/app/engine/transitions.py",
+      "status": "merged",
+      "webState": "state-machine",
+      "webSource": "src/engine/state-machine.ts"
+    },
+    {
+      "name": "turn_change",
+      "className": "TurnChangeState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "turn_change",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "unit_menu",
+      "className": "UnitMenuState",
+      "source": "lt-maker/app/engine/game_menus/menu_states/unit_menu_state.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "unlock_select",
+      "className": "UnlockSelectState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "item_targeting",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "victory",
+      "className": "VictoryState",
+      "source": "lt-maker/app/engine/victory_screen.py",
+      "status": "exact",
+      "webState": "victory",
+      "webSource": "src/engine/states/victory-state.ts"
+    },
+    {
+      "name": "wait",
+      "className": "WaitState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "merged",
+      "webState": "menu",
+      "webSource": "src/engine/states/game-states.ts"
+    },
+    {
+      "name": "weapon_choice",
+      "className": "WeaponChoiceState",
+      "source": "lt-maker/app/engine/general_states.py",
+      "status": "exact",
+      "webState": "weapon_choice",
+      "webSource": "src/engine/states/game-states.ts"
+    }
+  ]
+}

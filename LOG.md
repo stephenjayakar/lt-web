@@ -2920,3 +2920,12 @@ many components, while one switch case can still omit flags or blocking behavior
   and award guarded-hit EXP with deterministic level-ups and exact rewind/redo.
 - Added focused golden coverage for both scripted partner ordering and
   animation-path follower rewards, closing P4.
+
+## 2026-07-23 — Generated runtime-state inventory
+
+- Added a reproducible Python-to-web state audit: 113 Python runtime states map
+  to 41 exact web names, 69 documented mergers, and three open flows
+  (`chapter_title`, `dialog_log`, and `objective_menu`).
+- Added check/write npm commands and generated JSON/Markdown artifacts; the
+  contribution guide now routes state discovery through this compact inventory
+  before either large state tree is searched.

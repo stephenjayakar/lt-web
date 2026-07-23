@@ -114,7 +114,7 @@ item-use fixture matrices match Python outputs and side effects.
 
 ### P5 — State Machine and Player-Facing UI
 
-- [ ] Inventory Python state names and map them to web states or documented mergers
+- [x] Inventory Python state names and map them to web states or documented mergers
 - [ ] Implement remaining trade/item-targeting variants and objective/dialog-log flows
 - [ ] Complete base supports and base-menu launch plumbing
 - [ ] Add growth/support/WEXP info
@@ -136,6 +136,6 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Inventory Python state names and map them to web states or documented mergers.
+1. Implement remaining trade/item-targeting variants and objective/dialog-log flows.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
