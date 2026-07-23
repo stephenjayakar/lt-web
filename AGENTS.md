@@ -68,7 +68,7 @@ cross-cutting defect.
 | Combat | `lt-maker/app/engine/combat/` | `src/combat/` | `tests/combat-goldens.spec.ts`, focused combat specs |
 | AI/pathfinding | `ai_controller.py`, `pathfinding/` | `src/ai/`, `src/pathfinding/` | `tests/ai-parity.spec.ts`, `movement-parity.spec.ts` |
 | Save/restore | `game_state.py`, serializer code | `src/engine/save.ts`, object classes | `tests/save-fields.spec.ts`, feature save spec |
-| UI/state flow | `lt-maker/app/engine/*_state.py` | `src/engine/states/`, `src/ui/`, `src/main.ts` | closest state/UI spec |
+| UI/state flow | `docs/parity/states.md` first, then its linked Python state | linked web state, `src/ui/`, `src/main.ts` | closest state/UI spec |
 | Rendering/resources | Python engine/resource code | `src/rendering/`, `src/data/` | rendering/resource specs |
 
 Read `lt-maker/AGENTS.md` only when the relevant Python file is unclear or the
@@ -167,6 +167,10 @@ green build, audit, or full suite during review/staging.
 
 Do not hand-edit them. Do not run the write command for unrelated changes. After
 regeneration, inspect `git diff --stat` and the relevant rows, not the whole files.
+
+`npm run audit:states:write` owns `docs/parity/states.{json,md}`. Query that
+inventory before searching both state trees; regenerate it only when Python state
+names, registered web states, or their documented mergers change.
 
 ## PLAN.md policy
 
