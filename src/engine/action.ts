@@ -1073,6 +1073,26 @@ export class HasAttackedAction extends Action {
   }
 }
 
+/** Python HasNotAttacked: restore attack access while preserving turn history. */
+export class HasNotAttackedAction extends Action {
+  private unit: UnitObject;
+  private previous: boolean = false;
+
+  constructor(unit: UnitObject) {
+    super();
+    this.unit = unit;
+  }
+
+  execute(): void {
+    this.previous = this.unit.hasAttacked;
+    this.unit.hasAttacked = false;
+  }
+
+  reverse(): void {
+    this.unit.hasAttacked = this.previous;
+  }
+}
+
 /** Mark a unit as having traded/given this turn. */
 export class HasTradedAction extends Action {
   private unit: UnitObject;

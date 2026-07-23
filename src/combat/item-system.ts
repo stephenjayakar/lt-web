@@ -284,6 +284,17 @@ export function canUnlock(
   }
 }
 
+/** Python menu_after_combat hook. */
+export function menuAfterCombat(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('menu_after_combat') ||
+    item.hasComponent('attack_after_combat');
+}
+
+/** Python can_attack_after_combat hook. */
+export function canAttackAfterCombat(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('attack_after_combat');
+}
+
 /** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
 export function isRepairableItem(item: ItemObject): boolean {
   return item.maxUses > 0 && item.uses < item.maxUses && !item.hasComponent('unrepairable');
