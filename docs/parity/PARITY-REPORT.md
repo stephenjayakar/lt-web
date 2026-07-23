@@ -1,10 +1,26 @@
 # Runtime Parity Report: Lex Talionis Web Engine
 
-**Report Date:** 2026-07-19  
-**Base Commit:** Current HEAD  
+**Report Date:** 2026-07-23
+**Evidence window:** Historical baseline 2026-07-19; completion refresh 2026-07-23
 **Report Type:** Published (P7 complete)
 
 This report is regenerable at any time via `npm run audit:parity` and `npm run build` using the instructions in the "How to Regenerate This Report" section.
+
+---
+
+## Current Completion Refresh (2026-07-23)
+
+- Event parser and dispatcher coverage: **255/255** Python command NIDs.
+- Components: **166/201** item and **116/241** skill NIDs referenced; matching
+  hook surfaces cover **107/201** item and **74/241** skill NIDs.
+- Runtime states: **113** Python states classified as **43 exact** and
+  **70 documented mergers**, with **0 open flows**.
+- Runtime source: **106 TypeScript files / 66,111 lines**.
+- Browser gate: **474 passed / 1 intentional skip** across **475 tests in 58
+  spec files**, run serially.
+
+Generated files under `docs/parity/` remain authoritative when these narrative
+figures age.
 
 ---
 
@@ -70,9 +86,21 @@ Domains with current inventory counts, verification method, and specification re
 | AI targeting | terrain, faction/party, group-active | Python `ai_controller.py` | Behavioral + edge-case tests | `tests/ai-parity.spec.ts` | Verified |
 | Audio system | music stack, phase/battle override, SFX, settings | Python `sound.py`, `phase.py` | Call-recording assertions | `tests/audio-parity.spec.ts` | Verified |
 | Portrait/dialog | blink timing, mouth animation, expression, text layout, transitions | Python `event_portrait.py`, `dialog.py`, `transitions.py` | Direct constant verification + harness tests | `tests/dialog-portrait.spec.ts` | Verified |
-| Rendering/animation | tile layers, autotiles, weather, fog, camera, unit markers | Python map rendering | Visual regression + structural tests | `tests/rendering-parity.spec.ts` | Verified |
+| Rendering/animation | tile layers, autotiles, weather, fog, camera, unit markers, battle assets/fallback | Python map and combat rendering | Visual regression + structural tests | `tests/rendering-parity.spec.ts`, `tests/combat-animation-fallback.spec.ts` | Verified |
 | Component resolve policies | all/any/sum/unique/default semantics | Python `compile_item_system.py`, `compile_skill_system.py` | Direct dispatch function tests | `tests/resolve-policies.spec.ts` | Verified |
 | Save/load round-trip | unit, item, skill, party, support, fog, achievement persistence | Python `game_state.py`, `save.py` | Full-chain integration tests | `tests/skill-identity-save.spec.ts`, `tests/event-region-save.spec.ts`, `tests/save-fields.spec.ts` | Verified |
+
+---
+
+## Browser Visual Tolerances
+
+Deterministic map baselines allow a maximum 2% differing-pixel ratio. They cover
+autotile frames, layer fades, a weather overlay, and camera positioning at a
+fixed 480x320 browser viewport. Combat baselines use a stricter 1% ratio on the
+canvas and cover both resource-backed battle animation and the missing-animation
+map-sprite fallback. These tolerances absorb platform rasterization differences
+while still failing on displaced UI, missing sprites, incorrect layers, or broad
+palette changes.
 
 ---
 
@@ -108,7 +136,11 @@ Deviations from Python behavior that are intentional, documented, and covered by
 
 ---
 
-## Known Gaps and Not Implemented
+## Historical Gap Snapshot (2026-07-19)
+
+The sections below preserve the published audit snapshot and its rationale.
+Later closures are reflected in the current generated inventories and roadmap
+completion evidence above.
 
 ### Parser-Missing Commands (44 entries)
 
@@ -230,9 +262,9 @@ Reference: PLAN.md Completion Gate
 | Default Sacred Stones project passes chapter/event soak tests | ✓ YES | Seeded soak suite (SOAK_SEED_BASE sweep across seeds 7000+): Prologue-Ch.5 chain smoke test green; harness + full-suite deterministic replay all green (2026-07-18) |
 | One non-default representative `.ltproj` passes compatibility suite | ✓ YES | `rekka.ltproj` (FE7A, classic Rescue, non-chunked) and `testing_proj.ltproj` (LT, chunked, achievements) both green in `tests/project-compat.spec.ts` |
 | Save/restore and turnwheel reversibility tests pass | ✓ YES | Skill identity, event-region, save-field, turnwheel-breadth, region-reversibility specs all green; deterministic replay + turnwheel undo/redo verified across combat/level-up boundaries; platform-lifecycle tests (16, PWA/offline/native) all green |
-| `npm run build` green | ✓ YES | 100 TS files, 60,159 lines; vite build green with 27-entry precache manifest (2026-07-19) |
-| `npm run audit:parity` green | ✓ YES | Parser 211/255, dispatched 202/255, items 135/201, skills 84/241, 53 states (2026-07-19) |
-| Full Playwright suite green | ✓ YES | 368 tests across 40 spec files: 367 passed + 1 intentionally skipped Ch.6+ placeholder (full serial gate, 2026-07-19) |
+| `npm run build` green | ✓ YES | 106 TS files, 66,111 lines; Vite production build green with 28-entry precache manifest (2026-07-23) |
+| `npm run audit:parity` green | ✓ YES | Parser and dispatcher 255/255; items 166 referenced/107 hook surfaces; skills 116 referenced/74 hook surfaces (2026-07-23) |
+| Full Playwright suite green | ✓ YES | 475 tests across 58 spec files: 474 passed + 1 intentionally skipped Ch.6+ placeholder (full serial gate, 2026-07-23) |
 
 ---
 
@@ -247,8 +279,8 @@ Reference: PLAN.md Completion Gate
 | Wired triggers | 32/41 (4 deferred + 2 low-risk + 3 roam low-risk) | `docs/parity/runtime-inventory.md §1` |
 | Save-field gaps | 18 documented gaps (7 no-runtime, 8 partial, 3 missing) | `docs/parity/runtime-inventory.md §4` |
 | Deferred features | 9 large-scope items (support UI, NPC roam, fatigue, terrain status, scripted sub-events, etc.) | Known Gaps section |
-| Browser regression suite | 40 spec files, 368 tests (1 intentional skip) | `npx playwright test --reporter=json` |
-| TypeScript codebase | 100 files, 60,159 lines | `npm run build` output |
+| Browser regression suite | 58 spec files, 475 tests (1 intentional skip) | `npx playwright test --workers=1 --reporter=dot` |
+| TypeScript codebase | 106 files, 66,111 lines | `npm run audit:parity` output |
 | Commits since draft (2026-07-17 → 2026-07-19) | 10+ slices (P1 stragglers, P5 support/base/title, P4 golden matrix, P2 region cleanup, etc.) | `git log PLAN.md` |
 
 ---
@@ -352,4 +384,4 @@ npx playwright test --grep "parity|golden|resolve|audio|dialog|rendering|pathfin
 
 **Report compiled by:** Claude Code agent (Fable 5)  
 **Evidence sources:** PLAN.md, runtime-inventory.md, resolve-policies.md, event-commands.md, item-components.md, skill-components.md, src/, tests/  
-**Status:** Draft (waiting for `npm run audit:parity` and `npm run build` confirmation)
+**Status:** Published; completion gate refreshed 2026-07-23.

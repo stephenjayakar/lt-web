@@ -514,7 +514,11 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
     });
     expect(opened).toEqual({ state: 'trade', phase: 'select_items', partner: 'Seth' });
 
+    // The two-pane trade UI chooses a source item, then its destination, and
+    // only consumes the turn when BACK explicitly finishes the exchange.
     await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 1, 'BACK');
     const result = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       const eirika = g.units.get('Eirika');

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('combat animation asset fallback', () => {
-  test('uses team-paletted map sprites instead of debug blocks', async ({ page }, testInfo) => {
+  test('uses team-paletted map sprites instead of debug blocks', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
     const started = await page.evaluate(() => {
@@ -26,6 +26,28 @@ test.describe('combat animation asset fallback', () => {
       });
       if (ready) break;
     }
+
+    const resourced = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      const combat = state?.animCombat;
+      if (!combat) return null;
+      combat.state = 'entrance';
+      combat.stateTimer = 700;
+      combat.leftAnim.opacity = 255;
+      combat.rightAnim.opacity = 255;
+      const render = combat.getRenderState();
+      return {
+        leftMain: !!render.leftDraw.mainFrame,
+        rightMain: !!render.rightDraw.mainFrame,
+      };
+    });
+    expect(resourced).toEqual({ leftMain: true, rightMain: true });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
+
+    const canvas = page.locator('canvas');
+    await expect(canvas).toHaveScreenshot('combat-animation-resourced.png', {
+      maxDiffPixelRatio: 0.01,
+    });
 
     const fallback = await page.evaluate(() => {
       const state = (window as any).__gameRef.state.getCurrentState() as any;
@@ -52,6 +74,8 @@ test.describe('combat animation asset fallback', () => {
       rightMapSprite: true,
     });
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
-    await page.locator('canvas').screenshot({ path: testInfo.outputPath('combat-map-sprite-fallback.png') });
+    await expect(canvas).toHaveScreenshot('combat-animation-map-sprite-fallback.png', {
+      maxDiffPixelRatio: 0.01,
+    });
   });
 });
