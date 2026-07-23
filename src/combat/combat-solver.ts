@@ -192,6 +192,47 @@ export class CombatPhaseSolver {
     const defHp = { hp: defenderHp };
 
     const phases = new Map<UnitObject, number>();
+    const partnerUsed = new Set<UnitObject>();
+    const limitAttackStance = !!db.getConstant('limit_attack_stance', false);
+    const runPartnerPhase = (
+      leader: UnitObject,
+      target: UnitObject,
+      targetHp: { hp: number },
+      isCounter: boolean,
+      phase: number,
+    ): void => {
+      const partner = leader.strikePartner;
+      if (!partner || partner.currentHp <= 0 || targetHp.hp <= 0) return;
+      if (limitAttackStance && partnerUsed.has(leader)) return;
+      const partnerItem = partner.items.find((candidate) => candidate.isWeapon());
+      if (!partnerItem) return;
+      const targetItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+      const count = calcs.computeStrikeCount(
+        partner,
+        partnerItem,
+        target,
+        targetItem,
+        isCounter ? 'defense' : 'attack',
+      );
+      for (let index = 0; index < count && targetHp.hp > 0; index++) {
+        const strike = this.resolveStrike(
+          partner,
+          partnerItem,
+          target,
+          db,
+          rngMode,
+          isCounter,
+          board,
+          isCounter ? 'defense' : 'attack',
+          [phase, index],
+          undefined,
+          true,
+        );
+        this.strikes.push(strike);
+        if (strike.hit) targetHp.hp -= strike.damage;
+      }
+      partnerUsed.add(leader);
+    };
     // Process each script token
     for (const rawToken of script) {
       const token = rawToken.toLowerCase().trim();
@@ -210,6 +251,7 @@ export class CombatPhaseSolver {
         );
         this.strikes.push(strike);
         if (strike.hit) defHp.hp -= strike.damage;
+        runPartnerPhase(attacker, defender, defHp, false, phase);
       } else if (token === 'hit1' || token === 'crit1' || token === 'miss1') {
         // Attacker strikes with forced outcome
         const phase = phases.get(attacker) ?? 0;
@@ -219,6 +261,7 @@ export class CombatPhaseSolver {
         );
         this.strikes.push(strike);
         if (strike.hit) defHp.hp -= strike.damage;
+        runPartnerPhase(attacker, defender, defHp, false, phase);
       } else if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
         // Defender strikes with forced outcome
         if (!defenseItem) continue; // Defender can't strike without a weapon
@@ -229,6 +272,7 @@ export class CombatPhaseSolver {
         );
         this.strikes.push(strike);
         if (strike.hit) atkHp.hp -= strike.damage;
+        runPartnerPhase(defender, attacker, atkHp, true, phase);
       }
     }
 
