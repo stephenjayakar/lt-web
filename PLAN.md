@@ -106,7 +106,7 @@ item-use fixture matrices match Python outputs and side effects.
 ### P4 — Core Gameplay, Combat, AI, and RNG
 
 - [x] Compare combat strike ordering, playback, EXP/WEXP, death, and post-combat events
-- [ ] Finish dynamic/fixed level-up algorithms and growth-point persistence
+- [x] Finish dynamic/fixed level-up algorithms and growth-point persistence
 - [ ] Extend Pair Up golden coverage to scripted-combat partner phases and guard-follower
   rewards in the full battle-animation presentation
 
@@ -136,6 +136,7 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Finish dynamic/fixed level-up algorithms and growth-point persistence.
+1. Extend Pair Up golden coverage to scripted-combat partner phases and
+   guard-follower rewards in the full battle-animation presentation.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

@@ -32,6 +32,7 @@ import {
   isProcIconVisible,
   type CombatProcCue,
 } from './proc-presentation';
+import { levelUpUnit } from '../engine/leveling';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -161,6 +162,7 @@ export class MapCombat {
 
   // Reference to DB for exp calculation
   private db: Database;
+  private game: any;
 
   // Animation state for rendering
   attackerAnim: CombatAnimState;
@@ -227,6 +229,7 @@ export class MapCombat {
     this.defenseItem = this.primaryDefender ? defenseItem : null;
     this.db = db;
     const game = randomGame as any;
+    this.game = game;
     const travelers = [attacker, ...this.defenders]
       .map((unit) => unit.traveler ? game?.getUnit?.(unit.traveler) ?? null : null)
       .filter((unit): unit is UnitObject => !!unit);
@@ -563,7 +566,9 @@ export class MapCombat {
       this.attacker.exp += expGained;
       while (this.attacker.exp >= 100) {
         this.attacker.exp -= 100;
-        const gains = this.attacker.levelUp(growthMode);
+        const gains = this.game
+          ? levelUpUnit(this.attacker, growthMode, this.game)
+          : this.attacker.levelUp(growthMode);
         levelUps.push(gains);
       }
     }
@@ -997,7 +1002,8 @@ export class MapCombat {
     unit.exp += Math.max(0, Math.min(100, amount));
     while (unit.exp >= 100) {
       unit.exp -= 100;
-      unit.levelUp(growthMode);
+      if (this.game) levelUpUnit(unit, growthMode, this.game);
+      else unit.levelUp(growthMode);
     }
   }
 

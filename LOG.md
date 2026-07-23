@@ -2900,3 +2900,14 @@ many components, while one switch case can still omit flags or blocking behavior
 - The 14-scenario core golden matrix passes serially. Dynamic same-combat
   doubling changes from a newly applied speed status remain an explicitly
   documented, regression-locked browser deviation in that matrix.
+
+## 2026-07-23 — Deterministic combat level-ups
+
+- Replaced the legacy combat/EXP `Math.random()` level-up path with the shared
+  Python-derived Fixed, Random, Dynamic, Lucky, and BEXP implementation.
+- Combat and generic EXP actions now persist dynamic growth points, adjust
+  current HP with HP growth, and restore exact stats/HP/points on turnwheel
+  undo and deterministic redo.
+- Added a regression that makes legacy random use throw, then proves Dynamic
+  growth-point mutation and exact rewind/redo; the existing autolevel goldens
+  remain green.

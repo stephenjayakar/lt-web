@@ -5,7 +5,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
 import { onPairup, onRemoveRescue, onRescue, onSeparate, isCantoSkill } from '../combat/skill-system';
-import { autoLevelUnit } from './leveling';
+import { autoLevelUnit, levelUpUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { SupportPair } from './support-system';
@@ -1887,6 +1887,9 @@ export class GainExpAction extends Action {
   private levelUps: Record<string, number>[] = [];
   private startExp: number = 0;
   private startLevel: number = 0;
+  private startStats: Record<string, number> = {};
+  private startGrowthPoints: Record<string, number> = {};
+  private startHp: number = 0;
 
   constructor(unit: UnitObject, amount: number, growthMode: string = 'random') {
     super();
@@ -1898,29 +1901,26 @@ export class GainExpAction extends Action {
   execute(): void {
     this.startExp = this.unit.exp;
     this.startLevel = this.unit.level;
+    this.startStats = { ...this.unit.stats };
+    this.startGrowthPoints = { ...this.unit.growthPoints };
+    this.startHp = this.unit.currentHp;
     this.levelUps = [];
 
     this.unit.exp += this.amount;
     while (this.unit.exp >= 100) {
       this.unit.exp -= 100;
-      const gains = this.unit.levelUp(this.growthMode);
+      const game = _getGame?.();
+      const gains = game
+        ? levelUpUnit(this.unit, this.growthMode, game)
+        : this.unit.levelUp(this.growthMode);
       this.levelUps.push(gains);
     }
   }
 
   reverse(): void {
-    // Undo level-ups in reverse order
-    for (let i = this.levelUps.length - 1; i >= 0; i--) {
-      const gains = this.levelUps[i];
-      for (const [stat, amount] of Object.entries(gains)) {
-        if (amount > 0 && this.unit.stats[stat] !== undefined) {
-          this.unit.stats[stat] -= amount;
-          if (stat === 'HP') {
-            this.unit.currentHp = Math.min(this.unit.currentHp, this.unit.maxHp);
-          }
-        }
-      }
-    }
+    this.unit.stats = { ...this.startStats };
+    this.unit.growthPoints = { ...this.startGrowthPoints };
+    this.unit.currentHp = this.startHp;
     this.unit.exp = this.startExp;
     this.unit.level = this.startLevel;
   }

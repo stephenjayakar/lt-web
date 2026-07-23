@@ -286,3 +286,20 @@ export function autoLevelUnit(
   }
   return { statChanges, growthPoints };
 }
+
+/** Apply one displayed level-up through the same deterministic engine as autolevel. */
+export function levelUpUnit(
+  unit: UnitObject,
+  customMethod: string | undefined,
+  game: any,
+): Record<string, number> {
+  const result = autoLevelUnit(unit, 1, customMethod, game);
+  const oldHp = unit.currentHp;
+  for (const [nid, change] of Object.entries(result.statChanges)) {
+    if (unit.stats[nid] !== undefined) unit.stats[nid] += change;
+  }
+  unit.growthPoints = result.growthPoints;
+  unit.level += 1;
+  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + (result.statChanges.HP ?? 0)));
+  return result.statChanges;
+}
