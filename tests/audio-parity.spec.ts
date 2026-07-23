@@ -66,6 +66,32 @@ async function stepUntilPhaseMusicFadeIn(page: any, team: string, maxFrames: num
 }
 
 test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume', () => {
+  test('title music queued before browser unlock starts on audio initialization', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const queued = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const am = game.audioManager;
+      // Replace the level-load request with the same request TitleState makes
+      // during normal startup, before any click/keydown unlocks Web Audio.
+      am.stopMusic();
+      am.clearCalls();
+      const { TitleState } = await import('/src/engine/states/game-states.ts');
+      new TitleState().start();
+      return {
+        currentNid: am.getCurrentMusicNid(),
+        playNid: am.calls.find((call: any) => call.op === 'play')?.nid ?? null,
+      };
+    });
+    expect(queued).toEqual({ currentNid: '', playNid: 'Main Theme' });
+
+    await page.evaluate(() => (window as any).__gameRef.audioManager.init());
+    await page.waitForFunction(
+      () => (window as any).__gameRef.audioManager.getCurrentMusicNid() === 'Main Theme',
+    );
+  });
+
   test('event music command semantics: play/push/pop/stop record correctly on the stack', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -117,14 +143,18 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
     await waitForHarness(page);
 
     // The harness loads the level before any user gesture unlocks the
-    // AudioContext, so the level-load `playMusic(player_phase)` call
-    // recorded but no-oped. Unlock it now and replay that initial call so
-    // `currentMusicNid` reflects reality for the rest of the test, exactly
-    // as it would once main.ts's real init-on-click/keydown fires.
-    const initial = await page.evaluate(async () => {
+    // AudioContext. Unlocking it must automatically replay the pending phase
+    // track, just as the first title-screen click/keydown starts Main Theme.
+    const beforeUnlock = await page.evaluate(
+      () => (window as any).__gameRef.audioManager.getCurrentMusicNid(),
+    );
+    expect(beforeUnlock).toBe('');
+    await page.evaluate(() => (window as any).__gameRef.audioManager.init());
+    await page.waitForFunction(
+      () => (window as any).__gameRef.audioManager.getCurrentMusicNid() === 'Distant Roads',
+    );
+    const initial = await page.evaluate(() => {
       const game = (window as any).__gameRef;
-      game.audioManager.init();
-      await game.audioManager.playMusic(game.currentLevel.music.player_phase);
       return {
         state: game.state.getCurrentState()?.name,
         nid: game.audioManager.getCurrentMusicNid(),
@@ -185,6 +215,35 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
     });
     expect(playerPhase.team).toBe('player');
     expect(playerPhase.nid).toBe('Distant Roads');
+  });
+
+  test('pre-unlock music keeps only the latest request and stop cancels it', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const latest = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const am = game.audioManager;
+      await am.playMusic('Attack', 125);
+      am.init();
+      return am.getCurrentMusicNid();
+    });
+    expect(latest).toBe('');
+    await page.waitForFunction(
+      () => (window as any).__gameRef.audioManager.getCurrentMusicNid() === 'Attack',
+    );
+
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    const cancelled = await page.evaluate(async () => {
+      const am = (window as any).__gameRef.audioManager;
+      await am.playMusic('Attack');
+      am.stopMusic();
+      am.init();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return am.getCurrentMusicNid();
+    });
+    expect(cancelled).toBe('');
   });
 
   test('battle music pushes on combat entry and restores phase music on exit', async ({ page }) => {
