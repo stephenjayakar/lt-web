@@ -1,143 +1,260 @@
-# lt-web: Lex Talionis Runtime Parity Plan
+# Rekka no Ken Alternative — Web Compatibility Plan
 
-This is the source of truth for bringing the TypeScript web runtime to behavioral
-parity with the checked-in Python Lex Talionis engine under `lt-maker/`. It records
-evidence, gaps, ordering, and completion gates. A feature is not considered at
-parity merely because a similarly named class, command, or UI exists.
+This plan tracks the work required for `lt-maker/rekka.ltproj` to play from the
+title screen through the ending in the web runtime with the same authored
+behavior as the Python engine. It replaces the generic parity backlog with a
+project-driven release plan. A component name being parsed, or a chapter merely
+loading, does not count as support.
 
-## Parity Contract
+## Release definition
 
-### In scope
+Rekka is web-compatible when:
 
-- Runtime loading and execution of supported `.ltproj` projects
-- Database/resource formats, runtime objects, actions, saves, and turnwheel
-- State-machine flows, events (EVNT and PYEV1), queries, and triggers
-- Item and skill component behavior used by runtime projects
-- Movement, pathfinding, combat, AI, supports, fog, initiative, roam, and overworld
-- Player-facing rendering, animation, audio, menus, settings, and input
-- Browser-specific distribution features, provided they do not change game behavior
+- every playable chapter and route can be completed without console errors,
+  softlocks, skipped required events, or manual save edits;
+- event conditions, substitutions, loops, commands, and trigger locals produce
+  Python-equivalent results;
+- every item and skill component actually used by the project behaves correctly,
+  including its UI, AI, animation, action reversal, and save/restore effects;
+- title, prep/base, map, combat, shops, supports, chapter transitions, credits,
+  audio, keyboard/gamepad, and touch controls are usable at browser scale;
+- representative saves load at chapter start, mid-turn, mid-map, and after
+  chapter transition, and turnwheel undo/redo remains deterministic;
+- the Rekka compatibility suite, build, parity audit, full serial test suite,
+  and visual/audio release checks are green.
 
-### Out of scope
+## Audited baseline
 
-- The Qt project editor and its editor-only validation/authoring UI
-- Python packaging, launcher, and desktop-only developer tooling
-- Pixel-identical behavior where browser platform constraints make it impossible;
-  any accepted deviation must be documented and covered by a behavioral test
+- Project: `Rekka no Ken Alternative` (`game_nid: FE7A`)
+- Size: about 219 MB and 1,733 files
+- Content: 48 levels (0–46 plus DEBUG), 899 events, 462 items, 586 skills,
+  118 units, and 84 classes
+- Component surface: 105 distinct item component NIDs and 130 distinct skill
+  component NIDs
+- Custom runtime code: 473 lines of item components and 313 lines of skill
+  components under `resources/custom_components/`
+- Custom title assets: `resources/custom_sprites/logo.png` and
+  `resources/custom_sprites/press_start.png`
+- Existing automated coverage is only a Prologue clean boot/intro, one Lyn
+  combat, one save/load, and Rescue sequence shape. It is not campaign coverage.
+- All Python event command NIDs are recognized structurally, but recognition
+  does not prove command semantics, expression evaluation, UI, or resume order.
 
-### Status vocabulary
+## P0 — Make failures observable
 
-- **Verified**: compared with the Python source and covered by an automated parity test
-- **Implemented**: code path exists but has not passed the full parity gate
-- **Partial**: important behavior, variants, hooks, or UI are missing
-- **Missing**: reference behavior has no functional web implementation
-- **Unknown**: not yet inventoried deeply enough to classify
+- [ ] Add a Rekka audit that inventories project-used commands, components,
+  expression helpers, custom components, referenced resources, and counts.
+  Generate the report; do not hand-maintain counts in this file.
+- [ ] Add a clean-boot smoke for all 48 levels and record load errors, missing
+  resources, unknown components, and unexpected terminal states.
+- [ ] Add a bounded `level_start` settle test for all playable levels. Fail on
+  unknown commands, expression errors, event queue stalls, or silent condition
+  fallback.
+- [ ] Make unsupported project-used expressions and components fail loudly in
+  development/test mode instead of quietly returning false or doing nothing.
+- [ ] Add focused trace output for event ID, command index, trigger locals, state
+  stack, and active unit so a campaign failure is reproducible.
 
-### Completion gate
+Gate: all Rekka gaps produce actionable failures, and no required behavior is
+silently skipped.
 
-Runtime parity is complete only when all in-scope inventory rows are classified,
-all Missing/Partial rows are resolved or explicitly accepted as deviations, the
-default Sacred Stones project passes chapter/event soak tests, at least one
-non-default representative `.ltproj` passes the compatibility suite, save/restore
-and turnwheel reversibility tests pass, and `npm run build`, `npm run audit:parity`,
-and the full Playwright suite are green.
+## P1 — Event and expression compatibility
 
-## Evidence
+This is the main campaign blocker. Rekka uses Python expressions throughout
+conditions, substitutions, loops, shops, abilities, and combat events.
 
-Run `npm run audit:parity` for the current source inventory. Generated coverage
-counts live under `docs/parity/`; completed milestones and the historical baseline
-live in `LOG.md`.
+- [ ] Implement project-used unit APIs: `get_hp`, `get_max_hp`, `get_stat`,
+  accessories, previous position, flanking checks, and safe unit lookup.
+- [ ] Implement project-used game APIs and aliases: `_current_level.nid`,
+  `game_vars` indexing/`get`, money, board bounds, terrain lookup, deterministic
+  random choice, and current party/level access.
+- [ ] Implement expression namespaces used by Rekka:
+  `item_funcs`, `item_system`, `skill_system`, `target_system`,
+  `combat_calcs`, and `movement_funcs`.
+- [ ] Support the project-used Python expression forms: list/generator
+  comprehensions, `any`/`all`, tuples and membership, slicing/indexing, modulo,
+  floor division, exponentiation, string conversion/join, and nested
+  `{e:...}`/`{eval:...}` substitutions.
+- [ ] Preserve deterministic RNG consumption for `get_random`,
+  `get_random_choice`, combat previews, retries, saves, and turnwheel replay.
+- [ ] Validate all 161 distinct `if`/`elif` expressions, all 80 distinct eval
+  substitutions, and all 34 event loops against expected Python results.
+- [ ] Add scenarios for global shop selection, dynamic generic units,
+  conditional recruitment, victory/route branches, and random-skill events.
+- [ ] Verify trigger-local payloads such as `unit`, `unit2`, `item`, `item2`,
+  `mode`, `stat_changes`, `created_unit`, and loop variables.
 
-Detailed 2026-07-21 audit notes for the remaining roadmap are staged as working
-documents under `temp/plan-*.md`. They record source-grounded gaps and proposed
-test seams; they are not completion evidence.
+Gate: every distinct Rekka expression parses and has a focused value/side-effect
+test; every chapter intro settles without expression fallback.
 
-## Current State
+## P2 — Port project-local components
 
-The engine is playable through the current Sacred Stones coverage and has strong
-foundations: Canvas rendering, a stack state machine, combat/AI/movement, EVNT and
-PYEV1 interpreters, save/load, turnwheel, supports, fog, initiative, overworld,
-roam, PWA/native wrappers, and a deterministic Playwright harness. The in-scope
-execution roadmap is complete; remaining differences from Python are classified
-in the parity report as out of scope or accepted deviations.
+The browser cannot execute Rekka's Python custom components. Port the used
+behavior to typed TypeScript hooks and register it explicitly; do not add an
+unsafe Python/eval bridge.
 
-### Multi-Project Support
+### Custom item components
 
-The engine supports loading different `.ltproj` projects via the `?project=`
-query parameter. Both **chunked** (directory-per-type with `.orderkeys`) and
-**non-chunked** (single JSON array files) data formats are supported.
+- [ ] `advance` and `advance_target_restrict` (forced movement and target
+  validation)
+- [ ] `gold_cost` (availability, payment, refund, undo/redo)
+- [ ] `trace` (item targeting, one-use copy, ownership, AI, save identity)
+- [ ] Audit and port any reachable `cleave_2_range_aoe`, `phasewalk`, `charge`,
+  or `bullrush` content even if current static usage is zero.
 
-**Known Limitations (per-project content):**
-- Missing `combat_*.png` panoramas in non-default projects (combat backgrounds show nothing)
-- Projects may reference combat effects/palettes not present — renders without them gracefully
+### Custom skill components
 
----
+- [ ] Movement/reset hooks: `powerstaff`, `combat_artist`, `second_wind`, and
+  14 uses of `eval_galeforce`
+- [ ] Combat modifiers/survival: `givebacker`, `nine_lives_event`,
+  `true_miracle_event`, `true_miracle_event_after_combat`, and `disvantage`
+- [ ] Event hooks: 13 `event_after_combat`, 10 `event_before_combat`,
+  20 `event_on_upkeep`, 17 `event_after_hit`, 4 `event_after_strike`,
+  3 `event_after_crit`, plus hit/dodge/strike variants
+- [ ] Availability restrictions, including four
+  `cannot_use_items_except_armor` uses
+- [ ] Preserve exact hook ordering, playback markers, event payloads, charge
+  triggering, action reversal, and save/restore state.
 
-## Execution Roadmap
+Gate: every custom component referenced by project data has a golden test against
+the Python implementation, including AI and turnwheel behavior where applicable.
 
-Only open work remains here. Completed items and detailed verification history are
-archived in `LOG.md`.
+## P3 — Core Rekka item and skill systems
 
-### P1 — Event Runtime and Reversible Mutations
+### Player-facing mechanics
 
-- [x] Match blocking/no-block, no-banner, immediate, and skip flags per command
+- [ ] Implement 42 `combat_art` skills: command/menu flow, inactive/grey state,
+  allowed-weapon filtering, child skill activation, cost/stack checks, targeting,
+  AI use, cancellation, cleanup, animation, and save/turnwheel behavior.
+- [ ] Implement 26 `multi_skill` wrappers with correct child ownership,
+  duplicate/stack handling, removal, save IDs, and UI grouping.
+- [ ] Implement 88 `equippable_accessory` items. Treat rings as the project's
+  one accessory slot, not ordinary inventory: capacity, equip/unequip,
+  `status_on_equip`, convoy/trade, auto-equip, UI, AI, save, and turnwheel.
+- [ ] Implement inactive skill presentation for 16 `hidden_if_inactive` and
+  10 `grey_if_inactive` uses.
+- [ ] Implement five `transform` stones, including stat changes, target/range
+  behavior, animation/presentation, reversion, breakage, save, and turnwheel.
+- [ ] Implement 11 `usable_in_base` items, including stat boosters and promotion
+  items in prep/base menus.
 
-**Gate:** all Python event NIDs are recognized, intentionally dispatched, and covered
-by parser plus behavioral tests; unsupported commands fail loudly in development.
+### Combat and lifecycle mechanics
 
-### P2 — Actions, Save/Restore, and Turnwheel
+- [ ] End-of-combat/chapter cleanup: 17 `lost_on_end_combat2` and
+  45 `lost_on_end_chapter` uses.
+- [ ] Unit control/status: `unselectable`, `immune_status`, `reflect_status`,
+  `ignore_damage`, `TrueMiracle`, and `death_tether`.
+- [ ] Pre/post combat: `skill_before_combat`, `post_combat_splash`,
+  `post_combat_splash_aoe`, `live_to_serve`, and kill/attack/combat/miss/damage
+  skill-grant hooks.
+- [ ] Combat math: `armsthrift`, `dynamic_crit_accuracy`,
+  `alternate_critical_multiplier_formula`, and maximum-range modification.
+- [ ] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
+  movement-type overrides.
+- [ ] Targeting/AI/economy: five `witch_warp_expression` uses,
+  `ignore_alliances`, additional accessory capacity, buy-price changes, and
+  AI-priority modifiers.
+- [ ] Confirm attack/pre-attack proc ordering in the real Rekka combat-art and
+  custom-event cases; existing generic proc coverage is not sufficient.
 
-- [x] Route all event and gameplay mutations through reversible actions
-- [x] Add round-trip tests for units, items, skills, lore, parties, supports, fog,
-  initiative, roam, overworld, records, achievements, and in-progress events
-- [x] Verify suspend deletion, battle saves, restart saves, and migration defaults
+Gate: each project-used component is classified Verified or Deliberate
+Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 
-**Gate:** save round trips are lossless for in-scope state and every logged mutation
-returns to byte-equivalent state after reverse/redo where the Python action does.
+## P4 — Commands, states, and complete campaign flow
 
-### P3 — Item and Skill Component System
+- [ ] Replace the `table`/`remove_table` no-op with the event UI required by the
+  Bribe ability and GoldDisplay.
+- [ ] Validate high-volume command semantics and blocking order:
+  unit add/move, cursor/camera, layers, stats, attack flags, item/skill changes,
+  AI changes, map animations, shops, prep, and groups.
+- [ ] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
+  `add_skill_component`, `set_custom_options`, and all three `pair_up` script
+  uses in their actual chapter contexts.
+- [ ] Verify base/prep, convoy, trading, shops, armory/vendor stock, formation,
+  support, promotion, records, save option, and return-to-map flows.
+- [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
+  escape/seize/defeat/survive objective, route split, and chapter transition.
+- [ ] Add campaign checkpoints covering early, midgame, late, final map, ending,
+  and credits rather than attempting only one huge brittle end-to-end test.
+- [ ] Exercise all 899 events through direct entrypoint tests or reachable
+  campaign scenarios, including chaining, blocking/resume, and only-once rules.
 
-- [x] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
-- [x] Implement remaining charge/cooldown, conditional activation, proc, and status hooks
-- [x] Add fixture-driven component tests, including interactions between components
+Gate: a deterministic automated campaign route reaches the ending, with focused
+alternate-route/optional-content scenarios and no event/state softlocks.
 
-**Gate:** every runtime component is verified or documented as editor-only; combat and
-item-use fixture matrices match Python outputs and side effects.
+## P5 — Browser presentation and UX
 
-### P4 — Core Gameplay, Combat, AI, and RNG
+- [ ] Load and render Rekka's custom `logo.png` and `press_start.png` on the
+  title screen with its configured title music and an audio-unlock-safe start.
+- [ ] Audit every referenced panorama, portrait, map sprite, tileset, icon,
+  animation, combat animation/effect, music track, and SFX; distinguish optional
+  fallback from required-resource failure.
+- [ ] Visually verify title, save select, prep/base, representative maps,
+  combat forecast, map combat, full battle animation, combat arts, accessories,
+  shops, dialogue, chapter transition, ending, and credits.
+- [ ] Ensure menus remain legible and stable at 240×160 logical resolution
+  across common desktop/mobile viewport sizes and device-pixel ratios.
+- [ ] Remove browser interaction jank: reliable focus, no page scrolling during
+  play, correct keyboard repeat, gamepad navigation, touch hit targets, pause
+  behavior, fullscreen/resizing, and visible audio state.
+- [ ] Verify animation timing, camera movement, overlays, map SFX, music fades,
+  battle music transitions, and return-to-map audio.
+- [ ] Add screenshot baselines for representative screens and a lightweight
+  manual audio checklist; pixel differences must not hide behavioral failures.
 
-- [x] Compare combat strike ordering, playback, EXP/WEXP, death, and post-combat events
-- [x] Finish dynamic/fixed level-up algorithms and growth-point persistence
-- [x] Extend Pair Up golden coverage to scripted-combat partner phases and guard-follower
-  rewards in the full battle-animation presentation
+Gate: representative browser sessions are playable with keyboard, gamepad, and
+touch, and visual/audio QA has no release-blocking defects.
 
-**Gate:** deterministic scenario outputs and action/playback order match Python.
+## P6 — Save, turnwheel, AI, and determinism
 
-### P5 — State Machine and Player-Facing UI
+- [ ] Round-trip saves containing combat arts, equipped accessories, transformed
+  units, multi-skill children, temporary statuses, custom component data,
+  dynamically added components, convoy items, and pending chapter events.
+- [ ] Test undo/redo for every new persistent mutation: money costs, item copies,
+  forced movement, equip state, skill grant/removal, reset/galeforce, HP/status,
+  promotion, and transform.
+- [ ] Verify save migration/failure messaging for unsupported or older Rekka
+  saves; never silently discard unknown state.
+- [ ] Add AI scenarios for custom targeting, warp/movement skills, combat arts,
+  item restrictions, splash attacks, shops-independent loadouts, and priority
+  modifiers.
+- [ ] Compare deterministic combat/growth/event RNG streams before and after
+  preview, cancel, save/load, and turnwheel playback.
 
-- [x] Inventory Python state names and map them to web states or documented mergers
-- [x] Implement remaining trade/item-targeting variants and objective/dialog-log flows
-- [x] Complete base supports and base-menu launch plumbing
-- [x] Add growth/support/WEXP info
-- [x] Remove remaining placeholder portraits/sprites where resources exist
+Gate: repeated runs from the same checkpoint produce the same actions and RNG
+outcomes, and save/load plus undo/redo preserves object identity and event state.
 
-**Gate:** every in-scope Python state has an equivalent reachable flow with keyboard,
-mouse, touch, cancel/back, transition, and resume tests.
+## P7 — Release gate
 
-### P6 — Rendering, Animation, Audio, and Resources
-
-- [x] Complete combat-animation fallback behavior without debug placeholder art
-- [x] Render attack/defense/pre-proc playback marks with Python-timed icons and effects
-- [x] Add screenshot/golden tolerances for representative maps and combat scenes
-
-**Gate:** required assets load across fixture projects and visual/audio state transitions
-match the reference within documented browser tolerances.
+- [ ] `npm run build`
+- [ ] `npm run audit:parity`
+- [ ] Rekka component/expression/resource inventory is clean
+- [ ] Rekka all-level boot and event-settle suites are green
+- [ ] Rekka checkpoint campaign and optional-route suites are green
+- [ ] Full serial Playwright suite is green
+- [ ] `git diff --check`
+- [ ] Manual visual, audio, input, and save compatibility checklist is signed off
+- [ ] Document any deliberate deviations with user-visible impact and a
+  regression test; there must be no silent deviations
 
 ## Active Next Slice
 
-Queue refreshed 2026-07-23 after completing the execution roadmap:
+1. Build the generated Rekka inventory and all-level clean-boot/event-settle
+   harness so future work has an objective denominator.
+2. Implement the missing expression namespaces and Python expression forms,
+   beginning with global shops and chapter-start conditions.
+3. Port `equippable_accessory` and the combat-art menu/lifecycle as the first
+   highly visible playable mechanics.
+4. Port the project-local components used by the earliest chapters, then extend
+   checkpoint coverage chapter by chapter.
 
-1. No open roadmap slices remain. Keep generated inventories as the authoritative
-   coverage counts and add newly discovered work as a focused unchecked item.
+## Already present — verify, do not reimplement blindly
 
-Completion gate refreshed 2026-07-23: build, parity/state audits, diff check, and
-the full serial browser suite are green (474 passed, 1 intentional skip).
+- Generic event item hooks and shove/swap paths exist in the web combat lifecycle.
+- `self_status_on_hit` exists in combat component handling.
+- Upkeep/endstep timing for `time`, `end_time`, `combined_time`,
+  `lost_on_upkeep`, `lost_on_endstep`, and regeneration has web implementation.
+- `make_generic`, `add_group`, `set_custom_options`, and
+  `add_skill_component` have web paths, but still require Rekka scenario tests.
+- Command-name coverage is broad; the remaining work is semantic parity,
+  expression support, lifecycle ordering, presentation, and campaign proof.
