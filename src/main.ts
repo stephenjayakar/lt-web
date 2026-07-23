@@ -11,6 +11,7 @@ import { viewport } from './engine/viewport';
 import { Surface } from './engine/surface';
 import { InputManager } from './engine/input';
 import { installWebControls } from './ui/web-controls';
+import { installStartupStatus } from './ui/web-startup';
 import './web-shell.css';
 import { ResourceManager } from './data/resource-manager';
 import { Database } from './data/database';
@@ -434,6 +435,8 @@ async function main(): Promise<void> {
     }
   }
 
+  const startupStatus = harnessMode ? null : installStartupStatus(projectPath);
+  startupStatus?.update('Preparing game data…');
   drawLoadingScreen(ctx, 'Loading...');
   const baseUrl = `/game-data/${projectPath}`;
   const useBundle = params.get('bundle') !== 'false'; // opt-out with ?bundle=false
@@ -452,6 +455,7 @@ async function main(): Promise<void> {
     try {
       const bundle = new AssetBundle();
       await bundle.load(bundleUrl, (progress) => {
+        startupStatus?.update(progress.message);
         drawLoadingScreen(ctx, progress.message);
       });
       // Install interceptors so ResourceManager reads from the bundle
@@ -469,6 +473,7 @@ async function main(): Promise<void> {
   const db = new Database();
 
   try {
+    startupStatus?.update('Loading campaign database…');
     drawLoadingScreen(ctx, 'Loading database...');
     await db.load(resources);
     // Check for unknown components at load time
@@ -480,6 +485,7 @@ async function main(): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('Failed to load database:', msg);
+    startupStatus?.fail(msg);
     drawErrorScreen(ctx, `DB load failed: ${msg}`);
     return;
   }
@@ -501,6 +507,7 @@ async function main(): Promise<void> {
   setupAudioInit(audioManager);
 
   // --- GameState ---
+  startupStatus?.update('Starting the game…');
   drawLoadingScreen(ctx, 'Initializing...');
   const gameState = initGameState(db, resources, audioManager);
   setUnitGameRef(() => gameState);
@@ -793,6 +800,7 @@ async function main(): Promise<void> {
 
     // --- HUD overlay (fixed screen-space, not affected by zoom) ---
     game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db, game.initiative, game.units);
+    startupStatus?.remove();
     PerfMonitor.endDraw();
 
     // --- Performance overlay (screen-space, on top of everything) ---

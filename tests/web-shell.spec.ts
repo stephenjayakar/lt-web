@@ -52,4 +52,22 @@ test.describe('Web player shell', () => {
     });
     expect(inputEvent).toBe('SELECT');
   });
+
+  test('startup status reports progress and offers recovery actions', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    await page.evaluate(async () => {
+      const { installStartupStatus } = await import('/src/ui/web-startup.ts');
+      const status = installStartupStatus('testing_proj.ltproj');
+      status.update('Loading portraits…');
+      status.fail('Portrait manifest could not be read.');
+    });
+
+    await expect(page.getByText('Unable to open campaign')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible();
+    await expect(page.getByText('Portrait manifest could not be read.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Choose another campaign' })).toBeVisible();
+  });
 });

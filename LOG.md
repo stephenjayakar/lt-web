@@ -122,6 +122,10 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## Recent Changes
 
+- **Startup feedback and recovery:** campaign startup now has a responsive,
+  accessible progress surface with live status text. Database failures keep the
+  error visible and offer focused Retry and Choose another campaign actions.
+
 - **Web player shell:** the campaign launcher now has a responsive, accessible
   tactical presentation instead of an internal project list. Desktop play adds
   discoverable control help and fullscreen; touch play adds visible directional,
