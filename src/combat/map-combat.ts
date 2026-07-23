@@ -25,6 +25,13 @@ import {
   type CombatProcMark,
 } from './combat-skill-lifecycle';
 import { getCombatRandom, type RandomGameState } from '../engine/static-random';
+import {
+  cueFromMark,
+  dedupeProcCues,
+  displaySkillCues,
+  isProcIconVisible,
+  type CombatProcCue,
+} from './proc-presentation';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -133,6 +140,7 @@ export class MapCombat {
   defenseItem: ItemObject | null;
   strikes: CombatStrike[];
   procPlayback: CombatProcMark[];
+  activeProcCues: CombatProcCue[] = [];
   readonly participants: UnitObject[];
 
   state: MapCombatState;
@@ -311,6 +319,8 @@ export class MapCombat {
    * Returns true when the combat is fully complete.
    */
   update(deltaMs: number): boolean {
+    for (const cue of this.activeProcCues) cue.elapsed += deltaMs;
+    this.activeProcCues = this.activeProcCues.filter((cue) => cue.elapsed < cue.duration);
     switch (this.state) {
       case 'init':
         return this.updateInit(deltaMs);
@@ -347,6 +357,7 @@ export class MapCombat {
     /** map_cast_anim: recorded animation nid for this item use (no map-anim
      * overlay renderer exists yet on the web; see class-level deferral note). */
     castAnimValue: string | null;
+    procCues: CombatProcCue[];
   } {
     const strike =
       this.currentStrikeIndex < this.strikes.length
@@ -375,6 +386,7 @@ export class MapCombat {
       noMapHpDisplay: this.noMapHpDisplay,
       attackerCastPose: this.attackerCastPose,
       castAnimValue: this.castAnimValue,
+      procCues: this.activeProcCues,
     };
   }
 
@@ -630,6 +642,8 @@ export class MapCombat {
       if (this.strikes.length === 0) {
         this.state = 'cleanup';
       } else {
+        this.showFirstPhaseProcCues();
+        this.showStrikeProcCues(this.strikes[0]);
         this.state = 'strike';
       }
     }
@@ -870,9 +884,29 @@ export class MapCombat {
     this.updateDamagePopups(deltaMs);
     if (this.frameTimer >= WAITING_DURATION_MS) {
       this.frameTimer = 0;
+      this.showStrikeProcCues(this.strikes[this.currentStrikeIndex]);
       this.state = 'strike';
     }
     return false;
+  }
+
+  private showFirstPhaseProcCues(): void {
+    const preProcCues = this.procPlayback
+      .filter((mark) =>
+        (mark.kind === 'attack_pre_proc' || mark.kind === 'defense_pre_proc') &&
+        isProcIconVisible(mark))
+      .map(cueFromMark);
+    this.activeProcCues.push(...dedupeProcCues([
+      ...preProcCues,
+      ...displaySkillCues(this.participants),
+    ]));
+  }
+
+  private showStrikeProcCues(strike: CombatStrike): void {
+    const marks = [...(strike.attackProcs ?? []), ...(strike.defenseProcs ?? [])];
+    this.activeProcCues.push(...dedupeProcCues(
+      marks.filter(isProcIconVisible).map(cueFromMark),
+    ));
   }
 
   private updateCleanup(deltaMs: number): boolean {

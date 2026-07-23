@@ -157,9 +157,10 @@ import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
 import type { FogRenderConfig } from '../../rendering/map-view';
-import { drawItemIcon } from '../../ui/icons';
+import { drawIcon16, drawItemIcon } from '../../ui/icons';
 import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
+import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentation';
 import { evaluateEquation, getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
 import {
   isRepairableItem,
@@ -5456,6 +5457,18 @@ export class CombatState extends State {
     // Floating damage numbers
     this.drawDamagePopupsMap(surf, rs.damagePopups, cameraOffset);
 
+    // Python anchors skill proc icons to the affected unit's map health bar.
+    const cueRows = new Map<UnitObject, number>();
+    for (const cue of rs.procCues) {
+      const position = cue.unit.position;
+      if (!position) continue;
+      const row = cueRows.get(cue.unit) ?? 0;
+      cueRows.set(cue.unit, row + 1);
+      const px = position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
+      const py = position[1] * TILEHEIGHT - cameraOffset[1] - 24 - row * 17;
+      this.drawProcCue(surf, cue, px, py, false, true);
+    }
+
     // Death fade-out: dim the dying unit's tile with white overlay
     if (this.phase === 'death') {
       const alpha = this.deathFadeProgress * 0.85;
@@ -5752,6 +5765,14 @@ export class CombatState extends State {
       this.drawBattleHpBar(surf, leftHpX, hpY, HP_BAR_W, HP_BAR_H, rs.leftHp);
       // Right HP bar
       this.drawBattleHpBar(surf, rightHpX, hpY, HP_BAR_W, HP_BAR_H, rs.rightHp);
+    }
+
+    // Full animation combat presents one skill at a time before the strike.
+    if (rs.procCue) {
+      const isRight = !this.animCombat!.leftIsAttacker
+        ? rs.procCue.unit === this.animCombat!.attacker
+        : rs.procCue.unit === this.animCombat!.defender;
+      this.drawProcCue(surf, rs.procCue, isRight ? WINWIDTH - 4 : 4, 32, isRight);
     }
 
     // --- Spark effects ---
@@ -6098,6 +6119,42 @@ export class CombatState extends State {
     }
     // Border
     surf.drawRect(x, y, width, height, 'rgba(120,120,120,0.8)');
+  }
+
+  private drawProcCue(
+    surf: Surface,
+    cue: CombatProcCue,
+    anchorX: number,
+    y: number,
+    alignRight: boolean,
+    centered: boolean = false,
+  ): void {
+    const { alpha, offsetX } = procCueMotion(cue);
+    const label = cue.skill.name.slice(0, 18);
+    const width = Math.max(38, Math.min(108, 24 + label.length * 5));
+    const x = Math.round(
+      (alignRight ? anchorX - width : centered ? anchorX - width / 2 : anchorX) + offsetX,
+    );
+    const top = Math.round(y);
+    const sideColor = alignRight ? '196,72,86' : '67,116,194';
+    surf.fillRect(x, top, width, 16, `rgba(10,14,25,${(0.9 * alpha).toFixed(2)})`);
+    surf.fillRect(x, top, 2, 16, `rgba(${sideColor},${alpha.toFixed(2)})`);
+    surf.drawRect(x, top, width, 16, `rgba(224,232,255,${(0.72 * alpha).toFixed(2)})`);
+    if (cue.skill.iconNid) {
+      drawIcon16(surf, cue.skill.iconNid, cue.skill.iconIndex, x + 3, top);
+    } else {
+      // Missing optional icon sheets still get a crisp proc spark.
+      surf.fillRect(x + 8, top + 3, 2, 10, `rgba(255,218,92,${alpha.toFixed(2)})`);
+      surf.fillRect(x + 4, top + 7, 10, 2, `rgba(255,218,92,${alpha.toFixed(2)})`);
+      surf.fillRect(x + 6, top + 5, 6, 6, `rgba(255,246,190,${alpha.toFixed(2)})`);
+    }
+    surf.drawText(
+      label,
+      x + 21,
+      top + 1,
+      `rgba(255,255,255,${alpha.toFixed(2)})`,
+      '7px monospace',
+    );
   }
 
 }

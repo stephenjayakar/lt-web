@@ -24,6 +24,14 @@ import {
   CombatLifecycleRecord,
   type CombatProcMark,
 } from './combat-skill-lifecycle';
+import {
+  cueFromMark,
+  dedupeProcCues,
+  displaySkillCues,
+  isProcIconVisible,
+  PROC_CUE_DURATION_MS,
+  type CombatProcCue,
+} from './proc-presentation';
 import { getCombatRandom, type RandomGameState } from '../engine/static-random';
 
 
@@ -149,13 +157,15 @@ export interface AnimationCombatRenderState {
   nameTagProgress: number;
   /** HP bar slide progress 0 (hidden) to 1 (visible). */
   hpBarProgress: number;
+  procCue: CombatProcCue | null;
 }
 
 // -- State type --------------------------------------------------------------
 
 type AnimCombatState =
   | 'init' | 'fade_in' | 'entrance' | 'init_pause'
-  | 'begin_phase' | 'anim' | 'combat_hit' | 'hp_change' | 'end_phase'
+  | 'pre_proc' | 'begin_phase' | 'attack_proc' | 'defense_proc'
+  | 'anim' | 'combat_hit' | 'hp_change' | 'end_phase'
   | 'end_combat' | 'exp_wait' | 'fade_out' | 'done';
 
 // ============================================================
@@ -178,6 +188,8 @@ export class AnimationCombat implements AnimationCombatOwner {
   // -- Solver / strikes ------------------------------------------------------
   strikes: CombatStrike[];
   procPlayback: CombatProcMark[];
+  activeProcCue: CombatProcCue | null = null;
+  private pendingProcCues: CombatProcCue[] = [];
   currentStrikeIndex: number = 0;
 
   // -- State machine ---------------------------------------------------------
@@ -444,7 +456,10 @@ export class AnimationCombat implements AnimationCombatOwner {
       case 'fade_in':     return this.updateFadeIn();
       case 'entrance':    return this.updateEntrance();
       case 'init_pause':  return this.updateInitPause();
+      case 'pre_proc':    return this.updateProcCue();
       case 'begin_phase': return this.updateBeginPhase();
+      case 'attack_proc': return this.updateProcCue();
+      case 'defense_proc': return this.updateProcCue();
       case 'anim':        return this.updateAnim();
       case 'combat_hit':  return this.updateCombatHit();
       case 'hp_change':   return this.updateHpChange();
@@ -518,7 +533,18 @@ export class AnimationCombat implements AnimationCombatOwner {
     // stateTimer is ms-based; compare against INIT_PAUSE_FRAMES in ms
     const pauseMs = INIT_PAUSE_FRAMES * AnimationCombat.FRAME_MS;
     if (this.stateTimer >= pauseMs) {
-      this.transition('begin_phase');
+      const preProcCues = (kind: 'attack_pre_proc' | 'defense_pre_proc') =>
+        this.procPlayback
+          .filter((mark) => mark.kind === kind && isProcIconVisible(mark))
+          .map(cueFromMark)
+          .reverse();
+      this.pendingProcCues = dedupeProcCues([
+        ...preProcCues('attack_pre_proc'),
+        ...preProcCues('defense_pre_proc'),
+        ...displaySkillCues([this.attacker, this.defender]),
+      ]);
+      if (this.pendingProcCues.length > 0) this.startNextProcCue('pre_proc');
+      else this.transition('begin_phase');
     }
     return false;
   }
@@ -530,6 +556,19 @@ export class AnimationCombat implements AnimationCombatOwner {
     }
 
     const strike = this.strikes[this.currentStrikeIndex];
+    this.pendingProcCues = [
+      ...(strike.attackProcs ?? []).filter(isProcIconVisible).map(cueFromMark).reverse(),
+      ...(strike.defenseProcs ?? []).filter(isProcIconVisible).map(cueFromMark).reverse(),
+    ];
+    if (this.pendingProcCues.length > 0) {
+      this.startNextProcCue();
+      return false;
+    }
+    this.setUpStrikeAnimation(strike);
+    return false;
+  }
+
+  private setUpStrikeAnimation(strike: CombatStrike): void {
     const isLeftAttacking = this.isLeftUnit(strike.attacker);
     const atkAnim = isLeftAttacking ? this.leftAnim : this.rightAnim;
     const defAnim = isLeftAttacking ? this.rightAnim : this.leftAnim;
@@ -556,6 +595,38 @@ export class AnimationCombat implements AnimationCombatOwner {
 
     this.animFrameCounter = 0; // Reset safety timeout
     this.transition('anim');
+  }
+
+  private startNextProcCue(forcedState?: 'pre_proc'): void {
+    const cue = this.pendingProcCues.shift() ?? null;
+    this.activeProcCue = cue;
+    if (!cue) return;
+    const sideAnim = this.isLeftUnit(cue.unit) ? this.leftAnim : this.rightAnim;
+    if (this.getEffectData(cue.skill.nid)) {
+      sideAnim.spawnEffect(cue.skill.nid, sideAnim.effects);
+    }
+    this.transition(forcedState ?? (cue.kind === 'defense_proc' ? 'defense_proc' : 'attack_proc'));
+  }
+
+  private updateProcCue(): boolean {
+    if (this.activeProcCue) this.activeProcCue.elapsed = this.stateTimer;
+    if (this.stateTimer < PROC_CUE_DURATION_MS) return false;
+    const effectsDone = [this.leftAnim, this.rightAnim].every((anim) =>
+      anim.effects.every((effect) => effect.isDone()) &&
+      anim.underEffects.every((effect) => effect.isDone()));
+    if (!effectsDone) return false;
+    const procState = this.state;
+    if (this.pendingProcCues.length > 0) {
+      this.startNextProcCue(procState === 'pre_proc' ? 'pre_proc' : undefined);
+    } else if (procState === 'pre_proc') {
+      this.activeProcCue = null;
+      this.transition('begin_phase');
+    } else {
+      this.activeProcCue = null;
+      const strike = this.strikes[this.currentStrikeIndex];
+      if (strike) this.setUpStrikeAnimation(strike);
+      else this.transition('end_combat');
+    }
     return false;
   }
 
@@ -1316,6 +1387,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       totalShakeY,
       nameTagProgress: this.nameTagProgress,
       hpBarProgress: this.hpBarProgress,
+      procCue: this.activeProcCue,
     };
   }
 

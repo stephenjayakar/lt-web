@@ -2795,3 +2795,16 @@ many components, while one switch case can still omit flags or blocking behavior
   **Gate:** `npm run build` green (passing), `npm run audit:parity:write` will refresh
   manifests to reflect accurate hook-and-reference status for already-implemented
   components, raising reference counts on those three rows.
+
+## 2026-07-23 — Combat proc presentation
+
+- Rendered attack, defense, and pre-proc skill cues in both combat presentations.
+  Map combat attaches concurrent cues to their units; full animation combat
+  presents cues sequentially before each strike using LT Maker's 400ms entrance,
+  700ms hold, and 150ms exit timing.
+- Respected `hide_skill_icon_in_combat`, added
+  `display_skill_icon_in_combat`, suppressed same-phase duplicates, and spawned
+  same-NID battle effects when available. Missing optional icons use a compact
+  gold proc spark instead of disappearing.
+- Added focused timing/order/visibility coverage and a visually inspected
+  240x160 badge fixture.
