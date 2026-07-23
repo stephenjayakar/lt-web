@@ -255,6 +255,8 @@ export interface SaveDict {
   roamInfo: { roam: boolean; roamUnitNid: string | null };
   overworldRegistry: [string, any][];
   memory: [string, any][];
+  /** Optional for compatibility with saves written before dialog-log persistence. */
+  dialogLogEntries?: Array<{ speaker: string; text: string }>;
   /** NIDs of only_once events already triggered. Optional for legacy saves (defaults to empty). */
   initiative?: InitiativeSaveData | null;
   overworld?: OverworldSaveData | null;
@@ -902,6 +904,7 @@ export function buildSaveDict(game: any): SaveDict {
       (game.overworldRegistry as Map<string, any>).entries(),
     ),
     memory: Array.from((game.memory as Map<string, any>).entries()),
+    dialogLogEntries: [...(game.dialogLogEntries ?? [])],
     initiative,
     overworld,
     eventQueue,
@@ -1513,6 +1516,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
 
   // 14. Restore memory
   game.memory = new Map(s.memory);
+  game.dialogLogEntries = (s.dialogLogEntries ?? []).map((entry) => ({ ...entry }));
 
   // 15. Restore level (if present)
   if (s.level) {

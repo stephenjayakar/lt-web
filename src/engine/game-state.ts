@@ -151,6 +151,8 @@ export class GameState {
    * event_turnwheel) and other systems.
    */
   memory: Map<string, any>;
+  /** Spoken dialog history used by the in-conversation log overlay. */
+  dialogLogEntries: Array<{ speaker: string; text: string }>;
 
   // -- Base screen data -----------------------------------------------------
   /** Base conversations: key=convo NID, value=true if viewed/ignored. */
@@ -256,6 +258,7 @@ export class GameState {
     this._moveAction = null;
     this._pendingAfterMovement = null;
     this.memory = new Map();
+    this.dialogLogEntries = [];
 
     // Base screen data
     this.baseConvos = new Map();

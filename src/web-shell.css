@@ -480,6 +480,14 @@
     display: flex;
   }
 
+  .web-controls__utility {
+    top: auto;
+    right: auto;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   .web-controls__utility-button[data-fullscreen] {
     display: none;
   }
@@ -494,7 +502,8 @@
   }
 }
 
-@media (max-height: 480px) and (pointer: coarse) {
+@media (max-height: 480px) and (pointer: coarse),
+       (max-height: 480px) and (max-width: 700px) {
   .touch-controls {
     transform: scale(0.82);
     transform-origin: bottom center;

@@ -56,6 +56,11 @@ import {
   InitiativeUpkeepState,
 } from './engine/states/game-states';
 import {
+  DialogLogState,
+  ObjectiveMenuState,
+  setObjectiveDialogGameRef,
+} from './engine/states/objective-dialog-states';
+import {
   PrepMainState,
   PrepPickUnitsState,
   PrepMapState,
@@ -155,14 +160,16 @@ interface DisplayInfo {
  * Resize the display canvas to match the screen and recalculate viewport.
  */
 function applySize(display: DisplayInfo): void {
-  const screenW = window.innerWidth;
-  const hasTouchControls = !!document.getElementById('web-controls') &&
+  const hasWebControls = !!document.getElementById('web-controls');
+  const hasTouchControls = hasWebControls &&
     window.matchMedia('(pointer: coarse), (max-width: 700px)').matches;
+  const utilityRailWidth = hasWebControls && !hasTouchControls ? 72 : 0;
+  const screenW = Math.max(1, window.innerWidth - utilityRailWidth);
+  const landscape = window.innerWidth > window.innerHeight;
   const dockHeight = hasTouchControls
-    ? Math.round(Math.min(
-      window.innerWidth > window.innerHeight ? 128 : 184,
-      window.innerHeight * (window.innerWidth > window.innerHeight ? 0.33 : 0.23),
-    ))
+    ? Math.round(landscape
+      ? Math.min(160, Math.max(136, window.innerHeight * 0.45))
+      : Math.min(196, Math.max(156, window.innerHeight * 0.25)))
     : 0;
   const screenH = Math.max(1, window.innerHeight - dockHeight);
   document.documentElement.style.setProperty('--touch-dock-height', `${dockHeight}px`);
@@ -173,6 +180,7 @@ function applySize(display: DisplayInfo): void {
   display.canvas.width = Math.round(viewport.width * viewport.renderScale);
   display.canvas.height = Math.round(viewport.height * viewport.renderScale);
   display.canvas.style.width = `${screenW}px`;
+  display.canvas.style.left = '0';
   display.canvas.style.height = `${screenH}px`;
   display.ctx.imageSmoothingEnabled = false;
 }
@@ -539,6 +547,7 @@ async function main(): Promise<void> {
   setQueryEngineGameRef(() => gameState);
   setEquationGameRef(() => gameState);
   setSaveLoadGameRef(gameState);
+  setObjectiveDialogGameRef(gameState);
 
   // Initialize persistent systems (cross-save records and achievements)
   const gameNid = db.getConstant('game_nid', 'default') as string;
@@ -561,6 +570,8 @@ async function main(): Promise<void> {
     new TitleModeState(),
     new LevelSelectState(),
     new OptionMenuState(),
+    new ObjectiveMenuState(),
+    new DialogLogState(),
     new FreeState(),
     new MoveState(),
     new MenuState(),

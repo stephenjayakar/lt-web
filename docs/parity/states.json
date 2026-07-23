@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 41,
-    "merged": 69,
-    "open": 3,
-    "web": 55
+    "exact": 43,
+    "merged": 70,
+    "open": 0,
+    "web": 57
   },
   "rows": [
     {
@@ -164,9 +164,9 @@
       "name": "chapter_title",
       "className": "ChapterTitleState",
       "source": "lt-maker/app/engine/chapter_title.py",
-      "status": "open",
-      "webState": null,
-      "webSource": null
+      "status": "merged",
+      "webState": "event",
+      "webSource": "src/engine/states/game-states.ts"
     },
     {
       "name": "class_change",
@@ -236,9 +236,9 @@
       "name": "dialog_log",
       "className": "DialogLogState",
       "source": "lt-maker/app/engine/dialog_log.py",
-      "status": "open",
-      "webState": null,
-      "webSource": null
+      "status": "exact",
+      "webState": "dialog_log",
+      "webSource": "src/engine/states/objective-dialog-states.ts"
     },
     {
       "name": "dying",
@@ -396,9 +396,9 @@
       "name": "objective_menu",
       "className": "ObjectiveMenuState",
       "source": "lt-maker/app/engine/objective_menu.py",
-      "status": "open",
-      "webState": null,
-      "webSource": null
+      "status": "exact",
+      "webState": "objective_menu",
+      "webSource": "src/engine/states/objective-dialog-states.ts"
     },
     {
       "name": "optimize_all_choice",
