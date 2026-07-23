@@ -333,6 +333,15 @@ export function statChange(unit: UnitObject, statNid: string): number {
         }
       }
     }
+    const upkeepChanges = skill.getComponent<any>('upkeep_stat_change');
+    const counter = Number(skill.data.get('counter') ?? 0);
+    if (Array.isArray(upkeepChanges) && Number.isFinite(counter)) {
+      for (const entry of upkeepChanges) {
+        if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
+          total += entry[1] * counter;
+        }
+      }
+    }
   }
   return total;
 }
