@@ -157,6 +157,7 @@ import {
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { applySkillTurnHooks } from '../skill-turn-lifecycle';
+import { appendDialogLogEntry } from './objective-dialog-states';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
@@ -1323,6 +1324,7 @@ export class OptionMenuState extends State {
       options.push({ label: 'Turnwheel', value: 'turnwheel', enabled: true });
     }
     options.push({ label: 'Minimap', value: 'minimap', enabled: hasMinimap });
+    options.push({ label: 'Objective', value: 'objective', enabled: !!game.currentLevel });
     options.push({ label: 'Save', value: 'save', enabled: true });
     options.push({ label: 'Suspend', value: 'suspend', enabled: true });
     // Custom options from set_custom_options (Python general_states.py:463):
@@ -1408,6 +1410,12 @@ export class OptionMenuState extends State {
           this.menu = null;
           game.state.back();
           game.state.change('minimap');
+          break;
+        }
+        case 'objective': {
+          this.menu = null;
+          game.state.back();
+          game.state.change('objective_menu');
           break;
         }
         case 'save': {
@@ -7827,6 +7835,10 @@ export class EventState extends State {
     // Forward input to dialog if active
     if (this.dialog) {
       const dialogBlocksCommands = this.dialogBlocksCommands;
+      if (effective === 'INFO' && game.dialogLogEntries.length > 0) {
+        game.state.change('dialog_log');
+        return;
+      }
       if (effective === 'BACK') {
         // Enable skip mode — dismiss this dialog and auto-skip all
         // remaining speak/narrate commands in the current event.
@@ -9158,6 +9170,7 @@ export class EventState extends State {
         }
         const speaker = args[0] ?? '';
         const text = args[1] ?? '';
+        appendDialogLogEntry(game, speaker, text);
 
         // Stop previous speaking portrait
         if (this.speakingPortrait) {

@@ -2923,9 +2923,21 @@ many components, while one switch case can still omit flags or blocking behavior
 
 ## 2026-07-23 — Generated runtime-state inventory
 
-- Added a reproducible Python-to-web state audit: 113 Python runtime states map
-  to 41 exact web names, 69 documented mergers, and three open flows
-  (`chapter_title`, `dialog_log`, and `objective_menu`).
+- Added a reproducible Python-to-web state audit. After the objective/dialog
+  slice, all 113 Python runtime states map to 43 exact web names and 70
+  documented mergers with no unclassified flow.
 - Added check/write npm commands and generated JSON/Markdown artifacts; the
   contribution guide now routes state discovery through this compact inventory
   before either large state tree is searched.
+
+## 2026-07-23 — Objective and dialog-log UX
+
+- Added a map-menu mission dashboard with turn, funds, playtime, objectives,
+  force counts, seed, keyboard/touch scrolling, and a clear close affordance.
+- Added an INFO-accessible conversation log with cleaned dialog text, speaker
+  grouping, bottom-first scrolling, save persistence, and a readable
+  translucent presentation over the active scene.
+- Reserved a real utility rail/dock around the canvas: desktop help controls and
+  compact-landscape touch controls no longer cover the 240x160 game scene.
+- Visually inspected both new screens at the deterministic browser viewport;
+  focused objective/dialog and shell tests pass.

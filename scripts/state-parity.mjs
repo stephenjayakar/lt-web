@@ -17,6 +17,7 @@ const MERGED = {
   base_library: 'base_codex',
   base_market_select: 'shop',
   canto_wait: 'menu',
+  chapter_title: 'event',
   class_change: 'item_use',
   class_change_choice: 'promotion_choice',
   combat_targeting: 'targeting',
@@ -77,7 +78,7 @@ const MERGED = {
   wait: 'menu',
 };
 
-const OPEN = new Set(['chapter_title', 'dialog_log', 'objective_menu']);
+const OPEN = new Set(['dialog_log', 'objective_menu']);
 
 function walk(directory, extension) {
   const files = [];
