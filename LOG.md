@@ -2891,3 +2891,12 @@ many components, while one switch case can still omit flags or blocking behavior
   presentation, equip-linked behavior, and action-log/save restoration.
 - The focused skill interaction batch passes serially; the generated parity
   inventories remain the source of truth for editor-only and hook coverage.
+
+## 2026-07-23 — Combat parity comparison gate
+
+- Closed the P4 comparison row using the deterministic golden matrix plus the
+  existing grouped-combat, result-action, death/event-order, EXP/WEXP, status,
+  durability, proc, and turnwheel fixtures.
+- The 14-scenario core golden matrix passes serially. Dynamic same-combat
+  doubling changes from a newly applied speed status remain an explicitly
+  documented, regression-locked browser deviation in that matrix.
