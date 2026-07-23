@@ -96,7 +96,7 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 
 ### P3 — Item and Skill Component System
 
-- [ ] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
+- [x] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
 - [ ] Implement remaining charge/cooldown, conditional activation, proc, and status hooks
 - [ ] Add fixture-driven component tests, including interactions between components
 
@@ -136,7 +136,7 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Implement remaining item target/restriction/use/end-combat hooks and
-   multi/sub-item behavior.
+1. Implement remaining charge/cooldown, conditional activation, proc, and
+   status hooks.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.
