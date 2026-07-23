@@ -2862,3 +2862,12 @@ many components, while one switch case can still omit flags or blocking behavior
   actions, and participate in action-log undo/redo.
 - Added a focused fixture covering hit/miss distinctions, team targeting,
   charge consumption, and passive non-countering defenders.
+
+## 2026-07-23 — Turn-based skill lifecycle
+
+- Added action-backed upkeep and endstep dispatch for standard phases and
+  initiative turns.
+- Implemented charge growth/reset, time/end-time/combined-time countdowns,
+  upkeep-scaled stat changes, and upkeep/endstep expiry in component order.
+- Skill instances now initialize time counters consistently with charge data;
+  focused coverage proves phase effects and complete undo/redo restoration.

@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 64,
-    "referencedComponentNids": 103,
+    "referencedComponentNids": 110,
     "hookMappedComponentNids": 74,
-    "unreferencedComponentNids": 138,
-    "consumedComponentNids": 69,
+    "unreferencedComponentNids": 131,
+    "consumedComponentNids": 70,
     "structuralStatuses": {
       "consumed": 35,
-      "hook-and-reference": 57,
-      "hook-only": 17,
-      "reference-only": 11,
-      "unreferenced": 121
+      "hook-and-reference": 58,
+      "hook-only": 16,
+      "reference-only": 17,
+      "unreferenced": 115
     }
   },
   "webHookExports": [
@@ -154,7 +154,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1975
+          "line": 1976
         }
       ],
       "directReads": [
@@ -164,7 +164,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1975
+          "line": 1976
         }
       ],
       "matchingWebHooks": [],
@@ -1057,19 +1057,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10193
+          "line": 10214
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11589
+          "line": 11610
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13586
+          "line": 13607
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13604
+          "line": 13625
         },
         {
           "source": "src/native.ts",
@@ -1167,23 +1167,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9995
+          "line": 10016
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10000
+          "line": 10021
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10019
+          "line": 10040
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13785
+          "line": 13806
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13808
+          "line": 13829
         }
       ],
       "directReads": [],
@@ -1235,7 +1235,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2520
+          "line": 2521
         }
       ],
       "directReads": [
@@ -1245,7 +1245,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2520
+          "line": 2521
         }
       ],
       "matchingWebHooks": [],
@@ -1530,7 +1530,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10933
+          "line": 10954
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1572,11 +1572,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7516
+          "line": 7537
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7528
+          "line": 7549
         }
       ],
       "directReads": [],
@@ -1602,7 +1602,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 618
+          "line": 627
         },
         {
           "source": "src/main.ts",
@@ -1634,7 +1634,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 622
+          "line": 631
         },
         {
           "source": "src/main.ts",
@@ -1666,7 +1666,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 626
+          "line": 635
         },
         {
           "source": "src/main.ts",
@@ -1760,7 +1760,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 630
+          "line": 639
         },
         {
           "source": "src/main.ts",
@@ -1823,11 +1823,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 640
+          "line": 649
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 650
+          "line": 659
         },
         {
           "source": "src/main.ts",
@@ -1837,7 +1837,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 650
+          "line": 659
         }
       ],
       "matchingWebHooks": [
@@ -1868,11 +1868,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 641
+          "line": 650
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 656
+          "line": 665
         },
         {
           "source": "src/main.ts",
@@ -1882,7 +1882,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 656
+          "line": 665
         }
       ],
       "matchingWebHooks": [
@@ -2170,6 +2170,10 @@
           "line": 276
         },
         {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 76
+        },
+        {
           "source": "src/main.ts",
           "line": 348
         },
@@ -2223,11 +2227,16 @@
       "methods": [
         "on_upkeep"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 69
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "combat_charge_increase",
@@ -3451,15 +3460,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7583
+          "line": 7604
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11018
+          "line": 11039
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11640
+          "line": 11661
         },
         {
           "source": "src/main.ts",
@@ -3567,7 +3576,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 346
+          "line": 355
         },
         {
           "source": "src/main.ts",
@@ -3577,7 +3586,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 346
+          "line": 355
         }
       ],
       "matchingWebHooks": [
@@ -3655,7 +3664,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 364
+          "line": 373
         },
         {
           "source": "src/engine/records.ts",
@@ -3743,7 +3752,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 369
+          "line": 378
         }
       ],
       "directReads": [],
@@ -3795,7 +3804,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 374
+          "line": 383
         },
         {
           "source": "src/engine/records.ts",
@@ -3819,11 +3828,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3052
+          "line": 3053
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5884
+          "line": 5885
         },
         {
           "source": "src/main.ts",
@@ -3861,7 +3870,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3052
+          "line": 3053
         },
         {
           "source": "src/objects/item.ts",
@@ -3933,7 +3942,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 379
+          "line": 388
         },
         {
           "source": "src/combat/terrain-bonuses.ts",
@@ -4012,7 +4021,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 384
+          "line": 393
         },
         {
           "source": "src/engine/records.ts",
@@ -4036,7 +4045,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5896
+          "line": 5897
         },
         {
           "source": "src/main.ts",
@@ -4100,7 +4109,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 389
+          "line": 398
         }
       ],
       "directReads": [],
@@ -4128,7 +4137,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 399
+          "line": 408
         }
       ],
       "directReads": [],
@@ -4156,7 +4165,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 404
+          "line": 413
         }
       ],
       "directReads": [],
@@ -4184,7 +4193,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 515
+          "line": 524
         }
       ],
       "directReads": [],
@@ -4235,7 +4244,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 528
+          "line": 537
         }
       ],
       "directReads": [],
@@ -4394,8 +4403,12 @@
           "line": 1451
         },
         {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 31
+        },
+        {
           "source": "src/engine/states/game-states.ts",
-          "line": 7536
+          "line": 7557
         }
       ],
       "directReads": [
@@ -4420,8 +4433,12 @@
           "line": 1451
         },
         {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 31
+        },
+        {
           "source": "src/engine/states/game-states.ts",
-          "line": 7536
+          "line": 7557
         }
       ],
       "matchingWebHooks": [],
@@ -4557,7 +4574,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 423
+          "line": 432
         },
         {
           "source": "src/main.ts",
@@ -4567,7 +4584,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 423
+          "line": 432
         }
       ],
       "matchingWebHooks": [
@@ -4594,7 +4611,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 441
+          "line": 450
         },
         {
           "source": "src/main.ts",
@@ -4604,7 +4621,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 441
+          "line": 450
         }
       ],
       "matchingWebHooks": [
@@ -4631,7 +4648,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 459
+          "line": 468
         },
         {
           "source": "src/main.ts",
@@ -4641,7 +4658,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 459
+          "line": 468
         }
       ],
       "matchingWebHooks": [
@@ -4668,7 +4685,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 477
+          "line": 486
         },
         {
           "source": "src/main.ts",
@@ -4678,7 +4695,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 477
+          "line": 486
         }
       ],
       "matchingWebHooks": [
@@ -4810,7 +4827,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 495
+          "line": 504
         },
         {
           "source": "src/main.ts",
@@ -4820,7 +4837,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 495
+          "line": 504
         }
       ],
       "matchingWebHooks": [
@@ -4851,7 +4868,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 538
+          "line": 547
         }
       ],
       "directReads": [
@@ -4888,7 +4905,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 542
+          "line": 551
         },
         {
           "source": "src/main.ts",
@@ -4929,7 +4946,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 548
+          "line": 557
         }
       ],
       "directReads": [
@@ -4966,7 +4983,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 552
+          "line": 561
         },
         {
           "source": "src/main.ts",
@@ -5007,7 +5024,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 558
+          "line": 567
         }
       ],
       "directReads": [
@@ -5044,7 +5061,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 562
+          "line": 571
         },
         {
           "source": "src/main.ts",
@@ -5085,7 +5102,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 568
+          "line": 577
         }
       ],
       "directReads": [
@@ -5122,7 +5139,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 572
+          "line": 581
         },
         {
           "source": "src/main.ts",
@@ -5163,7 +5180,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 577
+          "line": 586
         }
       ],
       "directReads": [
@@ -5200,7 +5217,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 581
+          "line": 590
         }
       ],
       "directReads": [
@@ -5237,7 +5254,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 586
+          "line": 595
         }
       ],
       "directReads": [
@@ -5274,7 +5291,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 590
+          "line": 599
         }
       ],
       "directReads": [
@@ -5311,7 +5328,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 596
+          "line": 605
         }
       ],
       "directReads": [
@@ -5348,7 +5365,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 600
+          "line": 609
         }
       ],
       "directReads": [
@@ -5385,7 +5402,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 606
+          "line": 615
         }
       ],
       "directReads": [
@@ -5422,7 +5439,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 610
+          "line": 619
         }
       ],
       "directReads": [
@@ -6887,11 +6904,20 @@
         "text",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 81
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 77
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "end_time",
@@ -6914,11 +6940,20 @@
         "text",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 82
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 77
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "combined_time",
@@ -6943,11 +6978,24 @@
         "text",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 81
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 82
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 80
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "upkeep_stat_change",
@@ -6970,13 +7018,31 @@
         "on_upkeep",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 336
+        },
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 96
+        },
+        {
+          "source": "src/objects/skill.ts",
+          "line": 85
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 336
+        }
+      ],
       "matchingWebHooks": [
         "statChange"
       ],
       "lexicalTestMention": false,
-      "status": "hook-only"
+      "status": "hook-and-reference"
     },
     {
       "nid": "lost_on_endstep",
@@ -6995,11 +7061,16 @@
         "on_endstep_unconditional",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 90
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "lost_on_upkeep",
@@ -7018,11 +7089,16 @@
         "on_upkeep_unconditional",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/engine/skill-turn-lifecycle.ts",
+          "line": 89
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "lost_on_end_combat2",

@@ -156,6 +156,7 @@ import {
   applyCombatSkillEndHooks,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
+import { applySkillTurnHooks } from '../skill-turn-lifecycle';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
@@ -6770,6 +6771,9 @@ export class TurnChangeState extends State {
       // Save cursor position to memory
       game.memory.set('previous_cursor_position', game.cursor.getPosition());
 
+      const endingUnit = curUnitNid ? game.getUnit(curUnitNid) : null;
+      if (endingUnit) applySkillTurnHooks(game, [endingUnit], 'endstep');
+
       // Advance initiative to next unit
       game.initiative.next();
 
@@ -6806,6 +6810,15 @@ export class TurnChangeState extends State {
     }
     game.memory.set('previous_cursor_position', game.cursor.getPosition());
 
+    const endingTeam = game.phase?.getCurrent();
+    if (endingTeam) {
+      applySkillTurnHooks(
+        game,
+        game.getTeamUnits(endingTeam).filter((unit: UnitObject) => unit.position),
+        'endstep',
+      );
+    }
+
     // Advance to next phase
     game.phase.next((team: string) => game.board.getTeamUnits(team));
 
@@ -6816,6 +6829,12 @@ export class TurnChangeState extends State {
     const currentTeam = game.phase.getCurrent();
     const turnCount = game.phase.turnCount;
     const levelNid = game.currentLevel?.nid;
+
+    applySkillTurnHooks(
+      game,
+      game.getTeamUnits(currentTeam).filter((unit: UnitObject) => unit.position),
+      'upkeep',
+    );
 
     // Clear highlights before clearing the state stack (the clear() calls
     // finish() not end(), so FreeState.end() won't run to clean up highlights)
@@ -6934,6 +6953,8 @@ export class InitiativeUpkeepState extends State {
     if (game.phase) {
       game.phase.setCurrentTeam(unit.team);
     }
+
+    applySkillTurnHooks(game, [unit], 'upkeep');
 
     // Pop self
     game.state.back();

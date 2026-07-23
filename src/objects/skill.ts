@@ -72,6 +72,19 @@ export class SkillObject {
       this.data.set('charge', drainCharge);
       this.data.set('total_charge', drainCharge);
     }
+
+    for (const [component, value] of this.components) {
+      if ((component === 'time' || component === 'end_time') && typeof value === 'number') {
+        this.data.set('turns', value);
+        this.data.set('starting_turns', value);
+      } else if (component === 'combined_time' && typeof value === 'number') {
+        this.data.set('turns', value * 2);
+        this.data.set('starting_turns', value * 2);
+      }
+    }
+    if (this.components.has('upkeep_stat_change')) {
+      this.data.set('counter', 0);
+    }
   }
 
   /**
