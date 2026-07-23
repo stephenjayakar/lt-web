@@ -32,6 +32,7 @@ import {
   PROC_CUE_DURATION_MS,
   type CombatProcCue,
 } from './proc-presentation';
+import { levelUpUnit } from '../engine/leveling';
 import { getCombatRandom, type RandomGameState } from '../engine/static-random';
 
 
@@ -285,6 +286,7 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- Audio (optional, set after construction to enable combat SFX) --------
   audioManager: { playSfx(name: string): void } | null = null;
+  private game: any;
 
   constructor(
     attacker: UnitObject,
@@ -308,6 +310,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.attackItem = attackItem;
     this.defenseItem = defenseItem;
     this.db = db;
+    this.game = randomGame as any;
     this.leftAnim = leftAnim;
     this.rightAnim = rightAnim;
     this.leftIsAttacker = leftIsAttacker;
@@ -1234,7 +1237,9 @@ export class AnimationCombat implements AnimationCombatOwner {
       this.attacker.exp += expGained;
       while (this.attacker.exp >= 100) {
         this.attacker.exp -= 100;
-        const gains = this.attacker.levelUp(growthMode);
+        const gains = this.game
+          ? levelUpUnit(this.attacker, growthMode, this.game)
+          : this.attacker.levelUp(growthMode);
         levelUps.push(gains);
       }
     }
