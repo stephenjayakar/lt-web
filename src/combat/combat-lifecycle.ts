@@ -6,6 +6,7 @@ import {
 } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
+import { SkillObject } from '../objects/skill';
 import type { CombatStrike } from './combat-solver';
 import type { CombatResults } from './map-combat';
 import type { ActionLog } from '../engine/action';
@@ -17,6 +18,8 @@ import {
   RemoveItemFromUnitAction,
   WarpUnitAction,
   SwapUnitsAction,
+  AddSkillAction,
+  SetSkillDataAction,
 } from '../engine/action';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
@@ -50,6 +53,132 @@ export function combatTradePair(
     strike.hit && strike.item.hasComponent('trade') && !strike.attacker.isDead() &&
     !strike.defender.isDead());
   return hit ? { unit: hit.attacker, partner: hit.defender } : null;
+}
+
+function combatSkillEnabled(
+  game: CombatLifecycleGame,
+  unit: UnitObject,
+  skill: SkillObject,
+  target: UnitObject,
+  item: ItemObject,
+): boolean {
+  const total = Number(skill.data.get('total_charge'));
+  const charge = Number(skill.data.get('charge'));
+  if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) return false;
+  if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+      Number.isFinite(charge) && charge <= 0) return false;
+  const condition = skill.getComponent<string>('condition');
+  return !condition || evaluateCondition(condition, {
+    game,
+    unit1: unit,
+    unit2: target,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map([['skill', skill]]),
+  });
+}
+
+function triggerSkillCharge(
+  game: CombatLifecycleGame,
+  skill: SkillObject,
+): void {
+  if (!game.actionLog) return;
+  if (skill.hasComponent('build_charge')) {
+    game.actionLog.doAction(new SetSkillDataAction(skill, 'charge', 0));
+  } else if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    const charge = Number(skill.data.get('charge') ?? 0);
+    game.actionLog.doAction(new SetSkillDataAction(skill, 'charge', charge - 1));
+  }
+}
+
+function grantCombatStatus(
+  game: CombatLifecycleGame,
+  source: UnitObject,
+  target: UnitObject,
+  skill: SkillObject,
+  statusNid: string,
+): number {
+  const prefab = game.db?.skills.get(statusNid);
+  if (!prefab || !game.actionLog) return 0;
+  const status = new SkillObject(prefab);
+  status.initiatorNid = source.nid;
+  game.actionLog.doAction(new AddSkillAction(target, status));
+  triggerSkillCharge(game, skill);
+  return 1;
+}
+
+/** Apply Python's persistent post-strike/end-combat status skill hooks. */
+export function applyCombatSkillEndHooks(
+  game: CombatLifecycleGame,
+  strikes: CombatStrike[],
+  initiator?: UnitObject,
+  primaryTarget?: UnitObject,
+): number {
+  if (!game.actionLog || !game.db) return 0;
+  let applied = 0;
+  const pairs = new Map<string, {
+    unit: UnitObject;
+    target: UnitObject;
+    item: ItemObject;
+    strikes: CombatStrike[];
+  }>();
+  for (const strike of strikes) {
+    const key = `${strike.attacker.nid}:${strike.defender.nid}:${strike.item.nid}`;
+    const pair = pairs.get(key) ?? {
+      unit: strike.attacker,
+      target: strike.defender,
+      item: strike.item,
+      strikes: [],
+    };
+    pair.strikes.push(strike);
+    pairs.set(key, pair);
+  }
+  if (initiator && primaryTarget && strikes[0]) {
+    const addPassivePair = (unit: UnitObject, target: UnitObject): void => {
+      const key = `${unit.nid}:${target.nid}:passive`;
+      if (!pairs.has(key) && ![...pairs.values()].some(
+        (pair) => pair.unit === unit && pair.target === target,
+      )) {
+        pairs.set(key, { unit, target, item: strikes[0].item, strikes: [] });
+      }
+    };
+    addPassivePair(initiator, primaryTarget);
+    addPassivePair(primaryTarget, initiator);
+  }
+
+  for (const { unit, target, item, strikes: pairStrikes } of pairs.values()) {
+    const isAlly = game.db.areAllied(unit.team, target.team);
+    for (const skill of [...unit.skills]) {
+      if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
+
+      const afterHit = skill.getComponent<string>('give_status_after_hit');
+      if (afterHit) {
+        for (const strike of pairStrikes.filter((candidate) => candidate.hit)) {
+          applied += grantCombatStatus(game, unit, strike.defender, skill, afterHit);
+        }
+      }
+
+      const afterCombat = skill.getComponent<string>('give_status_after_combat');
+      if (afterCombat && !isAlly) {
+        applied += grantCombatStatus(game, unit, target, skill, afterCombat);
+      }
+      const allyAfterCombat = skill.getComponent<string>('give_ally_status_after_combat');
+      if (allyAfterCombat && isAlly) {
+        applied += grantCombatStatus(game, unit, target, skill, allyAfterCombat);
+      }
+      const afterAttack = skill.getComponent<string>('give_status_after_attack');
+      if (afterAttack && pairStrikes.length > 0) {
+        applied += grantCombatStatus(game, unit, target, skill, afterAttack);
+      }
+      const afterCombatHit = skill.getComponent<string>('give_status_after_combat_on_hit');
+      if (afterCombatHit && pairStrikes.some((strike) => strike.hit)) {
+        applied += grantCombatStatus(game, unit, target, skill, afterCombatHit);
+      }
+    }
+  }
+  return applied;
 }
 
 /** Matches Python banner.AcquiredItem: "{name} got {article} {item}." with no article for possessive names. */

@@ -153,6 +153,7 @@ import {
   queueCombatItemEvents,
   applyDroppableItemPickups,
   combatTradePair,
+  applyCombatSkillEndHooks,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { supplyAvailableOnMap } from './supply-state';
@@ -4824,6 +4825,12 @@ export class CombatState extends State {
           }
           this.results = activeCombat.applyResults(game.actionLog);
           applyCombatItemEndHooks(game, activeCombat.strikes);
+          applyCombatSkillEndHooks(
+            game,
+            activeCombat.strikes,
+            activeCombat.attacker,
+            activeCombat.defender,
+          );
           queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
             const stolenItem = this.results.stolenItem;
@@ -12701,6 +12708,7 @@ export class EventState extends State {
             }
             const results = mc.applyResults(game.actionLog);
             applyCombatItemEndHooks(game, mc.strikes);
+            applyCombatSkillEndHooks(game, mc.strikes, mc.attacker, mc.defender);
             queueCombatItemEvents(game, mc.strikes);
             // Handle deaths
             for (const deadDefender of results.defenderDeaths ??

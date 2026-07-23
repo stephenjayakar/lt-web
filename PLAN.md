@@ -97,7 +97,8 @@ returns to byte-equivalent state after reverse/redo where the Python action does
 ### P3 — Item and Skill Component System
 
 - [x] Implement item target/restriction/use/end-combat hooks and multi/sub-item behavior
-- [ ] Implement remaining charge/cooldown, conditional activation, proc, and status hooks
+- [ ] Implement remaining charge/cooldown, conditional activation, proc, and status
+  hooks (combat-end status grants complete; turn/time and resource hooks remain)
 - [ ] Add fixture-driven component tests, including interactions between components
 
 **Gate:** every runtime component is verified or documented as editor-only; combat and
@@ -136,7 +137,6 @@ match the reference within documented browser tolerances.
 
 Queue refreshed 2026-07-23 after the web launcher and control-shell pass:
 
-1. Implement remaining charge/cooldown, conditional activation, proc, and
-   status hooks.
+1. Implement turn/time charge resets, resource costs, and temporary-status expiry.
 2. Continue the open roadmap in dependency order; keep generated inventories as
    the authoritative coverage counts.

@@ -2853,3 +2853,12 @@ many components, while one switch case can still omit flags or blocking behavior
   undo, and movement-dependent availability. Together with the prior target,
   multi/sequence, event, status, forced-movement, Trade, and post-combat slices,
   this completes the P3 item target/restriction/use/end-combat roadmap row.
+
+## 2026-07-23 — Persistent combat status hooks
+
+- Implemented the five post-strike and post-combat status skill hooks, including
+  hit-only, attack-even-on-miss, enemy, ally, and passive-defender behavior.
+- Status grants preserve their initiator, consume charge through reversible
+  actions, and participate in action-log undo/redo.
+- Added a focused fixture covering hit/miss distinctions, team targeting,
+  charge consumption, and passive non-countering defenders.

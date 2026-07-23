@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 64,
-    "referencedComponentNids": 98,
+    "referencedComponentNids": 103,
     "hookMappedComponentNids": 74,
-    "unreferencedComponentNids": 143,
-    "consumedComponentNids": 64,
+    "unreferencedComponentNids": 138,
+    "consumedComponentNids": 69,
     "structuralStatuses": {
-      "consumed": 30,
+      "consumed": 35,
       "hook-and-reference": 57,
       "hook-only": 17,
       "reference-only": 11,
-      "unreferenced": 126
+      "unreferenced": 121
     }
   },
   "webHookExports": [
@@ -154,7 +154,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1974
+          "line": 1975
         }
       ],
       "directReads": [
@@ -164,7 +164,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1974
+          "line": 1975
         }
       ],
       "matchingWebHooks": [],
@@ -1057,19 +1057,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10186
+          "line": 10193
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11582
+          "line": 11589
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13578
+          "line": 13586
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13596
+          "line": 13604
         },
         {
           "source": "src/native.ts",
@@ -1167,23 +1167,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9988
+          "line": 9995
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9993
+          "line": 10000
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10012
+          "line": 10019
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13777
+          "line": 13785
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13800
+          "line": 13808
         }
       ],
       "directReads": [],
@@ -1235,7 +1235,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2519
+          "line": 2520
         }
       ],
       "directReads": [
@@ -1245,7 +1245,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2519
+          "line": 2520
         }
       ],
       "matchingWebHooks": [],
@@ -1530,7 +1530,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10926
+          "line": 10933
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1572,11 +1572,11 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7509
+          "line": 7516
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7521
+          "line": 7528
         }
       ],
       "directReads": [],
@@ -1956,6 +1956,14 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 67
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 88
+        },
+        {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 184
         },
@@ -1989,6 +1997,14 @@
         }
       ],
       "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 67
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 88
+        },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 184
@@ -2045,6 +2061,14 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 68
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 90
+        },
+        {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 189
         },
@@ -2070,6 +2094,14 @@
         }
       ],
       "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 68
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 90
+        },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 189
@@ -2114,6 +2146,14 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 68
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 90
+        },
+        {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 189
         },
@@ -2139,6 +2179,14 @@
         }
       ],
       "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 68
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 90
+        },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 189
@@ -2910,11 +2958,21 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 163
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 163
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "give_ally_status_after_combat",
@@ -2931,11 +2989,21 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 167
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 167
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "give_status_after_attack",
@@ -2952,11 +3020,21 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 171
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 171
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "give_status_after_combat_on_hit",
@@ -2973,11 +3051,21 @@
       "methods": [
         "end_combat"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 175
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 175
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "give_status_after_hit",
@@ -2994,11 +3082,21 @@
       "methods": [
         "after_strike"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 156
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 156
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "skill_before_combat",
@@ -3353,15 +3451,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7576
+          "line": 7583
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11011
+          "line": 11018
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11633
+          "line": 11640
         },
         {
           "source": "src/main.ts",
@@ -3721,11 +3819,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3051
+          "line": 3052
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5877
+          "line": 5884
         },
         {
           "source": "src/main.ts",
@@ -3763,7 +3861,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3051
+          "line": 3052
         },
         {
           "source": "src/objects/item.ts",
@@ -3938,7 +4036,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5889
+          "line": 5896
         },
         {
           "source": "src/main.ts",
@@ -4277,7 +4375,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 175
+          "line": 70
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 304
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -4293,13 +4395,17 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7529
+          "line": 7536
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 175
+          "line": 70
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 304
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -4315,7 +4421,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7529
+          "line": 7536
         }
       ],
       "matchingWebHooks": [],
@@ -6334,17 +6440,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 173
+          "line": 302
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 187
+          "line": 316
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 173
+          "line": 302
         }
       ],
       "matchingWebHooks": [],
