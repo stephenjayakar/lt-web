@@ -19,6 +19,8 @@ export class AudioManager {
   private audioBufferCache: Map<string, AudioBuffer>;
   private baseUrl: string;
   private musicStack: string[];
+  private pendingMusic: { nid: string; fadeMs: number; requestId: number } | null;
+  private musicRequestId: number;
   /** Active looping SFX sources, keyed by NID. */
   private loopingSfx: Map<string, AudioBufferSourceNode> = new Map();
   /**
@@ -43,6 +45,8 @@ export class AudioManager {
     this.audioBufferCache = new Map();
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     this.musicStack = [];
+    this.pendingMusic = null;
+    this.musicRequestId = 0;
   }
 
   /**
@@ -65,6 +69,19 @@ export class AudioManager {
     this.sfxGain = this.audioContext.createGain();
     this.sfxGain.gain.value = this.sfxVolume;
     this.sfxGain.connect(this.audioContext.destination);
+
+    // Title/level setup can request music before the browser permits an
+    // AudioContext. Start the most recent request now that a user gesture has
+    // unlocked audio instead of leaving the screen permanently silent.
+    const pendingMusic = this.pendingMusic;
+    this.pendingMusic = null;
+    if (pendingMusic) {
+      void this.playMusicWithFade(
+        pendingMusic.nid,
+        pendingMusic.fadeMs,
+        pendingMusic.requestId,
+      );
+    }
   }
 
   /**
@@ -74,12 +91,17 @@ export class AudioManager {
    */
   async playMusic(nid: string, fadeMs: number = 500): Promise<void> {
     this.calls.push({ op: 'play', nid });
-    await this.playMusicWithFade(nid, fadeMs);
+    await this.playMusicWithFade(nid, fadeMs, ++this.musicRequestId);
   }
 
   /** Shared implementation behind playMusic/fadeIn — does not itself record a call. */
-  private async playMusicWithFade(nid: string, fadeMs: number): Promise<void> {
+  private async playMusicWithFade(
+    nid: string,
+    fadeMs: number,
+    requestId: number,
+  ): Promise<void> {
     if (!this.audioContext || !this.musicGain) {
+      this.pendingMusic = { nid, fadeMs, requestId };
       return;
     }
 
@@ -90,7 +112,8 @@ export class AudioManager {
 
     // Try loading the buffer (ogg -> mp3 -> wav)
     const buffer = await this.loadMusicBuffer(nid);
-    if (!buffer || !this.audioContext || !this.musicGain) {
+    if (requestId !== this.musicRequestId ||
+        !buffer || !this.audioContext || !this.musicGain) {
       return;
     }
 
@@ -136,6 +159,8 @@ export class AudioManager {
 
   /** Shared implementation behind stopMusic/fadeToPause — does not itself record a call. */
   private stopMusicWithFade(fadeMs: number): void {
+    this.musicRequestId++;
+    this.pendingMusic = null;
     if (!this.currentMusic || !this.musicGain || !this.audioContext) {
       return;
     }
@@ -187,10 +212,11 @@ export class AudioManager {
    */
   async fadeIn(nid: string, fadeMs: number = 400, _fromStart: boolean = false): Promise<void> {
     this.calls.push({ op: 'fadeIn', nid, fadeMs });
+    const requestId = ++this.musicRequestId;
     if (nid === this.currentMusicNid && this.currentMusic) {
       return;
     }
-    await this.playMusicWithFade(nid, fadeMs);
+    await this.playMusicWithFade(nid, fadeMs, requestId);
   }
 
   /**
