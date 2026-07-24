@@ -105,6 +105,7 @@ export class GameBoard {
     this.unitGrid[y][x] = unit;
     this.teamGrid[y][x] = unit.team;
     unit.position = [x, y];
+    if (!unit.previousPosition) unit.previousPosition = [x, y];
     this.onUnitPositionChanged?.();
   }
 

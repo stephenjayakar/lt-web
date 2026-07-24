@@ -734,6 +734,7 @@ export function canCounterattack(
   attackItem: ItemObject,
   defender: UnitObject,
   _db: Database,
+  game?: any,
 ): boolean {
   // Check if attacker's weapon can't be countered
   if (!itemSystem.canBeCountered(attacker, attackItem)) return false;
@@ -763,7 +764,7 @@ export function canCounterattack(
 
   // Standard range check: defender can counter if distance is within their weapon's range
   const minRange = defWeapon.getMinRange();
-  const maxRange = defWeapon.getMaxRange();
+  const maxRange = skillSystem.modifiedMaximumRange(defender, defWeapon, game);
   return dist >= minRange && dist <= maxRange;
 }
 
@@ -871,7 +872,8 @@ export function computeCrit(
   defender: UnitObject,
   db: Database,
   game?: any,
-  _mode: 'attack' | 'defense' | 'splash' = 'attack',
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
 ): number {
   const critFormula = skillSystem.critAccuracyFormulaOverride(attacker) ??
     itemSystem.critAccuracyFormulaOverride(attacker, attackItem) ??
@@ -898,8 +900,19 @@ export function computeCrit(
   const atkSupport = getSupportBonusForCombat(attacker, game);
   const defSupport = getSupportBonusForCombat(defender, game);
 
-  const raw = baseCrit + itemCrit + skillCritAcc + itemCritMod + atkSupport.crit
+  const baseValue = baseCrit + itemCrit + skillCritAcc + itemCritMod + atkSupport.crit
     - critAvoid - skillCritAvo - defSupport.dodge;
+  const dynamicCrit = skillSystem.dynamicCritAccuracy(
+    attacker,
+    attackItem,
+    defender,
+    getEquippedWeapon(defender, db, game),
+    mode,
+    attackInfo,
+    baseValue,
+    game,
+  );
+  const raw = baseValue + dynamicCrit;
   return Math.max(0, Math.min(100, raw));
 }
 

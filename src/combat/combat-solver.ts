@@ -177,6 +177,13 @@ export class CombatPhaseSolver {
     }
   }
 
+  private criticalMultiplier(striker: UnitObject, item: ItemObject, db: Database): number {
+    const formula = skillSystem.criticalMultiplierFormula(striker);
+    if (!formula) return 3;
+    const expression = db.getEquation(formula) ?? formula;
+    return Math.max(0, calcs.evaluateEquation(expression, striker, { db, item }));
+  }
+
   private nextPhase(unit: UnitObject): number {
     const phase = this.phaseCounts.get(unit) ?? 0;
     this.phaseCounts.set(unit, phase + 1);
@@ -386,7 +393,7 @@ export class CombatPhaseSolver {
         dmg = normalDamage;
         if (crit) {
           const critDmgMod = skillSystem.modifyCritDamage(striker, item);
-          const baseCritMult = 3;
+          const baseCritMult = this.criticalMultiplier(striker, item, db);
           dmg = dmg * baseCritMult + critDmgMod;
         }
       }
@@ -610,7 +617,7 @@ export class CombatPhaseSolver {
     let defenderHp = defender.currentHp;
 
     // Determine capabilities
-    const defenderCanCounter = calcs.canCounterattack(attacker, attackItem, defender, db);
+    const defenderCanCounter = calcs.canCounterattack(attacker, attackItem, defender, db, this.game);
     const attackerDoubles = calcs.canDouble(attacker, attackItem, defender, defenseItem, db);
     const defenderDoubles =
       defenderCanCounter && defenseItem
@@ -888,7 +895,9 @@ export class CombatPhaseSolver {
     const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
     // Compute crit chance
-    let critChance = calcs.computeCrit(striker, item, target, db, undefined, mode);
+    let critChance = calcs.computeCrit(
+      striker, item, target, db, this.game, mode, attackInfo,
+    );
 
     // critAnyway skill: ensure at least some crit chance
     if (skillSystem.critAnyway(striker) && critChance <= 0) {
@@ -953,7 +962,7 @@ export class CombatPhaseSolver {
         // Crit damage
         if (crit) {
           const critDmgMod = skillSystem.modifyCritDamage(striker, item);
-          const baseCritMult = 3; // LT default
+          const baseCritMult = this.criticalMultiplier(striker, item, db);
           dmg = dmg * baseCritMult + critDmgMod;
         }
 

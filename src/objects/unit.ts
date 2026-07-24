@@ -61,6 +61,8 @@ export class UnitObject {
   fields: Map<string, any>;
 
   position: [number, number] | null;
+  /** Position at the start of this unit's current turn (Python `previous_position`). */
+  previousPosition: [number, number] | null;
   team: string;
   klass: NID;
   level: number;
@@ -175,6 +177,7 @@ export class UnitObject {
     this.notes = (prefab.unit_notes ?? []).map(([key, value]) => [key, value]);
     this.fields = new Map(prefab.fields ?? []);
     this.position = null;
+    this.previousPosition = null;
     this.team = 'player'; // caller should set the real team
     this.klass = prefab.klass;
     this.level = prefab.level;

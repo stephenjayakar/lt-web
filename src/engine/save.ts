@@ -45,6 +45,8 @@ export interface UnitSaveData {
   notes?: [string, string][];
   fields?: [string, any][];
   position: [number, number] | null;
+  /** Optional for saves written before turn-start position persistence. */
+  previousPosition?: [number, number] | null;
   team: string;
   klass: string;
   level: number;
@@ -483,6 +485,9 @@ function serializeUnit(
     notes: unit.notes.map(([key, value]) => [key, value]),
     fields: Array.from(unit.fields.entries()),
     position: unit.position ? [unit.position[0], unit.position[1]] : null,
+    previousPosition: unit.previousPosition
+      ? [unit.previousPosition[0], unit.previousPosition[1]]
+      : null,
     team: unit.team,
     klass: unit.klass,
     level: unit.level,
@@ -1274,6 +1279,11 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       unit.ai = unitData.ai;
       unit.wexp = { ...unitData.wexp };
       unit.startingPosition = unitData.startingPosition;
+      unit.previousPosition = unitData.previousPosition
+        ? [unitData.previousPosition[0], unitData.previousPosition[1]]
+        : unitData.position
+          ? [unitData.position[0], unitData.position[1]]
+          : null;
       unit.aiGroup = unitData.aiGroup;
       unit.portraitNid = unitData.portraitNid;
       unit.affinity = unitData.affinity;
