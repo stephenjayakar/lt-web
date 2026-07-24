@@ -1461,6 +1461,183 @@ test.describe('Rekka project-local skill components', () => {
     expect(result.flight).toEqual({ helper: 'Fliers', pathSystem: 'Fliers' });
   });
 
+  test('targeting, AI, inventory, and shop hooks cover every Rekka use', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const {
+        inventoryCapacity,
+      } = await import('/src/combat/item-system.ts');
+      const {
+        aiPriorityMultiplier,
+        checkAlly,
+        checkEnemy,
+        inventoryCapacityOffsets,
+        priceSkillMultiplier,
+        witchWarpPositions,
+      } = await import('/src/combat/skill-system.ts');
+      const { validTargets, buyPrice } = await import('/src/combat/item-system.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const alliedTarget = game.units.get('101');
+      alliedTarget.team = unit.team;
+      const componentNids = (prefab: any) => Array.isArray(prefab.components)
+        ? prefab.components.map((component: any) => component[0])
+        : [...prefab.components.keys()];
+      const count = (nid: string) => [...game.db.skills.values()]
+        .filter((skill: any) => componentNids(skill).includes(nid)).length;
+
+      unit.skills = [new SkillObject(game.db.skills.get('BetrayerRing'))];
+      const enemyItem = new ItemObject({
+        nid: 'TestEnemyTarget',
+        name: 'Test Enemy Target',
+        desc: '',
+        components: [['target_enemy', null]],
+      });
+      const alliance = {
+        ally: checkAlly(unit, alliedTarget, game.db),
+        enemy: checkEnemy(unit, alliedTarget, game.db),
+        targetable: validTargets(unit, enemyItem, game.board, game.db, game)
+          .some(([x, y]: [number, number]) =>
+            x === alliedTarget.position[0] && y === alliedTarget.position[1]),
+      };
+
+      unit.skills = [new SkillObject(game.db.skills.get('Hoarder'))];
+      const offsets = inventoryCapacityOffsets(unit);
+      const capacities = {
+        baseItems: Number(game.db.getConstant('num_items', 5)),
+        baseAccessories: Number(game.db.getConstant('num_accessories', 0)),
+        items: inventoryCapacity(unit, false, game.db),
+        accessories: inventoryCapacity(unit, true, game.db),
+      };
+
+      const priceItem = unit.items.find((item: any) => item.isWeapon());
+      unit.skills = [new SkillObject(game.db.skills.get('BargainRingAbility'))];
+      const baseBuyPrice = buyPrice(unit, priceItem, game.db, game);
+      const buyMultiplier = priceSkillMultiplier(
+        unit, priceItem, 'change_buy_price', game,
+      );
+
+      alliedTarget.skills = [new SkillObject(game.db.skills.get('CamoflageStatus'))];
+      const hiddenPriority = aiPriorityMultiplier(alliedTarget, game);
+      alliedTarget.skills = [new SkillObject(game.db.skills.get('Provoke'))];
+      const provokePriority = aiPriorityMultiplier(alliedTarget, game);
+
+      unit.skills = [new SkillObject(game.db.skills.get('BeaconWitchWarp'))];
+      alliedTarget.skills = [new SkillObject(game.db.skills.get('Beacon'))];
+      if (alliedTarget.position) game.board.removeUnit(alliedTarget);
+      let beaconPosition: [number, number] | null = null;
+      const origin = unit.position;
+      for (let y = 1; y < game.board.height - 1 && !beaconPosition; y++) {
+        for (let x = 1; x < game.board.width - 1; x++) {
+          if (game.board.getUnit(x, y) || !origin) continue;
+          const distance = Math.abs(x - origin[0]) + Math.abs(y - origin[1]);
+          if (distance <= unit.getMovement() + 2) continue;
+          const openAdjacent = [[x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]]
+            .some(([ax, ay]) => !game.board.getUnit(ax, ay));
+          if (openAdjacent) {
+            beaconPosition = [x, y];
+            break;
+          }
+        }
+      }
+      if (!beaconPosition) throw new Error('No distant Beacon test position');
+      game.board.setUnit(beaconPosition[0], beaconPosition[1], alliedTarget);
+      const warpCases: Record<string, number> = {};
+      const runWarpCase = (
+        sourceNid: string,
+        targetSkillNid: string | null,
+        targetTeam: string,
+        injured: boolean,
+        sourceExtraSkillNid: string | null = null,
+      ) => {
+        unit.skills = [
+          new SkillObject(game.db.skills.get(sourceNid)),
+          ...(sourceExtraSkillNid
+            ? [new SkillObject(game.db.skills.get(sourceExtraSkillNid))]
+            : []),
+        ];
+        alliedTarget.skills = targetSkillNid
+          ? [new SkillObject(game.db.skills.get(targetSkillNid))]
+          : [];
+        alliedTarget.team = targetTeam;
+        alliedTarget.currentHp = injured ? Math.max(1, alliedTarget.maxHp - 1) : alliedTarget.maxHp;
+        warpCases[sourceNid] = witchWarpPositions(unit, game.board, game.db, game).length;
+      };
+      runWarpCase('BeaconWitchWarp', 'Beacon', 'player', false);
+      runWarpCase('CrisisSurge', null, 'player', true);
+      runWarpCase('Sharker', null, 'enemy', true);
+      runWarpCase('SwordSummonJoin', 'SwordSummon', 'player', false);
+      runWarpCase('SoulLinkJoin', 'Soullinked', 'player', false, 'Soullinked');
+
+      unit.skills = [new SkillObject(game.db.skills.get('BeaconWitchWarp'))];
+      alliedTarget.skills = [new SkillObject(game.db.skills.get('Beacon'))];
+      alliedTarget.team = 'player';
+      const warpPositions = witchWarpPositions(unit, game.board, game.db, game);
+      const validMoves = game.pathSystem.getValidMoves(unit, game.board);
+      const distantWarp = warpPositions.find(([x, y]) =>
+        !!origin && Math.abs(x - origin[0]) + Math.abs(y - origin[1]) > unit.getMovement());
+      const warpPath = distantWarp
+        ? game.pathSystem.getPath(unit, distantWarp[0], distantWarp[1], game.board)
+        : null;
+
+      return {
+        catalog: {
+          witchWarp: count('witch_warp_expression'),
+          ignoreAlliances: count('ignore_alliances'),
+          accessories: count('additional_accessories'),
+          buyPrice: count('change_buy_price'),
+          aiPriority: count('modify_ai_priority'),
+        },
+        alliance,
+        offsets,
+        capacities,
+        price: {
+          base: baseBuyPrice,
+          multiplier: buyMultiplier,
+          final: Math.trunc(Number(baseBuyPrice ?? 0) * buyMultiplier),
+        },
+        priorities: { hidden: hiddenPriority, provoke: provokePriority },
+        warpCases,
+        warp: {
+          count: warpPositions.length,
+          distant: distantWarp ?? null,
+          included: !!distantWarp && validMoves.some(([x, y]) =>
+            x === distantWarp[0] && y === distantWarp[1]),
+          pathLength: warpPath?.length ?? 0,
+        },
+      };
+    });
+
+    expect(result.catalog).toEqual({
+      witchWarp: 5,
+      ignoreAlliances: 2,
+      accessories: 1,
+      buyPrice: 1,
+      aiPriority: 2,
+    });
+    expect(result.alliance).toEqual({ ally: false, enemy: true, targetable: true });
+    expect(result.offsets).toEqual({ items: -3, accessories: 3 });
+    expect(result.capacities.items).toBe(result.capacities.baseItems - 3);
+    expect(result.capacities.accessories).toBe(result.capacities.baseAccessories + 3);
+    expect(result.price.multiplier).toBe(-0.5);
+    expect(result.price.final).toBe(Math.trunc(result.price.base * -0.5));
+    expect(result.priorities).toEqual({ hidden: 0, provoke: 99 });
+    expect(result.warpCases).toEqual({
+      BeaconWitchWarp: expect.any(Number),
+      CrisisSurge: expect.any(Number),
+      Sharker: expect.any(Number),
+      SwordSummonJoin: expect.any(Number),
+      SoulLinkJoin: expect.any(Number),
+    });
+    for (const count of Object.values(result.warpCases)) expect(count).toBeGreaterThan(0);
+    expect(result.warp.count).toBeGreaterThan(0);
+    expect(result.warp.distant).not.toBeNull();
+    expect(result.warp.included).toBe(true);
+    expect(result.warp.pathLength).toBe(1);
+  });
+
   test('survival hooks clamp lethal strikes and preserve reversible consumption', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

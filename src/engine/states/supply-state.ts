@@ -44,7 +44,7 @@ import {
   TakeItemFromConvoy,
   RemoveItemFromUnitAction,
 } from '../action';
-import { inventoryFull } from '../../combat/item-system';
+import { inventoryCapacity, inventoryFull } from '../../combat/item-system';
 
 // Lazy game reference (same pattern as prep-state.ts)
 let _game: any = null;
@@ -62,8 +62,8 @@ function getGame(): any {
 
 /** Python item_funcs.too_much_in_inventory: separate accessory/normal caps. */
 export function tooMuchInInventory(unit: UnitObject, db: any): boolean {
-  const numItems = Number(db.getConstant('num_items', 5));
-  const numAccessories = Number(db.getConstant('num_accessories', 0));
+  const numItems = inventoryCapacity(unit, false, db);
+  const numAccessories = inventoryCapacity(unit, true, db);
   const accessories = unit.items.filter((i) => i.isAccessory()).length;
   const normal = unit.items.length - accessories;
   return normal > numItems || accessories > numAccessories;
@@ -334,8 +334,8 @@ export class ItemDiscardState extends State {
   private autoResolveLocked(): boolean {
     const game = getGame();
     const unit = this.unit!;
-    const numItems = Number(game.db.getConstant('num_items', 5));
-    const numAccessories = Number(game.db.getConstant('num_accessories', 0));
+    const numItems = inventoryCapacity(unit, false, game.db);
+    const numAccessories = inventoryCapacity(unit, true, game.db);
     const locked = unit.items.filter((i) => this.isRowLocked(i));
     const lockedNormal = locked.filter((i) => !i.isAccessory());
     const lockedAccessories = locked.filter((i) => i.isAccessory());

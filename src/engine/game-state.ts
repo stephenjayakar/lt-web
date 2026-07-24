@@ -649,7 +649,7 @@ export class GameState {
     await this.loadAllMapSprites();
 
     // f. Create PathSystem -------------------------------------------------
-    this.pathSystem = new PathSystem(this.db);
+    this.pathSystem = new PathSystem(this.db, this);
 
     // g. Create PhaseController (uses teamOrder from step c2) ---------------
     this.phase = new PhaseController(teamOrder);

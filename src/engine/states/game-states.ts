@@ -191,6 +191,7 @@ import {
   menuAfterCombat,
   canAttackAfterCombat,
   transforms,
+  inventoryFull as itemInventoryFull,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -202,6 +203,7 @@ import {
   canSelect,
   modifiedMaximumRange,
   movementType,
+  priceSkillMultiplier,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -8139,23 +8141,7 @@ export class ShopState extends State {
     componentNid: 'change_buy_price' | 'change_sell_price',
   ): number {
     if (!this.unit) return 1;
-    const game = getGame();
-    let result = 1;
-    for (const skill of this.unit.skills) {
-      const value = skill.getComponent<number>(componentNid);
-      if (value === undefined) continue;
-      const condition = skill.getComponent<string>('condition');
-      if (condition && !evaluateCondition(condition, {
-        game,
-        unit1: this.unit,
-        item,
-        position: this.unit.position ?? undefined,
-        gameVars: game.gameVars,
-        levelVars: game.levelVars,
-      })) continue;
-      result = Number(value);
-    }
-    return result;
+    return priceSkillMultiplier(this.unit, item, componentNid, getGame());
   }
 
   private showMessage(msg: string): void {
@@ -9357,13 +9343,9 @@ export class EventState extends State {
     return items ? find(items) : undefined;
   }
 
-  /** Match LT's item/accessory inventory capacity check (skill offsets remain a P3 hook gap). */
+  /** Match LT's skill-adjusted item/accessory inventory capacity check. */
   private inventoryFull(unit: UnitObject, item: ItemObject): boolean {
-    const game = getGame();
-    const accessory = item.isAccessory();
-    const limit = Number(game.db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
-    const count = unit.items.filter((candidate) => candidate.isAccessory() === accessory).length;
-    return count >= limit;
+    return itemInventoryFull(unit, item, getGame().db);
   }
 
   /**

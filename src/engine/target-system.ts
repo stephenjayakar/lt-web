@@ -4,7 +4,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from '../combat/combat-calcs';
 import { computeAssistDamage, computeHit } from '../combat/combat-calcs';
-import { modifiedMaximumRange } from '../combat/skill-system';
+import { checkAlly, modifiedMaximumRange } from '../combat/skill-system';
 import { getLine } from './line-of-sight';
 import {
   validTargets,
@@ -189,12 +189,12 @@ export class TargetSystem {
     const result: UnitObject[] = [];
     for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]] as [number, number][]) {
       const ally = this.board.getUnit(unit.position[0] + dx, unit.position[1] + dy);
-      if (!ally || ally === unit || ally.isDead() || !this.db.areAllied(unit.team, ally.team)) continue;
+      if (!ally || ally === unit || ally.isDead() || !checkAlly(unit, ally, this.db)) continue;
       const weapon = ally.items.find((item) =>
         item.isWeapon() && available(ally, item, this.db, this.game),
       );
       if (!weapon || weapon.hasComponent('exempt_from_dual_strike')) continue;
-      if (this.db.areAllied(ally.team, target.team)) continue;
+      if (checkAlly(ally, target, this.db)) continue;
       result.push(ally);
     }
     return result;
@@ -229,7 +229,7 @@ export class TargetSystem {
     item: ItemObject,
   ): [UnitObject | null, UnitObject | null] {
     if (!this.db.getConstant('pairup', false) || !item.isWeapon()) return [null, null];
-    if (this.db.areAllied(attacker.team, defender.team)) return [null, null];
+    if (checkAlly(attacker, defender, this.db)) return [null, null];
     // Guard stance cancels attack stance for the whole encounter.
     if (attacker.traveler || defender.traveler) return [null, null];
 

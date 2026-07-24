@@ -22,7 +22,12 @@ import {
   evaluateEquation,
 } from '../combat/combat-calcs';
 import { available as itemAvailable, stealItemRestrict } from '../combat/item-system';
-import { modifiedMaximumRange } from '../combat/skill-system';
+import {
+  aiPriorityMultiplier,
+  checkAlly,
+  checkEnemy,
+  modifiedMaximumRange,
+} from '../combat/skill-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 
@@ -1149,7 +1154,8 @@ export class AIController {
       defense * defenseWeight +
       distanceFactor * 0.1;
 
-    return utility;
+    const priorityMultiplier = aiPriorityMultiplier(target, this.gameRef);
+    return priorityMultiplier <= 0 ? -Infinity : utility * priorityMultiplier;
   }
 
   // ====================================================================
@@ -1191,7 +1197,7 @@ export class AIController {
       if (other === unit) return false;
       if (other.isDead()) return false;
       if (!other.position) return false;
-      return !this.db.areAllied(unit.team, other.team);
+      return checkEnemy(unit, other, this.db);
     });
   }
 
@@ -1203,7 +1209,7 @@ export class AIController {
       if (other === unit) return false;
       if (other.isDead()) return false;
       if (!other.position) return false;
-      return this.db.areAllied(unit.team, other.team);
+      return checkAlly(unit, other, this.db);
     });
   }
 
