@@ -522,6 +522,55 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
     expect(state).toBe('credit');
   });
 
+  test('credits renders command-provided lines over the event and resumes', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestEventCredits', {
+        name: 'TestEventCredits', nid: 'TestEventCredits', trigger: 'TestEventCredits',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'credits;The End;Thank,you,for,playing;center;no_split;wait',
+          'game_var;event_credits_done;yes',
+        ],
+      });
+      g.eventManager.triggerSpecific('TestEventCredits', { type: 'TestEventCredits' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 2);
+
+    const active = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const state = g.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        cards: state?.creditCards?.map((card: any) => ({
+          title: card.title,
+          lines: card.lines,
+          center: card.center,
+          waitAtCenter: card.waitAtCenter,
+        })) ?? [],
+        done: g.gameVars.get('event_credits_done'),
+      };
+    });
+    expect(active).toEqual({
+      state: 'event',
+      cards: [{
+        title: 'The End',
+        lines: ['Thank,you,for,playing'],
+        center: true,
+        waitAtCenter: true,
+      }],
+      done: undefined,
+    });
+
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 4);
+    expect(await page.evaluate(() => (window as any).__gameRef.gameVars.get('event_credits_done')))
+      .toBe('yes');
+  });
+
   test('soundroom pauses into base_sound_room', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'TestSoundroomPre', ['game_var;pre_sound;yes']);

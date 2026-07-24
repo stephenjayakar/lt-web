@@ -8184,6 +8184,16 @@ type EndingCardPresentation = {
   waitTimerMs: number;
 };
 
+type EventCreditCard = {
+  title: string;
+  lines: string[];
+  center: boolean;
+  waitAtCenter: boolean;
+  elapsedMs: number;
+  pauseMs: number;
+  height: number;
+};
+
 type EventLevelUpSource = 'stat_change' | 'class_change' | 'promote';
 
 type EventLevelUpPresentation = {
@@ -8241,6 +8251,8 @@ export class EventState extends State {
   private dialogBlocksCommands: boolean = true;
   /** Persistent ending-card presentation; active blocking is tracked by dialog. */
   private endingCard: EndingCardPresentation | null = null;
+  /** Python-style command-driven credit lines scrolling over the event background. */
+  private creditCards: EventCreditCard[] = [];
   private banner: Banner | null = null;
   private bannerIsAlert: boolean = false;  // true if banner is from 'alert' command (allows early dismiss)
   private waitTimer: number = 0;
@@ -8367,6 +8379,7 @@ export class EventState extends State {
       // Full reset for a new event
       this.dialog = null;
       this.endingCard = null;
+      this.creditCards = [];
       this.banner = null;
       this.bannerIsAlert = false;
       this.waitTimer = 0;
@@ -8508,6 +8521,7 @@ export class EventState extends State {
       if (this.waiting) {
         this.waiting = false;
         this.waitTimer = 0;
+        this.creditCards = [];
         this.advancePointer();
       }
       if (this.banner) {
@@ -8552,6 +8566,7 @@ export class EventState extends State {
   override update(): StateResult {
     const game = getGame();
     this.updateNonBlockingTransition();
+    this.updateEventCreditCards();
 
     // Block while a level transition is loading asynchronously
     if (this.levelTransitionInProgress) {
@@ -8964,6 +8979,7 @@ export class EventState extends State {
     if (this.banner) {
       this.banner.draw(surf);
     }
+    this.drawEventCreditCards(surf);
     this.drawEventTables(surf);
     if (this.choiceMenu) {
       this.choiceMenu.draw(surf);
@@ -9182,6 +9198,7 @@ export class EventState extends State {
       this.currentEvent = next;
       this.dialog = null;
       this.endingCard = null;
+      this.creditCards = [];
       this.banner = null;
       this.waitTimer = 0;
       this.waiting = false;
@@ -9199,6 +9216,7 @@ export class EventState extends State {
     } else {
       this.currentEvent = null;
       this.endingCard = null;
+      this.creditCards = [];
       this.portraits.clear();
       this.pendingPortraitLoads = 0;
       this.eventTables.clear();
@@ -9311,6 +9329,53 @@ export class EventState extends State {
     const fromRegistry = game.units.get(nid);
     if (fromRegistry) return fromRegistry;
     return game.board?.getAllUnits().find((u: UnitObject) => u.nid === nid);
+  }
+
+  private updateEventCreditCards(): void {
+    const speed = 0.02;
+    const startY = viewport.height;
+    this.creditCards = this.creditCards.filter((card) => {
+      card.elapsedMs += FRAMETIME;
+      const centerY = Math.floor((viewport.height - card.height) / 2);
+      const reachCenterMs = Math.max(0, (startY - centerY) / speed);
+      let motionMs = card.elapsedMs;
+      if (card.waitAtCenter && card.elapsedMs > reachCenterMs) {
+        motionMs = card.elapsedMs <= reachCenterMs + card.pauseMs
+          ? reachCenterMs
+          : card.elapsedMs - card.pauseMs;
+      }
+      const y = startY - motionMs * speed;
+      return y + card.height >= 0;
+    });
+  }
+
+  private getEventCreditCardY(card: EventCreditCard): number {
+    const speed = 0.02;
+    const startY = viewport.height;
+    const centerY = Math.floor((viewport.height - card.height) / 2);
+    const reachCenterMs = Math.max(0, (startY - centerY) / speed);
+    let motionMs = card.elapsedMs;
+    if (card.waitAtCenter && card.elapsedMs > reachCenterMs) {
+      motionMs = card.elapsedMs <= reachCenterMs + card.pauseMs
+        ? reachCenterMs
+        : card.elapsedMs - card.pauseMs;
+    }
+    return Math.floor(startY - motionMs * speed);
+  }
+
+  private drawEventCreditCards(surf: Surface): void {
+    for (const card of this.creditCards) {
+      const y = this.getEventCreditCardY(card);
+      surf.drawText(card.title, 32, y, 'rgba(230,205,125,1)', '8px monospace');
+      for (let i = 0; i < card.lines.length; i++) {
+        const line = card.lines[i];
+        const lineY = y + 12 + i * 10;
+        const x = card.center
+          ? Math.max(6, Math.floor((viewport.width - line.length * 5) / 2))
+          : 88;
+        surf.drawText(line, x, lineY, 'rgba(245,245,245,1)', '8px monospace');
+      }
+    }
   }
 
   /** Resolve table rows on every draw so expression-backed displays stay live. */
@@ -13378,7 +13443,7 @@ export class EventState extends State {
           this.pendingBackgroundLoad = true;
           this.backgroundLoadDone = false;
 
-          const resourcePromise = game.resourceManager?.loadPanorama(panoramaNid);
+          const resourcePromise = game.resources?.loadPanorama(panoramaNid);
           if (!resourcePromise) {
             this.backgroundLoadDone = true;
           } else {
@@ -14100,7 +14165,56 @@ export class EventState extends State {
         return true; // Block until victory screen closes
       }
 
-      case 'credits':
+      case 'credits': {
+        const flagNames = new Set(['wait', 'center', 'no_split']);
+        const flags = new Set(
+          args
+            .slice(2)
+            .map((arg) => arg.toLowerCase().trim())
+            .filter((arg) => flagNames.has(arg)),
+        );
+        const title = args[0] ?? '';
+        const rawCredits = args[1] ?? '';
+        const sourceLines = flags.has('no_split') ? [rawCredits] : rawCredits.split(',');
+        const center = flags.has('center');
+        const maxChars = center ? 45 : 29;
+        const lines: string[] = [];
+        for (const source of sourceLines) {
+          const words = source.trim().split(/\s+/).filter(Boolean);
+          if (words.length === 0) {
+            lines.push('');
+            continue;
+          }
+          let current = '';
+          for (const word of words) {
+            if (!current) {
+              current = word;
+            } else if (`${current} ${word}`.length <= maxChars) {
+              current = `${current} ${word}`;
+            } else {
+              lines.push(current);
+              current = word;
+            }
+          }
+          if (current) lines.push(current);
+        }
+        const lineCount = Math.max(1, lines.length);
+        const pauseMs = (lineCount + 1) * 1000;
+        this.creditCards.push({
+          title,
+          lines,
+          center,
+          waitAtCenter: flags.has('wait'),
+          elapsedMs: 0,
+          pauseMs,
+          height: 12 + lineCount * 10,
+        });
+        this.waiting = true;
+        this.waitTimer = (lineCount + 2) * 10 * 50 +
+          (flags.has('wait') ? pauseMs * 2.1 : 0);
+        return true;
+      }
+
       case 'credit': {
         this.advancePointer();
         game.state.change('credit');

@@ -1175,19 +1175,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11014
+          "line": 11079
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12463
+          "line": 12528
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14559
+          "line": 14673
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14577
+          "line": 14691
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1350,23 +1350,23 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10816
+          "line": 10881
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10821
+          "line": 10886
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10840
+          "line": 10905
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14758
+          "line": 14872
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14781
+          "line": 14895
         },
         {
           "source": "src/objects/game-board.ts",
@@ -1777,7 +1777,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11775
+          "line": 11840
         },
         {
           "source": "src/events/event-manager.ts",
@@ -4129,15 +4129,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8187
+          "line": 8197
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11860
+          "line": 11925
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12514
+          "line": 12579
         },
         {
           "source": "src/main.ts",
