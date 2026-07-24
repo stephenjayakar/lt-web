@@ -51,7 +51,6 @@ evidence, not proof of behavior.
 | change_ai | 3 | reference-only |
 | change_buy_price | 1 | reference-only |
 | class_skill | 343 | unreferenced |
-| combat_art | 42 | unreferenced |
 | combat_artist | 1 | custom-or-unknown |
 | death_tether | 1 | unreferenced |
 | defense_pre_proc | 1 | reference-only |
