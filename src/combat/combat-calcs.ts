@@ -974,7 +974,7 @@ export function getEquippedWeapon(
   // Tracked equipped weapon is authoritative (Python `unit.equipped_weapon`).
   if (unit.equippedWeapon) return unit.equippedWeapon;
   // Fallback for units constructed before autoequip ran: derive and cache.
-  if (db) {
+  if (db && typeof unit.autoequip === 'function') {
     unit.autoequip();
     if (unit.equippedWeapon) return unit.equippedWeapon;
   }

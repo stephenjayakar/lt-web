@@ -187,7 +187,7 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
     stack limits/removal counts, persistent grants, and object-valued loops.
   - [x] Map animations, shops, prep, and unit groups, including permanent
     overlays and Chapter 28's staged Rath reinforcement movement.
-- [ ] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
+- [x] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
   `add_skill_component`, `set_custom_options`, and all three `pair_up` script
   uses in their actual chapter contexts.
 - [ ] Verify base/prep, convoy, trading, shops, armory/vendor stock, formation,
@@ -259,9 +259,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Finish P4 high-volume command semantics and blocking-order validation.
-2. Validate P4 commands and menu/state flows in their actual chapter contexts.
-3. Extend campaign checkpoints through route splits, promotion, and endgame.
+1. Validate P4 menu/state flows in their actual chapter contexts.
+2. Extend campaign checkpoints through route splits, promotion, and endgame.
+3. Exercise event entrypoints and only-once/chaining behavior systematically.
 4. Complete browser UX/audio/input QA, save migration coverage, and the release
    gate.
 
@@ -271,7 +271,7 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 - `self_status_on_hit` exists in combat component handling.
 - Upkeep/endstep timing for `time`, `end_time`, `combined_time`,
   `lost_on_upkeep`, `lost_on_endstep`, and regeneration has web implementation.
-- `make_generic`, `add_group`, `set_custom_options`, and
-  `add_skill_component` have web paths, but still require Rekka scenario tests.
+- Rekka's generic-unit, group, tilemap, dynamic skill-component, custom-option,
+  and pair/rescue scripts have focused campaign-context coverage.
 - Command-name coverage is broad; the remaining work is semantic parity,
   expression support, lifecycle ordering, presentation, and campaign proof.

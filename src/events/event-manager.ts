@@ -863,8 +863,13 @@ function evaluateComparison(
   rhsStr: string,
   ctx: ConditionContext,
 ): boolean {
-  const lhsValue = resolvePath(lhsStr, ctx);
-  const rhsValue = resolvePath(rhsStr, ctx);
+  const resolveOperand = (operand: string): any => {
+    const direct = resolvePath(operand, ctx);
+    if (direct !== undefined) return direct;
+    return evaluateWithJsFallback(operand, ctx, false);
+  };
+  const lhsValue = resolveOperand(lhsStr);
+  const rhsValue = resolveOperand(rhsStr);
 
   // If both resolve to numbers, compare numerically
   const lhsNum = typeof lhsValue === 'number' ? lhsValue : Number(lhsValue);
@@ -1436,6 +1441,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 function evaluateWithJsFallback(
   condition: string,
   ctx: ConditionContext,
+  warnOnFailure = true,
 ): any {
   const game = ctx.game;
   if (!game) return undefined;
@@ -1590,7 +1596,9 @@ function evaluateWithJsFallback(
     );
   } catch (e) {
     // Expression evaluation failed — log the error for debugging
-    console.warn(`EventCondition JS eval failed for "${condition}":`, e);
+    if (warnOnFailure) {
+      console.warn(`EventCondition JS eval failed for "${condition}":`, e);
+    }
     return undefined;
   }
 }

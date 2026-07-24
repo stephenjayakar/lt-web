@@ -120,11 +120,11 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 3583
+          "line": 3587
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3592
+          "line": 3596
         },
         {
           "source": "src/engine/save.ts",
@@ -138,7 +138,7 @@
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 3583
+          "line": 3587
         }
       ],
       "matchingWebHooks": [],
@@ -1175,19 +1175,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10989
+          "line": 10992
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12432
+          "line": 12443
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14522
+          "line": 14538
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14540
+          "line": 14556
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1346,27 +1346,27 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3569
+          "line": 3570
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10791
+          "line": 10794
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10796
+          "line": 10799
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10815
+          "line": 10818
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14721
+          "line": 14737
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14744
+          "line": 14760
         },
         {
           "source": "src/objects/game-board.ts",
@@ -1380,7 +1380,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3569
+          "line": 3570
         }
       ],
       "matchingWebHooks": [],
@@ -1431,7 +1431,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3614
+          "line": 3618
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -1445,7 +1445,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3614
+          "line": 3618
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -1777,7 +1777,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11750
+          "line": 11753
         },
         {
           "source": "src/events/event-manager.ts",
@@ -4133,11 +4133,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11835
+          "line": 11838
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12483
+          "line": 12494
         },
         {
           "source": "src/main.ts",
@@ -4349,7 +4349,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1307
+          "line": 1312
         },
         {
           "source": "src/objects/item.ts",
@@ -6458,7 +6458,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1411
+          "line": 1416
         }
       ],
       "directReads": [
@@ -7677,13 +7677,13 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 3614
+          "line": 3618
         }
       ],
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 3614
+          "line": 3618
         }
       ],
       "matchingWebHooks": [],
@@ -7708,13 +7708,13 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 3605
+          "line": 3609
         }
       ],
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 3605
+          "line": 3609
         }
       ],
       "matchingWebHooks": [],
@@ -8053,17 +8053,17 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 3656
+          "line": 3660
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3662
+          "line": 3666
         }
       ],
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 3656
+          "line": 3660
         }
       ],
       "matchingWebHooks": [],

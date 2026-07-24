@@ -9677,7 +9677,7 @@ export class EventState extends State {
     const rawArgs = cmd.args ?? [];
 
     // Substitute template variables in all args:
-    // {unit} -> the unit that triggered this event (from trigger.unitNid or unit1.nid)
+    // {unit}/{unit1} -> the primary unit (from trigger.unitNid or unit1.nid)
     // {unit2} -> the secondary unit (from trigger.unit2.nid)
     const trigger = this.currentEvent?.trigger;
     const unitNid = trigger?.unitNid ?? trigger?.unit1?.nid ?? '';
@@ -9692,8 +9692,11 @@ export class EventState extends State {
       return result === undefined || result === null ? '' : String(result);
     };
     let args = rawArgs.map((arg) => {
-      let value = arg.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid);
+      let value = arg
+        .replace(/\{unit1?\}/g, unitNid)
+        .replace(/\{unit2\}/g, unit2Nid);
       const variableValue = (key: string): any => {
+        if (expressionContext.localArgs?.has(key)) return expressionContext.localArgs.get(key);
         if (game.levelVars?.has?.(key)) return game.levelVars.get(key);
         if (game.gameVars?.has?.(key)) return game.gameVars.get(key);
         return undefined;
@@ -11867,7 +11870,11 @@ export class EventState extends State {
       case 'game_var':
       case 'set_game_var': {
         const varName = args[0] ?? '';
-        const value = this.evaluateVariableExpression(args[1] ?? 'True');
+        const rawExpression = rawArgs[1] ?? 'True';
+        const wholeEval = rawExpression.match(/^\{(?:e|eval):([\s\S]+)\}$/);
+        const value = wholeEval
+          ? evaluateExpression(wholeEval[1], this.buildConditionContext())
+          : this.evaluateVariableExpression(args[1] ?? 'True');
         if (varName && game.gameVars) {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, value));
         }
@@ -11909,7 +11916,11 @@ export class EventState extends State {
 
       case 'level_var': {
         const varName = args[0] ?? '';
-        const value = this.evaluateVariableExpression(args[1] ?? 'True');
+        const rawExpression = rawArgs[1] ?? 'True';
+        const wholeEval = rawExpression.match(/^\{(?:e|eval):([\s\S]+)\}$/);
+        const value = wholeEval
+          ? evaluateExpression(wholeEval[1], this.buildConditionContext())
+          : this.evaluateVariableExpression(args[1] ?? 'True');
         if (varName && game.levelVars) {
           game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, value));
         }
@@ -13652,6 +13663,7 @@ export class EventState extends State {
       case 'make_generic': {
         // make_generic;NID;Klass;Level;Team;AI;Faction;AnimVariant;ItemList
         let mgNid = args[0] ?? '';
+        const assignCreatedUnit = mgNid.length === 0;
         const mgKlass = args[1] ?? '';
         const mgLevel = parseInt(args[2], 10) || 1;
         const mgTeam = args[3] || 'player';
@@ -13702,6 +13714,10 @@ export class EventState extends State {
         if (mgUnit) {
           game.actionLog.doAction(new CreateUnitAction(game, mgUnit, null));
           this.loadMapSpriteForUnit(mgUnit, game);
+          if (assignCreatedUnit && this.currentEvent) {
+            this.currentEvent.trigger.localArgs ??= new Map<string, any>();
+            this.currentEvent.trigger.localArgs.set('created_unit', mgUnit.nid);
+          }
         }
         this.advancePointer();
         return false;

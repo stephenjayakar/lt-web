@@ -610,7 +610,7 @@ test.describe('Event command parity', () => {
       };
     }, setup.beforeActionIndex);
     expect(resumed.state).toBe('free');
-    expect(resumed.value).toBe('1');
+    expect(resumed.value).toBe(1);
     expect(resumed.newActionTypes).toEqual([
       'SetGameVarAction',
       'SetGameVarAction',
