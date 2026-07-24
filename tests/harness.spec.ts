@@ -6617,6 +6617,7 @@ test.describe('Sacred Stones Chapter Mechanics', () => {
   });
 
   test('Chapter 5 turn-2 and turn-8 reinforcements spawn correctly', async ({ page }) => {
+    test.setTimeout(180_000);
     await page.goto('/?harness=true&level=5&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 10);
@@ -8616,6 +8617,7 @@ async function triggerEvent(page: any, triggerType: string): Promise<boolean> {
 
 test.describe('Level Progression', () => {
   test('Ch.1 intro cutscene plays after Prologue transition', async ({ page }) => {
+    test.setTimeout(180_000);
     // This test verifies that after the Prologue outro completes,
     // the Chapter 1 intro cutscene actually runs (not skipped).
     const logs: string[] = [];

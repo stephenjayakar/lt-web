@@ -30,11 +30,14 @@ test('one Rekka snapshot preserves rich item, skill, convoy, and pending-event s
     unit.onAddItem(accessory);
     game.actionLog.doAction(new EquipItemAction(unit, accessory));
 
-    const combatArt = new SkillObject(game.db.skills.get('ExhaustArt'));
+    let combatArt = unit.skills.find((skill: any) => skill.nid === 'ExhaustArt');
+    if (!combatArt) {
+      combatArt = new SkillObject(game.db.skills.get('ExhaustArt'));
+      game.actionLog.doAction(new AddSkillAction(unit, combatArt));
+    }
     combatArt.data.set('charge', 2);
     combatArt.data.set('total_charge', 3);
     combatArt.data.set('rekkaCustomState', 'ready');
-    game.actionLog.doAction(new AddSkillAction(unit, combatArt));
 
     const multiSkill = new SkillObject(game.db.skills.get('CCCRRRRR'));
     game.actionLog.doAction(new AddSkillAction(unit, multiSkill));

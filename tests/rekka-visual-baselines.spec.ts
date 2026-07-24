@@ -84,4 +84,121 @@ test.describe('Rekka visual baselines', () => {
       maxDiffPixelRatio: 0.01,
     });
   });
+
+  test('Rekka full battle animation loads authored combat art and platforms', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    const started = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const attacker = game.buildUnit(game.db.units.get('Dorcas'), 'player', 'None');
+      const defender = game.buildUnit(game.db.units.get('Batta'), 'enemy', 'None');
+      attacker.equippedWeapon = attacker.items.find((item: any) => item.isWeapon());
+      defender.equippedWeapon = defender.items.find((item: any) => item.isWeapon());
+      attacker.wexp.Axe = 999;
+      defender.wexp.Axe = 999;
+      game.units.set('_ForecastDorcas', attacker);
+      game.units.set('_ForecastBatta', defender);
+      let location: [number, number] | null = null;
+      for (let y = 0; y < game.board.height && !location; y++) {
+        for (let x = 0; x + 1 < game.board.width; x++) {
+          const left = game.db.terrain.get(game.board.getTerrain(x, y));
+          const right = game.db.terrain.get(game.board.getTerrain(x + 1, y));
+          if (left?.background && left.background !== 'BlackBackground' &&
+              right?.background && right.background !== 'BlackBackground' &&
+              !game.board.getUnit(x, y) && !game.board.getUnit(x + 1, y)) {
+            location = [x, y];
+            break;
+          }
+        }
+      }
+      if (!location) return false;
+      game.board.setUnit(location[0], location[1], attacker);
+      game.board.setUnit(location[0] + 1, location[1], defender);
+      attacker.finished = false;
+      game.selectedUnit = attacker;
+      game.combatTarget = defender;
+      game.state.change('combat');
+      return true;
+    });
+    expect(started).toBe(true);
+
+    for (let index = 0; index < 100; index++) {
+      await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+      const ready = await page.evaluate(() => {
+        const state = (window as any).__gameRef.state.getCurrentState() as any;
+        return state?.name === 'combat' &&
+          !!state.animCombat?.getRenderState?.().leftDraw?.mainFrame &&
+          !!state.animCombat?.getRenderState?.().rightDraw?.mainFrame;
+      });
+      if (ready) break;
+      await page.waitForTimeout(10);
+    }
+    const render = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      const combat = state?.animCombat;
+      if (!combat) return null;
+      combat.state = 'entrance';
+      combat.stateTimer = 700;
+      combat.leftAnim.opacity = 255;
+      combat.rightAnim.opacity = 255;
+      const frame = combat.getRenderState();
+      return {
+        left: Boolean(frame.leftDraw.mainFrame),
+        right: Boolean(frame.rightDraw.mainFrame),
+      };
+    });
+    expect(render).toEqual({ left: true, right: true });
+    await page.waitForTimeout(250);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
+    await expect(page.locator('#game-canvas')).toHaveScreenshot(
+      'rekka-full-battle-animation.png',
+      { maxDiffPixelRatio: 0.01 },
+    );
+  });
+
+  test('Rekka targeting forecast and map combat remain readable', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('Batta');
+      attacker.equippedWeapon = attacker.items.find((item: any) => item.isWeapon());
+      defender.equippedWeapon = defender.items.find((item: any) => item.isWeapon());
+      attacker.wexp.Sword = 999;
+      defender.wexp.Axe = 999;
+      if (defender.position) game.board.removeUnit(defender);
+      const [x, y] = attacker.position;
+      const destination = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]
+        .find(([tx, ty]) => game.board.inBounds(tx, ty) && !game.board.getUnit(tx, ty));
+      game.board.setUnit(destination[0], destination[1], defender);
+      game.camera.forceTile(x, y);
+      attacker.finished = false;
+      game.selectedUnit = attacker;
+      game.state.change('targeting');
+      (window as any).__harness.stepFrames(2, null);
+    });
+    expect(await page.evaluate(
+      () => (window as any).__gameRef.state.getCurrentState()?.name,
+    )).toBe('targeting');
+    await expect(page.locator('#game-canvas')).toHaveScreenshot(
+      'rekka-combat-forecast.png',
+      { maxDiffPixelRatio: 0.01 },
+    );
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      // Utility/spell presentation intentionally routes through MapCombat.
+      game.selectedUnit.equippedWeapon.components.set('spell', true);
+      (window as any).__harness.stepFrames(1, 'SELECT');
+      (window as any).__harness.stepFrames(45, null);
+    });
+    expect(await page.evaluate(
+      () => (window as any).__gameRef.state.getCurrentState()?.name,
+    )).toBe('combat');
+    await expect(page.locator('#game-canvas')).toHaveScreenshot(
+      'rekka-map-combat.png',
+      { maxDiffPixelRatio: 0.01 },
+    );
+  });
 });

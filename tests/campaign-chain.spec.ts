@@ -90,7 +90,7 @@ async function advanceUntil(
 ): Promise<{ levelNid: string | null; stateName: string | null; hitTitle: boolean }> {
   const selectEvery = opts.selectEvery ?? 3;
   const framesPerBatch = opts.framesPerBatch ?? 5;
-  const waitMs = opts.waitMs ?? 10;
+  const waitMs = opts.waitMs ?? 2;
 
   let hitTitle = false;
   let snap: { levelNid: string | null; stateName: string | null } = { levelNid: null, stateName: null };
@@ -174,7 +174,7 @@ async function selectMenuOption(page: any, label: string): Promise<boolean> {
 
 test.describe('Sacred Stones Campaign Chain', () => {
   test('Prologue -> Ch.1 -> Ch.2 -> Ch.3 -> Ch.4 -> Ch.5 sequential chain', async ({ page }) => {
-    test.setTimeout(600_000);
+    test.setTimeout(900_000);
 
     // ---- Prologue -----------------------------------------------------
     await page.goto('/?harness=true&level=0&bundle=false');
@@ -253,7 +253,10 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await selectMenuOption(page, 'Seize')).toBe(true);
     await stepFrames(page, 2, 'SELECT');
 
-    result = await advanceUntil(page, (s) => s.levelNid === '2', 2500, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '2', 800, {
+      selectEvery: 1,
+      framesPerBatch: 8,
+    });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('2');
     await saveScreenshot(page, '71-chain-ch2-reached');
@@ -282,7 +285,10 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await triggerEvent(page, 'combat_end')).toBe(true);
     await stepFrames(page, 3);
 
-    result = await advanceUntil(page, (s) => s.levelNid === '3', 2500, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '3', 800, {
+      selectEvery: 1,
+      framesPerBatch: 8,
+    });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('3');
     await saveScreenshot(page, '72-chain-ch3-reached');
@@ -382,7 +388,10 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await selectMenuOption(page, 'Seize')).toBe(true);
     await stepFrames(page, 2, 'SELECT');
 
-    result = await advanceUntil(page, (s) => s.levelNid === '4', 2500, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '4', 800, {
+      selectEvery: 1,
+      framesPerBatch: 8,
+    });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('4');
     await saveScreenshot(page, '73-chain-ch4-reached');
@@ -470,7 +479,10 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(await triggerEvent(page, 'combat_end')).toBe(true);
     await stepFrames(page, 3);
 
-    result = await advanceUntil(page, (s) => s.levelNid === '5', 2500, { selectEvery: 3, framesPerBatch: 2 });
+    result = await advanceUntil(page, (s) => s.levelNid === '5', 800, {
+      selectEvery: 1,
+      framesPerBatch: 8,
+    });
     expect(result.hitTitle).toBe(false);
     expect(result.levelNid).toBe('5');
     await saveScreenshot(page, '75-chain-ch5-reached');

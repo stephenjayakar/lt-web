@@ -61,6 +61,13 @@ async function getGameVar(page: Page, key: string): Promise<any> {
   return page.evaluate((key) => (window as any).__gameRef.gameVars.get(key), key);
 }
 
+async function preloadPortrait(page: Page, nid: string): Promise<void> {
+  await page.evaluate(
+    (portraitNid) => (window as any).__gameRef.resources.loadPortrait(portraitNid),
+    nid,
+  );
+}
+
 async function configureLargeCamera(page: Page): Promise<void> {
   await page.evaluate(() => {
     const gameWindow = window as Window & {
@@ -393,6 +400,10 @@ test.describe('Event command flag matching: no_block', () => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
+    // Portrait loading is asynchronous in the browser but synchronous in the
+    // Python reference. Keep these flag tests focused on command timing rather
+    // than network scheduling; async dependency ordering has separate coverage.
+    await preloadPortrait(page, 'Eirika');
   });
 
   test('transition continues the script during a no_block fade, but otherwise blocks', async ({ page }) => {
@@ -439,6 +450,7 @@ test.describe('Event command flag matching: no_block', () => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
+    await preloadPortrait(page, 'Eirika');
 
     await installAndRunEvent(page, 'test_add_portrait_no_block', [
       'add_portrait;Eirika;Left;;;;no_block',
@@ -460,6 +472,7 @@ test.describe('Event command flag matching: no_block', () => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
+    await preloadPortrait(page, 'Eirika');
 
     await installAndRunEvent(page, 'test_remove_portrait_no_block', [
       'add_portrait;Eirika;Left;;;;no_block',
@@ -485,6 +498,7 @@ test.describe('Event command flag matching: no_block', () => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
+    await preloadPortrait(page, 'Eirika');
 
     await installAndRunEvent(page, 'test_move_portrait_no_block', [
       'add_portrait;Eirika;Left;;;;no_block',
@@ -507,6 +521,7 @@ test.describe('Event command flag matching: no_block', () => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
+    await preloadPortrait(page, 'Eirika');
 
     await installAndRunEvent(page, 'test_mirror_portrait_no_block', [
       'add_portrait;Eirika;Left;;;;no_block',

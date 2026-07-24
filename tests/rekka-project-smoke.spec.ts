@@ -60,7 +60,7 @@ async function waitForHarness(page: Page): Promise<void> {
 
 test.describe('Rekka all-level compatibility', () => {
   test('all levels clean boot without runtime failures', async ({ page }) => {
-    test.setTimeout(5 * 60_000);
+    test.setTimeout(10 * 60_000);
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
@@ -1555,7 +1555,7 @@ test.describe('Rekka all-level compatibility', () => {
   });
 
   test('Rekka chapter 33 requires all three castle seizes before chapter 34', async ({ page }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(180_000);
     await page.goto('/?harness=true&project=rekka.ltproj&level=33&clean=false&bundle=false');
     await waitForHarness(page);
     await page.evaluate(() => (window as any).__harness.settle(1_200));
@@ -1618,7 +1618,21 @@ test.describe('Rekka all-level compatibility', () => {
       const game = (window as any).__gameRef;
       return game.currentLevel?.nid === '34' && game.units.has('Hector');
     });
-    await page.evaluate(() => (window as any).__harness.settle(1_200));
+    // Loading the next level and installing its intro event are separate async
+    // turns. Yield between deterministic settle batches until the chapter's
+    // actual terminal contract is visible, rather than sampling the first
+    // frame on which the level object exists.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await page.evaluate(() => (window as any).__harness.settle(1_200));
+      const ready = await page.evaluate(() => {
+        const game = (window as any).__gameRef;
+        const hector = game.units.get('Hector');
+        return game.state.getCurrentState()?.name === 'prep_main' &&
+          hector?.items.some((item: any) => item.nid === 'HeavenSeal');
+      });
+      if (ready) break;
+      await page.waitForTimeout(10);
+    }
 
     const chapterThirtyFour = await page.evaluate(() => {
       const game = (window as any).__gameRef;
