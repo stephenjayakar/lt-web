@@ -200,6 +200,165 @@ test.describe('Rekka project-local item components', () => {
     });
   });
 
+  test('all usable_in_base items appear in management and apply reversible effects', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { BaseManageState } = await import('/src/engine/states/base-state.ts');
+      const { BaseUseState } = await import('/src/engine/states/game-states.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const unit = game.units.get('Lyn');
+      const expected = [
+        'Angelic_Robe', 'Energy_Ring', 'Secret_Book', 'Speedwing', 'Goddess_Icon',
+        'Dragonshield', 'Talisman', 'Swiftsole', 'Body_Ring', 'Master_Seal', 'HeavenSeal',
+      ];
+      const catalog = [...game.db.items.values()]
+        .filter((item: any) => Array.isArray(item.components)
+          ? item.components.some((component: any) => component[0] === 'usable_in_base')
+          : item.components.has('usable_in_base'))
+        .map((item: any) => item.nid)
+        .sort();
+
+      const robe = new ItemObject(game.db.items.get('Angelic_Robe'));
+      robe.owner = unit;
+      unit.items.push(robe);
+      const manage: any = new BaseManageState();
+      manage.selectedNid = unit.nid;
+      manage.buildOptionMenu();
+      const useOption = manage.optionMenu.options.find((option: any) => option.value === 'use');
+
+      const beforeRobe = {
+        hp: unit.stats.HP,
+        currentHp: unit.currentHp,
+        uses: robe.uses,
+        hasTraded: unit.hasTraded,
+        actions: game.actionLog.actions.length,
+      };
+      game.memory.set('base_use_unit', unit);
+      const robeState: any = new BaseUseState();
+      robeState.begin();
+      robeState.takeInput('SELECT');
+      const afterRobe = {
+        hp: unit.stats.HP,
+        currentHp: unit.currentHp,
+        uses: robe.uses,
+        hasTraded: unit.hasTraded,
+        retained: unit.items.includes(robe),
+      };
+      while (game.actionLog.actions.length > beforeRobe.actions) game.actionLog.undo();
+      const undoneRobe = {
+        hp: unit.stats.HP,
+        currentHp: unit.currentHp,
+        uses: robe.uses,
+        hasTraded: unit.hasTraded,
+        retained: unit.items.includes(robe),
+      };
+      unit.items.splice(unit.items.indexOf(robe), 1);
+
+      const seal = new ItemObject(game.db.items.get('HeavenSeal'));
+      seal.owner = unit;
+      unit.items.push(seal);
+      const beforeSeal = {
+        klass: unit.klass,
+        actions: game.actionLog.actions.length,
+      };
+      game.memory.set('base_use_unit', unit);
+      const sealState: any = new BaseUseState();
+      sealState.begin();
+      sealState.takeInput('SELECT');
+      const afterSeal = {
+        klass: unit.klass,
+        retained: unit.items.includes(seal),
+        uses: seal.uses,
+      };
+      while (game.actionLog.actions.length > beforeSeal.actions) game.actionLog.undo();
+      const undoneSeal = {
+        klass: unit.klass,
+        retained: unit.items.includes(seal),
+        uses: seal.uses,
+      };
+      unit.items.splice(unit.items.indexOf(seal), 1);
+
+      const oldLevel = unit.level;
+      const oldKlass = unit.klass;
+      unit.klass = 'Myrmidon';
+      const masterSeal = new ItemObject(game.db.items.get('Master_Seal'));
+      masterSeal.owner = unit;
+      unit.items.push(masterSeal);
+      unit.level = 9;
+      game.memory.set('base_use_unit', unit);
+      const levelNineState: any = new BaseUseState();
+      levelNineState.begin();
+      const masterAtNine = levelNineState.menu.options[0].enabled;
+      unit.level = 10;
+      const levelTenState: any = new BaseUseState();
+      levelTenState.begin();
+      const masterAtTen = levelTenState.menu.options[0].enabled;
+      unit.level = oldLevel;
+      unit.klass = oldKlass;
+      const snapshot = harness.saveSnapshot();
+      const loaded = await harness.loadSnapshot(snapshot);
+      const loadedUnit = game.units.get('Lyn');
+      const loadedMasterSeal = loadedUnit.items.find((item: any) => item.nid === 'Master_Seal');
+
+      return {
+        catalog,
+        expected: [...expected].sort(),
+        useOption: { enabled: useOption.enabled, label: useOption.label },
+        beforeRobe,
+        afterRobe,
+        undoneRobe,
+        beforeSeal,
+        afterSeal,
+        undoneSeal,
+        masterSeal: {
+          atLevelNine: masterAtNine,
+          atLevelTen: masterAtTen,
+          uses: masterSeal.uses,
+          maxUses: masterSeal.maxUses,
+        },
+        loaded,
+        loadedIdentity: !!loadedMasterSeal && loadedMasterSeal.owner === loadedUnit,
+      };
+    });
+
+    expect(result.catalog).toEqual(result.expected);
+    expect(result.useOption).toEqual({ enabled: true, label: 'Use' });
+    expect(result.afterRobe).toEqual({
+      hp: result.beforeRobe.hp + 3,
+      currentHp: result.beforeRobe.currentHp + 3,
+      uses: result.beforeRobe.uses - 1,
+      hasTraded: true,
+      retained: true,
+    });
+    expect(result.undoneRobe).toEqual({
+      hp: result.beforeRobe.hp,
+      currentHp: result.beforeRobe.currentHp,
+      uses: result.beforeRobe.uses,
+      hasTraded: result.beforeRobe.hasTraded,
+      retained: true,
+    });
+    expect(result.afterSeal).toEqual({
+      klass: 'BladeLord',
+      retained: false,
+      uses: 0,
+    });
+    expect(result.undoneSeal).toEqual({
+      klass: result.beforeSeal.klass,
+      retained: true,
+      uses: 1,
+    });
+    expect(result.masterSeal).toEqual({
+      atLevelNine: false,
+      atLevelTen: true,
+      uses: 1,
+      maxUses: 1,
+    });
+    expect(result.loaded).toBe(true);
+    expect(result.loadedIdentity).toBe(true);
+  });
+
   test('equippable_accessory uses the ring slot with reversible equip hooks and save identity', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {
