@@ -120,6 +120,8 @@ import {
   AddAnimToUnitAction,
   RemoveAnimFromUnitAction,
   ChangeBgTilemapAction,
+  ShowLayerAction,
+  HideLayerAction,
   ChangeTeamPaletteAction,
   ChangeRoamAiAction,
   ChangeTeamAction,
@@ -12020,13 +12022,25 @@ export class EventState extends State {
         const immediate = this.skipMode ||
           args.some(arg => arg.toLowerCase().trim() === 'immediate');
         const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
+        const duration = parseInt(args[1] ?? '', 10);
         game.cursor?.setPos(resolved[0], resolved[1]);
         if (immediate) {
-          game.camera?.forceTile(resolved[0], resolved[1]);
+          if (cmd.type === 'center_cursor') {
+            game.camera?.forceTile(resolved[0], resolved[1]);
+          } else {
+            game.camera?.forceTrackTile(resolved[0], resolved[1]);
+          }
           this.advancePointer();
           return false;
         }
-        game.camera?.focusTile(resolved[0], resolved[1]);
+        if (Number.isFinite(duration) && duration > 0) {
+          game.camera?.setPanDuration(duration);
+        }
+        if (cmd.type === 'center_cursor') {
+          game.camera?.focusTile(resolved[0], resolved[1]);
+        } else {
+          game.camera?.trackTile(resolved[0], resolved[1]);
+        }
         if (noBlock || (game.camera?.isAtTarget() ?? true)) {
           this.advancePointer();
           return false;
@@ -12813,8 +12827,14 @@ export class EventState extends State {
         // show_layer;Layer[;LayerTransition] -- LayerTransition: 'fade' (default) or 'immediate'
         const layerNid = args[0] ?? '';
         const transition = args[1] === 'immediate' ? 'immediate' : 'fade';
-        if (game.tilemap) {
-          game.tilemap.showLayer(layerNid, transition);
+        const layer = game.tilemap?.layers.find((candidate: any) => candidate.nid === layerNid);
+        if (game.tilemap && layer && !layer.visible) {
+          game.actionLog.doAction(new ShowLayerAction(
+            game.tilemap,
+            game.board,
+            layerNid,
+            transition,
+          ));
         }
         this.advancePointer();
         return false;
@@ -12824,8 +12844,14 @@ export class EventState extends State {
         // hide_layer;Layer[;LayerTransition] -- LayerTransition: 'fade' (default) or 'immediate'
         const layerNid2 = args[0] ?? '';
         const transition2 = args[1] === 'immediate' ? 'immediate' : 'fade';
-        if (game.tilemap) {
-          game.tilemap.hideLayer(layerNid2, transition2);
+        const layer2 = game.tilemap?.layers.find((candidate: any) => candidate.nid === layerNid2);
+        if (game.tilemap && layer2?.visible) {
+          game.actionLog.doAction(new HideLayerAction(
+            game.tilemap,
+            game.board,
+            layerNid2,
+            transition2,
+          ));
         }
         this.advancePointer();
         return false;
