@@ -9,6 +9,7 @@ import { createItemTree } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
 import type { CombatStrike } from './combat-solver';
+import type { CombatProcMark } from './combat-skill-lifecycle';
 import type { CombatResults } from './map-combat';
 import type { ActionLog } from '../engine/action';
 import {
@@ -247,7 +248,11 @@ export function queueCombatSkillEvents(
   for (const strike of strikes) {
     const mode = strike.mode ?? (strike.isCounter ? 'defense' : 'attack');
     const defenderItem = equippedWeapon(strike.defender);
-    for (const skill of strike.attacker.skills) {
+    const attackerSkills = [...strike.attacker.skills];
+    for (const mark of strike.attackProcs ?? []) {
+      if (!attackerSkills.includes(mark.procSkill)) attackerSkills.push(mark.procSkill);
+    }
+    for (const skill of attackerSkills) {
       if (!combatSkillEnabled(game, strike.attacker, skill, strike.defender, strike.item)) continue;
       for (const [component, value] of skill.components) {
         const fires = component === 'event_after_strike' ||
@@ -262,7 +267,11 @@ export function queueCombatSkillEvents(
         )) queued++;
       }
     }
-    for (const skill of strike.defender.skills) {
+    const defenderSkills = [...strike.defender.skills];
+    for (const mark of strike.defenseProcs ?? []) {
+      if (!defenderSkills.includes(mark.procSkill)) defenderSkills.push(mark.procSkill);
+    }
+    for (const skill of defenderSkills) {
       if (!combatSkillEnabled(game, strike.defender, skill, strike.attacker, defenderItem ?? strike.item)) {
         continue;
       }
@@ -369,6 +378,7 @@ export function applyCombatSkillEndHooks(
   strikes: CombatStrike[],
   initiator?: UnitObject,
   primaryTarget?: UnitObject,
+  procPlayback: CombatProcMark[] = [],
 ): number {
   if (!game.actionLog || !game.db) return 0;
   let applied = 0;
@@ -449,7 +459,15 @@ export function applyCombatSkillEndHooks(
 
   for (const { unit, target, item, strikes: pairStrikes } of pairs.values()) {
     const isAlly = checkAlly(unit, target, game.db);
-    for (const skill of [...unit.skills]) {
+    const endCombatSkills = [...unit.skills];
+    for (const mark of procPlayback) {
+      if (mark.unit === unit &&
+          (mark.kind === 'attack_pre_proc' || mark.kind === 'defense_pre_proc') &&
+          !endCombatSkills.includes(mark.procSkill)) {
+        endCombatSkills.push(mark.procSkill);
+      }
+    }
+    for (const skill of endCombatSkills) {
       if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
 
       const afterHit = skill.getComponent<string>('give_status_after_hit');

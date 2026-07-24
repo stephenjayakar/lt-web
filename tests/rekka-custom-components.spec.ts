@@ -1638,6 +1638,142 @@ test.describe('Rekka project-local skill components', () => {
     expect(result.warp.pathLength).toBe(1);
   });
 
+  test('real Rekka combat-art and proc children preserve Python ordering and hooks', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
+      const {
+        applyCombatSkillEndHooks,
+        queueCombatSkillEvents,
+      } = await import('/src/combat/combat-lifecycle.ts');
+      const { usesConsumedByStrikes } = await import('/src/combat/item-system.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const attackItem = attacker.items.find((item: any) => item.isWeapon());
+      const defenseItem = defender.items.find((item: any) => item.isWeapon());
+      game.db.equations.set('RE_MOVE', '100');
+      game.db.equations.set('DUPLICATE', '100');
+      game.db.equations.set('CHARMED_LIFE', '100');
+
+      const combatArt = new SkillObject(game.db.skills.get('Rounders'));
+      combatArt.data.set('active', true);
+      const combatArtChild = new SkillObject(game.db.skills.get('RoundersArt'));
+      combatArtChild.data.set('combatArtSource', combatArt);
+      const singer = new SkillObject(game.db.skills.get('Singer'));
+      const duplicate = new SkillObject(game.db.skills.get('Duplicate'));
+      const charmed = new SkillObject(game.db.skills.get('CharmedLife'));
+      attacker.skills = [combatArt, combatArtChild, singer, duplicate];
+      defender.skills = [charmed];
+      const solver = new CombatPhaseSolver(() => 0, game);
+      const strikes = solver.resolve(
+        attacker,
+        attackItem,
+        defender,
+        defenseItem,
+        game.db,
+        'classic',
+        game.board,
+        ['hit1', 'end'],
+      );
+      const playback = solver.procPlayback.map((mark: any) =>
+        `${mark.kind}:${mark.procSkill.nid}`);
+      const temporaryChildrenAfterSolve = {
+        singer: attacker.skills.some((skill: any) => skill.nid === 'SingerProc'),
+        duplicate: attacker.skills.some((skill: any) => skill.nid === 'DupeProc'),
+        charmed: defender.skills.some((skill: any) => skill.nid === 'CharmedLifeProc'),
+      };
+
+      const events: any[] = [];
+      game.eventManager.triggerSpecific = (nid: string, trigger: any) => {
+        events.push({
+          nid,
+          type: trigger.type,
+          unit1: trigger.unit1.nid,
+          unit2: trigger.unit2.nid,
+          item: trigger.item?.nid ?? null,
+          mode: trigger.localArgs.get('mode'),
+        });
+        return true;
+      };
+      const queued = queueCombatSkillEvents(
+        game, strikes, attacker, defender, attackItem, defenseItem,
+      );
+
+      Object.assign(attacker, {
+        hasAttacked: true,
+        hasMoved: true,
+        hasTraded: true,
+        finished: true,
+        movementLeft: 0,
+      });
+      const actionStart = game.actionLog.actions.length;
+      applyCombatSkillEndHooks(
+        game, strikes, attacker, defender, solver.procPlayback,
+      );
+      const singerReset = {
+        finished: attacker.finished,
+        movementLeft: attacker.movementLeft,
+      };
+      while (game.actionLog.actions.length > actionStart) game.actionLog.undo();
+
+      attacker.skills = [new SkillObject(game.db.skills.get('Preserve'))];
+      defender.skills = [];
+      const preserveSolver = new CombatPhaseSolver(() => 0, game);
+      const preserveStrikes = preserveSolver.resolve(
+        attacker,
+        attackItem,
+        defender,
+        defenseItem,
+        game.db,
+        'classic',
+        game.board,
+        ['hit1', 'end'],
+      );
+      const preserve = {
+        playback: preserveSolver.procPlayback.map((mark: any) =>
+          `${mark.kind}:${mark.procSkill.nid}`),
+        usesConsumed: usesConsumedByStrikes(attacker, attackItem, preserveStrikes),
+      };
+
+      return {
+        playback,
+        temporaryChildrenAfterSolve,
+        queued,
+        events,
+        singerReset,
+        preserve,
+      };
+    });
+
+    expect(result.playback).toEqual([
+      'attack_pre_proc:RoundersArt',
+      'attack_pre_proc:SingerProc',
+      'defense_pre_proc:CharmedLifeProc',
+      'attack_proc:DupeProc',
+    ]);
+    expect(result.temporaryChildrenAfterSolve).toEqual({
+      singer: false,
+      duplicate: false,
+      charmed: false,
+    });
+    expect(result.queued).toBe(1);
+    expect(result.events).toEqual([{
+      nid: 'Global Ability_Duplicate',
+      type: 'event_after_hit',
+      unit1: 'Lyn',
+      unit2: '101',
+      item: 'Iron_Sword',
+      mode: 'attack',
+    }]);
+    expect(result.singerReset).toEqual({ finished: false, movementLeft: 6 });
+    expect(result.preserve).toEqual({
+      playback: ['attack_proc:PreserveProc'],
+      usesConsumed: 0,
+    });
+  });
+
   test('survival hooks clamp lethal strikes and preserve reversible consumption', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {
