@@ -8196,6 +8196,21 @@ type EventOverlaySprite = {
   foreground: boolean;
 };
 
+type EventTable = {
+  nid: string;
+  data: string;
+  title: string | null;
+  rows: number;
+  columns: number;
+  rowWidth: number;
+  alignment: string;
+  background: string;
+  entryType: string;
+  textAlignment: string;
+  expression: boolean;
+  noBackground: boolean;
+};
+
 /** Maximum instant commands processed per frame to prevent infinite loops. */
 const MAX_BURST = 100;
 
@@ -8258,6 +8273,8 @@ export class EventState extends State {
   /** Count of portrait image loads in flight — blocks command processing until 0. */
   private pendingPortraitLoads: number = 0;
   private overlaySprites: Map<string, EventOverlaySprite> = new Map();
+  /** Persistent event-created tables, such as Rekka's live GoldDisplay. */
+  private eventTables: Map<string, EventTable> = new Map();
 
   // Currently speaking portrait (for talk animation)
   private speakingPortrait: EventPortrait | null = null;
@@ -8372,6 +8389,7 @@ export class EventState extends State {
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
       this.overlaySprites.clear();
+      this.eventTables.clear();
       this.speakingPortrait = null;
       this.wasDialogTyping = false;
       this.background = null;
@@ -8940,6 +8958,7 @@ export class EventState extends State {
     if (this.banner) {
       this.banner.draw(surf);
     }
+    this.drawEventTables(surf);
     if (this.choiceMenu) {
       this.choiceMenu.draw(surf);
     }
@@ -9163,6 +9182,7 @@ export class EventState extends State {
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
+      this.eventTables.clear();
       this.background = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
@@ -9175,6 +9195,7 @@ export class EventState extends State {
       this.endingCard = null;
       this.portraits.clear();
       this.pendingPortraitLoads = 0;
+      this.eventTables.clear();
       this.background = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
@@ -9284,6 +9305,96 @@ export class EventState extends State {
     const fromRegistry = game.units.get(nid);
     if (fromRegistry) return fromRegistry;
     return game.board?.getAllUnits().find((u: UnitObject) => u.nid === nid);
+  }
+
+  /** Resolve table rows on every draw so expression-backed displays stay live. */
+  private getEventTableRows(table: EventTable): string[] {
+    let raw: any = table.data;
+    if (table.expression) {
+      try {
+        raw = evaluateExpression(table.data, this.buildConditionContext());
+      } catch (error) {
+        console.warn(`table ${table.nid}: failed to evaluate "${table.data}"`, error);
+        return [];
+      }
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      const unwrapped = trimmed.startsWith('[') && trimmed.endsWith(']')
+        ? trimmed.slice(1, -1)
+        : trimmed;
+      raw = unwrapped ? unwrapped.split(',').map(value => value.trim().replaceAll('{comma}', ',')) : [];
+    }
+    const values = Array.isArray(raw) ? raw : [raw];
+    return values.map(value => {
+      if (value && typeof value === 'object' && 'nid' in value) {
+        return String(value.nid);
+      }
+      return value === null || value === undefined ? '' : String(value);
+    });
+  }
+
+  /** Draw persistent event tables in logical game space, matching LT's 10px margins. */
+  private drawEventTables(surf: Surface): void {
+    for (const table of this.eventTables.values()) {
+      const values = this.getEventTableRows(table);
+      const columns = Math.max(1, table.columns);
+      const rows = Math.max(1, table.rows || Math.ceil(values.length / columns));
+      const cellWidth = table.rowWidth > 0
+        ? table.rowWidth
+        : Math.max(24, ...values.map(value => value.length * 5 + 8));
+      const titleHeight = table.title ? 10 : table.background === 'funds_display' ? 7 : 0;
+      const panelWidth = Math.min(surf.width - 20, columns * cellWidth + 4);
+      const panelHeight = Math.min(surf.height - 20, titleHeight + rows * 12 + 4);
+      const alignment = table.alignment.toLowerCase();
+      const x = alignment.includes('right')
+        ? surf.width - panelWidth - 10
+        : alignment.includes('center')
+          ? Math.floor((surf.width - panelWidth) / 2)
+          : 10;
+      const y = alignment.includes('bottom')
+        ? surf.height - panelHeight - 10
+        : alignment === 'left' || alignment === 'right' || alignment === 'center'
+          ? Math.floor((surf.height - panelHeight) / 2)
+          : 10;
+
+      if (!table.noBackground) {
+        if (table.background === 'funds_display') {
+          // Rekka uses LT's compact 64x22 funds plate during the Bribe prompt.
+          surf.fillRect(x, y, panelWidth, panelHeight, 'rgba(19,31,70,0.96)');
+          surf.fillRect(x, y, panelWidth, 9, 'rgba(82,69,49,0.98)');
+          surf.drawRect(x, y, panelWidth, panelHeight, 'rgba(214,191,112,1)');
+          surf.drawRect(x + 2, y + 2, panelWidth - 4, panelHeight - 4, 'rgba(122,106,67,1)');
+          surf.drawText('FUNDS', x + 4, y + 1, 'rgba(240,224,158,1)', 'small');
+          surf.drawText('G', x + panelWidth - 8, y + panelHeight - 10, 'yellow', 'small');
+        } else {
+          surf.fillRect(x, y, panelWidth, panelHeight, 'rgba(18,28,66,0.94)');
+          surf.drawRect(x, y, panelWidth, panelHeight, 'rgba(210,185,104,1)');
+          surf.drawRect(x + 2, y + 2, panelWidth - 4, panelHeight - 4, 'rgba(86,105,166,1)');
+        }
+      }
+
+      if (table.title) {
+        surf.drawText(table.title, x + 4, y + 2, 'yellow', 'small');
+      }
+      const contentTop = y + titleHeight + 3;
+      values.slice(0, rows * columns).forEach((value, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const left = x + 3 + column * cellWidth;
+        const right = x + 1 + (column + 1) * cellWidth;
+        const textY = contentTop + row * 12;
+        const textAlignment = table.textAlignment.toLowerCase();
+        if (textAlignment === 'right' || table.background === 'funds_display') {
+          const rightEdge = table.background === 'funds_display' ? right - 8 : right - 2;
+          surf.drawTextRight(value, rightEdge, textY, 'white', 'text');
+        } else {
+          const textX = textAlignment === 'center'
+            ? left + Math.max(0, Math.floor((cellWidth - value.length * 5) / 2))
+            : left;
+          surf.drawText(value, textX, textY, 'white', 'text');
+        }
+      });
+    }
   }
   private resolveEndingPortrait(
     portraitArg: string,
@@ -14031,8 +14142,50 @@ export class EventState extends State {
         return false;
       }
 
-      case 'table':
-      case 'remove_table':
+      case 'table': {
+        const flagNames = new Set(['expression', 'no_bg']);
+        const flags = new Set(
+          args
+            .map(arg => arg.toLowerCase().trim())
+            .filter(arg => flagNames.has(arg)),
+        );
+        const values = args.filter(arg => !flagNames.has(arg.toLowerCase().trim()));
+        const nid = values[0] ?? '';
+        if (!nid) {
+          console.warn('table: missing table nid');
+          this.advancePointer();
+          return false;
+        }
+        if (this.eventTables.has(nid)) {
+          console.warn(`table: duplicate table nid "${nid}"`);
+          this.advancePointer();
+          return false;
+        }
+        const dimensions = (values[3] ?? '').split(',').map(value => parseInt(value.trim(), 10));
+        this.eventTables.set(nid, {
+          nid,
+          data: values[1] ?? '',
+          title: values[2] || null,
+          rows: Number.isFinite(dimensions[0]) ? Math.max(0, dimensions[0]) : 0,
+          columns: Number.isFinite(dimensions[1]) ? Math.max(1, dimensions[1]) : 1,
+          rowWidth: parseInt(values[4] ?? '-1', 10) || -1,
+          alignment: values[5] || 'top_left',
+          background: values[6] || 'menu_bg_base',
+          entryType: values[7] || 'str',
+          textAlignment: values[8] || 'left',
+          expression: flags.has('expression'),
+          noBackground: flags.has('no_bg'),
+        });
+        this.advancePointer();
+        return false;
+      }
+
+      case 'remove_table': {
+        this.eventTables.delete(args[0] ?? '');
+        this.advancePointer();
+        return false;
+      }
+
       case 'textbox': {
         console.warn(`${cmd.type}: event UI component is not implemented`);
         this.advancePointer();

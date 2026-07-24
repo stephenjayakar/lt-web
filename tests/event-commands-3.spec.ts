@@ -385,6 +385,74 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
   });
 });
 
+test.describe('Event table presentation', () => {
+  test('table keeps Rekka GoldDisplay live until remove_table', async ({ page }, testInfo) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.getParty().money = 3500;
+      const nid = 'TestGoldDisplay';
+      g.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'table;GoldDisplay;[game.get_money()];;;60;top_right;funds_display;expression',
+          'choice;bribe;Spend Gold,End Turn',
+          'remove_table;GoldDisplay',
+          'game_var;gold_display_done;yes',
+        ],
+      });
+      g.eventManager.triggerSpecific(nid, { type: nid }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 4);
+
+    const initial = await page.evaluate(() => {
+      const state: any = (window as any).__gameRef.state.getCurrentState();
+      const table = state.eventTables.get('GoldDisplay');
+      return {
+        state: state.name,
+        rows: state.getEventTableRows(table),
+        alignment: table.alignment,
+        width: table.rowWidth,
+        background: table.background,
+        choiceOpen: !!state.choiceMenu,
+      };
+    });
+    expect(initial).toEqual({
+      state: 'event',
+      rows: ['3500'],
+      alignment: 'top_right',
+      width: 60,
+      background: 'funds_display',
+      choiceOpen: true,
+    });
+
+    const liveRows = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.getParty().money = 7250;
+      const state: any = g.state.getCurrentState();
+      return state.getEventTableRows(state.eventTables.get('GoldDisplay'));
+    });
+    expect(liveRows).toEqual(['7250']);
+    await stepFrames(page, 1);
+    await page.locator('canvas').screenshot({ path: testInfo.outputPath('rekka-gold-display.png') });
+
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 6);
+    const removed = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const state: any = g.state.getCurrentState();
+      return {
+        done: g.gameVars.get('gold_display_done'),
+        stillVisible: state?.eventTables?.has('GoldDisplay') ?? false,
+      };
+    });
+    expect(removed).toEqual({ done: 'yes', stillVisible: false });
+  });
+});
+
 test.describe('Event command batch 3b (open_* menu commands)', () => {
   test('records_screen pauses into base_records and resumes on close', async ({ page }) => {
     await boot(page);
