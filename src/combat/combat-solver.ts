@@ -1,5 +1,6 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
+import type { SkillObject } from '../objects/skill';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
@@ -44,6 +45,8 @@ export interface CombatStrike {
   attackInfo: [number, number];
   attackProcs?: CombatProcMark[];
   defenseProcs?: CombatProcMark[];
+  /** Rekka project-local lethal-strike prevention hook consumed by this strike. */
+  survivalProc?: skillSystem.CustomSurvivalSkill;
 }
 
 /** Valid CombatScript tokens for interact_unit. */
@@ -64,6 +67,7 @@ export class CombatPhaseSolver {
    * should treat a unit in this set as surviving at 1 HP instead of dying.
    */
   readonly miracleSaved: Set<UnitObject> = new Set();
+  private customSurvivalTriggered: Set<SkillObject> = new Set();
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -84,6 +88,7 @@ export class CombatPhaseSolver {
     this.procPlayback.length = 0;
     this.guardGaugeResults.clear();
     this.miracleSaved.clear();
+    this.customSurvivalTriggered.clear();
     for (const unit of [attacker, ...defenders]) {
       this.guardGaugeResults.set(unit, unit.getGuardGauge());
     }
@@ -112,6 +117,29 @@ export class CombatPhaseSolver {
     skillSystem.consumeMiracleCharge(skill);
     hp.hp = 1;
     this.miracleSaved.add(unit);
+  }
+
+  /** Apply one strike to a simulated HP reference, including Rekka survival hooks. */
+  private applyStrikeDamage(
+    target: UnitObject,
+    hp: { hp: number },
+    strike: CombatStrike,
+    ignoreDying: boolean = false,
+  ): void {
+    if (!strike.hit && !hasDamageOnMiss(strike.item)) return;
+    const before = hp.hp;
+    const after = before - strike.damage;
+    if (after <= 0) {
+      const proc = skillSystem.customSurvivalSkill(target, this.customSurvivalTriggered);
+      if (proc) {
+        strike.damage = Math.max(0, before - 1);
+        strike.survivalProc = proc;
+        this.customSurvivalTriggered.add(proc.skill);
+        hp.hp = 1;
+        return;
+      }
+    }
+    hp.hp = ignoreDying && after <= 0 ? 1 : after;
   }
 
   private nextPhase(unit: UnitObject): number {
@@ -229,7 +257,7 @@ export class CombatPhaseSolver {
           true,
         );
         this.strikes.push(strike);
-        if (strike.hit) targetHp.hp -= strike.damage;
+        this.applyStrikeDamage(target, targetHp, strike);
       }
       partnerUsed.add(leader);
     };
@@ -250,7 +278,7 @@ export class CombatPhaseSolver {
           attacker, attackItem, defender, db, rngMode, false, board, 'attack', [phase, 0],
         );
         this.strikes.push(strike);
-        if (strike.hit) defHp.hp -= strike.damage;
+        this.applyStrikeDamage(defender, defHp, strike);
         runPartnerPhase(attacker, defender, defHp, false, phase);
       } else if (token === 'hit1' || token === 'crit1' || token === 'miss1') {
         // Attacker strikes with forced outcome
@@ -260,7 +288,7 @@ export class CombatPhaseSolver {
           attacker, attackItem, defender, db, false, token, board, 'attack', [phase, 0],
         );
         this.strikes.push(strike);
-        if (strike.hit) defHp.hp -= strike.damage;
+        this.applyStrikeDamage(defender, defHp, strike);
         runPartnerPhase(attacker, defender, defHp, false, phase);
       } else if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
         // Defender strikes with forced outcome
@@ -271,7 +299,7 @@ export class CombatPhaseSolver {
           defender, defenseItem, attacker, db, true, token, board, 'defense', [phase, 0],
         );
         this.strikes.push(strike);
-        if (strike.hit) atkHp.hp -= strike.damage;
+        this.applyStrikeDamage(attacker, atkHp, strike);
         runPartnerPhase(defender, attacker, atkHp, true, phase);
       }
     }
@@ -413,10 +441,11 @@ export class CombatPhaseSolver {
           );
         result.push(strike);
         sharedAttackProcs ??= strike.attackProcs;
-        if (strike.hit) {
-          const nextHp = hp - strike.damage;
-          splashHp.set(target, skillSystem.ignoreDyingInCombat(target) && nextHp <= 0 ? 1 : nextHp);
-        }
+        const hpRef = { hp };
+        this.applyStrikeDamage(
+          target, hpRef, strike, skillSystem.ignoreDyingInCombat(target),
+        );
+        splashHp.set(target, hpRef.hp);
       }
       propagatedAttacks++;
     };
@@ -599,10 +628,7 @@ export class CombatPhaseSolver {
           isCounter ? 'defense' : 'attack', [phase, index], undefined, true,
         );
         this.strikes.push(strike);
-        if (strike.hit) {
-          targetHpRef.hp -= strike.damage;
-          if (targetMiracle && targetHpRef.hp <= 0) targetHpRef.hp = 1;
-        }
+        this.applyStrikeDamage(target, targetHpRef, strike, targetMiracle);
       }
       partnerUsed.add(leader);
     };
@@ -627,13 +653,7 @@ export class CombatPhaseSolver {
           isCounter ? 'defense' : 'attack', [phase, i],
         );
         this.strikes.push(strike);
-        if (strike.hit) {
-          targetHpRef.hp -= strike.damage;
-          // Miracle: target survives at 1 HP if they would die
-          if (targetMiracle && targetHpRef.hp <= 0) {
-            targetHpRef.hp = 1;
-          }
-        }
+        this.applyStrikeDamage(target, targetHpRef, strike, targetMiracle);
       }
       this.phaseCounts.set(striker, phase + 1);
       doPartnerStrikes(striker, item, target, isCounter, targetHpRef, targetMiracle, phase);

@@ -16,6 +16,7 @@ import {
   ChangeFatigueAction,
   SetItemDroppableAction,
   MoveItemBetweenUnitsAction,
+  RemoveSkillAction,
   RemoveItemFromUnitAction,
   WarpUnitAction,
   SwapUnitsAction,
@@ -247,6 +248,17 @@ export function queueCombatSkillEvents(
         )) queued++;
       }
     }
+    const survival = strike.survivalProc;
+    if (survival?.component === 'true_miracle_event' && triggerSkillEvent(
+      game,
+      survival.value,
+      'true_miracle_event',
+      strike.defender,
+      strike.attacker,
+      defenderItem,
+      strike.item,
+      mode,
+    )) queued++;
   }
 
   const participants: Array<{
@@ -293,7 +305,11 @@ export function queueCombatSkillEvents(
       )) continue;
       for (const [component, value] of skill.components) {
         const fires = component === 'event_after_combat' ||
-          (component === 'event_after_combat_when_hit' && gotHit);
+          (component === 'event_after_combat_when_hit' && gotHit) ||
+          (component === 'true_miracle_event_after_combat' && strikes.some(
+            (strike) => strike.defender === participant.unit &&
+              strike.survivalProc?.skill === skill,
+          ));
         if (fires && triggerSkillEvent(
           game, value, component, participant.unit, participant.target,
           participant.item, participant.item2, participant.mode,
@@ -329,6 +345,21 @@ export function applyCombatSkillEndHooks(
 ): number {
   if (!game.actionLog || !game.db) return 0;
   let applied = 0;
+  for (const strike of strikes) {
+    const proc = strike.survivalProc;
+    if (!proc) continue;
+    if (proc.component === 'nine_lives_event') {
+      const removeNid = typeof proc.value === 'string' ? proc.value : proc.skill.nid;
+      const remove = strike.defender.skills.find((skill) => skill.nid === removeNid);
+      if (remove) {
+        game.actionLog.doAction(new RemoveSkillAction(strike.defender, remove));
+        applied++;
+      }
+    } else if (proc.component === 'true_miracle_event') {
+      triggerSkillCharge(game, proc.skill);
+      applied++;
+    }
+  }
   const pairs = new Map<string, {
     unit: UnitObject;
     target: UnitObject;
