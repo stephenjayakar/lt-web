@@ -23,7 +23,7 @@ import { Cursor } from './cursor';
 import { ArrowRenderer } from '../rendering/movement-arrows';
 import { UnitMarkerIcons } from '../rendering/unit-markers';
 import { PhaseController } from './phase';
-import { ActionLog, type MoveAction } from './action';
+import { ActionLog, RemoveSkillAction, type MoveAction } from './action';
 import { GameBoard } from '../objects/game-board';
 import { UnitObject } from '../objects/unit';
 import { ItemObject, createItemTree } from '../objects/item';
@@ -357,6 +357,13 @@ export class GameState {
 
     // Per-unit cleanup
     for (const unit of this.units.values()) {
+      for (const skill of [...unit.skills]) {
+        if (skill.hasComponent('lost_on_end_chapter') ||
+            skill.hasComponent('lost_on_end_combat2')) {
+          this.actionLog.doAction(new RemoveSkillAction(unit, skill));
+        }
+      }
+
       // Drop rescued units
       if (unit.rescuing) {
         unit.rescuing.rescuedBy = null;

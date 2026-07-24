@@ -151,8 +151,9 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 
 ### Combat and lifecycle mechanics
 
-- [ ] End-of-combat/chapter cleanup: 17 `lost_on_end_combat2` and
-  45 `lost_on_end_chapter` uses.
+- [x] End-of-combat/chapter cleanup for all 17 `lost_on_end_combat2` and
+  45 `lost_on_end_chapter` uses, including relationship/initiator options,
+  event-on-remove ordering, multi-skill ownership, and turnwheel reversal.
 - [ ] Unit control/status: `unselectable`, `immune_status`, `reflect_status`,
   `ignore_damage`, `TrueMiracle`, and `death_tether`.
 - [ ] Pre/post combat: `skill_before_combat`, `post_combat_splash`,

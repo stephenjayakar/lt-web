@@ -1145,6 +1145,79 @@ test.describe('Rekka project-local skill components', () => {
     });
   });
 
+  test('combat and chapter expiry remove every Rekka temporary skill reversibly', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { applyCombatSkillEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const componentNids = (prefab: any) => Array.isArray(prefab.components)
+        ? prefab.components.map((component: any) => component[0])
+        : [...prefab.components.keys()];
+      const combatCatalog = [...game.db.skills.values()]
+        .filter((skill: any) => componentNids(skill).includes('lost_on_end_combat2'))
+        .map((skill: any) => skill.nid);
+      const chapterCatalog = [...game.db.skills.values()]
+        .filter((skill: any) => componentNids(skill).includes('lost_on_end_chapter'))
+        .map((skill: any) => skill.nid);
+
+      const attackSkill = new SkillObject(game.db.skills.get('BaffleStatus'));
+      const defenseSkill = new SkillObject(game.db.skills.get('ShieldStatus'));
+      attacker.skills = [attackSkill];
+      defender.skills = [defenseSkill];
+      const actionStart = game.actionLog.actions.length;
+      const removed = applyCombatSkillEndHooks(
+        game,
+        [{
+          attacker,
+          defender,
+          item: attacker.items.find((item: any) => item.isWeapon()),
+          hit: true,
+          crit: false,
+          damage: 1,
+          isCounter: false,
+          mode: 'attack',
+          attackInfo: [0, 0],
+        }],
+        attacker,
+        defender,
+      );
+      const afterCombat = {
+        attacker: attacker.skills.map((skill: any) => skill.nid),
+        defender: defender.skills.map((skill: any) => skill.nid),
+      };
+      while (game.actionLog.actions.length > actionStart) game.actionLog.undo();
+      const undone = {
+        attacker: attacker.skills.map((skill: any) => skill.nid),
+        defender: defender.skills.map((skill: any) => skill.nid),
+      };
+
+      attacker.skills.push(new SkillObject(game.db.skills.get('MomentumStack')));
+      attacker.persistent = true;
+      game.cleanUpLevel();
+      const persistent = game.persistentUnits.get('Lyn');
+      return {
+        combatCount: combatCatalog.length,
+        chapterCount: chapterCatalog.length,
+        removed,
+        afterCombat,
+        undone,
+        afterChapter: persistent.skills.map((skill: any) => skill.nid),
+      };
+    });
+
+    expect(result).toEqual({
+      combatCount: 17,
+      chapterCount: 45,
+      removed: 2,
+      afterCombat: { attacker: [], defender: [] },
+      undone: { attacker: ['BaffleStatus'], defender: ['ShieldStatus'] },
+      afterChapter: [],
+    });
+  });
+
   test('movement hooks reset and undo the full unit action state', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

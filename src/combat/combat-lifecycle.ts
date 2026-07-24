@@ -487,6 +487,46 @@ export function applyCombatSkillEndHooks(
       }
     }
   }
+
+  // Python LostOnEndCombat2 marks itself during cleanup_combat and resolves
+  // after every other post-combat hook. Keep this final so event_on_remove and
+  // multi-skill ownership observe the completed combat state.
+  const participants = [...new Set([
+    ...(initiator ? [initiator] : []),
+    ...(primaryTarget ? [primaryTarget] : []),
+    ...strikes.flatMap((strike) => [strike.attacker, strike.defender]),
+  ])];
+  for (const unit of participants) {
+    const attackStrike = strikes.find((strike) => strike.attacker === unit);
+    const defenseStrike = strikes.find((strike) => strike.defender === unit);
+    const target = attackStrike?.defender
+      ?? defenseStrike?.attacker
+      ?? (unit === initiator ? primaryTarget : initiator)
+      ?? null;
+    const mode = attackStrike?.mode ?? (unit === initiator ? 'attack' : 'defense');
+    for (const skill of [...unit.skills]) {
+      const raw = skill.getComponent<unknown>('lost_on_end_combat2');
+      if (raw === undefined) continue;
+      const options = raw && typeof raw === 'object'
+        ? raw as Record<string, unknown>
+        : {};
+      if (options.only_if_initiated === true && mode !== 'attack' && mode !== 'splash') {
+        continue;
+      }
+      let remove = false;
+      if (!target && options.lost_on_splash !== false) remove = true;
+      if (target === unit && options.lost_on_self !== false) remove = true;
+      if (target && target !== unit) {
+        const allied = game.db.areAllied(unit.team, target.team);
+        if (allied && options.lost_on_ally !== false) remove = true;
+        if (!allied && options.lost_on_enemy !== false) remove = true;
+      }
+      if (remove) {
+        game.actionLog.doAction(new RemoveSkillAction(unit, skill));
+        applied++;
+      }
+    }
+  }
   game.memory?.delete('combat_art_parent');
   game.memory?.delete('combat_art_weapons');
   return applied;
