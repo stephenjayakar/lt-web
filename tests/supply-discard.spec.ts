@@ -49,14 +49,21 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('prep_main');
 
-    // Options: Pick Units, Check Map, Supply, Fight! — move to Supply.
+    // Python route: Prep -> Manage -> first unit -> Supply.
     await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('base_manage');
+    await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1, 'DOWN');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
-    // Cancel returns to prep.
+    // Cancel unwinds Supply -> Manage options -> unit list -> prep.
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 2);
+    await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('prep_main');
@@ -75,12 +82,19 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('base_main');
 
-    // Options: Manage, Supply, Convos, ... — move to Supply.
+    // Python route: Base -> Manage -> first unit -> Supply.
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('base_manage');
+    await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1, 'DOWN');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
+    await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 2);
+    await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('base_main');

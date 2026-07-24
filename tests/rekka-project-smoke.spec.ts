@@ -682,4 +682,134 @@ test.describe('Rekka all-level compatibility', () => {
     await page.waitForFunction(() => (window as any).__gameRef.tilemap?.nid === 'Final_2');
     expect(await page.evaluate(() => (window as any).__gameRef.tilemap.nid)).toBe('Final_2');
   });
+
+  test('Chapter 7 preparations expose manage, formation, options, save, and fight', async ({ page }, testInfo) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=false&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.eventManager.triggerSpecific('Global Setup', { type: 'Global Setup' }, true);
+      game.state.change('event');
+      (window as any).__harness.settle(100);
+    });
+
+    const prep = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        options: [...(state?.options ?? [])],
+        convoy: game.gameVars.get('_convoy'),
+        music: game.gameVars.get('_prep_music'),
+      };
+    });
+    expect(prep).toEqual({
+      state: 'prep_main',
+      options: ['Pick Units', 'Manage', 'Formation', 'Options', 'Save', 'Fight'],
+      convoy: 1,
+      music: 'skateboard_p_instrumental',
+    });
+    await page.locator('#game-canvas').screenshot({
+      path: testInfo.outputPath('rekka-chapter-7-preparations.png'),
+    });
+
+    const openPrepOption = async (label: string) => {
+      await page.evaluate((wanted) => {
+        const state = (window as any).__gameRef.state.getCurrentState() as any;
+        state.cursor = state.options.indexOf(wanted);
+      }, label);
+      await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    };
+
+    await openPrepOption('Manage');
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('base_manage');
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_main');
+
+    await openPrepOption('Formation');
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_formation');
+    const formation = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = [...game.units.values()].find((candidate: any) =>
+        candidate.team === 'player' && candidate.position);
+      const formationSpots = game.currentLevel.regions
+        .filter((region: any) => region.region_type === 'formation')
+        .flatMap((region: any) => {
+          const positions = [];
+          for (let x = 0; x < (region.size?.[0] ?? 1); x++) {
+            for (let y = 0; y < (region.size?.[1] ?? 1); y++) {
+              positions.push([region.position[0] + x, region.position[1] + y]);
+            }
+          }
+          return positions;
+        });
+      const target = formationSpots.find(([x, y]: [number, number]) =>
+        !game.board.getUnit(x, y));
+      if (!unit || !target) return null;
+      const before = [...unit.position];
+      game.cursor.setPos(unit.position[0], unit.position[1]);
+      game.state.getCurrentState().takeInput('SELECT');
+      game.cursor.setPos(target[0], target[1]);
+      game.state.getCurrentState().takeInput('SELECT');
+      return { before, target, after: [...unit.position] };
+    });
+    expect(formation).not.toBeNull();
+    expect(formation!.after).toEqual(formation!.target);
+    expect(formation!.after).not.toEqual(formation!.before);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
+
+    await openPrepOption('Options');
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('settings_menu');
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
+
+    await openPrepOption('Save');
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('save_menu');
+    await page.evaluate(() => (window as any).__gameRef.state.back());
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_main');
+  });
+
+  test('Rekka DEBUG base enables save and Continue resumes its parent event', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=DEBUG&clean=false&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+    const baseOptions = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        options: state?.menu?.options.map((option: any) => ({
+          label: option.label,
+          enabled: option.enabled,
+        })) ?? [],
+      };
+    });
+    expect(baseOptions.state).toBe('base_main');
+    expect(baseOptions.options).toEqual(expect.arrayContaining([
+      { label: 'Manage', enabled: true },
+      { label: 'Convos', enabled: true },
+      { label: 'Codex', enabled: true },
+      { label: 'Options', enabled: true },
+      { label: 'Save', enabled: true },
+      { label: 'Continue', enabled: true },
+    ]));
+
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.menu.selectedIndex = state.menu.options.findIndex((option: any) => option.label === 'Save');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('save_menu');
+    await page.evaluate(() => (window as any).__gameRef.state.back());
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.menu.selectedIndex = state.menu.options.findIndex((option: any) => option.label === 'Continue');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('event');
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('free');
+  });
 });

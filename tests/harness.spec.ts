@@ -4167,9 +4167,9 @@ test.describe('Event command parity', () => {
     expect(completed).toEqual({
       state: 'free',
       startCount: 1, startItem: '_LifecycleSpell', startTarget: '_PayloadDefender',
-      startAnimation: 'false',
+      startAnimation: false,
       endCount: 1, endItem: '_LifecycleSpell', endTarget: '_PayloadDefender',
-      endAnimation: 'false', uses: 1,
+      endAnimation: false, uses: 1,
     });
   });
 
@@ -4293,7 +4293,7 @@ test.describe('Event command parity', () => {
     expect(result.eventData).toEqual({
       order: '>combat_death>combat_end>unit_death',
       killer: '_OrderedAttacker',
-      position: `${setup!.origin[0] + 1},${setup!.origin[1]}`,
+      position: [setup!.origin[0] + 1, setup!.origin[1]],
     });
   });
 

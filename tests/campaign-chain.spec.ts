@@ -406,16 +406,18 @@ test.describe('Sacred Stones Campaign Chain', () => {
     expect(result.hitTitle).toBe(false);
 
     if (result.stateName === 'prep_main') {
-      // Verify convoy/prep access: Supply option present, unit roster listed.
+      // Verify Python-compatible prep access: Manage routes to convoy/unit
+      // inventory and Fight exits preparations.
       const prepProbe = await page.evaluate(() => {
         const g = (window as any).__gameRef;
         const st: any = g?.state?.getCurrentState?.();
         return {
-          hasSupply: g?.gameVars?.get?.('_convoy') ? (st?.options ?? []).includes('Supply') : null,
+          hasManage: (st?.options ?? []).includes('Manage'),
           options: st?.options ?? [],
         };
       });
-      expect(prepProbe.options).toContain('Fight!');
+      expect(prepProbe.hasManage).toBe(true);
+      expect(prepProbe.options).toContain('Fight');
       await saveScreenshot(page, '74-chain-ch4-prep');
 
       // Re-check Colm's team via prep roster too (belt & suspenders for the
@@ -423,12 +425,12 @@ test.describe('Sacred Stones Campaign Chain', () => {
       const colmInPrep = await page.evaluate(() => (window as any).__gameRef?.units?.get?.('Colm')?.team ?? null);
       if (colmInPrep) colmInCh4 = { exists: true, team: colmInPrep };
 
-      // Proceed: Fight!
+      // Proceed: Fight
       await page.evaluate(() => {
         const g = (window as any).__gameRef;
         const st: any = g?.state?.getCurrentState?.();
         if (st && Array.isArray(st.options)) {
-          st.cursor = st.options.indexOf('Fight!');
+          st.cursor = st.options.indexOf('Fight');
         }
       });
       await stepFrames(page, 2, 'SELECT');
@@ -521,7 +523,7 @@ test.describe('Sacred Stones Campaign Chain', () => {
       expect(postLoad.sethAlive).toBe(true);
       expect(postLoad.eirikaAlive).toBe(true);
 
-      // Resume the chain: press Fight! on the already-active prep_main.
+      // Resume the chain: press Fight on the already-active prep_main.
       //
       // NOTE: we do NOT call game.state.change('prep_main') here. The
       // StateMachine (src/engine/state-machine.ts) keeps one singleton
@@ -529,16 +531,16 @@ test.describe('Sacred Stones Campaign Chain', () => {
       // shared instance onto the stack rather than replacing the top;
       // since result.stateName is already 'prep_main' (checked above),
       // calling change('prep_main') again would push the SAME object a
-      // second time. After Fight! -> back() pops that duplicate, the
+      // second time. After Fight -> back() pops that duplicate, the
       // stack still exposes the identical prep_main instance underneath,
-      // which looks like "Fight! did nothing" and can eventually be
+      // which looks like "Fight did nothing" and can eventually be
       // misread as re-entering 'Pick Units' once further stray SELECT
       // presses land on it.
       await page.evaluate(() => {
         const g = (window as any).__gameRef;
         const st: any = g?.state?.getCurrentState?.();
         if (st && Array.isArray(st.options)) {
-          st.cursor = st.options.indexOf('Fight!');
+          st.cursor = st.options.indexOf('Fight');
         }
       });
       await stepFrames(page, 2, 'SELECT');
