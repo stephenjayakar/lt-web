@@ -580,9 +580,9 @@ export function movementType(unit: UnitObject, defaultType: string, game?: any):
   let result = defaultType;
   for (const skill of unit.skills) {
     const value = skill.getComponent<string>('movement_type');
-    if (!value) continue;
+    if (typeof value !== 'string' || !value) continue;
     const condition = skill.getComponent<string>('condition');
-    if (condition && !evaluateCondition(condition, {
+    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
       game,
       unit1: unit,
       item: unit.equippedWeapon ?? undefined,
@@ -591,6 +591,135 @@ export function movementType(unit: UnitObject, defaultType: string, game?: any):
       levelVars: game?.levelVars,
     })) continue;
     result = value;
+  }
+  return result;
+}
+
+/** Python UNIQUE alliance hooks: IgnoreAlliances makes only the bearer itself an ally. */
+export function checkAlly(unit: UnitObject, target: UnitObject, db: any): boolean {
+  if (unit.skills.some((skill) => skill.hasComponent('ignore_alliances'))) {
+    return unit === target;
+  }
+  return db.areAllied(unit.team, target.team);
+}
+
+export function checkEnemy(unit: UnitObject, target: UnitObject, db: any): boolean {
+  if (unit.skills.some((skill) => skill.hasComponent('ignore_alliances'))) {
+    return unit !== target;
+  }
+  return !db.areAllied(unit.team, target.team);
+}
+
+/** Last inventory-offset component, matching Python UNIQUE dispatch. */
+export function inventoryCapacityOffsets(unit: UnitObject): {
+  items: number;
+  accessories: number;
+} {
+  let amount = 0;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<number>('additional_accessories');
+    if (typeof value === 'number') amount = value;
+  }
+  return { items: -amount, accessories: amount };
+}
+
+/** Product of active target-priority modifiers. */
+export function aiPriorityMultiplier(unit: UnitObject, game?: any): number {
+  let result = 1;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<number>('modify_ai_priority');
+    if (typeof value !== 'number') continue;
+    const condition = skill.getComponent<string>('condition');
+    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    })) continue;
+    result *= value;
+  }
+  return result;
+}
+
+/** Last active shop price multiplier, matching Python UNIQUE dispatch. */
+export function priceSkillMultiplier(
+  unit: UnitObject,
+  item: ItemObject,
+  componentNid: 'change_buy_price' | 'change_sell_price',
+  game?: any,
+): number {
+  let result = 1;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<number>(componentNid);
+    if (typeof value !== 'number') continue;
+    const condition = skill.getComponent<string>('condition');
+    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    })) continue;
+    result = value;
+  }
+  return result;
+}
+
+/** Project-used Witch Warp expression destinations, deduplicated in unit order. */
+export function witchWarpPositions(
+  unit: UnitObject,
+  board: any,
+  db: any,
+  game?: any,
+): [number, number][] {
+  let sourceSkill: SkillObject | null = null;
+  let expression: string | null = null;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<string>('witch_warp_expression');
+    if (typeof value !== 'string' || !value) continue;
+    const condition = skill.getComponent<string>('condition');
+    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    })) continue;
+    sourceSkill = skill;
+    expression = value;
+  }
+  if (!sourceSkill || !expression) return [];
+
+  const defaultMovement = db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+  const movementGroup = movementType(unit, defaultMovement, game);
+  const result: [number, number][] = [];
+  const seen = new Set<string>();
+  for (const target of board.getAllUnits()) {
+    if (!target.position) continue;
+    const allowed = evaluateCondition(expression, {
+      game,
+      unit1: target,
+      unit2: unit,
+      position: target.position,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map([['skill', sourceSkill]]),
+    });
+    if (!allowed) continue;
+    const [x, y] = target.position;
+    for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]] as [number, number][]) {
+      const position: [number, number] = [x + dx, y + dy];
+      const key = `${position[0]},${position[1]}`;
+      if (seen.has(key) || !board.checkBounds(position[0], position[1]) ||
+          board.getUnit(position[0], position[1]) ||
+          board.getMovementCost(position[0], position[1], movementGroup, db) >= 99) {
+        continue;
+      }
+      seen.add(key);
+      result.push(position);
+    }
   }
   return result;
 }

@@ -1795,7 +1795,7 @@ async function restoreLevel(
     await Promise.all(spriteLoadPromises);
 
     // Create PathSystem
-    game.pathSystem = new PathSystem(game.db);
+    game.pathSystem = new PathSystem(game.db, game);
 
     // Create PhaseController
     game.phase = new PhaseController(teamOrder);

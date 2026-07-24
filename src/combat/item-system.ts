@@ -19,7 +19,10 @@ import type { CombatStrike } from './combat-solver';
 import {
   alternateSplash,
   armsthriftRestoration,
+  checkAlly,
+  checkEnemy,
   empowerSplash,
+  inventoryCapacityOffsets,
   movementType,
   type AlternateSplash,
 } from './skill-system';
@@ -92,8 +95,8 @@ export function validTargets(
     for (const other of board.getAllUnits()) {
       if (!other.position || other.isDead()) continue;
       if (targetUnits ||
-          (targetEnemies && !db.areAllied(unit.team, other.team)) ||
-          (targetAllies && db.areAllied(unit.team, other.team))) {
+          (targetEnemies && checkEnemy(unit, other, db)) ||
+          (targetAllies && checkAlly(unit, other, db))) {
         add([other.position[0], other.position[1]]);
       }
     }
@@ -339,9 +342,19 @@ export function isRepairableItem(item: ItemObject): boolean {
 }
 
 /** Match LT's separate accessory/non-accessory inventory capacity. */
+export function inventoryCapacity(
+  unit: UnitObject,
+  accessory: boolean,
+  db: Database,
+): number {
+  const offsets = inventoryCapacityOffsets(unit);
+  const base = Number(db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
+  return Math.max(0, base + (accessory ? offsets.accessories : offsets.items));
+}
+
 export function inventoryFull(unit: UnitObject, item: ItemObject, db: Database): boolean {
   const accessory = item.isAccessory();
-  const limit = Number(db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
+  const limit = inventoryCapacity(unit, accessory, db);
   const count = unit.items.filter((candidate) => candidate.isAccessory() === accessory).length;
   return count >= limit;
 }
@@ -491,8 +504,8 @@ function affectedUnits(
   return positions.filter((candidate) => {
     const other = context.board.getUnit(candidate[0], candidate[1]);
     if (!other) return false;
-    if (target === 'enemy') return !context.db.areAllied(unit.team, other.team);
-    if (target === 'ally') return context.db.areAllied(unit.team, other.team);
+    if (target === 'enemy') return checkEnemy(unit, other, context.db);
+    if (target === 'ally') return checkAlly(unit, other, context.db);
     return true;
   });
 }
@@ -618,14 +631,14 @@ export function splash(
     return resultOrAlternate({
       mainTarget: null,
       splash: board.getAllUnits()
-        .filter((target) => target.position && context.db.areAllied(unit.team, target.team) && (!excludeSelf || target !== unit))
+        .filter((target) => target.position && checkAlly(unit, target, context.db) && (!excludeSelf || target !== unit))
         .map((target) => [target.position![0], target.position![1]] as TargetPosition),
     }, unit, item, position, context);
   }
 
   if (item.hasComponent('all_enemies_aoe')) {
     const affected = board.getAllUnits()
-      .filter((target) => target.position && !context.db.areAllied(unit.team, target.team))
+      .filter((target) => target.position && checkEnemy(unit, target, context.db))
       .map((target) => [target.position![0], target.position![1]] as TargetPosition);
     const result = spell
       ? { mainTarget: null, splash: affected }
@@ -666,7 +679,7 @@ export function splashPositions(
     if (enemyOnly) {
       positions = positions.filter((candidate) => {
         const other = board.getUnit(candidate[0], candidate[1]);
-        return !other || !context.db.areAllied(unit.team, other.team);
+        return !other || checkEnemy(unit, other, context.db);
       });
     }
     return positions;
@@ -680,7 +693,7 @@ export function splashPositions(
       .filter((candidate) => !samePosition(candidate, position))
       .filter((candidate) => {
         const other = board.getUnit(candidate[0], candidate[1]);
-        return !other || !context.db.areAllied(unit.team, other.team);
+        return !other || checkEnemy(unit, other, context.db);
       });
     if (positions.length > 0) return positions;
   }
@@ -689,7 +702,7 @@ export function splashPositions(
     if (item.hasComponent('enemy_line_aoe')) {
       positions = positions.filter((candidate) => {
         const other = board.getUnit(candidate[0], candidate[1]);
-        return !other || !context.db.areAllied(unit.team, other.team);
+        return !other || checkEnemy(unit, other, context.db);
       });
     }
     if (positions.length > 0) return positions;
@@ -704,7 +717,7 @@ export function splashPositions(
     for (let x = 0; x < board.width; x++) {
       for (let y = 0; y < board.height; y++) {
         const other = board.getUnit(x, y);
-        if (!other || !context.db.areAllied(unit.team, other.team)) positions.push([x, y]);
+        if (!other || checkEnemy(unit, other, context.db)) positions.push([x, y]);
       }
     }
     return positions;
@@ -716,7 +729,7 @@ export function splashPositions(
         .filter((candidate) => !samePosition(candidate, position))
         .filter((candidate) => {
           const other = board.getUnit(candidate[0], candidate[1]);
-          return !other || !context.db.areAllied(unit.team, other.team);
+          return !other || checkEnemy(unit, other, context.db);
         });
     }
     let positions = positionsInRadius(position, extraRange, board);
@@ -725,7 +738,7 @@ export function splashPositions(
     if (enemyOnly) {
       positions = positions.filter((candidate) => {
         const other = board.getUnit(candidate[0], candidate[1]);
-        return !other || !context.db.areAllied(unit.team, other.team);
+        return !other || checkEnemy(unit, other, context.db);
       });
     }
     return positions;

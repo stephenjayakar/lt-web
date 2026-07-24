@@ -11,6 +11,7 @@ import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from './combat-calcs';
 import type { CombatStrike } from './combat-solver';
+import { checkEnemy } from './skill-system';
 
 export type ProcKind = 'attack_proc' | 'defense_proc' | 'attack_pre_proc' | 'defense_pre_proc';
 
@@ -101,7 +102,7 @@ export class CombatLifecycleRecord extends Action {
 }
 
 function isEnemy(db: Database, unit: UnitObject, target: UnitObject): boolean {
-  return !db.areAllied(unit.team, target.team);
+  return checkEnemy(unit, target, db);
 }
 
 /** Runtime implementation of LT's start/end combat and sub-combat proc hooks. */

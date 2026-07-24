@@ -165,7 +165,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   `alternate_critical_multiplier_formula`, and maximum-range modification.
 - [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
   movement-type overrides.
-- [ ] Targeting/AI/economy: five `witch_warp_expression` uses,
+- [x] Targeting/AI/economy: five `witch_warp_expression` uses,
   `ignore_alliances`, additional accessory capacity, buy-price changes, and
   AI-priority modifiers.
 - [ ] Confirm attack/pre-attack proc ordering in the real Rekka combat-art and

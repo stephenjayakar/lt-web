@@ -6,6 +6,7 @@ import type { CombatStrike } from './combat-solver';
 import {
   enemyExpMultiplier,
   enemyWexpMultiplier,
+  checkEnemy,
   expMultiplier,
   wexpMultiplier,
 } from './skill-system';
@@ -260,7 +261,7 @@ function groupComponentExp(
     .filter((target) => !target.tags.includes('Tile')));
   const damagedDefenders = new Set(strikes
     .filter((strike) => strike.attacker === attacker && strike.item === item &&
-      strike.hit && strike.damage > 0 && !db.areAllied(attacker.team, strike.defender.team))
+      strike.hit && strike.damage > 0 && checkEnemy(attacker, strike.defender, db))
     .map((strike) => strike.defender)
     .filter((target) => !target.tags.includes('Tile')));
   let total = 0;

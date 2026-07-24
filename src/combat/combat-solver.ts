@@ -218,7 +218,8 @@ export class CombatPhaseSolver {
     target: UnitObject,
     db: Database,
   ): void {
-    if (!db.getConstant('pairup', false) || !item.isWeapon() || db.areAllied(striker.team, target.team)) return;
+    if (!db.getConstant('pairup', false) || !item.isWeapon() ||
+        !skillSystem.checkEnemy(striker, target, db)) return;
     const targetGauge = this.guardGauge(target);
     if (targetGauge >= this.maxGuardGauge(target, db)) {
       this.setGuardGauge(target, 0, db);
@@ -374,7 +375,7 @@ export class CombatPhaseSolver {
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
 
     const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
-      !db.areAllied(striker.team, target.team) && !!target.traveler &&
+      skillSystem.checkEnemy(striker, target, db) && !!target.traveler &&
       this.guardGauge(target) >= this.maxGuardGauge(target, db);
     const isMiss = token.startsWith('miss');
     const isCrit = token.startsWith('crit');
@@ -905,7 +906,7 @@ export class CombatPhaseSolver {
     }
 
     const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
-      !db.areAllied(striker.team, target.team) && !!target.traveler &&
+      skillSystem.checkEnemy(striker, target, db) && !!target.traveler &&
       this.guardGauge(target) >= this.maxGuardGauge(target, db);
 
     // Roll for hit.

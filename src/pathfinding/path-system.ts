@@ -8,7 +8,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 import { Dijkstra, AStar } from './pathfinding';
-import { movementType, passThrough } from '../combat/skill-system';
+import { movementType, passThrough, witchWarpPositions } from '../combat/skill-system';
 
 /**
  * High-level pathfinding interface.
@@ -18,9 +18,11 @@ import { movementType, passThrough } from '../combat/skill-system';
  */
 export class PathSystem {
   private db: Database;
+  private game: any;
 
-  constructor(db: Database) {
+  constructor(db: Database, game?: any) {
     this.db = db;
+    this.game = game;
   }
 
   // ------------------------------------------------------------------
@@ -59,6 +61,11 @@ export class PathSystem {
       const occupant = board.getUnit(x, y);
       if (!occupant || occupant === unit) {
         validMoves.push([x, y]);
+      }
+    }
+    for (const position of witchWarpPositions(unit, board, this.db, this.game)) {
+      if (!validMoves.some(([x, y]) => x === position[0] && y === position[1])) {
+        validMoves.push(position);
       }
     }
 
@@ -140,7 +147,7 @@ export class PathSystem {
 
     const canMoveThrough = options?.canMoveThrough ?? this.buildCanMoveThrough(unit, board);
 
-    return astar.process(
+    const path = astar.process(
       pos[0],
       pos[1],
       goalX,
@@ -150,6 +157,12 @@ export class PathSystem {
       options?.limit ?? 0,
       options?.maxMovementLimit ?? 999,
     );
+    const isWarp = witchWarpPositions(unit, board, this.db, this.game)
+      .some(([x, y]) => x === goalX && y === goalY);
+    if (isWarp && (!path || this.getPathCost(unit, path, board) > unit.movementLeft)) {
+      return [[goalX, goalY]];
+    }
+    return path;
   }
 
   /**

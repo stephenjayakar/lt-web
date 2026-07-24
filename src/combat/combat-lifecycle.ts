@@ -37,7 +37,7 @@ import {
   pivotDestination,
   shoveDestination,
 } from './item-system';
-import { ignoreForcedMovement } from './skill-system';
+import { checkAlly, checkEnemy, ignoreForcedMovement } from './skill-system';
 import { evaluateEquation } from './combat-calcs';
 
 interface CombatLifecycleGame {
@@ -200,7 +200,7 @@ export function queueCombatSkillStartEvents(
         const skillNid = typeof options.skill === 'string' ? options.skill : null;
         const recipient = String(options.recipient ?? 'target');
         const allegiance = String(options.allegiance ?? 'enemy');
-        const allied = game.db?.areAllied(participant.unit.team, participant.target.team) ?? false;
+        const allied = game.db ? checkAlly(participant.unit, participant.target, game.db) : false;
         let recipients: UnitObject[] = [];
         if (recipient === 'self') recipients = [participant.unit];
         else if (recipient === 'both') recipients = [participant.unit, participant.target];
@@ -448,7 +448,7 @@ export function applyCombatSkillEndHooks(
   }
 
   for (const { unit, target, item, strikes: pairStrikes } of pairs.values()) {
-    const isAlly = game.db.areAllied(unit.team, target.team);
+    const isAlly = checkAlly(unit, target, game.db);
     for (const skill of [...unit.skills]) {
       if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
 
@@ -490,10 +490,10 @@ export function applyCombatSkillEndHooks(
       const splashDamage = Number(skill.getComponent<number>('post_combat_splash') ?? 0);
       const splashAoe = Number(skill.getComponent<number>('post_combat_splash_aoe') ?? 0);
       if (splashDamage > 0 && splashAoe >= 0 && target.position &&
-          !game.db.areAllied(unit.team, target.team)) {
+          checkEnemy(unit, target, game.db)) {
         for (const splashTarget of game.units?.values?.() ?? []) {
           if (!splashTarget.position || splashTarget === target ||
-              game.db.areAllied(unit.team, splashTarget.team)) continue;
+              checkAlly(unit, splashTarget, game.db)) continue;
           const distance = Math.abs(splashTarget.position[0] - target.position[0]) +
             Math.abs(splashTarget.position[1] - target.position[1]);
           if (distance <= splashAoe) {
@@ -590,7 +590,7 @@ export function applyCombatSkillEndHooks(
       if (!target && options.lost_on_splash !== false) remove = true;
       if (target === unit && options.lost_on_self !== false) remove = true;
       if (target && target !== unit) {
-        const allied = game.db.areAllied(unit.team, target.team);
+        const allied = checkAlly(unit, target, game.db);
         if (allied && options.lost_on_ally !== false) remove = true;
         if (!allied && options.lost_on_enemy !== false) remove = true;
       }
