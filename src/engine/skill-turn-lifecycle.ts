@@ -100,11 +100,13 @@ export function applySkillTurnHooks(
       const conditional = isConditionActive(game, unit, skill);
 
       for (const [component, rawValue] of skill.components) {
-        if (phase === 'upkeep' && component === 'event_on_upkeep' && conditional) {
+        if (phase === 'upkeep' &&
+            (component === 'event_on_upkeep' || component === 'upkeep_event') &&
+            conditional) {
           if (typeof rawValue === 'string' && rawValue && game.eventManager?.triggerSpecific(
             rawValue,
             {
-              type: 'event_on_upkeep',
+              type: component,
               unit1: unit,
               unit2: unit,
               unitNid: unit.nid,

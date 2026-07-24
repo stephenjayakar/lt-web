@@ -177,6 +177,74 @@ export function empowerSplash(unit: UnitObject): number {
     sumSkillValues(unit, 'smart_oversplash');
 }
 
+/** Python EmpowerHeal NUMERIC_ACCUM hook, including per-skill expressions. */
+export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): number {
+  let total = 0;
+  for (const skill of unit.skills) {
+    const raw = skill.getComponent<unknown>('empower_heal');
+    if (raw === undefined) continue;
+    const condition = skill.getComponent<string>('condition');
+    if (condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      unit2: target,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map([['skill', skill]]),
+    })) continue;
+    const value = typeof raw === 'number'
+      ? raw
+      : evaluateExpression(String(raw), {
+        game,
+        unit1: unit,
+        unit2: target,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs: new Map([['skill', skill]]),
+      });
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) total += Math.trunc(numeric);
+  }
+  return total;
+}
+
+export interface UnitSpriteTint {
+  color: [number, number, number];
+  alpha: number;
+}
+
+/** Python unit_sprite_flicker_tint UNIQUE hook used by map rendering. */
+export function unitSpriteTint(
+  unit: UnitObject,
+  game: any,
+  timeMs: number,
+): UnitSpriteTint | null {
+  let result: UnitSpriteTint | null = null;
+  for (const skill of unit.skills) {
+    const condition = skill.getComponent<string>('condition');
+    if (condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map([['skill', skill]]),
+    })) continue;
+    const staticColor = skill.getComponent<[number, number, number]>('unit_tint');
+    if (staticColor) result = { color: staticColor, alpha: 1 };
+    const flickerColor =
+      skill.getComponent<[number, number, number]>('unit_flickering_tint');
+    if (flickerColor) {
+      // Python's component declares period=900 ms and width=300 ms.
+      const phase = ((timeMs % 900) + 900) % 900;
+      result = { color: flickerColor, alpha: phase < 300 ? 1 : 0 };
+    }
+  }
+  return result;
+}
+
 /**
  * Replacement splash component for otherwise single-target items.
  *

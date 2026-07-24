@@ -213,6 +213,8 @@ import {
   modifiedMaximumRange,
   movementType,
   priceSkillMultiplier,
+  empowerHeal,
+  unitSpriteTint,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -300,6 +302,8 @@ function collectVisibleUnits(): {
   specialTag: 'Boss' | 'Elite' | 'Protect' | null;
   travelerCombatColor: string | null;
   droppable: boolean;
+  tintColor: [number, number, number] | null;
+  tintAlpha: number;
 }[] {
   const game = getGame();
   if (!game.board) return [];
@@ -318,6 +322,8 @@ function collectVisibleUnits(): {
     specialTag: 'Boss' | 'Elite' | 'Protect' | null;
     travelerCombatColor: string | null;
     droppable: boolean;
+    tintColor: [number, number, number] | null;
+    tintAlpha: number;
   }[] = [];
 
   for (const u of allUnits) {
@@ -383,6 +389,7 @@ function collectVisibleUnits(): {
     }
 
     const droppable = u.items.some((it) => it.droppable);
+    const tint = unitSpriteTint(u, game, performance.now());
 
     // Only report finished=true for units on the active team so that
     // downstream renderers (placeholder overlays, etc.) don't grey out
@@ -400,6 +407,8 @@ function collectVisibleUnits(): {
       specialTag,
       travelerCombatColor,
       droppable,
+      tintColor: tint?.color ?? null,
+      tintAlpha: tint?.alpha ?? 0,
     });
   }
   return result;
@@ -2709,7 +2718,10 @@ function applyCoreTargetedEffects(
     for (const targetPosition of positions.values()) {
       const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
       if (target && target.currentHp < target.maxHp) {
-        game.actionLog.doAction(new HealAction(target, healAmount));
+        game.actionLog.doAction(new HealAction(
+          target,
+          healAmount + empowerHeal(unit, target, game),
+        ));
         applied = true;
       }
     }

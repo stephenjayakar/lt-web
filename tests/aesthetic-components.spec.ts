@@ -143,6 +143,16 @@ test.describe('aesthetic item components', () => {
     expect(r.playedSfx.filter((s: string) => s === 'RefreshDanceMap').length).toBe(1);
   });
 
+  test('map_hit_sfx replaces the default impact sound on hit', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const r = await resolveAesthetics(page, 'Iron_Sword', [['map_hit_sfx', 'RefreshDance']]);
+    expect(r.playedSfx.filter((s: string) => s === 'RefreshDance')).toHaveLength(1);
+    expect(r.playedSfx.some((s: string) => /^Attack Hit /.test(s))).toBe(false);
+  });
+
   test('map_cast_anim value is recorded for the item use', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&bundle=false');
     await waitForHarness(page);

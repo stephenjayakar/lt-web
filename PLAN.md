@@ -52,7 +52,7 @@ Rekka is web-compatible when:
 - [x] Add a bounded `level_start` settle test for all playable levels. Fail on
   unknown commands, expression errors, event queue stalls, or silent condition
   fallback.
-- [ ] Make unsupported project-used expressions and components fail loudly in
+- [x] Make unsupported project-used expressions and components fail loudly in
   development/test mode instead of quietly returning false or doing nothing.
 - [x] Add focused trace output for event ID, command index, trigger locals, state
   stack, and active unit so a campaign failure is reproducible.
@@ -268,7 +268,7 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 - [x] `npm run build`
 - [x] `npm run audit:parity`
-- [ ] Rekka component/expression/resource inventory is clean
+- [x] Rekka component/expression/resource inventory is clean
 - [x] Rekka all-level boot and event-settle suites are green
 - [x] Rekka checkpoint campaign and optional-content suites are green
 - [x] Full serial Playwright suite is green

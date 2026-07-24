@@ -21,6 +21,8 @@ export interface MapViewUnit {
   specialTag?: 'Boss' | 'Elite' | 'Protect' | null;
   travelerCombatColor?: string | null;
   droppable?: boolean;
+  tintColor?: [number, number, number] | null;
+  tintAlpha?: number;
 }
 
 /**
@@ -273,7 +275,15 @@ export class MapView {
           sprite.state = pose.state;
           if (pose.direction) sprite.direction = pose.direction;
         }
-        sprite.draw(surf, worldX, worldY, offsetX, offsetY);
+        sprite.draw(
+          surf,
+          worldX,
+          worldY,
+          offsetX,
+          offsetY,
+          unit.tintColor,
+          unit.tintAlpha ?? 0,
+        );
       } else {
         // Fallback: draw a colored rectangle placeholder
         const color = unitPlaceholderColor(unit.team);

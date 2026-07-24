@@ -17,6 +17,11 @@ import { ResourceManager } from './data/resource-manager';
 import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
+import { reportUnimplemented } from './engine/strict-mode';
+import {
+  REKKA_ITEM_COMPONENTS,
+  REKKA_SKILL_COMPONENTS,
+} from './engine/rekka-component-support';
 import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
@@ -333,7 +338,29 @@ function showProjectPicker(): Promise<string> {
 // Component inventory: log unknown items/skill component NIDs
 // ---------------------------------------------------------------------------
 
-function logUnknownComponents(db: Database): void {
+function logUnknownComponents(db: Database, projectPath: string): void {
+  if (projectPath === 'rekka.ltproj') {
+    const componentNids = (components: any): string[] => components instanceof Map
+      ? [...components.keys()]
+      : (components ?? []).map((component: any) =>
+        Array.isArray(component) ? component[0] : component);
+    for (const item of db.items.values()) {
+      for (const nid of componentNids(item.components)) {
+        if (!REKKA_ITEM_COMPONENTS.has(nid)) {
+          reportUnimplemented('item-component', nid, `Rekka item ${item.nid}`);
+        }
+      }
+    }
+    for (const skill of db.skills.values()) {
+      for (const nid of componentNids(skill.components)) {
+        if (!REKKA_SKILL_COMPONENTS.has(nid)) {
+          reportUnimplemented('skill-component', nid, `Rekka skill ${skill.nid}`);
+        }
+      }
+    }
+    return;
+  }
+
   const unknownItemComponents = new Set<string>();
   const unknownSkillComponents = new Set<string>();
 
@@ -498,10 +525,10 @@ async function main(): Promise<void> {
     drawLoadingScreen(ctx, 'Loading database...');
     await db.load(resources);
     // Check for unknown components at load time
-    logUnknownComponents(db);
+    logUnknownComponents(db, projectPath);
     if (harnessMode) {
       // Let tests re-run the scan after injecting synthetic components.
-      (window as any).__logUnknownComponents = () => logUnknownComponents(db);
+      (window as any).__logUnknownComponents = () => logUnknownComponents(db, projectPath);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -30,6 +30,7 @@ export class MapSprite {
   private standFrames: Surface[];
   private grayFrames: Surface[];
   private moveFrames: Map<Direction, Surface[]>;
+  private tintedFrames = new WeakMap<Surface, Map<string, Surface>>();
 
   state: SpriteState;
   direction: Direction;
@@ -162,7 +163,15 @@ export class MapSprite {
    * - Stand (64x48): dx = -(64-16)/2 = -24, dy = -24
    * - Move  (48x40): dx = -(48-16)/2 = -16, dy = -24
    */
-  draw(surf: Surface, worldX: number, worldY: number, offsetX: number, offsetY: number): void {
+  draw(
+    surf: Surface,
+    worldX: number,
+    worldY: number,
+    offsetX: number,
+    offsetY: number,
+    tintColor?: [number, number, number] | null,
+    tintAlpha: number = 0,
+  ): void {
     const frame = this.getCurrentFrame();
 
     const anchorDx = -Math.max(0, Math.floor((frame.width - TILEWIDTH) / 2));
@@ -171,7 +180,35 @@ export class MapSprite {
     const px = worldX - offsetX + anchorDx;
     const py = worldY - offsetY + anchorDy;
 
-    surf.blit(frame, px, py);
+    if (tintColor && tintAlpha > 0) {
+      const key = tintColor.join(',');
+      let byColor = this.tintedFrames.get(frame);
+      if (!byColor) {
+        byColor = new Map();
+        this.tintedFrames.set(frame, byColor);
+      }
+      let tinted = byColor.get(key);
+      if (!tinted) {
+        tinted = new Surface(frame.width, frame.height);
+        tinted.blit(frame);
+        const ctx = tinted.ctx;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = `rgb(${tintColor[0]},${tintColor[1]},${tintColor[2]})`;
+        ctx.fillRect(0, 0, tinted.canvas.width, tinted.canvas.height);
+        // The additive fill also colors transparent pixels; restore the
+        // original frame alpha so only the sprite silhouette remains tinted.
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(frame.canvas, 0, 0);
+        ctx.restore();
+        byColor.set(key, tinted);
+      }
+      tinted.setAlpha(tintAlpha);
+      surf.blit(tinted, px, py);
+      tinted.setAlpha(1);
+    } else {
+      surf.blit(frame, px, py);
+    }
   }
 
   /** Set the movement direction based on dx, dy velocity */

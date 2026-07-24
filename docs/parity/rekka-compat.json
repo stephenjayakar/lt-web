@@ -584,1179 +584,1414 @@
       {
         "nid": "advance",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "advance_target_restrict",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_allies_except_self_aoe",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "allow_same_target",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ally_blast_aoe",
         "uses": 7,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ally_equation_blast_aoe",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_damage_formula",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_resist_formula",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "attack_after_combat",
         "uses": 10,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "blast_aoe",
         "uses": 3,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "brave",
         "uses": 6,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "c_uses",
         "uses": 13,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "can_unlock",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_be_countered",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit",
         "uses": 144,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "custom_triangle_multiplier",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage",
         "uses": 153,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "draw_back",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "draw_back_target_restrict",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "effective_damage",
         "uses": 62,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "empty_tile_target_restrict",
         "uses": 10,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_blast_aoe",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_line_aoe",
         "uses": 3,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "equation_blast_aoe",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "equation_heal",
         "uses": 6,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "equippable_accessory",
         "uses": 88,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_special_range",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_target_restrict_2",
         "uses": 9,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_even_miss",
         "uses": 48,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_on_hit",
         "uses": 5,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_on_hit",
         "uses": 33,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "exp",
         "uses": 37,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gba_steal",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "global_range",
         "uses": 7,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gold_cost",
         "uses": 3,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "heal",
         "uses": 13,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "hit",
         "uses": 151,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "hp_cost",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_weapon_advantage",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "item_tags",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "level_exp",
         "uses": 147,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lifelink",
         "uses": 4,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "locked",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "magic",
         "uses": 69,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "magic_at_range",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_cast_sfx",
         "uses": 12,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_hit_add_blend",
         "uses": 42,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_hit_sfx",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "max_equation_range",
         "uses": 13,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "max_range",
         "uses": 250,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "menu_after_combat",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "min_range",
         "uses": 269,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_target",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_ai",
         "uses": 5,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_attack_after_move",
         "uses": 3,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_double",
         "uses": 8,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_map_hp_display",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "permanent_stat_change",
         "uses": 9,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "pivot",
         "uses": 2,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "pivot_target_restrict",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "prf_class",
         "uses": 8,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "prf_unit",
         "uses": 11,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "promote",
         "uses": 2,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "reaver",
         "uses": 6,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "refresh",
         "uses": 12,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "repair",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "restore",
         "uses": 6,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "restore_specific",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "self_status_on_hit",
         "uses": 23,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "sequence_item",
         "uses": 5,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove",
         "uses": 5,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_on_end_combat",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_target_restrict",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "siege_weapon",
         "uses": 8,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "smart_blast_aoe",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "spell",
         "uses": 169,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change",
         "uses": 37,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_on_equip",
         "uses": 116,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_on_hit",
         "uses": 64,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_on_hold",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "steal",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "store_unit",
         "uses": 5,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "swap",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "swap_on_end_combat",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_ally",
         "uses": 118,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_enemy",
         "uses": 186,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_tile",
         "uses": 22,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_unit",
         "uses": 18,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "trace",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "trade",
         "uses": 2,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "transform",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "traversable_tile_target_restrict",
         "uses": 6,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "unload_unit",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "unlock_staff",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "usable",
         "uses": 16,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "usable_in_base",
         "uses": 11,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "uses",
         "uses": 154,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "uses_options",
         "uses": 167,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "value",
         "uses": 252,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "warning",
         "uses": 6,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon",
         "uses": 137,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon_rank",
         "uses": 151,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon_type",
         "uses": 163,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "weight",
         "uses": 142,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp",
         "uses": 77,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       }
     ],
     "skills": [
       {
         "nid": "ability",
         "uses": 135,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "additional_accessories",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_brave",
         "uses": 9,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "allowed_weapons",
         "uses": 42,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_critical_multiplier_formula",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "armsthrift",
         "uses": 2,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "attack_pre_proc",
         "uses": 2,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "attack_proc",
         "uses": 3,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "aura",
         "uses": 9,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "aura_range",
         "uses": 9,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "aura_target",
         "uses": 9,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "avoid",
         "uses": 14,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_double",
         "uses": 13,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_use_items",
         "uses": 9,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_use_items_except_armor",
         "uses": 4,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_use_magic_items",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "canter",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "canto",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "canto_plus",
         "uses": 3,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "change_ai",
         "uses": 3,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "change_buy_price",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "charges_per_turn",
         "uses": 30,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "class_skill",
         "uses": 343,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_art",
         "uses": 42,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_artist",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_condition",
         "uses": 36,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "condition",
         "uses": 64,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit",
         "uses": 13,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit_avoid",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage_multiplier",
         "uses": 8,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "death_tether",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "decreasing_sight_range_bonus",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "defense_pre_proc",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "defense_speed",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "desperation",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "display_skill_icon_in_combat",
         "uses": 4,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "distant_counter",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "disvantage",
         "uses": 2,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "drain_charge",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_accuracy",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_avoid",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_crit_accuracy",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_damage",
         "uses": 26,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_damage_multiplier",
         "uses": 7,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_resist",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "empower_heal",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "end_time",
         "uses": 4,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "endstep_damage",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_exp_multiplier",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_oversplash",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_galeforce",
         "uses": 14,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat",
         "uses": 13,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_when_hit",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_crit",
         "uses": 3,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_hit",
         "uses": 17,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_initiated_combat",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_strike",
         "uses": 4,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_before_combat",
         "uses": 10,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_on_remove",
         "uses": 6,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_on_upkeep",
         "uses": 20,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_when_hit",
         "uses": 2,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "exp_multiplier",
         "uses": 4,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_attack",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_combat",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_kill",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_take_damage",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_take_miss",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "galeforce",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "give_status_after_combat",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "givebacker",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "global",
         "uses": 5,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "grey_if_inactive",
         "uses": 10,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "grounded",
         "uses": 3,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "growth_change",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "guaranteed_crit",
         "uses": 2,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "has_tags",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "hidden",
         "uses": 76,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "hidden_if_inactive",
         "uses": 16,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "hit",
         "uses": 5,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_alliances",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_damage",
         "uses": 7,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_terrain",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "immune_status",
         "uses": 4,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "item_override",
         "uses": 18,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lifelink",
         "uses": 8,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "live_to_serve",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "locktouch",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_end_chapter",
         "uses": 45,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_end_combat2",
         "uses": 17,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_endstep",
         "uses": 2,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_kill",
         "uses": 6,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_upkeep",
         "uses": 26,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "miracle",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "modify_ai_priority",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "modify_maximum_range",
         "uses": 3,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "movement_type",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_skill",
         "uses": 26,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "negate",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "negative",
         "uses": 26,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "nine_lives_event",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_attack_after_move",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "pass",
         "uses": 1,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "post_combat_splash",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "post_combat_splash_aoe",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "powerstaff",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "proc_rate",
         "uses": 5,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "reflect_status",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "regeneration",
         "uses": 3,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "resist",
         "uses": 11,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "resist_multiplier",
         "uses": 13,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "second_wind",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "sight_range_bonus",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "skill_before_combat",
         "uses": 6,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stack",
         "uses": 38,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change",
         "uses": 57,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change_expression",
         "uses": 2,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_multiplier",
         "uses": 34,
-        "structuralStatus": "hook-only"
+        "structuralStatus": "hook-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "time",
         "uses": 31,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "true_miracle_event_after_combat",
         "uses": 1,
-        "structuralStatus": "custom-or-unknown"
+        "structuralStatus": "custom-or-unknown",
+        "semanticStatus": "verified"
       },
       {
         "nid": "TrueMiracle",
         "uses": 3,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "unit_flickering_tint",
         "uses": 4,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "unit_tint",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "unselectable",
         "uses": 10,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_event",
         "uses": 2,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_stat_change",
         "uses": 6,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "vantage",
         "uses": 2,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp_multiplier",
         "uses": 1,
-        "structuralStatus": "hook-and-reference"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp_usable_skill",
         "uses": 1,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "witch_warp_expression",
         "uses": 5,
-        "structuralStatus": "consumed"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       }
     ],
     "custom": [

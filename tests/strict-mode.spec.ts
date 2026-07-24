@@ -185,21 +185,27 @@ test.describe('Strict mode (unimplemented command/component reporting)', () => {
     expect(trace.stateStack.at(-1)).toBe('event');
   });
 
-  test('component inventory scan reports a synthetic bogus component', async ({ page }) => {
+  test('Rekka component inventory rejects a synthetic unsupported component', async ({ page }) => {
     const logs: string[] = [];
     page.on('console', (msg) => logs.push(msg.text()));
-    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
     await waitForHarness(page);
 
-    await page.evaluate(() => {
+    const error = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       g.db.items.set('BogusItem', {
         nid: 'BogusItem',
         components: new Map([['definitely_not_a_component', true]]),
       });
-      (window as any).__logUnknownComponents();
+      try {
+        (window as any).__logUnknownComponents();
+        return null;
+      } catch (caught) {
+        return String(caught);
+      }
     });
 
+    expect(error).toContain('Unimplemented item-component');
     const reported = logs.some((l) => l.includes('definitely_not_a_component'));
     expect(reported).toBe(true);
   });
