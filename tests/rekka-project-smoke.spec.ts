@@ -788,6 +788,7 @@ test.describe('Rekka all-level compatibility', () => {
     expect(baseOptions.options).toEqual(expect.arrayContaining([
       { label: 'Manage', enabled: true },
       { label: 'Convos', enabled: true },
+      { label: 'Supports', enabled: false },
       { label: 'Codex', enabled: true },
       { label: 'Options', enabled: true },
       { label: 'Save', enabled: true },
@@ -911,5 +912,89 @@ test.describe('Rekka all-level compatibility', () => {
     expect(promoted.level).toBe(1);
     expect(promoted.sealPresent).toBe(false);
     expect(promoted.skills).toContain('Crit +30');
+  });
+
+  test('Chapter 7 prep management trades real Rekka unit inventories', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=false&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.cursor = state.options.indexOf('Manage');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+
+    const before = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        phase: state?.phase,
+        unit: game.selectedUnit?.nid,
+        partner: state?.tradePartner?.nid,
+        unitItems: game.selectedUnit?.items.map((item: any) => item.nid) ?? [],
+        partnerItems: state?.tradePartner?.items.map((item: any) => item.nid) ?? [],
+      };
+    });
+    expect(before.state).toBe('trade');
+    expect(before.phase).toBe('select_items');
+    expect(before.unitItems.length).toBeGreaterThan(0);
+    expect(before.partnerItems.length).toBeGreaterThan(0);
+
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    const after = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      return {
+        unitItems: game.selectedUnit.items.map((item: any) => item.nid),
+        partnerItems: state.tradePartner.items.map((item: any) => item.nid),
+      };
+    });
+    expect(after.unitItems[0]).toBe(before.partnerItems[0]);
+    expect(after.partnerItems[0]).toBe(before.unitItems[0]);
+  });
+
+  test('Rekka chapter history and Lyn MVP data open through Base Codex Records', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=2&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.records.clear();
+      game.records.append('turn', 2, '0');
+      game.records.append('turn', 4, '1');
+      game.records.append('turn', 1, '2');
+      game.records.append('kill', 1, '1', 'Lyn', '101');
+      game.state.change('base_main');
+      (window as any).__harness.stepFrames(2, null);
+      const base = game.state.getCurrentState() as any;
+      base.menu.selectedIndex = base.menu.options.findIndex((option: any) => option.label === 'Codex');
+      (window as any).__harness.stepFrames(1, 'SELECT');
+      (window as any).__harness.stepFrames(2, null);
+      const codex = game.state.getCurrentState() as any;
+      codex.menu.selectedIndex = codex.menu.options.findIndex((option: any) => option.label === 'Records');
+      (window as any).__harness.stepFrames(1, 'SELECT');
+      (window as any).__harness.stepFrames(2, null);
+    });
+
+    const records = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        chapters: state?.chapters,
+        lyn: state?.mvps.find((row: any) => row.unitNid === 'Lyn'),
+      };
+    });
+    expect(records.state).toBe('base_records');
+    expect(records.chapters).toEqual([
+      { levelNid: '0', levelName: 'Prologue: A Girl From The Plains', turncount: 2 },
+      { levelNid: '1', levelName: 'Chapter 1: Footsteps of Fate', turncount: 4 },
+    ]);
+    expect(records.lyn).toMatchObject({ unitNid: 'Lyn', kills: 1 });
   });
 });
