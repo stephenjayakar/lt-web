@@ -124,15 +124,15 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2923
+          "line": 2925
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10849
+          "line": 10862
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10870
+          "line": 10883
         },
         {
           "source": "src/objects/item.ts",
@@ -146,15 +146,15 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2923
+          "line": 2925
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10849
+          "line": 10862
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10870
+          "line": 10883
         },
         {
           "source": "src/objects/item.ts",
@@ -183,13 +183,13 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2924
+          "line": 2926
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2924
+          "line": 2926
         }
       ],
       "matchingWebHooks": [],
@@ -210,31 +210,31 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2806
+          "line": 2808
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2942
+          "line": 2944
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3005
+          "line": 3007
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3025
+          "line": 3027
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3035
+          "line": 3037
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3193
+          "line": 3195
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3200
+          "line": 3202
         },
         {
           "source": "src/engine/target-system.ts",
@@ -256,31 +256,31 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2806
+          "line": 2808
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2942
+          "line": 2944
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3005
+          "line": 3007
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3025
+          "line": 3027
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3035
+          "line": 3037
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3193
+          "line": 3195
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3200
+          "line": 3202
         },
         {
           "source": "src/engine/target-system.ts",
@@ -422,7 +422,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2816
+          "line": 2818
         },
         {
           "source": "src/objects/item.ts",
@@ -432,7 +432,7 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2816
+          "line": 2818
         },
         {
           "source": "src/objects/item.ts",
@@ -467,7 +467,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2820
+          "line": 2822
         },
         {
           "source": "src/objects/item.ts",
@@ -481,7 +481,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2820
+          "line": 2822
         },
         {
           "source": "src/objects/item.ts",
@@ -898,7 +898,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3341
+          "line": 3343
         },
         {
           "source": "src/harness.ts",
@@ -916,7 +916,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3341
+          "line": 3343
         }
       ],
       "matchingWebHooks": [],
@@ -949,7 +949,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3341
+          "line": 3343
         }
       ],
       "directReads": [
@@ -963,7 +963,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3341
+          "line": 3343
         }
       ],
       "matchingWebHooks": [],
@@ -1855,11 +1855,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4514
+          "line": 4519
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4943
+          "line": 4956
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1909,7 +1909,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4514
+          "line": 4519
         }
       ],
       "matchingWebHooks": [
@@ -2243,11 +2243,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 242
+          "line": 443
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 244
+          "line": 445
         },
         {
           "source": "src/combat/item-system.ts",
@@ -2279,11 +2279,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8838
+          "line": 8851
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8840
+          "line": 8853
         },
         {
           "source": "src/engine/states/supply-state.ts",
@@ -2321,11 +2321,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 242
+          "line": 443
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 244
+          "line": 445
         },
         {
           "source": "src/combat/item-system.ts",
@@ -2357,11 +2357,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8838
+          "line": 8851
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8840
+          "line": 8853
         },
         {
           "source": "src/engine/states/supply-state.ts",
@@ -2522,11 +2522,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2445
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 2445
+          "line": 2447
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -2534,47 +2530,51 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2564
+          "line": 2449
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2577
+          "line": 2566
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2939
+          "line": 2579
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3076
+          "line": 2941
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3100
+          "line": 3078
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3116
+          "line": 3102
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3454
+          "line": 3118
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7669
+          "line": 3456
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11838
+          "line": 7682
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11868
+          "line": 11851
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11874
+          "line": 11881
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 11887
         },
         {
           "source": "src/events/event-manager.ts",
@@ -2596,15 +2596,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2564
+          "line": 2566
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2939
+          "line": 2941
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3076
+          "line": 3078
         },
         {
           "source": "src/objects/item.ts",
@@ -2638,23 +2638,23 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2564
+          "line": 2566
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2565
+          "line": 2567
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2940
+          "line": 2942
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3076
+          "line": 3078
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3080
+          "line": 3082
         },
         {
           "source": "src/objects/item.ts",
@@ -2668,23 +2668,23 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2564
+          "line": 2566
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2565
+          "line": 2567
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2940
+          "line": 2942
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3076
+          "line": 3078
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3080
+          "line": 3082
         },
         {
           "source": "src/objects/item.ts",
@@ -2718,27 +2718,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2582
+          "line": 2584
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2941
+          "line": 2943
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3077
+          "line": 3079
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3081
+          "line": 3083
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7669
+          "line": 7682
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11922
+          "line": 11935
         },
         {
           "source": "src/objects/item.ts",
@@ -2752,19 +2752,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2582
+          "line": 2584
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2941
+          "line": 2943
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3077
+          "line": 3079
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3081
+          "line": 3083
         },
         {
           "source": "src/objects/item.ts",
@@ -2794,7 +2794,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2594
+          "line": 2596
         },
         {
           "source": "src/objects/item.ts",
@@ -2804,7 +2804,7 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2594
+          "line": 2596
         },
         {
           "source": "src/objects/item.ts",
@@ -2858,7 +2858,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 504
+          "line": 705
         }
       ],
       "directReads": [],
@@ -2886,7 +2886,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 521
+          "line": 722
         }
       ],
       "directReads": [],
@@ -2914,7 +2914,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 522
+          "line": 294
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 723
         }
       ],
       "directReads": [],
@@ -3125,11 +3129,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2709
+          "line": 2711
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4370
+          "line": 4372
         }
       ],
       "directReads": [
@@ -3143,7 +3147,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2709
+          "line": 2711
         }
       ],
       "matchingWebHooks": [],
@@ -3199,13 +3203,13 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2722
+          "line": 2724
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2722
+          "line": 2724
         }
       ],
       "matchingWebHooks": [],
@@ -3238,7 +3242,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2696
+          "line": 2698
         }
       ],
       "directReads": [
@@ -3252,7 +3256,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2696
+          "line": 2698
         }
       ],
       "matchingWebHooks": [],
@@ -3277,25 +3281,25 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 422
+          "line": 623
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2740
+          "line": 2742
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9958
+          "line": 9971
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 422
+          "line": 623
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2740
+          "line": 2742
         }
       ],
       "matchingWebHooks": [],
@@ -3993,13 +3997,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 428
+          "line": 629
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 428
+          "line": 629
         }
       ],
       "matchingWebHooks": [],
@@ -4646,7 +4650,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2612
+          "line": 2614
         },
         {
           "source": "src/objects/item.ts",
@@ -4699,7 +4703,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2618
+          "line": 2620
         },
         {
           "source": "src/objects/item.ts",
@@ -4734,7 +4738,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2626
+          "line": 2628
         },
         {
           "source": "src/objects/item.ts",
@@ -4769,7 +4773,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2634
+          "line": 2636
         },
         {
           "source": "src/objects/item.ts",
@@ -4836,11 +4840,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2506
+          "line": 2508
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3064
+          "line": 3066
         },
         {
           "source": "src/main.ts",
@@ -4858,11 +4862,11 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2506
+          "line": 2508
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3064
+          "line": 3066
         },
         {
           "source": "src/objects/item.ts",
@@ -4959,11 +4963,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2507
+          "line": 2509
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3064
+          "line": 3066
         },
         {
           "source": "src/objects/item.ts",
@@ -4981,11 +4985,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2507
+          "line": 2509
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3064
+          "line": 3066
         },
         {
           "source": "src/objects/item.ts",
@@ -5018,7 +5022,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 364
+          "line": 565
         }
       ],
       "directReads": [],
@@ -5046,11 +5050,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 359
+          "line": 560
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 364
+          "line": 565
         }
       ],
       "directReads": [],
@@ -5121,11 +5125,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 376
+          "line": 577
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 379
+          "line": 580
         },
         {
           "source": "src/engine/action.ts",
@@ -5163,11 +5167,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 360
+          "line": 561
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 376
+          "line": 577
         }
       ],
       "directReads": [],
@@ -5193,17 +5197,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 382
+          "line": 583
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 387
+          "line": 588
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 387
+          "line": 588
         }
       ],
       "matchingWebHooks": [],
@@ -5273,17 +5277,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 394
+          "line": 595
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 398
+          "line": 599
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 398
+          "line": 599
         }
       ],
       "matchingWebHooks": [],
@@ -5395,39 +5399,39 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1993
+          "line": 1995
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2184
+          "line": 2186
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2983
+          "line": 2985
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3142
+          "line": 3144
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3149
+          "line": 3151
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3245
+          "line": 3247
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4894
+          "line": 4907
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6468
+          "line": 6481
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6470
+          "line": 6483
         },
         {
           "source": "src/objects/item.ts",
@@ -5449,7 +5453,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3142
+          "line": 3144
         },
         {
           "source": "src/objects/item.ts",
@@ -5504,7 +5508,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3142
+          "line": 3144
         },
         {
           "source": "src/main.ts",
@@ -5534,7 +5538,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3142
+          "line": 3144
         },
         {
           "source": "src/objects/item.ts",
@@ -5566,7 +5570,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 504
+          "line": 705
         }
       ],
       "directReads": [],
@@ -5594,7 +5598,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 523
+          "line": 724
         }
       ],
       "directReads": [],
@@ -5624,7 +5628,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 533
+          "line": 734
         }
       ],
       "directReads": [],
@@ -6678,7 +6682,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2748
+          "line": 2750
         }
       ],
       "directReads": [
@@ -6696,7 +6700,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2748
+          "line": 2750
         }
       ],
       "matchingWebHooks": [],
@@ -7262,11 +7266,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2489
+          "line": 2491
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2490
+          "line": 2492
         },
         {
           "source": "src/objects/item.ts",
@@ -7304,11 +7308,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2489
+          "line": 2491
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2490
+          "line": 2492
         },
         {
           "source": "src/objects/item.ts",
@@ -7348,11 +7352,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2489
+          "line": 2491
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2491
+          "line": 2493
         },
         {
           "source": "src/objects/item.ts",
@@ -7378,11 +7382,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2489
+          "line": 2491
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2491
+          "line": 2493
         },
         {
           "source": "src/objects/item.ts",
@@ -7423,7 +7427,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2540
+          "line": 2542
         },
         {
           "source": "src/objects/item.ts",
@@ -7437,7 +7441,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2540
+          "line": 2542
         },
         {
           "source": "src/objects/item.ts",
@@ -7474,7 +7478,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2525
+          "line": 2527
         },
         {
           "source": "src/objects/item.ts",
@@ -7488,7 +7492,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2525
+          "line": 2527
         },
         {
           "source": "src/objects/item.ts",
@@ -7526,11 +7530,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2525
+          "line": 2527
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2526
+          "line": 2528
         },
         {
           "source": "src/objects/item.ts",
@@ -7548,11 +7552,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2525
+          "line": 2527
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2526
+          "line": 2528
         },
         {
           "source": "src/objects/item.ts",
@@ -7658,7 +7662,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12764
+          "line": 12777
         },
         {
           "source": "src/events/event-manager.ts",
@@ -7723,27 +7727,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2550
+          "line": 2552
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2983
+          "line": 2985
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2987
+          "line": 2989
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3123
+          "line": 3125
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3128
+          "line": 3130
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3275
+          "line": 3277
         },
         {
           "source": "src/objects/item.ts",
@@ -7757,11 +7761,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2550
+          "line": 2552
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3123
+          "line": 3125
         },
         {
           "source": "src/objects/item.ts",
@@ -7810,11 +7814,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2011
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 2188
+          "line": 2013
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -7822,15 +7822,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3483
+          "line": 2192
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5352
+          "line": 3485
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10302
+          "line": 5365
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 10315
         }
       ],
       "directReads": [
@@ -7865,15 +7869,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1955
+          "line": 1957
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 1956
+          "line": 1958
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5356
+          "line": 5369
         }
       ],
       "directReads": [
@@ -8013,19 +8017,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2695
+          "line": 2697
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4912
+          "line": 4925
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5473
+          "line": 5486
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8986
+          "line": 8999
         },
         {
           "source": "src/engine/states/supply-state.ts",
@@ -8079,15 +8083,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2695
+          "line": 2697
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4912
+          "line": 4925
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5473
+          "line": 5486
         },
         {
           "source": "src/engine/states/supply-state.ts",
@@ -8197,7 +8201,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4642
+          "line": 4647
         },
         {
           "source": "src/events/event-manager.ts",
@@ -8271,7 +8275,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4642
+          "line": 4647
         },
         {
           "source": "src/events/event-manager.ts",
@@ -8368,11 +8372,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3063
+          "line": 3065
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5950
+          "line": 5963
         },
         {
           "source": "src/main.ts",
@@ -8410,7 +8414,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3063
+          "line": 3065
         },
         {
           "source": "src/objects/item.ts",
@@ -8595,7 +8599,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5962
+          "line": 5975
         },
         {
           "source": "src/main.ts",
@@ -8729,15 +8733,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7669
+          "line": 7682
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11171
+          "line": 11184
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11807
+          "line": 11820
         },
         {
           "source": "src/main.ts",

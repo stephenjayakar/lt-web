@@ -149,6 +149,8 @@ import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import {
   queueAfterInitiatedCombatEvents,
+  queueCombatSkillEvents,
+  queueCombatSkillStartEvents,
   applyCombatItemStartHooks,
   applyCombatItemEndHooks,
   queueCombatItemEvents,
@@ -4487,6 +4489,9 @@ export class CombatState extends State {
     defender = targetGroup.representative;
     const groupedCombat = !primaryDefender || splashDefenders.length > 0;
     const defenseItem = primaryDefender ? getEquippedWeapon(primaryDefender, game.db, game) : null;
+    if (primaryDefender) {
+      queueCombatSkillStartEvents(game, attacker, primaryDefender, attackItem, defenseItem);
+    }
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
     const playerSelectedPartners = !!game.memory.get('combat_strike_partners_selected');
@@ -4877,6 +4882,14 @@ export class CombatState extends State {
             activeCombat.strikes,
             activeCombat.attacker,
             activeCombat.defender,
+          );
+          queueCombatSkillEvents(
+            game,
+            activeCombat.strikes,
+            activeCombat.attacker,
+            activeCombat.defender,
+            activeCombat.attackItem,
+            activeCombat.defenseItem,
           );
           queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
@@ -12865,6 +12878,11 @@ export class EventState extends State {
             const defItem = targetGroup.mainDefender
               ? targetGroup.mainDefender.items.find((i: ItemObject) => i.isWeapon()) ?? null
               : null;
+            if (targetGroup.mainDefender) {
+              queueCombatSkillStartEvents(
+                game, iuAttacker, targetGroup.mainDefender, attackItem, defItem,
+              );
+            }
             const rngMode2 = game.db.getConstant('rng_mode', 'true_hit') as any;
             const mc = new MapCombat(
               iuAttacker, attackItem, targetGroup.representative, defItem,
@@ -12901,6 +12919,9 @@ export class EventState extends State {
             const results = mc.applyResults(game.actionLog);
             applyCombatItemEndHooks(game, mc.strikes);
             applyCombatSkillEndHooks(game, mc.strikes, mc.attacker, mc.defender);
+            queueCombatSkillEvents(
+              game, mc.strikes, mc.attacker, mc.defender, attackItem, defItem,
+            );
             queueCombatItemEvents(game, mc.strikes);
             // Handle deaths
             for (const deadDefender of results.defenderDeaths ??

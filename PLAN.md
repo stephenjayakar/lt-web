@@ -109,7 +109,7 @@ unsafe Python/eval bridge.
 - [x] Combat modifiers: `givebacker` and `disvantage`
 - [ ] Combat survival: `nine_lives_event`, `true_miracle_event`, and
   `true_miracle_event_after_combat`
-- [ ] Event hooks: 13 `event_after_combat`, 10 `event_before_combat`,
+- [x] Event hooks: 13 `event_after_combat`, 10 `event_before_combat`,
   20 `event_on_upkeep`, 17 `event_after_hit`, 4 `event_after_strike`,
   3 `event_after_crit`, plus hit/dodge/strike variants
 - [x] Availability restrictions, including four

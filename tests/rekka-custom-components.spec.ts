@@ -261,4 +261,149 @@ test.describe('Rekka project-local skill components', () => {
 
     expect(result).toEqual({ armor: true, weapon: false });
   });
+
+  test('combat event hooks preserve Python strike and participant order', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const {
+        queueCombatSkillEvents,
+        queueCombatSkillStartEvents,
+      } = await import('/src/combat/combat-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const attackItem = attacker.items.find((item: any) => item.isWeapon());
+      const defenseItem = defender.items.find((item: any) => item.isWeapon());
+      attacker.skills = [new SkillObject({
+        nid: 'TestAttackerHooks',
+        name: 'Test Attacker Hooks',
+        desc: '',
+        components: [
+          ['event_before_combat', 'attacker_before'],
+          ['event_after_strike', 'after_strike'],
+          ['event_after_hit', 'after_hit'],
+          ['event_after_crit', 'after_crit'],
+          ['event_after_combat', 'attacker_end'],
+        ],
+      })];
+      defender.skills = [new SkillObject({
+        nid: 'TestDefenderHooks',
+        name: 'Test Defender Hooks',
+        desc: '',
+        components: [
+          ['event_before_combat', 'defender_before'],
+          ['event_when_hit', 'when_hit'],
+          ['event_after_combat_when_hit', 'after_combat_hit'],
+          ['event_after_combat', 'defender_end'],
+        ],
+      })];
+      const calls: any[] = [];
+      game.eventManager.triggerSpecific = (nid: string, trigger: any) => {
+        calls.push({
+          nid,
+          type: trigger.type,
+          unit1: trigger.unit1.nid,
+          unit2: trigger.unit2.nid,
+          item: trigger.localArgs.get('item')?.nid ?? null,
+          item2: trigger.localArgs.get('item2')?.nid ?? null,
+          mode: trigger.localArgs.get('mode'),
+        });
+        return true;
+      };
+      const start = queueCombatSkillStartEvents(
+        game, attacker, defender, attackItem, defenseItem,
+      );
+      const end = queueCombatSkillEvents(game, [{
+        attacker,
+        defender,
+        item: attackItem,
+        hit: true,
+        crit: true,
+        damage: 8,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      }], attacker, defender, attackItem, defenseItem);
+      return { start, end, calls };
+    });
+
+    expect(result.start).toBe(2);
+    expect(result.end).toBe(7);
+    expect(result.calls.map((call: any) => call.nid)).toEqual([
+      'attacker_before',
+      'defender_before',
+      'after_strike',
+      'after_hit',
+      'after_crit',
+      'when_hit',
+      'attacker_end',
+      'after_combat_hit',
+      'defender_end',
+    ]);
+    expect(result.calls[0]).toMatchObject({
+      unit1: 'Lyn',
+      unit2: '101',
+      item: 'Iron_Sword',
+      item2: 'Iron_Axe',
+      mode: 'attack',
+    });
+    expect(result.calls[5]).toMatchObject({
+      unit1: '101',
+      unit2: 'Lyn',
+      item: 'Iron_Axe',
+      item2: 'Iron_Sword',
+      mode: 'attack',
+    });
+  });
+
+  test('event_on_upkeep uses the bearer payload and component order', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      unit.skills = [new SkillObject({
+        nid: 'TestUpkeepEvent',
+        name: 'Test Upkeep Event',
+        desc: '',
+        components: [
+          ['event_on_upkeep', 'upkeep_event'],
+          ['upkeep_stat_change', [['STR', 1]]],
+        ],
+      })];
+      const calls: any[] = [];
+      game.eventManager.triggerSpecific = (nid: string, trigger: any) => {
+        calls.push({
+          nid,
+          type: trigger.type,
+          unit1: trigger.unit1.nid,
+          unit2: trigger.unit2.nid,
+          item: trigger.localArgs.get('item'),
+          mode: trigger.localArgs.get('mode'),
+        });
+        return true;
+      };
+      const effects = applySkillTurnHooks(game, [unit], 'upkeep');
+      return {
+        calls,
+        components: effects.map((effect: any) => effect.component),
+        counter: unit.skills[0].data.get('counter'),
+      };
+    });
+
+    expect(result).toEqual({
+      calls: [{
+        nid: 'upkeep_event',
+        type: 'event_on_upkeep',
+        unit1: 'Lyn',
+        unit2: 'Lyn',
+        item: null,
+        mode: null,
+      }],
+      components: ['event_on_upkeep', 'upkeep_stat_change'],
+      counter: 1,
+    });
+  });
 });
