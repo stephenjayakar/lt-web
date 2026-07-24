@@ -646,16 +646,102 @@ function processMouseForMap(event: InputEvent): InputEvent | undefined {
 // 1. TitleStartState — "Press Start" splash screen
 // ============================================================================
 
+function imageHasVisiblePixels(image: HTMLImageElement): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context || canvas.width === 0 || canvas.height === 0) return false;
+    context.drawImage(image, 0, 0);
+    const alpha = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < alpha.length; index += 4) {
+      if (alpha[index] !== 0) return true;
+    }
+    return false;
+  } catch {
+    // If pixel inspection is unavailable, trust the loaded project asset.
+    return true;
+  }
+}
+
+function drawCenteredTitleAsset(
+  surf: Surface,
+  image: HTMLImageElement,
+  centerX: number,
+  centerY: number,
+  maxWidth: number,
+  maxHeight: number,
+  alpha: number = 1,
+): void {
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  if (width <= 0 || height <= 0) return;
+  const fit = Math.min(1, maxWidth / width, maxHeight / height);
+  const drawWidth = Math.max(1, Math.round(width * fit));
+  const drawHeight = Math.max(1, Math.round(height * fit));
+  const x = Math.round(centerX - drawWidth / 2);
+  const y = Math.round(centerY - drawHeight / 2);
+  const scale = surf.scale;
+  surf.ctx.save();
+  surf.ctx.globalAlpha = alpha;
+  surf.ctx.imageSmoothingEnabled = false;
+  surf.ctx.drawImage(
+    image,
+    0, 0, width, height,
+    Math.round(x * scale), Math.round(y * scale),
+    Math.round(drawWidth * scale), Math.round(drawHeight * scale),
+  );
+  surf.ctx.restore();
+}
+
+function titleSceneBounds(): { x: number; y: number; width: number; height: number } {
+  const width = Math.min(240, viewport.width);
+  const height = Math.min(160, viewport.height);
+  return {
+    x: Math.floor((viewport.width - width) / 2),
+    y: Math.floor((viewport.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+function drawTitleBackground(surf: Surface, image: HTMLImageElement | null): void {
+  surf.fill(9, 12, 24);
+  if (!image) return;
+  const scene = titleSceneBounds();
+  const scale = surf.scale;
+  const imageWidth = image.naturalWidth || scene.width;
+  const imageHeight = image.naturalHeight || scene.height;
+  surf.ctx.imageSmoothingEnabled = false;
+  surf.ctx.drawImage(
+    image,
+    0, 0, imageWidth, imageHeight,
+    Math.round(scene.x * scale), Math.round(scene.y * scale),
+    Math.round(scene.width * scale), Math.round(scene.height * scale),
+  );
+}
+
 export class TitleState extends State {
   readonly name = 'title';
   override readonly showMap = false;
   override readonly inLevel = false;
 
   private bgImage: HTMLImageElement | null = null;
+  private logoImage: HTMLImageElement | null = null;
+  private pressStartImage: HTMLImageElement | null = null;
+  private logoAssetLoaded: boolean = false;
+  private pressStartAssetLoaded: boolean = false;
   private pulseTimer: number = 0;
 
   override start(): StateResult {
     const game = getGame();
+    this.bgImage = null;
+    this.logoImage = null;
+    this.pressStartImage = null;
+    this.logoAssetLoaded = false;
+    this.pressStartAssetLoaded = false;
+    this.pulseTimer = 0;
     // Load the title background panorama (try single file, then frame 0 for animated panoramas)
     game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
       if (img) {
@@ -666,6 +752,14 @@ export class TitleState extends State {
           this.bgImage = img0;
         });
       }
+    });
+    game.resources.tryLoadImage('resources/custom_sprites/logo.png').then((image: HTMLImageElement | null) => {
+      this.logoAssetLoaded = !!image;
+      this.logoImage = image && imageHasVisiblePixels(image) ? image : null;
+    });
+    game.resources.tryLoadImage('resources/custom_sprites/press_start.png').then((image: HTMLImageElement | null) => {
+      this.pressStartAssetLoaded = !!image;
+      this.pressStartImage = image && imageHasVisiblePixels(image) ? image : null;
     });
 
     // Play title music if configured
@@ -692,46 +786,59 @@ export class TitleState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
+    const scene = titleSceneBounds();
+    drawTitleBackground(surf, this.bgImage);
 
-    // Background — scale panorama to fill viewport
-    if (this.bgImage) {
-      const s = surf.scale;
-      const imgW = this.bgImage.naturalWidth || vw;
-      const imgH = this.bgImage.naturalHeight || vh;
-      surf.ctx.imageSmoothingEnabled = false;
-      surf.ctx.drawImage(
-        this.bgImage,
-        0, 0, imgW, imgH,
-        0, 0, Math.round(vw * s), Math.round(vh * s),
+    if (this.logoImage) {
+      drawCenteredTitleAsset(
+        surf,
+        this.logoImage,
+        scene.x + scene.width / 2,
+        scene.y + Math.floor(scene.height / 3),
+        scene.width - 24,
+        Math.floor(scene.height / 2),
       );
     } else {
-      surf.fill(16, 16, 32);
+      const title = String(getGame().db.getConstant('title', 'Lex Talionis'));
+      const titleW = title.length * 8;
+      const titleX = scene.x + Math.floor((scene.width - titleW) / 2);
+      const titleY = scene.y + Math.floor(scene.height / 3);
+      surf.fillRect(titleX - 4, titleY - 2, titleW + 8, 18, 'rgba(0,0,0,0.68)');
+      surf.drawText(
+        title,
+        titleX,
+        titleY,
+        'white',
+        '14px monospace',
+      );
     }
-
-    // Title text — centered, upper third
-    const title = 'Lex Talionis';
-    const titleW = title.length * 8;
-    surf.drawText(
-      title,
-      Math.floor((vw - titleW) / 2),
-      Math.floor(vh / 3),
-      'white',
-      '14px monospace',
-    );
 
     // "Press Start" — pulsing alpha
     const alpha = 0.5 + 0.5 * Math.sin(this.pulseTimer / 500 * Math.PI);
-    const prompt = 'Press Start';
-    const promptW = prompt.length * 5;
-    surf.drawText(
-      prompt,
-      Math.floor((vw - promptW) / 2),
-      Math.floor(vh * 4 / 5),
-      `rgba(200,200,220,${alpha.toFixed(2)})`,
-      '8px monospace',
-    );
+    if (this.pressStartImage) {
+      drawCenteredTitleAsset(
+        surf,
+        this.pressStartImage,
+        scene.x + scene.width / 2,
+        scene.y + Math.floor(scene.height * 4 / 5),
+        Math.floor(scene.width * 2 / 3),
+        28,
+        alpha,
+      );
+    } else {
+      const prompt = 'Press Start';
+      const promptW = prompt.length * 5;
+      const promptX = scene.x + Math.floor((scene.width - promptW) / 2);
+      const promptY = scene.y + Math.floor(scene.height * 4 / 5);
+      surf.fillRect(promptX - 4, promptY - 2, promptW + 8, 12, 'rgba(0,0,0,0.68)');
+      surf.drawText(
+        prompt,
+        promptX,
+        promptY,
+        `rgba(200,200,220,${alpha.toFixed(2)})`,
+        '8px monospace',
+      );
+    }
 
     return surf;
   }
@@ -739,6 +846,8 @@ export class TitleState extends State {
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
     if (event === 'START' || event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
+      game.audioManager.resume();
+      game.audioManager.playSfx('Start');
       game.state.change('title_main');
     }
   }
@@ -825,27 +934,12 @@ export class TitleMainState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-
-    // Background — scale panorama to fill viewport
-    if (this.bgImage) {
-      const s = surf.scale;
-      const imgW = this.bgImage.naturalWidth || vw;
-      const imgH = this.bgImage.naturalHeight || vh;
-      surf.ctx.imageSmoothingEnabled = false;
-      surf.ctx.drawImage(
-        this.bgImage,
-        0, 0, imgW, imgH,
-        0, 0, Math.round(vw * s), Math.round(vh * s),
-      );
-    } else {
-      surf.fill(16, 16, 32);
-    }
+    const scene = titleSceneBounds();
+    drawTitleBackground(surf, this.bgImage);
 
     // Semi-transparent panel behind menu
-    const panelX = Math.floor(this.slideX - 8);
-    const panelY = Math.floor(vh / 2 - 10);
+    const panelX = Math.floor(scene.x + this.slideX - 8);
+    const panelY = Math.floor(scene.y + scene.height / 2 - 10);
     const panelW = 90;
     const panelH = this.options.length * 16 + 8;
     surf.fillRect(panelX, panelY, panelW, panelH, 'rgba(16,16,48,0.85)');
@@ -853,8 +947,8 @@ export class TitleMainState extends State {
 
     // Menu options
     for (let i = 0; i < this.options.length; i++) {
-      const optY = Math.floor(vh / 2 + i * 16 - 4);
-      const optX = Math.floor(this.slideX);
+      const optY = Math.floor(scene.y + scene.height / 2 + i * 16 - 4);
+      const optX = Math.floor(scene.x + this.slideX);
 
       if (i === this.cursor) {
         // Highlight bar
