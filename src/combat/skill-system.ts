@@ -370,7 +370,15 @@ export function growthChange(unit: UnitObject, statNid: string): number {
 
 /** Bonus damage from skills. */
 export function modifyDamage(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_damage') + sumSkillValues(unit, 'damage');
+  let total = sumSkillValues(unit, 'modify_damage') + sumSkillValues(unit, 'damage');
+  // Rekka GiveBacker: each active copy adds the bearer's missing HP.
+  // Custom components participate in NUMERIC_ACCUM just like built-ins.
+  for (const skill of unit.skills) {
+    if (skill.hasComponent('givebacker')) {
+      total += Math.max(0, unit.getMaxHP() - unit.currentHp);
+    }
+  }
+  return total;
 }
 
 /** Bonus resist from skills. */

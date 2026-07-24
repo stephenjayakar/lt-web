@@ -245,6 +245,8 @@ export function available(
   for (const skill of unit.skills) {
     if (!availabilitySkillActive(unit, skill, item, game)) continue;
     if (skill.hasComponent('cannot_use_items')) return false;
+    if (skill.hasComponent('cannot_use_items_except_armor') &&
+        weaponType(unit, item) !== 'Gear') return false;
     if (skill.hasComponent('cannot_use_magic_items') &&
         (item.hasComponent('magic') || item.hasComponent('magic_at_range'))) return false;
   }
