@@ -959,6 +959,99 @@ test.describe('Rekka all-level compatibility', () => {
     expect(after.partnerItems[0]).toBe(before.unitItems[0]);
   });
 
+  test('Rekka Prologue visit and seize preserve rewards into chapter 1', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=false&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+
+    const levelStart = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        level: game.currentLevel?.nid,
+        state: game.state.getCurrentState()?.name,
+        money: game.getParty().money,
+      };
+    });
+    expect(levelStart).toEqual({ level: '0', state: 'free', money: 5_000 });
+
+    const visitReady = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      game.board.moveUnit(lyn, 14, 9);
+      game.cursor.setPos(14, 9);
+      game.selectedUnit = lyn;
+      game._moveOrigin = [14, 9];
+      game.state.change('menu');
+      (window as any).__harness.stepFrames(2, null);
+      const menu = game.state.getCurrentState() as any;
+      const index = menu.menu?.options.findIndex((option: any) => option.label === 'Visit') ?? -1;
+      if (index >= 0) menu.menu.selectedIndex = index;
+      return index >= 0;
+    });
+    expect(visitReady).toBe(true);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+
+    const visitResult = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      return {
+        items: lyn.items.map((item: any) => item.nid),
+        housePresent: game.currentLevel.regions.some((region: any) => region.nid === 'House'),
+        persistent: lyn.persistent,
+      };
+    });
+    expect(visitResult.items).toContain('Blue_Gem');
+    expect(visitResult.housePresent).toBe(false);
+    expect(visitResult.persistent).toBe(true);
+
+    const seizeReady = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      const batta = game.units.get('Batta');
+      if (batta?.position) game.board.removeUnit(batta);
+      game.board.moveUnit(lyn, 3, 2);
+      lyn.hasAttacked = false;
+      game.cursor.setPos(3, 2);
+      game.selectedUnit = lyn;
+      game._moveOrigin = [3, 2];
+      game.state.change('menu');
+      (window as any).__harness.stepFrames(2, null);
+      const menu = game.state.getCurrentState() as any;
+      const index = menu.menu?.options.findIndex((option: any) => option.label === 'Seize') ?? -1;
+      if (index >= 0) menu.menu.selectedIndex = index;
+      return index >= 0;
+    });
+    expect(seizeReady).toBe(true);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.settle(2_500));
+    await page.waitForFunction(() => {
+      const game = (window as any).__gameRef;
+      return game.currentLevel?.nid === '1' && game.units.has('Lyn');
+    });
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+
+    const chapterOne = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      return {
+        level: game.currentLevel?.nid,
+        previousLevel: game.gameVars.get('_prev_level_nid'),
+        money: game.getParty().money,
+        items: lyn?.items.map((item: any) => item.nid) ?? [],
+        persistent: lyn?.persistent,
+      };
+    });
+    expect(chapterOne.level).toBe('1');
+    expect(chapterOne.previousLevel).toBe('0');
+    expect(chapterOne.money).toBe(5_000);
+    expect(chapterOne).toMatchObject({
+      items: expect.arrayContaining(['Blue_Gem']),
+      persistent: true,
+    });
+  });
+
   test('Rekka chapter history and Lyn MVP data open through Base Codex Records', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=2&clean=true&bundle=false');
     await waitForHarness(page);
