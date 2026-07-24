@@ -7794,6 +7794,7 @@ export class ShopState extends State {
   private shopItems: ItemObject[] = [];
   private shopStock: number[] = []; // -1 = unlimited
   private shopId: string | null = null;
+  private shopFlavor: string = 'armory';
   private money: number = 0;
 
   // Buy/sell menu selection
@@ -7813,6 +7814,7 @@ export class ShopState extends State {
     this.shopItems = game.shopItems ?? [];
     this.shopStock = game.shopStock ?? this.shopItems.map(() => -1);
     this.shopId = game.shopId;
+    this.shopFlavor = game.shopFlavor ?? 'armory';
     this.money = Number(game.getMoney());
     this.phase = 'choice';
     this.menuIndex = 0;
@@ -7826,6 +7828,7 @@ export class ShopState extends State {
     game.shopItems = null;
     game.shopStock = null;
     game.shopId = null;
+    game.shopFlavor = null;
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -7923,7 +7926,7 @@ export class ShopState extends State {
     const W = surf.width;
 
     // Title
-    surf.drawText('SHOP', 4, 4, '#FFD700', FONT);
+    surf.drawText(this.shopFlavor.toUpperCase(), 4, 4, '#FFD700', FONT);
 
     // Money display
     const moneyStr = `Gold: ${this.money}`;
@@ -13806,6 +13809,7 @@ export class EventState extends State {
         game.shopItems = shopItems;
         game.shopStock = shopStock;
         game.shopId = shopId || null;
+        game.shopFlavor = shopFlavor;
 
         // Push shop state
         game.state.change('shop');
