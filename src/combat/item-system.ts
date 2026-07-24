@@ -114,6 +114,15 @@ export function validTargets(
     }
   }
 
+  if (item.hasComponent('phasewalk') ||
+      item.hasComponent('charge') ||
+      item.hasComponent('bullrush')) {
+    for (const target of rekkaMovementEndpoints(unit, item, board, db, game).keys()) {
+      const [x, y] = target.split(',').map(Number);
+      add([x, y]);
+    }
+  }
+
   return [...targets.values()];
 }
 
@@ -138,6 +147,88 @@ export interface SplashResult {
 function componentList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String);
   return value === undefined || value === null ? [] : [String(value)];
+}
+
+type RekkaMovementComponent = 'phasewalk' | 'charge' | 'bullrush';
+
+/**
+ * Project-local straight-line movement item endpoints.
+ *
+ * Keys are the adjacent direction-selection tiles exposed as item targets;
+ * values are the actual landing tiles. This preserves the custom Python
+ * components' unusual target shape and their exact Phasewalk scan vs.
+ * Charge/Bullrush fixed-distance behavior.
+ */
+export function rekkaMovementEndpoints(
+  unit: UnitObject,
+  item: ItemObject,
+  board: GameBoard,
+  db: Database,
+  game?: any,
+): Map<string, TargetPosition> {
+  const component: RekkaMovementComponent | null =
+    item.hasComponent('phasewalk') ? 'phasewalk' :
+      item.hasComponent('charge') ? 'charge' :
+        item.hasComponent('bullrush') ? 'bullrush' : null;
+  const endpoints = new Map<string, TargetPosition>();
+  if (!component || !unit.position) return endpoints;
+
+  const allowedTerrain = new Set(componentList(item.getComponent(component)));
+  const defaultMovement = db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+  const movementGroup = movementType(unit, defaultMovement, game);
+  const status = ([x, y]: TargetPosition): 0 | 1 | 2 => {
+    const traversable = board.getMovementCost(x, y, movementGroup, db) < 99;
+    if (traversable) return 0;
+    return allowedTerrain.has(String(board.getTerrain(x, y))) ? 1 : 2;
+  };
+  const distance = component === 'charge'
+    ? Math.trunc(unit.getMovement() / 2)
+    : unit.getMovement();
+
+  for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0]] as TargetPosition[]) {
+    const adjacent: TargetPosition = [unit.position[0] + dx, unit.position[1] + dy];
+    if (!board.checkBounds(adjacent[0], adjacent[1])) continue;
+
+    if (component === 'phasewalk') {
+      if (status(adjacent) !== 1) continue;
+      let current: TargetPosition = [unit.position[0], unit.position[1]];
+      while (true) {
+        current = [current[0] + dx, current[1] + dy];
+        if (!board.checkBounds(current[0], current[1])) break;
+        const currentStatus = status(current);
+        if (currentStatus === 2) break;
+        if (currentStatus === 0) {
+          endpoints.set(`${adjacent[0]},${adjacent[1]}`, current);
+          break;
+        }
+      }
+      continue;
+    }
+
+    if (status(adjacent) !== 0 || distance <= 0) continue;
+    const endpoint: TargetPosition = [
+      unit.position[0] + dx * distance,
+      unit.position[1] + dy * distance,
+    ];
+    if (!board.checkBounds(endpoint[0], endpoint[1]) || status(endpoint) !== 0) continue;
+    endpoints.set(`${adjacent[0]},${adjacent[1]}`, endpoint);
+  }
+  return endpoints;
+}
+
+function cleave2Positions(
+  position: TargetPosition,
+  board: GameBoard,
+): TargetPosition[] {
+  const positions: TargetPosition[] = [];
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -2; dy <= 2; dy++) {
+      if (dx === 0 && dy === 0) continue;
+      const candidate: TargetPosition = [position[0] + dx, position[1] + dy];
+      if (board.checkBounds(candidate[0], candidate[1])) positions.push(candidate);
+    }
+  }
+  return positions;
 }
 
 function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][number], item: ItemObject, game?: any): boolean {
@@ -578,6 +669,14 @@ export function splash(
   const board = context.board;
   // UnlockStaff explicitly suppresses every other splash/AOE component.
   if (item.hasComponent('unlock_staff')) return { mainTarget: position, splash: [] };
+
+  if (item.hasComponent('cleave_2_range_aoe')) {
+    return {
+      mainTarget: board.getUnit(position[0], position[1]) ? position : null,
+      splash: cleave2Positions(position, board)
+        .filter(([x, y]) => !!board.getUnit(x, y)),
+    };
+  }
   const spell = isSpell(unit, item);
   const extraRange = empowerSplash(unit);
   const blastValue = item.getComponent<number>('blast_aoe')
@@ -662,6 +761,11 @@ export function splashPositions(
   context: SplashContext,
 ): TargetPosition[] {
   const board = context.board;
+  if (item.hasComponent('cleave_2_range_aoe')) {
+    // The custom Python preview deliberately highlights only empty tiles.
+    return cleave2Positions(position, board)
+      .filter(([x, y]) => !board.getUnit(x, y));
+  }
   const extraRange = empowerSplash(unit);
   const blastValue = item.getComponent<number>('blast_aoe')
     ?? item.getComponent<number>('enemy_blast_aoe')
@@ -1066,6 +1170,13 @@ export function targetRestrict(
       !target.skills.some((skill) => skill.hasComponent('ignore_forced_movement')) &&
       !!advanceDestinations(unit, target, magnitude, context));
     if (!canAdvance) return false;
+  }
+
+  if (item.hasComponent('phasewalk') ||
+      item.hasComponent('charge') ||
+      item.hasComponent('bullrush')) {
+    const endpoints = rekkaMovementEndpoints(unit, item, context.board, context.db, context.game);
+    if (!endpoints.has(`${defPos[0]},${defPos[1]}`)) return false;
   }
 
   const expression = item.getComponent<string>('eval_target_restrict_2');

@@ -10,6 +10,210 @@ async function boot(page: Page): Promise<void> {
 }
 
 test.describe('Rekka project-local item components', () => {
+  test('zero-use custom movement and cleave components match their Python contracts', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { GameBoard } = await import('/src/objects/game-board.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const {
+        rekkaMovementEndpoints,
+        splash,
+        splashPositions,
+        targetRestrict,
+      } = await import('/src/combat/item-system.ts');
+      const { applyCombatItemEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const target = game.units.get('101');
+      const bystander = game.units.get('Batta');
+      if (!attacker || !target || !bystander) return null;
+
+      const board = new GameBoard(16, 16);
+      const movementGroup = game.db.classes.get(attacker.klass).movement_group;
+      const floor = [...game.db.terrain.values()].find((terrain: any) =>
+        game.db.getMovementCost(terrain.mtype, movementGroup) < 99);
+      const wall = [...game.db.terrain.values()].find((terrain: any) =>
+        game.db.getMovementCost(terrain.mtype, movementGroup) >= 99);
+      if (!floor || !wall) return null;
+      for (let y = 0; y < board.height; y++) {
+        for (let x = 0; x < board.width; x++) board.setTerrain(x, y, floor.nid);
+      }
+
+      board.setUnit(2, 2, attacker);
+      board.setTerrain(3, 2, wall.nid);
+      board.setTerrain(4, 2, wall.nid);
+      const movementItem = (nid: string, component: string, value: unknown) =>
+        new ItemObject({
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [
+            [component, value], ['target_tile', null],
+            ['min_range', 1], ['max_range', 1],
+          ],
+        });
+      const phasewalk = movementItem('_Phasewalk', 'phasewalk', [wall.nid]);
+      const charge = movementItem('_Charge', 'charge', [floor.nid]);
+      const bullrush = movementItem('_Bullrush', 'bullrush', [floor.nid]);
+      const serialize = (map: Map<string, [number, number]>) =>
+        Object.fromEntries([...map.entries()]);
+
+      const phaseTargets = rekkaMovementEndpoints(
+        attacker, phasewalk, board, game.db, game,
+      );
+      const phaseRestriction = targetRestrict(
+        attacker, phasewalk, [3, 2], [],
+        { board, db: game.db, game },
+      );
+      const invalidRestriction = targetRestrict(
+        attacker, phasewalk, [2, 3], [],
+        { board, db: game.db, game },
+      );
+
+      // Execute Phasewalk through the same end-combat hook used at runtime,
+      // then prove its WarpUnitAction restores the exact origin.
+      board.setUnit(3, 2, target);
+      const phaseStrike: any = {
+        attacker, defender: target, item: phasewalk,
+        hit: true, crit: false, damage: 0, isCounter: false,
+        mode: 'attack', attackInfo: [0, 0],
+      };
+      const actionStart = game.actionLog.actions.length;
+      const phaseApplied = applyCombatItemEndHooks(
+        { ...game, board }, [phaseStrike],
+      );
+      const phaseAfter = [...attacker.position];
+      const phaseActions = game.actionLog.actions.slice(actionStart);
+      const phaseUndo = game.actionLog.undo();
+      const phaseRestored = [...attacker.position];
+
+      // Charge/Bullrush expose fixed endpoints. Charge must displace an
+      // endpoint occupant before warping the user, with both actions reversible.
+      board.removeUnit(target);
+      board.setTerrain(3, 2, floor.nid);
+      board.setTerrain(4, 2, floor.nid);
+      const chargeTargets = rekkaMovementEndpoints(
+        attacker, charge, board, game.db, game,
+      );
+      const bullrushTargets = rekkaMovementEndpoints(
+        attacker, bullrush, board, game.db, game,
+      );
+      board.setUnit(3, 2, target);
+      const chargeEndpoint = chargeTargets.get('3,2')!;
+      board.setUnit(chargeEndpoint[0], chargeEndpoint[1], bystander);
+      const chargeStrike: any = { ...phaseStrike, item: charge };
+      const chargeStart = game.actionLog.actions.length;
+      const chargeApplied = applyCombatItemEndHooks(
+        { ...game, board }, [chargeStrike],
+      );
+      const chargeActions = game.actionLog.actions.slice(chargeStart);
+      const chargeAfter = {
+        attacker: [...attacker.position],
+        bystander: [...bystander.position],
+      };
+      for (let i = 0; i < chargeActions.length; i++) game.actionLog.undo();
+      const chargeRestored = {
+        attacker: [...attacker.position],
+        bystander: [...bystander.position],
+      };
+
+      // The cleave affects occupied tiles anywhere in the surrounding 5x5,
+      // previews only empty tiles, and overrides ordinary damage to HP - 1.
+      board.removeUnit(target);
+      board.removeUnit(bystander);
+      board.setUnit(8, 8, attacker);
+      board.setUnit(9, 8, target);
+      board.setUnit(11, 10, bystander);
+      target.currentHp = Math.min(30, target.maxHp);
+      const cleave = new ItemObject({
+        nid: '_Cleave2', name: '_Cleave2', desc: '',
+        icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['weapon', null], ['target_enemy', null], ['cleave_2_range_aoe', null],
+          ['damage', 999], ['hit', 100], ['min_range', 1], ['max_range', 1],
+        ],
+      });
+      const cleaveSplash = splash(
+        attacker, cleave, [9, 8], { board, db: game.db },
+      );
+      const cleavePreview = splashPositions(
+        attacker, cleave, [9, 8], { board, db: game.db },
+      );
+      const solver = new CombatPhaseSolver(() => 0, game);
+      const cleaveStrikes = solver.resolve(
+        attacker, cleave, target, null, game.db, 'classic', board, null,
+      );
+
+      return {
+        movement: attacker.getMovement(),
+        phase: serialize(phaseTargets),
+        charge: serialize(chargeTargets),
+        bullrush: serialize(bullrushTargets),
+        restrictions: { phaseRestriction, invalidRestriction },
+        phaseExecution: {
+          applied: phaseApplied,
+          after: phaseAfter,
+          actions: phaseActions.map((action: any) => action.constructor.name),
+          undo: phaseUndo?.constructor?.name ?? null,
+          restored: phaseRestored,
+        },
+        chargeExecution: {
+          applied: chargeApplied,
+          actions: chargeActions.map((action: any) => action.constructor.name),
+          after: chargeAfter,
+          restored: chargeRestored,
+        },
+        cleave: {
+          main: cleaveSplash.mainTarget,
+          splash: cleaveSplash.splash.map((position) => position.join(',')).sort(),
+          previewHasOccupied: cleavePreview.some(([x, y]) =>
+            !!board.getUnit(x, y)),
+          previewCount: cleavePreview.length,
+          damage: cleaveStrikes[0]?.damage,
+          targetHp: target.currentHp,
+        },
+      };
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.phase['3,2']).toEqual([5, 2]);
+    expect(result!.charge['3,2']).toEqual([
+      2 + Math.trunc(result!.movement / 2), 2,
+    ]);
+    expect(result!.bullrush['3,2']).toEqual([2 + result!.movement, 2]);
+    expect(result!.restrictions).toEqual({
+      phaseRestriction: true,
+      invalidRestriction: false,
+    });
+    expect(result!.phaseExecution).toEqual({
+      applied: 1,
+      after: [5, 2],
+      actions: ['WarpUnitAction'],
+      undo: 'WarpUnitAction',
+      restored: [2, 2],
+    });
+    expect(result!.chargeExecution.applied).toBe(2);
+    expect(result!.chargeExecution.actions).toEqual([
+      'WarpUnitAction', 'WarpUnitAction',
+    ]);
+    expect(result!.chargeExecution.after.attacker).toEqual(
+      result!.charge['3,2'],
+    );
+    // Python get_nearest_open_tile accepts the occupant's own tile, so the
+    // forced-movement action is deliberately a no-op before the stacking warp.
+    expect(result!.chargeExecution.after.bystander).toEqual(
+      result!.charge['3,2'],
+    );
+    expect(result!.chargeExecution.restored).toEqual({
+      attacker: [2, 2],
+      bystander: result!.charge['3,2'],
+    });
+    expect(result!.cleave.main).toEqual([9, 8]);
+    expect(result!.cleave.splash).toContain('11,10');
+    expect(result!.cleave.previewHasOccupied).toBe(false);
+    expect(result!.cleave.previewCount).toBeGreaterThan(0);
+    expect(result!.cleave.damage).toBe(result!.cleave.targetHp - 1);
+  });
+
   test('transform stones apply equipped stats, range, status, undo, and save identity', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

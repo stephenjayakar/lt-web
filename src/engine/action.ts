@@ -878,6 +878,7 @@ export class WarpUnitAction extends Action {
   private oldPos: [number, number];
   private newPos: [number, number];
   private board: GameBoard;
+  private displaced: UnitObject | null;
 
   constructor(unit: UnitObject, newPos: [number, number], board: GameBoard) {
     super();
@@ -886,6 +887,8 @@ export class WarpUnitAction extends Action {
     this.oldPos = [unit.position[0], unit.position[1]];
     this.newPos = [newPos[0], newPos[1]];
     this.board = board;
+    const occupant = board.getUnit(newPos[0], newPos[1]);
+    this.displaced = occupant && occupant !== unit ? occupant : null;
   }
 
   execute(): void {
@@ -894,6 +897,9 @@ export class WarpUnitAction extends Action {
 
   reverse(): void {
     this.board.moveUnit(this.unit, this.oldPos[0], this.oldPos[1]);
+    if (this.displaced) {
+      this.board.setUnit(this.newPos[0], this.newPos[1], this.displaced);
+    }
   }
 }
 
