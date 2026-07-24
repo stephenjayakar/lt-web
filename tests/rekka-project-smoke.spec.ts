@@ -863,4 +863,53 @@ test.describe('Rekka all-level compatibility', () => {
       });
     }
   });
+
+  test('Lyn promotes with Rekka HeavenSeal data through the real item flow', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    const setup = await page.evaluate(async () => {
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      const seal = new ItemObject(game.db.items.get('HeavenSeal'));
+      lyn.level = 20;
+      lyn.exp = 0;
+      lyn.finished = false;
+      lyn.items = [seal];
+      seal.owner = lyn;
+      game.selectedUnit = lyn;
+      game.cursor.setPos(lyn.position[0], lyn.position[1]);
+      game.state.change('item_use');
+      return {
+        options: [...game.db.classes.get(lyn.klass).turns_into],
+        validTargets: game.targetSystem.getValidTargets(lyn, seal).length,
+      };
+    });
+    expect(setup).toEqual({ options: ['BladeLord'], validTargets: 1 });
+
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
+      .toBe('item_targeting');
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+
+    const promoted = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      return {
+        state: game.state.getCurrentState()?.name,
+        klass: lyn.klass,
+        level: lyn.level,
+        sealPresent: lyn.items.some((item: any) => item.nid === 'HeavenSeal'),
+        skills: lyn.skills.map((skill: any) => skill.nid),
+      };
+    });
+    expect(promoted.state).toBe('phase_change');
+    expect(promoted.klass).toBe('BladeLord');
+    expect(promoted.level).toBe(1);
+    expect(promoted.sealPresent).toBe(false);
+    expect(promoted.skills).toContain('Crit +30');
+  });
 });
