@@ -8,7 +8,7 @@ import {
 } from './action';
 import type { UnitObject } from '../objects/unit';
 import type { SkillObject } from '../objects/skill';
-import { evaluateCondition } from '../events/event-manager';
+import { evaluateCondition, type EventManager } from '../events/event-manager';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
 
@@ -27,6 +27,7 @@ interface SkillTurnGame {
   db?: Database;
   gameVars?: Map<string, unknown>;
   levelVars?: Map<string, unknown>;
+  eventManager?: EventManager | null;
 }
 
 function isConditionActive(
@@ -97,7 +98,24 @@ export function applySkillTurnHooks(
       const conditional = isConditionActive(game, unit, skill);
 
       for (const [component, rawValue] of skill.components) {
-        if (phase === 'upkeep' && component === 'upkeep_charge_increase') {
+        if (phase === 'upkeep' && component === 'event_on_upkeep' && conditional) {
+          if (typeof rawValue === 'string' && rawValue && game.eventManager?.triggerSpecific(
+            rawValue,
+            {
+              type: 'event_on_upkeep',
+              unit1: unit,
+              unit2: unit,
+              unitNid: unit.nid,
+              position: unit.position ? [...unit.position] as [number, number] : undefined,
+              localArgs: new Map<string, unknown>([
+                ['item', null],
+                ['mode', null],
+              ]),
+            },
+          )) {
+            effects.push({ unit, skill, component });
+          }
+        } else if (phase === 'upkeep' && component === 'upkeep_charge_increase') {
           const charge = Number(skill.data.get('charge') ?? 0);
           const total = Number(skill.data.get('total_charge') ?? charge);
           const amount = Number(rawValue);

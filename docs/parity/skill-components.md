@@ -9,7 +9,7 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 |---|---|---|---|---|---|---|---|---|---|
 | multi_skill | MultiSkill | lt-maker/app/engine/skill_components/advanced_components.py:15 | ADVANCED | before_add, after_remove |  |  |  |  | unreferenced |
 | parent_condition | ParentCondition | lt-maker/app/engine/skill_components/advanced_components.py:24 | HIDDEN | condition |  |  |  |  | unreferenced |
-| ability | Ability | lt-maker/app/engine/skill_components/advanced_components.py:59 | ADVANCED | extra_ability, end_combat_unconditional |  | 2 | src/ai/ai-controller.ts:556<br>src/engine/states/game-states.ts:1986 |  | consumed |
+| ability | Ability | lt-maker/app/engine/skill_components/advanced_components.py:59 | ADVANCED | extra_ability, end_combat_unconditional |  | 2 | src/ai/ai-controller.ts:556<br>src/engine/states/game-states.ts:1988 |  | consumed |
 | combat_art | CombatArt | lt-maker/app/engine/skill_components/advanced_components.py:80 | ADVANCED | init, combat_art, start_combat, on_activation, on_deactivation, end_combat_unconditional |  |  |  |  | unreferenced |
 | menu_category | MenuCategory | lt-maker/app/engine/skill_components/advanced_components.py:119 | ADVANCED | menu_category |  |  |  |  | unreferenced |
 | automatic_combat_art | AutomaticCombatArt | lt-maker/app/engine/skill_components/advanced_components.py:129 | ADVANCED | on_upkeep, on_endstep |  |  |  |  | unreferenced |
@@ -41,14 +41,14 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  | 1 | src/combat/map-combat.ts:312 |  | consumed |
 | battle_animation_music | BattleAnimMusic | lt-maker/app/engine/skill_components/aesthetic_components.py:230 | AESTHETIC | battle_music |  |  |  |  | unreferenced |
 | modify_ai_priority | ModifyAIPriority | lt-maker/app/engine/skill_components/ai_components.py:14 | ADVANCED | ai_priority_multiplier |  |  |  |  | unreferenced |
-| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10346<br>src/engine/states/game-states.ts:11756<br>src/engine/states/game-states.ts:13778<br>+2 more |  | reference-only |
+| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10359<br>src/engine/states/game-states.ts:11769<br>src/engine/states/game-states.ts:13799<br>+2 more |  | reference-only |
 | hidden_if_inactive | HiddenIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:10 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | grey_if_inactive | GreyIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:15 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | is_terrain | TerrainSkill | lt-maker/app/engine/skill_components/attribute_components.py:20 | ATTRIBUTE | condition |  |  |  |  | unreferenced |
 | class_skill | ClassSkill | lt-maker/app/engine/skill_components/attribute_components.py:30 | ATTRIBUTE |  |  |  |  |  | unreferenced |
-| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10148<br>src/engine/states/game-states.ts:10153<br>src/engine/states/game-states.ts:10172<br>+2 more |  | reference-only |
+| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  |  | src/engine/states/game-states.ts:10161<br>src/engine/states/game-states.ts:10166<br>src/engine/states/game-states.ts:10185<br>+2 more |  | reference-only |
 | feat | Feat | lt-maker/app/engine/skill_components/attribute_components.py:44 | ATTRIBUTE |  |  |  | src/engine/learned-skills.ts:12 | mention | reference-only |
-| negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 2 | src/combat/item-system.ts:899<br>src/engine/states/game-states.ts:2531 |  | consumed |
+| negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 2 | src/combat/item-system.ts:899<br>src/engine/states/game-states.ts:2533 |  | consumed |
 | global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  |  |  | unreferenced |
 | negate | Negate | lt-maker/app/engine/skill_components/attribute_components.py:62 | ATTRIBUTE |  |  | 1 | src/combat/item-system.ts:1547 |  | consumed |
 | negate_tags | NegateTags | lt-maker/app/engine/skill_components/attribute_components.py:67 | ATTRIBUTE |  |  | 1 | src/combat/item-system.ts:1548 |  | consumed |
@@ -59,8 +59,8 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | cannot_trade | CannotTrade | lt-maker/app/engine/skill_components/base_components.py:32 | BASE | no_trade |  |  |  |  | unreferenced |
 | additional_accessories | AdditionalAccessories | lt-maker/app/engine/skill_components/base_components.py:40 | BASE | num_items_offset, num_accessories_offset |  |  |  |  | unreferenced |
 | ignore_alliances | IgnoreAlliances | lt-maker/app/engine/skill_components/base_components.py:54 | BASE | check_ally, check_enemy |  |  |  |  | unreferenced |
-| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:11086<br>src/events/event-manager.ts:103<br>src/events/event-manager.ts:208<br>+2 more |  | reference-only |
-| change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/engine/states/game-states.ts:7602<br>src/engine/states/game-states.ts:7614 |  | reference-only |
+| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:11099<br>src/events/event-manager.ts:103<br>src/events/event-manager.ts:208<br>+2 more |  | reference-only |
+| change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/engine/states/game-states.ts:7615<br>src/engine/states/game-states.ts:7627 |  | reference-only |
 | exp_multiplier | ExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:85 | BASE | exp_multiplier | expMultiplier |  | src/combat/skill-system.ts:635<br>src/main.ts:362 |  | hook-and-reference |
 | enemy_exp_multiplier | EnemyExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:95 | BASE | enemy_exp_multiplier | enemyExpMultiplier |  | src/combat/skill-system.ts:639<br>src/main.ts:363 |  | hook-and-reference |
 | wexp_multiplier | WexpMultiplier | lt-maker/app/engine/skill_components/base_components.py:105 | BASE | wexp_multiplier | wexpMultiplier |  | src/combat/skill-system.ts:643<br>src/main.ts:363 |  | hook-and-reference |
@@ -75,12 +75,12 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | build_charge | BuildCharge | lt-maker/app/engine/skill_components/charge_components.py:7 | CHARGE | init, condition, on_end_chapter, trigger_charge, text, cooldown |  | 10 | src/combat/combat-lifecycle.ts:76<br>src/combat/combat-lifecycle.ts:97<br>src/combat/combat-skill-lifecycle.ts:187<br>+9 more | mention | consumed |
 | drain_charge | DrainCharge | lt-maker/app/engine/skill_components/charge_components.py:39 | CHARGE | init, condition, on_end_chapter, trigger_charge, text, cooldown |  | 8 | src/combat/combat-lifecycle.ts:77<br>src/combat/combat-lifecycle.ts:99<br>src/combat/combat-skill-lifecycle.ts:192<br>+7 more | mention | consumed |
 | charges_per_turn | ChargesPerTurn | lt-maker/app/engine/skill_components/charge_components.py:69 | CHARGE | init, condition, on_end_chapter, trigger_charge, text, cooldown, on_endstep |  | 8 | src/combat/combat-lifecycle.ts:77<br>src/combat/combat-lifecycle.ts:99<br>src/combat/combat-skill-lifecycle.ts:192<br>+8 more |  | consumed |
-| upkeep_charge_increase | UpkeepChargeIncrease | lt-maker/app/engine/skill_components/charge_components.py:83 | CHARGE | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:100 |  | reference-only |
+| upkeep_charge_increase | UpkeepChargeIncrease | lt-maker/app/engine/skill_components/charge_components.py:83 | CHARGE | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:118 |  | reference-only |
 | combat_charge_increase | CombatChargeIncrease | lt-maker/app/engine/skill_components/charge_components.py:107 | CHARGE | end_combat |  | 1 | src/combat/combat-skill-lifecycle.ts:413 |  | consumed |
 | combat_charge_increase_by_stat | CombatChargeIncreaseByStat | lt-maker/app/engine/skill_components/charge_components.py:124 | CHARGE | end_combat |  | 1 | src/combat/combat-skill-lifecycle.ts:414 |  | consumed |
 | gain_mana | GainMana | lt-maker/app/engine/skill_components/charge_components.py:141 | CHARGE | start_combat |  |  | src/combat/combat-skill-lifecycle.ts:222 |  | reference-only |
-| cost_mana | CostMana | lt-maker/app/engine/skill_components/charge_components.py:159 | CHARGE | condition, start_combat |  | 2 | src/combat/combat-skill-lifecycle.ts:196<br>src/combat/combat-skill-lifecycle.ts:239<br>src/engine/skill-turn-lifecycle.ts:47 |  | consumed |
-| check_mana | CheckMana | lt-maker/app/engine/skill_components/charge_components.py:177 | CHARGE | condition |  | 2 | src/combat/combat-skill-lifecycle.ts:197<br>src/engine/skill-turn-lifecycle.ts:48 |  | consumed |
+| cost_mana | CostMana | lt-maker/app/engine/skill_components/charge_components.py:159 | CHARGE | condition, start_combat |  | 2 | src/combat/combat-skill-lifecycle.ts:196<br>src/combat/combat-skill-lifecycle.ts:239<br>src/engine/skill-turn-lifecycle.ts:48 |  | consumed |
+| check_mana | CheckMana | lt-maker/app/engine/skill_components/charge_components.py:177 | CHARGE | condition |  | 2 | src/combat/combat-skill-lifecycle.ts:197<br>src/engine/skill-turn-lifecycle.ts:49 |  | consumed |
 | miracle | Miracle | lt-maker/app/engine/skill_components/combat2_components.py:15 | COMBAT2 | cleanup_combat |  | 1 | src/combat/combat-solver.ts:60<br>src/combat/combat-solver.ts:104<br>src/combat/map-combat.ts:185<br>+6 more |  | consumed |
 | TrueMiracle | TrueMiracle | lt-maker/app/engine/skill_components/combat2_components.py:27 | COMBAT2 | after_take_strike |  |  |  |  | unreferenced |
 | ignore_damage | IgnoreDamage | lt-maker/app/engine/skill_components/combat2_components.py:44 | COMBAT2 | after_take_strike |  |  |  |  | unreferenced |
@@ -103,11 +103,11 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | close_counter | CloseCounter | lt-maker/app/engine/skill_components/combat2_components.py:360 | COMBAT2 | close_counter | closeCounter |  | src/combat/skill-system.ts:225 |  | hook-and-reference |
 | cannot_counter | CannotCounter | lt-maker/app/engine/skill_components/combat2_components.py:368 | COMBAT2 | can_counter | canCounter | 1 | src/combat/skill-system.ts:293<br>src/main.ts:358 |  | hook-and-reference |
 | Cleave | Cleave | lt-maker/app/engine/skill_components/combat2_components.py:377 | COMBAT2 | alternate_splash | alternateSplash |  | src/combat/skill-system.ts:178 | mention | hook-and-reference |
-| give_status_after_combat | GiveStatusAfterCombat | lt-maker/app/engine/skill_components/combat2_components.py:387 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:172 |  | consumed |
-| give_ally_status_after_combat | GiveAllyStatusAfterCombat | lt-maker/app/engine/skill_components/combat2_components.py:401 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:176 |  | consumed |
-| give_status_after_attack | GiveStatusAfterAttack | lt-maker/app/engine/skill_components/combat2_components.py:415 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:180 |  | consumed |
-| give_status_after_combat_on_hit | GiveStatusAfterCombatOnHit | lt-maker/app/engine/skill_components/combat2_components.py:431 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:184 |  | consumed |
-| give_status_after_hit | GiveStatusAfterHit | lt-maker/app/engine/skill_components/combat2_components.py:447 | COMBAT2 | after_strike |  | 1 | src/combat/combat-lifecycle.ts:165 |  | consumed |
+| give_status_after_combat | GiveStatusAfterCombat | lt-maker/app/engine/skill_components/combat2_components.py:387 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:373 |  | consumed |
+| give_ally_status_after_combat | GiveAllyStatusAfterCombat | lt-maker/app/engine/skill_components/combat2_components.py:401 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:377 |  | consumed |
+| give_status_after_attack | GiveStatusAfterAttack | lt-maker/app/engine/skill_components/combat2_components.py:415 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:381 |  | consumed |
+| give_status_after_combat_on_hit | GiveStatusAfterCombatOnHit | lt-maker/app/engine/skill_components/combat2_components.py:431 | COMBAT2 | end_combat |  | 1 | src/combat/combat-lifecycle.ts:385 |  | consumed |
+| give_status_after_hit | GiveStatusAfterHit | lt-maker/app/engine/skill_components/combat2_components.py:447 | COMBAT2 | after_strike |  | 1 | src/combat/combat-lifecycle.ts:366 |  | consumed |
 | skill_before_combat | SkillBeforeCombat | lt-maker/app/engine/skill_components/combat2_components.py:463 | COMBAT2 | get_skill_nid, start_combat |  |  |  |  | unreferenced |
 | gain_skill_after_kill | GainSkillAfterKill | lt-maker/app/engine/skill_components/combat2_components.py:515 | COMBAT2 | end_combat |  |  |  |  | unreferenced |
 | gain_skill_after_combat | GainSkillAfterCombat | lt-maker/app/engine/skill_components/combat2_components.py:528 | COMBAT2 | end_combat |  |  |  |  | unreferenced |
@@ -148,7 +148,7 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | pcc_static | PCCStatic | lt-maker/app/engine/skill_components/combat_components.py:289 | COMBAT | crit_multiplier |  |  |  |  | unreferenced |
 | resist_follow_up | ResistFollowUp | lt-maker/app/engine/skill_components/combat_components.py:301 | COMBAT | resist_multiplier | resistMultiplier |  |  |  | hook-only |
 | combat_condition | CombatCondition | lt-maker/app/engine/skill_components/conditional_components.py:5 | ADVANCED | pre_combat, post_combat_unconditional, condition, test_on, test_off |  | 2 | src/combat/combat-skill-lifecycle.ts:175<br>src/combat/combat-skill-lifecycle.ts:186 | mention | consumed |
-| condition | Condition | lt-maker/app/engine/skill_components/conditional_components.py:44 | ADVANCED | condition |  | 7 | src/combat/combat-lifecycle.ts:79<br>src/combat/combat-lifecycle.ts:313<br>src/combat/combat-skill-lifecycle.ts:199<br>+4 more | mention | consumed |
+| condition | Condition | lt-maker/app/engine/skill_components/conditional_components.py:44 | ADVANCED | condition |  | 7 | src/combat/combat-lifecycle.ts:79<br>src/combat/combat-lifecycle.ts:514<br>src/combat/combat-skill-lifecycle.ts:199<br>+4 more | mention | consumed |
 | lost_on_end_combat | LostOnEndCombat | lt-maker/app/engine/skill_components/deprecated_components.py:9 | DEPRECATED | values, post_combat_unconditional, on_end_chapter |  |  |  |  | unreferenced |
 | combat_art_set_max_range | CombatArtSetMaxRange | lt-maker/app/engine/skill_components/deprecated_components.py:54 | DEPRECATED | combat_art_set_max_range |  |  |  |  | unreferenced |
 | combat_art_modify_max_range | CombatArtModifyMaxRange | lt-maker/app/engine/skill_components/deprecated_components.py:66 | DEPRECATED | combat_art_modify_max_range |  |  |  |  | unreferenced |
@@ -219,7 +219,7 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | empower_heal_received | EmpowerHealReceived | lt-maker/app/engine/skill_components/special_components.py:68 | ADVANCED | empower_heal_received |  |  |  |  | unreferenced |
 | mana_on_hit | ManaOnHit | lt-maker/app/engine/skill_components/special_components.py:83 | ADVANCED | mana |  |  |  |  | unreferenced |
 | mana_on_kill | ManaOnKill | lt-maker/app/engine/skill_components/special_components.py:98 | ADVANCED | mana |  |  |  |  | unreferenced |
-| event_after_initiated_combat | EventAfterInitiatedCombat | lt-maker/app/engine/skill_components/special_components.py:111 | ADVANCED | end_combat |  | 1 | src/combat/combat-lifecycle.ts:311<br>src/combat/combat-lifecycle.ts:325 |  | consumed |
+| event_after_initiated_combat | EventAfterInitiatedCombat | lt-maker/app/engine/skill_components/special_components.py:111 | ADVANCED | end_combat |  | 1 | src/combat/combat-lifecycle.ts:512<br>src/combat/combat-lifecycle.ts:526 |  | consumed |
 | nihil | Nihil | lt-maker/app/engine/skill_components/special_components.py:123 | CUSTOM | pre_combat, post_combat_unconditional, condition, test_on, test_off |  |  |  |  | unreferenced |
 | aura | Aura | lt-maker/app/engine/skill_components/status_components.py:13 | STATUS |  |  | 1 | src/combat/aura-system.ts:39<br>src/combat/aura-system.ts:60<br>src/combat/aura-system.ts:179<br>+1 more |  | consumed |
 | aura_range | AuraRange | lt-maker/app/engine/skill_components/status_components.py:21 | STATUS |  |  | 1 | src/combat/aura-system.ts:62<br>src/main.ts:367 |  | consumed |
@@ -228,20 +228,20 @@ Summary: 116/241 referenced in web source; 74/241 expose at least one matching w
 | hide_aura | HideAura | lt-maker/app/engine/skill_components/status_components.py:49 | STATUS |  |  |  | src/main.ts:367 |  | reference-only |
 | aura_shape | AuraShape | lt-maker/app/engine/skill_components/status_components.py:55 | STATUS | get_shape, get_max_shape_range |  |  |  |  | unreferenced |
 | pairup_bonus | PairUpBonus | lt-maker/app/engine/skill_components/status_components.py:78 | STATUS | on_pairup, on_separate | onPairup, onSeparate | 1 | src/combat/skill-system.ts:20<br>src/main.ts:359 | mention | hook-and-reference |
-| regeneration | Regeneration | lt-maker/app/engine/skill_components/status_components.py:92 | STATUS | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:133 |  | reference-only |
-| mana_regeneration | ManaRegeneration | lt-maker/app/engine/skill_components/status_components.py:116 | STATUS | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:139 |  | reference-only |
-| upkeep_damage | UpkeepDamage | lt-maker/app/engine/skill_components/status_components.py:126 | STATUS | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:145 |  | reference-only |
+| regeneration | Regeneration | lt-maker/app/engine/skill_components/status_components.py:92 | STATUS | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:151 |  | reference-only |
+| mana_regeneration | ManaRegeneration | lt-maker/app/engine/skill_components/status_components.py:116 | STATUS | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:157 |  | reference-only |
+| upkeep_damage | UpkeepDamage | lt-maker/app/engine/skill_components/status_components.py:126 | STATUS | on_upkeep |  |  | src/engine/skill-turn-lifecycle.ts:163 |  | reference-only |
 | endstep_damage | EndstepDamage | lt-maker/app/engine/skill_components/status_components.py:158 | STATUS | on_upkeep, on_endstep |  |  |  |  | unreferenced |
 | gba_poison | GBAPoison | lt-maker/app/engine/skill_components/status_components.py:176 | STATUS | on_upkeep |  |  |  |  | unreferenced |
 | resist_status | ResistStatus | lt-maker/app/engine/skill_components/status_components.py:191 | STATUS | before_gain_skill |  |  |  |  | unreferenced |
 | immune_status | ImmuneStatus | lt-maker/app/engine/skill_components/status_components.py:201 | STATUS | has_immune, after_gain_skill |  |  |  |  | unreferenced |
 | reflect_status | ReflectStatus | lt-maker/app/engine/skill_components/status_components.py:213 | STATUS | after_gain_skill |  |  |  |  | unreferenced |
-| time | Time | lt-maker/app/engine/skill_components/time_components.py:11 | TIME | init, on_upkeep_unconditional, text, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:112<br>src/objects/skill.ts:77 |  | reference-only |
-| end_time | EndTime | lt-maker/app/engine/skill_components/time_components.py:36 | TIME | init, on_endstep_unconditional, text, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:113<br>src/objects/skill.ts:77 |  | reference-only |
-| combined_time | CombinedTime | lt-maker/app/engine/skill_components/time_components.py:61 | TIME | init, on_upkeep_unconditional, on_endstep_unconditional, text, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:112<br>src/engine/skill-turn-lifecycle.ts:113<br>src/objects/skill.ts:80 |  | reference-only |
-| upkeep_stat_change | UpkeepStatChange | lt-maker/app/engine/skill_components/time_components.py:92 | TIME | init, stat_change, on_upkeep, on_end_chapter_unconditional | statChange | 1 | src/combat/skill-system.ts:336<br>src/engine/skill-turn-lifecycle.ts:127<br>src/objects/skill.ts:85 |  | hook-and-reference |
-| lost_on_endstep | LostOnEndstep | lt-maker/app/engine/skill_components/time_components.py:114 | TIME | on_endstep_unconditional, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:121 |  | reference-only |
-| lost_on_upkeep | LostOnUpkeep | lt-maker/app/engine/skill_components/time_components.py:126 | TIME | on_upkeep_unconditional, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:120 |  | reference-only |
+| time | Time | lt-maker/app/engine/skill_components/time_components.py:11 | TIME | init, on_upkeep_unconditional, text, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:130<br>src/objects/skill.ts:77 |  | reference-only |
+| end_time | EndTime | lt-maker/app/engine/skill_components/time_components.py:36 | TIME | init, on_endstep_unconditional, text, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:131<br>src/objects/skill.ts:77 |  | reference-only |
+| combined_time | CombinedTime | lt-maker/app/engine/skill_components/time_components.py:61 | TIME | init, on_upkeep_unconditional, on_endstep_unconditional, text, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:130<br>src/engine/skill-turn-lifecycle.ts:131<br>src/objects/skill.ts:80 |  | reference-only |
+| upkeep_stat_change | UpkeepStatChange | lt-maker/app/engine/skill_components/time_components.py:92 | TIME | init, stat_change, on_upkeep, on_end_chapter_unconditional | statChange | 1 | src/combat/skill-system.ts:336<br>src/engine/skill-turn-lifecycle.ts:145<br>src/objects/skill.ts:85 |  | hook-and-reference |
+| lost_on_endstep | LostOnEndstep | lt-maker/app/engine/skill_components/time_components.py:114 | TIME | on_endstep_unconditional, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:139 |  | reference-only |
+| lost_on_upkeep | LostOnUpkeep | lt-maker/app/engine/skill_components/time_components.py:126 | TIME | on_upkeep_unconditional, on_end_chapter_unconditional |  |  | src/engine/skill-turn-lifecycle.ts:138 |  | reference-only |
 | lost_on_end_combat2 | LostOnEndCombat2 | lt-maker/app/engine/skill_components/time_components.py:138 | TIME | cleanup_combat_unconditional, post_combat_unconditional, on_end_chapter_unconditional |  |  |  |  | unreferenced |
 | lost_on_kill | LostOnKill | lt-maker/app/engine/skill_components/time_components.py:201 | TIME | post_combat_unconditional, on_end_chapter_unconditional |  |  |  |  | unreferenced |
 | lost_on_end_chapter | LostOnEndChapter | lt-maker/app/engine/skill_components/time_components.py:214 | TIME | on_end_chapter_unconditional |  |  |  |  | unreferenced |

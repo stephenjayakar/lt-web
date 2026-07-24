@@ -102,6 +102,207 @@ function triggerSkillCharge(
   }
 }
 
+function triggerSkillEvent(
+  game: CombatLifecycleGame,
+  nid: unknown,
+  type: string,
+  unit: UnitObject,
+  target: UnitObject,
+  item: ItemObject | null,
+  item2: ItemObject | null,
+  mode: string,
+): boolean {
+  if (typeof nid !== 'string' || !nid || !game.eventManager) return false;
+  return game.eventManager.triggerSpecific(nid, {
+    type,
+    unit1: unit,
+    unit2: target,
+    unitNid: unit.nid,
+    position: unit.position ? [...unit.position] as [number, number] : undefined,
+    item,
+    localArgs: new Map<string, unknown>([
+      ['item', item],
+      ['item2', item2],
+      ['mode', mode],
+    ]),
+  });
+}
+
+function equippedWeapon(unit: UnitObject): ItemObject | null {
+  return unit.items.find((candidate) => candidate.isWeapon()) ?? null;
+}
+
+/**
+ * Queue Rekka's project-local start_combat skill events in Python participant
+ * order: initiator, attack partner, defense partner, primary defender.
+ */
+export function queueCombatSkillStartEvents(
+  game: CombatLifecycleGame,
+  initiator: UnitObject,
+  target: UnitObject,
+  attackItem: ItemObject,
+  defenseItem: ItemObject | null,
+): number {
+  let queued = 0;
+  const participants: Array<{
+    unit: UnitObject;
+    target: UnitObject;
+    item: ItemObject | null;
+    item2: ItemObject | null;
+    mode: string;
+  }> = [
+    { unit: initiator, target, item: attackItem, item2: defenseItem, mode: 'attack' },
+  ];
+  if (initiator.strikePartner) {
+    participants.push({
+      unit: initiator.strikePartner,
+      target,
+      item: equippedWeapon(initiator.strikePartner),
+      item2: defenseItem,
+      mode: 'attack',
+    });
+  }
+  if (target.strikePartner) {
+    participants.push({
+      unit: target.strikePartner,
+      target: initiator,
+      item: equippedWeapon(target.strikePartner),
+      item2: attackItem,
+      mode: 'defense',
+    });
+  }
+  if (target !== initiator) {
+    participants.push({
+      unit: target,
+      target: initiator,
+      item: defenseItem,
+      item2: attackItem,
+      mode: 'defense',
+    });
+  }
+
+  for (const participant of participants) {
+    for (const skill of participant.unit.skills) {
+      if (participant.item && !combatSkillEnabled(
+        game, participant.unit, skill, participant.target, participant.item,
+      )) continue;
+      if (triggerSkillEvent(
+        game,
+        skill.getComponent('event_before_combat'),
+        'event_before_combat',
+        participant.unit,
+        participant.target,
+        participant.item,
+        participant.item2,
+        participant.mode,
+      )) queued++;
+    }
+  }
+  return queued;
+}
+
+/**
+ * Queue Rekka's after_strike/after_take_strike and end_combat skill events.
+ * Strike events preserve solver order; within a unit they preserve skill and
+ * component order, matching the generated Python dispatchers.
+ */
+export function queueCombatSkillEvents(
+  game: CombatLifecycleGame,
+  strikes: CombatStrike[],
+  initiator: UnitObject,
+  primaryTarget: UnitObject,
+  attackItem: ItemObject,
+  defenseItem: ItemObject | null,
+): number {
+  let queued = 0;
+  for (const strike of strikes) {
+    const mode = strike.mode ?? (strike.isCounter ? 'defense' : 'attack');
+    const defenderItem = equippedWeapon(strike.defender);
+    for (const skill of strike.attacker.skills) {
+      if (!combatSkillEnabled(game, strike.attacker, skill, strike.defender, strike.item)) continue;
+      for (const [component, value] of skill.components) {
+        const fires = component === 'event_after_strike' ||
+          component === 'event_on_strike' ||
+          (component === 'event_after_hit' && strike.hit) ||
+          (component === 'event_after_crit' && strike.crit);
+        if (fires && triggerSkillEvent(
+          game, value, component, strike.attacker, strike.defender,
+          component === 'event_on_strike' ? null : strike.item,
+          component === 'event_on_strike' ? null : defenderItem,
+          component === 'event_on_strike' ? '' : mode,
+        )) queued++;
+      }
+    }
+    for (const skill of strike.defender.skills) {
+      if (!combatSkillEnabled(game, strike.defender, skill, strike.attacker, defenderItem ?? strike.item)) {
+        continue;
+      }
+      for (const [component, value] of skill.components) {
+        const fires = (component === 'event_when_hit' && strike.hit) ||
+          (component === 'event_when_dodging' && !strike.hit);
+        if (fires && triggerSkillEvent(
+          game, value, component, strike.defender, strike.attacker,
+          defenderItem, strike.item, mode,
+        )) queued++;
+      }
+    }
+  }
+
+  const participants: Array<{
+    unit: UnitObject;
+    target: UnitObject;
+    item: ItemObject | null;
+    item2: ItemObject | null;
+    mode: string;
+  }> = [
+    { unit: initiator, target: primaryTarget, item: attackItem, item2: defenseItem, mode: 'attack' },
+  ];
+  if (initiator.strikePartner) {
+    participants.push({
+      unit: initiator.strikePartner,
+      target: primaryTarget,
+      item: equippedWeapon(initiator.strikePartner),
+      item2: defenseItem,
+      mode: 'attack',
+    });
+  }
+  if (primaryTarget.strikePartner) {
+    participants.push({
+      unit: primaryTarget.strikePartner,
+      target: initiator,
+      item: equippedWeapon(primaryTarget.strikePartner),
+      item2: attackItem,
+      mode: 'defense',
+    });
+  }
+  if (primaryTarget !== initiator) {
+    participants.push({
+      unit: primaryTarget,
+      target: initiator,
+      item: defenseItem,
+      item2: attackItem,
+      mode: 'defense',
+    });
+  }
+  for (const participant of participants) {
+    const gotHit = strikes.some((strike) => strike.defender === participant.unit && strike.hit);
+    for (const skill of participant.unit.skills) {
+      if (participant.item && !combatSkillEnabled(
+        game, participant.unit, skill, participant.target, participant.item,
+      )) continue;
+      for (const [component, value] of skill.components) {
+        const fires = component === 'event_after_combat' ||
+          (component === 'event_after_combat_when_hit' && gotHit);
+        if (fires && triggerSkillEvent(
+          game, value, component, participant.unit, participant.target,
+          participant.item, participant.item2, participant.mode,
+        )) queued++;
+      }
+    }
+  }
+  return queued;
+}
+
 function grantCombatStatus(
   game: CombatLifecycleGame,
   source: UnitObject,
