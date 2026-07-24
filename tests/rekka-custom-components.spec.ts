@@ -1501,6 +1501,167 @@ test.describe('Rekka project-local skill components', () => {
     });
   });
 
+  test('pre/post combat grants, splash damage, and live-to-serve match Rekka data', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const {
+        applyCombatSkillEndHooks,
+        queueCombatSkillStartEvents,
+      } = await import('/src/combat/combat-lifecycle.ts');
+      const { applyCoreTargetedItem } = await import('/src/engine/states/game-states.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const attackItem = attacker.items.find((item: any) => item.isWeapon());
+      const defenseItem = defender.items.find((item: any) => item.isWeapon());
+
+      const beforeCombatCatalog = [...game.db.skills.values()]
+        .filter((skill: any) => skill.components.some((component: any) =>
+          component[0] === 'skill_before_combat'))
+        .map((skill: any) => skill.nid);
+      attacker.skills = [new SkillObject(game.db.skills.get('Clone'))];
+      defender.skills = [];
+      const startActions = game.actionLog.actions.length;
+      queueCombatSkillStartEvents(game, attacker, defender, attackItem, defenseItem);
+      const beforeCombatGranted = defender.skills.map((skill: any) => skill.nid);
+      while (game.actionLog.actions.length > startActions) game.actionLog.undo();
+      const beforeCombatUndone = defender.skills.map((skill: any) => skill.nid);
+
+      const ally = defender;
+      const oldAllyTeam = ally.team;
+      ally.team = 'player';
+      attacker.skills = [new SkillObject(game.db.skills.get('LifeToServe'))];
+      attacker.currentHp = Math.max(1, attacker.maxHp - 10);
+      ally.currentHp = Math.max(1, ally.maxHp - 5);
+      const healItem = new ItemObject({
+        nid: 'TestBaseHeal',
+        name: 'Test Base Heal',
+        desc: '',
+        components: [
+          ['usable', null],
+          ['target_ally', null],
+          ['heal', 5],
+          ['uses', 3],
+        ],
+      });
+      healItem.owner = attacker;
+      attacker.items.push(healItem);
+      const healingStart = game.actionLog.actions.length;
+      const hpBefore = { attacker: attacker.currentHp, ally: ally.currentHp };
+      const healed = applyCoreTargetedItem(attacker, healItem, ally.position);
+      const hpAfter = { attacker: attacker.currentHp, ally: ally.currentHp };
+      while (game.actionLog.actions.length > healingStart) game.actionLog.undo();
+      ally.team = oldAllyTeam;
+
+      const splashTarget = [...game.units.values()].find((unit: any) =>
+        unit !== defender && unit.team === 'enemy' && unit.position);
+      const adjacent = [
+        [defender.position[0] + 1, defender.position[1]],
+        [defender.position[0] - 1, defender.position[1]],
+        [defender.position[0], defender.position[1] + 1],
+        [defender.position[0], defender.position[1] - 1],
+      ].find(([x, y]) => game.board.inBounds(x, y) && !game.board.getUnit(x, y));
+      game.board.moveUnit(splashTarget, adjacent[0], adjacent[1]);
+      splashTarget.currentHp = 20;
+      attacker.skills = [new SkillObject(game.db.skills.get('BrutalSwingArt'))];
+      const splashStart = game.actionLog.actions.length;
+      const splashApplied = applyCombatSkillEndHooks(game, [{
+        attacker,
+        defender,
+        item: attackItem,
+        hit: true,
+        crit: false,
+        damage: 1,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      }], attacker, defender);
+      const splashHp = splashTarget.currentHp;
+      while (game.actionLog.actions.length > splashStart) game.actionLog.undo();
+      const splashUndone = splashTarget.currentHp;
+
+      defender.currentHp = defender.maxHp;
+      defender.skills = [new SkillObject(game.db.skills.get('AtBat'))];
+      const missCombat = new MapCombat(
+        attacker, attackItem, defender, defenseItem, game.db, 'classic', game.board,
+        ['miss1', 'end'], undefined, game,
+      );
+      const missGrant = defender.skills.some((skill: any) => skill.nid === 'AtBatBall');
+      defender.skills = [new SkillObject(game.db.skills.get('AtBat'))];
+      const damageCombat = new MapCombat(
+        attacker, attackItem, defender, defenseItem, game.db, 'classic', game.board,
+        ['hit1', 'end'], undefined, game,
+      );
+      const damageGrant = defender.skills.some((skill: any) => skill.nid === 'AtBatStrike');
+
+      attacker.skills = [
+        new SkillObject(game.db.skills.get('AtBat')),
+        new SkillObject(game.db.skills.get('Waiter')),
+        new SkillObject(game.db.skills.get('NorthStarArt')),
+      ];
+      defender.skills = [];
+      defender.currentHp = 1;
+      const grantCombat = new MapCombat(
+        attacker, attackItem, defender, defenseItem, game.db, 'classic', game.board,
+        ['hit1', 'end'], undefined, game,
+      );
+      grantCombat.skipToEnd();
+      grantCombat.applyResults(game.actionLog);
+      const grantStart = game.actionLog.actions.length;
+      const grantsApplied = applyCombatSkillEndHooks(
+        game, grantCombat.strikes, attacker, defender,
+      );
+      const granted = attacker.skills
+        .map((skill: any) => skill.nid)
+        .filter((nid: string) => ['AtBatBase', 'HasAttacked', 'NorthStarStatus'].includes(nid))
+        .sort();
+      while (game.actionLog.actions.length > grantStart) game.actionLog.undo();
+      const grantsUndone = attacker.skills.some((skill: any) =>
+        ['AtBatBase', 'HasAttacked', 'NorthStarStatus'].includes(skill.nid));
+
+      return {
+        beforeCombatCount: beforeCombatCatalog.length,
+        beforeCombatGranted,
+        beforeCombatUndone,
+        healing: {
+          applied: healed,
+          attacker: hpAfter.attacker - hpBefore.attacker,
+          ally: hpAfter.ally - hpBefore.ally,
+        },
+        splash: { applied: splashApplied, hp: splashHp, undone: splashUndone },
+        immediate: {
+          missStrikes: missCombat.strikes.length,
+          missGrant,
+          damageStrikes: damageCombat.strikes.length,
+          damageGrant,
+        },
+        grants: { applied: grantsApplied, granted, undone: grantsUndone },
+      };
+    });
+
+    expect(result).toEqual({
+      beforeCombatCount: 6,
+      beforeCombatGranted: ['Braveheart'],
+      beforeCombatUndone: [],
+      healing: { applied: true, attacker: 5, ally: 5 },
+      splash: { applied: 1, hp: 5, undone: 20 },
+      immediate: {
+        missStrikes: 1,
+        missGrant: true,
+        damageStrikes: 1,
+        damageGrant: true,
+      },
+      grants: {
+        applied: 3,
+        granted: ['AtBatBase', 'HasAttacked', 'NorthStarStatus'],
+        undone: false,
+      },
+    });
+  });
+
   test('unit control, status reflection, damage prevention, and death tether are reversible', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

@@ -27,6 +27,7 @@ import {
   RegisterItemTreeAction,
   ResetAction,
   SetItemUsesAction,
+  SetCurrentHpAction,
 } from '../engine/action';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
@@ -48,6 +49,7 @@ interface CombatLifecycleGame {
   board?: GameBoard | null;
   db?: Database;
   currentParty?: string;
+  units?: Map<string, UnitObject>;
   getMoney?: () => number;
   items?: Map<string, ItemObject>;
   memory?: Map<string, unknown>;
@@ -95,7 +97,7 @@ function combatSkillEnabled(
   });
 }
 
-function triggerSkillCharge(
+export function triggerSkillCharge(
   game: CombatLifecycleGame,
   skill: SkillObject,
 ): void {
@@ -188,10 +190,31 @@ export function queueCombatSkillStartEvents(
   }
 
   for (const participant of participants) {
-    for (const skill of participant.unit.skills) {
+    for (const skill of [...participant.unit.skills]) {
       if (participant.item && !combatSkillEnabled(
         game, participant.unit, skill, participant.target, participant.item,
       )) continue;
+      const beforeCombat = skill.getComponent<unknown>('skill_before_combat');
+      if (beforeCombat && typeof beforeCombat === 'object') {
+        const options = beforeCombat as Record<string, unknown>;
+        const skillNid = typeof options.skill === 'string' ? options.skill : null;
+        const recipient = String(options.recipient ?? 'target');
+        const allegiance = String(options.allegiance ?? 'enemy');
+        const allied = game.db?.areAllied(participant.unit.team, participant.target.team) ?? false;
+        let recipients: UnitObject[] = [];
+        if (recipient === 'self') recipients = [participant.unit];
+        else if (recipient === 'both') recipients = [participant.unit, participant.target];
+        else if ((allegiance === 'both') ||
+            (allegiance === 'ally' && allied) ||
+            (allegiance === 'enemy' && !allied)) recipients = [participant.target];
+        const prefab = skillNid ? game.db?.skills.get(skillNid) : null;
+        if (prefab && recipients.length > 0) {
+          for (const recipientUnit of recipients) {
+            game.actionLog?.doAction(new AddSkillAction(recipientUnit, new SkillObject(prefab)));
+          }
+          triggerSkillCharge(game, skill);
+        }
+      }
       if (triggerSkillEvent(
         game,
         skill.getComponent('event_before_combat'),
@@ -349,6 +372,21 @@ export function applyCombatSkillEndHooks(
 ): number {
   if (!game.actionLog || !game.db) return 0;
   let applied = 0;
+  const grantSkill = (
+    unit: UnitObject,
+    sourceSkill: SkillObject,
+    skillNid: unknown,
+    initiated: boolean = false,
+  ): number => {
+    if (typeof skillNid !== 'string') return 0;
+    const prefab = game.db?.skills.get(skillNid);
+    if (!prefab) return 0;
+    const granted = new SkillObject(prefab);
+    if (initiated) granted.initiatorNid = unit.nid;
+    game.actionLog!.doAction(new AddSkillAction(unit, granted));
+    triggerSkillCharge(game, sourceSkill);
+    return 1;
+  };
   for (const strike of strikes) {
     const proc = strike.survivalProc;
     if (!proc) continue;
@@ -436,6 +474,36 @@ export function applyCombatSkillEndHooks(
       const afterCombatHit = skill.getComponent<string>('give_status_after_combat_on_hit');
       if (afterCombatHit && pairStrikes.some((strike) => strike.hit)) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombatHit);
+      }
+
+      if (target.currentHp <= 0) {
+        applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_kill'));
+        if (unit === initiator) {
+          applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_active_kill'));
+        }
+      }
+      applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_combat'));
+      if (unit === initiator && pairStrikes.some((strike) => strike.attacker === unit)) {
+        applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_attack'));
+      }
+
+      const splashDamage = Number(skill.getComponent<number>('post_combat_splash') ?? 0);
+      const splashAoe = Number(skill.getComponent<number>('post_combat_splash_aoe') ?? 0);
+      if (splashDamage > 0 && splashAoe >= 0 && target.position &&
+          !game.db.areAllied(unit.team, target.team)) {
+        for (const splashTarget of game.units?.values?.() ?? []) {
+          if (!splashTarget.position || splashTarget === target ||
+              game.db.areAllied(unit.team, splashTarget.team)) continue;
+          const distance = Math.abs(splashTarget.position[0] - target.position[0]) +
+            Math.abs(splashTarget.position[1] - target.position[1]);
+          if (distance <= splashAoe) {
+            game.actionLog.doAction(new SetCurrentHpAction(
+              splashTarget,
+              Math.max(1, splashTarget.currentHp - splashDamage),
+            ));
+            applied++;
+          }
+        }
       }
 
       let shouldReset = false;

@@ -1,6 +1,6 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
-import type { SkillObject } from '../objects/skill';
+import { SkillObject } from '../objects/skill';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
@@ -126,7 +126,10 @@ export class CombatPhaseSolver {
     strike: CombatStrike,
     ignoreDying: boolean = false,
   ): void {
-    if (!strike.hit && !hasDamageOnMiss(strike.item)) return;
+    if (!strike.hit && !hasDamageOnMiss(strike.item)) {
+      this.applyAfterTakeSkillGains(target, strike);
+      return;
+    }
     const before = hp.hp;
     const after = before - strike.damage;
     const proc = skillSystem.damagePreventionSkill(
@@ -146,9 +149,32 @@ export class CombatPhaseSolver {
       ];
       this.customSurvivalTriggered.add(proc.skill);
       hp.hp = proc.component === 'ignore_damage' ? before : 1;
+      this.applyAfterTakeSkillGains(target, strike);
       return;
     }
     hp.hp = ignoreDying && after <= 0 ? 1 : after;
+    this.applyAfterTakeSkillGains(target, strike);
+  }
+
+  private applyAfterTakeSkillGains(target: UnitObject, strike: CombatStrike): void {
+    const db = this.game?.db;
+    if (!db) return;
+    for (const sourceSkill of [...target.skills]) {
+      const skillNids: string[] = [];
+      const missSkill = sourceSkill.getComponent<string>('gain_skill_after_take_miss');
+      const damageSkill = sourceSkill.getComponent<string>('gain_skill_after_take_damage');
+      if (!strike.hit && missSkill) skillNids.push(missSkill);
+      if (strike.damage > 0 && damageSkill) skillNids.push(damageSkill);
+      if (skillNids.length === 0) continue;
+      for (const skillNid of skillNids) {
+        const prefab = db.skills.get(skillNid);
+        if (!prefab || target.skills.some((skill) => skill.nid === skillNid)) continue;
+        const granted = new SkillObject(prefab);
+        granted.initiatorNid = target.nid;
+        target.skills.push(granted);
+      }
+      skillSystem.consumeMiracleCharge(sourceSkill);
+    }
   }
 
   private nextPhase(unit: UnitObject): number {
