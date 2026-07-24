@@ -258,7 +258,7 @@ touch, and visual/audio QA has no release-blocking defects.
 - [ ] Add AI scenarios for custom targeting, warp/movement skills, combat arts,
   item restrictions, splash attacks, shops-independent loadouts, and priority
   modifiers.
-- [ ] Compare deterministic combat/growth/event RNG streams before and after
+- [x] Compare deterministic combat/growth/event RNG streams before and after
   preview, cancel, save/load, and turnwheel playback.
 
 Gate: repeated runs from the same checkpoint produce the same actions and RNG
