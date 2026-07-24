@@ -179,8 +179,11 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 - [x] Replace the `table`/`remove_table` no-op with the event UI required by the
   Bribe ability and GoldDisplay.
 - [ ] Validate high-volume command semantics and blocking order:
-  unit add/move, cursor/camera, layers, stats, attack flags, item/skill changes,
-  AI changes, map animations, shops, prep, and groups.
+  - [x] Unit add/move, including relative destinations, placement policy,
+    stacked swaps, warp ordering, and turnwheel replay.
+  - [ ] Cursor/camera and layer visibility.
+  - [ ] Stats, attack flags, item/skill changes, and AI changes.
+  - [ ] Map animations, shops, prep, and unit groups.
 - [ ] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
   `add_skill_component`, `set_custom_options`, and all three `pair_up` script
   uses in their actual chapter contexts.
@@ -253,9 +256,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Finish Transform/Revert battle-animation swaps and base-menu item use.
-2. Close the remaining Rekka lifecycle and dynamic-combat component gaps.
-3. Extend chapter checkpoints through route splits, promotion, and endgame.
+1. Finish P4 high-volume command semantics and blocking-order validation.
+2. Validate P4 commands and menu/state flows in their actual chapter contexts.
+3. Extend campaign checkpoints through route splits, promotion, and endgame.
 4. Complete browser UX/audio/input QA, save migration coverage, and the release
    gate.
 

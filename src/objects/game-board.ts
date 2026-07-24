@@ -114,8 +114,13 @@ export class GameBoard {
     if (!unit.position) return;
     const [x, y] = unit.position;
     if (this.inBounds(x, y)) {
-      this.unitGrid[y][x] = null;
-      this.teamGrid[y][x] = null;
+      // Placement policy "stack" can temporarily put two event-moved units
+      // on one tile. Do not erase the unit currently represented by the grid
+      // when the hidden/underlying unit subsequently moves away.
+      if (this.unitGrid[y][x] === unit) {
+        this.unitGrid[y][x] = null;
+        this.teamGrid[y][x] = null;
+      }
     }
     unit.position = null;
     this.onUnitPositionChanged?.();
@@ -135,8 +140,10 @@ export class GameBoard {
     if (unit.position) {
       const [oldX, oldY] = unit.position;
       if (this.inBounds(oldX, oldY)) {
-        this.unitGrid[oldY][oldX] = null;
-        this.teamGrid[oldY][oldX] = null;
+        if (this.unitGrid[oldY][oldX] === unit) {
+          this.unitGrid[oldY][oldX] = null;
+          this.teamGrid[oldY][oldX] = null;
+        }
       }
     }
 

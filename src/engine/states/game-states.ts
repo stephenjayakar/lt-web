@@ -9476,10 +9476,14 @@ export class EventState extends State {
     // Try resolving as a unit NID
     const unit = this.findUnit(posOrUnit);
     if (unit?.position) return [unit.position[0], unit.position[1]];
+    const region = game.currentLevel?.regions?.find(
+      (candidate: any) => candidate.nid === posOrUnit,
+    );
+    if (region?.position) return [region.position[0], region.position[1]];
     return null;
   }
 
-  /** Start a path-backed event move, keeping board occupancy at the destination. */
+  /** Start an undoable path-backed event move without consuming the unit's turn. */
   private beginEventMove(
     unit: UnitObject,
     target: [number, number],
@@ -9489,16 +9493,21 @@ export class EventState extends State {
   ): boolean {
     if (!unit.position || !game.board || !game.pathSystem) return false;
     const path = game.pathSystem.getPath(unit, target[0], target[1], game.board);
+    game.actionLog.doAction(new WarpUnitAction(unit, target, game.board));
     if (!path || path.length <= 1) {
-      game.board.moveUnit(unit, target[0], target[1]);
       return false;
     }
-    game.board.moveUnit(unit, target[0], target[1]);
+    const previousHasMoved = unit.hasMoved;
+    const previousMovementLeft = unit.movementLeft;
     game.movementSystem.beginMove(
       unit,
       path,
       1000 / Math.max(1, speedMs),
-      onComplete,
+      () => {
+        unit.hasMoved = previousHasMoved;
+        unit.movementLeft = previousMovementLeft;
+        onComplete();
+      },
     );
     return true;
   }
@@ -10033,14 +10042,8 @@ export class EventState extends State {
       case 'move_unit': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        let targetPos: [number, number] | null = null;
         const posStr = args[1] ?? '';
-        if (posStr) {
-          const posParts = posStr.split(',').map((part: string) => parseInt(part.trim(), 10));
-          if (posParts.length >= 2 && !isNaN(posParts[0]) && !isNaN(posParts[1])) {
-            targetPos = [posParts[0], posParts[1]];
-          }
-        }
+        let targetPos = this.resolvePosition(posStr, game);
         if (!targetPos && unit?.startingPosition) {
           targetPos = [unit.startingPosition[0], unit.startingPosition[1]];
         }
@@ -10050,25 +10053,28 @@ export class EventState extends State {
         }
 
         const movementType = (args[2] || 'normal').toLowerCase();
+        const placement = (args[3] || 'giveup').toLowerCase().trim();
         const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
         const noFollow = args.some(arg => arg.toLowerCase().trim() === 'no_follow');
         const parsedSpeed = parseInt(args[4] ?? '', 10);
         const speedMs = Number.isFinite(parsedSpeed) && parsedSpeed > 0 ? parsedSpeed : 120;
+        targetPos = this._checkPlacement(targetPos, placement, game);
+        if (!targetPos) {
+          this.advancePointer();
+          return false;
+        }
         if (!noFollow) game.camera?.focusTile(targetPos[0], targetPos[1]);
         if (this.skipMode || movementType === 'immediate') {
-          game.board.moveUnit(unit, targetPos[0], targetPos[1]);
+          game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
           this.advancePointer();
           return false;
         }
         if (movementType !== 'normal') {
-          game.board.moveUnit(unit, targetPos[0], targetPos[1]);
-          if (noBlock) {
-            this.advancePointer();
-            return false;
-          }
-          this.waiting = true;
-          this.waitTimer = 333;
-          return true;
+          // Python Warp/FadeMove/Swoosh actions update position and begin their
+          // sprite transition without pausing the event command stream.
+          game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
+          this.advancePointer();
+          return false;
         }
 
         const blocks = !noBlock;
@@ -10103,10 +10109,7 @@ export class EventState extends State {
 
         let requestedPosition: [number, number] | null = null;
         if (posArg !== 'starting' && posArg !== '' && posArg !== 'immediate') {
-          const parts = posArg.split(',').map((part: string) => parseInt(part.trim(), 10));
-          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            requestedPosition = [parts[0], parts[1]];
-          }
+          requestedPosition = this.resolvePosition(posArg, game);
         }
 
         if (existing) {
@@ -10134,7 +10137,17 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        this.spawnUnitFromLevelData(unitData, requestedPosition, game);
+        requestedPosition ??= unitData.starting_position
+          ? [unitData.starting_position[0], unitData.starting_position[1]]
+          : null;
+        const finalPosition = requestedPosition
+          ? this._checkPlacement(requestedPosition, placement, game)
+          : null;
+        if (finalPosition) {
+          this.spawnUnitFromLevelData(unitData, finalPosition, game);
+        } else {
+          console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
+        }
         this.advancePointer();
         return false;
       }
