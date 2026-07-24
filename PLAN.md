@@ -234,7 +234,7 @@ alternate-route/optional-content scenarios and no event/state softlocks.
   shops, dialogue, chapter transition, ending, and credits.
 - [ ] Ensure menus remain legible and stable at 240×160 logical resolution
   across common desktop/mobile viewport sizes and device-pixel ratios.
-- [ ] Remove browser interaction jank: reliable focus, no page scrolling during
+- [x] Remove browser interaction jank: reliable focus, no page scrolling during
   play, correct keyboard repeat, gamepad navigation, touch hit targets, pause
   behavior, fullscreen/resizing, and visible audio state.
 - [ ] Verify animation timing, camera movement, overlays, map SFX, music fades,

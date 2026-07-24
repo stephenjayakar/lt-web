@@ -52,6 +52,8 @@ const TOUCH_TAP_THRESHOLD = 12;
 export class InputManager {
   private keysDown: Set<string> = new Set();
   private buttonsDown: Set<GameButton> = new Set();
+  private virtualButtons: Set<GameButton> = new Set();
+  private gamepadButtons: Set<GameButton> = new Set();
   private buttonJustPressed: Set<GameButton> = new Set();
   private buttonJustReleased: Set<GameButton> = new Set();
   private keyMap: Record<string, GameButton>;
@@ -139,22 +141,39 @@ export class InputManager {
       if (e.target instanceof HTMLElement && e.target.closest('button, a, input, select, textarea')) {
         return;
       }
-      e.preventDefault();
-      this.keysDown.add(e.code);
       const btn = this.keyMap[e.code];
       if (btn) {
+        e.preventDefault();
+        this.keysDown.add(e.code);
+        if (!this.buttonsDown.has(btn)) this.buttonJustPressed.add(btn);
         this.buttonsDown.add(btn);
-        this.buttonJustPressed.add(btn);
       }
     });
 
     window.addEventListener('keyup', (e) => {
       this.keysDown.delete(e.code);
       const btn = this.keyMap[e.code];
-      if (btn) {
-        this.buttonsDown.delete(btn);
+      if (btn && !this._isButtonHeldByAnotherSource(btn) && this.buttonsDown.delete(btn)) {
         this.buttonJustReleased.add(btn);
       }
+    });
+
+    const releaseAllInput = (): void => {
+      this.keysDown.clear();
+      this.virtualButtons.clear();
+      this.gamepadButtons.clear();
+      this.buttonsDown.clear();
+      this.buttonJustPressed.clear();
+      this.buttonJustReleased.clear();
+      this.mouseButtons.clear();
+      this.middleDragActive = false;
+      this.touchActive = false;
+      this.touchIsDrag = false;
+      this.pinchActive = false;
+    };
+    window.addEventListener('blur', releaseAllInput);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) releaseAllInput();
     });
 
     canvas.addEventListener('mousedown', (e) => {
@@ -322,6 +341,10 @@ export class InputManager {
       this.gamepadIndex = e.gamepad.index;
     });
     window.addEventListener('gamepaddisconnected', () => {
+      for (const button of this.gamepadButtons) {
+        this.gamepadButtons.delete(button);
+        if (!this._isButtonHeldByAnotherSource(button)) this.buttonsDown.delete(button);
+      }
       this.gamepadIndex = -1;
     });
   }
@@ -347,6 +370,7 @@ export class InputManager {
 
   /** Press a browser-native control while preserving normal input ordering. */
   pressVirtual(button: GameButton): void {
+    this.virtualButtons.add(button);
     if (!this.buttonsDown.has(button)) {
       this.buttonJustPressed.add(button);
     }
@@ -355,9 +379,20 @@ export class InputManager {
 
   /** Release a browser-native control. */
   releaseVirtual(button: GameButton): void {
-    if (this.buttonsDown.delete(button)) {
+    this.virtualButtons.delete(button);
+    if (!this._isButtonHeldByAnotherSource(button) && this.buttonsDown.delete(button)) {
       this.buttonJustReleased.add(button);
     }
+  }
+
+  private _isKeyboardButtonDown(button: GameButton): boolean {
+    return [...this.keysDown].some((code) => this.keyMap[code] === button);
+  }
+
+  private _isButtonHeldByAnotherSource(button: GameButton): boolean {
+    return this._isKeyboardButtonDown(button) ||
+      this.virtualButtons.has(button) ||
+      this.gamepadButtons.has(button);
   }
 
   /** Called once per frame to poll gamepad and process fluid scrolling */
@@ -467,40 +502,53 @@ export class InputManager {
   }
 
   private _pollGamepad(): void {
-    if (this.gamepadIndex < 0) return;
     const gamepads = navigator.getGamepads();
+    if (this.gamepadIndex < 0) {
+      const connected = [...gamepads].find((gamepad) => gamepad?.connected);
+      this.gamepadIndex = connected?.index ?? -1;
+    }
+    if (this.gamepadIndex < 0) return;
     const gp = gamepads[this.gamepadIndex];
-    if (!gp) return;
+    if (!gp) {
+      for (const button of this.gamepadButtons) {
+        this.gamepadButtons.delete(button);
+        if (!this._isButtonHeldByAnotherSource(button)) this.buttonsDown.delete(button);
+      }
+      this.gamepadIndex = -1;
+      return;
+    }
 
     const threshold = 0.5;
     const lx = gp.axes[0] ?? 0;
     const ly = gp.axes[1] ?? 0;
-
-    if (lx < -threshold) this.buttonsDown.add('LEFT');
-    else this.buttonsDown.delete('LEFT');
-    if (lx > threshold) this.buttonsDown.add('RIGHT');
-    else this.buttonsDown.delete('RIGHT');
-    if (ly < -threshold) this.buttonsDown.add('UP');
-    else this.buttonsDown.delete('UP');
-    if (ly > threshold) this.buttonsDown.add('DOWN');
-    else this.buttonsDown.delete('DOWN');
+    const nextButtons = new Set<GameButton>();
+    if (lx < -threshold || gp.buttons[14]?.pressed) nextButtons.add('LEFT');
+    if (lx > threshold || gp.buttons[15]?.pressed) nextButtons.add('RIGHT');
+    if (ly < -threshold || gp.buttons[12]?.pressed) nextButtons.add('UP');
+    if (ly > threshold || gp.buttons[13]?.pressed) nextButtons.add('DOWN');
 
     const buttonMap: [number, GameButton][] = [
       [0, 'SELECT'], [1, 'BACK'], [2, 'INFO'], [3, 'AUX'],
       [9, 'START'], [4, 'AUX'],
     ];
     for (const [idx, btn] of buttonMap) {
-      if (gp.buttons[idx]?.pressed) {
-        if (!this.buttonsDown.has(btn)) {
-          this.buttonsDown.add(btn);
-          this.buttonJustPressed.add(btn);
-        }
-      } else {
-        if (this.buttonsDown.has(btn)) {
-          this.buttonsDown.delete(btn);
-          this.buttonJustReleased.add(btn);
+      if (gp.buttons[idx]?.pressed) nextButtons.add(btn);
+    }
+
+    for (const button of nextButtons) {
+      if (!this.gamepadButtons.has(button)) {
+        if (!this.buttonsDown.has(button)) this.buttonJustPressed.add(button);
+        this.buttonsDown.add(button);
+      }
+    }
+    for (const button of this.gamepadButtons) {
+      if (!nextButtons.has(button)) {
+        this.gamepadButtons.delete(button);
+        if (!this._isButtonHeldByAnotherSource(button) && this.buttonsDown.delete(button)) {
+          this.buttonJustReleased.add(button);
         }
       }
     }
+    this.gamepadButtons = nextButtons;
   }
 }

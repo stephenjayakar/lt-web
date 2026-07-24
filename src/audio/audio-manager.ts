@@ -325,6 +325,18 @@ export class AudioManager {
     }
   }
 
+  getMusicVolume(): number {
+    return this.musicVolume;
+  }
+
+  getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
+  getContextState(): AudioContextState | 'locked' {
+    return this.audioContext?.state ?? 'locked';
+  }
+
   /** Suspend the audio context (e.g. when app is backgrounded). */
   suspendContext(): void {
     if (this.audioContext && this.audioContext.state === 'running') {

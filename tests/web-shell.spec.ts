@@ -35,6 +35,99 @@ test.describe('Web player shell', () => {
 
     await page.getByRole('button', { name: 'Close controls' }).click();
     await expect(page.getByRole('region', { name: 'Game controls' })).toBeHidden();
+    await expect(page.getByLabel('Game display')).toBeFocused();
+  });
+
+  test('audio state is visible and mute restores the configured levels', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false&controls=true');
+    await waitForHarness(page);
+
+    const mute = page.getByRole('button', { name: 'Mute audio' });
+    await expect(mute).toContainText('Sound on');
+    await mute.click();
+    await expect(page.getByRole('button', { name: 'Unmute audio' })).toContainText('Muted');
+    expect(await page.evaluate(() => {
+      const audio = (window as any).__gameRef.audioManager;
+      return [audio.getMusicVolume(), audio.getSfxVolume()];
+    })).toEqual([0, 0]);
+
+    await page.getByRole('button', { name: 'Unmute audio' }).click();
+    await expect(page.getByRole('button', { name: 'Mute audio' })).toContainText('Sound on');
+    expect(await page.evaluate(() => {
+      const audio = (window as any).__gameRef.audioManager;
+      return [audio.getMusicVolume(), audio.getSfxVolume()];
+    })).toEqual([0.7, 1]);
+  });
+
+  test('keyboard repeat, blur release, and browser shortcuts behave predictably', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false&controls=true');
+    await waitForHarness(page);
+
+    const prevention = await page.evaluate(() => ({
+      mapped: window.dispatchEvent(new KeyboardEvent('keydown', {
+        code: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      })),
+      unmapped: window.dispatchEvent(new KeyboardEvent('keydown', {
+        code: 'KeyQ',
+        bubbles: true,
+        cancelable: true,
+      })),
+    }));
+    expect(prevention).toEqual({ mapped: false, unmapped: true });
+
+    const repeated = await page.evaluate(() => {
+      const input = (window as any).__gameRef.input;
+      const first = input.processInput(16);
+      input.endFrame();
+      const held = input.processInput(400);
+      window.dispatchEvent(new Event('blur'));
+      input.endFrame();
+      return {
+        first,
+        held,
+        afterBlur: input.processInput(16),
+        rightStillPressed: input.isPressed('RIGHT'),
+      };
+    });
+    expect(repeated).toEqual({
+      first: 'RIGHT',
+      held: 'RIGHT',
+      afterBlur: null,
+      rightStillPressed: false,
+    });
+  });
+
+  test('an already-connected gamepad and its d-pad navigate without clobbering keys', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false&controls=true');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(() => {
+      const buttons = Array.from({ length: 16 }, () => ({ pressed: false, value: 0 }));
+      buttons[15] = { pressed: true, value: 1 };
+      const gamepad = {
+        id: 'Test Gamepad',
+        index: 0,
+        connected: true,
+        timestamp: 1,
+        mapping: 'standard',
+        axes: [0, 0, 0, 0],
+        buttons,
+        vibrationActuator: null,
+      };
+      Object.defineProperty(navigator, 'getGamepads', {
+        configurable: true,
+        value: () => [gamepad],
+      });
+      const input = (window as any).__gameRef.input;
+      const dpad = input.processInput(16);
+      input.endFrame();
+      buttons[15] = { pressed: false, value: 0 };
+      input.processInput(16);
+      return { dpad, released: !input.isPressed('RIGHT') };
+    });
+    expect(result).toEqual({ dpad: 'RIGHT', released: true });
   });
 
   test('touch controls feed the same abstract input queue', async ({ page }) => {

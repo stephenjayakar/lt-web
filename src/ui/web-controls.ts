@@ -1,6 +1,13 @@
 import type { GameButton, InputManager } from '../engine/input';
 
 type VirtualInput = Pick<InputManager, 'pressVirtual' | 'releaseVirtual'>;
+interface WebAudioControls {
+  getMusicVolume(): number;
+  getSfxVolume(): number;
+  setMusicVolume(volume: number): void;
+  setSfxVolume(volume: number): void;
+  resume(): void;
+}
 
 function gameButton(label: string, button: GameButton, className: string): string {
   return `<button class="touch-controls__button ${className}" type="button" data-game-button="${button}" aria-label="${label}">${label}</button>`;
@@ -10,7 +17,7 @@ function gameButton(label: string, button: GameButton, className: string): strin
  * Installs browser-native affordances around the canvas without changing the
  * engine's logical 240x160 rendering surface.
  */
-export function installWebControls(input: VirtualInput): HTMLElement {
+export function installWebControls(input: VirtualInput, audio?: WebAudioControls): HTMLElement {
   document.getElementById('web-controls')?.remove();
 
   const root = document.createElement('div');
@@ -19,6 +26,7 @@ export function installWebControls(input: VirtualInput): HTMLElement {
   root.innerHTML = `
     <div class="web-controls__utility">
       <button class="web-controls__utility-button" type="button" data-help aria-expanded="false" aria-controls="web-controls-panel">Controls</button>
+      <button class="web-controls__utility-button" type="button" data-audio aria-label="Mute audio" aria-pressed="false">Sound on</button>
       <button class="web-controls__utility-button" type="button" data-fullscreen aria-label="Enter fullscreen">⛶</button>
     </div>
     <section class="web-controls__panel" id="web-controls-panel" aria-label="Game controls" hidden>
@@ -69,7 +77,11 @@ export function installWebControls(input: VirtualInput): HTMLElement {
   const helpButton = root.querySelector<HTMLButtonElement>('[data-help]')!;
   const panel = root.querySelector<HTMLElement>('#web-controls-panel')!;
   const closeButton = root.querySelector<HTMLButtonElement>('[data-close]')!;
+  const audioButton = root.querySelector<HTMLButtonElement>('[data-audio]')!;
   const fullscreenButton = root.querySelector<HTMLButtonElement>('[data-fullscreen]')!;
+  const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
+  let priorMusicVolume = audio?.getMusicVolume() ?? 0.7;
+  let priorSfxVolume = audio?.getSfxVolume() ?? 1;
 
   const setHelpOpen = (open: boolean): void => {
     panel.hidden = !open;
@@ -80,7 +92,26 @@ export function installWebControls(input: VirtualInput): HTMLElement {
   helpButton.addEventListener('click', () => setHelpOpen(panel.hidden));
   closeButton.addEventListener('click', () => {
     setHelpOpen(false);
-    helpButton.focus();
+    canvas?.focus({ preventScroll: true });
+  });
+
+  audioButton.addEventListener('click', () => {
+    if (!audio) return;
+    const muted = audio.getMusicVolume() === 0 && audio.getSfxVolume() === 0;
+    if (muted) {
+      audio.setMusicVolume(priorMusicVolume);
+      audio.setSfxVolume(priorSfxVolume);
+      audio.resume();
+    } else {
+      priorMusicVolume = audio.getMusicVolume();
+      priorSfxVolume = audio.getSfxVolume();
+      audio.setMusicVolume(0);
+      audio.setSfxVolume(0);
+    }
+    const nextMuted = !muted;
+    audioButton.textContent = nextMuted ? 'Muted' : 'Sound on';
+    audioButton.setAttribute('aria-label', nextMuted ? 'Unmute audio' : 'Mute audio');
+    audioButton.setAttribute('aria-pressed', String(nextMuted));
   });
 
   fullscreenButton.addEventListener('click', async () => {
@@ -93,6 +124,7 @@ export function installWebControls(input: VirtualInput): HTMLElement {
     } catch {
       // Fullscreen is optional and may be disallowed by an embedding browser.
     }
+    canvas?.focus({ preventScroll: true });
   });
 
   document.addEventListener('fullscreenchange', () => {
@@ -111,6 +143,7 @@ export function installWebControls(input: VirtualInput): HTMLElement {
       event.preventDefault();
       delete button.dataset.pressed;
       input.releaseVirtual(gameInput);
+      canvas?.focus({ preventScroll: true });
     };
 
     button.addEventListener('pointerdown', press);
