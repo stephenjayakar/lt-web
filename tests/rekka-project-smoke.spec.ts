@@ -635,7 +635,8 @@ test.describe('Rekka all-level compatibility', () => {
     }
   });
 
-  test('Final chapter boss events add the Nergals group and load Final_2', async ({ page }) => {
+  test('Final chapter boss events reach Rekka credits and return to title', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
     await page.goto('/?harness=true&project=rekka.ltproj&level=46&clean=true&bundle=false');
     await waitForHarness(page);
     await page.evaluate(() => {
@@ -681,6 +682,91 @@ test.describe('Rekka all-level compatibility', () => {
     await page.evaluate(() => (window as any).__harness.stepFrames(190, null));
     await page.waitForFunction(() => (window as any).__gameRef.tilemap?.nid === 'Final_2');
     expect(await page.evaluate(() => (window as any).__gameRef.tilemap.nid)).toBe('Final_2');
+
+    for (let i = 0; i < 20; i++) {
+      await page.evaluate(() => (window as any).__harness.stepFrames(10, 'BACK'));
+      const active = await page.evaluate(() => (window as any).__gameRef.eventManager.hasActiveEvents());
+      if (!active) break;
+    }
+    const finalBoss = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        firePosition: game.units.get('FIRE')?.position ?? null,
+        nilsTeam: game.units.get('Nils')?.team ?? null,
+        nilsPosition: game.units.get('Nils')?.position ?? null,
+      };
+    });
+    expect(finalBoss).toEqual({
+      firePosition: [12, 4],
+      nilsTeam: 'enemy',
+      nilsPosition: [12, 25],
+    });
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const fire = game.units.get('FIRE');
+      fire.dead = true;
+      fire.currentHp = 0;
+      game.eventManager.triggerSpecific('46 DragonDead', {
+        type: 'combat_end',
+        levelNid: '46',
+        unitNid: 'FIRE',
+        unit1: fire,
+      }, true);
+      game.state.change('event');
+    });
+    for (let i = 0; i < 80; i++) {
+      await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+      const creditVisible = await page.evaluate(() => {
+        const state = (window as any).__gameRef.state.getCurrentState() as any;
+        return (state?.creditCards?.length ?? 0) > 0;
+      });
+      if (creditVisible) break;
+    }
+
+    const firstCredits = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      const card = state?.creditCards?.[0];
+      return {
+        state: state?.name,
+        stack: game.state.getStackNames?.() ?? [],
+        background: state?.background?.src ?? null,
+        title: card?.title,
+        lines: card?.lines,
+        waitAtCenter: card?.waitAtCenter,
+      };
+    });
+    expect(firstCredits).toEqual({
+      state: 'event',
+      stack: ['free', 'phase_change', 'event'],
+      background: expect.stringContaining('BlackBackground.png'),
+      title: 'Portraits',
+      lines: [
+        'Rohan',
+        'Redbean',
+        'MrGreenthreethreethreenine',
+        'VelvetKitsune',
+        'RisingSolaris',
+        'DerTheVaporeon',
+        'Cravat',
+      ],
+      waitAtCenter: true,
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(380, null));
+    await page.locator('#game-canvas').screenshot({
+      path: testInfo.outputPath('rekka-final-portraits-credits.png'),
+    });
+
+    for (let i = 0; i < 80; i++) {
+      await page.evaluate(() => (window as any).__harness.stepFrames(20, 'BACK'));
+      const atTitle = await page.evaluate(
+        () => (window as any).__gameRef.state.getCurrentState()?.name === 'title',
+      );
+      if (atTitle) break;
+    }
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
+      .toBe('title');
   });
 
   test('Chapter 7 preparations expose manage, formation, options, save, and fight', async ({ page }, testInfo) => {

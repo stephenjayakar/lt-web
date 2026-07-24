@@ -201,7 +201,7 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 - [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
   escape/seize/defeat/survive objective, multi-stage objective, and chapter
   transition.
-- [ ] Add campaign checkpoints rather than attempting only one huge brittle
+- [x] Add campaign checkpoints rather than attempting only one huge brittle
   end-to-end test:
   - [x] Early: Prologue level start, House visit reward/consumption, Gate seize,
     and chapter 1 transition with Lyn's inventory and party money preserved.
@@ -210,7 +210,9 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
   - [x] Late: chapter 33's three one-time castle seizes remain incomplete after
     the first two, converge on victory after the third, and load chapter 34's
     prep rewards.
-  - [ ] Final map, ending, and credits.
+  - [x] Final map/ending: the morph convergence opens Nergal's group, Nergal's
+    death loads `Final_2` and the Dragon encounter, and Dragon death renders
+    Rekka's scripted credit cards before returning cleanly to title.
 - [ ] Exercise all 899 events through direct entrypoint tests or reachable
   campaign scenarios, including chaining, blocking/resume, and only-once rules.
 
@@ -261,22 +263,21 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## P7 — Release gate
 
-- [ ] `npm run build`
-- [ ] `npm run audit:parity`
+- [x] `npm run build`
+- [x] `npm run audit:parity`
 - [ ] Rekka component/expression/resource inventory is clean
-- [ ] Rekka all-level boot and event-settle suites are green
-- [ ] Rekka checkpoint campaign and optional-route suites are green
-- [ ] Full serial Playwright suite is green
-- [ ] `git diff --check`
+- [x] Rekka all-level boot and event-settle suites are green
+- [x] Rekka checkpoint campaign and optional-content suites are green
+- [x] Full serial Playwright suite is green
+- [x] `git diff --check`
 - [ ] Manual visual, audio, input, and save compatibility checklist is signed off
 - [ ] Document any deliberate deviations with user-visible impact and a
   regression test; there must be no silent deviations
 
 ## Active Next Slice
 
-1. Extend campaign checkpoints through the final map, ending, and credits.
-2. Exercise event entrypoints and only-once/chaining behavior systematically.
-3. Complete browser UX/audio/input QA, save migration coverage, and the release
+1. Exercise event entrypoints and only-once/chaining behavior systematically.
+2. Complete browser UX/audio/input QA, save migration coverage, and the release
    gate.
 
 ## Already present — verify, do not reimplement blindly

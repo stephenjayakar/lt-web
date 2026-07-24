@@ -136,7 +136,7 @@ export class CreditState extends State {
     this.bgSurf = null;
 
     const bgKey = game.memory?.get?.('credit_bg') ?? game.memory?.get?.('title_bg') ?? null;
-    if (bgKey && game.resourceManager) {
+    if (bgKey && game.resources) {
       // Attempt to load background image asynchronously
       this.loadBackground(bgKey);
     }
@@ -311,8 +311,8 @@ export class CreditState extends State {
   private loadBackground(key: string): void {
     const game = getGame();
     // Asynchronously load the panorama; it may arrive after a few frames
-    if (game.resourceManager?.loadImage) {
-      game.resourceManager.loadImage(key).then((img: HTMLImageElement | null) => {
+    if (game.resources?.loadPanorama) {
+      game.resources.loadPanorama(key).then((img: HTMLImageElement | null) => {
         if (img) {
           this.bgImage = img;
         }
