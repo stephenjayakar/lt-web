@@ -5,6 +5,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
 import { onPairup, onRemoveRescue, onRescue, onSeparate, isCantoSkill } from '../combat/skill-system';
+import { skillCondition } from '../combat/item-system';
 import { autoLevelUnit, levelUpUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
@@ -2708,6 +2709,8 @@ export class DeathAction extends Action {
   private initiativeLine: string[] | null = null;
   private initiativeValues: number[] | null = null;
   private initiativeIndex = -1;
+  private tetherActions: RemoveSkillAction[] = [];
+  private initializedTether = false;
 
   constructor(unit: UnitObject, board: GameBoard, initiative: InitiativeTracker | null = null) {
     super();
@@ -2727,9 +2730,22 @@ export class DeathAction extends Action {
     }
     this.unit.dead = true;
     this.board.removeUnit(this.unit);
+    if (!this.initializedTether) {
+      this.initializedTether = true;
+      const game = _getGame?.();
+      if (game && this.unit.skills.some((skill) =>
+        skill.hasComponent('death_tether') && skillCondition(skill, this.unit, game))) {
+        this.tetherActions = [...game.units.values()].flatMap((other: UnitObject) =>
+          other.skills
+            .filter((skill) => skill.initiatorNid === this.unit.nid)
+            .map((skill) => new RemoveSkillAction(other, skill)));
+      }
+    }
+    for (const action of this.tetherActions) action.execute();
   }
 
   reverse(): void {
+    for (const action of [...this.tetherActions].reverse()) action.reverse();
     this.unit.dead = this.wasDead;
     if (this.position) this.board.setUnit(this.position[0], this.position[1], this.unit);
     if (this.initiative && this.initiativeLine && this.initiativeValues) {
@@ -3427,6 +3443,8 @@ export class AddSkillAction extends Action {
   private added: boolean = false;
   private multiSkillActions: AddSkillAction[] = [];
   private initializedMultiSkill = false;
+  private statusReactionActions: Action[] = [];
+  private initializedStatusReactions = false;
 
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
@@ -3456,10 +3474,34 @@ export class AddSkillAction extends Action {
       }
     }
     for (const action of this.multiSkillActions) action.execute();
+    if (!this.initializedStatusReactions) {
+      this.initializedStatusReactions = true;
+      const game = _getGame?.();
+      if (game) {
+        for (const protector of [...this.unit.skills]) {
+          if (protector === this.skill) continue;
+          if (!skillCondition(protector, this.unit, game)) continue;
+          if (protector.hasComponent('reflect_status') && this.skill.initiatorNid) {
+            const initiator = game.units.get(this.skill.initiatorNid);
+            const prefab = game.db.skills.get(this.skill.nid);
+            if (initiator && prefab) {
+              this.statusReactionActions.push(
+                new AddSkillAction(initiator, new SkillObject(prefab)),
+              );
+            }
+          }
+          if (protector.hasComponent('immune_status') && this.skill.hasComponent('negative')) {
+            this.statusReactionActions.push(new RemoveSkillAction(this.unit, this.skill));
+          }
+        }
+      }
+    }
+    for (const action of this.statusReactionActions) action.execute();
   }
 
   reverse(): void {
     if (this.added) {
+      for (const action of [...this.statusReactionActions].reverse()) action.reverse();
       const index = this.unit.skills.indexOf(this.skill);
       if (index >= 0) this.unit.skills.splice(index, 1);
       for (const action of [...this.multiSkillActions].reverse()) action.reverse();

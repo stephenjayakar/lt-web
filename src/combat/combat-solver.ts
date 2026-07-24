@@ -129,15 +129,24 @@ export class CombatPhaseSolver {
     if (!strike.hit && !hasDamageOnMiss(strike.item)) return;
     const before = hp.hp;
     const after = before - strike.damage;
-    if (after <= 0) {
-      const proc = skillSystem.customSurvivalSkill(target, this.customSurvivalTriggered);
-      if (proc) {
-        strike.damage = Math.max(0, before - 1);
-        strike.survivalProc = proc;
-        this.customSurvivalTriggered.add(proc.skill);
-        hp.hp = 1;
-        return;
-      }
+    const proc = skillSystem.damagePreventionSkill(
+      target,
+      after <= 0,
+      this.customSurvivalTriggered,
+      this.game,
+    );
+    if (proc) {
+      strike.damage = proc.component === 'ignore_damage'
+        ? 0
+        : Math.max(0, before - 1);
+      strike.survivalProc = proc;
+      strike.defenseProcs = [
+        ...(strike.defenseProcs ?? []),
+        { kind: 'defense_proc', unit: target, parentSkill: proc.skill, procSkill: proc.skill },
+      ];
+      this.customSurvivalTriggered.add(proc.skill);
+      hp.hp = proc.component === 'ignore_damage' ? before : 1;
+      return;
     }
     hp.hp = ignoreDying && after <= 0 ? 1 : after;
   }

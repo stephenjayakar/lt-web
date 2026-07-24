@@ -1500,4 +1500,124 @@ test.describe('Rekka project-local skill components', () => {
       ],
     });
   });
+
+  test('unit control, status reflection, damage prevention, and death tether are reversible', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { AddSkillAction, DeathAction } = await import('/src/engine/action.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { canSelect } = await import('/src/combat/skill-system.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const attackItem = attacker.items.find((item: any) => item.isWeapon());
+      const defenseItem = defender.items.find((item: any) => item.isWeapon());
+
+      attacker.skills = [new SkillObject(game.db.skills.get('Stunned'))];
+      const selectable = canSelect(attacker);
+
+      attacker.skills = [];
+      defender.skills = [
+        new SkillObject(game.db.skills.get('DarkGift')),
+        new SkillObject(game.db.skills.get('TheNineVolumesOfNonsense10')),
+      ];
+      const reflectedStatus = new SkillObject(game.db.skills.get('BaffleStatus'));
+      reflectedStatus.initiatorNid = attacker.nid;
+      game.actionLog.doAction(new AddSkillAction(defender, reflectedStatus));
+      const afterStatus = {
+        attacker: attacker.skills.map((skill: any) => skill.nid),
+        defender: defender.skills.map((skill: any) => skill.nid),
+      };
+      const statusAction = game.actionLog.undo();
+      const undoneStatus = {
+        attacker: attacker.skills.map((skill: any) => skill.nid),
+        defender: defender.skills.map((skill: any) => skill.nid),
+      };
+
+      const run = (skillNid: string, hp: number) => {
+        defender.currentHp = hp;
+        defender.skills = [new SkillObject(game.db.skills.get(skillNid))];
+        const combat = new MapCombat(
+          attacker,
+          attackItem,
+          defender,
+          defenseItem,
+          game.db,
+          'classic',
+          game.board,
+          ['hit1', 'end'],
+          undefined,
+          game,
+        );
+        combat.skipToEnd();
+        combat.applyResults(game.actionLog);
+        return {
+          hp: defender.currentHp,
+          damage: combat.strikes[0].damage,
+          proc: combat.strikes[0].survivalProc?.component ?? null,
+          defenseProc: combat.strikes[0].defenseProcs?.at(-1)?.procSkill.nid ?? null,
+        };
+      };
+      const ignored = run('IgnoreDamage', 20);
+      const endured = run('EndureStatus', 1);
+
+      attacker.skills = [new SkillObject(game.db.skills.get('Split'))];
+      const tethered = new SkillObject(game.db.skills.get('BaffleStatus'));
+      tethered.initiatorNid = attacker.nid;
+      defender.skills = [tethered];
+      const death = new DeathAction(attacker, game.board, game.initiative);
+      game.actionLog.doAction(death);
+      const afterDeath = {
+        dead: attacker.dead,
+        tethered: defender.skills.includes(tethered),
+      };
+      const deathAction = game.actionLog.undo();
+      const undoneDeath = {
+        dead: attacker.dead,
+        tethered: defender.skills.includes(tethered),
+        onBoard: game.board.getUnit(attacker.position[0], attacker.position[1]) === attacker,
+      };
+
+      return {
+        selectable,
+        afterStatus,
+        statusAction: statusAction.constructor.name,
+        undoneStatus,
+        ignored,
+        endured,
+        afterDeath,
+        deathAction: deathAction.constructor.name,
+        undoneDeath,
+      };
+    });
+
+    expect(result).toEqual({
+      selectable: false,
+      afterStatus: {
+        attacker: ['BaffleStatus'],
+        defender: ['DarkGift', 'TheNineVolumesOfNonsense10'],
+      },
+      statusAction: 'AddSkillAction',
+      undoneStatus: {
+        attacker: [],
+        defender: ['DarkGift', 'TheNineVolumesOfNonsense10'],
+      },
+      ignored: {
+        hp: 20,
+        damage: 0,
+        proc: 'ignore_damage',
+        defenseProc: 'IgnoreDamage',
+      },
+      endured: {
+        hp: 1,
+        damage: 0,
+        proc: 'TrueMiracle',
+        defenseProc: 'EndureStatus',
+      },
+      afterDeath: { dead: true, tethered: false },
+      deathAction: 'DeathAction',
+      undoneDeath: { dead: false, tethered: true, onBoard: true },
+    });
+  });
 });

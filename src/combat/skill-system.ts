@@ -10,6 +10,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
+import { evaluateCondition } from '../events/event-manager';
 
 export type SkillFactory = (nid: string) => SkillObject | null;
 
@@ -111,6 +112,22 @@ function getSkillValue<T>(unit: UnitObject, componentNid: string): T | undefined
 
 function hasAnySkill(unit: UnitObject, componentNid: string): boolean {
   return unit.skills.some(s => s.hasComponent(componentNid));
+}
+
+/** Python can_select: any active Unselectable component vetoes player control. */
+export function canSelect(unit: UnitObject, game?: any): boolean {
+  return !unit.skills.some((skill) => {
+    if (!skill.hasComponent('unselectable')) return false;
+    const condition = skill.getComponent<string>('condition');
+    return !condition || evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      item: unit.equippedWeapon ?? undefined,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    });
+  });
 }
 
 /** Skill-component nids that grant some form of Canto (movement_components.py). */
@@ -281,7 +298,9 @@ export function consumeMiracleCharge(skill: SkillObject): void {
 export type CustomSurvivalComponent =
   | 'nine_lives_event'
   | 'true_miracle_event'
-  | 'true_miracle_event_after_combat';
+  | 'true_miracle_event_after_combat'
+  | 'TrueMiracle'
+  | 'ignore_damage';
 
 export interface CustomSurvivalSkill {
   skill: SkillObject;
@@ -309,6 +328,44 @@ export function customSurvivalSkill(
           component === 'true_miracle_event_after_combat') {
         return { skill, component, value };
       }
+    }
+  }
+  return null;
+}
+
+/** First charged damage-prevention hook in skill/component order. */
+export function damagePreventionSkill(
+  unit: UnitObject,
+  lethal: boolean,
+  alreadyTriggered: ReadonlySet<SkillObject> = new Set(),
+  game?: any,
+): CustomSurvivalSkill | null {
+  for (const skill of unit.skills) {
+    if (alreadyTriggered.has(skill)) continue;
+    const condition = skill.getComponent<string>('condition');
+    if (condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      item: unit.equippedWeapon ?? undefined,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    })) continue;
+    if (skill.hasComponent('build_charge')) {
+      const charge = Number(skill.data.get('charge') ?? 0);
+      const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
+      if (charge < total) continue;
+    }
+    if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+        Number(skill.data.get('charge') ?? 0) <= 0) continue;
+    for (const [component, value] of skill.components) {
+      if (component === 'ignore_damage') return { skill, component, value };
+      if (lethal && component === 'TrueMiracle') return { skill, component, value };
+      if (lethal && (
+        component === 'nine_lives_event' ||
+        component === 'true_miracle_event' ||
+        component === 'true_miracle_event_after_combat'
+      )) return { skill, component, value };
     }
   }
   return null;
