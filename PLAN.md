@@ -190,8 +190,10 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 - [x] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
   `add_skill_component`, `set_custom_options`, and all three `pair_up` script
   uses in their actual chapter contexts.
-- [ ] Verify base/prep, convoy, trading, shops, armory/vendor stock, formation,
-  support, promotion, records, save option, and return-to-map flows.
+- [ ] Verify menu/state flows in their campaign contexts:
+  - [x] Base/prep entry and return, unit management/convoy access, formation,
+    options, and enabled save routes.
+  - [ ] Trading, shops and armory/vendor stock, support, promotion, and records.
 - [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
   escape/seize/defeat/survive objective, route split, and chapter transition.
 - [ ] Add campaign checkpoints covering early, midgame, late, final map, ending,

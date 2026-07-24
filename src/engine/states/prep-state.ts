@@ -1,7 +1,7 @@
 /**
  * prep-state.ts — GBA-style preparation screen states.
  *
- * PrepMainState: Main prep menu (Pick Units, Check Map, Fight!)
+ * PrepMainState: Main prep menu (Pick Units, Manage, Formation, Options, Save, Fight)
  * PrepPickUnitsState: Toggle units on/off the deployment map
  * PrepMapState: View the map with formation highlights
  */
@@ -11,6 +11,7 @@ import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
 import type { UnitObject } from '../../objects/unit';
+import { ArriveOnMapAction, SwapUnitsAction } from '../action';
 
 // Lazy game reference (same pattern as game-states.ts)
 let _game: any = null;
@@ -90,15 +91,15 @@ export class PrepMainState extends State {
       this.options.push('Pick Units');
       this.descriptions.push('Choose which units to deploy.');
     }
-    this.options.push('Check Map');
-    this.descriptions.push('View the battlefield.');
-    // Supply (convoy) — Python preps expose convoy management whenever the
-    // _convoy game var is enabled (no map-adjacency requirement in prep).
-    if (game.gameVars?.get('_convoy')) {
-      this.options.push('Supply');
-      this.descriptions.push('Store and retrieve items.');
-    }
-    this.options.push('Fight!');
+    this.options.push('Manage');
+    this.descriptions.push('Manage units, equipment, and the convoy.');
+    this.options.push('Formation');
+    this.descriptions.push('Arrange deployed units on the map.');
+    this.options.push('Options');
+    this.descriptions.push('Adjust game settings.');
+    this.options.push('Save');
+    this.descriptions.push('Save your progress.');
+    this.options.push('Fight');
     this.descriptions.push('Begin the battle!');
 
     this.cursor = 0;
@@ -180,26 +181,27 @@ export class PrepMainState extends State {
 
     // Menu panel
     const panelX = Math.floor(this.slideX - 8);
-    const panelY = 30;
-    const panelW = 100;
-    const panelH = this.options.length * 18 + 12;
+    const panelY = 24;
+    const panelW = 104;
+    const rowHeight = 15;
+    const panelH = this.options.length * rowHeight + 8;
     surf.fillRect(panelX, panelY, panelW, panelH, 'rgba(16,16,48,0.9)');
     surf.drawRect(panelX, panelY, panelW, panelH, 'rgba(100,100,180,0.7)');
 
     for (let i = 0; i < this.options.length; i++) {
       const optX = Math.floor(this.slideX);
-      const optY = panelY + 6 + i * 18;
+      const optY = panelY + 4 + i * rowHeight;
 
       if (i === this.cursor) {
-        surf.fillRect(panelX + 2, optY - 2, panelW - 4, 16, 'rgba(64,64,160,0.6)');
+        surf.fillRect(panelX + 2, optY - 2, panelW - 4, 14, 'rgba(64,64,160,0.6)');
         const bob = Math.sin(this.slideTimer / 300 * Math.PI) * 1.5;
         surf.drawText('>', optX - 8, optY + bob, 'rgba(255,255,128,1)', '8px monospace');
       }
 
       const optLabel = this.options[i];
-      // Highlight "Fight!" in gold
+      // Highlight "Fight" in gold
       let textColor: string;
-      if (optLabel === 'Fight!') {
+      if (optLabel === 'Fight') {
         textColor = i === this.cursor ? 'rgba(255,220,128,1)' : 'rgba(200,180,100,1)';
       } else {
         textColor = i === this.cursor ? 'white' : 'rgba(180,180,200,1)';
@@ -208,23 +210,21 @@ export class PrepMainState extends State {
     }
 
     // Description box
-    if (this.cursor < this.descriptions.length) {
-      const descY = panelY + panelH + 8;
-      surf.fillRect(panelX, descY, panelW, 20, 'rgba(16,16,48,0.8)');
-      surf.drawText(this.descriptions[this.cursor], panelX + 4, descY + 4, 'rgba(180,180,220,1)', '6px monospace');
+    if (this.cursor >= 0 && this.cursor < this.descriptions.length) {
+      const descY = panelY + panelH + 3;
+      surf.fillRect(8, descY, vw - 16, 13, 'rgba(16,16,48,0.8)');
+      surf.drawText(this.descriptions[this.cursor], 12, descY + 3, 'rgba(180,180,220,1)', '6px monospace');
     }
 
-    // Unit count display
+    // Footer and unit count
     const partyUnits = getPartyUnits();
     const deployed = partyUnits.filter(u => u.position !== null && u.position !== undefined).length;
     const total = partyUnits.length;
     const slots = getFormationSpots().length;
-    const countText = `Units: ${deployed}/${Math.min(total, slots)}`;
-    surf.drawText(countText, vw - 80, vh - 14, 'rgba(180,180,220,1)', '7px monospace');
-
-    // Bottom button hints
+    const countText = `Units ${deployed}/${Math.min(total, slots)}`;
     surf.fillRect(0, vh - 18, vw, 18, 'rgba(16,16,48,0.8)');
-    surf.drawText('SELECT: Choose  |  START: Fight!', 4, vh - 14, 'rgba(140,140,180,0.8)', '6px monospace');
+    surf.drawText('A: Choose   START: Fight', 4, vh - 13, 'rgba(170,170,210,1)', '6px monospace');
+    surf.drawText(countText, vw - countText.length * 5 - 4, vh - 13, 'rgba(190,190,225,1)', '7px monospace');
 
     return surf;
   }
@@ -246,17 +246,15 @@ export class PrepMainState extends State {
       const selected = this.options[this.cursor];
       if (selected === 'Pick Units') {
         game.state.change('prep_pick');
-      } else if (selected === 'Check Map') {
-        game.state.change('prep_map');
-      } else if (selected === 'Supply') {
-        // Simplification of Python's per-unit prep Manage->Items flow: open
-        // the supply screen for the first living party unit.
-        const unit = getPartyUnits()[0];
-        if (unit) {
-          game.memory.set('supply_unit', unit);
-          game.state.change('supply_items');
-        }
-      } else if (selected === 'Fight!') {
+      } else if (selected === 'Manage') {
+        game.state.change('base_manage');
+      } else if (selected === 'Formation') {
+        game.state.change('prep_formation');
+      } else if (selected === 'Options') {
+        game.state.change('settings_menu');
+      } else if (selected === 'Save') {
+        game.state.change('save_menu');
+      } else if (selected === 'Fight') {
         this.fight();
       }
     } else if (effective === 'START') {
@@ -284,6 +282,104 @@ export class PrepMainState extends State {
 
     // Exit prep — go back to event system which will continue processing
     game.state.back();
+  }
+}
+
+// ============================================================================
+// PrepFormationState — Move or swap deployed units on formation tiles
+// ============================================================================
+
+export class PrepFormationState extends State {
+  readonly name = 'prep_formation';
+  override readonly transparent = true;
+  override readonly showMap = true;
+  override readonly inLevel = true;
+
+  private selectedUnit: UnitObject | null = null;
+
+  override begin(): StateResult {
+    const game = getGame();
+    this.selectedUnit = null;
+    game.highlight?.clear();
+    for (const [x, y] of getFormationSpots()) {
+      game.highlight?.addHighlight(x, y, 'move');
+    }
+    if (game.cursor) game.cursor.visible = true;
+  }
+
+  private isFormationTile(x: number, y: number): boolean {
+    return getFormationSpots().some(([fx, fy]) => fx === x && fy === y);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (event === 'UP' || event === 'DOWN' || event === 'LEFT' || event === 'RIGHT') {
+      const dx = event === 'RIGHT' ? 1 : event === 'LEFT' ? -1 : 0;
+      const dy = event === 'DOWN' ? 1 : event === 'UP' ? -1 : 0;
+      game.cursor?.move(dx, dy);
+      const hover = game.cursor?.getHover();
+      if (hover) game.camera?.focusTile(hover.x, hover.y);
+      return;
+    }
+
+    if (event === 'BACK') {
+      if (this.selectedUnit) {
+        this.selectedUnit = null;
+      } else {
+        game.state.back();
+      }
+      return;
+    }
+
+    if (event !== 'SELECT') return;
+    const hover = game.cursor?.getHover();
+    if (!hover) return;
+    const hoveredUnit = game.board?.getUnit(hover.x, hover.y) ?? null;
+
+    if (!this.selectedUnit) {
+      // Campaign carry-over units should already be on formation tiles, but
+      // accepting an out-of-region player here lets formation repair direct
+      // chapter loads and old saves instead of leaving those units stranded.
+      if (hoveredUnit?.team === 'player') {
+        this.selectedUnit = hoveredUnit;
+      }
+      return;
+    }
+
+    if (!this.isFormationTile(hover.x, hover.y)) return;
+    if (hoveredUnit === this.selectedUnit) {
+      this.selectedUnit = null;
+    } else if (hoveredUnit) {
+      if (hoveredUnit.team !== 'player') return;
+      game.actionLog.doAction(new SwapUnitsAction(this.selectedUnit, hoveredUnit, game.board));
+      this.selectedUnit = null;
+    } else {
+      game.actionLog.doAction(new ArriveOnMapAction(
+        game,
+        this.selectedUnit,
+        [hover.x, hover.y],
+      ));
+      this.selectedUnit = null;
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    surf.fillRect(0, 0, viewport.width, 15, 'rgba(16,16,48,0.88)');
+    surf.drawText(
+      this.selectedUnit
+        ? `Move ${this.selectedUnit.name}: choose a blue tile`
+        : 'Formation: choose a deployed unit',
+      4,
+      3,
+      'rgba(220,220,240,1)',
+      '6px monospace',
+    );
+    return surf;
+  }
+
+  override end(): StateResult {
+    getGame().highlight?.clear();
+    this.selectedUnit = null;
   }
 }
 

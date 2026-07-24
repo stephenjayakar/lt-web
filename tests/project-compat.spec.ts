@@ -269,7 +269,7 @@ test.describe('testing_proj.ltproj compatibility', () => {
     // 1_New_Event.json's level_start event runs create_achievement /
     // complete_achievement / update_achievement, then `base;Arena`.
     const state = await getState(page);
-    expect(state.currentStateName).toBe('prep_main');
+    expect(state.currentStateName).toBe('base_manage');
 
     const achievements = await page.evaluate(() => {
       const raw = localStorage.getItem('lt-achievements-LT');

@@ -9554,6 +9554,25 @@ export class EventState extends State {
     }
   }
 
+  /** Evaluate a variable command, preserving the typed result of a whole {e:...} argument. */
+  private evaluateVariableCommand(rawSource: string, substitutedSource: string): any {
+    const wholeEval = rawSource.match(/^\{(?:e|eval):([\s\S]+)\}$/);
+    if (!wholeEval) return this.evaluateVariableExpression(substitutedSource);
+
+    const context = this.buildConditionContext();
+    const expression = wholeEval[1].replace(
+      /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+      (_match, key: string) => {
+        let value: any;
+        if (context.localArgs?.has(key)) value = context.localArgs.get(key);
+        else if (context.levelVars?.has(key)) value = context.levelVars.get(key);
+        else if (context.gameVars?.has(key)) value = context.gameVars.get(key);
+        return value === undefined ? 'undefined' : JSON.stringify(value);
+      },
+    );
+    return evaluateExpression(expression, context);
+  }
+
   /** Open an event-owned state directly or after the standard fade-to-black. */
   private openStateWithTransition(
     targetState: string,
@@ -11870,11 +11889,10 @@ export class EventState extends State {
       case 'game_var':
       case 'set_game_var': {
         const varName = args[0] ?? '';
-        const rawExpression = rawArgs[1] ?? 'True';
-        const wholeEval = rawExpression.match(/^\{(?:e|eval):([\s\S]+)\}$/);
-        const value = wholeEval
-          ? evaluateExpression(wholeEval[1], this.buildConditionContext())
-          : this.evaluateVariableExpression(args[1] ?? 'True');
+        const value = this.evaluateVariableCommand(
+          rawArgs[1] ?? 'True',
+          args[1] ?? 'True',
+        );
         if (varName && game.gameVars) {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, value));
         }
@@ -11916,11 +11934,10 @@ export class EventState extends State {
 
       case 'level_var': {
         const varName = args[0] ?? '';
-        const rawExpression = rawArgs[1] ?? 'True';
-        const wholeEval = rawExpression.match(/^\{(?:e|eval):([\s\S]+)\}$/);
-        const value = wholeEval
-          ? evaluateExpression(wholeEval[1], this.buildConditionContext())
-          : this.evaluateVariableExpression(args[1] ?? 'True');
+        const value = this.evaluateVariableCommand(
+          rawArgs[1] ?? 'True',
+          args[1] ?? 'True',
+        );
         if (varName && game.levelVars) {
           game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, value));
         }
