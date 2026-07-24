@@ -643,15 +643,18 @@ async function main(): Promise<void> {
   gameState.state.change('title');
 
   // --- Input ---
+  canvas.tabIndex = 0;
+  canvas.setAttribute('aria-label', 'Game display');
   const inputManager = new InputManager(canvas);
   inputManager.setDisplayScale(viewport.cssScale);
   gameState.input = inputManager;
   const showWebControls = !harnessMode || params.get('controls') === 'true';
   if (showWebControls) {
-    installWebControls(inputManager);
+    installWebControls(inputManager, audioManager);
     applySize(display);
     inputManager.setDisplayScale(viewport.cssScale);
   }
+  canvas.focus({ preventScroll: true });
 
   // --- Game surface (dynamic size) ---
   let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);
