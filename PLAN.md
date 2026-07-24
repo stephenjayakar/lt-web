@@ -199,14 +199,18 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
     when the project's support pairs reference no available Rekka units.
   - [x] Rekka chapter-history/MVP records opened through Base Codex.
 - [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
-  escape/seize/defeat/survive objective, route split, and chapter transition.
+  escape/seize/defeat/survive objective, multi-stage objective, and chapter
+  transition.
 - [ ] Add campaign checkpoints rather than attempting only one huge brittle
   end-to-end test:
   - [x] Early: Prologue level start, House visit reward/consumption, Gate seize,
     and chapter 1 transition with Lyn's inventory and party money preserved.
   - [x] Midgame: chapter 26 prep-registered Eliwood/Legault talk recruitment,
     Chest1 reward/consumption, throne seize, and chapter 27 persistence.
-  - [ ] Late, final map, ending, and credits.
+  - [x] Late: chapter 33's three one-time castle seizes remain incomplete after
+    the first two, converge on victory after the third, and load chapter 34's
+    prep rewards.
+  - [ ] Final map, ending, and credits.
 - [ ] Exercise all 899 events through direct entrypoint tests or reachable
   campaign scenarios, including chaining, blocking/resume, and only-once rules.
 
@@ -270,7 +274,7 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Extend campaign checkpoints through route splits, late game, and endgame.
+1. Extend campaign checkpoints through the final map, ending, and credits.
 2. Exercise event entrypoints and only-once/chaining behavior systematically.
 3. Complete browser UX/audio/input QA, save migration coverage, and the release
    gate.
