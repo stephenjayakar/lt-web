@@ -7697,7 +7697,7 @@ export class EventState extends State {
   private choiceResult: string | null = null;
 
   // For-loop state: stack of { varName, values[], currentIndex, loopStartPointer }
-  private forLoopStack: { varName: string; values: string[]; currentIndex: number; startPointer: number }[] = [];
+  private forLoopStack: { varName: string; values: any[]; currentIndex: number; startPointer: number }[] = [];
 
   // Skip mode: when true, all speak/narrate commands are auto-advanced
   private skipMode: boolean = false;
@@ -8867,6 +8867,24 @@ export class EventState extends State {
     return record;
   }
 
+  /** Evaluate LT game_var/level_var expressions while preserving bare-string shorthand. */
+  private evaluateVariableExpression(source: string): any {
+    const trimmed = source.trim();
+    if (/^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)+$/.test(trimmed)) {
+      return source;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_ -]*$/.test(trimmed) &&
+        !['True', 'False', 'None'].includes(trimmed)) {
+      return source;
+    }
+    try {
+      const evaluated = evaluateExpression(trimmed, this.buildConditionContext());
+      return evaluated === undefined ? source : evaluated;
+    } catch {
+      return source;
+    }
+  }
+
   /** Open an event-owned state directly or after the standard fade-to-black. */
   private openStateWithTransition(
     targetState: string,
@@ -8998,13 +9016,57 @@ export class EventState extends State {
     const expressionContext = this.buildConditionContext();
     let args = rawArgs.map((arg) => {
       let value = arg.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid);
-      value = value.replace(/\{(?:e|eval):([^{}]+)\}/g, (_match, expression: string) => {
-        const result = evaluateExpression(expression, expressionContext);
-        return result === undefined || result === null ? '' : String(result);
+      const variableValue = (key: string): any => {
+        if (game.levelVars?.has?.(key)) return game.levelVars.get(key);
+        if (game.gameVars?.has?.(key)) return game.gameVars.get(key);
+        return undefined;
+      };
+      // Resolve typed {v:...} placeholders inside an eval before evaluating the
+      // outer expression. JSON literals preserve arrays for indexing and random
+      // choice instead of flattening them to comma-delimited text.
+      for (let replacement = 0; replacement < 20; replacement += 1) {
+        const evalIndex = value.indexOf('{eval:');
+        const shortIndex = value.indexOf('{e:');
+        const start = evalIndex < 0
+          ? shortIndex
+          : shortIndex < 0
+            ? evalIndex
+            : Math.min(evalIndex, shortIndex);
+        if (start < 0) break;
+        let depth = 0;
+        let close = -1;
+        for (let index = start; index < value.length; index += 1) {
+          if (value[index] === '{') depth += 1;
+          if (value[index] === '}') {
+            depth -= 1;
+            if (depth === 0) {
+              close = index;
+              break;
+            }
+          }
+        }
+        if (close < 0) break;
+        const colon = value.indexOf(':', start);
+        const expression = value.slice(colon + 1, close);
+        const typedExpression = expression.replace(
+          /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+          (_variableMatch, key: string) => {
+            const resolved = variableValue(key);
+            return JSON.stringify(resolved) ?? 'null';
+          },
+        );
+        const result = evaluateExpression(typedExpression, expressionContext);
+        value = value.slice(0, start) +
+          (result === undefined || result === null ? '' : String(result)) +
+          value.slice(close + 1);
+      }
+      value = value.replace(/\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
+        const result = variableValue(key);
+        return result === undefined ? match : result === null ? '' : String(result);
       });
       value = value.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
-        if (game.levelVars?.has?.(key)) return String(game.levelVars.get(key));
-        if (game.gameVars?.has?.(key)) return String(game.gameVars.get(key));
+        const result = variableValue(key);
+        if (result !== undefined) return String(result);
         return match;
       });
       return value;
@@ -11103,7 +11165,7 @@ export class EventState extends State {
       case 'game_var':
       case 'set_game_var': {
         const varName = args[0] ?? '';
-        const value = args[1] ?? 'true';
+        const value = this.evaluateVariableExpression(args[1] ?? 'True');
         if (varName && game.gameVars) {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, value));
         }
@@ -11115,7 +11177,14 @@ export class EventState extends State {
         const varName = args[0] ?? '';
         if (varName && game.gameVars) {
           const current = Number(game.gameVars.get(varName) ?? 0);
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, current + 1));
+          const increment = args[1] === undefined
+            ? 1
+            : Number(this.evaluateVariableExpression(args[1]));
+          game.actionLog.doAction(new SetGameVarAction(
+            game.gameVars,
+            varName,
+            current + (Number.isFinite(increment) ? increment : 0),
+          ));
         }
         this.advancePointer();
         return false;
@@ -11138,7 +11207,7 @@ export class EventState extends State {
 
       case 'level_var': {
         const varName = args[0] ?? '';
-        const value = args[1] ?? 'true';
+        const value = this.evaluateVariableExpression(args[1] ?? 'True');
         if (varName && game.levelVars) {
           game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, value));
         }
@@ -11150,7 +11219,14 @@ export class EventState extends State {
         const varName = args[0] ?? '';
         if (varName && game.levelVars) {
           const current = Number(game.levelVars.get(varName) ?? 0);
-          game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, current + 1));
+          const increment = args[1] === undefined
+            ? 1
+            : Number(this.evaluateVariableExpression(args[1]));
+          game.actionLog.doAction(new SetLevelVarAction(
+            game.levelVars,
+            varName,
+            current + (Number.isFinite(increment) ? increment : 0),
+          ));
         }
         this.advancePointer();
         return false;
@@ -12135,9 +12211,33 @@ export class EventState extends State {
       // ----- For loops -----
 
       case 'for': {
-        // for;varName;value1,value2,value3
+        // for;varName;Expression — LT accepts Python list/range
+        // comprehensions in addition to comma-delimited shorthand.
         const forVar = args[0] ?? '_i';
-        const forValues = (args[1] ?? '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        const rawForExpression = rawArgs[1] ?? '';
+        const typedForExpression = rawForExpression.replace(
+          /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+          (_match, key: string) => {
+            const resolved = game.levelVars?.has?.(key)
+              ? game.levelVars.get(key)
+              : game.gameVars?.get?.(key);
+            return JSON.stringify(resolved) ?? 'null';
+          },
+        );
+        let forValues: any[] = [];
+        if (typedForExpression.trim().startsWith('[') ||
+            typedForExpression.includes(' for ') ||
+            typedForExpression.startsWith('range')) {
+          const evaluated = evaluateExpression(typedForExpression, this.buildConditionContext());
+          if (Array.isArray(evaluated)) forValues = evaluated;
+          else if (evaluated && typeof evaluated[Symbol.iterator] === 'function') {
+            forValues = Array.from(evaluated);
+          }
+        } else {
+          forValues = (args[1] ?? '').split(',')
+            .map((value: string) => value.trim())
+            .filter((value: string) => value.length > 0);
+        }
         if (forValues.length === 0) {
           // Empty loop — skip to matching endf
           const commands = this.currentEvent!.commands;

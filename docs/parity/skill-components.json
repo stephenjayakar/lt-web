@@ -1057,19 +1057,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10246
+          "line": 10308
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11642
+          "line": 11718
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13639
+          "line": 13739
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13657
+          "line": 13757
         },
         {
           "source": "src/native.ts",
@@ -1167,23 +1167,23 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10048
+          "line": 10110
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10053
+          "line": 10115
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10072
+          "line": 10134
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13838
+          "line": 13938
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13861
+          "line": 13961
         }
       ],
       "directReads": [],
@@ -1530,19 +1530,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10986
+          "line": 11048
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 102
+          "line": 103
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 207
+          "line": 208
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 283
+          "line": 284
         },
         {
           "source": "src/events/python-events.ts",
@@ -3557,11 +3557,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11071
+          "line": 11133
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11693
+          "line": 11769
         },
         {
           "source": "src/main.ts",
@@ -3769,7 +3769,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1264
+          "line": 1307
         },
         {
           "source": "src/objects/item.ts",
