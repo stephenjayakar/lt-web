@@ -34,17 +34,11 @@ evidence, not proof of behavior.
 | swap | 1 | reference-only |
 | swap_on_end_combat | 1 | reference-only |
 | trace | 1 | custom-or-unknown |
-| transform | 5 | unreferenced |
-| usable | 16 | reference-only |
-| usable_in_base | 11 | unreferenced |
 
 ## Structurally risky project-used skill components
 
 | NID | Uses | Status |
 |---|---|---|
-| additional_accessories | 1 | unreferenced |
-| alternate_critical_multiplier_formula | 1 | unreferenced |
-| armsthrift | 2 | unreferenced |
 | attack_pre_proc | 2 | reference-only |
 | attack_proc | 3 | reference-only |
 | cannot_use_items_except_armor | 4 | custom-or-unknown |
@@ -52,13 +46,11 @@ evidence, not proof of behavior.
 | change_buy_price | 1 | reference-only |
 | class_skill | 343 | unreferenced |
 | combat_artist | 1 | custom-or-unknown |
-| death_tether | 1 | unreferenced |
 | defense_pre_proc | 1 | reference-only |
 | disvantage | 2 | custom-or-unknown |
-| dynamic_crit_accuracy | 4 | unreferenced |
 | empower_heal | 1 | unreferenced |
 | end_time | 4 | reference-only |
-| endstep_damage | 1 | unreferenced |
+| endstep_damage | 1 | reference-only |
 | eval_galeforce | 14 | custom-or-unknown |
 | event_after_combat | 13 | custom-or-unknown |
 | event_after_combat_when_hit | 1 | custom-or-unknown |
@@ -68,43 +60,22 @@ evidence, not proof of behavior.
 | event_before_combat | 10 | custom-or-unknown |
 | event_on_upkeep | 20 | custom-or-unknown |
 | event_when_hit | 2 | custom-or-unknown |
-| gain_skill_after_attack | 3 | unreferenced |
-| gain_skill_after_combat | 3 | unreferenced |
-| gain_skill_after_kill | 3 | unreferenced |
-| gain_skill_after_take_damage | 1 | unreferenced |
-| gain_skill_after_take_miss | 1 | unreferenced |
-| galeforce | 1 | unreferenced |
 | givebacker | 1 | custom-or-unknown |
 | global | 5 | unreferenced |
-| ignore_alliances | 2 | unreferenced |
-| ignore_damage | 7 | unreferenced |
-| immune_status | 4 | unreferenced |
-| live_to_serve | 1 | unreferenced |
-| lost_on_end_chapter | 45 | unreferenced |
-| lost_on_end_combat2 | 17 | unreferenced |
+| ignore_damage | 7 | reference-only |
 | lost_on_endstep | 2 | reference-only |
 | lost_on_kill | 6 | unreferenced |
 | lost_on_upkeep | 26 | reference-only |
-| modify_ai_priority | 2 | unreferenced |
-| modify_maximum_range | 3 | unreferenced |
-| movement_type | 1 | unreferenced |
 | nine_lives_event | 1 | custom-or-unknown |
-| post_combat_splash | 1 | unreferenced |
-| post_combat_splash_aoe | 1 | unreferenced |
 | powerstaff | 1 | custom-or-unknown |
-| reflect_status | 1 | unreferenced |
 | regeneration | 3 | reference-only |
 | second_wind | 1 | custom-or-unknown |
-| skill_before_combat | 6 | unreferenced |
-| stack | 38 | reference-only |
 | time | 31 | reference-only |
 | true_miracle_event_after_combat | 1 | custom-or-unknown |
-| TrueMiracle | 3 | unreferenced |
+| TrueMiracle | 3 | reference-only |
 | unit_flickering_tint | 4 | unreferenced |
 | unit_tint | 1 | unreferenced |
-| unselectable | 10 | unreferenced |
 | upkeep_event | 2 | unreferenced |
-| witch_warp_expression | 5 | unreferenced |
 
 ## Used project-local Python components
 

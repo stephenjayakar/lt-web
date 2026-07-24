@@ -712,7 +712,7 @@ export function evaluateCondition(
 
   // Unknown condition — warn and default to false (skip events with un-evaluable conditions;
   // firing them would cause reinforcements/etc. to trigger at wrong times)
-  console.warn(`EventCondition: cannot evaluate "${trimmed}", defaulting to false`);
+  reportUnimplemented('expression', trimmed, 'event condition');
   return false;
 }
 
@@ -733,7 +733,11 @@ export interface ConditionContext {
 export function evaluateExpression(expression: string, context: ConditionContext): any {
   const direct = resolvePath(expression, context);
   if (direct !== undefined) return direct;
-  return evaluateWithJsFallback(expression, context);
+  const value = evaluateWithJsFallback(expression, context);
+  if (value === undefined) {
+    reportUnimplemented('expression', expression, 'event expression');
+  }
+  return value;
 }
 
 /** Resolve a dotted path like "game.turncount", "unit.nid", "region.nid" to a value. */

@@ -8898,7 +8898,56 @@ export class EventState extends State {
       }
 
       // Execute the command. Returns true if the command is blocking.
-      const blocking = this.executeCommand(cmd, game);
+      let blocking: boolean;
+      try {
+        blocking = this.executeCommand(cmd, game);
+      } catch (error) {
+        const trigger = ev.trigger ?? { type: 'unknown' };
+        const traceValue = (value: any): any => {
+          if (value === null || value === undefined ||
+              typeof value === 'string' || typeof value === 'number' ||
+              typeof value === 'boolean') return value;
+          if (Array.isArray(value)) return value.slice(0, 20).map(traceValue);
+          if (value instanceof Map) {
+            return Object.fromEntries(
+              [...value.entries()].slice(0, 20).map(([key, entry]) => [String(key), traceValue(entry)]),
+            );
+          }
+          if (typeof value === 'object' && typeof value.nid === 'string') {
+            return { nid: value.nid };
+          }
+          if (typeof value === 'object') {
+            return Object.fromEntries(
+              Object.entries(value)
+                .filter(([, entry]) =>
+                  entry === null || ['string', 'number', 'boolean'].includes(typeof entry))
+                .slice(0, 20),
+            );
+          }
+          return String(value);
+        };
+        const localArgs = trigger.localArgs instanceof Map
+          ? traceValue(trigger.localArgs)
+          : traceValue(trigger.localArgs ?? null);
+        const trace = {
+          eventId: ev.nid,
+          commandIndex: ev.commandPointer,
+          command: { type: cmd.type, args: cmd.args },
+          trigger: {
+            type: trigger.type,
+            unitNid: trigger.unitNid ?? trigger.unit1?.nid ?? null,
+            unit2Nid: trigger.unit2?.nid ?? null,
+            itemNid: trigger.item?.nid ?? null,
+            position: trigger.position ?? null,
+            regionNid: trigger.regionNid ?? trigger.region?.nid ?? null,
+            localArgs,
+          },
+          stateStack: game.state.getStackNames(),
+          activeUnit: game.selectedUnit?.nid ?? null,
+        };
+        console.error(`[EventTrace] ${JSON.stringify(trace)}`);
+        throw error;
+      }
       if (blocking) {
         break; // stop burst — wait for blocking command to finish
       }
