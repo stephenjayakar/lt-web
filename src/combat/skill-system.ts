@@ -278,6 +278,42 @@ export function consumeMiracleCharge(skill: SkillObject): void {
   }
 }
 
+export type CustomSurvivalComponent =
+  | 'nine_lives_event'
+  | 'true_miracle_event'
+  | 'true_miracle_event_after_combat';
+
+export interface CustomSurvivalSkill {
+  skill: SkillObject;
+  component: CustomSurvivalComponent;
+  value: unknown;
+}
+
+/** First active Rekka after_take_strike survival hook in skill/component order. */
+export function customSurvivalSkill(
+  unit: UnitObject,
+  alreadyTriggered: ReadonlySet<SkillObject> = new Set(),
+): CustomSurvivalSkill | null {
+  for (const skill of unit.skills) {
+    if (alreadyTriggered.has(skill)) continue;
+    if (skill.hasComponent('build_charge')) {
+      const charge = Number(skill.data.get('charge') ?? 0);
+      const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
+      if (charge < total) continue;
+    }
+    if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+        Number(skill.data.get('charge') ?? 0) <= 0) continue;
+    for (const [component, value] of skill.components) {
+      if (component === 'nine_lives_event' ||
+          component === 'true_miracle_event' ||
+          component === 'true_miracle_event_after_combat') {
+        return { skill, component, value };
+      }
+    }
+  }
+  return null;
+}
+
 /** Unit cannot be displaced by shove, swap, warp, rescue, or related item hooks. */
 export function ignoreForcedMovement(unit: UnitObject): boolean {
   return hasAnySkill(unit, 'ignore_forced_movement');

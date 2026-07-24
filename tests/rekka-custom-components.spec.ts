@@ -273,6 +273,7 @@ test.describe('Rekka project-local skill components', () => {
       const game = (window as any).__gameRef;
       const attacker = game.units.get('Lyn');
       const defender = game.units.get('101');
+      attacker.skills = [];
       const attackItem = attacker.items.find((item: any) => item.isWeapon());
       const defenseItem = defender.items.find((item: any) => item.isWeapon());
       attacker.skills = [new SkillObject({
@@ -529,5 +530,164 @@ test.describe('Rekka project-local skill components', () => {
       },
       redoneFinished: false,
     })));
+  });
+
+  test('survival hooks clamp lethal strikes and preserve reversible consumption', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const {
+        applyCombatSkillEndHooks,
+        queueCombatSkillEvents,
+      } = await import('/src/combat/combat-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      attacker.skills = [];
+      const attackItem = attacker.items.find((item: any) => item.isWeapon());
+      const defenseItem = defender.items.find((item: any) => item.isWeapon());
+      const run = (skill: any) => {
+        defender.currentHp = 1;
+        defender.skills = [skill];
+        const combat = new MapCombat(
+          attacker,
+          attackItem,
+          defender,
+          defenseItem,
+          game.db,
+          'classic',
+          game.board,
+          ['hit1', 'end'],
+          undefined,
+          game,
+        );
+        combat.skipToEnd();
+        const results = combat.applyResults(game.actionLog);
+        return { combat, results };
+      };
+
+      const nineLives = new SkillObject(game.db.skills.get('NineLives'));
+      const nine = run(nineLives);
+      const nineApplied = applyCombatSkillEndHooks(
+        game, nine.combat.strikes, attacker, defender,
+      );
+      const nineRemoved = !defender.skills.includes(nineLives);
+      const removeAction = game.actionLog.undo();
+      const nineRestored = defender.skills.includes(nineLives);
+      removeAction.execute();
+
+      const calls: any[] = [];
+      game.eventManager.triggerSpecific = (nid: string, trigger: any) => {
+        calls.push({
+          nid,
+          type: trigger.type,
+          unit1: trigger.unit1.nid,
+          unit2: trigger.unit2.nid,
+        });
+        return true;
+      };
+      const soulAtlas = new SkillObject(game.db.skills.get('SoulAtlas'));
+      const soul = run(soulAtlas);
+      applyCombatSkillEndHooks(game, soul.combat.strikes, attacker, defender);
+      const soulQueued = queueCombatSkillEvents(
+        game,
+        soul.combat.strikes,
+        attacker,
+        defender,
+        attackItem,
+        defenseItem,
+      );
+
+      const immediate = new SkillObject({
+        nid: 'TestTrueMiracleEvent',
+        name: 'Test True Miracle Event',
+        desc: '',
+        components: [
+          ['true_miracle_event', 'miracle_now'],
+          ['charges_per_turn', 1],
+        ],
+      });
+      immediate.data.set('charge', 1);
+      immediate.data.set('total_charge', 1);
+      const immediateCombat = run(immediate);
+      const immediateApplied = applyCombatSkillEndHooks(
+        game, immediateCombat.combat.strikes, attacker, defender,
+      );
+      const immediateQueued = queueCombatSkillEvents(
+        game,
+        immediateCombat.combat.strikes,
+        attacker,
+        defender,
+        attackItem,
+        defenseItem,
+      );
+      const chargeAfter = immediate.data.get('charge');
+      const chargeAction = game.actionLog.undo();
+      const chargeUndone = immediate.data.get('charge');
+
+      return {
+        nine: {
+          hp: defender.currentHp,
+          strikeDamage: nine.combat.strikes[0].damage,
+          proc: nine.combat.strikes[0].survivalProc?.component,
+          applied: nineApplied,
+          removed: nineRemoved,
+          action: removeAction.constructor.name,
+          restored: nineRestored,
+        },
+        soul: {
+          proc: soul.combat.strikes[0].survivalProc?.component,
+          queued: soulQueued,
+        },
+        immediate: {
+          proc: immediateCombat.combat.strikes[0].survivalProc?.component,
+          applied: immediateApplied,
+          queued: immediateQueued,
+          chargeAfter,
+          action: chargeAction.constructor.name,
+          chargeUndone,
+        },
+        calls,
+      };
+    });
+
+    expect(result).toEqual({
+      nine: {
+        hp: 1,
+        strikeDamage: 0,
+        proc: 'nine_lives_event',
+        applied: 1,
+        removed: true,
+        action: 'RemoveSkillAction',
+        restored: true,
+      },
+      soul: {
+        proc: 'true_miracle_event_after_combat',
+        queued: 1,
+      },
+      immediate: {
+        proc: 'true_miracle_event',
+        applied: 1,
+        queued: 1,
+        chargeAfter: 0,
+        action: 'SetSkillDataAction',
+        chargeUndone: 1,
+      },
+      calls: [
+        {
+          nid: 'Global Ability_SoulAtlasTriggered',
+          type: 'true_miracle_event_after_combat',
+          unit1: '101',
+          unit2: 'Lyn',
+        },
+        {
+          nid: 'miracle_now',
+          type: 'true_miracle_event',
+          unit1: '101',
+          unit2: 'Lyn',
+        },
+      ],
+    });
   });
 });
