@@ -215,7 +215,7 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
   - [x] Final map/ending: the morph convergence opens Nergal's group, Nergal's
     death loads `Final_2` and the Dragon encounter, and Dragon death renders
     Rekka's scripted credit cards before returning cleanly to title.
-- [ ] Exercise all 899 events through direct entrypoint tests or reachable
+- [x] Exercise all 899 events through direct entrypoint tests or reachable
   campaign scenarios, including chaining, blocking/resume, and only-once rules.
 
 Gate: a deterministic automated campaign route reaches the ending, with focused
@@ -279,8 +279,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Exercise event entrypoints and only-once/chaining behavior systematically.
-2. Complete browser UX/audio/input QA, save migration coverage, and the release
+1. Complete browser UX/audio/input QA and representative visual coverage.
+2. Complete save migration, turnwheel, AI, and determinism coverage.
+3. Close the remaining expression/component and campaign scenario gaps, then the release
    gate.
 
 ## Already present — verify, do not reimplement blindly
