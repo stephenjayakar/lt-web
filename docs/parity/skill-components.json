@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 65,
-    "referencedComponentNids": 120,
+    "referencedComponentNids": 122,
     "hookMappedComponentNids": 74,
-    "unreferencedComponentNids": 121,
-    "consumedComponentNids": 77,
+    "unreferencedComponentNids": 119,
+    "consumedComponentNids": 79,
     "structuralStatuses": {
-      "consumed": 42,
+      "consumed": 44,
       "hook-and-reference": 58,
       "hook-only": 16,
       "reference-only": 20,
-      "unreferenced": 105
+      "unreferenced": 103
     }
   },
   "webHookExports": [
@@ -4743,7 +4743,7 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 615
+          "line": 655
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -4781,7 +4781,7 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 615
+          "line": 655
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -6828,17 +6828,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 613
+          "line": 653
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 627
+          "line": 667
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 613
+          "line": 653
         }
       ],
       "matchingWebHooks": [],
@@ -7505,11 +7505,29 @@
         "post_combat_unconditional",
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 508
+        },
+        {
+          "source": "src/engine/game-state.ts",
+          "line": 362
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 508
+        },
+        {
+          "source": "src/engine/game-state.ts",
+          "line": 362
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "lost_on_kill",
@@ -7549,11 +7567,21 @@
       "methods": [
         "on_end_chapter_unconditional"
       ],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/engine/game-state.ts",
+          "line": 361
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/engine/game-state.ts",
+          "line": 361
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "event_on_remove",
