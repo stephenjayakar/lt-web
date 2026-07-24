@@ -122,6 +122,7 @@ import {
   ChangeBgTilemapAction,
   ShowLayerAction,
   HideLayerAction,
+  AddMapAnimationAction,
   ChangeTeamPaletteAction,
   ChangeRoamAiAction,
   ChangeTeamAction,
@@ -11281,10 +11282,12 @@ export class EventState extends State {
       }
 
       case 'move_group': {
-        const groupNid = args[0] ?? '';
-        const startingGroup = args[1] ?? '';
-        const movementType = (args[2] || 'normal').toLowerCase().trim();
-        const placement = (args[3] ?? 'giveup').toLowerCase().trim();
+        const groupFlags = new Set(['no_block', 'no_follow']);
+        const positional = args.filter(arg => !groupFlags.has(arg.toLowerCase().trim()));
+        const groupNid = positional[0] ?? '';
+        const startingGroup = positional[1] ?? '';
+        const movementType = (positional[2] || 'normal').toLowerCase().trim();
+        const placement = (positional[3] ?? 'giveup').toLowerCase().trim();
         const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
         const noFollow = args.some(arg => arg.toLowerCase().trim() === 'no_follow');
         const groups = game.currentLevel?.unit_groups ?? [];
@@ -11309,7 +11312,7 @@ export class EventState extends State {
           const finalPosition = this._checkPlacement(destination, placement, game);
           if (!finalPosition) continue;
           if (this.skipMode || movementType !== 'normal') {
-            game.board.moveUnit(unit, finalPosition[0], finalPosition[1]);
+            game.actionLog.doAction(new WarpUnitAction(unit, finalPosition, game.board));
           } else {
             moves.push({ unit, target: finalPosition });
           }
@@ -12759,11 +12762,17 @@ export class EventState extends State {
         // flags: no_block, permanent, overlay
         const maAnimNid = args[0] ?? '';
         const maPosArg = args[1] ?? '';
-        const maSpeedArg = args[2] ?? '1';
-        const maFlagsStr = args.slice(3).join(';').toLowerCase();
-        const maNoBlock = maFlagsStr.includes('no_block');
-        const maPermanent = maFlagsStr.includes('permanent');
-        const maOverlay = maFlagsStr.includes('overlay');
+        const maOptionArgs = args.slice(2);
+        const parsedSpeed = Number(maOptionArgs[0]);
+        const hasSpeed = Number.isFinite(parsedSpeed) && maOptionArgs[0]?.trim() !== '';
+        const maSpeed = hasSpeed && parsedSpeed > 0 ? parsedSpeed : 1;
+        const maFlags = new Set(
+          (hasSpeed ? maOptionArgs.slice(1) : maOptionArgs)
+            .map(arg => arg.toLowerCase().trim()),
+        );
+        const maNoBlock = maFlags.has('no_block');
+        const maPermanent = maFlags.has('permanent');
+        const maOverlay = maFlags.has('overlay');
 
         const maPrefab = game.db?.mapAnimations?.get(maAnimNid);
         if (!maPrefab) {
@@ -12773,24 +12782,21 @@ export class EventState extends State {
         }
 
         // Parse position
-        let maX = 0, maY = 0;
-        const maPosMatch = maPosArg.match(/\(?(\d+),\s*(\d+)\)?/);
+        let maPosition: [number, number] | null = null;
+        const maPosMatch = maPosArg.match(/\(?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)?/);
         if (maPosMatch) {
-          maX = parseInt(maPosMatch[1], 10);
-          maY = parseInt(maPosMatch[2], 10);
+          maPosition = [parseFloat(maPosMatch[1]), parseFloat(maPosMatch[2])];
         } else {
-          // Try as unit NID
-          const maUnit = game.units.get(maPosArg);
-          if (maUnit?.position) {
-            maX = maUnit.position[0];
-            maY = maUnit.position[1];
-          }
+          maPosition = this.resolvePosition(maPosArg, game);
+        }
+        if (!maPosition) {
+          console.warn(`map_anim: position "${maPosArg}" not found`);
+          this.advancePointer();
+          return false;
         }
 
-        const maSpeed = parseFloat(maSpeedArg) || 1;
-
         // Create animation
-        const mapAnim = new MapAnimation(maPrefab, maX, maY, {
+        const mapAnim = new MapAnimation(maPrefab, maPosition[0], maPosition[1], {
           loop: maPermanent,
           speedAdj: maSpeed,
         });
@@ -12803,12 +12809,12 @@ export class EventState extends State {
         });
 
         // Add to tilemap
-        if (game.tilemap) {
-          if (maOverlay) {
-            game.tilemap.highAnimations.push(mapAnim);
-          } else {
-            game.tilemap.animations.push(mapAnim);
-          }
+        if (game.tilemap && maPermanent) {
+          game.actionLog.doAction(new AddMapAnimationAction(game.tilemap, mapAnim, maOverlay));
+        } else if (game.tilemap && maOverlay) {
+          game.tilemap.highAnimations.push(mapAnim);
+        } else if (game.tilemap) {
+          game.tilemap.animations.push(mapAnim);
         }
 
         this.advancePointer();
@@ -13792,6 +13798,7 @@ export class EventState extends State {
         game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_prep_pick', pickEnabled));
 
         if (args[1]) {
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_music', args[1]));
           void game.audioManager.playMusic(args[1]);
         }
 

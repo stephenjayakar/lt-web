@@ -1642,6 +1642,35 @@ export class HideLayerAction extends Action {
   }
 }
 
+/** Persist a looping event map animation through turnwheel replay. */
+export class AddMapAnimationAction extends Action {
+  private tilemap: any;
+  private animation: any;
+  private overlay: boolean;
+
+  constructor(tilemap: any, animation: any, overlay: boolean) {
+    super();
+    this.tilemap = tilemap;
+    this.animation = animation;
+    this.overlay = overlay;
+  }
+
+  execute(): void {
+    const collection = this.overlay
+      ? this.tilemap.highAnimations
+      : this.tilemap.animations;
+    if (!collection.includes(this.animation)) collection.push(this.animation);
+  }
+
+  reverse(): void {
+    const collection = this.overlay
+      ? this.tilemap.highAnimations
+      : this.tilemap.animations;
+    const index = collection.indexOf(this.animation);
+    if (index >= 0) collection.splice(index, 1);
+  }
+}
+
 /** ChangeTeamPaletteAction - Python action.ChangeTeamPalette: overrides a
  * team's map-sprite palette / combat color at runtime, reversibly, and
  * rebuilds affected map sprites (cache-keyed by palette, so a lazy reload

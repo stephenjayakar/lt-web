@@ -178,14 +178,15 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 
 - [x] Replace the `table`/`remove_table` no-op with the event UI required by the
   Bribe ability and GoldDisplay.
-- [ ] Validate high-volume command semantics and blocking order:
+- [x] Validate high-volume command semantics and blocking order:
   - [x] Unit add/move, including relative destinations, placement policy,
     stacked swaps, warp ordering, and turnwheel replay.
   - [x] Cursor/camera and layer visibility, including duration-backed pans,
     terrain refresh, and turnwheel replay.
   - [x] Stats, attack flags, item/skill changes, and AI changes, including
     stack limits/removal counts, persistent grants, and object-valued loops.
-  - [ ] Map animations, shops, prep, and unit groups.
+  - [x] Map animations, shops, prep, and unit groups, including permanent
+    overlays and Chapter 28's staged Rath reinforcement movement.
 - [ ] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
   `add_skill_component`, `set_custom_options`, and all three `pair_up` script
   uses in their actual chapter contexts.
