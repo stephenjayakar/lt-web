@@ -299,6 +299,155 @@ test.describe('Rekka project-local item components', () => {
 });
 
 test.describe('Rekka project-local skill components', () => {
+  test('combat art menu activates, cancels, and consumes a reversible child skill', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const {
+        CombatArtChoiceState,
+        WeaponChoiceState,
+      } = await import('/src/engine/states/game-states.ts');
+      const { applyCombatSkillEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { modifyDamage } = await import('/src/combat/skill-system.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const unit = game.units.get('Lyn');
+      const target = game.units.get('101');
+      harness.warpUnit('Lyn', 10, 7);
+      harness.warpUnit('101', 11, 7);
+      const klass = game.db.classes.get(unit.klass);
+      klass.wexp_gain.Sword = [true, 0];
+      unit.wexp.Sword = 200;
+      unit.autoequip();
+      const weapon = unit.items.find((item: any) => item.isWeapon());
+      game.db.skills.set('TestCombatArtChild', {
+        nid: 'TestCombatArtChild',
+        name: 'Test Combat Art Child',
+        desc: '',
+        components: [['damage', 10]],
+      });
+      const parent = new SkillObject({
+        nid: 'TestCombatArt',
+        name: 'Test Combat Art',
+        desc: '',
+        components: [
+          ['combat_art', 'TestCombatArtChild'],
+          ['allowed_weapons', 'item_system.is_weapon(unit, item)'],
+          ['charges_per_turn', 1],
+        ],
+      });
+      parent.data.set('charge', 1);
+      parent.data.set('total_charge', 1);
+      unit.skills = [parent];
+      game.selectedUnit = unit;
+
+      const firstMenu = new CombatArtChoiceState();
+      firstMenu.begin();
+      firstMenu.takeInput('SELECT');
+      const firstChild = unit.skills.find((skill: any) =>
+        skill.data.get('combatArtSource') === parent);
+      const activated = {
+        active: parent.data.get('active'),
+        child: firstChild?.nid ?? null,
+        modifier: modifyDamage(unit, weapon),
+        weaponCount: (game.memory.get('combat_art_weapons') ?? []).length,
+      };
+
+      const weaponMenu = new WeaponChoiceState();
+      weaponMenu.begin();
+      weaponMenu.takeInput('BACK');
+      const cancelled = {
+        active: parent.data.get('active'),
+        hasChild: unit.skills.some((skill: any) =>
+          skill.data.get('combatArtSource') === parent),
+        memory: game.memory.has('combat_art_parent'),
+      };
+
+      const secondMenu = new CombatArtChoiceState();
+      secondMenu.begin();
+      secondMenu.takeInput('SELECT');
+      const child = unit.skills.find((skill: any) =>
+        skill.data.get('combatArtSource') === parent);
+      const applied = applyCombatSkillEndHooks(game, [{
+        attacker: unit,
+        defender: target,
+        item: weapon,
+        hit: true,
+        crit: false,
+        damage: 1,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      }], unit, target);
+      const consumed = {
+        active: parent.data.get('active'),
+        charge: parent.data.get('charge'),
+        hasChild: unit.skills.includes(child),
+        memory: game.memory.has('combat_art_parent'),
+      };
+      const actions = [
+        game.actionLog.undo(),
+        game.actionLog.undo(),
+        game.actionLog.undo(),
+      ];
+      const undone = {
+        active: parent.data.get('active'),
+        charge: parent.data.get('charge'),
+        hasChild: unit.skills.includes(child),
+      };
+      for (const action of [...actions].reverse()) action.execute();
+      return {
+        activated,
+        cancelled,
+        applied,
+        consumed,
+        actionNames: actions.map((action: any) => action.constructor.name),
+        undone,
+        redone: {
+          active: parent.data.get('active'),
+          charge: parent.data.get('charge'),
+          hasChild: unit.skills.includes(child),
+        },
+      };
+    });
+
+    expect(result).toEqual({
+      activated: {
+        active: true,
+        child: 'TestCombatArtChild',
+        modifier: 10,
+        weaponCount: 1,
+      },
+      cancelled: {
+        active: false,
+        hasChild: false,
+        memory: false,
+      },
+      applied: 2,
+      consumed: {
+        active: false,
+        charge: 0,
+        hasChild: false,
+        memory: false,
+      },
+      actionNames: [
+        'RemoveSkillAction',
+        'SetSkillDataAction',
+        'SetSkillDataAction',
+      ],
+      undone: {
+        active: true,
+        charge: 1,
+        hasChild: true,
+      },
+      redone: {
+        active: false,
+        charge: 0,
+        hasChild: false,
+      },
+    });
+  });
+
   test('givebacker adds missing HP to static damage', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

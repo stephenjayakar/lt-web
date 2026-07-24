@@ -50,6 +50,7 @@ interface CombatLifecycleGame {
   currentParty?: string;
   getMoney?: () => number;
   items?: Map<string, ItemObject>;
+  memory?: Map<string, unknown>;
 }
 
 interface DroppableGame {
@@ -439,7 +440,9 @@ export function applyCombatSkillEndHooks(
       } else if (skill.hasComponent('combat_artist')) {
         shouldReset = pairStrikes.some((strike) =>
           strike.attackProcs?.some((mark) =>
-            mark.kind === 'attack_pre_proc' && mark.unit === unit));
+            mark.kind === 'attack_pre_proc' && mark.unit === unit)) ||
+          unit.skills.some((candidate) =>
+            candidate.hasComponent('combat_art') && candidate.data.get('active') === true);
       } else if (skill.hasComponent('second_wind')) {
         shouldReset = pairStrikes.some((strike) => !strike.hit);
       } else {
@@ -470,8 +473,19 @@ export function applyCombatSkillEndHooks(
         triggerSkillCharge(game, skill);
         applied++;
       }
+
+      if (skill.hasComponent('combat_art') && skill.data.get('active') === true) {
+        const child = unit.skills.find((candidate) =>
+          candidate.data.get('combatArtSource') === skill);
+        triggerSkillCharge(game, skill);
+        game.actionLog.doAction(new SetSkillDataAction(skill, 'active', false));
+        if (child) game.actionLog.doAction(new RemoveSkillAction(unit, child));
+        applied += child ? 2 : 1;
+      }
     }
   }
+  game.memory?.delete('combat_art_parent');
+  game.memory?.delete('combat_art_weapons');
   return applied;
 }
 

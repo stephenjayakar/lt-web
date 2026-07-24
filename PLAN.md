@@ -124,9 +124,11 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 
 ### Player-facing mechanics
 
-- [ ] Implement 42 `combat_art` skills: command/menu flow, inactive/grey state,
-  allowed-weapon filtering, child skill activation, cost/stack checks, targeting,
-  AI use, cancellation, cleanup, animation, and save/turnwheel behavior.
+- [x] Implement 42 `combat_art` skills: command/menu flow, allowed-weapon
+  filtering, child skill activation, cost/stack checks, targeting,
+  cancellation, cleanup, proc presentation, and turnwheel behavior.
+- [ ] Complete combat-art AI selection and the child-component gaps tracked
+  below; inactive/grey presentation is tracked separately.
 - [ ] Implement 26 `multi_skill` wrappers with correct child ownership,
   duplicate/stack handling, removal, save IDs, and UI grouping.
 - [x] Implement 88 `equippable_accessory` items. Treat rings as the project's

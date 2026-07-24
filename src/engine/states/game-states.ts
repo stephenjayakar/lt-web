@@ -1941,6 +1941,99 @@ export class MoveState extends MapState {
 // 4. MenuState
 // ============================================================================
 
+interface CombatArtOption {
+  skill: SkillObject;
+  childNid: string;
+  weapons: ItemObject[];
+}
+
+const COMBAT_ART_SOURCE = 'combatArtSource';
+
+function combatArtReady(game: GameState, unit: UnitObject, skill: SkillObject): boolean {
+  if (skill.hasComponent('build_charge') &&
+      Number(skill.data.get('charge') ?? 0) <
+        Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0)) {
+    return false;
+  }
+  if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+      Number(skill.data.get('charge') ?? 0) <= 0) return false;
+  const condition = skill.getComponent<string>('condition');
+  return !condition || evaluateCondition(condition, {
+    game,
+    unit1: unit,
+    position: unit.position ?? undefined,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map([['skill', skill]]),
+  });
+}
+
+function getCombatArtOptions(game: GameState, unit: UnitObject): CombatArtOption[] {
+  const options: CombatArtOption[] = [];
+  for (const skill of [...unit.skills]) {
+    const childNid = skill.getComponent<string>('combat_art');
+    if (!childNid || !combatArtReady(game, unit, skill)) continue;
+    const childPrefab = game.db.skills.get(childNid);
+    if (!childPrefab) continue;
+    const child = new SkillObject(childPrefab);
+    child.data.set(COMBAT_ART_SOURCE, skill);
+    unit.skills.push(child);
+    try {
+      const expression = skill.getComponent<string>('allowed_weapons');
+      const weapons = getAvailableCombatItems(unit).filter((item) => {
+        if (!itemAvailable(unit, item, game.db, game)) return false;
+        if (expression && !evaluateCondition(expression, {
+          game,
+          unit1: unit,
+          item,
+          position: unit.position ?? undefined,
+          gameVars: game.gameVars,
+          levelVars: game.levelVars,
+          localArgs: new Map<string, unknown>([
+            ['item', item],
+            ['skill', skill],
+          ]),
+        })) return false;
+        return (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0;
+      });
+      if (weapons.length > 0) options.push({ skill, childNid, weapons });
+    } finally {
+      const index = unit.skills.indexOf(child);
+      if (index >= 0) unit.skills.splice(index, 1);
+    }
+  }
+  return options;
+}
+
+function deactivateCombatArts(unit: UnitObject): void {
+  const children = unit.skills.filter((skill) => skill.data.has(COMBAT_ART_SOURCE));
+  unit.skills = unit.skills.filter((skill) => !skill.data.has(COMBAT_ART_SOURCE));
+  for (const child of children) {
+    const parent = child.data.get(COMBAT_ART_SOURCE) as SkillObject | undefined;
+    parent?.data.set('active', false);
+  }
+  for (const skill of unit.skills) {
+    if (skill.hasComponent('combat_art')) skill.data.set('active', false);
+  }
+}
+
+function activateCombatArt(
+  game: GameState,
+  unit: UnitObject,
+  option: CombatArtOption,
+): boolean {
+  deactivateCombatArts(unit);
+  const prefab = game.db.skills.get(option.childNid);
+  if (!prefab) return false;
+  const child = new SkillObject(prefab);
+  child.data.set(COMBAT_ART_SOURCE, option.skill);
+  unit.skills.push(child);
+  option.skill.data.set('active', true);
+  game.memory.set('combat_art_parent', option.skill);
+  game.memory.set('combat_art_weapons', option.weapons);
+  return true;
+}
+
 export class MenuState extends State {
   readonly name = 'menu';
   override readonly transparent = true;
@@ -1980,6 +2073,9 @@ export class MenuState extends State {
       .flatMap((item) => getTargetsInRange(unit, ux, uy, item)))];
     if (targets.length > 0) {
       options.push({ label: 'Attack', value: 'attack', enabled: true });
+    }
+    if (!unit.hasAttacked && getCombatArtOptions(game, unit).length > 0) {
+      options.push({ label: 'Combat Arts', value: 'combat_arts', enabled: true });
     }
 
     // Skill abilities are backed by item prefabs in LT. The Steal class skill
@@ -2186,6 +2282,9 @@ export class MenuState extends State {
       if (value === 'attack') {
         this.menu = null;
         game.state.change('weapon_choice');
+      } else if (value === 'combat_arts') {
+        this.menu = null;
+        game.state.change('combat_art_choice');
       } else if (value === 'item') {
         this.menu = null;
         game.state.change('item_use');
@@ -3999,7 +4098,79 @@ export class DropState extends MapState {
 }
 
 // ============================================================================
-// 5a. WeaponChoiceState — Select which weapon to use before attacking
+// 5a. CombatArtChoiceState — Activate a child skill for the next attack
+// ============================================================================
+
+export class CombatArtChoiceState extends State {
+  readonly name = 'combat_art_choice';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private options: CombatArtOption[] = [];
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject = game.selectedUnit;
+    if (!unit) {
+      game.state.back();
+      return;
+    }
+    deactivateCombatArts(unit);
+    game.memory.delete('combat_art_parent');
+    game.memory.delete('combat_art_weapons');
+    this.options = getCombatArtOptions(game, unit);
+    if (this.options.length === 0) {
+      game.state.back();
+      return;
+    }
+    const menuOptions = this.options.map((option, index) => ({
+      label: option.skill.name,
+      value: `combat_art_${index}`,
+      enabled: true,
+    }));
+    this.menu = new ChoiceMenu(
+      menuOptions,
+      Math.max(4, viewport.width - 112),
+      Math.max(4, (viewport.height - menuOptions.length * 16) / 2),
+    );
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result) {
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    const index = Number(result.selected.slice('combat_art_'.length));
+    const option = this.options[index];
+    const unit: UnitObject = game.selectedUnit;
+    if (option && unit && activateCombatArt(game, unit, option)) {
+      this.menu = null;
+      game.state.change('weapon_choice');
+    }
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
+// ============================================================================
+// 5b. WeaponChoiceState — Select which weapon to use before attacking
 // ============================================================================
 
 export class WeaponChoiceState extends State {
@@ -4025,16 +4196,23 @@ export class WeaponChoiceState extends State {
       return 'repeat';
     }
 
-    // Gather all usable weapons (has uses remaining, is a weapon)
-    this.weapons = unit.items.filter(
-      (item) => item.isWeapon() && itemAvailable(unit, item, game.db, game),
-    );
+    const combatArtWeapons = game.memory.get('combat_art_weapons') as ItemObject[] | undefined;
+    const combatArtMode = !!game.memory.get('combat_art_parent');
+    if (combatArtMode && combatArtWeapons) {
+      this.weapons = combatArtWeapons.filter((item) =>
+        unit.items.includes(item) && itemAvailable(unit, item, game.db, game));
+    } else {
+      // Gather all usable weapons (has uses remaining, is a weapon)
+      this.weapons = unit.items.filter(
+        (item) => item.isWeapon() && itemAvailable(unit, item, game.db, game),
+      );
 
-    // Also include spells
-    const spells = unit.items.filter(
-      (item) => item.isSpell() && !item.isWeapon() && itemAvailable(unit, item, game.db, game),
-    );
-    this.weapons.push(...spells);
+      // Also include spells
+      const spells = unit.items.filter(
+        (item) => item.isSpell() && !item.isWeapon() && itemAvailable(unit, item, game.db, game),
+      );
+      this.weapons.push(...spells);
+    }
 
     if (this.weapons.length === 0) {
       game.state.back();
@@ -4042,7 +4220,7 @@ export class WeaponChoiceState extends State {
     }
 
     // If only one weapon, auto-select it
-    if (this.weapons.length === 1) {
+    if (this.weapons.length === 1 && !combatArtMode) {
       this.equipWeapon(unit, this.weapons[0]);
       game.state.change('targeting');
       return;
@@ -4138,6 +4316,11 @@ export class WeaponChoiceState extends State {
       const unit: UnitObject = game.selectedUnit;
       if (this.previousEquipped) {
         this.equipWeapon(unit, this.previousEquipped);
+      }
+      if (game.memory.get('combat_art_parent')) {
+        deactivateCombatArts(unit);
+        game.memory.delete('combat_art_parent');
+        game.memory.delete('combat_art_weapons');
       }
       game.highlight.clear();
       this.menu = null;
@@ -4959,12 +5142,6 @@ export class CombatState extends State {
           }
           this.results = activeCombat.applyResults(game.actionLog);
           applyCombatItemEndHooks(game, activeCombat.strikes);
-          applyCombatSkillEndHooks(
-            game,
-            activeCombat.strikes,
-            activeCombat.attacker,
-            activeCombat.defender,
-          );
           queueCombatSkillEvents(
             game,
             activeCombat.strikes,
@@ -4972,6 +5149,12 @@ export class CombatState extends State {
             activeCombat.defender,
             activeCombat.attackItem,
             activeCombat.defenseItem,
+          );
+          applyCombatSkillEndHooks(
+            game,
+            activeCombat.strikes,
+            activeCombat.attacker,
+            activeCombat.defender,
           );
           queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
@@ -13000,10 +13183,10 @@ export class EventState extends State {
             }
             const results = mc.applyResults(game.actionLog);
             applyCombatItemEndHooks(game, mc.strikes);
-            applyCombatSkillEndHooks(game, mc.strikes, mc.attacker, mc.defender);
             queueCombatSkillEvents(
               game, mc.strikes, mc.attacker, mc.defender, attackItem, defItem,
             );
+            applyCombatSkillEndHooks(game, mc.strikes, mc.attacker, mc.defender);
             queueCombatItemEvents(game, mc.strikes);
             // Handle deaths
             for (const deadDefender of results.defenderDeaths ??
