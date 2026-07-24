@@ -8,7 +8,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 import { Dijkstra, AStar } from './pathfinding';
-import { passThrough } from '../combat/skill-system';
+import { movementType, passThrough } from '../combat/skill-system';
 
 /**
  * High-level pathfinding interface.
@@ -219,7 +219,7 @@ export class PathSystem {
    */
   private getMovementGroup(unit: UnitObject): string {
     const klassDef = this.db.classes.get(unit.klass);
-    return klassDef?.movement_group ?? 'Infantry';
+    return movementType(unit, klassDef?.movement_group ?? 'Infantry');
   }
 
   /**

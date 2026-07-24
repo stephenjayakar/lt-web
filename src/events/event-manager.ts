@@ -1406,7 +1406,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       check_traversable(candidate: any, pos: [number, number] | null) {
         const raw = unwrapUnit(candidate);
         if (!raw || !pos || !game.board?.inBounds?.(pos[0], pos[1])) return false;
-        const movementGroup = game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot';
+        let movementGroup = game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot';
+        for (const skill of raw.skills ?? []) {
+          const override = componentValue(skill, 'movement_type');
+          if (typeof override === 'string' && override) movementGroup = override;
+        }
         return game.board.getMovementCost(pos[0], pos[1], movementGroup, game.db) < 99;
       },
     },

@@ -10,6 +10,7 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { SkillObject } from '../objects/skill';
 import { ACHIEVEMENTS } from './records';
+import { movementType } from '../combat/skill-system';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (avoids circular imports)
@@ -566,7 +567,7 @@ export class GameQueryEngine {
       // Check movement cost (99 = impassable)
       if (game.db) {
         const klassDef = game.db.classes?.get(resolved.klass);
-        const movGroup = klassDef?.movement_group ?? 'Infantry';
+        const movGroup = movementType(resolved, klassDef?.movement_group ?? 'Infantry', game);
         const cost = board.getMovementCost(nextX, nextY, movGroup, game.db);
         if (cost >= 99) return null;
       }

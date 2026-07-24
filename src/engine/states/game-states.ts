@@ -201,6 +201,7 @@ import {
   isCantoSkill,
   canSelect,
   modifiedMaximumRange,
+  movementType,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -538,7 +539,11 @@ function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | nul
     const ny = y + dy;
     if (board.inBounds(nx, ny) && !board.isOccupied(nx, ny)) {
       if (traveler) {
-        const movementGroup = game.db.classes.get(traveler.klass)?.movement_group ?? 'Infantry';
+        const movementGroup = movementType(
+          traveler,
+          game.db.classes.get(traveler.klass)?.movement_group ?? 'Infantry',
+          game,
+        );
         if (board.getMovementCost(nx, ny, movementGroup, game.db) >= 99) continue;
       }
       tiles.push([nx, ny]);
@@ -549,7 +554,11 @@ function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | nul
 
 function canUnitStandAt(unit: UnitObject, x: number, y: number): boolean {
   const game = getGame();
-  const movementGroup = game.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+  const movementGroup = movementType(
+    unit,
+    game.db.classes.get(unit.klass)?.movement_group ?? 'Infantry',
+    game,
+  );
   return game.board.inBounds(x, y) &&
     game.board.getMovementCost(x, y, movementGroup, game.db) < 99;
 }

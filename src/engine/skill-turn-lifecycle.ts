@@ -162,10 +162,15 @@ export function applySkillTurnHooks(
             game.actionLog.doAction(new ChangeManaAction(unit, amount, maximumMana(game, unit)));
             effects.push({ unit, skill, component, value: amount });
           }
-        } else if (phase === 'upkeep' && component === 'upkeep_damage' && conditional) {
-          const amount = Math.max(0, Math.trunc(Number(rawValue ?? 0)));
-          if (amount > 0) {
-            game.actionLog.doAction(new DamageAction(unit, amount));
+        } else if (
+          ((phase === 'upkeep' && component === 'upkeep_damage') ||
+            (phase === 'endstep' && component === 'endstep_damage')) &&
+          conditional
+        ) {
+          const amount = Math.trunc(Number(rawValue ?? 0));
+          if (amount !== 0) {
+            if (amount > 0) game.actionLog.doAction(new DamageAction(unit, amount));
+            else game.actionLog.doAction(new HealAction(unit, -amount));
             triggerCharge(game, skill);
             effects.push({ unit, skill, component, value: -amount });
           }
