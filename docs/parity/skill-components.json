@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 241,
     "webHookExports": 65,
-    "referencedComponentNids": 118,
+    "referencedComponentNids": 120,
     "hookMappedComponentNids": 74,
-    "unreferencedComponentNids": 123,
-    "consumedComponentNids": 74,
+    "unreferencedComponentNids": 121,
+    "consumedComponentNids": 77,
     "structuralStatuses": {
-      "consumed": 39,
+      "consumed": 42,
       "hook-and-reference": 58,
       "hook-only": 16,
-      "reference-only": 21,
-      "unreferenced": 107
+      "reference-only": 20,
+      "unreferenced": 105
     }
   },
   "webHookExports": [
@@ -119,7 +119,7 @@
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
-          "line": 538
+          "line": 50
         }
       ],
       "directReads": [
@@ -1153,14 +1153,43 @@
           "line": 14082
         },
         {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 41
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 49
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 50
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 53
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 80
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 584
+        },
+        {
           "source": "src/native.ts",
           "line": 166
         }
       ],
-      "directReads": [],
+      "directReads": [
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 49
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "reference-only"
+      "status": "consumed"
     },
     {
       "nid": "hidden_if_inactive",
@@ -1173,11 +1202,29 @@
       "source": "lt-maker/app/engine/skill_components/attribute_components.py",
       "line": 10,
       "methods": [],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 53
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 80
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 53
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 80
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "grey_if_inactive",
@@ -1190,11 +1237,21 @@
       "source": "lt-maker/app/engine/skill_components/attribute_components.py",
       "line": 15,
       "methods": [],
-      "webReferences": [],
-      "directReads": [],
+      "webReferences": [
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 81
+        }
+      ],
+      "directReads": [
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 81
+        }
+      ],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "consumed"
     },
     {
       "nid": "is_terrain",
@@ -2093,6 +2150,14 @@
           "line": 1955
         },
         {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 56
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 58
+        },
+        {
           "source": "src/main.ts",
           "line": 358
         },
@@ -2157,6 +2222,14 @@
         {
           "source": "src/engine/states/game-states.ts",
           "line": 1955
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 56
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 58
         }
       ],
       "matchingWebHooks": [],
@@ -2230,6 +2303,10 @@
           "line": 1958
         },
         {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 60
+        },
+        {
           "source": "src/main.ts",
           "line": 358
         },
@@ -2278,6 +2355,10 @@
         {
           "source": "src/engine/states/game-states.ts",
           "line": 1958
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 60
         }
       ],
       "matchingWebHooks": [],
@@ -2351,6 +2432,10 @@
           "line": 1958
         },
         {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 60
+        },
+        {
           "source": "src/main.ts",
           "line": 358
         },
@@ -2399,6 +2484,10 @@
         {
           "source": "src/engine/states/game-states.ts",
           "line": 1958
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 60
         }
       ],
       "matchingWebHooks": [],
@@ -2548,6 +2637,10 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 50
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 63
         }
       ],
       "directReads": [
@@ -2558,6 +2651,10 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 50
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 63
         }
       ],
       "matchingWebHooks": [],
@@ -2587,6 +2684,10 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 51
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 64
         }
       ],
       "directReads": [
@@ -2597,6 +2698,10 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 51
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 64
         }
       ],
       "matchingWebHooks": [],
@@ -4655,6 +4760,10 @@
         {
           "source": "src/engine/states/game-states.ts",
           "line": 7900
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 68
         }
       ],
       "directReads": [
@@ -4689,6 +4798,10 @@
         {
           "source": "src/engine/states/game-states.ts",
           "line": 7900
+        },
+        {
+          "source": "src/engine/states/info-menu-state.ts",
+          "line": 68
         }
       ],
       "matchingWebHooks": [],

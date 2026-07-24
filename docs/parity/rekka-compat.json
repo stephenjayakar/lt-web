@@ -1471,7 +1471,7 @@
       {
         "nid": "grey_if_inactive",
         "uses": 10,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "grounded",
@@ -1496,12 +1496,12 @@
       {
         "nid": "hidden",
         "uses": 76,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "hidden_if_inactive",
         "uses": 16,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "hit",

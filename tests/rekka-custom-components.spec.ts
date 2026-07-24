@@ -550,6 +550,53 @@ test.describe('Rekka project-local skill components', () => {
     });
   });
 
+  test('inactive skill presentation hides or greys without losing active entries', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { skillInfoPresentation } = await import('/src/engine/states/info-menu-state.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const make = (nid: string, marker: string, condition: string) => new SkillObject({
+        nid,
+        name: nid,
+        desc: '',
+        components: [
+          ['condition', condition],
+          [marker, null],
+        ],
+      });
+      const hiddenOff = make('HiddenOff', 'hidden_if_inactive', 'False');
+      const hiddenOn = make('HiddenOn', 'hidden_if_inactive', 'True');
+      const greyOff = make('GreyOff', 'grey_if_inactive', 'False');
+      const greyOn = make('GreyOn', 'grey_if_inactive', 'True');
+      const depleted = new SkillObject({
+        nid: 'Depleted',
+        name: 'Depleted',
+        desc: '',
+        components: [
+          ['charges_per_turn', 1],
+          ['grey_if_inactive', null],
+        ],
+      });
+      depleted.data.set('charge', 0);
+      return Object.fromEntries(
+        [hiddenOff, hiddenOn, greyOff, greyOn, depleted].map((skill) => [
+          skill.nid,
+          skillInfoPresentation(skill, unit, game),
+        ]),
+      );
+    });
+
+    expect(result).toEqual({
+      HiddenOff: 'hidden',
+      HiddenOn: 'normal',
+      GreyOff: 'grey',
+      GreyOn: 'normal',
+      Depleted: 'grey',
+    });
+  });
+
   test('givebacker adds missing HP to static damage', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {
