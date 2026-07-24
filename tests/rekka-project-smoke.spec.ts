@@ -286,4 +286,161 @@ test.describe('Rekka all-level compatibility', () => {
         .filter((skill: any) => skill.nid === 'MomentumStack').length);
     expect(remaining).toBe(0);
   });
+
+  test('permanent map animations are non-blocking and turnwheel-backed', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const nid = 'TestRekkaPermanentMapAnim';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'map_anim;BlueDot;Lyn;permanent',
+          'game_var;rekka_map_anim_done;yes',
+        ],
+      });
+      game.eventManager.triggerSpecific(nid, { type: nid }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+
+    const replay = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const snapshot = () => ({
+        done: game.gameVars.get('rekka_map_anim_done'),
+        animations: game.tilemap.animations
+          .filter((animation: any) => animation.nid === 'BlueDot')
+          .map((animation: any) => ({ loop: animation.loop })),
+      });
+      const added = snapshot();
+      const marker = game.actionLog.undo();
+      const animation = game.actionLog.undo();
+      const undone = snapshot();
+      animation.execute();
+      marker.execute();
+      return { added, undone, redone: snapshot() };
+    });
+    expect(replay).toEqual({
+      added: { done: 'yes', animations: [{ loop: true }] },
+      undone: { done: undefined, animations: [] },
+      redone: { done: 'yes', animations: [{ loop: true }] },
+    });
+  });
+
+  test('Chapter 28 Rath reinforcements spawn then move with no_follow as a flag', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=28&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const nid = 'TestRekkaRathinforcements';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'spawn_group;Rathinforcements;north;16,0;normal;stack;no_follow',
+          'move_group;Rathinforcements;Rathinforcements;no_follow',
+          'game_var;rekka_rath_group_done;yes',
+        ],
+      });
+      game.eventManager.triggerSpecific(nid, { type: nid }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    const blocking = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        done: game.gameVars.get('rekka_rath_group_done'),
+        moving: game.movementSystem.isMoving(),
+      };
+    });
+    expect(blocking).toEqual({ done: undefined, moving: true });
+
+    await page.evaluate(() => (window as any).__harness.stepFrames(100, null));
+    const settled = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const expected = game.currentLevel.unit_groups
+        .find((group: any) => group.nid === 'Rathinforcements').positions;
+      return {
+        done: game.gameVars.get('rekka_rath_group_done'),
+        units: ['468', '469', 'Rath'].map((nid) => {
+          const unit = game.units.get(nid);
+          return {
+            nid,
+            position: [...unit.position],
+            expected: expected[nid],
+            board: game.board.getUnit(...unit.position)?.nid,
+          };
+        }),
+      };
+    });
+    expect(settled.done).toBe('yes');
+    for (const unit of settled.units) {
+      expect(unit.position).toEqual(unit.expected);
+      expect(unit.board).toBe(unit.nid);
+    }
+  });
+
+  test('Rekka vendor and prep commands open with their project data', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const nid = 'TestRekkaVendor';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['shop;Lyn;Vulnerary,Heal,Fire;vendor'],
+      });
+      game.eventManager.triggerSpecific(nid, { type: nid }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+    const shop = await page.evaluate(() => {
+      const state: any = (window as any).__gameRef.state.getCurrentState();
+      return {
+        state: state.name,
+        unit: state.unit?.nid,
+        items: state.shopItems.map((item: any) => item.nid),
+      };
+    });
+    expect(shop).toEqual({
+      state: 'shop',
+      unit: 'Lyn',
+      items: ['Vulnerary', 'Heal', 'Fire'],
+    });
+
+    await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const nid = 'TestRekkaPrep';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['prep;t;skateboard_p_instrumental'],
+      });
+      game.eventManager.triggerSpecific(nid, { type: nid }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+    const prep = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        state: game.state.getCurrentState()?.name,
+        pick: game.levelVars.get('_prep_pick'),
+        music: game.gameVars.get('_prep_music'),
+      };
+    });
+    expect(prep).toEqual({
+      state: 'prep_main',
+      pick: true,
+      music: 'skateboard_p_instrumental',
+    });
+  });
 });
