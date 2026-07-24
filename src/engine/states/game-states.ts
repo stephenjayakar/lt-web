@@ -166,7 +166,12 @@ import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { drawIcon16, drawItemIcon } from '../../ui/icons';
-import { AnimationCombat, type AnimationCombatRenderState, type AnimationCombatOwner } from '../../combat/animation-combat';
+import {
+  AnimationCombat,
+  type AnimationCombatRenderState,
+  type AnimationCombatOwner,
+  type TransformBattleAnimations,
+} from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentation';
 import { evaluateEquation, getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
@@ -184,6 +189,7 @@ import {
   sellPrice as itemSellPrice,
   menuAfterCombat,
   canAttackAfterCombat,
+  transforms,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -4920,15 +4926,56 @@ export class CombatState extends State {
         defWeaponType = 'Magic' + defWeaponType;
       }
 
-      // Select weapon animations
-      const atkWeaponAnim = selectWeaponAnim(atkAnimData, atkWeaponType ?? null);
-      const defWeaponAnim = selectWeaponAnim(defAnimData, defWeaponType ?? null);
+      const attackerTransforms = transforms(attacker, attackItem);
+      const defenderTransforms = !!defenseItem && transforms(defender, defenseItem);
+
+      // Transform resources conventionally expose the post-transform attack as
+      // Dragonstone while the item itself has no weapon_type component.
+      const atkWeaponAnim = attackerTransforms
+        ? atkAnimData.weapon_anims.find((anim: any) => anim.nid === 'Dragonstone')
+          ?? selectWeaponAnim(atkAnimData, atkWeaponType ?? null)
+        : selectWeaponAnim(atkAnimData, atkWeaponType ?? null);
+      const defWeaponAnim = defenderTransforms
+        ? defAnimData.weapon_anims.find((anim: any) => anim.nid === 'Dragonstone')
+          ?? selectWeaponAnim(defAnimData, defWeaponType ?? null)
+        : selectWeaponAnim(defAnimData, defWeaponType ?? null);
       if (!atkWeaponAnim || !defWeaponAnim) return false;
 
       // Create BattleAnimation instances with real pose data but empty frames
       // (sprites will hot-swap in once async loading completes)
       const atkAnim = new RealBattleAnimation(atkWeaponAnim, new Map());
       const defAnim = new RealBattleAnimation(defWeaponAnim, new Map());
+      const atkTransformWeaponAnim = attackerTransforms
+        ? atkAnimData.weapon_anims.find((anim: any) => anim.nid === 'Transform') ?? null
+        : null;
+      const atkRevertWeaponAnim = attackerTransforms
+        ? atkAnimData.weapon_anims.find((anim: any) => anim.nid === 'Revert') ?? null
+        : null;
+      const defTransformWeaponAnim = defenderTransforms
+        ? defAnimData.weapon_anims.find((anim: any) => anim.nid === 'Transform') ?? null
+        : null;
+      const defRevertWeaponAnim = defenderTransforms
+        ? defAnimData.weapon_anims.find((anim: any) => anim.nid === 'Revert') ?? null
+        : null;
+      if ((attackerTransforms && (!atkTransformWeaponAnim || !atkRevertWeaponAnim))
+        || (defenderTransforms && (!defTransformWeaponAnim || !defRevertWeaponAnim))) {
+        console.warn('Transform item is missing required Transform/Revert battle animations');
+        return false;
+      }
+      const transformAnimations: TransformBattleAnimations = {
+        attackerTransform: atkTransformWeaponAnim
+          ? new RealBattleAnimation(atkTransformWeaponAnim, new Map())
+          : null,
+        attackerRevert: atkRevertWeaponAnim
+          ? new RealBattleAnimation(atkRevertWeaponAnim, new Map())
+          : null,
+        defenderTransform: defTransformWeaponAnim
+          ? new RealBattleAnimation(defTransformWeaponAnim, new Map())
+          : null,
+        defenderRevert: defRevertWeaponAnim
+          ? new RealBattleAnimation(defRevertWeaponAnim, new Map())
+          : null,
+      };
 
       // Determine left/right assignment (player on right)
       let leftIsAttacker = true;
@@ -4957,6 +5004,7 @@ export class CombatState extends State {
         game.board,
         script,
         game,
+        transformAnimations,
       );
 
       // Wire audio manager for combat sound effects
@@ -4992,6 +5040,19 @@ export class CombatState extends State {
         defAnimData.nid, defWeaponAnim, defender, defAnimData, defAnim,
         db,
       );
+      const extraAnimations = [
+        [atkAnimData.nid, atkTransformWeaponAnim, attacker, atkAnimData, transformAnimations.attackerTransform],
+        [atkAnimData.nid, atkRevertWeaponAnim, attacker, atkAnimData, transformAnimations.attackerRevert],
+        [defAnimData.nid, defTransformWeaponAnim, defender, defAnimData, transformAnimations.defenderTransform],
+        [defAnimData.nid, defRevertWeaponAnim, defender, defAnimData, transformAnimations.defenderRevert],
+      ] as const;
+      for (const [animNid, weaponAnim, unit, combatAnimData, battleAnim] of extraAnimations) {
+        if (weaponAnim && battleAnim) {
+          this.loadSingleCombatSprite(
+            animNid, weaponAnim, unit, combatAnimData, battleAnim, db,
+          );
+        }
+      }
 
       return true;
     } catch (e) {
@@ -5075,6 +5136,34 @@ export class CombatState extends State {
       }
     } catch (e) {
       console.warn('Failed to load combat animation sprites:', e);
+    }
+  }
+
+  private async loadSingleCombatSprite(
+    animNid: string,
+    weaponAnim: import('../../combat/battle-anim-types').WeaponAnimData,
+    unit: UnitObject,
+    combatAnimData: import('../../combat/battle-anim-types').CombatAnimData,
+    battleAnim: RealBattleAnimation,
+    db: any,
+  ): Promise<void> {
+    try {
+      const palette = selectPalette(
+        combatAnimData,
+        unit,
+        db.combatPalettes as Map<string, import('../../combat/battle-anim-types').PaletteData>,
+      );
+      if (!palette) return;
+      const frames = await loadAndConvertWeaponAnim(
+        getGame().resources,
+        animNid,
+        weaponAnim,
+        palette,
+      );
+      if (!frames) return;
+      for (const [nid, canvas] of frames) battleAnim.frameImages.set(nid, canvas);
+    } catch (error) {
+      console.warn(`Failed to load transform battle animation ${animNid}-${weaponAnim.nid}:`, error);
     }
   }
 

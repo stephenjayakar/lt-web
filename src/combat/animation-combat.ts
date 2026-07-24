@@ -165,9 +165,17 @@ export interface AnimationCombatRenderState {
 
 type AnimCombatState =
   | 'init' | 'fade_in' | 'entrance' | 'init_pause'
+  | 'transform'
   | 'pre_proc' | 'begin_phase' | 'attack_proc' | 'defense_proc'
   | 'anim' | 'combat_hit' | 'hp_change' | 'end_phase'
-  | 'end_combat' | 'exp_wait' | 'fade_out' | 'done';
+  | 'end_combat' | 'exp_wait' | 'revert' | 'fade_out' | 'done';
+
+export interface TransformBattleAnimations {
+  attackerTransform?: BattleAnimation | null;
+  attackerRevert?: BattleAnimation | null;
+  defenderTransform?: BattleAnimation | null;
+  defenderRevert?: BattleAnimation | null;
+}
 
 // ============================================================
 // AnimationCombat
@@ -185,6 +193,12 @@ export class AnimationCombat implements AnimationCombatOwner {
   leftAnim: BattleAnimation;
   rightAnim: BattleAnimation;
   leftIsAttacker: boolean;
+  private mainLeftAnim: BattleAnimation;
+  private mainRightAnim: BattleAnimation;
+  private leftTransformAnim: BattleAnimation | null;
+  private rightTransformAnim: BattleAnimation | null;
+  private leftRevertAnim: BattleAnimation | null;
+  private rightRevertAnim: BattleAnimation | null;
 
   // -- Solver / strikes ------------------------------------------------------
   strikes: CombatStrike[];
@@ -302,6 +316,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     board?: any,
     script?: string[] | null,
     randomGame?: RandomGameState | null,
+    transformAnimations?: TransformBattleAnimations,
   ) {
     if (attacker.strikePartner || defender.strikePartner) {
       throw new Error('AnimationCombat does not support attack-stance partners; use MapCombat');
@@ -318,9 +333,23 @@ export class AnimationCombat implements AnimationCombatOwner {
       ...(attacker.rescuing ? [attacker.rescuing] : []),
       ...(defender.rescuing ? [defender.rescuing] : []),
     ])];
-    this.leftAnim = leftAnim;
-    this.rightAnim = rightAnim;
     this.leftIsAttacker = leftIsAttacker;
+    this.mainLeftAnim = leftAnim;
+    this.mainRightAnim = rightAnim;
+    this.leftTransformAnim = leftIsAttacker
+      ? transformAnimations?.attackerTransform ?? null
+      : transformAnimations?.defenderTransform ?? null;
+    this.rightTransformAnim = leftIsAttacker
+      ? transformAnimations?.defenderTransform ?? null
+      : transformAnimations?.attackerTransform ?? null;
+    this.leftRevertAnim = leftIsAttacker
+      ? transformAnimations?.attackerRevert ?? null
+      : transformAnimations?.defenderRevert ?? null;
+    this.rightRevertAnim = leftIsAttacker
+      ? transformAnimations?.defenderRevert ?? null
+      : transformAnimations?.attackerRevert ?? null;
+    this.leftAnim = this.leftTransformAnim ?? this.mainLeftAnim;
+    this.rightAnim = this.rightTransformAnim ?? this.mainRightAnim;
 
     // Wire up animation owner/partner references and set side/range.
     // pair() sets: owner, partner, right, atRange, entranceFrames, initPosition.
@@ -466,6 +495,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       case 'fade_in':     return this.updateFadeIn();
       case 'entrance':    return this.updateEntrance();
       case 'init_pause':  return this.updateInitPause();
+      case 'transform':   return this.updateTransform();
       case 'pre_proc':    return this.updateProcCue();
       case 'begin_phase': return this.updateBeginPhase();
       case 'attack_proc': return this.updateProcCue();
@@ -476,6 +506,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       case 'end_phase':   return this.updateEndPhase();
       case 'end_combat':  return this.updateEndCombat();
       case 'exp_wait':    return this.updateExpWait();
+      case 'revert':      return this.updateRevert();
       case 'fade_out':    return this.updateFadeOut();
       case 'done':        return true;
     }
@@ -543,20 +574,41 @@ export class AnimationCombat implements AnimationCombatOwner {
     // stateTimer is ms-based; compare against INIT_PAUSE_FRAMES in ms
     const pauseMs = INIT_PAUSE_FRAMES * AnimationCombat.FRAME_MS;
     if (this.stateTimer >= pauseMs) {
-      const preProcCues = (kind: 'attack_pre_proc' | 'defense_pre_proc') =>
-        this.procPlayback
-          .filter((mark) => mark.kind === kind && isProcIconVisible(mark))
-          .map(cueFromMark)
-          .reverse();
-      this.pendingProcCues = dedupeProcCues([
-        ...preProcCues('attack_pre_proc'),
-        ...preProcCues('defense_pre_proc'),
-        ...displaySkillCues([this.attacker, this.defender]),
-      ]);
-      if (this.pendingProcCues.length > 0) this.startNextProcCue('pre_proc');
-      else this.transition('begin_phase');
+      if (this.leftTransformAnim) this.leftAnim.setPose('Attack');
+      if (this.rightTransformAnim) this.rightAnim.setPose('Attack');
+      if (this.leftTransformAnim || this.rightTransformAnim) this.transition('transform');
+      else this.beginPreProcPhase();
     }
     return false;
+  }
+
+  private updateTransform(): boolean {
+    const leftDone = !this.leftTransformAnim || this.leftAnim.isIdle() || this.leftAnim.isDone();
+    const rightDone = !this.rightTransformAnim || this.rightAnim.isIdle() || this.rightAnim.isDone();
+    if (!leftDone || !rightDone) return false;
+    this.leftAnim = this.mainLeftAnim;
+    this.rightAnim = this.mainRightAnim;
+    this.pairCurrentAnimations();
+    const standPose = this.atRange > 0 ? 'RangedStand' : 'Stand';
+    this.leftAnim.setPose(standPose);
+    this.rightAnim.setPose(standPose);
+    this.beginPreProcPhase();
+    return false;
+  }
+
+  private beginPreProcPhase(): void {
+    const preProcCues = (kind: 'attack_pre_proc' | 'defense_pre_proc') =>
+      this.procPlayback
+        .filter((mark) => mark.kind === kind && isProcIconVisible(mark))
+        .map(cueFromMark)
+        .reverse();
+    this.pendingProcCues = dedupeProcCues([
+      ...preProcCues('attack_pre_proc'),
+      ...preProcCues('defense_pre_proc'),
+      ...displaySkillCues([this.attacker, this.defender]),
+    ]);
+    if (this.pendingProcCues.length > 0) this.startNextProcCue('pre_proc');
+    else this.transition('begin_phase');
   }
 
   private updateBeginPhase(): boolean {
@@ -740,7 +792,29 @@ export class AnimationCombat implements AnimationCombatOwner {
   }
 
   private updateExpWait(): boolean {
-    this.transition('fade_out');
+    const leftAlive = this.leftTargetHp > 0;
+    const rightAlive = this.rightTargetHp > 0;
+    const useLeftRevert = !this.skipMode && leftAlive && this.leftRevertAnim;
+    const useRightRevert = !this.skipMode && rightAlive && this.rightRevertAnim;
+    if (!useLeftRevert && !useRightRevert) {
+      this.transition('fade_out');
+      return false;
+    }
+    if (useLeftRevert) this.leftAnim = useLeftRevert;
+    if (useRightRevert) this.rightAnim = useRightRevert;
+    this.pairCurrentAnimations();
+    if (useLeftRevert) this.leftAnim.setPose('Attack');
+    if (useRightRevert) this.rightAnim.setPose('Attack');
+    this.transition('revert');
+    return false;
+  }
+
+  private updateRevert(): boolean {
+    const leftDone = !this.leftRevertAnim || this.leftTargetHp <= 0
+      || this.leftAnim.isIdle() || this.leftAnim.isDone();
+    const rightDone = !this.rightRevertAnim || this.rightTargetHp <= 0
+      || this.rightAnim.isIdle() || this.rightAnim.isDone();
+    if (leftDone && rightDone) this.transition('fade_out');
     return false;
   }
 
@@ -763,6 +837,13 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.state = newState;
     this.stateTimer = 0;
     this.stateFrameCount = 0;
+  }
+
+  private pairCurrentAnimations(): void {
+    this.leftAnim.pair(this, this.rightAnim, false, this.atRange, ENTRANCE_FRAMES, [0, 0]);
+    this.rightAnim.pair(this, this.leftAnim, true, this.atRange, ENTRANCE_FRAMES, [0, 0]);
+    this.leftAnim.isLeft = true;
+    this.rightAnim.isLeft = false;
   }
 
   // ================================================================
