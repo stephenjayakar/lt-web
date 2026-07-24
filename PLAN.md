@@ -176,7 +176,7 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 
 ## P4 — Commands, states, and complete campaign flow
 
-- [ ] Replace the `table`/`remove_table` no-op with the event UI required by the
+- [x] Replace the `table`/`remove_table` no-op with the event UI required by the
   Bribe ability and GoldDisplay.
 - [ ] Validate high-volume command semantics and blocking order:
   unit add/move, cursor/camera, layers, stats, attack flags, item/skill changes,
