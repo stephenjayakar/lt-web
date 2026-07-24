@@ -129,7 +129,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 - [x] Implement 42 `combat_art` skills: command/menu flow, allowed-weapon
   filtering, child skill activation, cost/stack checks, targeting,
   cancellation, cleanup, proc presentation, and turnwheel behavior.
-- [ ] Complete combat-art AI selection and the child-component gaps tracked
+- [x] Complete combat-art AI selection and the child-component gaps tracked
   below; inactive/grey presentation is tracked separately.
 - [x] Implement 26 `multi_skill` wrappers with correct child ownership,
   duplicate/stack handling, removal, save IDs, and UI grouping.
@@ -255,7 +255,7 @@ touch, and visual/audio QA has no release-blocking defects.
   promotion, and transform.
 - [x] Verify save migration/failure messaging for unsupported or older Rekka
   saves; never silently discard unknown state.
-- [ ] Add AI scenarios for custom targeting, warp/movement skills, combat arts,
+- [x] Add AI scenarios for custom targeting, warp/movement skills, combat arts,
   item restrictions, splash attacks, shops-independent loadouts, and priority
   modifiers.
 - [x] Compare deterministic combat/growth/event RNG streams before and after
