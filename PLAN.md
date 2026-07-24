@@ -106,12 +106,13 @@ unsafe Python/eval bridge.
 
 - [ ] Movement/reset hooks: `powerstaff`, `combat_artist`, `second_wind`, and
   14 uses of `eval_galeforce`
-- [ ] Combat modifiers/survival: `givebacker`, `nine_lives_event`,
-  `true_miracle_event`, `true_miracle_event_after_combat`, and `disvantage`
+- [x] Combat modifiers: `givebacker` and `disvantage`
+- [ ] Combat survival: `nine_lives_event`, `true_miracle_event`, and
+  `true_miracle_event_after_combat`
 - [ ] Event hooks: 13 `event_after_combat`, 10 `event_before_combat`,
   20 `event_on_upkeep`, 17 `event_after_hit`, 4 `event_after_strike`,
   3 `event_after_crit`, plus hit/dodge/strike variants
-- [ ] Availability restrictions, including four
+- [x] Availability restrictions, including four
   `cannot_use_items_except_armor` uses
 - [ ] Preserve exact hook ordering, playback markers, event payloads, charge
   triggering, action reversal, and save/restore state.

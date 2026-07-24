@@ -207,3 +207,58 @@ test.describe('Rekka project-local item components', () => {
     });
   });
 });
+
+test.describe('Rekka project-local skill components', () => {
+  test('givebacker adds missing HP to static damage', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { modifyDamage } = await import('/src/combat/skill-system.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const prefab = game.db.skills.get('ReversalArt');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      unit.skills.push(new SkillObject(prefab));
+      unit.currentHp = unit.getMaxHP() - 7;
+      return {
+        missingHp: unit.getMaxHP() - unit.currentHp,
+        modifier: modifyDamage(unit, null),
+      };
+    });
+
+    expect(result).toEqual({ missingHp: 7, modifier: 7 });
+  });
+
+  test('cannot_use_items_except_armor allows Gear and rejects other weapon types', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { available } = await import('/src/combat/item-system.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      unit.skills.push(new SkillObject(game.db.skills.get('BunkerStatus')));
+      // Rekka currently has no Gear prefab, so install the minimal synthetic
+      // weapon proficiency needed to isolate the custom availability hook.
+      game.db.classes.get(unit.klass).wexp_gain.Gear = [true, 0];
+      unit.wexp.Gear = 1;
+      const armor = new ItemObject({
+        nid: 'TestArmor',
+        name: 'Test Armor',
+        desc: '',
+        components: [['weapon_type', 'Gear']],
+      });
+      const weapon = new ItemObject({
+        nid: 'TestSword',
+        name: 'Test Sword',
+        desc: '',
+        components: [['weapon_type', 'Sword']],
+      });
+      return {
+        armor: available(unit, armor, game.db, game),
+        weapon: available(unit, weapon, game.db, game),
+      };
+    });
+
+    expect(result).toEqual({ armor: true, weapon: false });
+  });
+});
