@@ -34,7 +34,9 @@ Rekka is web-compatible when:
 - Custom runtime code: 473 lines of item components and 313 lines of skill
   components under `resources/custom_components/`
 - Custom title assets: `resources/custom_sprites/logo.png` and
-  `resources/custom_sprites/press_start.png`
+  `resources/custom_sprites/press_start.png` are present but fully transparent;
+  the web runtime loads them, detects the empty art, and falls back to the
+  configured project title and prompt.
 - Existing automated coverage is only a Prologue clean boot/intro, one Lyn
   combat, one save/load, and Rescue sequence shape. It is not campaign coverage.
 - All Python event command NIDs are recognized structurally, but recognition
@@ -221,8 +223,9 @@ alternate-route/optional-content scenarios and no event/state softlocks.
 
 ## P5 — Browser presentation and UX
 
-- [ ] Load and render Rekka's custom `logo.png` and `press_start.png` on the
-  title screen with its configured title music and an audio-unlock-safe start.
+- [x] Load Rekka's custom `logo.png` and `press_start.png`; render visible custom
+  art or an explicit project-title fallback for its transparent files, with
+  configured title music and an audio-unlock-safe start.
 - [ ] Audit every referenced panorama, portrait, map sprite, tileset, icon,
   animation, combat animation/effect, music track, and SFX; distinguish optional
   fallback from required-resource failure.
@@ -276,8 +279,10 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Exercise event entrypoints and only-once/chaining behavior systematically.
-2. Complete browser UX/audio/input QA, save migration coverage, and the release
+1. Audit referenced Rekka resources and classify required failures versus
+   optional fallbacks.
+2. Exercise event entrypoints and only-once/chaining behavior systematically.
+3. Complete browser UX/audio/input QA, save migration coverage, and the release
    gate.
 
 ## Already present — verify, do not reimplement blindly
