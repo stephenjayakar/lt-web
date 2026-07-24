@@ -10,6 +10,113 @@ async function boot(page: Page): Promise<void> {
 }
 
 test.describe('Rekka project-local item components', () => {
+  test('transform stones apply equipped stats, range, status, undo, and save identity', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { transforms } = await import('/src/combat/item-system.ts');
+      const { EquipItemAction } = await import('/src/engine/action.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const unit = game.units.get('Lyn');
+      const catalog = ['Firestone', 'Shadowstone', 'Seastone', 'Bloodstone', 'Divinestone']
+        .map((nid) => {
+          const item = new ItemObject(game.db.items.get(nid));
+          return {
+            nid,
+            marker: transforms(unit, item),
+            range: [item.getMinRange(), item.getMaxRange()],
+            hasUses: item.hasComponent('uses'),
+          };
+        });
+      const base = {
+        hp: unit.getStatValue('HP'),
+        str: unit.getStatValue('STR'),
+        def: unit.getStatValue('DEF'),
+      };
+      const stone = new ItemObject(game.db.items.get('Divinestone'));
+      stone.owner = unit;
+      unit.items.push(stone);
+      unit.onAddItem(stone);
+      const equip = new EquipItemAction(unit, stone);
+      game.actionLog.doAction(equip);
+      const equipped = {
+        marker: transforms(unit, stone),
+        range: [stone.getMinRange(), stone.getMaxRange()],
+        hp: unit.getStatValue('HP'),
+        str: unit.getStatValue('STR'),
+        def: unit.getStatValue('DEF'),
+        status: unit.skills.some((skill: any) =>
+          skill.nid === 'DragonScales' && skill.data.get('itemSource') === stone),
+        equipped: unit.equippedWeapon?.nid ?? null,
+      };
+      const action = game.actionLog.undo();
+      const undone = {
+        hp: unit.getStatValue('HP'),
+        str: unit.getStatValue('STR'),
+        def: unit.getStatValue('DEF'),
+        status: unit.skills.some((skill: any) => skill.nid === 'DragonScales'),
+      };
+      action.execute();
+      const snapshot = harness.saveSnapshot();
+      const loaded = await harness.loadSnapshot(snapshot);
+      const loadedUnit = game.units.get('Lyn');
+      const loadedStone = loadedUnit.equippedWeapon;
+      return {
+        catalog,
+        base,
+        equipped,
+        action: action.constructor.name,
+        undone,
+        loaded,
+        loadedStone: loadedStone?.nid ?? null,
+        identityPreserved: !!loadedStone && loadedUnit.items.includes(loadedStone),
+        loadedStats: {
+          hp: loadedUnit.getStatValue('HP'),
+          str: loadedUnit.getStatValue('STR'),
+          def: loadedUnit.getStatValue('DEF'),
+        },
+        loadedStatus: loadedUnit.skills.some((skill: any) =>
+          skill.nid === 'DragonScales' && skill.data.get('itemSource') === loadedStone),
+      };
+    });
+
+    expect(result.equipped).toEqual({
+      marker: true,
+      range: [1, 5],
+      hp: result.base.hp + 200,
+      str: result.base.str + 30,
+      def: result.base.def + 40,
+      status: true,
+      equipped: 'Divinestone',
+    });
+    expect(result.catalog).toEqual([
+      { nid: 'Firestone', marker: true, range: [1, 7], hasUses: false },
+      { nid: 'Shadowstone', marker: true, range: [1, 3], hasUses: false },
+      { nid: 'Seastone', marker: true, range: [1, 1], hasUses: false },
+      { nid: 'Bloodstone', marker: true, range: [1, 2], hasUses: false },
+      { nid: 'Divinestone', marker: true, range: [1, 5], hasUses: false },
+    ]);
+    expect(result).toMatchObject({
+      action: 'EquipItemAction',
+      undone: {
+        hp: result.base.hp,
+        str: result.base.str,
+        def: result.base.def,
+        status: false,
+      },
+      loaded: true,
+      loadedStone: 'Divinestone',
+      identityPreserved: true,
+      loadedStats: {
+        hp: result.base.hp + 200,
+        str: result.base.str + 30,
+        def: result.base.def + 40,
+      },
+      loadedStatus: true,
+    });
+  });
+
   test('equippable_accessory uses the ring slot with reversible equip hooks and save identity', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {
