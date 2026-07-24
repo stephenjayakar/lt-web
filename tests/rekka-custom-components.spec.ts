@@ -852,6 +852,111 @@ test.describe('Rekka project-local item components', () => {
 });
 
 test.describe('Rekka project-local skill components', () => {
+  test('global, upkeep_event, empower_heal, and lost_on_kill follow Python hooks', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+      const { applyCombatSkillEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { empowerHeal, unitSpriteTint } = await import('/src/combat/skill-system.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const target = game.units.get('101');
+      const globalNids = [...game.db.skills.values()]
+        .filter((prefab: any) => prefab.components.some((component: any) =>
+          component[0] === 'global'))
+        .map((prefab: any) => prefab.nid);
+      const globalsInstalled = globalNids.every((nid: string) =>
+        unit.skills.some((skill: any) =>
+          skill.nid === nid && skill.data.get('sourceType') === 'global'));
+
+      const upkeep = new SkillObject({
+        nid: '_Upkeep', name: '_Upkeep', desc: '',
+        components: [['upkeep_event', 'Global Ability_MomentumGain']],
+      });
+      unit.skills = [upkeep];
+      const calls: any[] = [];
+      game.eventManager.triggerSpecific = (nid: string, trigger: any) => {
+        calls.push({ nid, type: trigger.type, unit: trigger.unit1.nid });
+        return true;
+      };
+      const upkeepEffects = applySkillTurnHooks(game, [unit], 'upkeep');
+
+      const healer = new SkillObject({
+        nid: '_Empower', name: '_Empower', desc: '',
+        components: [['empower_heal', "unit.get_stat('MAG')"]],
+      });
+      unit.skills = [healer];
+      const empowered = empowerHeal(unit, target, game);
+      const tinted = new SkillObject({
+        nid: '_Tinted', name: '_Tinted', desc: '',
+        components: [['unit_tint', [12, 34, 56]]],
+      });
+      const flickering = new SkillObject({
+        nid: '_Flickering', name: '_Flickering', desc: '',
+        components: [['unit_flickering_tint', [78, 90, 123]]],
+      });
+      unit.skills = [tinted];
+      const staticTint = unitSpriteTint(unit, game, 500);
+      unit.skills = [flickering];
+      const flickerOn = unitSpriteTint(unit, game, 100);
+      const flickerOff = unitSpriteTint(unit, game, 500);
+
+      const temporary = new SkillObject({
+        nid: '_UntilKill', name: '_UntilKill', desc: '',
+        components: [['lost_on_kill', null]],
+      });
+      unit.skills = [temporary];
+      target.currentHp = 0;
+      const weapon = unit.items.find((item: any) => item.isWeapon());
+      const actionStart = game.actionLog.actions.length;
+      const removed = applyCombatSkillEndHooks(game, [{
+        attacker: unit,
+        defender: target,
+        item: weapon,
+        hit: true,
+        crit: false,
+        damage: 1,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      }], unit, target);
+      const absentAfterKill = !unit.skills.includes(temporary);
+      while (game.actionLog.actions.length > actionStart) game.actionLog.undo();
+
+      return {
+        globalNids,
+        globalsInstalled,
+        calls,
+        upkeepComponents: upkeepEffects.map((effect: any) => effect.component),
+        empowered,
+        expectedEmpower: unit.stats.MAG,
+        staticTint,
+        flickerOn,
+        flickerOff,
+        removed,
+        absentAfterKill,
+        restoredAfterUndo: unit.skills.includes(temporary),
+      };
+    });
+
+    expect(result.globalNids.length).toBeGreaterThan(0);
+    expect(result.globalsInstalled).toBe(true);
+    expect(result.calls).toEqual([{
+      nid: 'Global Ability_MomentumGain',
+      type: 'upkeep_event',
+      unit: 'Lyn',
+    }]);
+    expect(result.upkeepComponents).toEqual(['upkeep_event']);
+    expect(result.empowered).toBe(result.expectedEmpower);
+    expect(result.staticTint).toEqual({ color: [12, 34, 56], alpha: 1 });
+    expect(result.flickerOn).toEqual({ color: [78, 90, 123], alpha: 1 });
+    expect(result.flickerOff).toEqual({ color: [78, 90, 123], alpha: 0 });
+    expect(result.removed).toBeGreaterThanOrEqual(1);
+    expect(result.absentAfterKill).toBe(true);
+    expect(result.restoredAfterUndo).toBe(true);
+  });
+
   test('combat art menu activates, cancels, and consumes a reversible child skill', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

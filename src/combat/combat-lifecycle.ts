@@ -606,6 +606,12 @@ export function applyCombatSkillEndHooks(
         if (child) game.actionLog.doAction(new RemoveSkillAction(unit, child));
         applied += child ? 2 : 1;
       }
+
+      if (skill.hasComponent('lost_on_kill') && target.currentHp <= 0 &&
+          unit.skills.includes(skill)) {
+        game.actionLog.doAction(new RemoveSkillAction(unit, skill));
+        applied++;
+      }
     }
   }
 

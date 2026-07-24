@@ -1189,6 +1189,18 @@ export class GameState {
       }
     }
 
+    // Python UnitObject creates every DB-wide Global skill before personal and
+    // class skills. These mechanic-level skills must exist on newly built
+    // generics and uniques alike.
+    for (const skillPrefab of this.db.skills.values()) {
+      if (!skillPrefab.components.some(([nid]) => nid === 'global')) continue;
+      const skill = new SkillObject(skillPrefab);
+      skill.data.set('sourceType', 'global');
+      skill.data.set('sourceNid', 'game');
+      unit.skills.push(skill);
+      if (isCantoSkill(skill)) unit.hasCanto = true;
+    }
+
     // Equip starting skills from learned_skills (tuples of [requiredLevel, skillNid])
     if (prefab.learned_skills) {
       for (const [requiredLevel, skillNid] of prefab.learned_skills) {

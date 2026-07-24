@@ -580,8 +580,14 @@ export class InfoMenuState extends State {
 
     const skillStartY = skillHeaderY + 14;
     // Python MultiSkill folds its sourced children into the visible wrapper.
-    const visibleSkills = unit.skills.filter((skill) =>
-      skillInfoPresentation(skill, unit, game) !== 'hidden');
+    const visibleSkills = unit.skills
+      .filter((skill) => skillInfoPresentation(skill, unit, game) !== 'hidden')
+      .map((skill, index) => ({ skill, index }))
+      .sort((left, right) =>
+        Number(right.skill.hasComponent('class_skill')) -
+          Number(left.skill.hasComponent('class_skill')) ||
+        left.index - right.index)
+      .map(({ skill }) => skill);
     if (visibleSkills.length === 0) {
       this.drawSmallText(surf, '(none)', rightX + 4, skillStartY, COLOR_GREY);
     } else {

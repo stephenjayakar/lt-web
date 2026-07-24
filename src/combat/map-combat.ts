@@ -719,7 +719,10 @@ export class MapCombat {
           if (!this.hitSoundPlayed && this.audioManager) {
             this.hitSoundPlayed = true;
             if (strike.hit) {
-              if (strike.crit) {
+              const configuredHitSfx = strike.item.getComponent<string>('map_hit_sfx');
+              if (configuredHitSfx) {
+                this.audioManager.playSfx(configuredHitSfx);
+              } else if (strike.crit) {
                 this.audioManager.playSfx('Critical Hit 1');
               } else {
                 this.audioManager.playSfx('Attack Hit ' + (Math.random() < 0.5 ? '1' : '2'));

@@ -120,6 +120,10 @@ const commandManifest = commandMetadata.map((command) => ({
 const registeredStates = new Set(matches(main, /new\s+(\w+State)\s*\(/g));
 
 const tsFiles = walk('src', '.ts');
+// This count-locked project contract contains component NID literals as data,
+// not implementation evidence.
+const componentScanFiles = tsFiles.filter((file) =>
+  !file.endsWith(`${path.sep}rekka-component-support.ts`));
 const tsLines = tsFiles.reduce(
   (total, file) => total + fs.readFileSync(file, 'utf8').split(/\r?\n/).length,
   0,
@@ -174,7 +178,7 @@ function exactLiteralLocations(nid) {
   const escaped = nid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const expression = new RegExp(`['"]${escaped}['"]`, 'g');
   const locations = [];
-  for (const file of tsFiles) {
+  for (const file of componentScanFiles) {
     const source = fs.readFileSync(file, 'utf8');
     for (const match of source.matchAll(expression)) {
       const prefix = source.slice(0, match.index);
@@ -196,7 +200,7 @@ function directConsumptionLocations(nid) {
     'g',
   );
   const locations = [];
-  for (const file of tsFiles) {
+  for (const file of componentScanFiles) {
     const source = fs.readFileSync(file, 'utf8');
     for (const match of source.matchAll(expression)) {
       const prefix = source.slice(0, match.index);
