@@ -580,6 +580,9 @@ test.describe('Event command flag matching: camera flags', () => {
       return { position: camera.getPosition(), target: camera.getTarget() };
     });
     expect(movingCamera.position).not.toEqual(movingCamera.target);
+    // move_cursor uses LT's three-tile visibility margin rather than
+    // recentering the target like center_cursor.
+    expect(movingCamera.target).toEqual([80, 128]);
 
     await page.goto('/?harness=true&level=1&clean=true&bundle=false');
     await waitForHarness(page);
@@ -612,6 +615,19 @@ test.describe('Event command flag matching: camera flags', () => {
       return { position: camera.getPosition(), target: camera.getTarget() };
     });
     expect(snappedCamera.position).toEqual(snappedCamera.target);
+    expect(snappedCamera.target).toEqual([160, 168]);
+  });
+
+  test('cursor speed controls the full blocking pan duration', async ({ page }) => {
+    await installAndRunEvent(page, 'test_cursor_duration', [
+      'center_cursor;17,15;1000',
+      'game_var;cursor_duration;done',
+    ], 2);
+    expect(await getGameVar(page, 'cursor_duration')).toBeUndefined();
+    await stepFrames(page, 30);
+    expect(await getGameVar(page, 'cursor_duration')).toBeUndefined();
+    await stepFrames(page, 35);
+    expect(await getGameVar(page, 'cursor_duration')).toBe('done');
   });
 
   test('flicker_cursor immediate snaps before its mandatory display wait', async ({ page }) => {
@@ -629,6 +645,76 @@ test.describe('Event command flag matching: camera flags', () => {
       return gameWindow.__gameRef.cursor.visible;
     });
     expect(cursorVisible).toBe(false);
+  });
+});
+
+test.describe('Event layer actions', () => {
+  test('show_layer and hide_layer update terrain and undo/redo exactly', async ({ page }) => {
+    await page.goto('/?harness=true&level=3&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    const before = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const door = game.tilemap.layers.find((layer: any) => layer.nid === 'Door1');
+      const chest = game.tilemap.layers.find((layer: any) => layer.nid === 'Chest1');
+      const [key, terrain] = [...door.terrainGrid.entries()][0];
+      const [x, y] = key.split(',').map(Number);
+      return {
+        doorVisible: door.visible,
+        chestVisible: chest.visible,
+        position: [x, y],
+        layerTerrain: terrain,
+        boardTerrain: game.board.getTerrain(x, y),
+      };
+    });
+    expect(before.doorVisible).toBe(false);
+    expect(before.chestVisible).toBe(true);
+
+    await installAndRunEvent(page, 'test_layer_actions', [
+      'show_layer;Door1;immediate',
+      'hide_layer;Chest1;immediate',
+      'game_var;layer_actions;done',
+    ], 3);
+    const changed = await page.evaluate(({ position }) => {
+      const game = (window as any).__gameRef;
+      return {
+        marker: game.gameVars.get('layer_actions'),
+        doorVisible: game.tilemap.layers.find((layer: any) => layer.nid === 'Door1').visible,
+        chestVisible: game.tilemap.layers.find((layer: any) => layer.nid === 'Chest1').visible,
+        boardTerrain: game.board.getTerrain(position[0], position[1]),
+      };
+    }, { position: before.position });
+    expect(changed).toEqual({
+      marker: 'done',
+      doorVisible: true,
+      chestVisible: false,
+      boardTerrain: before.layerTerrain,
+    });
+
+    const replay = await page.evaluate(({ position }) => {
+      const game = (window as any).__gameRef;
+      const marker = game.actionLog.undo();
+      const hide = game.actionLog.undo();
+      const show = game.actionLog.undo();
+      const snapshot = () => ({
+        marker: game.gameVars.get('layer_actions'),
+        doorVisible: game.tilemap.layers.find((layer: any) => layer.nid === 'Door1').visible,
+        chestVisible: game.tilemap.layers.find((layer: any) => layer.nid === 'Chest1').visible,
+        boardTerrain: game.board.getTerrain(position[0], position[1]),
+      });
+      const undone = snapshot();
+      show.execute();
+      hide.execute();
+      marker.execute();
+      return { undone, redone: snapshot() };
+    }, { position: before.position });
+    expect(replay.undone).toEqual({
+      marker: undefined,
+      doorVisible: false,
+      chestVisible: true,
+      boardTerrain: before.boardTerrain,
+    });
+    expect(replay.redone).toEqual(changed);
   });
 });
 

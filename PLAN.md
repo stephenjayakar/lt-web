@@ -181,7 +181,8 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 - [ ] Validate high-volume command semantics and blocking order:
   - [x] Unit add/move, including relative destinations, placement policy,
     stacked swaps, warp ordering, and turnwheel replay.
-  - [ ] Cursor/camera and layer visibility.
+  - [x] Cursor/camera and layer visibility, including duration-backed pans,
+    terrain refresh, and turnwheel replay.
   - [ ] Stats, attack flags, item/skill changes, and AI changes.
   - [ ] Map animations, shops, prep, and unit groups.
 - [ ] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,

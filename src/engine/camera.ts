@@ -56,6 +56,12 @@ export class Camera {
   /** Target viewport top-left in world pixels. */
   private targetX: number = 0;
   private targetY: number = 0;
+  /** One-shot duration override used by event-command slow pans. */
+  private pendingPanFrames: number = 0;
+  private panFramesRemaining: number = 0;
+  private panTotalFrames: number = 0;
+  private panStartX: number = 0;
+  private panStartY: number = 0;
 
   /** Map dimensions in pixels (derived from tile counts). */
   private mapPixelW: number = 240;
@@ -75,6 +81,15 @@ export class Camera {
     this.targetX = x;
     this.targetY = y;
     this.clampTarget();
+    if (this.pendingPanFrames > 0) {
+      this.panStartX = this.x;
+      this.panStartY = this.y;
+      this.panTotalFrames = this.pendingPanFrames;
+      this.panFramesRemaining = this.pendingPanFrames;
+      this.pendingPanFrames = 0;
+    } else {
+      this.panFramesRemaining = 0;
+    }
   }
 
   forcePosition(x: number, y: number): void {
@@ -83,6 +98,13 @@ export class Camera {
     this.clampTarget();
     this.x = this.targetX;
     this.y = this.targetY;
+    this.pendingPanFrames = 0;
+    this.panFramesRemaining = 0;
+  }
+
+  /** Apply a duration to the next setTarget/focus call, matching do_slow_pan. */
+  setPanDuration(durationMs: number): void {
+    this.pendingPanFrames = Math.max(1, Math.ceil(durationMs / (1000 / 60)));
   }
 
   focusTile(tileX: number, tileY: number): void {
@@ -96,6 +118,33 @@ export class Camera {
     const py = tileY * TILEHEIGHT + TILEHEIGHT / 2 - viewport.height / 2;
     this.forcePosition(px, py);
   }
+
+  /**
+   * Keep a tile inside LT's three-tile camera margin without recentering an
+   * already-visible target. This is move_cursor/set_xy, distinct from center.
+   */
+  trackTile(tileX: number, tileY: number): void {
+    const viewportTilesX = Math.floor(viewport.width / TILEWIDTH);
+    const viewportTilesY = Math.floor(viewport.height / TILEHEIGHT);
+    const currentTileX = this.targetX / TILEWIDTH;
+    const currentTileY = this.targetY / TILEHEIGHT;
+    const targetTileX = tileX <= currentTileX + 3
+      ? tileX - 3
+      : tileX >= currentTileX + viewportTilesX - 3
+        ? tileX - viewportTilesX + 3
+        : currentTileX;
+    const targetTileY = tileY <= currentTileY + 3
+      ? tileY - 3
+      : tileY >= currentTileY + viewportTilesY - 3
+        ? tileY - viewportTilesY + 3
+        : currentTileY;
+    this.setTarget(targetTileX * TILEWIDTH, targetTileY * TILEHEIGHT);
+  }
+
+  forceTrackTile(tileX: number, tileY: number): void {
+    this.trackTile(tileX, tileY);
+    this.snapToTarget();
+  }
   /** Whether interpolation has reached the current target. */
   isAtTarget(): boolean {
     return Math.abs(this.targetX - this.x) < SNAP_THRESHOLD &&
@@ -106,18 +155,34 @@ export class Camera {
   snapToTarget(): void {
     this.x = this.targetX;
     this.y = this.targetY;
+    this.pendingPanFrames = 0;
+    this.panFramesRemaining = 0;
   }
 
   update(): void {
-    const dx = this.targetX - this.x;
-    const dy = this.targetY - this.y;
-
-    if (Math.abs(dx) < SNAP_THRESHOLD && Math.abs(dy) < SNAP_THRESHOLD) {
-      this.x = this.targetX;
-      this.y = this.targetY;
+    if (this.panFramesRemaining > 0) {
+      const elapsed = this.panTotalFrames - this.panFramesRemaining + 1;
+      const progress = Math.min(1, elapsed / this.panTotalFrames);
+      // LT uses cubic easing for duration-backed event pans.
+      const eased = 1 - Math.pow(1 - progress, 3);
+      this.x = this.panStartX + (this.targetX - this.panStartX) * eased;
+      this.y = this.panStartY + (this.targetY - this.panStartY) * eased;
+      this.panFramesRemaining--;
+      if (this.panFramesRemaining === 0) {
+        this.x = this.targetX;
+        this.y = this.targetY;
+      }
     } else {
-      this.x += dx * SMOOTH_FACTOR;
-      this.y += dy * SMOOTH_FACTOR;
+      const dx = this.targetX - this.x;
+      const dy = this.targetY - this.y;
+
+      if (Math.abs(dx) < SNAP_THRESHOLD && Math.abs(dy) < SNAP_THRESHOLD) {
+        this.x = this.targetX;
+        this.y = this.targetY;
+      } else {
+        this.x += dx * SMOOTH_FACTOR;
+        this.y += dy * SMOOTH_FACTOR;
+      }
     }
 
     // Advance shake frame

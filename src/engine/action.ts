@@ -1571,6 +1571,77 @@ export class ChangeBgTilemapAction extends Action {
   }
 }
 
+/** Reversible tilemap-layer visibility changes used by event commands. */
+export class ShowLayerAction extends Action {
+  private tilemap: any;
+  private board: GameBoard | null;
+  private layerNid: string;
+  private transition: 'fade' | 'immediate';
+
+  constructor(
+    tilemap: any,
+    board: GameBoard | null,
+    layerNid: string,
+    transition: 'fade' | 'immediate',
+  ) {
+    super();
+    this.tilemap = tilemap;
+    this.board = board;
+    this.layerNid = layerNid;
+    this.transition = transition;
+  }
+
+  override do(): void {
+    this.tilemap.showLayer(this.layerNid, this.transition);
+    this.board?.initFromTilemap(this.tilemap);
+  }
+
+  execute(): void {
+    this.tilemap.showLayer(this.layerNid, 'immediate');
+    this.board?.initFromTilemap(this.tilemap);
+  }
+
+  reverse(): void {
+    this.tilemap.hideLayer(this.layerNid, 'immediate');
+    this.board?.initFromTilemap(this.tilemap);
+  }
+}
+
+export class HideLayerAction extends Action {
+  private tilemap: any;
+  private board: GameBoard | null;
+  private layerNid: string;
+  private transition: 'fade' | 'immediate';
+
+  constructor(
+    tilemap: any,
+    board: GameBoard | null,
+    layerNid: string,
+    transition: 'fade' | 'immediate',
+  ) {
+    super();
+    this.tilemap = tilemap;
+    this.board = board;
+    this.layerNid = layerNid;
+    this.transition = transition;
+  }
+
+  override do(): void {
+    this.tilemap.hideLayer(this.layerNid, this.transition);
+    this.board?.initFromTilemap(this.tilemap);
+  }
+
+  execute(): void {
+    this.tilemap.hideLayer(this.layerNid, 'immediate');
+    this.board?.initFromTilemap(this.tilemap);
+  }
+
+  reverse(): void {
+    this.tilemap.showLayer(this.layerNid, 'immediate');
+    this.board?.initFromTilemap(this.tilemap);
+  }
+}
+
 /** ChangeTeamPaletteAction - Python action.ChangeTeamPalette: overrides a
  * team's map-sprite palette / combat color at runtime, reversibly, and
  * rebuilds affected map sprites (cache-keyed by palette, so a lazy reload
