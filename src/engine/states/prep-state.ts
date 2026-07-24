@@ -223,8 +223,8 @@ export class PrepMainState extends State {
     const slots = getFormationSpots().length;
     const countText = `Units ${deployed}/${Math.min(total, slots)}`;
     surf.fillRect(0, vh - 18, vw, 18, 'rgba(16,16,48,0.8)');
-    surf.drawText('A: Choose   START: Fight', 4, vh - 13, 'rgba(170,170,210,1)', '6px monospace');
-    surf.drawText(countText, vw - countText.length * 5 - 4, vh - 13, 'rgba(190,190,225,1)', '7px monospace');
+    surf.drawText('A: Choose   START: Fight', 4, vh - 17, 'rgba(170,170,210,1)', '6px monospace');
+    surf.drawTextRight(countText, vw - 4, vh - 17, 'rgba(190,190,225,1)', '7px monospace');
 
     return surf;
   }

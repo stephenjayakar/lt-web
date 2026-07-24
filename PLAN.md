@@ -232,14 +232,14 @@ alternate-route/optional-content scenarios and no event/state softlocks.
 - [ ] Visually verify title, save select, prep/base, representative maps,
   combat forecast, map combat, full battle animation, combat arts, accessories,
   shops, dialogue, chapter transition, ending, and credits.
-- [ ] Ensure menus remain legible and stable at 240×160 logical resolution
+- [x] Ensure menus remain legible and stable at 240×160 logical resolution
   across common desktop/mobile viewport sizes and device-pixel ratios.
 - [x] Remove browser interaction jank: reliable focus, no page scrolling during
   play, correct keyboard repeat, gamepad navigation, touch hit targets, pause
   behavior, fullscreen/resizing, and visible audio state.
 - [ ] Verify animation timing, camera movement, overlays, map SFX, music fades,
   battle music transitions, and return-to-map audio.
-- [ ] Add screenshot baselines for representative screens and a lightweight
+- [x] Add screenshot baselines for representative screens and a lightweight
   manual audio checklist; pixel differences must not hide behavioral failures.
 
 Gate: representative browser sessions are playable with keyboard, gamepad, and

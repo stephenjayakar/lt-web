@@ -225,6 +225,61 @@ function auditResources() {
       `sfx/${nid}.${extension}`));
   }
 
+  // Event scripts can reference resources directly without a catalog entry.
+  // Audit every static literal and classify missing DEBUG-only fixtures as
+  // optional; dynamic substitutions are exercised by the runtime event tests.
+  const unitPortraits = new Map(units.map((unit) => [unit.nid, unit.portrait_nid]));
+  const seenEventReferences = new Set();
+  for (const event of events) {
+    for (const rawLine of event._source ?? []) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const [rawCommand, ...commandArgs] = line.split(';').map((part) => part.trim());
+      const command = {
+        u: 'add_portrait',
+        uu: 'multi_add_portrait',
+        b: 'change_background',
+        m: 'music',
+      }[rawCommand] ?? rawCommand;
+      const references = [];
+      if (command === 'add_portrait') references.push(['portrait', commandArgs[0]]);
+      if (command === 'multi_add_portrait') {
+        for (let index = 0; index < commandArgs.length; index += 2) {
+          references.push(['portrait', commandArgs[index]]);
+        }
+      }
+      if (command === 'change_background') references.push(['panorama', commandArgs[0]]);
+      if (command === 'map_anim') references.push(['map-animation', commandArgs[0]]);
+      if (command === 'music') references.push(['music', commandArgs[0]]);
+      if (command === 'change_music') references.push(['music', commandArgs[1]]);
+      if (command === 'sound') references.push(['sfx', commandArgs[0]]);
+
+      for (const [category, rawNid] of references) {
+        if (!rawNid || rawNid === 'None' || /[{}[\]]/.test(rawNid)) continue;
+        const nid = category === 'portrait'
+          ? unitPortraits.get(rawNid) ?? rawNid
+          : rawNid;
+        const key = `${event.nid}\0${category}\0${nid}`;
+        if (seenEventReferences.has(key)) continue;
+        seenEventReferences.add(key);
+        const paths = category === 'portrait'
+          ? [`portraits/${nid}.png`]
+          : category === 'panorama'
+            ? [`panoramas/${nid}.png`, `panoramas/${nid}0.png`]
+            : category === 'map-animation'
+              ? [`animations/${nid}.png`]
+              : ['ogg', 'mp3', 'wav'].map((extension) =>
+                `${category}/${nid}.${extension}`);
+        add(
+          `event-${category}`,
+          `${event.nid}: ${nid}`,
+          paths,
+          event.level_nid === 'DEBUG' ? 'debug-only-fixture' : 'required',
+        );
+      }
+    }
+  }
+
   const missing = checks.filter((check) => !check.found);
   return {
     checks: checks.length,
