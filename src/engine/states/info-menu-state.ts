@@ -24,7 +24,7 @@ import {
   getEquippedWeapon,
 } from '../../combat/combat-calcs';
 import { FONT } from '../../rendering/bmp-font';
-import { growthChange } from '../../combat/skill-system';
+import { growthChange, modifiedMaximumRange } from '../../combat/skill-system';
 import { evaluateCondition } from '../../events/event-manager';
 import type { SkillObject } from '../../objects/skill';
 
@@ -511,7 +511,7 @@ export class InfoMenuState extends State {
 
       // Range
       const minR = weapon.getMinRange();
-      const maxR = weapon.getMaxRange();
+      const maxR = modifiedMaximumRange(unit, weapon, game);
       const rangeStr = minR === maxR ? String(minR) : `${minR}-${maxR}`;
       this.drawBattleStat(surf, 'Rng', rangeStr, rightX + halfW, bsY + 24);
     } else {

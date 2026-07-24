@@ -22,6 +22,7 @@ import {
   evaluateEquation,
 } from '../combat/combat-calcs';
 import { available as itemAvailable, stealItemRestrict } from '../combat/item-system';
+import { modifiedMaximumRange } from '../combat/skill-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 
@@ -541,10 +542,12 @@ export class AIController {
     let maxRange = 0;
     for (const item of unit.items) {
       if ((item.isWeapon() || item.isSpell()) && itemAvailable(unit, item, this.db, this.gameRef)) {
-        maxRange = Math.max(maxRange, item.getMaxRange());
+        maxRange = Math.max(maxRange, modifiedMaximumRange(unit, item, this.gameRef));
       }
     }
-    for (const item of this.getStealItems(unit)) maxRange = Math.max(maxRange, item.getMaxRange());
+    for (const item of this.getStealItems(unit)) {
+      maxRange = Math.max(maxRange, modifiedMaximumRange(unit, item, this.gameRef));
+    }
     return maxRange;
   }
 
@@ -588,7 +591,7 @@ export class AIController {
         const targetItem = legal.reduce((most, candidate) =>
           candidate.getValue() >= most.getValue() ? candidate : most,
         );
-        for (const pos of this.getAttackPositions(validMoves, enemy, stealItem)) {
+        for (const pos of this.getAttackPositions(unit, validMoves, enemy, stealItem)) {
           const value = targetItem.getValue();
           if (value < bestValue) continue;
           bestValue = value;
@@ -644,7 +647,7 @@ export class AIController {
       for (const enemy of enemies) {
         if (enemy.isDead()) continue;
 
-        const attackPositions = this.getAttackPositions(validMoves, enemy, weapon);
+        const attackPositions = this.getAttackPositions(unit, validMoves, enemy, weapon);
 
         for (const pos of attackPositions) {
           const utility = this.evaluateAttackUtility(
@@ -827,7 +830,7 @@ export class AIController {
           // Skip fully healed allies
           if (target.currentHp >= target.maxHp) continue;
 
-          const attackPositions = this.getAttackPositions(validMoves, target, item);
+          const attackPositions = this.getAttackPositions(unit, validMoves, target, item);
 
           for (const pos of attackPositions) {
             const priority = this.computeHealPriority(unit, item, target);
@@ -1158,6 +1161,7 @@ export class AIController {
    * Returns positions in validMoves that are within the weapon's range of the target.
    */
   private getAttackPositions(
+    unit: UnitObject,
     validMoves: [number, number][],
     target: UnitObject,
     item: ItemObject,
@@ -1166,7 +1170,7 @@ export class AIController {
     if (!targetPos) return [];
 
     const minRange = item.getMinRange();
-    const maxRange = item.getMaxRange();
+    const maxRange = modifiedMaximumRange(unit, item, this.gameRef);
     const positions: [number, number][] = [];
 
     for (const move of validMoves) {
@@ -1232,7 +1236,8 @@ export class AIController {
   private findCounterWeapon(defender: UnitObject, dist: number): ItemObject | null {
     for (const item of defender.items) {
       if (!item.isWeapon() || !itemAvailable(defender, item, this.db, this.gameRef)) continue;
-      if (dist >= item.getMinRange() && dist <= item.getMaxRange()) {
+      if (dist >= item.getMinRange() &&
+          dist <= modifiedMaximumRange(defender, item, this.gameRef)) {
         return item;
       }
     }

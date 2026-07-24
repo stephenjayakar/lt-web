@@ -16,7 +16,12 @@ import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateCondition, evaluateExpression } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
-import { alternateSplash, empowerSplash, type AlternateSplash } from './skill-system';
+import {
+  alternateSplash,
+  armsthriftRestoration,
+  empowerSplash,
+  type AlternateSplash,
+} from './skill-system';
 
 export type TargetPosition = [number, number];
 
@@ -777,8 +782,9 @@ export function usesConsumedByStrikes(
 ): number {
   const ownStrikes = strikes.filter((strike) => strike.attacker === unit && strike.item === item);
   const qualifying = ownStrikes.filter((strike) => strike.hit || loseUsesOnMiss(unit, item));
-  if (oneLossPerCombat(unit, item)) return qualifying.length > 0 ? 1 : 0;
-  return qualifying.length;
+  const baseLoss = oneLossPerCombat(unit, item) ? (qualifying.length > 0 ? 1 : 0) : qualifying.length;
+  const restored = qualifying.length * armsthriftRestoration(unit, item);
+  return Math.max(0, baseLoss - restored);
 }
 
 function movementGroup(unit: UnitObject, db: Database): string {

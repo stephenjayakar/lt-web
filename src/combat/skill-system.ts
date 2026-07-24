@@ -10,7 +10,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
-import { evaluateCondition } from '../events/event-manager';
+import { evaluateCondition, evaluateExpression } from '../events/event-manager';
 
 export type SkillFactory = (nid: string) => SkillObject | null;
 
@@ -502,6 +502,88 @@ export function modifyCritAvoid(unit: UnitObject, _item: ItemObject | null): num
 /** Bonus crit damage from skills. */
 export function modifyCritDamage(unit: UnitObject, _item: ItemObject | null): number {
   return sumSkillValues(unit, 'modify_crit_damage');
+}
+
+/** Dynamic crit bonus evaluated with the full Python combat local context. */
+export function dynamicCritAccuracy(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: [number, number],
+  baseValue: number,
+  game?: any,
+): number {
+  let total = 0;
+  for (const skill of unit.skills) {
+    const expression = skill.getComponent<string>('dynamic_crit_accuracy');
+    if (!expression) continue;
+    const value = evaluateExpression(expression, {
+      game,
+      unit1: unit,
+      unit2: target,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map<string, unknown>([
+        ['item', item],
+        ['item2', item2],
+        ['mode', mode],
+        ['skill', skill],
+        ['attack_info', attackInfo],
+        ['base_value', baseValue],
+      ]),
+    });
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) total += Math.trunc(numeric);
+  }
+  return total;
+}
+
+/** Last alternate critical multiplier equation, matching Python UNIQUE. */
+export function criticalMultiplierFormula(unit: UnitObject): string | null {
+  return getSkillValue<string>(unit, 'alternate_critical_multiplier_formula') ?? null;
+}
+
+/** Base item maximum range after skill additions and the optional hard cap. */
+export function modifiedMaximumRange(
+  unit: UnitObject,
+  item: ItemObject,
+  game?: any,
+): number {
+  let maximum = item.getMaxRange();
+  for (const skill of unit.skills) {
+    const flat = skill.getComponent<number>('modify_maximum_range');
+    if (typeof flat === 'number') maximum += flat;
+    const expression = skill.getComponent<string>('eval_max_range');
+    if (expression) {
+      const value = evaluateExpression(expression, {
+        game,
+        unit1: unit,
+        item,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs: new Map<string, unknown>([['item', item], ['skill', skill]]),
+      });
+      if (Number.isFinite(Number(value))) maximum += Math.trunc(Number(value));
+    }
+  }
+  const limit = getSkillValue<number>(unit, 'limit_maximum_range');
+  return Math.max(0, Math.min(maximum, typeof limit === 'number' ? limit : 99));
+}
+
+/** Uses restored per qualifying strike by project Armsthrift skills. */
+export function armsthriftRestoration(unit: UnitObject, item: ItemObject): number {
+  if (item.hasComponent('unrepairable')) return 0;
+  let restored = 0;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<number>('armsthrift');
+    if (typeof value === 'number') restored += Math.max(0, value - 1);
+  }
+  return restored;
 }
 
 /** Attack speed modifier from skills. */

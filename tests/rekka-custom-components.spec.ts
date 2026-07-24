@@ -1781,4 +1781,145 @@ test.describe('Rekka project-local skill components', () => {
       undoneDeath: { dead: false, tethered: true, onBoard: true },
     });
   });
+
+  test('combat math hooks cover Rekka durability, crit, and maximum range', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
+      const {
+        canCounterattack,
+        computeCrit,
+        computeDamage,
+        weaponTriangle,
+      } = await import('/src/combat/combat-calcs.ts');
+      const {
+        usesConsumedByStrikes,
+      } = await import('/src/combat/item-system.ts');
+      const {
+        armsthriftRestoration,
+        modifiedMaximumRange,
+      } = await import('/src/combat/skill-system.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const attackItem = attacker.items.find((item: any) => item.isWeapon());
+      const defenseItem = defender.items.find((item: any) => item.isWeapon());
+      const componentNids = (prefab: any) => Array.isArray(prefab.components)
+        ? prefab.components.map((component: any) => component[0])
+        : [...prefab.components.keys()];
+      const count = (nid: string) => [...game.db.skills.values()]
+        .filter((skill: any) => componentNids(skill).includes(nid)).length;
+
+      attacker.skills = [new SkillObject(game.db.skills.get('Blessed'))];
+      const strike = {
+        attacker,
+        defender,
+        item: attackItem,
+        hit: true,
+        crit: false,
+        damage: 1,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      };
+      const unrepairable = new ItemObject({
+        nid: 'TestUnrepairable',
+        name: 'Test Unrepairable',
+        desc: '',
+        components: [['weapon_type', 'Sword'], ['uses', 10], ['unrepairable', null]],
+      });
+      const unrepairableStrike = { ...strike, item: unrepairable };
+      const durability = {
+        restoration: armsthriftRestoration(attacker, attackItem),
+        twoHits: usesConsumedByStrikes(attacker, attackItem, [strike, strike]),
+        unrepairable: usesConsumedByStrikes(attacker, unrepairable, [unrepairableStrike]),
+      };
+
+      attacker.skills = [new SkillObject(game.db.skills.get('FuriosoArt'))];
+      const dynamicCrit = computeCrit(
+        attacker, attackItem, defender, game.db, game, 'attack', [2, 1],
+      );
+      attacker.skills = [new SkillObject(game.db.skills.get('Poise'))];
+      attacker.previousPosition = attacker.position
+        ? [attacker.position[0], attacker.position[1]]
+        : null;
+      const poiseStanding = computeCrit(attacker, attackItem, defender, game.db, game);
+      attacker.previousPosition = attacker.position
+        ? [attacker.position[0] + 1, attacker.position[1]]
+        : null;
+      const poiseMoved = computeCrit(attacker, attackItem, defender, game.db, game);
+
+      attacker.skills = [new SkillObject(game.db.skills.get('Lethal'))];
+      const normalDamage = computeDamage(
+        attacker, attackItem, defender, game.db, game.board, game,
+      ) + weaponTriangle(attackItem, defenseItem, game.db, attacker, defender).damageBonus;
+      const lethalStrike = new CombatPhaseSolver(() => 0, game).resolve(
+        attacker,
+        attackItem,
+        defender,
+        defenseItem,
+        game.db,
+        'classic',
+        game.board,
+        ['crit1', 'end'],
+      )[0];
+
+      const oldAttackerPosition = attacker.position;
+      const oldDefenderPosition = defender.position;
+      attacker.position = [0, 0];
+      defender.position = [6, 0];
+      defender.skills = [new SkillObject(game.db.skills.get('Savant'))];
+      const range = {
+        base: defenseItem.getMaxRange(),
+        modified: modifiedMaximumRange(defender, defenseItem, game),
+        countersAtSix: canCounterattack(attacker, attackItem, defender, game.db, game),
+      };
+      attacker.position = oldAttackerPosition;
+      defender.position = oldDefenderPosition;
+      attacker.previousPosition = [7, 8];
+      const snapshot = (window as any).__harness.saveSnapshot();
+      await (window as any).__harness.loadSnapshot(snapshot);
+      const savedPreviousPosition = game.units.get('Lyn').previousPosition;
+
+      return {
+        catalog: {
+          armsthrift: count('armsthrift'),
+          dynamicCrit: count('dynamic_crit_accuracy'),
+          alternateCrit: count('alternate_critical_multiplier_formula'),
+          maximumRange: count('modify_maximum_range'),
+        },
+        durability,
+        dynamicCrit,
+        poise: { standing: poiseStanding, moved: poiseMoved },
+        normalDamage,
+        lethalDamage: lethalStrike.damage,
+        range,
+        savedPreviousPosition,
+      };
+    });
+
+    expect(result.catalog).toEqual({
+      armsthrift: 2,
+      dynamicCrit: 4,
+      alternateCrit: 1,
+      maximumRange: 3,
+    });
+    expect(result.durability).toEqual({
+      restoration: 1,
+      twoHits: 0,
+      unrepairable: 1,
+    });
+    expect(result.dynamicCrit).toBe(100);
+    expect(result.poise.standing).toBe(100);
+    expect(result.poise.moved).toBeLessThan(100);
+    expect(result.lethalDamage).toBe(result.normalDamage * 999);
+    expect(result.range).toEqual({
+      base: 1,
+      modified: 6,
+      countersAtSix: true,
+    });
+    expect(result.savedPreviousPosition).toEqual([7, 8]);
+  });
 });

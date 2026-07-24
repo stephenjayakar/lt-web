@@ -200,6 +200,7 @@ import {
   enemyWexpMultiplier,
   isCantoSkill,
   canSelect,
+  modifiedMaximumRange,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -4416,7 +4417,7 @@ export class WeaponChoiceState extends State {
     const game = getGame();
     game.highlight.clear();
     const minRange = weapon.getMinRange();
-    const maxRange = weapon.getMaxRange();
+    const maxRange = modifiedMaximumRange(unit, weapon, game);
     const ux = unit.position![0];
     const uy = unit.position![1];
     const attackTiles: [number, number][] = [];
@@ -4568,7 +4569,7 @@ export class TargetingState extends MapState {
     const weapon = getEquippedWeapon(unit, game.db, game);
     if (weapon) {
       const minRange = weapon.getMinRange();
-      const maxRange = weapon.getMaxRange();
+      const maxRange = modifiedMaximumRange(unit, weapon, game);
       const attackTiles: [number, number][] = [];
       const ux = unit.position[0];
       const uy = unit.position[1];

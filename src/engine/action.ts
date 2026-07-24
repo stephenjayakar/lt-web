@@ -1881,6 +1881,7 @@ export class ResetAllAction extends Action {
     hasMoved: boolean;
     hasTraded: boolean;
     finished: boolean;
+    previousPosition: [number, number] | null;
   }[] = [];
 
   constructor(units: UnitObject[]) {
@@ -1895,10 +1896,16 @@ export class ResetAllAction extends Action {
       hasMoved: u.hasMoved,
       hasTraded: u.hasTraded,
       finished: u.finished,
+      previousPosition: u.previousPosition
+        ? [u.previousPosition[0], u.previousPosition[1]]
+        : null,
     }));
 
     for (const unit of this.units) {
       unit.resetTurnState();
+      unit.previousPosition = unit.position
+        ? [unit.position[0], unit.position[1]]
+        : null;
     }
   }
 
@@ -1911,6 +1918,9 @@ export class ResetAllAction extends Action {
         this.units[i].hasMoved = saved.hasMoved;
         this.units[i].hasTraded = saved.hasTraded;
         this.units[i].finished = saved.finished;
+        this.units[i].previousPosition = saved.previousPosition
+          ? [saved.previousPosition[0], saved.previousPosition[1]]
+          : null;
       }
     }
   }

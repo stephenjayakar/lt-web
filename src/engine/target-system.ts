@@ -4,6 +4,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from '../combat/combat-calcs';
 import { computeAssistDamage, computeHit } from '../combat/combat-calcs';
+import { modifiedMaximumRange } from '../combat/skill-system';
 import { getLine } from './line-of-sight';
 import {
   validTargets,
@@ -53,7 +54,9 @@ export class TargetSystem {
     if (!origin || !available(unit, item, this.db, this.game)) return [];
 
     const minRange = item.getMinRange();
-    let maxRange = item.hasComponent('global_range') ? 99 : item.getMaxRange();
+    let maxRange = item.hasComponent('global_range')
+      ? 99
+      : modifiedMaximumRange(unit, item, this.game);
     const rangeEquation = item.getComponent<string>('max_equation_range');
     if (rangeEquation) {
       const expression = this.db.getEquation(rangeEquation) ?? rangeEquation;
