@@ -155,6 +155,8 @@ function itemComponentsAvailable(
   if (components.has('no_attack_after_move') && unit.hasMoved) return false;
   const hpCost = components.get('hp_cost');
   if (typeof hpCost === 'number' && unit.currentHp <= hpCost) return false;
+  const goldCost = components.get('gold_cost');
+  if (typeof goldCost === 'number' && Number(game?.getMoney?.() ?? 0) < goldCost) return false;
   if (components.has('cooldown') && Number(item.data.get('cooldown') ?? 0) !== 0) return false;
 
   const mana = Number((unit as any).currentMana ?? db.getEquation('MANA') ?? 0);
@@ -821,6 +823,37 @@ export function drawBackDestinations(
     : null;
 }
 
+/** Rekka custom `advance`: move user and target forward along both axes. */
+export function advanceDestinations(
+  unit: UnitObject,
+  target: UnitObject,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): [TargetPosition, TargetPosition] | null {
+  if (!unit.position || !target.position || magnitude <= 0) return null;
+  const dx = Math.max(-1, Math.min(1, target.position[0] - unit.position[0]));
+  const dy = Math.max(-1, Math.min(1, target.position[1] - unit.position[1]));
+  const unitDestination: TargetPosition = [
+    unit.position[0] + dx * magnitude,
+    unit.position[1] + dy * magnitude,
+  ];
+  const targetDestination: TargetPosition = [
+    target.position[0] + dx * magnitude,
+    target.position[1] + dy * magnitude,
+  ];
+  if (!context.board.checkBounds(targetDestination[0], targetDestination[1]) ||
+      context.board.getUnit(targetDestination[0], targetDestination[1])) return null;
+  const unitCost = context.board.getMovementCost(
+    unitDestination[0], unitDestination[1], movementGroup(unit, context.db), context.db,
+  );
+  const targetCost = context.board.getMovementCost(
+    targetDestination[0], targetDestination[1], movementGroup(target, context.db), context.db,
+  );
+  return unitCost <= unit.getMovement() && targetCost <= target.getMovement()
+    ? [unitDestination, targetDestination]
+    : null;
+}
+
 /** Apply every component target restriction (ALL policy). */
 export function targetRestrict(
   unit: UnitObject,
@@ -943,6 +976,14 @@ export function targetRestrict(
       !target.skills.some((skill) => skill.hasComponent('ignore_forced_movement')) &&
       !!drawBackDestinations(unit, target, magnitude, context));
     if (!canDrawBack) return false;
+  }
+
+  if (item.hasComponent('advance_target_restrict')) {
+    const magnitude = Number(item.getComponent<number>('advance_target_restrict') ?? 1);
+    const canAdvance = affectedUnits.some((target) =>
+      !target.skills.some((skill) => skill.hasComponent('ignore_forced_movement')) &&
+      !!advanceDestinations(unit, target, magnitude, context));
+    if (!canAdvance) return false;
   }
 
   const expression = item.getComponent<string>('eval_target_restrict_2');

@@ -149,6 +149,7 @@ import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
 import {
   queueAfterInitiatedCombatEvents,
+  applyCombatItemStartHooks,
   applyCombatItemEndHooks,
   queueCombatItemEvents,
   applyDroppableItemPickups,
@@ -4442,6 +4443,7 @@ export class CombatState extends State {
       game.state.back();
       return;
     }
+    applyCombatItemStartHooks(game, attackItem);
 
     const targetGroup = resolveCombatTargetGroup(game, attacker, attackItem, defender);
     const primaryDefender = targetGroup.mainDefender;
@@ -12821,6 +12823,7 @@ export class EventState extends State {
           // Immediate mode: resolve combat without visual animation
           const attackItem = iuAbilityItem ?? iuAttacker.items.find((i: ItemObject) => i.isWeapon());
           if (attackItem) {
+            applyCombatItemStartHooks(game, attackItem);
             const targetGroup = resolveCombatTargetGroup(game, iuAttacker, attackItem, iuDefender);
             const grouped = !targetGroup.mainDefender || targetGroup.splashDefenders.length > 0;
             const defItem = targetGroup.mainDefender

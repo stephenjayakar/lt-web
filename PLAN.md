@@ -95,9 +95,9 @@ unsafe Python/eval bridge.
 
 ### Custom item components
 
-- [ ] `advance` and `advance_target_restrict` (forced movement and target
+- [x] `advance` and `advance_target_restrict` (forced movement and target
   validation)
-- [ ] `gold_cost` (availability, payment, refund, undo/redo)
+- [x] `gold_cost` (availability, payment, refund, undo/redo)
 - [ ] `trace` (item targeting, one-use copy, ownership, AI, save identity)
 - [ ] Audit and port any reachable `cleave_2_range_aoe`, `phasewalk`, `charge`,
   or `bullrush` content even if current static usage is zero.
