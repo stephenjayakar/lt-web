@@ -1192,6 +1192,90 @@ test.describe('Rekka all-level compatibility', () => {
     });
   });
 
+  test('Rekka chapter 33 requires all three castle seizes before chapter 34', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/?harness=true&project=rekka.ltproj&level=33&clean=false&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.cursor = state.options.indexOf('Fight');
+      (window as any).__harness.stepFrames(1, 'SELECT');
+      (window as any).__harness.stepFrames(2, null);
+    });
+
+    const castles = [
+      { nid: 'castle1', position: [2, 17], occupant: '158' },
+      { nid: 'castle2', position: [4, 3], occupant: 'Pascal' },
+      { nid: 'castle3', position: [21, 4], occupant: '159' },
+    ];
+    for (let i = 0; i < castles.length; i++) {
+      const ready = await page.evaluate(({ position, occupant }) => {
+        const game = (window as any).__gameRef;
+        const hector = game.units.get('Hector');
+        const defender = game.units.get(occupant);
+        if (defender?.position) game.board.removeUnit(defender);
+        game.board.moveUnit(hector, position[0], position[1]);
+        hector.finished = false;
+        hector.hasAttacked = false;
+        game.cursor.setPos(position[0], position[1]);
+        game.selectedUnit = hector;
+        game._moveOrigin = position;
+        game.state.change('menu');
+        (window as any).__harness.stepFrames(2, null);
+        const menu = game.state.getCurrentState() as any;
+        const index = menu.menu?.options.findIndex((option: any) => option.label === 'Seize') ?? -1;
+        if (index >= 0) menu.menu.selectedIndex = index;
+        return index >= 0;
+      }, castles[i]);
+      expect(ready).toBe(true);
+      await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+      await page.evaluate(() => (window as any).__harness.settle(600));
+
+      if (i < castles.length - 1) {
+        const partial = await page.evaluate((completed) => {
+          const game = (window as any).__gameRef;
+          return {
+            level: game.currentLevel?.nid,
+            flags: ['castle1', 'castle2', 'castle3'].map((nid) => game.levelVars.get(nid)),
+            regions: game.currentLevel.regions.map((region: any) => region.nid),
+            completed,
+          };
+        }, castles.slice(0, i + 1).map((castle) => castle.nid));
+        expect(partial.level).toBe('33');
+        expect(partial.flags).toEqual([
+          i >= 0 ? 1 : 0,
+          i >= 1 ? 1 : 0,
+          0,
+        ]);
+        for (const nid of partial.completed) expect(partial.regions).not.toContain(nid);
+      }
+    }
+
+    await page.waitForFunction(() => {
+      const game = (window as any).__gameRef;
+      return game.currentLevel?.nid === '34' && game.units.has('Hector');
+    });
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+
+    const chapterThirtyFour = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const hector = game.units.get('Hector');
+      return {
+        level: game.currentLevel?.nid,
+        previousLevel: game.gameVars.get('_prev_level_nid'),
+        state: game.state.getCurrentState()?.name,
+        items: hector?.items.map((item: any) => item.nid) ?? [],
+      };
+    });
+    expect(chapterThirtyFour).toMatchObject({
+      level: '34',
+      previousLevel: '33',
+      state: 'prep_main',
+      items: expect.arrayContaining(['HeavenSeal']),
+    });
+  });
+
   test('Rekka chapter history and Lyn MVP data open through Base Codex Records', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=2&clean=true&bundle=false');
     await waitForHarness(page);
