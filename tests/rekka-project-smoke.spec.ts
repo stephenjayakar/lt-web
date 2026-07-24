@@ -201,4 +201,89 @@ test.describe('Rekka all-level compatibility', () => {
 
     expect(failures, [...new Set(failures)].join('\n')).toEqual([]);
   });
+
+  test('event skill stacks and object-valued item loops preserve Rekka semantics', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      const target = game.units.get('101');
+      if (!lyn || !target) throw new Error('Rekka Prologue units missing');
+      const nid = 'TestRekkaStackAndClone';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'give_skill;Lyn;MomentumStack;;no_banner',
+          'give_skill;Lyn;MomentumStack;;no_banner',
+          'give_skill;Lyn;MomentumStack;;no_banner',
+          'give_skill;Lyn;MomentumStack;;no_banner',
+          'give_skill;Lyn;MomentumStack;;no_banner',
+          'remove_skill;Lyn;MomentumStack;1;no_banner',
+          'give_skill;Lyn;NineLives;;persistent;no_banner',
+          'for;item_clone;[item for item in unit.items]',
+          'give_item;101;{item_clone};no_banner',
+          'endf',
+          'game_var;rekka_stack_clone_done;yes',
+        ],
+      });
+      game.levelVars.set('__target_items_before', target.items.length);
+      game.levelVars.set('__source_item_nids', lyn.items.map((item: any) => item.nid));
+      game.eventManager.triggerSpecific(nid, {
+        type: nid,
+        unitNid: lyn.nid,
+        unit1: lyn,
+      }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(30, null));
+
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      const target = game.units.get('101');
+      const nineLives = lyn.skills.find((skill: any) => skill.nid === 'NineLives');
+      const sourceNids = game.levelVars.get('__source_item_nids');
+      const targetBefore = game.levelVars.get('__target_items_before');
+      return {
+        done: game.gameVars.get('rekka_stack_clone_done'),
+        momentumStacks: lyn.skills.filter((skill: any) => skill.nid === 'MomentumStack').length,
+        nineLivesSource: [
+          nineLives?.data.get('sourceNid'),
+          nineLives?.data.get('sourceType'),
+        ],
+        clonedNids: target.items.slice(targetBefore).map((item: any) => item.nid),
+        sourceNids,
+      };
+    });
+    expect(result).toEqual({
+      done: 'yes',
+      momentumStacks: 3,
+      nineLivesSource: ['Lyn', 'personal'],
+      clonedNids: result.sourceNids,
+      sourceNids: result.sourceNids,
+    });
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const nid = 'TestRekkaRemoveAllStacks';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['remove_skill;Lyn;MomentumStack;;no_banner'],
+      });
+      game.eventManager.triggerSpecific(nid, { type: nid }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(5, null));
+    const remaining = await page.evaluate(() =>
+      (window as any).__gameRef.units.get('Lyn').skills
+        .filter((skill: any) => skill.nid === 'MomentumStack').length);
+    expect(remaining).toBe(0);
+  });
 });

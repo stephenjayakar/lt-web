@@ -9682,6 +9682,14 @@ export class EventState extends State {
     const unitNid = trigger?.unitNid ?? trigger?.unit1?.nid ?? '';
     const unit2Nid = trigger?.unitB ?? trigger?.unit2?.nid ?? '';
     const expressionContext = this.buildConditionContext();
+    const eventObjectToString = (result: any): string => {
+      const raw = result?._raw ?? result;
+      if (raw && typeof raw === 'object') {
+        if (raw.uid !== undefined) return String(raw.uid);
+        if (raw.nid !== undefined) return String(raw.nid);
+      }
+      return result === undefined || result === null ? '' : String(result);
+    };
     let args = rawArgs.map((arg) => {
       let value = arg.replace(/\{unit\}/g, unitNid).replace(/\{unit2\}/g, unit2Nid);
       const variableValue = (key: string): any => {
@@ -9725,16 +9733,16 @@ export class EventState extends State {
         );
         const result = evaluateExpression(typedExpression, expressionContext);
         value = value.slice(0, start) +
-          (result === undefined || result === null ? '' : String(result)) +
+          eventObjectToString(result) +
           value.slice(close + 1);
       }
       value = value.replace(/\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
         const result = variableValue(key);
-        return result === undefined ? match : result === null ? '' : String(result);
+        return result === undefined ? match : eventObjectToString(result);
       });
       value = value.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
         const result = variableValue(key);
-        if (result !== undefined) return String(result);
+        if (result !== undefined) return eventObjectToString(result);
         return match;
       });
       return value;
@@ -11581,11 +11589,20 @@ export class EventState extends State {
         const gsBannerFlag = !args.includes('no_banner');
         let gsAdded = false;
         if (unit && skillPrefab) {
-          if (!unit.skills.some((s: SkillObject) => s.nid === skillNid)) {
-            const skill = new SkillObject(skillPrefab);
-            game.actionLog.doAction(new AddSkillAction(unit, skill));
-            gsAdded = true;
+          const skill = new SkillObject(skillPrefab);
+          const initiatorArg = args[2] && !['no_banner', 'persistent'].includes(args[2])
+            ? args[2]
+            : '';
+          const initiator = initiatorArg ? this.findUnit(initiatorArg) : undefined;
+          skill.initiatorNid = initiator?.nid ?? null;
+          if (args.includes('persistent')) {
+            skill.data.set('sourceNid', unit.nid);
+            skill.data.set('sourceType', 'personal');
           }
+          const beforeCount = unit.skills.filter((candidate: SkillObject) => candidate.nid === skillNid).length;
+          game.actionLog.doAction(new AddSkillAction(unit, skill));
+          const afterCount = unit.skills.filter((candidate: SkillObject) => candidate.nid === skillNid).length;
+          gsAdded = afterCount > beforeCount || unit.skills.includes(skill);
         }
         if (gsBannerFlag && gsAdded && unit && skillPrefab && !this.skipMode) {
           this.banner = new Banner(`${unit.name} got ${skillPrefab.name}.`, undefined, 3000);
@@ -11598,14 +11615,24 @@ export class EventState extends State {
 
       case 'remove_skill': {
         const unitNid = args[0] ?? '';
-        const skillNid = args[1] ?? '';
+        const skillId = args[1] ?? '';
         const unit = this.findUnit(unitNid);
         const rsBannerFlag = !args.includes('no_banner');
         let rsRemovedSkill: SkillObject | undefined;
         if (unit) {
-          rsRemovedSkill = unit.skills.find((skill: SkillObject) => skill.nid === skillNid);
-          if (rsRemovedSkill) {
-            game.actionLog.doAction(new RemoveSkillAction(unit, rsRemovedSkill));
+          const countArg = args.slice(2).find(arg => /^-?\d+$/.test(arg));
+          const count = countArg === undefined ? -1 : parseInt(countArg, 10);
+          const uid = /^\d+$/.test(skillId) ? parseInt(skillId, 10) : null;
+          const matches = unit.skills.filter((skill: SkillObject) =>
+            uid !== null ? skill.uid === uid : skill.nid === skillId);
+          const removals = uid !== null || count === 1
+            ? matches.slice(0, 1)
+            : count < 0
+              ? matches
+              : matches.slice(0, count);
+          rsRemovedSkill = removals[0];
+          for (const skill of removals) {
+            game.actionLog.doAction(new RemoveSkillAction(unit, skill));
           }
         }
         if (rsBannerFlag && rsRemovedSkill && unit && !this.skipMode) {
