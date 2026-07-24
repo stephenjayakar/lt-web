@@ -104,7 +104,7 @@ unsafe Python/eval bridge.
 
 ### Custom skill components
 
-- [ ] Movement/reset hooks: `powerstaff`, `combat_artist`, `second_wind`, and
+- [x] Movement/reset hooks: `powerstaff`, `combat_artist`, `second_wind`, and
   14 uses of `eval_galeforce`
 - [x] Combat modifiers: `givebacker` and `disvantage`
 - [ ] Combat survival: `nine_lives_event`, `true_miracle_event`, and
