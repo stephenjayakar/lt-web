@@ -303,6 +303,46 @@ export interface SaveSlot {
 const DB_NAME = 'lt-web-saves';
 const STORE_NAME = 'saves';
 const DB_VERSION = 1;
+const CURRENT_SAVE_VERSION = '1.0.0';
+let lastLoadError: string | null = null;
+
+export function getLastLoadError(): string | null {
+  return lastLoadError;
+}
+
+export function validateSaveVersion(version: string | undefined): void {
+  if (!version) return; // Pre-version metadata is a supported legacy format.
+  const major = Number.parseInt(version.split('.')[0] ?? '', 10);
+  if (!Number.isFinite(major)) {
+    throw new Error(`Save has an invalid version "${version}"`);
+  }
+  if (major > Number.parseInt(CURRENT_SAVE_VERSION.split('.')[0], 10)) {
+    throw new Error(
+      `Save version ${version} is newer than supported version ${CURRENT_SAVE_VERSION}`,
+    );
+  }
+}
+
+function validateSaveState(game: any, save: SaveDict): void {
+  if (!save || typeof save !== 'object') {
+    throw new Error('Save data is missing or corrupt');
+  }
+  for (const field of ['units', 'items', 'parties', 'gameVars', 'levelVars'] as const) {
+    if (!Array.isArray(save[field])) {
+      throw new Error(`Save data is corrupt: "${field}" must be an array`);
+    }
+  }
+  for (const event of save.eventQueue ?? []) {
+    if (!game.db?.events?.has?.(event.nid)) {
+      throw new Error(`Save references missing event "${event.nid}"`);
+    }
+  }
+  for (const stateName of save.stateStack ?? []) {
+    if (!game.state?.hasState?.(stateName)) {
+      throw new Error(`Save references unsupported state "${stateName}"`);
+    }
+  }
+}
 
 /** Cached database connection. */
 let _dbInstance: IDBDatabase | null = null;
@@ -941,7 +981,7 @@ function buildMetadata(game: any, kind: string): SaveMetadata {
   return {
     playtime,
     realtime: Date.now(),
-    version: '1.0.0',
+    version: CURRENT_SAVE_VERSION,
     title: game.db?.getConstant?.('title', 'Lex Talionis') ?? 'Lex Talionis',
     mode: game.currentMode?.nid ?? null,
     levelNid: level?.nid ?? null,
@@ -1105,6 +1145,7 @@ function restoreSkillInstance(
  * with the object constructors.
  */
 export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
+  validateSaveState(game, s);
   // Use static imports (already imported at top of file)
   const ItemCtor = ItemObjectCtor;
   const SkillCtor = SkillObjectCtor;
@@ -1847,6 +1888,7 @@ async function restoreLevel(
     }
   } catch (err) {
     console.error('restoreLevel failed:', err);
+    throw err;
   }
 }
 
@@ -1862,6 +1904,7 @@ async function restoreLevel(
  * @returns     True if the load succeeded, false if no save was found.
  */
 export async function loadGame(game: any, slot: number): Promise<boolean> {
+  lastLoadError = null;
   try {
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const saveKey = `${gameNid}-${slot}`;
@@ -1872,23 +1915,30 @@ export async function loadGame(game: any, slot: number): Promise<boolean> {
       return false;
     }
 
+    const metadata: SaveMetadata | undefined = await idbGet(`${saveKey}.meta`);
+    validateSaveVersion(metadata?.version);
     await restoreGameState(game, saveDict);
     console.log(`Game loaded from slot ${slot}`);
     return true;
   } catch (err) {
+    lastLoadError = err instanceof Error ? err.message : String(err);
     console.error(`Failed to load game from slot ${slot}:`, err);
     return false;
   }
 }
 
 export async function loadRestart(game: any, slot: number): Promise<boolean> {
+  lastLoadError = null;
   try {
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const saveDict: SaveDict | undefined = await idbGet(`${gameNid}-restart-${slot}`);
     if (!saveDict) return false;
+    const metadata: SaveMetadata | undefined = await idbGet(`${gameNid}-restart-${slot}.meta`);
+    validateSaveVersion(metadata?.version);
     await restoreGameState(game, saveDict);
     return true;
   } catch (err) {
+    lastLoadError = err instanceof Error ? err.message : String(err);
     console.error(`Failed to load restart save ${slot}:`, err);
     return false;
   }
@@ -1898,6 +1948,7 @@ export async function loadRestart(game: any, slot: number): Promise<boolean> {
  * Load a suspend (quicksave). The suspend is deleted after successful load.
  */
 export async function loadSuspend(game: any): Promise<boolean> {
+  lastLoadError = null;
   try {
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const saveKey = `${gameNid}-suspend`;
@@ -1908,6 +1959,8 @@ export async function loadSuspend(game: any): Promise<boolean> {
       return false;
     }
 
+    const metadata: SaveMetadata | undefined = await idbGet(`${saveKey}.meta`);
+    validateSaveVersion(metadata?.version);
     await restoreGameState(game, saveDict);
 
     // Delete suspend after successful load
@@ -1917,6 +1970,7 @@ export async function loadSuspend(game: any): Promise<boolean> {
     console.log('Suspend loaded and cleared');
     return true;
   } catch (err) {
+    lastLoadError = err instanceof Error ? err.message : String(err);
     console.error('Failed to load suspend:', err);
     return false;
   }

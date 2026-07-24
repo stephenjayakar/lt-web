@@ -17,6 +17,7 @@ import {
   loadGame,
   loadSuspend,
   loadSaveSlots,
+  getLastLoadError,
   hasSuspend,
   formatPlaytime,
   type SaveSlot,
@@ -280,13 +281,13 @@ export class LoadMenuState extends State {
             game.state.clear();
             game.state.change('free');
           } else {
-            this.message = 'Load failed!';
+            this.message = `Load failed: ${getLastLoadError() ?? 'unknown save error'}`;
             this.messageTimer = 1500;
           }
         }).catch((err: any) => {
           console.error('LoadMenuState: load suspend failed', err);
           this.restoring = false;
-          this.message = 'Load failed!';
+          this.message = `Load failed: ${getLastLoadError() ?? 'unknown save error'}`;
           this.messageTimer = 1500;
         });
       } else {
@@ -298,13 +299,13 @@ export class LoadMenuState extends State {
             game.state.clear();
             game.state.change('free');
           } else {
-            this.message = 'Load failed!';
+            this.message = `Load failed: ${getLastLoadError() ?? 'unknown save error'}`;
             this.messageTimer = 1500;
           }
         }).catch((err: any) => {
           console.error('LoadMenuState: load failed', err);
           this.restoring = false;
-          this.message = 'Load failed!';
+          this.message = `Load failed: ${getLastLoadError() ?? 'unknown save error'}`;
           this.messageTimer = 1500;
         });
       }

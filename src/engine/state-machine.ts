@@ -55,13 +55,19 @@ export class StateMachine {
     return this.stack.map((state) => state.name);
   }
 
+  hasState(name: string): boolean {
+    return this.allStates.has(name);
+  }
+
   /** Restore a previously saved stack without running stale lifecycle state. */
   restoreStack(names: string[]): void {
     this.tempState = [];
     this.stack = [];
     for (const name of names) {
       const state = this.allStates.get(name);
-      if (!state) continue;
+      if (!state) {
+        throw new Error(`Save references unsupported state "${name}"`);
+      }
       state.started = false;
       state.processed = false;
       this.stack.push(state);
