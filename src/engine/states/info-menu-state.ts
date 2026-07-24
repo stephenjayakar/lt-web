@@ -25,6 +25,8 @@ import {
 } from '../../combat/combat-calcs';
 import { FONT } from '../../rendering/bmp-font';
 import { growthChange } from '../../combat/skill-system';
+import { evaluateCondition } from '../../events/event-manager';
+import type { SkillObject } from '../../objects/skill';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — matches the pattern from game-states.ts
@@ -34,6 +36,50 @@ let _game: any = null;
 
 export function setInfoMenuGameRef(g: any): void {
   _game = g;
+}
+
+export type SkillInfoPresentation = 'hidden' | 'grey' | 'normal';
+
+/** Python info-menu hidden_if_inactive / grey_if_inactive policy. */
+export function skillInfoPresentation(
+  skill: SkillObject,
+  unit: UnitObject,
+  game: any,
+): SkillInfoPresentation {
+  if (skill.hasComponent('hidden') ||
+      skill.data.get('multiSkillSourceType') === 'multi_skill') return 'hidden';
+  const parent = skill.data.get('multiSkillSource');
+  if (parent && skillInfoPresentation(parent, unit, game) !== 'normal') {
+    return skill.hasComponent('hidden_if_inactive') ? 'hidden' : 'grey';
+  }
+  let active = true;
+  if (skill.hasComponent('build_charge')) {
+    active &&= Number(skill.data.get('charge') ?? 0) >=
+      Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
+  }
+  if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    active &&= Number(skill.data.get('charge') ?? 0) > 0;
+  }
+  const manaRequirement = skill.getComponent<number>('cost_mana') ??
+    skill.getComponent<number>('check_mana');
+  if (typeof manaRequirement === 'number') {
+    active &&= Number(unit.currentMana ?? 0) >= manaRequirement;
+  }
+  const condition = skill.getComponent<string>('condition');
+  if (condition) {
+    active &&= evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      item: unit.equippedWeapon ?? undefined,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map([['skill', skill]]),
+    });
+  }
+  if (!active && skill.hasComponent('hidden_if_inactive')) return 'hidden';
+  if (!active && skill.hasComponent('grey_if_inactive')) return 'grey';
+  return 'normal';
 }
 
 function getGame(): any {
@@ -535,7 +581,7 @@ export class InfoMenuState extends State {
     const skillStartY = skillHeaderY + 14;
     // Python MultiSkill folds its sourced children into the visible wrapper.
     const visibleSkills = unit.skills.filter((skill) =>
-      skill.data.get('multiSkillSourceType') !== 'multi_skill');
+      skillInfoPresentation(skill, unit, game) !== 'hidden');
     if (visibleSkills.length === 0) {
       this.drawSmallText(surf, '(none)', rightX + 4, skillStartY, COLOR_GREY);
     } else {
@@ -549,7 +595,10 @@ export class InfoMenuState extends State {
         }
 
         // Skill name
-        this.drawSmallText(surf, skill.name, rightX + 18, y + 2, COLOR_WHITE);
+        const color = skillInfoPresentation(skill, unit, game) === 'grey'
+          ? COLOR_GREY
+          : COLOR_WHITE;
+        this.drawSmallText(surf, skill.name, rightX + 18, y + 2, color);
       }
     }
   }

@@ -134,7 +134,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 - [x] Implement 88 `equippable_accessory` items. Treat rings as the project's
   one accessory slot, not ordinary inventory: capacity, equip/unequip,
   `status_on_equip`, convoy/trade, auto-equip, UI, AI, save, and turnwheel.
-- [ ] Implement inactive skill presentation for 16 `hidden_if_inactive` and
+- [x] Implement inactive skill presentation for 16 `hidden_if_inactive` and
   10 `grey_if_inactive` uses.
 - [ ] Implement five `transform` stones, including stat changes, target/range
   behavior, animation/presentation, reversion, breakage, save, and turnwheel.

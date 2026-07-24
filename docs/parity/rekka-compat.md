@@ -76,9 +76,6 @@ evidence, not proof of behavior.
 | galeforce | 1 | unreferenced |
 | givebacker | 1 | custom-or-unknown |
 | global | 5 | unreferenced |
-| grey_if_inactive | 10 | unreferenced |
-| hidden | 76 | reference-only |
-| hidden_if_inactive | 16 | unreferenced |
 | ignore_alliances | 2 | unreferenced |
 | ignore_damage | 7 | unreferenced |
 | immune_status | 4 | unreferenced |
