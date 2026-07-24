@@ -198,6 +198,7 @@ import {
   wexpMultiplier,
   enemyWexpMultiplier,
   isCantoSkill,
+  canSelect,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -1550,7 +1551,7 @@ export class FreeState extends MapState {
 
       case 'SELECT': {
         const unit = getUnitUnderCursor();
-        if (unit && unit.team === 'player' && unit.canStillAct()) {
+        if (unit && unit.team === 'player' && unit.canStillAct() && canSelect(unit, game)) {
           // In initiative mode, only allow selecting the current initiative unit
           if (game.initiative) {
             const initUnitNid = game.initiative.getCurrentUnitNid();

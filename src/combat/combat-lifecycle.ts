@@ -359,7 +359,9 @@ export function applyCombatSkillEndHooks(
         game.actionLog.doAction(new RemoveSkillAction(strike.defender, remove));
         applied++;
       }
-    } else if (proc.component === 'true_miracle_event') {
+    } else if (proc.component === 'true_miracle_event' ||
+        proc.component === 'TrueMiracle' ||
+        proc.component === 'ignore_damage') {
       triggerSkillCharge(game, proc.skill);
       applied++;
     }
