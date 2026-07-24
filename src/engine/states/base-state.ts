@@ -1972,6 +1972,7 @@ export class BaseManageState extends State {
 
   override begin(): StateResult {
     if (this.phase === 'units') this.buildUnitMenu();
+    else if (this.phase === 'options') this.buildOptionMenu();
   }
 
   private buildUnitMenu(): void {
@@ -1985,13 +1986,13 @@ export class BaseManageState extends State {
   }
 
   private buildOptionMenu(): void {
-    // Python offers Trade/Restock/Give all/Optimize/Use/Market; the web
-    // subset is Trade + Supply (documented deviation — the rest need
-    // restock/market plumbing that base lacks).
     const game = getGame();
+    const unit = game.units.get(this.selectedNid ?? '');
+    const hasBaseUseItem = !!unit?.items.some((item: any) => item.hasComponent('usable_in_base'));
     const options: MenuOption[] = [
       { label: 'Trade', value: 'trade', enabled: this.partyUnits().length > 1, description: 'Trade items with an ally.' },
       { label: 'Supply', value: 'supply', enabled: !!game.gameVars.get('_convoy'), description: 'Store and retrieve items.' },
+      { label: 'Use', value: 'use', enabled: hasBaseUseItem, description: 'Use a base-compatible item.' },
       { label: 'Back', value: 'back', enabled: true, description: 'Return.' },
     ];
     this.optionMenu = new ChoiceMenu(options, 60, 40);
@@ -2037,6 +2038,10 @@ export class BaseManageState extends State {
       } else if (result.selected === 'supply') {
         game.memory.set('supply_unit', unit);
         game.state.change('supply_items');
+      } else if (result.selected === 'use') {
+        game.selectedUnit = unit;
+        game.memory.set('base_use_unit', unit);
+        game.state.change('base_use');
       }
     } else {
       const partner = game.units.get(result.selected);

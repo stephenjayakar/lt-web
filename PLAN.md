@@ -144,8 +144,10 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   transform stones, including dead-unit and skip handling; missing required
   clips fall back to map combat instead of silently substituting an ordinary
   weapon animation.
-- [ ] Implement 11 `usable_in_base` items, including stat boosters and promotion
-  items in prep/base menus.
+- [x] Implement all 11 `usable_in_base` items in the base management UI,
+  including cap-aware stat boosters, normal/`c_uses` consumption, Master Seal
+  level/class restrictions, Heaven Seal promotion, save-safe identity, and
+  turnwheel reversal.
 
 ### Combat and lifecycle mechanics
 

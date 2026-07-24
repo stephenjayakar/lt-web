@@ -2878,6 +2878,7 @@ function finishCoreItemUse(
   item: ItemObject,
   targets: UnitObject[] = [],
   healingDone: Map<UnitObject, number> = new Map(),
+  baseUse: boolean = false,
 ): void {
   const game = getGame();
   const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
@@ -2938,7 +2939,8 @@ function finishCoreItemUse(
       game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
     }
   }
-  game.actionLog.doAction(new WaitAction(unit));
+  if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
+  else game.actionLog.doAction(new WaitAction(unit));
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
 }
 
@@ -3151,6 +3153,134 @@ export class ItemUseState extends State {
       this.menu.draw(surf);
     }
     return surf;
+  }
+}
+
+// ============================================================================
+// 4b2. BaseUseState - Use usable_in_base items on the managed unit
+// ============================================================================
+
+function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): boolean {
+  if (!item.hasComponent('usable_in_base') || !item.hasComponent('usable')) return false;
+  if (!itemAvailable(unit, item, game.db, game)) return false;
+  if (item.maxUses > 0 && item.uses <= 0) return false;
+
+  const expression = item.getComponent<string>('eval_target_restrict_2');
+  if (expression && !evaluateCondition(expression, {
+    game,
+    unit1: unit,
+    unit2: unit,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+  })) return false;
+
+  if (item.hasComponent('permanent_stat_change')) {
+    const changes = item.getNumericComponentMap('permanent_stat_change');
+    if (!Object.entries(changes).some(([stat, amount]) =>
+      amount <= 0 || unit.getStatValue(stat) < unit.getStatCap(stat))) return false;
+  }
+
+  if (item.hasComponent('promote')) {
+    const klass = game.db.classes.get(unit.klass);
+    if (!klass?.turns_into?.length) return false;
+  }
+  return true;
+}
+
+export class BaseUseState extends State {
+  readonly name = 'base_use';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private unit: UnitObject | null = null;
+  private items: ItemObject[] = [];
+  private menu: ChoiceMenu | null = null;
+
+  override begin(): StateResult {
+    const game = getGame();
+    this.unit = game.memory.get('base_use_unit') ?? game.selectedUnit ?? null;
+    if (!this.unit) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.buildMenu();
+  }
+
+  private buildMenu(): void {
+    const game = getGame();
+    if (!this.unit) return;
+    this.items = this.unit.items.filter((item) => item.hasComponent('usable_in_base'));
+    if (this.items.length === 0) {
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    const options: MenuOption[] = this.items.map((item, index) => ({
+      label: item.maxUses > 0 ? `${item.name} ${item.uses}/${item.maxUses}` : item.name,
+      value: `item_${index}`,
+      enabled: canUseBaseItem(this.unit!, item, game),
+      description: item.desc || 'Use this item.',
+    }));
+    options.push({ label: 'Back', value: 'back', enabled: true, description: 'Return.' });
+    this.menu = new ChoiceMenu(options, 30, 30);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu || !this.unit) return;
+    const game = getGame();
+    const result = this.menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result || result.selected === 'back') {
+      this.menu = null;
+      game.memory.delete('base_use_unit');
+      game.state.back();
+      return;
+    }
+
+    const index = Number(result.selected.replace('item_', ''));
+    const item = this.items[index];
+    if (!item || !canUseBaseItem(this.unit, item, game)) return;
+
+    if (item.hasComponent('promote')) {
+      const options = [...(game.db.classes.get(this.unit.klass)?.turns_into ?? [])];
+      if (options.length > 1) {
+        game.memory.set('promotion_choice_unit', this.unit);
+        game.memory.set('promotion_choice_options', options);
+        game.memory.set('promotion_choice_item', item);
+        game.memory.set('promotion_choice_actor', this.unit);
+        game.memory.set('promotion_choice_source', 'promote');
+        game.memory.set('promotion_choice_origin', 'base_use');
+        game.state.change('promotion_choice');
+        return;
+      }
+      if (options.length === 1) {
+        game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
+        performPromotionOrClassChange(this.unit, options[0], game, 'promote');
+        finishCoreItemUse(this.unit, item, [this.unit], new Map(), true);
+      }
+    } else if (item.hasComponent('permanent_stat_change')) {
+      game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
+      game.actionLog.doAction(new ApplyStatChangesAction(
+        this.unit,
+        item.getNumericComponentMap('permanent_stat_change'),
+      ));
+      finishCoreItemUse(this.unit, item, [this.unit], new Map(), true);
+    }
+    this.buildMenu();
+  }
+
+  override draw(surf: Surface): Surface {
+    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.96)');
+    surf.drawText(`Use Item — ${this.unit?.name ?? ''}`, 8, 7, 'rgba(220,200,128,1)', '9px monospace');
+    this.menu?.draw(surf);
+    return surf;
+  }
+
+  override end(): StateResult {
+    this.menu = null;
+    getGame().memory.delete('base_use_unit');
   }
 }
 
@@ -3606,6 +3736,7 @@ export class PromotionChoiceState extends State {
     game.memory.delete('promotion_choice_item');
     game.memory.delete('promotion_choice_actor');
     game.memory.delete('promotion_choice_source');
+    game.memory.delete('promotion_choice_origin');
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -3641,9 +3772,11 @@ export class PromotionChoiceState extends State {
       const source = game.memory.get('promotion_choice_source') === 'change_class'
         ? 'change_class'
         : 'promote';
+      const baseUse = game.memory.get('promotion_choice_origin') === 'base_use';
       if (target && item && actor) {
+        if (baseUse) game.actionLog.doAction(new MarkActionGroupStart(actor, 'item_use'));
         performPromotionOrClassChange(target, newKlass, game, source);
-        finishCoreItemUse(actor, item, [target]);
+        finishCoreItemUse(actor, item, [target], new Map(), baseUse);
       }
       this.cleanupMemory();
       game.memory.delete('item_use_item');
