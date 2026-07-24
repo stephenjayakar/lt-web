@@ -30,6 +30,12 @@ import {
 } from '../combat/skill-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
+import { SkillObject } from '../objects/skill';
+import {
+  COMBAT_ART_SOURCE,
+  getCombatArtOptions,
+  type CombatArtOption,
+} from '../combat/combat-art-system';
 
 export interface AIAction {
   type: 'attack' | 'steal' | 'move' | 'wait' | 'use_item' | 'interact';
@@ -41,6 +47,7 @@ export interface AIAction {
   movePath?: [number, number][]; // path to follow
   regionNid?: string; // region NID for interact actions
   regionSubNid?: string; // region sub_nid for interact actions (e.g., 'Destructible')
+  combatArt?: CombatArtOption;
 }
 
 /**
@@ -635,56 +642,142 @@ export class AIController {
     if (validMoves.length === 0) return null;
     if (enemies.length === 0) return null;
 
-    // Gather all weapons the unit can use
-    const weapons: ItemObject[] = [];
+    // Gather all ordinary weapons and every currently ready combat-art variant.
+    // Python PrimaryAI treats extra abilities as additional items and evaluates
+    // them through the same target/priority loop.
+    const variants: { weapon: ItemObject; combatArt?: CombatArtOption }[] = [];
     for (const item of unit.items) {
-      if (item.isWeapon() && itemAvailable(unit, item, this.db, this.gameRef)) {
-        weapons.push(item);
+      if (item.isWeapon() && !item.hasNoAI() &&
+          itemAvailable(unit, item, this.db, this.gameRef)) {
+        variants.push({ weapon: item });
+      }
+    }
+    for (const option of getCombatArtOptions(this.gameRef, unit, false)) {
+      for (const weapon of option.weapons) {
+        if (!weapon.hasNoAI()) variants.push({ weapon, combatArt: option });
       }
     }
 
-    if (weapons.length === 0) return null;
+    if (variants.length === 0) return null;
 
     let bestUtility = -Infinity;
     let bestAction: AIAction | null = null;
 
-    for (const weapon of weapons) {
-      for (const enemy of enemies) {
-        if (enemy.isDead()) continue;
+    for (const variant of variants) {
+      this.withCombatArt(unit, variant.combatArt, () => {
+        for (const enemy of enemies) {
+          if (enemy.isDead()) continue;
 
-        const attackPositions = this.getAttackPositions(unit, validMoves, enemy, weapon);
+          const attackPositions = this.getAttackPositions(unit, validMoves, enemy, variant.weapon);
 
-        for (const pos of attackPositions) {
-          const utility = this.evaluateAttackUtility(
-            unit,
-            weapon,
-            enemy,
-            pos,
-            offenseBias,
-          );
-
-          if (utility > bestUtility) {
-            bestUtility = utility;
-
-            // Compute the path to the attack position
-            const path = unit.position
-              ? this.pathSystem.getPath(unit, pos[0], pos[1], this.board)
-              : null;
-
-            bestAction = {
-              type: 'attack',
+          for (const pos of attackPositions) {
+            const utility = this.withTemporaryPosition(
               unit,
-              targetPosition: pos,
-              targetUnit: enemy,
-              item: weapon,
-              movePath: path ?? [pos],
-            };
+              pos,
+              () => this.evaluateAttackTargetUtility(
+                unit,
+                variant.weapon,
+                enemy,
+                pos,
+                enemies,
+                offenseBias,
+              ),
+            );
+
+            if (utility > bestUtility) {
+              bestUtility = utility;
+
+              const path = unit.position
+                ? this.pathSystem.getPath(unit, pos[0], pos[1], this.board)
+                : null;
+
+              bestAction = {
+                type: 'attack',
+                unit,
+                targetPosition: pos,
+                targetUnit: enemy,
+                item: variant.weapon,
+                movePath: path ?? [pos],
+                combatArt: variant.combatArt,
+              };
+            }
           }
         }
-      }
+      });
     }
 
     return bestAction;
+  }
+
+  private withCombatArt(
+    unit: UnitObject,
+    option: CombatArtOption | undefined,
+    callback: () => void,
+  ): void {
+    if (!option) {
+      callback();
+      return;
+    }
+    const prefab = this.db.skills.get(option.childNid);
+    if (!prefab) return;
+    const child = new SkillObject(prefab);
+    child.data.set(COMBAT_ART_SOURCE, option.skill);
+    const oldActive = option.skill.data.get('active');
+    option.skill.data.set('active', true);
+    unit.skills.push(child);
+    try {
+      callback();
+    } finally {
+      const index = unit.skills.indexOf(child);
+      if (index >= 0) unit.skills.splice(index, 1);
+      if (oldActive === undefined) option.skill.data.delete('active');
+      else option.skill.data.set('active', oldActive);
+    }
+  }
+
+  /** Match Python PrimaryAI.quick_move while evaluating move-dependent hooks. */
+  private withTemporaryPosition<T>(
+    unit: UnitObject,
+    position: [number, number],
+    callback: () => T,
+  ): T {
+    if (!unit.position ||
+        (unit.position[0] === position[0] && unit.position[1] === position[1])) {
+      return callback();
+    }
+    const origin: [number, number] = [unit.position[0], unit.position[1]];
+    this.board.moveUnit(unit, position[0], position[1]);
+    try {
+      return callback();
+    } finally {
+      this.board.moveUnit(unit, origin[0], origin[1]);
+    }
+  }
+
+  private evaluateAttackTargetUtility(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    attackPosition: [number, number],
+    legalTargets: UnitObject[],
+    offenseBias: number,
+  ): number {
+    let utility = this.evaluateAttackUtility(
+      unit, item, target, attackPosition, offenseBias,
+    );
+    const targetSystem = this.gameRef?.targetSystem;
+    if (!targetSystem || !target.position) return utility;
+    const affected = targetSystem.getTargetFromPosition(unit, item, target.position);
+    for (const splashPosition of affected.splash) {
+      const splashTarget = this.board.getUnit(splashPosition[0], splashPosition[1]);
+      if (!splashTarget || splashTarget === target || splashTarget.isDead()) continue;
+      const splashUtility = this.evaluateAttackUtility(
+        unit, item, splashTarget, attackPosition, offenseBias,
+      );
+      if (legalTargets.includes(splashTarget)) utility += splashUtility;
+      else if (checkAlly(unit, splashTarget, this.db)) utility -= splashUtility;
+    }
+    return utility;
   }
 
   // ====================================================================
@@ -1175,15 +1268,24 @@ export class AIController {
     const targetPos = target.position;
     if (!targetPos) return [];
 
-    const minRange = item.getMinRange();
-    const maxRange = modifiedMaximumRange(unit, item, this.gameRef);
     const positions: [number, number][] = [];
 
     for (const move of validMoves) {
-      const dist = this.distance(move, targetPos);
-      if (dist >= minRange && dist <= maxRange) {
-        positions.push(move);
+      const targetSystem = this.gameRef?.targetSystem;
+      if (targetSystem) {
+        const targets: [number, number][] = this.withTemporaryPosition(
+          unit,
+          move,
+          () => targetSystem.getValidTargetsRecursive(unit, item, move),
+        );
+        if (targets.some(([x, y]) => x === targetPos[0] && y === targetPos[1])) {
+          positions.push(move);
+        }
+        continue;
       }
+      const dist = this.distance(move, targetPos);
+      if (dist >= item.getMinRange() &&
+          dist <= modifiedMaximumRange(unit, item, this.gameRef)) positions.push(move);
     }
 
     return positions;

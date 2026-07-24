@@ -128,7 +128,7 @@
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1428
+          "line": 1469
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -186,21 +186,21 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 564
+          "line": 571
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2107
+          "line": 2114
         }
       ],
       "directReads": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 564
+          "line": 571
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2107
+          "line": 2114
         }
       ],
       "matchingWebHooks": [],
@@ -234,6 +234,14 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 46
+        },
+        {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 90
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 536
         },
@@ -244,18 +252,18 @@
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 346
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1997
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 2039
         }
       ],
       "directReads": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 46
+        },
+        {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 90
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 536
         },
@@ -266,14 +274,6 @@
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 346
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1997
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 2039
         }
       ],
       "matchingWebHooks": [],
@@ -341,22 +341,22 @@
       ],
       "webReferences": [
         {
-          "source": "src/combat/combat-skill-lifecycle.ts",
-          "line": 250
+          "source": "src/combat/combat-art-system.ts",
+          "line": 54
         },
         {
-          "source": "src/engine/states/game-states.ts",
-          "line": 2005
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 250
         }
       ],
       "directReads": [
         {
-          "source": "src/combat/combat-skill-lifecycle.ts",
-          "line": 250
+          "source": "src/combat/combat-art-system.ts",
+          "line": 54
         },
         {
-          "source": "src/engine/states/game-states.ts",
-          "line": 2005
+          "source": "src/combat/combat-skill-lifecycle.ts",
+          "line": 250
         }
       ],
       "matchingWebHooks": [],
@@ -1175,19 +1175,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11128
+          "line": 11147
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12577
+          "line": 12596
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14722
+          "line": 14741
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14740
+          "line": 14759
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1350,11 +1350,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10930
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 10935
+          "line": 10949
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -1362,11 +1358,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14921
+          "line": 10973
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14944
+          "line": 14940
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 14963
         },
         {
           "source": "src/objects/game-board.ts",
@@ -1435,7 +1435,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2737
+          "line": 2744
         }
       ],
       "directReads": [
@@ -1449,7 +1449,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2737
+          "line": 2744
         }
       ],
       "matchingWebHooks": [],
@@ -1777,7 +1777,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11889
+          "line": 11908
         },
         {
           "source": "src/events/event-manager.ts",
@@ -1823,11 +1823,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8136
+          "line": 8155
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8148
+          "line": 8167
         }
       ],
       "directReads": [],
@@ -2207,6 +2207,14 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 21
+        },
+        {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 23
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 85
         },
@@ -2261,14 +2269,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 70
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1976
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1978
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -2289,6 +2289,14 @@
       ],
       "directReads": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 21
+        },
+        {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 23
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 85
         },
@@ -2343,14 +2351,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 70
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1976
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1978
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -2392,6 +2392,10 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 26
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 86
         },
@@ -2430,10 +2434,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 72
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1981
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -2450,6 +2450,10 @@
       ],
       "directReads": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 26
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 86
         },
@@ -2488,10 +2492,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 72
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1981
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -2524,6 +2524,10 @@
         "on_endstep"
       ],
       "webReferences": [
+        {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 26
+        },
         {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 86
@@ -2569,10 +2573,6 @@
           "line": 127
         },
         {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1981
-        },
-        {
           "source": "src/engine/states/info-menu-state.ts",
           "line": 60
         },
@@ -2586,6 +2586,10 @@
         }
       ],
       "directReads": [
+        {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 26
+        },
         {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 86
@@ -2625,10 +2629,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 72
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1981
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -3010,13 +3010,13 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2907
+          "line": 2914
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 2907
+          "line": 2914
         }
       ],
       "matchingWebHooks": [],
@@ -4129,15 +4129,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8197
+          "line": 8216
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11974
+          "line": 11993
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12628
+          "line": 12647
         },
         {
           "source": "src/main.ts",
@@ -4505,11 +4505,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3412
+          "line": 3419
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6481
+          "line": 6488
         },
         {
           "source": "src/main.ts",
@@ -4547,7 +4547,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3412
+          "line": 3419
         },
         {
           "source": "src/objects/item.ts",
@@ -4722,7 +4722,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6493
+          "line": 6500
         },
         {
           "source": "src/main.ts",
@@ -5060,6 +5060,10 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 28
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 88
         },
@@ -5106,10 +5110,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 40
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1983
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -5118,6 +5118,10 @@
       ],
       "directReads": [
         {
+          "source": "src/combat/combat-art-system.ts",
+          "line": 28
+        },
+        {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 88
         },
@@ -5164,10 +5168,6 @@
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
           "line": 40
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 1983
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
