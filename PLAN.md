@@ -168,7 +168,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 - [x] Targeting/AI/economy: five `witch_warp_expression` uses,
   `ignore_alliances`, additional accessory capacity, buy-price changes, and
   AI-priority modifiers.
-- [ ] Confirm attack/pre-attack proc ordering in the real Rekka combat-art and
+- [x] Confirm attack/pre-attack proc ordering in the real Rekka combat-art and
   custom-event cases; existing generic proc coverage is not sufficient.
 
 Gate: each project-used component is classified Verified or Deliberate

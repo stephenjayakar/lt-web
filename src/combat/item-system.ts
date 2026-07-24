@@ -797,7 +797,16 @@ export function usesConsumedByStrikes(
   const ownStrikes = strikes.filter((strike) => strike.attacker === unit && strike.item === item);
   const qualifying = ownStrikes.filter((strike) => strike.hit || loseUsesOnMiss(unit, item));
   const baseLoss = oneLossPerCombat(unit, item) ? (qualifying.length > 0 ? 1 : 0) : qualifying.length;
-  const restored = qualifying.length * armsthriftRestoration(unit, item);
+  const persistentRestoration = armsthriftRestoration(unit, item);
+  const restored = qualifying.reduce((total, strike) => {
+    const procRestoration = item.hasComponent('unrepairable')
+      ? 0
+      : (strike.attackProcs ?? []).reduce((sum, mark) => {
+          const value = mark.procSkill.getComponent<number>('armsthrift');
+          return sum + (typeof value === 'number' ? Math.max(0, value - 1) : 0);
+        }, 0);
+    return total + persistentRestoration + procRestoration;
+  }, 0);
   return Math.max(0, baseLoss - restored);
 }
 

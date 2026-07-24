@@ -5404,6 +5404,7 @@ export class CombatState extends State {
             activeCombat.strikes,
             activeCombat.attacker,
             activeCombat.defender,
+            activeCombat.procPlayback,
           );
           queueCombatItemEvents(game, activeCombat.strikes);
           if (this.results.stolenItem) {
@@ -13415,7 +13416,9 @@ export class EventState extends State {
             queueCombatSkillEvents(
               game, mc.strikes, mc.attacker, mc.defender, attackItem, defItem,
             );
-            applyCombatSkillEndHooks(game, mc.strikes, mc.attacker, mc.defender);
+            applyCombatSkillEndHooks(
+              game, mc.strikes, mc.attacker, mc.defender, mc.procPlayback,
+            );
             queueCombatItemEvents(game, mc.strikes);
             // Handle deaths
             for (const deadDefender of results.defenderDeaths ??
