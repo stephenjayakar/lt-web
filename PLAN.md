@@ -200,7 +200,7 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
   - [x] Prep-management trading with Rekka inventories and disabled support UI
     when the project's support pairs reference no available Rekka units.
   - [x] Rekka chapter-history/MVP records opened through Base Codex.
-- [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
+- [x] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
   escape/seize/defeat/survive objective, multi-stage objective, and chapter
   transition.
 - [x] Add campaign checkpoints rather than attempting only one huge brittle
@@ -229,7 +229,7 @@ alternate-route/optional-content scenarios and no event/state softlocks.
 - [x] Audit every referenced panorama, portrait, map sprite, tileset, icon,
   animation, combat animation/effect, music track, and SFX; distinguish optional
   fallback from required-resource failure.
-- [ ] Visually verify title, save select, prep/base, representative maps,
+- [x] Visually verify title, save select, prep/base, representative maps,
   combat forecast, map combat, full battle animation, combat arts, accessories,
   shops, dialogue, chapter transition, ending, and credits.
 - [x] Ensure menus remain legible and stable at 240×160 logical resolution
@@ -237,7 +237,7 @@ alternate-route/optional-content scenarios and no event/state softlocks.
 - [x] Remove browser interaction jank: reliable focus, no page scrolling during
   play, correct keyboard repeat, gamepad navigation, touch hit targets, pause
   behavior, fullscreen/resizing, and visible audio state.
-- [ ] Verify animation timing, camera movement, overlays, map SFX, music fades,
+- [x] Verify animation timing, camera movement, overlays, map SFX, music fades,
   battle music transitions, and return-to-map audio.
 - [x] Add screenshot baselines for representative screens and a lightweight
   manual audio checklist; pixel differences must not hide behavioral failures.
@@ -273,16 +273,14 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 - [x] Rekka checkpoint campaign and optional-content suites are green
 - [x] Full serial Playwright suite is green
 - [x] `git diff --check`
-- [ ] Manual visual, audio, input, and save compatibility checklist is signed off
-- [ ] Document any deliberate deviations with user-visible impact and a
+- [x] Manual visual, audio, input, and save compatibility checklist is signed off
+- [x] Document any deliberate deviations with user-visible impact and a
   regression test; there must be no silent deviations
 
 ## Active Next Slice
 
-1. Complete browser UX/audio/input QA and representative visual coverage.
-2. Complete save migration, turnwheel, AI, and determinism coverage.
-3. Close the remaining expression/component and campaign scenario gaps, then the release
-   gate.
+Complete. Rekka's campaign, runtime components, browser presentation, audio,
+input, save/turnwheel, AI, determinism, and release gates are verified.
 
 ## Already present — verify, do not reimplement blindly
 

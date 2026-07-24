@@ -2,7 +2,11 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 60_000,
+  // Resource-heavy project boots and long event simulations can exceed one
+  // minute when the complete serial suite has kept the browser worker busy.
+  // Keep assertion-specific waits narrow, but give each integration scenario
+  // enough total time to finish under sustained release-gate load.
+  timeout: 120_000,
   retries: 0,
   use: {
     baseURL: 'http://localhost:5173',

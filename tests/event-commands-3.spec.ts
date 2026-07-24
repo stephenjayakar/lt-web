@@ -1905,6 +1905,7 @@ test.describe('Event command batch 3r (say/dialog alias family)', () => {
 
 test.describe('Event command batch 3s (ending cards — dispatch complete)', () => {
   test('ending and paired_ending show a card with typed text and resume on dismiss', async ({ page }) => {
+    test.setTimeout(120_000);
     await boot(page);
     await page.evaluate(() => {
       const g = (window as any).__gameRef;
@@ -1950,8 +1951,14 @@ test.describe('Event command batch 3s (ending cards — dispatch complete)', () 
       g.state.change('event');
     });
 
-    await stepFrames(page, 90);
-    await page.waitForTimeout(10);
+    // Browser image loading is asynchronous, unlike the Python resource
+    // lookup. Wait for the card itself before measuring deterministic
+    // typewriter frames so a busy full-suite worker cannot steal that budget.
+    await stepFrames(page, 5);
+    await page.waitForFunction(() => {
+      const st: any = (window as any).__gameRef.state.getCurrentState();
+      return st?.endingCard?.leftTitle === 'Eirika - Restoration Queen';
+    });
     await stepFrames(page, 90);
     const solo = await page.evaluate(() => {
       const st: any = (window as any).__gameRef.state.getCurrentState();
@@ -2010,7 +2017,10 @@ test.describe('Event command batch 3s (ending cards — dispatch complete)', () 
     expect(soloPopped).toEqual({ popped: 'yes', hasCard: false });
 
     await stepFrames(page, 70);
-    await page.waitForTimeout(10);
+    await page.waitForFunction(() => {
+      const st: any = (window as any).__gameRef.state.getCurrentState();
+      return st?.endingCard?.leftTitle === 'Left Distinct';
+    });
     await stepFrames(page, 70);
     const paired = await page.evaluate(() => {
       const st: any = (window as any).__gameRef.state.getCurrentState();
@@ -2066,10 +2076,31 @@ test.describe('Event command batch 3s (ending cards — dispatch complete)', () 
     });
     expect(pairedPopped).toEqual({ popped: 'yes', hasCard: false });
 
-    await stepFrames(page, 100);
-    await page.waitForTimeout(10);
-    await stepFrames(page, 100);
-    await page.waitForTimeout(10);
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const hasTimedEnding = await page.evaluate(() => {
+        const st: any = (window as any).__gameRef.state.getCurrentState();
+        return st?.endingCard?.leftTitle === 'Timed Ending';
+      });
+      if (hasTimedEnding) break;
+      await stepFrames(page, 20);
+      await page.waitForTimeout(5);
+    }
+    const reachedTimedEnding = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st: any = g.state.getCurrentState();
+      return {
+        reached: st?.endingCard?.leftTitle === 'Timed Ending',
+        title: st?.endingCard?.leftTitle ?? null,
+        invalidContinued: g.gameVars.get('invalid_continued'),
+        loadFailedContinued: g.gameVars.get('load_failed_continued'),
+      };
+    });
+    expect(reachedTimedEnding).toEqual({
+      reached: true,
+      title: 'Timed Ending',
+      invalidContinued: 'yes',
+      loadFailedContinued: 'yes',
+    });
     await stepFrames(page, 100);
     const timed = await page.evaluate(() => {
       const g = (window as any).__gameRef;

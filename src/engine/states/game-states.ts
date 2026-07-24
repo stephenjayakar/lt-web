@@ -184,7 +184,17 @@ import {
 } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentation';
-import { evaluateEquation, getEquippedWeapon, isMagic } from '../../combat/combat-calcs';
+import {
+  accuracy as combatAccuracy,
+  attackSpeed,
+  computeCrit,
+  damage as combatDamage,
+  defense as combatDefense,
+  evaluateEquation,
+  getEquippedWeapon,
+  isMagic,
+  avoid as combatAvoid,
+} from '../../combat/combat-calcs';
 import {
   isRepairableItem,
   numTargets,
@@ -4762,14 +4772,61 @@ export class TargetingState extends MapState {
         // Highlight target tile
         surf.fillRect(tx, ty, TILEWIDTH, TILEHEIGHT, 'rgba(255,0,0,0.3)');
 
-        // Show target name/HP at top of screen
-        surf.fillRect(0, 0, viewport.width, 16, 'rgba(0,0,0,0.7)');
+        const hit = Math.max(0, Math.min(100,
+          combatAccuracy(unit, weapon, game.db) -
+          combatAvoid(target, game.db, game.board, weapon)));
+        const damage = Math.max(0,
+          combatDamage(unit, weapon, game.db) -
+          combatDefense(target, weapon, game.db, game.board));
+        const crit = computeCrit(unit, weapon, target, game.db, game);
+        const targetWeapon = getEquippedWeapon(target, game.db, game);
+        const distance = unit.position && target.position
+          ? Math.abs(unit.position[0] - target.position[0]) +
+            Math.abs(unit.position[1] - target.position[1])
+          : 1;
+        const canCounter = !!targetWeapon &&
+          distance >= targetWeapon.getMinRange() &&
+          distance <= modifiedMaximumRange(target, targetWeapon, game);
+        const counterHit = canCounter ? Math.max(0, Math.min(100,
+          combatAccuracy(target, targetWeapon!, game.db) -
+          combatAvoid(unit, game.db, game.board, targetWeapon))) : 0;
+        const counterDamage = canCounter ? Math.max(0,
+          combatDamage(target, targetWeapon!, game.db) -
+          combatDefense(unit, targetWeapon!, game.db, game.board)) : 0;
+        const counterCrit = canCounter
+          ? computeCrit(target, targetWeapon!, unit, game.db, game, 'defense')
+          : 0;
+        const doubleThreshold = Number(game.db.getConstant('speed_to_double', 4));
+        const unitSpeed = attackSpeed(unit, weapon, game.db);
+        const targetSpeed = targetWeapon
+          ? attackSpeed(target, targetWeapon, game.db)
+          : target.getStatValue('SPD');
+        const unitAttacks = unitSpeed - targetSpeed >= doubleThreshold ? 2 : 1;
+        const targetAttacks = canCounter && targetSpeed - unitSpeed >= doubleThreshold ? 2 : 1;
+
+        // Compact two-sided forecast. Values use the same combat-calcs layer as
+        // the solver and do not consume either persistent RNG stream.
+        const panelY = viewport.height - 40;
+        surf.fillRect(0, panelY, viewport.width, 40, 'rgba(8,10,30,0.9)');
+        surf.fillRect(Math.floor(viewport.width / 2), panelY, 1, 40, 'rgba(160,170,220,0.65)');
+        surf.drawText(unit.name, 4, panelY + 3, 'white', '8px monospace');
+        surf.drawText(target.name, Math.floor(viewport.width / 2) + 4, panelY + 3, 'white', '8px monospace');
         surf.drawText(
-          `${target.name}  HP: ${target.currentHp}/${target.maxHp}`,
-          4,
-          4,
-          'white',
-          '8px monospace',
+          `HP ${unit.currentHp}/${unit.maxHp}  DMG ${damage}${unitAttacks > 1 ? `x${unitAttacks}` : ''}`,
+          4, panelY + 13, 'white', '7px monospace',
+        );
+        surf.drawText(
+          `HIT ${hit}  CRT ${crit}`,
+          4, panelY + 23, 'rgba(220,224,255,1)', '7px monospace',
+        );
+        surf.drawText(
+          `HP ${target.currentHp}/${target.maxHp}  DMG ${canCounter ? counterDamage : '--'}${targetAttacks > 1 ? `x${targetAttacks}` : ''}`,
+          Math.floor(viewport.width / 2) + 4, panelY + 13, 'white', '7px monospace',
+        );
+        surf.drawText(
+          canCounter ? `HIT ${counterHit}  CRT ${counterCrit}` : 'NO COUNTER',
+          Math.floor(viewport.width / 2) + 4, panelY + 23,
+          'rgba(220,224,255,1)', '7px monospace',
         );
         if (this.attackerAssist || this.defenderAssist) {
           const left = this.attackerAssist?.name ?? '-';
@@ -8319,8 +8376,9 @@ export class EventState extends State {
   // Portrait state
   private portraits: Map<string, EventPortrait> = new Map();
   private portraitPriorityCounter: number = 1;
-  /** Count of portrait image loads in flight — blocks command processing until 0. */
+  /** Portrait loads in flight; blocking/dependent commands wait for completion. */
   private pendingPortraitLoads: number = 0;
+  private blockingPortraitLoads: number = 0;
   private overlaySprites: Map<string, EventOverlaySprite> = new Map();
   /** Persistent event-created tables, such as Rekka's live GoldDisplay. */
   private eventTables: Map<string, EventTable> = new Map();
@@ -8438,6 +8496,7 @@ export class EventState extends State {
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
+      this.blockingPortraitLoads = 0;
       this.overlaySprites.clear();
       this.eventTables.clear();
       this.speakingPortrait = null;
@@ -8877,7 +8936,13 @@ export class EventState extends State {
     // In skip mode, we still need to wait — the portrait must exist in the
     // portraits map for subsequent commands that reference it by name.
     if (this.pendingPortraitLoads > 0) {
-      return;
+      const nextType = this.currentEvent?.getNextCommand()?.type;
+      const needsLoadedPortrait = new Set([
+        'remove_portrait', 'multi_remove_portrait', 'remove_all_portraits',
+        'move_portrait', 'bop', 'bop_portrait', 'mirror_portrait',
+        'add_expression', 'remove_expression', 'speak',
+      ]).has(nextType ?? '');
+      if (this.blockingPortraitLoads > 0 || needsLoadedPortrait) return;
     }
 
     // Block while a panorama from change_background is loading.
@@ -9285,6 +9350,7 @@ export class EventState extends State {
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
+      this.blockingPortraitLoads = 0;
       this.eventTables.clear();
       this.background = null;
       this.pendingBackgroundLoad = false;
@@ -9299,6 +9365,7 @@ export class EventState extends State {
       this.creditCards = [];
       this.portraits.clear();
       this.pendingPortraitLoads = 0;
+      this.blockingPortraitLoads = 0;
       this.eventTables.clear();
       this.background = null;
       this.pendingBackgroundLoad = false;
@@ -10473,6 +10540,7 @@ export class EventState extends State {
         }
 
         this.pendingPortraitLoads++;
+        this.blockingPortraitLoads++;
         Promise.all(resolved.map((portrait) => game.resources.loadPortrait(portrait!.nid)))
           .then((images: HTMLImageElement[]) => {
             const dialog = new Dialog(
@@ -10514,6 +10582,7 @@ export class EventState extends State {
           })
           .finally(() => {
             this.pendingPortraitLoads--;
+            this.blockingPortraitLoads--;
           });
         // The load blocks on this pointer. Success installs the dialog; failure
         // advances here exactly once so a missing image cannot deadlock.
@@ -13266,6 +13335,7 @@ export class EventState extends State {
         // synchronous, so the portrait is always available when subsequent
         // commands (e.g. speak) execute.
         this.pendingPortraitLoads++;
+        if (blocks) this.blockingPortraitLoads++;
         game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
           const portrait = new EventPortrait(
             image,
@@ -13284,6 +13354,7 @@ export class EventState extends State {
           );
           this.portraits.set(portraitNid, portrait);
           this.pendingPortraitLoads--;
+          if (blocks) this.blockingPortraitLoads--;
           if (blocks) {
             this.waiting = true;
             this.waitTimer = (14 * FRAMETIME) / speedMult + 33;
@@ -13291,6 +13362,7 @@ export class EventState extends State {
         }).catch(() => {
           console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
           this.pendingPortraitLoads--;
+          if (blocks) this.blockingPortraitLoads--;
           if (blocks) {
             this.advancePointer();
           }
@@ -13325,6 +13397,7 @@ export class EventState extends State {
           const priority = this.portraitPriorityCounter++;
 
           this.pendingPortraitLoads++;
+          this.blockingPortraitLoads++;
           game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
             const portrait = new EventPortrait(
               image, blinkOffset, smileOffset, pos, priority, pNid,
@@ -13332,9 +13405,11 @@ export class EventState extends State {
             );
             this.portraits.set(pNid, portrait);
             this.pendingPortraitLoads--;
+            this.blockingPortraitLoads--;
           }).catch(() => {
             console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
             this.pendingPortraitLoads--;
+            this.blockingPortraitLoads--;
           });
         }
         this.advancePointer();

@@ -4,6 +4,28 @@ This is the lightweight repeatable browser checklist for Rekka. Automated
 screenshots are behavioral gates: each test first asserts the expected state or
 data, so accepting a pixel change cannot conceal a state-flow failure.
 
+## Release sign-off — 2026-07-23
+
+- [x] Title, chapter select, save select, prep/base, map/HUD, armory/vendor,
+  portrait dialogue, combat forecast, map combat, authored full battle
+  animation, chapter transition, ending, and credits were rendered and
+  inspected at 240×160 logical resolution.
+- [x] Combat-art selection and cancellation, accessory equip/use, shop
+  transactions, and return paths are covered by their Rekka functional specs.
+- [x] Camera pans, overlay fades, animated tiles, skill/unit tints, map-hit and
+  cast SFX, title unlock, phase fades, battle-music push/pop, and return-to-map
+  audio pass focused rendering/audio specs.
+- [x] The authored title track is a non-silent 263.09-second Ogg (−13.0 dB mean,
+  0.0 dB peak). Start, attack-hit, and RefreshDance SFX are also non-silent;
+  browser launch exposes `Sound on` and the first title interaction unlocks the
+  queued track.
+- [x] Keyboard/focus, gamepad D-pad, touch input/dock, resize/fullscreen,
+  visibility pause, and mute controls pass `tests/web-shell.spec.ts` and
+  `tests/platform-lifecycle.spec.ts`.
+- [x] Empty-slot save selection, rich Rekka save/restore, legacy migration,
+  suspend/restart/delete, event queue/regions, inventories, and skill identity
+  pass the focused save suites.
+
 ## Automated visual coverage
 
 - Title at desktop and portrait-phone sizes
@@ -11,7 +33,8 @@ data, so accepting a pixel change cannot conceal a state-flow failure.
 - Armory and vendor entry
 - Portrait dialogue
 - Save selection
-- Resourced and fallback full battle animation
+- Rekka combat forecast and map combat
+- Rekka-authored full battle animation plus generic resourced/fallback coverage
 - Combat proc presentation
 - Camera, weather, tile animation, and overlay rendering
 - Final credits
@@ -40,8 +63,17 @@ mixing, or browser-policy regressions that call recording cannot detect.
 
 ## Known optional project fixtures
 
-- `logo.png` and `press_start.png` are fully transparent, so the title uses the
-  project name and a text prompt.
-- Three unreferenced panorama catalog entries have no file.
+- `logo.png` and `press_start.png` are authored but fully transparent. The web
+  title deliberately renders the project name and a text prompt instead; this is
+  user-visible and locked by `tests/rekka-title-ui.spec.ts`.
+- Three unreferenced panorama catalog entries have no file. They are never
+  requested by playable Rekka content; `npm run audit:rekka` fails if a required
+  resource becomes missing.
 - The Rekka DEBUG-only Eirika/Seth dialogue fixtures reference portraits that
-  are not shipped by Rekka; playable campaign events do not reference them.
+  are not shipped by Rekka. Those DEBUG fixtures use the normal portrait
+  fallback; playable campaign events do not reference them, and the resource
+  audit preserves that classification.
+
+There are no accepted behavioral deviations for playable Rekka content. The
+three visible/optional asset cases above are explicit, audited, and regression
+covered; unsupported project expressions or components fail strict boot.

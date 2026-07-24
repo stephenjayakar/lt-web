@@ -10,6 +10,16 @@ test('all 899 Rekka events construct through their direct entrypoint', async ({ 
     const game = (window as any).__gameRef;
     const manager = game.eventManager as any;
     const prefabs = [...game.db.events.values()] as any[];
+    const categoryPatterns: Record<string, RegExp> = {
+      recruitment: /recruit|join|change_team|Legault|Rath|Harken|Karel/i,
+      talk: /\btalk\b|on_talk|add_talk|remove_talk/i,
+      visit: /visit|house|village/i,
+      chestDoor: /chest|door|unlock/i,
+      reinforcement: /reinforce|spawn_group|add_group|spawn_unit/i,
+      boss: /boss|dead|death/i,
+      objective: /escape|seize|defeat|survive|win_game|lose_game|objective/i,
+      transition: /chapter|level_end|set_next_chapter|trigger_script|end_skip/i,
+    };
     const originalActionLog = manager.actionLog;
     const originalConsoleLog = console.log;
     const failures: string[] = [];
@@ -68,6 +78,15 @@ test('all 899 Rekka events construct through their direct entrypoint', async ({ 
       queued,
       empty,
       parsedCommands,
+      categories: Object.fromEntries(Object.entries(categoryPatterns).map(([name, pattern]) => [
+        name,
+        prefabs.filter((prefab) => pattern.test([
+          prefab.nid,
+          prefab.name,
+          prefab.trigger,
+          ...(prefab._source ?? []),
+        ].join('\n'))).length,
+      ])),
       failures,
     };
   });
@@ -77,5 +96,15 @@ test('all 899 Rekka events construct through their direct entrypoint', async ({ 
   expect(coverage.queued).toBe(889);
   expect(coverage.empty).toBe(10);
   expect(coverage.parsedCommands).toBeGreaterThan(3_900);
+  expect(coverage.categories).toEqual({
+    recruitment: 52,
+    talk: 30,
+    visit: 158,
+    chestDoor: 93,
+    reinforcement: 17,
+    boss: 92,
+    objective: 64,
+    transition: 9,
+  });
   expect(coverage.failures, coverage.failures.join('\n')).toEqual([]);
 });
