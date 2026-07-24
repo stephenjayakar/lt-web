@@ -194,7 +194,8 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
   - [x] Base/prep entry and return, unit management/convoy access, formation,
     options, and enabled save routes.
   - [x] Chapter-conditioned armory/vendor entry, flavor, and exact stock.
-  - [ ] Trading, support, promotion, and records.
+  - [x] Rekka promotion item/class/skill data through the map item flow.
+  - [ ] Trading, support, and records.
 - [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
   escape/seize/defeat/survive objective, route split, and chapter transition.
 - [ ] Add campaign checkpoints covering early, midgame, late, final map, ending,
