@@ -532,4 +532,134 @@ test.describe('RNG-mode verification and deterministic replay', () => {
       str: result!.afterLevel.str, random: result!.afterLevel.random,
     });
   });
+
+  test('opening, cycling, and cancelling a combat preview does not consume combat RNG', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { EquipItemAction } = await import('/src/engine/action.ts');
+      const { getCombatRandomState, setCombatRandomState } = await import('/src/engine/static-random.ts');
+
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return null;
+
+      const makeUnit = (nid: string, team: string, position: [number, number]) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 8, MAG: 0, SKL: 8, SPD: 8, LCK: 0, DEF: 2, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.position = position;
+        unit.currentHp = 30;
+        return unit;
+      };
+
+      const weapon = new ItemObject({
+        nid: '_PreviewWeapon', name: '_PreviewWeapon', desc: '',
+        icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['weapon', null], ['target_enemy', null], ['damage', 5],
+          ['hit', 75], ['crit', 10], ['min_range', 1], ['max_range', 1], ['uses', 99],
+        ],
+      });
+      const attacker = makeUnit('_PreviewAttacker', 'player', [3, 3]);
+      const defenderA = makeUnit('_PreviewDefenderA', 'enemy', [3, 2]);
+      const defenderB = makeUnit('_PreviewDefenderB', 'enemy', [4, 3]);
+      attacker.items.push(weapon);
+      game.units.set(attacker.nid, attacker);
+      game.units.set(defenderA.nid, defenderA);
+      game.units.set(defenderB.nid, defenderB);
+      game.board.setUnit(3, 3, attacker);
+      game.board.setUnit(3, 2, defenderA);
+      game.board.setUnit(4, 3, defenderB);
+      game.actionLog.doAction(new EquipItemAction(attacker, weapon));
+      game.selectedUnit = attacker;
+      game.gameVars.set('_random_seed', 73);
+      setCombatRandomState(game, 73);
+      const before = getCombatRandomState(game);
+      game.state.change('targeting');
+      return {
+        before,
+        targets: game.targetSystem.getValidUnitTargets(attacker, weapon, [3, 3])
+          .map((unit: any) => unit.nid),
+      };
+    });
+    expect(setup).not.toBeNull();
+    expect(setup!.targets).toEqual(['_PreviewDefenderA', '_PreviewDefenderB']);
+
+    await page.evaluate(() => (window as any).__harness.stepFrames(4, null));
+    expect(await page.evaluate(() =>
+      (window as any).__gameRef.state.getCurrentState()?.name)).toBe('targeting');
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, 'RIGHT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, 'LEFT'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, 'BACK'));
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { getCombatRandomState } = await import('/src/engine/static-random.ts');
+      return {
+        state: game.state.getCurrentState()?.name,
+        after: getCombatRandomState(game),
+        combatTarget: game.combatTarget?.nid ?? null,
+      };
+    });
+    expect(result.after).toBe(setup!.before);
+    expect(result.combatTarget).toBeNull();
+    expect(result.state).not.toBe('combat');
+  });
+
+  test('event RNG resumes at the identical next draw after save/load', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const { evaluateExpression } = await import('/src/events/event-manager.ts');
+      const context = {
+        game,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+      };
+
+      game.gameVars.set('_random_seed', 41);
+      game.gameVars.delete('_other_random_seed');
+      game.gameVars.delete('_other_random_state');
+
+      const first = evaluateExpression('game.get_random(0, 999)', context);
+      const savedState = game.gameVars.get('_other_random_state');
+      const snapshot = harness.saveSnapshot();
+      const expectedNext = evaluateExpression('game.get_random(0, 999)', context);
+      const expectedState = game.gameVars.get('_other_random_state');
+
+      const loaded = await harness.loadSnapshot(snapshot);
+      const restoredContext = {
+        game,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+      };
+      const restoredState = game.gameVars.get('_other_random_state');
+      const replayedNext = evaluateExpression('game.get_random(0, 999)', restoredContext);
+      const replayedState = game.gameVars.get('_other_random_state');
+
+      return {
+        loaded, first, savedState, restoredState,
+        expectedNext, replayedNext, expectedState, replayedState,
+      };
+    });
+
+    expect(result.loaded).toBe(true);
+    expect(result.first).toBeGreaterThanOrEqual(0);
+    expect(result.first).toBeLessThanOrEqual(999);
+    expect(result.restoredState).toBe(result.savedState);
+    expect(result.replayedNext).toBe(result.expectedNext);
+    expect(result.replayedState).toBe(result.expectedState);
+  });
 });
