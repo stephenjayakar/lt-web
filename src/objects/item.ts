@@ -212,7 +212,8 @@ export class ItemObject {
   hasCombatUseEffect(): boolean {
     const hitResolvedStatus = this.hasComponent('hit') &&
       (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
-    const steal = this.hasComponent('steal') || this.hasComponent('gba_steal');
+    const steal = this.hasComponent('steal') || this.hasComponent('gba_steal') ||
+      this.hasComponent('trace');
     return hitResolvedStatus || steal || this.subitems.some((subitem) => subitem.hasCombatUseEffect());
   }
 

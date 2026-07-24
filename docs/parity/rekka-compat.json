@@ -709,7 +709,7 @@
       {
         "nid": "equippable_accessory",
         "uses": 88,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "eval_special_range",
@@ -779,7 +779,7 @@
       {
         "nid": "item_tags",
         "uses": 1,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "level_exp",

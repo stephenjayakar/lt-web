@@ -22,12 +22,10 @@ evidence, not proof of behavior.
 |---|---|---|
 | advance | 1 | custom-or-unknown |
 | advance_target_restrict | 1 | custom-or-unknown |
-| equippable_accessory | 88 | reference-only |
 | event_after_combat_even_miss | 48 | reference-only |
 | event_after_combat_on_hit | 5 | reference-only |
 | event_on_hit | 33 | reference-only |
 | gold_cost | 3 | custom-or-unknown |
-| item_tags | 1 | reference-only |
 | map_hit_sfx | 1 | unreferenced |
 | no_ai | 5 | reference-only |
 | self_status_on_hit | 23 | reference-only |

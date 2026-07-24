@@ -335,6 +335,23 @@ export function stealItemRestrict(
   return targetItem !== defender.getEquippedWeapon();
 }
 
+/** Rekka Trace eligibility for a target inventory item. */
+export function traceItemRestrict(
+  unit: UnitObject,
+  targetItem: ItemObject,
+  db: Database,
+): boolean {
+  const tags = targetItem.getComponent<unknown>('item_tags');
+  const itemTags = Array.isArray(tags) ? tags.map(String) : tags ? [String(tags)] : [];
+  if (itemTags.includes('NoTrace')) return false;
+  if (!targetItem.nid.includes('Fragarach') && targetItem.uses <= 0) return false;
+  if (targetItem.hasComponent('accessory') || targetItem.hasComponent('equippable_accessory')) {
+    return false;
+  }
+  if (targetItem.hasComponent('locked') || targetItem.hasComponent('undiscardable')) return false;
+  return !inventoryFull(unit, targetItem, db);
+}
+
 function positionsInRadius(
   center: TargetPosition,
   radius: number,
@@ -932,6 +949,14 @@ export function targetRestrict(
     const stealDef = context.evaluateEquation?.('STEAL_DEF', defender, item) ?? defender.getStatValue('SPD');
     if (stealAtk < stealDef) return false;
     if (!defender.items.some((candidate) => stealItemRestrict(unit, item, defender, candidate, context.db))) {
+      return false;
+    }
+  }
+
+  if (item.hasComponent('trace')) {
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    if (!defender ||
+        !defender.items.some((candidate) => traceItemRestrict(unit, candidate, context.db))) {
       return false;
     }
   }
