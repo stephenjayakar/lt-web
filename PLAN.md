@@ -183,7 +183,8 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
     stacked swaps, warp ordering, and turnwheel replay.
   - [x] Cursor/camera and layer visibility, including duration-backed pans,
     terrain refresh, and turnwheel replay.
-  - [ ] Stats, attack flags, item/skill changes, and AI changes.
+  - [x] Stats, attack flags, item/skill changes, and AI changes, including
+    stack limits/removal counts, persistent grants, and object-valued loops.
   - [ ] Map animations, shops, prep, and unit groups.
 - [ ] Validate `make_generic`, `add_group`, `spawn_group`, `change_tilemap`,
   `add_skill_component`, `set_custom_options`, and all three `pair_up` script

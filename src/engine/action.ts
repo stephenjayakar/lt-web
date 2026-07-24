@@ -3522,6 +3522,7 @@ export class AddSkillAction extends Action {
   private unit: UnitObject;
   private skill: SkillObject;
   private added: boolean = false;
+  private displacedAction: RemoveSkillAction | null = null;
   private multiSkillActions: AddSkillAction[] = [];
   private initializedMultiSkill = false;
   private statusReactionActions: Action[] = [];
@@ -3534,7 +3535,17 @@ export class AddSkillAction extends Action {
   }
 
   execute(): void {
-    this.added = !this.unit.skills.some((skill) => skill.nid === this.skill.nid);
+    const sameNid = this.unit.skills.filter((skill) => skill.nid === this.skill.nid);
+    const hasStackComponent = this.skill.hasComponent('stack');
+    const configuredStack = Number(this.skill.getComponent<unknown>('stack') ?? 1);
+    const stackLimit = Number.isFinite(configuredStack) ? Math.max(1, configuredStack) : 1;
+    if (hasStackComponent && sameNid.length >= stackLimit) {
+      if (!this.displacedAction) {
+        this.displacedAction = new RemoveSkillAction(this.unit, sameNid[0]);
+      }
+      this.displacedAction.execute();
+    }
+    this.added = this.unit.skills.filter((skill) => skill.nid === this.skill.nid).length < stackLimit;
     if (this.added) this.unit.skills.push(this.skill);
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     if (!this.added) return;
@@ -3586,6 +3597,7 @@ export class AddSkillAction extends Action {
       const index = this.unit.skills.indexOf(this.skill);
       if (index >= 0) this.unit.skills.splice(index, 1);
       for (const action of [...this.multiSkillActions].reverse()) action.reverse();
+      this.displacedAction?.reverse();
     }
     this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
   }
