@@ -253,7 +253,7 @@ touch, and visual/audio QA has no release-blocking defects.
 - [ ] Test undo/redo for every new persistent mutation: money costs, item copies,
   forced movement, equip state, skill grant/removal, reset/galeforce, HP/status,
   promotion, and transform.
-- [ ] Verify save migration/failure messaging for unsupported or older Rekka
+- [x] Verify save migration/failure messaging for unsupported or older Rekka
   saves; never silently discard unknown state.
 - [ ] Add AI scenarios for custom targeting, warp/movement skills, combat arts,
   item restrictions, splash attacks, shops-independent loadouts, and priority
