@@ -136,8 +136,12 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   `status_on_equip`, convoy/trade, auto-equip, UI, AI, save, and turnwheel.
 - [x] Implement inactive skill presentation for 16 `hidden_if_inactive` and
   10 `grey_if_inactive` uses.
-- [ ] Implement five `transform` stones, including stat changes, target/range
-  behavior, animation/presentation, reversion, breakage, save, and turnwheel.
+- [x] Implement gameplay semantics for all five `transform` stones: equipped
+  stat changes, target/range behavior, status hooks, reversion, save identity,
+  and turnwheel. Rekka's five stones have no finite-use component, so there is
+  no project-content breakage transition.
+- [ ] Add Python-parity Transform/Revert battle-animation swaps for transform
+  stones; do not substitute the ordinary weapon animation silently.
 - [ ] Implement 11 `usable_in_base` items, including stat boosters and promotion
   items in prep/base menus.
 
@@ -242,14 +246,11 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Build the generated Rekka inventory and all-level clean-boot/event-settle
-   harness so future work has an objective denominator.
-2. Implement the missing expression namespaces and Python expression forms,
-   beginning with global shops and chapter-start conditions.
-3. Port `equippable_accessory` and the combat-art menu/lifecycle as the first
-   highly visible playable mechanics.
-4. Port the project-local components used by the earliest chapters, then extend
-   checkpoint coverage chapter by chapter.
+1. Finish Transform/Revert battle-animation swaps and base-menu item use.
+2. Close the remaining Rekka lifecycle and dynamic-combat component gaps.
+3. Extend chapter checkpoints through route splits, promotion, and endgame.
+4. Complete browser UX/audio/input QA, save migration coverage, and the release
+   gate.
 
 ## Already present — verify, do not reimplement blindly
 

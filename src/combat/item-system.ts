@@ -309,6 +309,24 @@ export function noAttackAfterMove(_unit: UnitObject, item: ItemObject): boolean 
   return item.hasComponent('no_attack_after_move');
 }
 
+/** Python Transform/base component marker used by battle presentation. */
+export function transforms(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('transform');
+}
+
+/** Equipped-item stat bonus for one stat (Python item_system.stat_change). */
+export function statChange(_unit: UnitObject, item: ItemObject, statNid: string): number {
+  const changes = item.getComponent<unknown>('stat_change');
+  if (!Array.isArray(changes)) return 0;
+  let total = 0;
+  for (const entry of changes) {
+    if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
+      total += entry[1];
+    }
+  }
+  return total;
+}
+
 /** Python Repair.item_restrict: finite-use, damaged, and not explicitly unrepairable. */
 export function isRepairableItem(item: ItemObject): boolean {
   return item.maxUses > 0 && item.uses < item.maxUses && !item.hasComponent('unrepairable');

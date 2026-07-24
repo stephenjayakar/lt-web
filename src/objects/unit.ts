@@ -7,7 +7,9 @@ import {
   canUnlock as itemCanUnlock,
   dispatchEquipHooks,
   dispatchHoldHooks,
+  statChange as itemStatChange,
 } from '../combat/item-system';
+import { statChange as skillStatChange } from '../combat/skill-system';
 
 /** Lazy game ref so unit equip hooks can reach the db without a circular import. */
 let _getGameForUnits: (() => any) | null = null;
@@ -281,7 +283,7 @@ export class UnitObject {
 
   /** Maximum HP derived from the stats record. */
   get maxHp(): number {
-    return this.stats['HP'] ?? 0;
+    return this.getStatValue('HP');
   }
 
   getMaxHP(): number {
@@ -289,7 +291,11 @@ export class UnitObject {
   }
 
   getStatValue(stat: string): number {
-    return this.stats[stat] ?? 0;
+    let value = this.stats[stat] ?? 0;
+    value += skillStatChange(this, stat);
+    if (this.equippedWeapon) value += itemStatChange(this, this.equippedWeapon, stat);
+    if (this.equippedAccessory) value += itemStatChange(this, this.equippedAccessory, stat);
+    return value;
   }
 
   getStatCap(stat: string): number {
@@ -420,6 +426,7 @@ export class UnitObject {
       this.equippedWeapon = item;
     }
     dispatchEquipHooks(this, item, true, this.equipDb());
+    this.currentHp = Math.min(this.currentHp, this.getMaxHP());
   }
 
   /**
@@ -434,6 +441,7 @@ export class UnitObject {
       this.equippedWeapon = swapTo;
     }
     dispatchEquipHooks(this, item, false, this.equipDb());
+    this.currentHp = Math.min(this.currentHp, this.getMaxHP());
   }
 
   /**
