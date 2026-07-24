@@ -448,6 +448,108 @@ test.describe('Rekka project-local skill components', () => {
     });
   });
 
+  test('multi_skill preserves nested ownership, duplicates, save identity, and removal', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { AddSkillAction, RemoveSkillAction } = await import('/src/engine/action.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const unit = game.units.get('Lyn');
+      unit.skills = [];
+
+      const natural = new SkillObject(game.db.skills.get('PersonalSpaceLong'));
+      unit.skills.push(natural);
+      const personal = new SkillObject(game.db.skills.get('PersonalSpace'));
+      const personalAction = new AddSkillAction(unit, personal);
+      game.actionLog.doAction(personalAction);
+      const directChildren = unit.skills.filter((skill: any) =>
+        skill.data.get('multiSkillSource') === personal);
+      const duplicateState = {
+        longCount: unit.skills.filter((skill: any) =>
+          skill.nid === 'PersonalSpaceLong').length,
+        children: directChildren.map((skill: any) => skill.nid),
+        naturalSourced: natural.data.has('multiSkillSource'),
+      };
+      const removePersonal = new RemoveSkillAction(unit, personal);
+      game.actionLog.doAction(removePersonal);
+      const naturalSurvives = unit.skills.includes(natural);
+      game.actionLog.undo().execute();
+
+      const root = new SkillObject(game.db.skills.get('CCCRRRRR'));
+      const rootAction = new AddSkillAction(unit, root);
+      game.actionLog.doAction(rootAction);
+      const chain = ['CCCRRRRR', 'Ring', 'Ring_1', 'Ring_2', 'Ring_3', 'Charm_a'];
+      const beforeSave = chain.map((nid) => {
+        const skill = unit.skills.find((candidate: any) => candidate.nid === nid);
+        return {
+          nid,
+          uid: skill?.uid ?? null,
+          source: skill?.data.get('multiSkillSource')?.nid ?? null,
+        };
+      });
+      const snapshot = harness.saveSnapshot();
+      const loaded = await harness.loadSnapshot(snapshot);
+      const loadedUnit = game.units.get('Lyn');
+      const loadedRoot = loadedUnit.skills.find((skill: any) => skill.nid === 'CCCRRRRR');
+      const afterSave = chain.map((nid) => {
+        const skill = loadedUnit.skills.find((candidate: any) => candidate.nid === nid);
+        return {
+          nid,
+          uid: skill?.uid ?? null,
+          source: skill?.data.get('multiSkillSource')?.nid ?? null,
+        };
+      });
+      const removeRoot = new RemoveSkillAction(loadedUnit, loadedRoot);
+      game.actionLog.doAction(removeRoot);
+      const removed = chain.every((nid) =>
+        !loadedUnit.skills.some((skill: any) => skill.nid === nid));
+      const removal = game.actionLog.undo();
+      const restored = chain.every((nid) =>
+        loadedUnit.skills.some((skill: any) => skill.nid === nid));
+      removal.execute();
+
+      return {
+        duplicateState,
+        naturalSurvives,
+        loaded,
+        beforeSave,
+        afterSave,
+        removed,
+        removalAction: removal.constructor.name,
+        restored,
+        redone: chain.every((nid) =>
+          !loadedUnit.skills.some((skill: any) => skill.nid === nid)),
+      };
+    });
+
+    expect(result.duplicateState).toEqual({
+      longCount: 1,
+      children: ['PersonalSpaceClose'],
+      naturalSourced: false,
+    });
+    expect(result.naturalSurvives).toBe(true);
+    expect(result.loaded).toBe(true);
+    expect(result.afterSave).toEqual(result.beforeSave);
+    expect(result.beforeSave.map((entry: any) => ({
+      nid: entry.nid,
+      source: entry.source,
+    }))).toEqual([
+      { nid: 'CCCRRRRR', source: null },
+      { nid: 'Ring', source: 'CCCRRRRR' },
+      { nid: 'Ring_1', source: 'Ring' },
+      { nid: 'Ring_2', source: 'Ring_1' },
+      { nid: 'Ring_3', source: 'Ring_2' },
+      { nid: 'Charm_a', source: 'Ring_3' },
+    ]);
+    expect(result).toMatchObject({
+      removed: true,
+      removalAction: 'RemoveSkillAction',
+      restored: true,
+      redone: true,
+    });
+  });
+
   test('givebacker adds missing HP to static damage', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

@@ -7,7 +7,7 @@ import {
   SetSkillDataAction,
 } from './action';
 import type { UnitObject } from '../objects/unit';
-import type { SkillObject } from '../objects/skill';
+import { SkillObject } from '../objects/skill';
 import { evaluateCondition, type EventManager } from '../events/event-manager';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
@@ -35,6 +35,8 @@ function isConditionActive(
   unit: UnitObject,
   skill: SkillObject,
 ): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject && !isConditionActive(game, unit, parent)) return false;
   const condition = skill.getComponent<string>('condition');
   if (skill.hasComponent('build_charge') &&
       Number(skill.data.get('charge') ?? 0) < Number(skill.data.get('total_charge') ?? 0)) {

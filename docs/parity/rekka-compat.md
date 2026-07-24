@@ -91,7 +91,6 @@ evidence, not proof of behavior.
 | modify_ai_priority | 2 | unreferenced |
 | modify_maximum_range | 3 | unreferenced |
 | movement_type | 1 | unreferenced |
-| multi_skill | 26 | unreferenced |
 | nine_lives_event | 1 | custom-or-unknown |
 | post_combat_splash | 1 | unreferenced |
 | post_combat_splash_aoe | 1 | unreferenced |

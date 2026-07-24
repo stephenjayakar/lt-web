@@ -132,6 +132,10 @@ function componentList(value: unknown): string[] {
 }
 
 function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][number], item: ItemObject, game?: any): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject && !availabilitySkillActive(unit, parent, item, game)) {
+    return false;
+  }
   const condition = skill.getComponent<string>('condition');
   if (!condition) return true;
   return evaluateCondition(condition, {
@@ -1516,6 +1520,8 @@ function isEffectiveAgainstTags(
  * (`item = unit.equipped_weapon`).
  */
 export function skillCondition(skill: SkillObject, unit: UnitObject, game?: any): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject && !skillCondition(parent, unit, game)) return false;
   const condition = skill.getComponent<string>('condition');
   if (!condition) return true;
   return evaluateCondition(condition, {

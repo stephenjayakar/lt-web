@@ -183,6 +183,8 @@ export class CombatSkillLifecycle {
   }
 
   private active(skill: SkillObject, unit: UnitObject, item: ItemObject | null): boolean {
+    const parent = skill.data.get('multiSkillSource');
+    if (parent instanceof SkillObject && !this.active(parent, unit, item)) return false;
     if (skill.hasComponent('combat_condition') && !skill.data.get('_combat_condition')) return false;
     if (skill.hasComponent('build_charge')) {
       const charge = Number(skill.data.get('charge') ?? 0);
