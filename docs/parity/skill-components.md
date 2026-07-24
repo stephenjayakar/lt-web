@@ -41,12 +41,12 @@ Summary: 151/241 referenced in web source; 80/241 expose at least one matching w
 | map_cast_anim | MapCastAnim | lt-maker/app/engine/skill_components/aesthetic_components.py:220 | AESTHETIC | start_combat |  | 1 | src/combat/map-combat.ts:312 |  | consumed |
 | battle_animation_music | BattleAnimMusic | lt-maker/app/engine/skill_components/aesthetic_components.py:230 | AESTHETIC | battle_music |  |  |  |  | unreferenced |
 | modify_ai_priority | ModifyAIPriority | lt-maker/app/engine/skill_components/ai_components.py:14 | ADVANCED | ai_priority_multiplier | aiPriorityMultiplier | 1 | src/combat/skill-system.ts:630 |  | hook-and-reference |
-| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  | 1 | src/engine/states/game-states.ts:11079<br>src/engine/states/game-states.ts:12528<br>src/engine/states/game-states.ts:14673<br>+8 more |  | consumed |
+| hidden | Hidden | lt-maker/app/engine/skill_components/attribute_components.py:5 | ATTRIBUTE |  |  | 1 | src/engine/states/game-states.ts:11128<br>src/engine/states/game-states.ts:12577<br>src/engine/states/game-states.ts:14722<br>+8 more |  | consumed |
 | hidden_if_inactive | HiddenIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:10 | ATTRIBUTE |  |  | 2 | src/engine/states/info-menu-state.ts:53<br>src/engine/states/info-menu-state.ts:80 |  | consumed |
 | grey_if_inactive | GreyIfInactive | lt-maker/app/engine/skill_components/attribute_components.py:15 | ATTRIBUTE |  |  | 1 | src/engine/states/info-menu-state.ts:81 |  | consumed |
 | is_terrain | TerrainSkill | lt-maker/app/engine/skill_components/attribute_components.py:20 | ATTRIBUTE | condition |  |  |  |  | unreferenced |
 | class_skill | ClassSkill | lt-maker/app/engine/skill_components/attribute_components.py:30 | ATTRIBUTE |  |  |  |  |  | unreferenced |
-| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  | 2 | src/engine/action.ts:3568<br>src/engine/action.ts:3570<br>src/engine/states/game-states.ts:10881<br>+5 more |  | consumed |
+| stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  | 2 | src/engine/action.ts:3568<br>src/engine/action.ts:3570<br>src/engine/states/game-states.ts:10930<br>+5 more |  | consumed |
 | feat | Feat | lt-maker/app/engine/skill_components/attribute_components.py:44 | ATTRIBUTE |  |  |  | src/engine/learned-skills.ts:12 | mention | reference-only |
 | negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 3 | src/combat/item-system.ts:950<br>src/engine/action.ts:3618<br>src/engine/states/game-states.ts:2737 |  | consumed |
 | global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  |  |  | unreferenced |
@@ -59,7 +59,7 @@ Summary: 151/241 referenced in web source; 80/241 expose at least one matching w
 | cannot_trade | CannotTrade | lt-maker/app/engine/skill_components/base_components.py:32 | BASE | no_trade |  |  |  |  | unreferenced |
 | additional_accessories | AdditionalAccessories | lt-maker/app/engine/skill_components/base_components.py:40 | BASE | num_items_offset, num_accessories_offset |  | 1 | src/combat/skill-system.ts:620 |  | consumed |
 | ignore_alliances | IgnoreAlliances | lt-maker/app/engine/skill_components/base_components.py:54 | BASE | check_ally, check_enemy | checkAlly, checkEnemy | 2 | src/combat/skill-system.ts:600<br>src/combat/skill-system.ts:607 |  | hook-and-reference |
-| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:11840<br>src/events/event-manager.ts:103<br>src/events/event-manager.ts:208<br>+2 more |  | reference-only |
+| change_ai | ChangeAI | lt-maker/app/engine/skill_components/base_components.py:65 | BASE | change_ai |  |  | src/engine/states/game-states.ts:11889<br>src/events/event-manager.ts:103<br>src/events/event-manager.ts:208<br>+2 more |  | reference-only |
 | change_buy_price | ChangeBuyPrice | lt-maker/app/engine/skill_components/base_components.py:75 | BASE | modify_buy_price |  |  | src/combat/skill-system.ts:649<br>src/engine/states/game-states.ts:8136<br>src/engine/states/game-states.ts:8148 |  | reference-only |
 | exp_multiplier | ExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:85 | BASE | exp_multiplier | expMultiplier |  | src/combat/skill-system.ts:959<br>src/main.ts:366 |  | hook-and-reference |
 | enemy_exp_multiplier | EnemyExpMultiplier | lt-maker/app/engine/skill_components/base_components.py:95 | BASE | enemy_exp_multiplier | enemyExpMultiplier |  | src/combat/skill-system.ts:963<br>src/main.ts:367 |  | hook-and-reference |
@@ -187,7 +187,7 @@ Summary: 151/241 referenced in web source; 80/241 expose at least one matching w
 | canto_plus | CantoPlus | lt-maker/app/engine/skill_components/movement_components.py:27 | MOVEMENT | canto_movement, has_canto | hasCanto |  | src/combat/skill-system.ts:134 |  | hook-and-reference |
 | canto_sharp | CantoSharp | lt-maker/app/engine/skill_components/movement_components.py:38 | MOVEMENT | canto_movement, has_canto | hasCanto |  | src/combat/skill-system.ts:134 |  | hook-and-reference |
 | canter | Canter | lt-maker/app/engine/skill_components/movement_components.py:49 | MOVEMENT | canto_movement, has_canto | hasCanto |  | src/combat/skill-system.ts:134 |  | hook-and-reference |
-| movement_type | MovementType | lt-maker/app/engine/skill_components/movement_components.py:66 | MOVEMENT | movement_type | movementType | 1 | src/combat/skill-system.ts:582<br>src/events/event-manager.ts:1416 |  | hook-and-reference |
+| movement_type | MovementType | lt-maker/app/engine/skill_components/movement_components.py:66 | MOVEMENT | movement_type | movementType | 1 | src/combat/skill-system.ts:582<br>src/events/event-manager.ts:1420 |  | hook-and-reference |
 | pass | Pass | lt-maker/app/engine/skill_components/movement_components.py:76 | MOVEMENT | pass_through | passThrough |  |  |  | hook-only |
 | ignore_terrain | IgnoreTerrain | lt-maker/app/engine/skill_components/movement_components.py:84 | MOVEMENT | ignore_terrain, ignore_region_status, ignore_terrain_traversal | ignoreTerrain |  | src/combat/skill-system.ts:232 |  | hook-and-reference |
 | ignore_terrain_traversal | IgnoreTerrainTraversal | lt-maker/app/engine/skill_components/movement_components.py:98 | MOVEMENT | ignore_terrain_traversal |  |  |  |  | unreferenced |

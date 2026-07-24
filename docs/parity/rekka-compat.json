@@ -964,7 +964,7 @@
       {
         "nid": "stat_change",
         "uses": 37,
-        "structuralStatus": "consumed"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "status_on_equip",
@@ -1034,7 +1034,7 @@
       {
         "nid": "transform",
         "uses": 5,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "traversable_tile_target_restrict",
@@ -1054,12 +1054,12 @@
       {
         "nid": "usable",
         "uses": 16,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "usable_in_base",
         "uses": 11,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "uses",
@@ -1116,7 +1116,7 @@
       {
         "nid": "additional_accessories",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "all_brave",
@@ -1131,12 +1131,12 @@
       {
         "nid": "alternate_critical_multiplier_formula",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "armsthrift",
         "uses": 2,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "attack_pre_proc",
@@ -1266,7 +1266,7 @@
       {
         "nid": "death_tether",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "decreasing_sight_range_bonus",
@@ -1321,7 +1321,7 @@
       {
         "nid": "dynamic_crit_accuracy",
         "uses": 4,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "dynamic_damage",
@@ -1351,7 +1351,7 @@
       {
         "nid": "endstep_damage",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "reference-only"
       },
       {
         "nid": "enemy_exp_multiplier",
@@ -1426,32 +1426,32 @@
       {
         "nid": "gain_skill_after_attack",
         "uses": 3,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "gain_skill_after_combat",
         "uses": 3,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "gain_skill_after_kill",
         "uses": 3,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "gain_skill_after_take_damage",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "gain_skill_after_take_miss",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "galeforce",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "give_status_after_combat",
@@ -1511,12 +1511,12 @@
       {
         "nid": "ignore_alliances",
         "uses": 2,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "ignore_damage",
         "uses": 7,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "reference-only"
       },
       {
         "nid": "ignore_terrain",
@@ -1526,7 +1526,7 @@
       {
         "nid": "immune_status",
         "uses": 4,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "item_override",
@@ -1541,7 +1541,7 @@
       {
         "nid": "live_to_serve",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "locktouch",
@@ -1551,12 +1551,12 @@
       {
         "nid": "lost_on_end_chapter",
         "uses": 45,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "lost_on_end_combat2",
         "uses": 17,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "lost_on_endstep",
@@ -1581,17 +1581,17 @@
       {
         "nid": "modify_ai_priority",
         "uses": 2,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "modify_maximum_range",
         "uses": 3,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "movement_type",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "multi_skill",
@@ -1626,12 +1626,12 @@
       {
         "nid": "post_combat_splash",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "post_combat_splash_aoe",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "powerstaff",
@@ -1646,7 +1646,7 @@
       {
         "nid": "reflect_status",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "regeneration",
@@ -1676,12 +1676,12 @@
       {
         "nid": "skill_before_combat",
         "uses": 6,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "stack",
         "uses": 38,
-        "structuralStatus": "reference-only"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "stat_change",
@@ -1711,7 +1711,7 @@
       {
         "nid": "TrueMiracle",
         "uses": 3,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "reference-only"
       },
       {
         "nid": "unit_flickering_tint",
@@ -1726,7 +1726,7 @@
       {
         "nid": "unselectable",
         "uses": 10,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "hook-and-reference"
       },
       {
         "nid": "upkeep_event",
@@ -1756,7 +1756,7 @@
       {
         "nid": "witch_warp_expression",
         "uses": 5,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       }
     ],
     "custom": [

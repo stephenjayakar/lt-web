@@ -105,6 +105,86 @@ test.describe('Strict mode (unimplemented command/component reporting)', () => {
     expect(loud).toBe(true);
   });
 
+  test('?strict=true: unsupported expressions throw instead of returning false', async ({ page }) => {
+    await page.goto('/?harness=true&strict=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    let thrown = '';
+    try {
+      await page.evaluate(async () => {
+        const { evaluateCondition } = await import('/src/events/event-manager.ts');
+        const g = (window as any).__gameRef;
+        evaluateCondition('totally_missing_namespace.call()', {
+          game: g,
+          gameVars: g.gameVars,
+          levelVars: g.levelVars,
+        });
+      });
+    } catch (error) {
+      thrown = String(error);
+    }
+    expect(thrown).toContain('Unimplemented expression');
+    expect(thrown).toContain('totally_missing_namespace.call()');
+  });
+
+  test('event command exceptions emit a reproducible execution trace', async ({ page }) => {
+    const traces: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error' && message.text().startsWith('[EventTrace] ')) {
+        traces.push(message.text());
+      }
+    });
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      g.selectedUnit = unit;
+      g.db.events.set('TraceFailure', {
+        name: 'TraceFailure', nid: 'TraceFailure', trigger: 'TraceFailure',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;trace_should_not_run;yes'],
+      });
+      g.eventManager.triggerSpecific('TraceFailure', {
+        type: 'TraceFailure',
+        unitNid: unit.nid,
+        unit1: unit,
+        position: unit.position,
+        localArgs: new Map([['mode', 'attack']]),
+      }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 1);
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.executeCommand = () => {
+        throw new Error('synthetic trace failure');
+      };
+    });
+    try {
+      await stepFrames(page, 1);
+    } catch {
+      // The command error is intentionally rethrown after the trace is logged.
+    }
+
+    expect(traces).toHaveLength(1);
+    const trace = JSON.parse(traces[0].slice('[EventTrace] '.length));
+    expect(trace).toMatchObject({
+      eventId: 'TraceFailure',
+      commandIndex: 0,
+      command: { type: 'game_var', args: ['trace_should_not_run', 'yes'] },
+      trigger: {
+        type: 'TraceFailure',
+        unitNid: 'Eirika',
+        localArgs: { mode: 'attack' },
+      },
+      activeUnit: 'Eirika',
+    });
+    expect(trace.stateStack[0]).toBe('free');
+    expect(trace.stateStack.at(-1)).toBe('event');
+  });
+
   test('component inventory scan reports a synthetic bogus component', async ({ page }) => {
     const logs: string[] = [];
     page.on('console', (msg) => logs.push(msg.text()));

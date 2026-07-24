@@ -36,7 +36,7 @@ function isStrictMode(): boolean {
  * In production, logs a warning once per unique nid.
  */
 export function reportUnimplemented(
-  kind: 'command' | 'item-component' | 'skill-component',
+  kind: 'command' | 'item-component' | 'skill-component' | 'expression',
   nid: string,
   context?: string,
 ): void {

@@ -52,7 +52,7 @@ Rekka is web-compatible when:
   fallback.
 - [ ] Make unsupported project-used expressions and components fail loudly in
   development/test mode instead of quietly returning false or doing nothing.
-- [ ] Add focused trace output for event ID, command index, trigger locals, state
+- [x] Add focused trace output for event ID, command index, trigger locals, state
   stack, and active unit so a campaign failure is reproducible.
 
 Gate: all Rekka gaps produce actionable failures, and no required behavior is
