@@ -3565,8 +3565,12 @@ export class AddSkillAction extends Action {
 
   execute(): void {
     const sameNid = this.unit.skills.filter((skill) => skill.nid === this.skill.nid);
-    const hasStackComponent = this.skill.hasComponent('stack');
-    const configuredStack = Number(this.skill.getComponent<unknown>('stack') ?? 1);
+    const hasStackComponent = this.skill.hasComponent('stack') || this.skill.hasComponent('stax');
+    const configuredStack = Number(
+      this.skill.getComponent<unknown>('stack') ??
+      this.skill.getComponent<unknown>('stax') ??
+      1,
+    );
     const stackLimit = Number.isFinite(configuredStack) ? Math.max(1, configuredStack) : 1;
     if (hasStackComponent && sameNid.length >= stackLimit) {
       if (!this.displacedAction) {

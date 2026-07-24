@@ -443,4 +443,243 @@ test.describe('Rekka all-level compatibility', () => {
       music: 'skateboard_p_instrumental',
     });
   });
+
+  test('Split uses make_generic created_unit and clones the source loadout', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    const before = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      return {
+        unitNids: [...game.units.keys()],
+        position: [...lyn.position],
+        klass: lyn.klass,
+        level: lyn.level,
+        hp: lyn.stats.HP,
+        items: lyn.items.map((item: any) => item.nid),
+        skills: lyn.skills.map((skill: any) => skill.nid).sort(),
+      };
+    });
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      game.eventManager.triggerSpecific('Global Ability_Split', {
+        type: 'Global Ability_Split',
+        unitNid: lyn.nid,
+        unit1: lyn,
+      }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(80, null));
+
+    const split = await page.evaluate((oldNids) => {
+      const game = (window as any).__gameRef;
+      const created = [...game.units.values()].find((unit: any) =>
+        !oldNids.includes(unit.nid) && unit.generic);
+      if (!created) return null;
+      return {
+        nid: created.nid,
+        team: created.team,
+        klass: created.klass,
+        level: created.level,
+        position: created.position ? [...created.position] : null,
+        hp: created.stats.HP,
+        items: created.items.map((item: any) => item.nid),
+        skills: created.skills.map((skill: any) => skill.nid).sort(),
+      };
+    }, before.unitNids);
+    expect(split).not.toBeNull();
+    expect(split!.team).toBe('player');
+    expect(split!.klass).toBe(before.klass);
+    expect(split!.level).toBe(before.level);
+    expect(split!.items).toEqual(before.items);
+    expect(split!.skills).toEqual(before.skills);
+    expect(split!.hp).toBe(Math.floor(before.hp / 2));
+    expect(Math.abs(split!.position[0] - before.position[0]) +
+      Math.abs(split!.position[1] - before.position[1])).toBe(1);
+  });
+
+  test('Resourceful and Global Setup consume their exact dynamic option/component data', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+    const resourcefulCondition = await page.evaluate(async () => {
+      const { createItemTree } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { evaluateCondition, evaluateExpression } = await import('/src/events/event-manager.ts');
+      const game = (window as any).__gameRef;
+      const lyn = game.units.get('Lyn');
+      const ring = createItemTree(
+        game.db.items.get('DuelRing'),
+        (nid: string) => game.db.items.get(nid),
+      );
+      ring.owner = lyn;
+      lyn.items.push(ring);
+      lyn.equippedAccessory = ring;
+      lyn.skills = lyn.skills.filter((skill: any) => skill.nid !== 'Duel');
+      lyn.skills.push(new SkillObject(game.db.skills.get('Duel')));
+      game.eventManager.triggerSpecific('Global Ability_Resourceful', {
+        type: 'Global Ability_Resourceful',
+        unitNid: lyn.nid,
+        unit1: lyn,
+      }, true);
+      game.state.change('event');
+      const context = { game, unit1: lyn, gameVars: game.gameVars, levelVars: game.levelVars };
+      return {
+        condition: evaluateCondition(
+          '1 == item_funcs.num_stacks(unit, unit.get_accessory().status_on_equip.value)',
+          context,
+        ),
+        expressionStatus: evaluateExpression(
+          'unit.get_accessory().status_on_equip.value',
+          context,
+        ),
+        expressionCount: evaluateExpression(
+          "item_funcs.num_stacks(unit, 'Duel')",
+          context,
+        ),
+        accessory: lyn.getEquippedAccessory()?.nid ?? null,
+        status: lyn.getEquippedAccessory()?.getComponent('status_on_equip') ?? null,
+        duelCount: lyn.skills.filter((skill: any) => skill.nid === 'Duel').length,
+      };
+    });
+    expect(resourcefulCondition).toEqual({
+      condition: true,
+      expressionStatus: 'Duel',
+      expressionCount: 1,
+      accessory: 'DuelRing',
+      status: 'Duel',
+      duelCount: 1,
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+    const resourceful = await page.evaluate(() => {
+      const lyn = (window as any).__gameRef.units.get('Lyn');
+      return lyn.skills
+        .filter((skill: any) => skill.nid === 'Duel')
+        .map((skill: any) => skill.components.get('stax'));
+    });
+    expect(resourceful).toEqual([2]);
+
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.eventManager.triggerSpecific('Global Setup', {
+        type: 'Global Setup',
+      }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+    const setup = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        convoy: game.gameVars.get('_convoy'),
+        options: game.gameVars.get('_custom_additional_options'),
+        disabled: game.gameVars.get('_custom_options_disabled'),
+        desc: game.gameVars.get('_custom_info_desc'),
+        events: game.gameVars.get('_custom_options_events'),
+      };
+    });
+    expect(setup).toEqual({
+      convoy: 1,
+      options: ['Save'],
+      disabled: [false],
+      desc: ['Save the game.'],
+      events: ['Please'],
+    });
+  });
+
+  test('Glutton and both Capture Art branches pair their real event targets', async ({ page }) => {
+    const scenarios = [
+      { eventNid: 'Global Ability_GluttonInhale', hp: 20, branch: 'glutton' },
+      { eventNid: 'Global Ability_CaptureArt', hp: 0, branch: 'capture-defeated' },
+      { eventNid: 'Global Ability_CaptureArt', hp: 20, branch: 'capture-unarmed' },
+    ];
+
+    for (const scenario of scenarios) {
+      await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
+      await waitForHarness(page);
+      await page.evaluate(({ eventNid, hp }) => {
+        const game = (window as any).__gameRef;
+        const lyn = game.units.get('Lyn');
+        const target = game.units.get('101');
+        target.currentHp = Math.min(hp, target.getMaxHP());
+        target.items = [];
+        target.equippedWeapon = null;
+        game.eventManager.triggerSpecific(eventNid, {
+          type: eventNid,
+          unitNid: lyn.nid,
+          unit1: lyn,
+          unit2: target,
+        }, true);
+        game.state.change('event');
+      }, scenario);
+      await page.evaluate(() => (window as any).__harness.stepFrames(12, null));
+
+      const result = await page.evaluate(() => {
+        const game = (window as any).__gameRef;
+        const lyn = game.units.get('Lyn');
+        const target = game.units.get('101');
+        return {
+          leaderTraveler: lyn.traveler,
+          leaderRescuing: lyn.rescuing?.nid ?? null,
+          targetRescuedBy: target.rescuedBy?.nid ?? null,
+          targetPosition: target.position,
+          targetHp: target.currentHp,
+          inhaled: lyn.skills.some((skill: any) => skill.nid === 'Inhaled'),
+        };
+      });
+      expect(result.leaderTraveler, scenario.branch).toBe('101');
+      expect(result.leaderRescuing, scenario.branch).toBe('101');
+      expect(result.targetRescuedBy, scenario.branch).toBe('Lyn');
+      expect(result.targetPosition, scenario.branch).toBeNull();
+      expect(result.targetHp, scenario.branch).toBeGreaterThan(0);
+      expect(result.inhaled, scenario.branch).toBe(scenario.branch === 'glutton');
+    }
+  });
+
+  test('Final chapter boss events add the Nergals group and load Final_2', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=46&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      for (const nid of ['linus', 'ursula', 'uhai', 'kenneth', 'jerme', 'darin', 'brendan']) {
+        game.levelVars.set(nid, 1);
+      }
+      game.eventManager.triggerSpecific('46 LloydDead', {
+        type: 'combat_end',
+      }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(20, null));
+    const groupResult = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const expected = [
+        'Pent', 'Evilwood', 'Louise', 'BattaTheBeast', 'Nergal', 'EvilLyn', 'Hectour',
+        'gen_r_1', 'gen_r_2', 'gen_r_3', 'druid_r_1', 'druid_r_2',
+      ];
+      return {
+        positions: Object.fromEntries(expected.map((nid) => [
+          nid,
+          game.units.get(nid)?.position ?? null,
+        ])),
+        gateVisible: game.tilemap.layers.find((layer: any) => layer.nid === 'Gate')?.visible,
+      };
+    });
+    expect(Object.values(groupResult.positions).every(Boolean)).toBe(true);
+    expect(groupResult.gateVisible).toBe(false);
+
+    await page.goto('/?harness=true&project=rekka.ltproj&level=46&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      for (const nid of ['one', 'two', 'three', 'four', 'five', 'six', 'seven']) {
+        game.levelVars.set(nid, []);
+      }
+      game.eventManager.triggerSpecific('46 NergalDead', {
+        type: 'combat_end',
+      }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(190, null));
+    await page.waitForFunction(() => (window as any).__gameRef.tilemap?.nid === 'Final_2');
+    expect(await page.evaluate(() => (window as any).__gameRef.tilemap.nid)).toBe('Final_2');
+  });
 });
