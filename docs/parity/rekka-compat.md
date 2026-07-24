@@ -27,7 +27,7 @@ evidence, not proof of behavior.
 | event_after_combat_on_hit | 5 | reference-only |
 | event_on_hit | 33 | reference-only |
 | gold_cost | 3 | custom-or-unknown |
-| item_tags | 1 | unreferenced |
+| item_tags | 1 | reference-only |
 | map_hit_sfx | 1 | unreferenced |
 | no_ai | 5 | reference-only |
 | self_status_on_hit | 23 | reference-only |

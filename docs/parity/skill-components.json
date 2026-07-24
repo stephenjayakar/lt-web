@@ -3768,6 +3768,10 @@
           "line": 334
         },
         {
+          "source": "src/events/event-manager.ts",
+          "line": 1264
+        },
+        {
           "source": "src/objects/item.ts",
           "line": 9
         },
