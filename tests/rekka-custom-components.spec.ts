@@ -117,6 +117,89 @@ test.describe('Rekka project-local item components', () => {
     });
   });
 
+  test('transform stones swap Transform, combat, and Revert battle animations', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { CombatState } = await import('/src/engine/states/game-states.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const attacker = game.units.get('Lyn');
+      const defender = game.units.get('101');
+      const attackerClass = game.db.classes.get(attacker.klass);
+      const defenderClass = game.db.classes.get(defender.klass);
+      const oldAttackerAnim = attackerClass.combat_anim_nid;
+      const oldDefenderAnim = defenderClass.combat_anim_nid;
+      attackerClass.combat_anim_nid = 'Manakete';
+      defenderClass.combat_anim_nid = 'Manakete';
+      const stone = new ItemObject(game.db.items.get('Divinestone'));
+      stone.owner = attacker;
+      attacker.items.push(stone);
+      attacker.onAddItem(stone);
+      attacker.equip(stone);
+      game.board.moveUnit(
+        defender,
+        attacker.position[0],
+        attacker.position[1] - 1,
+      );
+
+      const state: any = new CombatState();
+      const created = state.tryCreateAnimationCombat(
+        attacker,
+        stone,
+        defender,
+        defender.getEquippedWeapon(),
+        'classic',
+        game,
+      );
+      const combat: any = state.animCombat;
+      const introSide = combat.leftIsAttacker ? combat.leftAnim : combat.rightAnim;
+      const intro = introSide.animData.nid;
+
+      combat.stateTimer = 10_000;
+      combat.updateInitPause();
+      const introState = combat.state;
+      for (let i = 0; i < 2_000 && !introSide.isIdle(); i++) introSide.update();
+      combat.updateTransform();
+      const mainSide = combat.leftIsAttacker ? combat.leftAnim : combat.rightAnim;
+      const main = mainSide.animData.nid;
+      const mainState = combat.state;
+
+      combat.leftTargetHp = 1;
+      combat.rightTargetHp = 1;
+      combat.state = 'exp_wait';
+      combat.updateExpWait();
+      const revertSide = combat.leftIsAttacker ? combat.leftAnim : combat.rightAnim;
+      const revert = revertSide.animData.nid;
+      const revertState = combat.state;
+      for (let i = 0; i < 2_000 && !revertSide.isIdle(); i++) revertSide.update();
+      combat.updateRevert();
+
+      attackerClass.combat_anim_nid = oldAttackerAnim;
+      defenderClass.combat_anim_nid = oldDefenderAnim;
+      return {
+        created,
+        intro,
+        introState,
+        main,
+        mainState,
+        revert,
+        revertState,
+        finalState: combat.state,
+      };
+    });
+
+    expect(result).toEqual({
+      created: true,
+      intro: 'Transform',
+      introState: 'transform',
+      main: 'Dragonstone',
+      mainState: 'begin_phase',
+      revert: 'Revert',
+      revertState: 'revert',
+      finalState: 'fade_out',
+    });
+  });
+
   test('equippable_accessory uses the ring slot with reversible equip hooks and save identity', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

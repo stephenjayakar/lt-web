@@ -140,8 +140,10 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   stat changes, target/range behavior, status hooks, reversion, save identity,
   and turnwheel. Rekka's five stones have no finite-use component, so there is
   no project-content breakage transition.
-- [ ] Add Python-parity Transform/Revert battle-animation swaps for transform
-  stones; do not substitute the ordinary weapon animation silently.
+- [x] Add Python-parity Transform/Dragonstone/Revert battle-animation swaps for
+  transform stones, including dead-unit and skip handling; missing required
+  clips fall back to map combat instead of silently substituting an ordinary
+  weapon animation.
 - [ ] Implement 11 `usable_in_base` items, including stat boosters and promotion
   items in prep/base menus.
 
