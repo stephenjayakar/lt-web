@@ -675,6 +675,80 @@ test.describe('Event command flag matching: unit movement', () => {
     expect(nonBlockingMovement).toBe(true);
   });
 
+  test('add_unit resolves unit positions and stacked warp swaps stay ordered and undoable', async ({ page }) => {
+    await installAndRunEvent(page, 'test_add_unit_relative', [
+      'remove_unit;Seth;immediate',
+      'add_unit;Seth;Eirika;warp;closest',
+      'game_var;add_unit_relative;done',
+    ], 4);
+    const placed = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const eirika = game.units.get('Eirika');
+      const seth = game.units.get('Seth');
+      return {
+        marker: game.gameVars.get('add_unit_relative'),
+        eirika: [...eirika.position],
+        seth: [...seth.position],
+        sethOnBoard: game.board.getUnit(...seth.position)?.nid,
+      };
+    });
+    expect(placed.marker).toBe('done');
+    expect(placed.sethOnBoard).toBe('Seth');
+    expect(Math.abs(placed.seth[0] - placed.eirika[0]) +
+      Math.abs(placed.seth[1] - placed.eirika[1])).toBe(1);
+
+    await installAndRunEvent(page, 'test_move_unit_stack_swap', [
+      'move_unit;Eirika;Seth;warp;stack;no_block',
+      `move_unit;Seth;${placed.eirika.join(',')};warp;stack`,
+      'game_var;stack_swap;done',
+    ], 2);
+    const swapped = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const eirika = game.units.get('Eirika');
+      const seth = game.units.get('Seth');
+      return {
+        marker: game.gameVars.get('stack_swap'),
+        eirika: [...eirika.position],
+        seth: [...seth.position],
+        eirikaOnBoard: game.board.getUnit(...eirika.position)?.nid,
+        sethOnBoard: game.board.getUnit(...seth.position)?.nid,
+      };
+    });
+    expect(swapped).toEqual({
+      marker: 'done',
+      eirika: placed.seth,
+      seth: placed.eirika,
+      eirikaOnBoard: 'Eirika',
+      sethOnBoard: 'Seth',
+    });
+
+    const turnwheel = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const markerAction = game.actionLog.undo();
+      const secondMove = game.actionLog.undo();
+      const firstMove = game.actionLog.undo();
+      const undone = {
+        eirika: [...game.units.get('Eirika').position],
+        seth: [...game.units.get('Seth').position],
+      };
+      firstMove.execute();
+      secondMove.execute();
+      markerAction.execute();
+      return {
+        undone,
+        redone: {
+          marker: game.gameVars.get('stack_swap'),
+          eirika: [...game.units.get('Eirika').position],
+          seth: [...game.units.get('Seth').position],
+        },
+      };
+    });
+    expect(turnwheel).toEqual({
+      undone: { eirika: placed.eirika, seth: placed.seth },
+      redone: { marker: 'done', eirika: placed.seth, seth: placed.eirika },
+    });
+  });
+
   test('move_group shares blocking and no_block movement semantics', async ({ page }) => {
     let target = await getAdjacentMoveTarget(page, 'Eirika');
     await configureUnitGroup(page, 'test_move_group', 'Eirika', target);

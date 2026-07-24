@@ -1175,19 +1175,19 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10965
+          "line": 10978
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12375
+          "line": 12388
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14449
+          "line": 14462
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14467
+          "line": 14480
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1342,23 +1342,27 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10767
+          "line": 10780
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10772
+          "line": 10785
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10791
+          "line": 10804
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14648
+          "line": 14661
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14671
+          "line": 14684
+        },
+        {
+          "source": "src/objects/game-board.ts",
+          "line": 117
         }
       ],
       "directReads": [],
@@ -1756,7 +1760,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11705
+          "line": 11718
         },
         {
           "source": "src/events/event-manager.ts",
@@ -4112,11 +4116,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 11790
+          "line": 11803
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12426
+          "line": 12439
         },
         {
           "source": "src/main.ts",
