@@ -339,6 +339,21 @@ export class CombatSkillLifecycle {
     defenders: UnitObject[],
     defenseItems: Map<UnitObject, ItemObject | null>,
   ): void {
+    for (const parentSkill of attacker.skills) {
+      if (!parentSkill.hasComponent('combat_art') || parentSkill.data.get('active') !== true) {
+        continue;
+      }
+      const procSkill = attacker.skills.find((candidate) =>
+        candidate.data.get('combatArtSource') === parentSkill);
+      if (procSkill) {
+        this.marks.push({
+          kind: 'attack_pre_proc',
+          unit: attacker,
+          parentSkill,
+          procSkill,
+        });
+      }
+    }
     const mainTarget = defenders[0];
     this.prepareCombatConditions(
       attacker,
