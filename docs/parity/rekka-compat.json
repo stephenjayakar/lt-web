@@ -1226,7 +1226,7 @@
       {
         "nid": "combat_art",
         "uses": 42,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "combat_artist",
