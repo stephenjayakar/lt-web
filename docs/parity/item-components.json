@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 201,
     "webHookExports": 86,
-    "referencedComponentNids": 166,
+    "referencedComponentNids": 167,
     "hookMappedComponentNids": 107,
-    "unreferencedComponentNids": 35,
+    "unreferencedComponentNids": 34,
     "consumedComponentNids": 139,
     "structuralStatuses": {
       "consumed": 47,
       "hook-and-reference": 104,
       "hook-only": 3,
-      "reference-only": 15,
-      "unreferenced": 32
+      "reference-only": 16,
+      "unreferenced": 31
     }
   },
   "webHookExports": [
@@ -2292,6 +2292,10 @@
           "line": 369
         },
         {
+          "source": "src/events/event-manager.ts",
+          "line": 1065
+        },
+        {
           "source": "src/main.ts",
           "line": 350
         },
@@ -2387,11 +2391,16 @@
         "is_accessory",
         "equippable"
       ],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1066
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "transform",
@@ -7949,7 +7958,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1346
+          "line": 1406
         },
         {
           "source": "src/main.ts",

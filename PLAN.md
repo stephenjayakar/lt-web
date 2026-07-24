@@ -42,12 +42,12 @@ Rekka is web-compatible when:
 
 ## P0 — Make failures observable
 
-- [ ] Add a Rekka audit that inventories project-used commands, components,
+- [x] Add a Rekka audit that inventories project-used commands, components,
   expression helpers, custom components, referenced resources, and counts.
   Generate the report; do not hand-maintain counts in this file.
-- [ ] Add a clean-boot smoke for all 48 levels and record load errors, missing
+- [x] Add a clean-boot smoke for all 48 levels and record load errors, missing
   resources, unknown components, and unexpected terminal states.
-- [ ] Add a bounded `level_start` settle test for all playable levels. Fail on
+- [x] Add a bounded `level_start` settle test for all playable levels. Fail on
   unknown commands, expression errors, event queue stalls, or silent condition
   fallback.
 - [ ] Make unsupported project-used expressions and components fail loudly in
