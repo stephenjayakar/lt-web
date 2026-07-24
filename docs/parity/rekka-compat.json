@@ -1596,7 +1596,7 @@
       {
         "nid": "multi_skill",
         "uses": 26,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "consumed"
       },
       {
         "nid": "negate",

@@ -3425,6 +3425,8 @@ export class AddSkillAction extends Action {
   private unit: UnitObject;
   private skill: SkillObject;
   private added: boolean = false;
+  private multiSkillActions: AddSkillAction[] = [];
+  private initializedMultiSkill = false;
 
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
@@ -3436,12 +3438,31 @@ export class AddSkillAction extends Action {
     this.added = !this.unit.skills.some((skill) => skill.nid === this.skill.nid);
     if (this.added) this.unit.skills.push(this.skill);
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
+    if (!this.added) return;
+    if (!this.initializedMultiSkill) {
+      this.initializedMultiSkill = true;
+      const childNids = this.skill.getComponent<unknown>('multi_skill');
+      const game = _getGame?.();
+      if (Array.isArray(childNids) && game?.db) {
+        for (const childNid of childNids) {
+          if (typeof childNid !== 'string' || childNid === this.skill.nid) continue;
+          const prefab = game.db.skills.get(childNid);
+          if (!prefab) continue;
+          const child = new SkillObject(prefab);
+          child.data.set('multiSkillSource', this.skill);
+          child.data.set('multiSkillSourceType', 'multi_skill');
+          this.multiSkillActions.push(new AddSkillAction(this.unit, child));
+        }
+      }
+    }
+    for (const action of this.multiSkillActions) action.execute();
   }
 
   reverse(): void {
     if (this.added) {
       const index = this.unit.skills.indexOf(this.skill);
       if (index >= 0) this.unit.skills.splice(index, 1);
+      for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     }
     this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
   }
@@ -3452,6 +3473,8 @@ export class RemoveSkillAction extends Action {
   private unit: UnitObject;
   private skill: SkillObject;
   private index: number = -1;
+  private multiSkillActions: RemoveSkillAction[] = [];
+  private initializedMultiSkill = false;
 
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
@@ -3479,6 +3502,15 @@ export class RemoveSkillAction extends Action {
   execute(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
+    if (this.index >= 0) {
+      if (!this.initializedMultiSkill) {
+        this.initializedMultiSkill = true;
+        this.multiSkillActions = this.unit.skills
+          .filter((candidate) => candidate.data.get('multiSkillSource') === this.skill)
+          .map((candidate) => new RemoveSkillAction(this.unit, candidate));
+      }
+      for (const action of this.multiSkillActions) action.execute();
+    }
     this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
   }
 
@@ -3486,6 +3518,7 @@ export class RemoveSkillAction extends Action {
     if (this.index >= 0 && !this.unit.skills.includes(this.skill)) {
       this.unit.skills.splice(this.index, 0, this.skill);
     }
+    for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
   }
 }

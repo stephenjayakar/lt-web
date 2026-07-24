@@ -533,11 +533,14 @@ export class InfoMenuState extends State {
     this.drawSmallText(surf, 'Skills', rightX, skillHeaderY, COLOR_YELLOW);
 
     const skillStartY = skillHeaderY + 14;
-    if (unit.skills.length === 0) {
+    // Python MultiSkill folds its sourced children into the visible wrapper.
+    const visibleSkills = unit.skills.filter((skill) =>
+      skill.data.get('multiSkillSourceType') !== 'multi_skill');
+    if (visibleSkills.length === 0) {
       this.drawSmallText(surf, '(none)', rightX + 4, skillStartY, COLOR_GREY);
     } else {
-      for (let i = 0; i < unit.skills.length; i++) {
-        const skill = unit.skills[i];
+      for (let i = 0; i < visibleSkills.length; i++) {
+        const skill = visibleSkills[i];
         const y = skillStartY + i * 16;
 
         // Skill icon

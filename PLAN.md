@@ -129,7 +129,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   cancellation, cleanup, proc presentation, and turnwheel behavior.
 - [ ] Complete combat-art AI selection and the child-component gaps tracked
   below; inactive/grey presentation is tracked separately.
-- [ ] Implement 26 `multi_skill` wrappers with correct child ownership,
+- [x] Implement 26 `multi_skill` wrappers with correct child ownership,
   duplicate/stack handling, removal, save IDs, and UI grouping.
 - [x] Implement 88 `equippable_accessory` items. Treat rings as the project's
   one accessory slot, not ordinary inventory: capacity, equip/unequip,

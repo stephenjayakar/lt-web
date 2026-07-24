@@ -583,6 +583,8 @@ function serializeSkill(
       }
       // Unresolvable reference: keep the entry as-is so legacy readers see it.
       data.push([k, v]);
+    } else if (k === 'multiSkillSource' && v instanceof SkillObjectCtor) {
+      data.push(['multiSkillSourceUid', v.uid]);
     } else {
       data.push([k, v]);
     }
@@ -1400,6 +1402,21 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
           }
         } catch (err) {
           console.warn(`Unit "${unitData.nid}": failed to restore skill "${skillNid}":`, err);
+        }
+      }
+
+      // Reconnect multi-skill child ownership after all instances for this
+      // unit exist. Saved UIDs are stable and avoid serializing live objects.
+      for (const skill of unit.skills) {
+        const sourceUid = skill.data.get('multiSkillSourceUid');
+        if (typeof sourceUid !== 'number') continue;
+        const source = unit.skills.find((candidate) => candidate.uid === sourceUid);
+        if (source) {
+          skill.data.set('multiSkillSource', source);
+          skill.data.delete('multiSkillSourceUid');
+          if (!skill.data.has('multiSkillSourceType')) {
+            skill.data.set('multiSkillSourceType', 'multi_skill');
+          }
         }
       }
 

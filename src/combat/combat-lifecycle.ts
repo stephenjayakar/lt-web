@@ -74,6 +74,9 @@ function combatSkillEnabled(
   target: UnitObject,
   item: ItemObject,
 ): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject &&
+      !combatSkillEnabled(game, unit, parent, target, item)) return false;
   const total = Number(skill.data.get('total_charge'));
   const charge = Number(skill.data.get('charge'));
   if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) return false;
