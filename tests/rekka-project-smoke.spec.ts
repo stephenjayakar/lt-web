@@ -1052,6 +1052,146 @@ test.describe('Rekka all-level compatibility', () => {
     });
   });
 
+  test('Rekka chapter 26 recruitment, chest, and seize persist into chapter 27', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto('/?harness=true&project=rekka.ltproj&level=26&clean=false&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+
+    const prep = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const state = game.state.getCurrentState() as any;
+      return {
+        state: state?.name,
+        talkPair: game.eventManager.hasTalkPair('Eliwood', 'Legault'),
+        options: [...(state?.options ?? [])],
+      };
+    });
+    expect(prep.state).toBe('prep_main');
+    expect(prep.talkPair).toBe(true);
+    expect(prep.options).toContain('Fight');
+
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      state.cursor = state.options.indexOf('Fight');
+      (window as any).__harness.stepFrames(1, 'SELECT');
+      (window as any).__harness.stepFrames(2, null);
+    });
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
+      .toBe('free');
+
+    const talkReady = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const eliwood = game.units.get('Eliwood');
+      const legault = game.units.get('Legault');
+      if (!eliwood || !legault?.position) return false;
+      const [lx, ly] = legault.position;
+      game.board.moveUnit(eliwood, lx, ly + 1);
+      game.cursor.setPos(lx, ly + 1);
+      game.selectedUnit = eliwood;
+      game._moveOrigin = [lx, ly + 1];
+      game.state.change('menu');
+      (window as any).__harness.stepFrames(2, null);
+      const menu = game.state.getCurrentState() as any;
+      const index = menu.menu?.options.findIndex((option: any) => option.label === 'Talk') ?? -1;
+      if (index >= 0) menu.menu.selectedIndex = index;
+      return index >= 0;
+    });
+    expect(talkReady).toBe(true);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.settle(200));
+
+    const recruited = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const legault = game.units.get('Legault');
+      return {
+        team: legault?.team,
+        persistent: legault?.persistent,
+        talkPair: game.eventManager.hasTalkPair('Eliwood', 'Legault'),
+      };
+    });
+    expect(recruited).toEqual({
+      team: 'player',
+      persistent: true,
+      talkPair: false,
+    });
+
+    const chestReady = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const legault = game.units.get('Legault');
+      game.board.moveUnit(legault, 2, 17);
+      legault.finished = false;
+      legault.hasAttacked = false;
+      game.cursor.setPos(2, 17);
+      game.selectedUnit = legault;
+      game._moveOrigin = [2, 17];
+      game.state.change('menu');
+      (window as any).__harness.stepFrames(2, null);
+      const menu = game.state.getCurrentState() as any;
+      const index = menu.menu?.options.findIndex((option: any) => option.label === 'Chest') ?? -1;
+      if (index >= 0) menu.menu.selectedIndex = index;
+      return index >= 0;
+    });
+    expect(chestReady).toBe(true);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.settle(400));
+
+    const chestResult = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const legault = game.units.get('Legault');
+      return {
+        items: legault.items.map((item: any) => item.nid),
+        chestPresent: game.currentLevel.regions.some((region: any) => region.nid === 'Chest1'),
+      };
+    });
+    expect(chestResult.items).toContain('Energy_Ring');
+    expect(chestResult.chestPresent).toBe(false);
+
+    const seizeReady = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const eliwood = game.units.get('Eliwood');
+      const darin = game.units.get('Darin');
+      if (darin?.position) game.board.removeUnit(darin);
+      game.board.moveUnit(eliwood, 12, 2);
+      eliwood.finished = false;
+      eliwood.hasAttacked = false;
+      game.cursor.setPos(12, 2);
+      game.selectedUnit = eliwood;
+      game._moveOrigin = [12, 2];
+      game.state.change('menu');
+      (window as any).__harness.stepFrames(2, null);
+      const menu = game.state.getCurrentState() as any;
+      const index = menu.menu?.options.findIndex((option: any) => option.label === 'Seize') ?? -1;
+      if (index >= 0) menu.menu.selectedIndex = index;
+      return index >= 0;
+    });
+    expect(seizeReady).toBe(true);
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    await page.evaluate(() => (window as any).__harness.settle(2_500));
+    await page.waitForFunction(() => {
+      const game = (window as any).__gameRef;
+      return game.currentLevel?.nid === '27' && game.units.has('Legault');
+    });
+    await page.evaluate(() => (window as any).__harness.settle(1_200));
+
+    const chapterTwentySeven = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const legault = game.units.get('Legault');
+      return {
+        level: game.currentLevel?.nid,
+        previousLevel: game.gameVars.get('_prev_level_nid'),
+        team: legault?.team,
+        items: legault?.items.map((item: any) => item.nid) ?? [],
+      };
+    });
+    expect(chapterTwentySeven).toMatchObject({
+      level: '27',
+      previousLevel: '26',
+      team: 'player',
+      items: expect.arrayContaining(['Energy_Ring']),
+    });
+  });
+
   test('Rekka chapter history and Lyn MVP data open through Base Codex Records', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=2&clean=true&bundle=false');
     await waitForHarness(page);
