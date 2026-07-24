@@ -5,6 +5,7 @@ import {
   type EventTrigger,
 } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
+import { createItemTree } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
 import type { CombatStrike } from './combat-solver';
@@ -21,6 +22,9 @@ import {
   AddSkillAction,
   SetSkillDataAction,
   GainMoneyAction,
+  GiveItemAction,
+  RegisterItemTreeAction,
+  SetItemUsesAction,
 } from '../engine/action';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
@@ -43,6 +47,7 @@ interface CombatLifecycleGame {
   db?: Database;
   currentParty?: string;
   getMoney?: () => number;
+  items?: Map<string, ItemObject>;
 }
 
 interface DroppableGame {
@@ -445,6 +450,28 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         applied++;
       } catch (error) {
         console.error(`Could not evaluate ${expression}`, error);
+      }
+    }
+
+    if (strike.item.hasComponent('trace') && game.items) {
+      const traceMark = hitMarks[0];
+      const targetItem = strike.item.data.get('target_item') as ItemObject | undefined;
+      if (traceMark && targetItem) {
+        const copyNid = targetItem.nid.includes('Fragarach') &&
+          game.db.items.has('Deviant_Fragarach')
+          ? 'Deviant_Fragarach'
+          : targetItem.nid;
+        const prefab = game.db.items.get(copyNid);
+        if (prefab) {
+          const copy = createItemTree(prefab, (nid) => game.db!.items.get(nid));
+          const key = `trace_${strike.attacker.nid}_${copy.nid}_${game.items.size}`;
+          game.actionLog.doAction(new RegisterItemTreeAction(game.items, copy, key));
+          if (!copyNid.includes('Deviant_Fragarach') && copy.maxUses > 0) {
+            game.actionLog.doAction(new SetItemUsesAction(copy, 1));
+          }
+          game.actionLog.doAction(new GiveItemAction(strike.attacker, copy));
+          applied += 3;
+        }
       }
     }
   }

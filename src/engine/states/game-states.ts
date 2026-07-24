@@ -174,6 +174,7 @@ import {
   allowSameTarget,
   allowLessThanMaxTargets,
   stealItemRestrict,
+  traceItemRestrict,
   available as itemAvailable,
   computeTargetIcon,
   fullPrice as itemFullPrice,
@@ -2979,7 +2980,7 @@ export class ItemTargetingState extends MapState {
   private targetItemMenu: ChoiceMenu | null = null;
   private pendingTarget: [number, number] | null = null;
   private selectableTargetItems: ItemObject[] = [];
-  private targetItemMode: 'repair' | 'steal' | null = null;
+  private targetItemMode: 'repair' | 'steal' | 'trace' | null = null;
 
   /** Kept as a read-only runtime alias for repair-menu diagnostics/tests. */
   private get repairableItems(): ItemObject[] {
@@ -3158,6 +3159,26 @@ export class ItemTargetingState extends MapState {
       return;
     }
 
+    if (activeItem === this.item && activeItem.hasComponent('trace')) {
+      const defender = game.board.getUnit(target[0], target[1]);
+      this.selectableTargetItems = defender?.items.filter((candidate: ItemObject) =>
+        traceItemRestrict(unit, candidate, game.db),
+      ) ?? [];
+      if (!defender || this.selectableTargetItems.length === 0) return;
+      this.pendingTarget = target;
+      this.targetItemMode = 'trace';
+      const options: MenuOption[] = this.selectableTargetItems.map((candidate, itemIndex) => ({
+        label: candidate.name,
+        value: `trace_${itemIndex}`,
+        enabled: true,
+      }));
+      const [cameraX, cameraY] = game.camera.getOffset();
+      const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
+      const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
+      this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      return;
+    }
+
     this.selectedTargets[this.sequenceIndex].push(target);
     if (this.selectedTargets[this.sequenceIndex].length < numTargets(unit, activeItem)) {
       if (!this.configureTargets(unit)) this.cancelTargeting();
@@ -3218,10 +3239,25 @@ export class ItemTargetingState extends MapState {
         this.targetItemMode = null;
         return;
       }
-      const itemIndex = Number.parseInt(menuResult.selected.replace(/^(repair|steal)_/, ''), 10);
+      const itemIndex = Number.parseInt(menuResult.selected.replace(/^(repair|steal|trace)_/, ''), 10);
       const unit: UnitObject | null = game.selectedUnit;
       const targetItem = this.selectableTargetItems[itemIndex];
       if (this.targetItemMode === 'steal' && unit && this.item && this.pendingTarget && targetItem) {
+        const defender = game.board.getUnit(this.pendingTarget[0], this.pendingTarget[1]);
+        if (defender) {
+          this.item.data.set('target_item', targetItem);
+          game.memory.set('combat_item', this.item);
+          game.combatTarget = defender;
+          game.highlight.clear();
+          this.targetItemMenu = null;
+          this.pendingTarget = null;
+          this.selectableTargetItems = [];
+          this.targetItemMode = null;
+          game.state.change('combat');
+        }
+        return;
+      }
+      if (this.targetItemMode === 'trace' && unit && this.item && this.pendingTarget && targetItem) {
         const defender = game.board.getUnit(this.pendingTarget[0], this.pendingTarget[1]);
         if (defender) {
           this.item.data.set('target_item', targetItem);

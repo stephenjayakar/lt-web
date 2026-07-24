@@ -2772,6 +2772,34 @@ export class GiveItemAction extends Action {
   }
 }
 
+/** Register a newly-created item tree in the global item identity map. */
+export class RegisterItemTreeAction extends Action {
+  private items: Map<string, ItemObject>;
+  private entries: Array<[string, ItemObject]>;
+
+  constructor(items: Map<string, ItemObject>, root: ItemObject, key: string) {
+    super();
+    this.items = items;
+    this.entries = [];
+    const collect = (item: ItemObject, itemKey: string) => {
+      this.entries.push([itemKey, item]);
+      item.subitems.forEach((child, index) =>
+        collect(child, `${itemKey}_sub_${index}_${child.nid}`));
+    };
+    collect(root, key);
+  }
+
+  execute(): void {
+    for (const [key, item] of this.entries) this.items.set(key, item);
+  }
+
+  reverse(): void {
+    for (const [key, item] of [...this.entries].reverse()) {
+      if (this.items.get(key) === item) this.items.delete(key);
+    }
+  }
+}
+
 // ------------------------------------------------------------------
 // Convoy / Party actions
 // ------------------------------------------------------------------
