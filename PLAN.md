@@ -129,7 +129,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   AI use, cancellation, cleanup, animation, and save/turnwheel behavior.
 - [ ] Implement 26 `multi_skill` wrappers with correct child ownership,
   duplicate/stack handling, removal, save IDs, and UI grouping.
-- [ ] Implement 88 `equippable_accessory` items. Treat rings as the project's
+- [x] Implement 88 `equippable_accessory` items. Treat rings as the project's
   one accessory slot, not ordinary inventory: capacity, equip/unequip,
   `status_on_equip`, convoy/trade, auto-equip, UI, AI, save, and turnwheel.
 - [ ] Implement inactive skill presentation for 16 `hidden_if_inactive` and

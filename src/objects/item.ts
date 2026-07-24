@@ -111,6 +111,12 @@ export class ItemObject {
     return this.components.has('weapon') || this.components.has('siege_weapon');
   }
 
+  /** Python item_system.is_accessory: both passive and equippable variants. */
+  isAccessory(): boolean {
+    return this.hasComponent('accessory') ||
+      this.hasComponent('equippable_accessory');
+  }
+
   getDamage(): number {
     return this.getComponent<number>('damage') ?? 0;
   }

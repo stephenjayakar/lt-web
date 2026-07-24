@@ -10,6 +10,96 @@ async function boot(page: Page): Promise<void> {
 }
 
 test.describe('Rekka project-local item components', () => {
+  test('equippable_accessory uses the ring slot with reversible equip hooks and save identity', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { inventoryFull } = await import('/src/combat/item-system.ts');
+      const { EquipItemAction } = await import('/src/engine/action.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const unit = game.units.get('Lyn');
+      for (const item of [...unit.items]) {
+        if (!item.isAccessory()) continue;
+        if (unit.equippedAccessory === item) unit.unequip(item);
+        unit.items.splice(unit.items.indexOf(item), 1);
+        unit.onRemoveItem(item);
+      }
+      harness.giveItem('Lyn', 'DuelRing');
+      const duel = unit.items.find((item: any) => item.nid === 'DuelRing');
+      const weaponBefore = unit.equippedWeapon?.nid ?? null;
+      const initial = {
+        isAccessory: duel.isAccessory(),
+        equipped: unit.equippedAccessory?.nid ?? null,
+        weapon: weaponBefore,
+        skills: unit.skills.filter((skill: any) =>
+          skill.data.get('itemSource') === duel).map((skill: any) => skill.nid),
+      };
+
+      const morale = new ItemObject(game.db.items.get('MoraleRing'));
+      morale.owner = unit;
+      const fullAtOne = inventoryFull(unit, morale, game.db);
+      unit.items.push(morale);
+      unit.onAddItem(morale);
+      const equip = new EquipItemAction(unit, morale);
+      game.actionLog.doAction(equip);
+      const swapped = {
+        equipped: unit.equippedAccessory?.nid ?? null,
+        weapon: unit.equippedWeapon?.nid ?? null,
+        hasDuel: unit.skills.some((skill: any) => skill.nid === 'Duel'),
+        hasMorale: unit.skills.some((skill: any) => skill.nid === 'Morale'),
+      };
+      const action = game.actionLog.undo();
+      const undone = {
+        equipped: unit.equippedAccessory?.nid ?? null,
+        hasDuel: unit.skills.some((skill: any) => skill.nid === 'Duel'),
+        hasMorale: unit.skills.some((skill: any) => skill.nid === 'Morale'),
+      };
+      action.execute();
+      const snapshot = harness.saveSnapshot();
+      const loaded = await harness.loadSnapshot(snapshot);
+      const loadedUnit = game.units.get('Lyn');
+      const loadedAccessory = loadedUnit.equippedAccessory;
+      return {
+        initial,
+        fullAtOne,
+        action: action.constructor.name,
+        swapped,
+        undone,
+        loaded,
+        loadedAccessory: loadedAccessory?.nid ?? null,
+        identityPreserved: !!loadedAccessory && loadedUnit.items.includes(loadedAccessory),
+        loadedSkill: loadedUnit.skills.some((skill: any) => skill.nid === 'Morale'),
+      };
+    });
+
+    expect(result).toEqual({
+      initial: {
+        isAccessory: true,
+        equipped: 'DuelRing',
+        weapon: null,
+        skills: ['Duel'],
+      },
+      fullAtOne: true,
+      action: 'EquipItemAction',
+      swapped: {
+        equipped: 'MoraleRing',
+        weapon: null,
+        hasDuel: false,
+        hasMorale: true,
+      },
+      undone: {
+        equipped: 'DuelRing',
+        hasDuel: true,
+        hasMorale: false,
+      },
+      loaded: true,
+      loadedAccessory: 'MoraleRing',
+      identityPreserved: true,
+      loadedSkill: true,
+    });
+  });
+
   test('advance validates and reversibly moves both user and target', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {
