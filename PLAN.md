@@ -157,9 +157,10 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 - [x] Unit control/status: condition-aware `unselectable`, `immune_status`,
   `reflect_status`, `ignore_damage`, `TrueMiracle`, and `death_tether`, with
   proc presentation, charge handling, source identity, and undo/redo.
-- [ ] Pre/post combat: `skill_before_combat`, `post_combat_splash`,
-  `post_combat_splash_aoe`, `live_to_serve`, and kill/attack/combat/miss/damage
-  skill-grant hooks.
+- [x] Pre/post combat: all six `skill_before_combat` grants,
+  `post_combat_splash`/`post_combat_splash_aoe`, `live_to_serve`, and all
+  project-used kill/attack/combat/miss/damage skill-grant hooks, including
+  immediate later-strike visibility, charge use, and turnwheel restoration.
 - [ ] Combat math: `armsthrift`, `dynamic_crit_accuracy`,
   `alternate_critical_multiplier_formula`, and maximum-range modification.
 - [ ] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and

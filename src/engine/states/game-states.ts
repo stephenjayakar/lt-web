@@ -157,6 +157,7 @@ import {
   applyDroppableItemPickups,
   combatTradePair,
   applyCombatSkillEndHooks,
+  triggerSkillCharge,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { applySkillTurnHooks } from '../skill-turn-lifecycle';
@@ -2883,6 +2884,19 @@ function finishCoreItemUse(
 ): void {
   const game = getGame();
   const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
+  const allyHealing = [...healingDone.entries()]
+    .filter(([target]) => target !== unit)
+    .reduce((total, [, amount]) => total + Math.max(0, amount), 0);
+  if (allyHealing > 0) {
+    for (const skill of unit.skills) {
+      const ratio = skill.getComponent<number>('live_to_serve');
+      if (typeof ratio !== 'number') continue;
+      const amount = Math.trunc(allyHealing * ratio);
+      if (amount <= 0) continue;
+      game.actionLog.doAction(new HealAction(unit, amount));
+      triggerSkillCharge(game, skill);
+    }
+  }
   const weaponType = item.getComponent<string>('weapon_type');
   const wexpValue = weaponType ? Number(item.getComponent<number>('wexp') ?? 1) : 0;
   if (weaponType && wexpValue > 0 && uniqueTargets.length > 0) {
