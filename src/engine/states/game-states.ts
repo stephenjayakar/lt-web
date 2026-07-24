@@ -9693,10 +9693,8 @@ export class EventState extends State {
   /** Evaluate a variable command, preserving the typed result of a whole {e:...} argument. */
   private evaluateVariableCommand(rawSource: string, substitutedSource: string): any {
     const wholeEval = rawSource.match(/^\{(?:e|eval):([\s\S]+)\}$/);
-    if (!wholeEval) return this.evaluateVariableExpression(substitutedSource);
-
     const context = this.buildConditionContext();
-    const expression = wholeEval[1].replace(
+    const typedSource = (wholeEval?.[1] ?? rawSource).replace(
       /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
       (_match, key: string) => {
         let value: any;
@@ -9706,7 +9704,15 @@ export class EventState extends State {
         return value === undefined ? 'undefined' : JSON.stringify(value);
       },
     );
-    return evaluateExpression(expression, context);
+    if (!wholeEval && typedSource === rawSource) {
+      return this.evaluateVariableExpression(substitutedSource);
+    }
+    try {
+      const evaluated = evaluateExpression(typedSource, context);
+      return evaluated === undefined ? substitutedSource : evaluated;
+    } catch {
+      return substitutedSource;
+    }
   }
 
   /** Open an event-owned state directly or after the standard fade-to-black. */

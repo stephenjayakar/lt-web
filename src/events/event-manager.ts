@@ -569,7 +569,7 @@ export function evaluateCondition(
   }
 
   // v('varname') / v('varname', default) — variable lookup (level vars then game vars)
-  const vMatch = trimmed.match(/^v\s*\(\s*['"](.+?)['"]\s*(?:,\s*(.+?))?\s*\)/);
+  const vMatch = trimmed.match(/^v\s*\(\s*['"]([^'"]+)['"]\s*(?:,\s*(.+?))?\s*\)$/);
   if (vMatch) {
     const varName = vMatch[1];
     const fallback = vMatch[2] !== undefined ? resolvePath(vMatch[2], context) : undefined;
@@ -1556,6 +1556,14 @@ function evaluateWithJsFallback(
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
+  const reservedLocals = new Set([
+    'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
+    'target_pos', 'item', 'mode', 'stat_changes', 'support_rank_nid',
+  ]);
+  const localDeclarations = [...(ctx.localArgs?.keys() ?? [])]
+    .filter((name) => /^[A-Za-z_]\w*$/.test(name) && !reservedLocals.has(name))
+    .map((name) => `var ${name} = _locals.get(${JSON.stringify(name)});`)
+    .join('\n');
 
   // Inject query engine functions (u, v, get_item, has_item, is_dead, etc.)
   const _queryEngine = new GameQueryEngine();
@@ -1568,8 +1576,9 @@ function evaluateWithJsFallback(
       'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'combat_calcs', 'movement_funcs', 'target_system',
-      'max', 'min', 'str', 'range', '_qf',
+      'max', 'min', 'str', 'range', '_qf', '_locals',
       `"use strict";
+       ${localDeclarations}
        // Spread query engine functions into local scope
        var u = _qf.u, get_item = _qf.get_item, has_item = _qf.has_item,
            get_subitem = _qf.get_subitem, get_skill = _qf.get_skill,
@@ -1596,7 +1605,7 @@ function evaluateWithJsFallback(
       support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
       evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
-      _queryFuncs,
+      _queryFuncs, ctx.localArgs ?? new Map(),
     );
   } catch (e) {
     // Expression evaluation failed — log the error for debugging

@@ -202,6 +202,163 @@ test.describe('Rekka all-level compatibility', () => {
     expect(failures, [...new Set(failures)].join('\n')).toEqual([]);
   });
 
+  test('all 330 conditions, 69 evals, and 33 loops execute in strict mode', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
+    await waitForHarness(page);
+
+    const inventory = rekkaManifest.expressions as {
+      conditions: string[];
+      evalSubstitutions: string[];
+      loops: string[];
+    };
+    expect(inventory.conditions).toHaveLength(330);
+    expect(inventory.evalSubstitutions).toHaveLength(69);
+    expect(inventory.loops).toHaveLength(33);
+
+    const result = await page.evaluate(async (expressions) => {
+      const { evaluateCondition, evaluateExpression } =
+        await import('/src/events/event-manager.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const target = game.units.get('101');
+      const item = unit.items.find((candidate: any) => candidate.nid === 'Iron_Sword') ??
+        unit.items[0];
+      const failures: string[] = [];
+
+      // Static syntax validation needs every literal unit/region lookup to
+      // resolve. Alias the fixture unit for chapter-local names; the values
+      // themselves remain deterministic and Python-shaped.
+      const all = [
+        ...expressions.conditions,
+        ...expressions.evalSubstitutions,
+        ...expressions.loops,
+      ].join('\n');
+      const aliases = [...all.matchAll(/game\.get_unit\(['"]([^'"]+)['"]\)/g)]
+        .map((match) => match[1]);
+      const addedAliases: string[] = [];
+      for (const nid of aliases) {
+        if (!game.units.has(nid)) {
+          game.units.set(nid, unit);
+          addedAliases.push(nid);
+        }
+      }
+      const regionAliases = [...all.matchAll(/game\.get_region\(['"]([^'"]+)['"]\)/g)]
+        .map((match) => match[1]);
+      const oldRegions = game.currentLevel.regions;
+      game.currentLevel.regions = [
+        ...oldRegions,
+        ...regionAliases
+          .filter((nid, index) => regionAliases.indexOf(nid) === index)
+          .map((nid) => ({
+            nid, region_type: 'event', sub_nid: nid,
+            position: [1, 1], size: [1, 1], condition: 'True',
+          })),
+      ];
+
+      const stackNids = [
+        'MomentumStack', 'BraveStack', 'TangledUpInBlueStack',
+        'Return', 'Rival_a', 'Soullinked',
+      ];
+      const addedSkills = stackNids.map((nid) => new SkillObject({
+        nid, name: nid, desc: '', components: [['stack', 99]],
+      }));
+      unit.skills.push(...addedSkills);
+
+      const variables = new Map<string, any>([
+        ['deploy', 'Lyn'],
+        ['skill_len', 2],
+        ['hoppa_pos', [[1, 1], [2, 2]]],
+        ['hp_number', 2],
+        ['one', [unit]],
+        ['two', [unit, target]],
+        ['three', [unit]],
+        ['four', [target]],
+        ['five', [unit, target]],
+        ['six', []],
+        ['seven', [unit]],
+      ]);
+      for (const [key, value] of variables) game.levelVars.set(key, value);
+      game.gameVars.set('deploy', 'Lyn');
+      const statChanges = Object.fromEntries(
+        ['HP', 'STR', 'MAG', 'SKL', 'SPD', 'LCK', 'DEF', 'RES', 'CON', 'MOV']
+          .map((nid, index) => [nid, index + 1]),
+      );
+      const localArgs = new Map<string, any>([
+        ['mode', 'attack'],
+        ['stat_changes', statChanges],
+        ['target_pos', target.position],
+        ['created_unit', target],
+        ['item2', target.items[0] ?? null],
+      ]);
+      const context = {
+        game,
+        unit1: unit,
+        unit2: target,
+        item,
+        region: game.currentLevel.regions[0],
+        position: unit.position,
+        gameVars: game.gameVars,
+        levelVars: game.levelVars,
+        localArgs,
+      };
+      const substituteVars = (expression: string) =>
+        expression.replace(/\{v:([^}]+)\}/g, (_match, nid) => `v('${nid}')`);
+
+      let conditionCount = 0;
+      for (const expression of expressions.conditions) {
+        try {
+          const value = evaluateCondition(substituteVars(expression), context);
+          if (typeof value !== 'boolean') {
+            failures.push(`condition non-boolean: ${expression}`);
+          } else conditionCount++;
+        } catch (error) {
+          failures.push(`condition: ${expression}: ${String(error)}`);
+        }
+      }
+
+      let evalCount = 0;
+      for (const expression of expressions.evalSubstitutions) {
+        try {
+          const value = evaluateExpression(substituteVars(expression), context);
+          if (value === undefined) failures.push(`eval undefined: ${expression}`);
+          else evalCount++;
+        } catch (error) {
+          failures.push(`eval: ${expression}: ${String(error)}`);
+        }
+      }
+
+      let loopCount = 0;
+      for (const loop of expressions.loops) {
+        const separator = loop.indexOf(';');
+        const expression = substituteVars(loop.slice(separator + 1));
+        try {
+          const value = evaluateExpression(expression, context);
+          if (!value || typeof value[Symbol.iterator] !== 'function') {
+            failures.push(`loop non-iterable: ${loop}`);
+          } else {
+            Array.from(value);
+            loopCount++;
+          }
+        } catch (error) {
+          failures.push(`loop: ${loop}: ${String(error)}`);
+        }
+      }
+
+      unit.skills = unit.skills.filter((skill: any) => !addedSkills.includes(skill));
+      for (const nid of addedAliases) game.units.delete(nid);
+      game.currentLevel.regions = oldRegions;
+      return { failures, conditionCount, evalCount, loopCount };
+    }, inventory);
+
+    expect(result.failures, result.failures.join('\n')).toEqual([]);
+    expect(result).toMatchObject({
+      conditionCount: 330,
+      evalCount: 69,
+      loopCount: 33,
+    });
+  });
+
   test('event skill stacks and object-valued item loops preserve Rekka semantics', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -497,6 +654,121 @@ test.describe('Rekka all-level compatibility', () => {
     expect(split!.hp).toBe(Math.floor(before.hp / 2));
     expect(Math.abs(split!.position[0] - before.position[0]) +
       Math.abs(split!.position[1] - before.position[1])).toBe(1);
+  });
+
+  test('trigger payload locals and loop variables remain visible to expressions', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
+    await waitForHarness(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const unit2 = game.units.get('101');
+      const item = unit.items[0];
+      const item2 = unit2.items[0];
+      const nid = 'TestRekkaPayloadLocals';
+      game.db.events.set(nid, {
+        name: nid, nid, trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'game_var;payload_unit;{eval:unit.nid}',
+          'game_var;payload_unit2;{eval:unit2.nid}',
+          'game_var;payload_item;{eval:item.nid}',
+          'game_var;payload_item2;{eval:item2.nid}',
+          'game_var;payload_mode;{eval:mode}',
+          "game_var;payload_hp;{eval:stat_changes['HP']}",
+          'game_var;payload_created;{eval:created_unit}',
+          'for;payload_loop;[unit.nid, unit2.nid]',
+          'level_var;payload_last;{eval:payload_loop}',
+          'endf',
+        ],
+      });
+      game.eventManager.triggerSpecific(nid, {
+        type: nid,
+        unitNid: unit.nid,
+        unit1: unit,
+        unit2,
+        item,
+        statChanges: { HP: 7 },
+        localArgs: new Map([
+          ['item2', item2],
+          ['mode', 'attack'],
+          ['created_unit', 'GeneratedUnit'],
+        ]),
+      }, true);
+      game.state.change('event');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(40, null));
+
+    const payload = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        unit: game.gameVars.get('payload_unit'),
+        unit2: game.gameVars.get('payload_unit2'),
+        item: game.gameVars.get('payload_item'),
+        item2: game.gameVars.get('payload_item2'),
+        mode: game.gameVars.get('payload_mode'),
+        hp: game.gameVars.get('payload_hp'),
+        created: game.gameVars.get('payload_created'),
+        loop: game.levelVars.get('payload_last'),
+      };
+    });
+    expect(payload).toEqual({
+      unit: 'Lyn',
+      unit2: '101',
+      item: expect.any(String),
+      item2: expect.any(String),
+      mode: 'attack',
+      hp: 7,
+      created: 'GeneratedUnit',
+      loop: '101',
+    });
+  });
+
+  test('random-skill event uses deterministic project skill data', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
+    await waitForHarness(page);
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const before = unit.skills.map((skill: any) => skill.uid);
+      game.gameVars.set('_random_seed', 13);
+      game.gameVars.delete('_other_random_seed');
+      game.gameVars.delete('_other_random_state');
+      game.eventManager.triggerSpecific('Global Ability_ImaginaryTechniqueStart', {
+        type: 'Global Ability_ImaginaryTechniqueStart',
+        unitNid: unit.nid,
+        unit1: unit,
+      }, true);
+      game.state.change('event');
+      return { before };
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(220, null));
+
+    const added = await page.evaluate((before) => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const skillNids = game.levelVars.get('skill_random');
+      const randomIndex = game.levelVars.get('random_number');
+      const expectedNid = skillNids?.[randomIndex];
+      const skill = unit.skills.find((candidate: any) =>
+        !before.includes(candidate.uid) && candidate.nid === expectedNid);
+      const componentTarget = unit.skills.find((candidate: any) =>
+        candidate.nid === expectedNid);
+      return {
+        randomIndex,
+        catalogLength: skillNids?.length ?? 0,
+        expectedNid,
+        addedNid: skill?.nid ?? null,
+        expiresAfterCombat: componentTarget?.hasComponent('lost_on_end_combat') ?? false,
+        otherRandomState: game.gameVars.get('_other_random_state'),
+      };
+    }, result.before);
+    expect(added.randomIndex).toBeGreaterThanOrEqual(0);
+    expect(added.randomIndex).toBeLessThan(added.catalogLength);
+    expect(added.addedNid).toBe(added.expectedNid);
+    expect(added.expiresAfterCombat).toBe(true);
+    expect(added.otherRandomState).toEqual(expect.any(Number));
   });
 
   test('Resourceful and Global Setup consume their exact dynamic option/component data', async ({ page }) => {
