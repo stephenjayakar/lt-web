@@ -406,4 +406,128 @@ test.describe('Rekka project-local skill components', () => {
       counter: 1,
     });
   });
+
+  test('movement hooks reset and undo the full unit action state', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { applyCombatSkillEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const target = game.units.get('101');
+      const weapon = unit.items.find((item: any) => item.isWeapon());
+      const staff = new ItemObject({
+        nid: 'TestStaff',
+        name: 'Test Staff',
+        desc: '',
+        components: [['weapon_type', 'Staff']],
+      });
+      const cases = [
+        {
+          component: 'powerstaff',
+          value: null,
+          item: staff,
+          strike: { hit: true },
+        },
+        {
+          component: 'combat_artist',
+          value: null,
+          item: weapon,
+          strike: { hit: true, attackProcs: [{ kind: 'attack_pre_proc', unit }] },
+        },
+        {
+          component: 'second_wind',
+          value: null,
+          item: weapon,
+          strike: { hit: false },
+        },
+        {
+          component: 'eval_galeforce',
+          value: 'True',
+          item: weapon,
+          strike: { hit: true },
+        },
+      ];
+      const outcomes: any[] = [];
+      for (const testCase of cases) {
+        unit.skills = [new SkillObject({
+          nid: `Test_${testCase.component}`,
+          name: testCase.component,
+          desc: '',
+          components: [[testCase.component, testCase.value]],
+        })];
+        Object.assign(unit, {
+          hasAttacked: true,
+          hasMoved: true,
+          hasTraded: true,
+          finished: true,
+          hasRescued: true,
+          hasDropped: true,
+          hasTaken: true,
+          hasGiven: true,
+          movementLeft: 1,
+        });
+        const applied = applyCombatSkillEndHooks(game, [{
+          attacker: unit,
+          defender: target,
+          item: testCase.item,
+          hit: testCase.strike.hit,
+          crit: false,
+          damage: 0,
+          isCounter: false,
+          mode: 'attack',
+          attackInfo: [0, 0],
+          attackProcs: testCase.strike.attackProcs,
+        }], unit, target);
+        const after = {
+          finished: unit.finished,
+          hasAttacked: unit.hasAttacked,
+          hasRescued: unit.hasRescued,
+          movementLeft: unit.movementLeft,
+        };
+        const action = game.actionLog.undo();
+        const undone = {
+          finished: unit.finished,
+          hasAttacked: unit.hasAttacked,
+          hasRescued: unit.hasRescued,
+          movementLeft: unit.movementLeft,
+        };
+        action.execute();
+        outcomes.push({
+          component: testCase.component,
+          applied,
+          action: action.constructor.name,
+          after,
+          undone,
+          redoneFinished: unit.finished,
+        });
+      }
+      return outcomes;
+    });
+
+    expect(result).toEqual([
+      'powerstaff',
+      'combat_artist',
+      'second_wind',
+      'eval_galeforce',
+    ].map((component) => ({
+      component,
+      applied: 1,
+      action: 'ResetAction',
+      after: {
+        finished: false,
+        hasAttacked: false,
+        hasRescued: false,
+        movementLeft: 6,
+      },
+      undone: {
+        finished: true,
+        hasAttacked: true,
+        hasRescued: true,
+        movementLeft: 1,
+      },
+      redoneFinished: false,
+    })));
+  });
 });

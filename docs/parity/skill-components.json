@@ -419,6 +419,10 @@
           "line": 552
         },
         {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 411
+        },
+        {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 15
         },
@@ -1957,11 +1961,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 76
+          "line": 77
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 97
+          "line": 98
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -2007,11 +2011,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 76
+          "line": 77
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 97
+          "line": 98
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -2078,11 +2082,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 77
+          "line": 78
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 99
+          "line": 100
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -2120,11 +2124,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 77
+          "line": 78
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 99
+          "line": 100
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -2179,11 +2183,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 77
+          "line": 78
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 99
+          "line": 100
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -2225,11 +2229,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 77
+          "line": 78
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 99
+          "line": 100
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -3063,13 +3067,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 373
+          "line": 387
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 373
+          "line": 387
         }
       ],
       "matchingWebHooks": [],
@@ -3094,13 +3098,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 377
+          "line": 391
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 377
+          "line": 391
         }
       ],
       "matchingWebHooks": [],
@@ -3125,13 +3129,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 381
+          "line": 395
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 381
+          "line": 395
         }
       ],
       "matchingWebHooks": [],
@@ -3156,13 +3160,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 385
+          "line": 399
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 385
+          "line": 399
         }
       ],
       "matchingWebHooks": [],
@@ -3187,13 +3191,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 366
+          "line": 380
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 366
+          "line": 380
         }
       ],
       "matchingWebHooks": [],
@@ -4481,11 +4485,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 79
+          "line": 80
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 514
+          "line": 567
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -4511,11 +4515,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 79
+          "line": 80
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 514
+          "line": 567
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -6554,17 +6558,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 512
+          "line": 565
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 526
+          "line": 579
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 512
+          "line": 565
         }
       ],
       "matchingWebHooks": [],
@@ -7299,17 +7303,17 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 3423
+          "line": 3469
         },
         {
           "source": "src/engine/action.ts",
-          "line": 3429
+          "line": 3475
         }
       ],
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 3423
+          "line": 3469
         }
       ],
       "matchingWebHooks": [],

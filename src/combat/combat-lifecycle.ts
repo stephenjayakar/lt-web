@@ -24,6 +24,7 @@ import {
   GainMoneyAction,
   GiveItemAction,
   RegisterItemTreeAction,
+  ResetAction,
   SetItemUsesAction,
 } from '../engine/action';
 import type { Database } from '../data/database';
@@ -346,16 +347,29 @@ export function applyCombatSkillEndHooks(
     pairs.set(key, pair);
   }
   if (initiator && primaryTarget && strikes[0]) {
-    const addPassivePair = (unit: UnitObject, target: UnitObject): void => {
+    const addPassivePair = (
+      unit: UnitObject,
+      target: UnitObject,
+      fallbackItem: ItemObject | null,
+    ): void => {
       const key = `${unit.nid}:${target.nid}:passive`;
       if (!pairs.has(key) && ![...pairs.values()].some(
         (pair) => pair.unit === unit && pair.target === target,
-      )) {
-        pairs.set(key, { unit, target, item: strikes[0].item, strikes: [] });
+      ) && fallbackItem) {
+        pairs.set(key, { unit, target, item: fallbackItem, strikes: [] });
       }
     };
-    addPassivePair(initiator, primaryTarget);
-    addPassivePair(primaryTarget, initiator);
+    addPassivePair(
+      initiator,
+      primaryTarget,
+      strikes.find((strike) => strike.attacker === initiator)?.item ?? equippedWeapon(initiator),
+    );
+    addPassivePair(
+      primaryTarget,
+      initiator,
+      strikes.find((strike) => strike.attacker === primaryTarget)?.item ??
+        equippedWeapon(primaryTarget),
+    );
   }
 
   for (const { unit, target, item, strikes: pairStrikes } of pairs.values()) {
@@ -385,6 +399,45 @@ export function applyCombatSkillEndHooks(
       const afterCombatHit = skill.getComponent<string>('give_status_after_combat_on_hit');
       if (afterCombatHit && pairStrikes.some((strike) => strike.hit)) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombatHit);
+      }
+
+      let shouldReset = false;
+      if (skill.hasComponent('powerstaff')) {
+        shouldReset = item.getComponent<string>('weapon_type') === 'Staff' &&
+          pairStrikes.some((strike) => strike.hit);
+      } else if (skill.hasComponent('combat_artist')) {
+        shouldReset = pairStrikes.some((strike) =>
+          strike.attackProcs?.some((mark) =>
+            mark.kind === 'attack_pre_proc' && mark.unit === unit));
+      } else if (skill.hasComponent('second_wind')) {
+        shouldReset = pairStrikes.some((strike) => !strike.hit);
+      } else {
+        const expression = skill.getComponent<string>('eval_galeforce');
+        if (expression) {
+          try {
+            shouldReset = evaluateCondition(expression, {
+              game,
+              unit1: unit,
+              unit2: target,
+              position: unit.position ?? undefined,
+              item,
+              gameVars: game.gameVars,
+              levelVars: game.levelVars,
+              localArgs: new Map<string, unknown>([
+                ['item', item],
+                ['item2', equippedWeapon(target)],
+                ['mode', pairStrikes[0]?.mode ?? 'attack'],
+              ]),
+            });
+          } catch (error) {
+            console.error(`Could not evaluate EvalGaleforce condition ${expression}`, error);
+          }
+        }
+      }
+      if (shouldReset) {
+        game.actionLog.doAction(new ResetAction(unit));
+        triggerSkillCharge(game, skill);
+        applied++;
       }
     }
   }

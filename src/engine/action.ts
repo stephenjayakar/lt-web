@@ -1822,6 +1822,52 @@ export class WaitAction extends Action {
 }
 
 /**
+ * ResetAction - Restore one unit's full action state and movement budget.
+ * Mirrors Python action.Reset, including every rescue/trade flag and
+ * turnwheel restoration of the exact prior state.
+ */
+export class ResetAction extends Action {
+  private unit: UnitObject;
+  private savedState: {
+    hasAttacked: boolean;
+    hasMoved: boolean;
+    hasTraded: boolean;
+    finished: boolean;
+    hasRescued: boolean;
+    hasDropped: boolean;
+    hasTaken: boolean;
+    hasGiven: boolean;
+    movementLeft: number;
+  } | null = null;
+
+  constructor(unit: UnitObject) {
+    super();
+    this.unit = unit;
+  }
+
+  execute(): void {
+    this.savedState = {
+      hasAttacked: this.unit.hasAttacked,
+      hasMoved: this.unit.hasMoved,
+      hasTraded: this.unit.hasTraded,
+      finished: this.unit.finished,
+      hasRescued: this.unit.hasRescued,
+      hasDropped: this.unit.hasDropped,
+      hasTaken: this.unit.hasTaken,
+      hasGiven: this.unit.hasGiven,
+      movementLeft: this.unit.movementLeft,
+    };
+    this.unit.resetTurnState();
+    this.unit.movementLeft = this.unit.getMovement();
+  }
+
+  reverse(): void {
+    if (!this.savedState) return;
+    Object.assign(this.unit, this.savedState);
+  }
+}
+
+/**
  * ResetAllAction - Reset turn state for all provided units.
  * Used at the start of a new phase to clear hasAttacked/hasMoved/finished flags.
  *
