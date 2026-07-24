@@ -250,7 +250,7 @@ touch, and visual/audio QA has no release-blocking defects.
 - [x] Round-trip saves containing combat arts, equipped accessories, transformed
   units, multi-skill children, temporary statuses, custom component data,
   dynamically added components, convoy items, and pending chapter events.
-- [ ] Test undo/redo for every new persistent mutation: money costs, item copies,
+- [x] Test undo/redo for every new persistent mutation: money costs, item copies,
   forced movement, equip state, skill grant/removal, reset/galeforce, HP/status,
   promotion, and transform.
 - [x] Verify save migration/failure messaging for unsupported or older Rekka
