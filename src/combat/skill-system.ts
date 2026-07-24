@@ -575,6 +575,26 @@ export function modifiedMaximumRange(
   return Math.max(0, Math.min(maximum, typeof limit === 'number' ? limit : 99));
 }
 
+/** Last active movement-type override, falling back to the unit's class group. */
+export function movementType(unit: UnitObject, defaultType: string, game?: any): string {
+  let result = defaultType;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<string>('movement_type');
+    if (!value) continue;
+    const condition = skill.getComponent<string>('condition');
+    if (condition && !evaluateCondition(condition, {
+      game,
+      unit1: unit,
+      item: unit.equippedWeapon ?? undefined,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    })) continue;
+    result = value;
+  }
+  return result;
+}
+
 /** Uses restored per qualifying strike by project Armsthrift skills. */
 export function armsthriftRestoration(unit: UnitObject, item: ItemObject): number {
   if (item.hasComponent('unrepairable')) return 0;

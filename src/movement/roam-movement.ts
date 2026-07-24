@@ -9,6 +9,7 @@
  */
 
 import type { UnitObject } from '../objects/unit';
+import { movementType } from '../combat/skill-system';
 
 /** Pixel-precision position for sub-tile rendering during roam. */
 export interface RoamPosition {
@@ -192,7 +193,7 @@ export class RoamPlayerMovementComponent {
     if (terrain) {
       const klassNid = this.unit.klass;
       const klassDef = this.dbRef?.classes?.get(klassNid);
-      const moveGroup = klassDef?.movement_group || 'Infantry';
+      const moveGroup = movementType(this.unit, klassDef?.movement_group || 'Infantry');
       const cost = this.dbRef?.getMovementCost?.(terrain, moveGroup) ?? 1;
       if (cost >= 99) return false;
     }

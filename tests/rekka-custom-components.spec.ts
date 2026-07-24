@@ -1342,6 +1342,125 @@ test.describe('Rekka project-local skill components', () => {
     })));
   });
 
+  test('turn lifecycle handles Rekka endstep healing, galeforce, upkeep events, and flight', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { applyCombatSkillEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { movementType } = await import('/src/combat/skill-system.ts');
+      const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const target = game.units.get('101');
+      const weapon = unit.items.find((item: any) => item.isWeapon());
+      const componentNids = (prefab: any) => Array.isArray(prefab.components)
+        ? prefab.components.map((component: any) => component[0])
+        : [...prefab.components.keys()];
+      const count = (nid: string) => [...game.db.skills.values()]
+        .filter((skill: any) => componentNids(skill).includes(nid)).length;
+
+      unit.currentHp = 5;
+      unit.skills = [new SkillObject(game.db.skills.get('MagicCircleStatus'))];
+      const endstepStart = game.actionLog.actions.length;
+      const endstepEffects = applySkillTurnHooks(game, [unit], 'endstep');
+      const endstepHp = unit.currentHp;
+      while (game.actionLog.actions.length > endstepStart) game.actionLog.undo();
+      const endstepUndoneHp = unit.currentHp;
+
+      const galeforce = new SkillObject(game.db.skills.get('Galeforce'));
+      unit.skills = [galeforce];
+      Object.assign(unit, {
+        hasAttacked: true,
+        hasMoved: true,
+        hasTraded: true,
+        finished: true,
+        movementLeft: 0,
+      });
+      target.currentHp = 0;
+      const galeforceStart = game.actionLog.actions.length;
+      const galeforceApplied = applyCombatSkillEndHooks(game, [{
+        attacker: unit,
+        defender: target,
+        item: weapon,
+        hit: true,
+        crit: false,
+        damage: 99,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      }], unit, target);
+      const afterGaleforce = {
+        finished: unit.finished,
+        movementLeft: unit.movementLeft,
+        charge: galeforce.data.get('charge'),
+      };
+      while (game.actionLog.actions.length > galeforceStart) game.actionLog.undo();
+      const undoneGaleforce = {
+        finished: unit.finished,
+        movementLeft: unit.movementLeft,
+        charge: galeforce.data.get('charge'),
+      };
+
+      unit.skills = [];
+      const defaultMovement = movementType(
+        unit,
+        game.db.classes.get(unit.klass)?.movement_group ?? 'Infantry',
+        game,
+      );
+      unit.skills = [new SkillObject(game.db.skills.get('Float'))];
+      const flight = {
+        helper: movementType(unit, defaultMovement, game),
+        pathSystem: (game.pathSystem as any).getMovementGroup(unit),
+      };
+
+      return {
+        catalog: {
+          endstepDamage: count('endstep_damage'),
+          upkeepEvents: count('event_on_upkeep'),
+          galeforce: count('galeforce'),
+          evalGaleforce: count('eval_galeforce'),
+          movementType: count('movement_type'),
+        },
+        endstep: {
+          effects: endstepEffects.map((effect: any) => [effect.component, effect.value]),
+          hp: endstepHp,
+          undoneHp: endstepUndoneHp,
+        },
+        galeforceApplied,
+        afterGaleforce,
+        undoneGaleforce,
+        defaultMovement,
+        flight,
+      };
+    });
+
+    expect(result.catalog).toEqual({
+      endstepDamage: 1,
+      upkeepEvents: 20,
+      galeforce: 1,
+      evalGaleforce: 14,
+      movementType: 1,
+    });
+    expect(result.endstep).toEqual({
+      effects: [['endstep_damage', 10]],
+      hp: 15,
+      undoneHp: 5,
+    });
+    expect(result.galeforceApplied).toBe(1);
+    expect(result.afterGaleforce).toEqual({
+      finished: false,
+      movementLeft: 6,
+      charge: 0,
+    });
+    expect(result.undoneGaleforce).toEqual({
+      finished: true,
+      movementLeft: 0,
+      charge: 1,
+    });
+    expect(result.defaultMovement).not.toBe('Fliers');
+    expect(result.flight).toEqual({ helper: 'Fliers', pathSystem: 'Fliers' });
+  });
+
   test('survival hooks clamp lethal strikes and preserve reversible consumption', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {

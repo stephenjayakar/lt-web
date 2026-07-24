@@ -20,6 +20,7 @@ import {
   alternateSplash,
   armsthriftRestoration,
   empowerSplash,
+  movementType,
   type AlternateSplash,
 } from './skill-system';
 
@@ -788,7 +789,7 @@ export function usesConsumedByStrikes(
 }
 
 function movementGroup(unit: UnitObject, db: Database): string {
-  return db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+  return movementType(unit, db.classes.get(unit.klass)?.movement_group ?? 'Infantry');
 }
 
 export function shoveDestination(
@@ -1004,7 +1005,11 @@ export function targetRestrict(
   }
 
   if (item.hasComponent('traversable_tile_target_restrict')) {
-    const movementGroup = context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+    const movementGroup = movementType(
+      unit,
+      context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry',
+      context.game,
+    );
     const movementCost = context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db);
     if (movementCost > unit.getMovement()) return false;
   }

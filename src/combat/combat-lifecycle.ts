@@ -518,6 +518,9 @@ export function applyCombatSkillEndHooks(
             candidate.hasComponent('combat_art') && candidate.data.get('active') === true);
       } else if (skill.hasComponent('second_wind')) {
         shouldReset = pairStrikes.some((strike) => !strike.hit);
+      } else if (skill.hasComponent('galeforce')) {
+        shouldReset = unit === initiator && target.currentHp <= 0 &&
+          pairStrikes.some((strike) => strike.attacker === unit);
       } else {
         const expression = skill.getComponent<string>('eval_galeforce');
         if (expression) {

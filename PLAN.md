@@ -163,7 +163,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   immediate later-strike visibility, charge use, and turnwheel restoration.
 - [x] Combat math: `armsthrift`, `dynamic_crit_accuracy`,
   `alternate_critical_multiplier_formula`, and maximum-range modification.
-- [ ] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
+- [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
   movement-type overrides.
 - [ ] Targeting/AI/economy: five `witch_warp_expression` uses,
   `ignore_alliances`, additional accessory capacity, buy-price changes, and
