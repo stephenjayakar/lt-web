@@ -988,6 +988,69 @@ function translateGeneratorExpressions(expression: string): string {
   return translated;
 }
 
+function findMatchingBracket(expression: string, start: number): number {
+  let depth = 0;
+  let inString: string | null = null;
+  for (let index = start; index < expression.length; index++) {
+    const char = expression[index];
+    if (inString) {
+      if (char === inString && expression[index - 1] !== '\\') inString = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      inString = char;
+      continue;
+    }
+    if (char === '[') depth += 1;
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function translateListComprehensions(expression: string): string {
+  let translated = expression;
+  for (let pass = 0; pass < 20; pass++) {
+    let changed = false;
+    for (let open = translated.lastIndexOf('['); open >= 0; open = translated.lastIndexOf('[', open - 1)) {
+      const close = findMatchingBracket(translated, open);
+      if (close < 0) continue;
+      const inner = translated.slice(open + 1, close);
+      const forParts = splitAtTopLevel(inner, ' for ');
+      if (forParts.length !== 2) continue;
+      const inParts = splitAtTopLevel(forParts[1], ' in ');
+      if (inParts.length !== 2) continue;
+      const variable = inParts[0].trim();
+      const ifParts = splitAtTopLevel(inParts[1], ' if ');
+      const collection = ifParts[0].trim();
+      const filter = ifParts[1]?.trim();
+      const mapped = filter
+        ? `(${collection}).filter((${variable}) => (${filter})).map((${variable}) => (${forParts[0].trim()}))`
+        : `(${collection}).map((${variable}) => (${forParts[0].trim()}))`;
+      translated = translated.slice(0, open) + mapped + translated.slice(close + 1);
+      changed = true;
+      break;
+    }
+    if (!changed) break;
+  }
+  return translated;
+}
+
+function translateFloorDivision(expression: string): string {
+  let translated = expression;
+  for (let pass = 0; pass < 10 && translated.includes('//'); pass++) {
+    const next = translated.replace(
+      /([\w.()[\]'"]+)\s*\/\/\s*([\w.()[\]'"]+)/,
+      'Math.floor(($1) / ($2))',
+    );
+    if (next === translated) break;
+    translated = next;
+  }
+  return translated;
+}
+
 // ============================================================
 // JavaScript-based fallback evaluator for complex Python conditions
 // ============================================================
@@ -1033,6 +1096,35 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   }
 
   // Unit wrapper: ensures consistent API
+  function wrapMapping(value: any) {
+    if (value instanceof Map) return value;
+    return {
+      ...(value ?? {}),
+      get(key: string, fallback?: any) {
+        const result = value?.[key];
+        return result === undefined ? fallback : result;
+      },
+    };
+  }
+
+  function componentValue(item: any, nid: string): any {
+    return item?.getComponent?.(nid) ??
+      (item?.components instanceof Map ? item.components.get(nid) : undefined);
+  }
+
+  function wrapItem(item: any) {
+    if (!item) return null;
+    return {
+      _raw: item,
+      nid: item.nid,
+      name: item.name,
+      tags: componentValue(item, 'item_tags') ?? item.tags ?? [],
+      status_on_equip: componentValue(item, 'status_on_equip') === undefined
+        ? undefined
+        : { value: componentValue(item, 'status_on_equip') },
+    };
+  }
+
   function wrapUnit(u: any) {
     if (!u) return null;
     const checkFlanking = (): boolean => {
@@ -1055,12 +1147,13 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       previous_position: u.previousPosition ?? u.previous_position ?? null,
       tags: u.tags ?? [],
       klass: u.klass,
+      traveler: u.traveler ?? u.rescuing ?? null,
       dead: u.isDead?.() ?? u.dead ?? false,
       level: u.level,
-      stats: u.stats ?? {},
+      stats: wrapMapping(u.stats),
       growths: u.growths ?? {},
       skills: u.skills ?? [],
-      items: u.items ?? [],
+      items: (u.items ?? []).map(wrapItem),
       accessories: u.items?.filter((candidate: any) =>
         candidate.hasComponent?.('accessory') ||
         candidate.hasComponent?.('equippable_accessory')) ?? [],
@@ -1069,6 +1162,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_hp: () => u.currentHp ?? u.current_hp ?? 0,
       get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
       get_stat: (nid: string) => u.getStat?.(nid) ?? u.stats?.[nid] ?? 0,
+      get_internal_level: () => u.getInternalLevel?.() ?? u.level ?? 1,
+      get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
+      get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
     };
   }
@@ -1088,11 +1184,32 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 
   // Build the game proxy object
   const regions = game.currentLevel?.regions ?? [];
+  const wrapVars = (variables: Map<string, any> | undefined) => new Proxy(
+    {
+      get(key: string, fallback?: any) {
+        return variables?.has(key) ? variables.get(key) : fallback;
+      },
+    } as Record<string, any>,
+    {
+      get(target, property: string | symbol) {
+        if (property in target) return target[property as string];
+        return typeof property === 'string' ? variables?.get(property) : undefined;
+      },
+    },
+  );
   const gameProxy: any = {
     turncount: game.turnCount ?? game.turncount ?? 0,
     turn_count: game.turnCount ?? game.turncount ?? 0,
-    game_vars: game.gameVars ?? new Map(),
-    level_vars: game.levelVars ?? new Map(),
+    game_vars: wrapVars(game.gameVars),
+    level_vars: wrapVars(game.levelVars),
+    board: { bounds: game.board?.bounds ?? [0, 0, 0, 0] },
+    tilemap: {
+      get_terrain(pos: [number, number] | null) {
+        if (!pos) return null;
+        return game.board?.getTerrain(pos[0], pos[1]) ??
+          game.tilemap?.getTerrain?.(pos[0], pos[1]) ?? null;
+      },
+    },
     level: {
       regions: wrapRegions(regions),
       nid: game.currentLevel?.nid ?? '',
@@ -1113,6 +1230,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       }
       return units;
     },
+    get_money() { return game.getMoney?.() ?? 0; },
+    get_region(nid: string) {
+      return wrapRegion(regions.find((candidate: any) => candidate.nid === nid));
+    },
     get_region_under_pos(pos: [number, number] | null, regionType?: string) {
       if (!pos) return null;
       const region = regions.find((candidate: any) => {
@@ -1132,9 +1253,97 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   };
 
   gameProxy._current_level = gameProxy.level;
+  const unwrapUnit = (candidate: any) =>
+    candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
+  const unwrapItem = (candidate: any) => candidate?._raw ?? candidate;
+  const itemSystem = {
+    weapon_type(_unit: any, candidate: any) {
+      return componentValue(unwrapItem(candidate), 'weapon_type');
+    },
+    damage(_unit: any, candidate: any) {
+      return componentValue(unwrapItem(candidate), 'damage') ?? null;
+    },
+    is_weapon(_unit: any, candidate: any) {
+      return !!unwrapItem(candidate)?.hasComponent?.('weapon');
+    },
+    is_spell(_unit: any, candidate: any) {
+      const raw = unwrapItem(candidate);
+      return !!raw?.hasComponent?.('spell') || !!raw?.hasComponent?.('magic');
+    },
+  };
+  const itemFuncs = {
+    num_stacks(candidate: any, skillNid: string) {
+      const raw = unwrapUnit(candidate);
+      return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
+    },
+    is_magic(_unit: any, candidate: any, distance = 0) {
+      const raw = unwrapItem(candidate);
+      return !!raw?.hasComponent?.('magic') ||
+        (!!raw?.hasComponent?.('magic_at_range') && distance > 1);
+    },
+  };
+  const computeAdvantage = (
+    attacker: any,
+    defender: any,
+    attackItem: any,
+    defenseItem: any,
+    advantage = true,
+  ) => {
+    const rawAttacker = unwrapUnit(attacker);
+    const rawAttackItem = unwrapItem(attackItem);
+    const rawDefenseItem = unwrapItem(defenseItem);
+    if (!rawAttackItem || !rawDefenseItem) return null;
+    const attackType = componentValue(rawAttackItem, 'weapon_triangle_override') ??
+      componentValue(rawAttackItem, 'weapon_type');
+    const defenseType = componentValue(rawDefenseItem, 'weapon_triangle_override') ??
+      componentValue(rawDefenseItem, 'weapon_type');
+    if (!attackType || !defenseType) return null;
+    const weapon = game.db?.weapons?.find?.((candidate: any) => candidate.nid === attackType) ??
+      game.db?.weapons?.get?.(attackType);
+    const bonuses = advantage ? weapon?.advantage : weapon?.disadvantage;
+    if (!Array.isArray(bonuses)) return null;
+    const wexp = Number(rawAttacker?.wexp?.[attackType] ?? 0);
+    let selected: any = null;
+    let selectedRequirement = -1;
+    for (const bonus of bonuses) {
+      if (bonus.weapon_type !== 'All' && bonus.weapon_type !== defenseType) continue;
+      const requirement = bonus.weapon_rank === 'All'
+        ? -1
+        : game.db?.weaponRanks?.find?.((rank: any) => rank.rank === bonus.weapon_rank)?.requirement ??
+          game.db?.weaponRanks?.get?.(bonus.weapon_rank)?.requirement ?? Infinity;
+      if (requirement === -1) {
+        selected = bonus;
+        break;
+      }
+      if (wexp >= requirement && requirement > selectedRequirement) {
+        selected = bonus;
+        selectedRequirement = requirement;
+      }
+    }
+    return selected;
+  };
   return {
     game: gameProxy,
     wrapUnit,
+    wrapItem,
+    DB: game.db,
+    utils: {
+      calculate_distance(left: [number, number] | null, right: [number, number] | null) {
+        if (!left || !right) return 0;
+        return Math.abs(left[0] - right[0]) + Math.abs(left[1] - right[1]);
+      },
+    },
+    item_funcs: itemFuncs,
+    item_system: itemSystem,
+    combat_calcs: { compute_advantage: computeAdvantage },
+    movement_funcs: {
+      check_traversable(candidate: any, pos: [number, number] | null) {
+        const raw = unwrapUnit(candidate);
+        if (!raw || !pos || !game.board?.inBounds?.(pos[0], pos[1])) return false;
+        const movementGroup = game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot';
+        return game.board.getMovementCost(pos[0], pos[1], movementGroup, game.db) < 99;
+      },
+    },
     target_system: {
       get_adj_units(candidate: any) {
         const raw = candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
@@ -1162,7 +1371,8 @@ function evaluateWithJsFallback(
   if (!game) return undefined;
 
   // Translate Python idioms to JavaScript
-  let jsExpr = translateGeneratorExpressions(condition);
+  let jsExpr = translateListComprehensions(condition);
+  jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
 
   // Python `len(x)` -> `x.length`
   jsExpr = jsExpr.replace(/\blen\s*\(/g, '__len__(');
@@ -1171,6 +1381,7 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\bTrue\b/g, 'true');
   jsExpr = jsExpr.replace(/\bFalse\b/g, 'false');
   jsExpr = jsExpr.replace(/\bNone\b/g, 'null');
+  jsExpr = jsExpr.replace(/\bis\b/g, '===');
 
   // Python `and`/`or`/`not` -> `&&`/`||`/`!`
   jsExpr = jsExpr.replace(/\band\b/g, '&&');
@@ -1182,6 +1393,10 @@ function evaluateWithJsFallback(
     /([\w.()[\]'"]+)\s+(!\s*)?in\s+\(([^()]*)\)/g,
     (_whole, needle, negated, values) =>
       `${negated ? '!' : ''}[${values}].includes(${needle})`,
+  );
+  jsExpr = jsExpr.replace(
+    /^(.+?)\s+if\s+(.+?)\s+else\s+(.+)$/,
+    '(($2) ? ($1) : ($3))',
   );
 
   // Build scope
@@ -1243,7 +1458,17 @@ function evaluateWithJsFallback(
   } : null;
   const position = ctx.position;
   const target_pos = ctx.localArgs?.get('target_pos') ?? target?.position ?? null;
-  const item = ctx.item ?? null;
+  const item = evalScope.wrapItem?.(ctx.item) ?? ctx.item ?? null;
+  const mode = ctx.localArgs?.get('mode') ?? null;
+  const stat_changes = ctx.localArgs?.get('stat_changes') ?? null;
+  const max = Math.max;
+  const min = Math.min;
+  const str = (value: any) => String(value);
+  const range = (start: number, end?: number) => {
+    const from = end === undefined ? 0 : start;
+    const to = end === undefined ? start : end;
+    return Array.from({ length: Math.max(0, to - from) }, (_, index) => from + index);
+  };
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
@@ -1257,7 +1482,9 @@ function evaluateWithJsFallback(
     const fn = new Function(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
       'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
-      'support_rank_nid', 'target_system', '_qf',
+      'support_rank_nid', 'mode', 'stat_changes', 'DB', 'utils', 'item_funcs',
+      'item_system', 'combat_calcs', 'movement_funcs', 'target_system',
+      'max', 'min', 'str', 'range', '_qf',
       `"use strict";
        // Spread query engine functions into local scope
        var u = _qf.u, get_item = _qf.get_item, has_item = _qf.has_item,
@@ -1282,7 +1509,10 @@ function evaluateWithJsFallback(
     return fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, v, cf,
-      support_rank_nid, evalScope.target_system, _queryFuncs,
+      support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.utils,
+      evalScope.item_funcs, evalScope.item_system, evalScope.combat_calcs,
+      evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
+      _queryFuncs,
     );
   } catch (e) {
     // Expression evaluation failed — log the error for debugging

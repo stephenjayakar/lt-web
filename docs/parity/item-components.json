@@ -7,16 +7,16 @@
   "summary": {
     "pythonComponentNids": 201,
     "webHookExports": 86,
-    "referencedComponentNids": 167,
+    "referencedComponentNids": 168,
     "hookMappedComponentNids": 107,
-    "unreferencedComponentNids": 34,
+    "unreferencedComponentNids": 33,
     "consumedComponentNids": 139,
     "structuralStatuses": {
       "consumed": 47,
       "hook-and-reference": 104,
       "hook-only": 3,
-      "reference-only": 16,
-      "unreferenced": 31
+      "reference-only": 17,
+      "unreferenced": 30
     }
   },
   "webHookExports": [
@@ -1860,6 +1860,10 @@
           "line": 4905
         },
         {
+          "source": "src/events/event-manager.ts",
+          "line": 1271
+        },
+        {
           "source": "src/objects/item.ts",
           "line": 157
         },
@@ -1951,6 +1955,10 @@
         {
           "source": "src/combat/item-system.ts",
           "line": 1124
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1267
         },
         {
           "source": "src/objects/item.ts",
@@ -2293,7 +2301,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1065
+          "line": 1158
         },
         {
           "source": "src/main.ts",
@@ -2394,7 +2402,7 @@
       "webReferences": [
         {
           "source": "src/events/event-manager.ts",
-          "line": 1066
+          "line": 1159
         }
       ],
       "directReads": [],
@@ -2451,11 +2459,16 @@
       "source": "lt-maker/app/engine/item_components/base_components.py",
       "line": 175,
       "methods": [],
-      "webReferences": [],
+      "webReferences": [
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1121
+        }
+      ],
       "directReads": [],
       "matchingWebHooks": [],
       "lexicalTestMention": false,
-      "status": "unreferenced"
+      "status": "reference-only"
     },
     {
       "nid": "promote",
@@ -3768,6 +3781,14 @@
         {
           "source": "src/combat/item-system.ts",
           "line": 1219
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1296
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1298
         }
       ],
       "directReads": [
@@ -3803,6 +3824,14 @@
         {
           "source": "src/combat/item-system.ts",
           "line": 1569
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1122
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1124
         },
         {
           "source": "src/main.ts",
@@ -7958,7 +7987,19 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1406
+          "line": 1261
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1297
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1299
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1636
         },
         {
           "source": "src/main.ts",
@@ -8113,6 +8154,14 @@
           "line": 4604
         },
         {
+          "source": "src/events/event-manager.ts",
+          "line": 1271
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1281
+        },
+        {
           "source": "src/main.ts",
           "line": 345
         },
@@ -8177,6 +8226,10 @@
         {
           "source": "src/engine/states/game-states.ts",
           "line": 4604
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1282
         },
         {
           "source": "src/main.ts",
@@ -8395,6 +8448,10 @@
         {
           "source": "src/engine/records.ts",
           "line": 334
+        },
+        {
+          "source": "src/events/event-manager.ts",
+          "line": 1264
         },
         {
           "source": "src/objects/item.ts",

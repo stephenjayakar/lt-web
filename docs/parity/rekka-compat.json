@@ -779,7 +779,7 @@
       {
         "nid": "item_tags",
         "uses": 1,
-        "structuralStatus": "unreferenced"
+        "structuralStatus": "reference-only"
       },
       {
         "nid": "level_exp",
