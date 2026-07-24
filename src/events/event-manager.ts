@@ -2,8 +2,9 @@ import type { NID, EventPrefab } from '../data/types';
 import { isPyev1 as _isPyev1, PythonEventProcessor as _PythonEventProcessor } from './python-events';
 import { GameQueryEngine } from '../engine/query-engine';
 import type { ActionLog } from '../engine/action';
-import { OnlyOnceEventAction } from '../engine/action';
+import { OnlyOnceEventAction, SetGameVarAction } from '../engine/action';
 import { reportUnimplemented } from '../engine/strict-mode';
+import { Lcg } from '../engine/static-random';
 
 // Lazy accessor to avoid circular-import issues at module evaluation time.
 function _getPythonEvents() {
@@ -1014,14 +1015,26 @@ function translateListComprehensions(expression: string): string {
   let translated = expression;
   for (let pass = 0; pass < 20; pass++) {
     let changed = false;
-    for (let open = translated.lastIndexOf('['); open >= 0; open = translated.lastIndexOf('[', open - 1)) {
+    for (let open = translated.lastIndexOf('['); open >= 0;) {
       const close = findMatchingBracket(translated, open);
-      if (close < 0) continue;
+      if (close < 0) {
+        if (open === 0) break;
+        open = translated.lastIndexOf('[', open - 1);
+        continue;
+      }
       const inner = translated.slice(open + 1, close);
       const forParts = splitAtTopLevel(inner, ' for ');
-      if (forParts.length !== 2) continue;
+      if (forParts.length !== 2) {
+        if (open === 0) break;
+        open = translated.lastIndexOf('[', open - 1);
+        continue;
+      }
       const inParts = splitAtTopLevel(forParts[1], ' in ');
-      if (inParts.length !== 2) continue;
+      if (inParts.length !== 2) {
+        if (open === 0) break;
+        open = translated.lastIndexOf('[', open - 1);
+        continue;
+      }
       const variable = inParts[0].trim();
       const ifParts = splitAtTopLevel(inParts[1], ' if ');
       const collection = ifParts[0].trim();
@@ -1231,6 +1244,36 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       return units;
     },
     get_money() { return game.getMoney?.() ?? 0; },
+    get_random(minimum: number, maximum: number) {
+      const seed = Number(game.gameVars?.get?.('_random_seed') ?? 0);
+      const storedSeed = Number(game.gameVars?.get?.('_other_random_seed'));
+      const storedState = Number(game.gameVars?.get?.('_other_random_state'));
+      const state = storedSeed === seed && Number.isInteger(storedState)
+        ? storedState
+        : seed + 2;
+      const rng = new Lcg(state);
+      const value = rng.randint(Math.trunc(minimum), Math.trunc(maximum));
+      const apply = (nid: string, next: number) => {
+        if (game.actionLog?.doAction) {
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, nid, next));
+        } else {
+          game.gameVars?.set?.(nid, next);
+        }
+      };
+      apply('_other_random_seed', seed);
+      apply('_other_random_state', rng.getState());
+      return value;
+    },
+    get_random_choice(choices: Iterable<any>, explicitSeed?: number) {
+      const values = Array.from(choices ?? []);
+      if (values.length === 0) return null;
+      if (explicitSeed !== undefined && explicitSeed !== null) {
+        const seed = Number(game.gameVars?.get?.('_random_seed') ?? 0);
+        const rng = new Lcg(Math.trunc(explicitSeed) * 1024 + seed);
+        return values[rng.randint(0, values.length - 1)];
+      }
+      return values[gameProxy.get_random(0, values.length - 1)];
+    },
     get_region(nid: string) {
       return wrapRegion(regions.find((candidate: any) => candidate.nid === nid));
     },
@@ -1282,6 +1325,22 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         (!!raw?.hasComponent?.('magic_at_range') && distance > 1);
     },
   };
+  const skillSystem = {
+    has_skill(candidate: any, skillNid: string) {
+      const raw = unwrapUnit(candidate);
+      return raw?.skills?.some((skill: any) => skill.nid === skillNid) ?? false;
+    },
+    check_ally(left: any, right: any) {
+      const rawLeft = unwrapUnit(left);
+      const rawRight = unwrapUnit(right);
+      return !!rawLeft && !!rawRight &&
+        (game.db?.areAllied?.(rawLeft.team, rawRight.team) ??
+          rawLeft.team === rawRight.team);
+    },
+    check_enemy(left: any, right: any) {
+      return !skillSystem.check_ally(left, right);
+    },
+  };
   const computeAdvantage = (
     attacker: any,
     defender: any,
@@ -1322,11 +1381,17 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     }
     return selected;
   };
+  const databaseProxy = new Proxy(game.db ?? {}, {
+    get(target, property: string | symbol) {
+      if (property === 'skills') return Array.from(target.skills?.values?.() ?? []);
+      return target[property as keyof typeof target];
+    },
+  });
   return {
     game: gameProxy,
     wrapUnit,
     wrapItem,
-    DB: game.db,
+    DB: databaseProxy,
     utils: {
       calculate_distance(left: [number, number] | null, right: [number, number] | null) {
         if (!left || !right) return 0;
@@ -1335,6 +1400,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     item_funcs: itemFuncs,
     item_system: itemSystem,
+    skill_system: skillSystem,
     combat_calcs: { compute_advantage: computeAdvantage },
     movement_funcs: {
       check_traversable(candidate: any, pos: [number, number] | null) {
@@ -1397,6 +1463,10 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(
     /^(.+?)\s+if\s+(.+?)\s+else\s+(.+)$/,
     '(($2) ? ($1) : ($3))',
+  );
+  jsExpr = jsExpr.replace(
+    /((?:'[^']*'|"[^"]*"))\.join\s*\((.+)\)$/,
+    '($2).join($1)',
   );
 
   // Build scope
@@ -1483,7 +1553,7 @@ function evaluateWithJsFallback(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
       'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'utils', 'item_funcs',
-      'item_system', 'combat_calcs', 'movement_funcs', 'target_system',
+      'item_system', 'skill_system', 'combat_calcs', 'movement_funcs', 'target_system',
       'max', 'min', 'str', 'range', '_qf',
       `"use strict";
        // Spread query engine functions into local scope
@@ -1510,7 +1580,7 @@ function evaluateWithJsFallback(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, v, cf,
       support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.utils,
-      evalScope.item_funcs, evalScope.item_system, evalScope.combat_calcs,
+      evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
       evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
       _queryFuncs,
     );

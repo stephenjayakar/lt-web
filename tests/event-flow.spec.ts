@@ -113,6 +113,76 @@ test.describe('EVNT/PYEV1 nested flow control', () => {
     expect(await getGameVar(page, 'flow_result')).toBe('inner_if_true');
   });
 
+  test('EVNT: typed variables resolve inside nested eval substitutions', async ({ page }) => {
+    await installAndRunEvent(page, 'TestNestedEvalVariables', [
+      "level_var;choices;['North', 'South']",
+      'level_var;choice_index;1',
+      'game_var;nested_choice;{eval:{v:choices}[{v:choice_index}]}',
+      "game_var;joined_position;{eval:','.join([str(unit.position[0]), str(unit.position[1])])}",
+    ], 'Eirika');
+
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        choices: game.levelVars.get('choices'),
+        choiceIndex: game.levelVars.get('choice_index'),
+        nestedChoice: game.gameVars.get('nested_choice'),
+        joinedPosition: game.gameVars.get('joined_position'),
+        position: game.units.get('Eirika').position.join(','),
+      };
+    });
+    expect(result).toEqual({
+      choices: ['North', 'South'],
+      choiceIndex: 1,
+      nestedChoice: 'South',
+      joinedPosition: result.position,
+      position: result.position,
+    });
+  });
+
+  test('EVNT: game random expressions are deterministic and turnwheel-reversible', async ({ page }) => {
+    await installAndRunEvent(page, 'TestOtherRandomFirst', [
+      'level_var;random_roll;game.get_random(4, 9)',
+    ]);
+    const first = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        value: game.levelVars.get('random_roll'),
+        seed: game.gameVars.get('_other_random_seed'),
+        state: game.gameVars.get('_other_random_state'),
+      };
+    });
+    expect(first.value).toBeGreaterThanOrEqual(4);
+    expect(first.value).toBeLessThanOrEqual(9);
+
+    const undone = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const actions = [
+        game.actionLog.undo(),
+        game.actionLog.undo(),
+        game.actionLog.undo(),
+      ];
+      return {
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+        hasValue: game.levelVars.has('random_roll'),
+        hasSeed: game.gameVars.has('_other_random_seed'),
+        hasState: game.gameVars.has('_other_random_state'),
+      };
+    });
+    expect(undone).toEqual({
+      actionNames: ['SetLevelVarAction', 'SetGameVarAction', 'SetGameVarAction'],
+      hasValue: false,
+      hasSeed: false,
+      hasState: false,
+    });
+
+    await installAndRunEvent(page, 'TestOtherRandomSecond', [
+      'level_var;random_roll;game.get_random(4, 9)',
+    ]);
+    expect(await page.evaluate(() =>
+      (window as any).__gameRef.levelVars.get('random_roll'))).toBe(first.value);
+  });
+
   test('EVNT: elif chain evaluates unit-field conditions and only one branch fires', async ({ page }) => {
     // Discover Eirika's actual level from the loaded fixture rather than
     // assuming a value, then assert the elif branch matching her exact
@@ -154,10 +224,16 @@ test.describe('EVNT/PYEV1 nested flow control', () => {
       'for;i;a,b,c',
       'inc_game_var;flow_count',
       'endf',
+      "level_var;loop_source;['a', 'b', 'c', 'd']",
+      'game_var;filtered_count;0',
+      "for;value;[entry for entry in {v:loop_source} if entry != 'b']",
+      'inc_game_var;filtered_count',
+      'endf',
       'wait;1',
     ]);
 
     expect(await getGameVar(page, 'flow_count')).toBe(3);
+    expect(await getGameVar(page, 'filtered_count')).toBe(3);
   });
 
   test('PYEV1: 3-deep if/elif/else picks the correct nested branch', async ({ page }) => {

@@ -63,19 +63,19 @@ silently skipped.
 This is the main campaign blocker. Rekka uses Python expressions throughout
 conditions, substitutions, loops, shops, abilities, and combat events.
 
-- [ ] Implement project-used unit APIs: `get_hp`, `get_max_hp`, `get_stat`,
+- [x] Implement project-used unit APIs: `get_hp`, `get_max_hp`, `get_stat`,
   accessories, previous position, flanking checks, and safe unit lookup.
-- [ ] Implement project-used game APIs and aliases: `_current_level.nid`,
+- [x] Implement project-used game APIs and aliases: `_current_level.nid`,
   `game_vars` indexing/`get`, money, board bounds, terrain lookup, deterministic
   random choice, and current party/level access.
-- [ ] Implement expression namespaces used by Rekka:
+- [x] Implement expression namespaces used by Rekka:
   `item_funcs`, `item_system`, `skill_system`, `target_system`,
   `combat_calcs`, and `movement_funcs`.
-- [ ] Support the project-used Python expression forms: list/generator
-  comprehensions, `any`/`all`, tuples and membership, slicing/indexing, modulo,
+- [x] Support the project-used Python expression forms: list/generator
+  comprehensions, `any`/`all`, tuples and membership, indexing, modulo,
   floor division, exponentiation, string conversion/join, and nested
   `{e:...}`/`{eval:...}` substitutions.
-- [ ] Preserve deterministic RNG consumption for `get_random`,
+- [x] Preserve deterministic RNG consumption for `get_random`,
   `get_random_choice`, combat previews, retries, saves, and turnwheel replay.
 - [ ] Validate all 161 distinct `if`/`elif` expressions, all 80 distinct eval
   substitutions, and all 34 event loops against expected Python results.
