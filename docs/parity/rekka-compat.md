@@ -15,6 +15,42 @@ evidence, not proof of behavior.
   69 eval substitutions, and
   33 event loops
 - 1697 resource files
+- 1330 catalog-backed runtime resource checks,
+  0 required files missing,
+  3 unreferenced optional catalog entries
+  missing, and 26 command-only combat effects
+
+## Resource audit
+
+| Category | Checks |
+|---|---|
+| combat-animation | 142 |
+| combat-effect | 99 |
+| combat-effect-composite | 26 |
+| icons16 | 125 |
+| icons32 | 9 |
+| icons80 | 50 |
+| map-animation | 63 |
+| map-sprite-move | 97 |
+| map-sprite-stand | 97 |
+| music | 58 |
+| panorama | 52 |
+| portrait | 138 |
+| sfx | 255 |
+| tileset | 93 |
+| tileset-autotiles | 26 |
+
+### Missing required resources
+
+None.
+
+### Missing optional catalog entries
+
+| Category | NID | Classification |
+|---|---|---|
+| panorama | title_background_1 | optional-catalog-entry |
+| panorama | 213 | optional-catalog-entry |
+| panorama | 321 | optional-catalog-entry |
 
 ## Structurally risky project-used item components
 

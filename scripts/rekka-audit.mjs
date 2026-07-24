@@ -152,6 +152,91 @@ const customSpriteFiles = resourceFiles
   .map((file) => path.relative(projectRoot, file))
   .sort();
 
+function resourceExists(relativePaths) {
+  return relativePaths.some((relativePath) =>
+    fs.existsSync(path.join(resourceRoot, relativePath)));
+}
+
+function auditResources() {
+  const checks = [];
+  const add = (category, nid, relativePaths, classification = 'required') => {
+    checks.push({
+      category,
+      nid,
+      classification,
+      found: resourceExists(relativePaths),
+      paths: relativePaths,
+    });
+  };
+
+  for (const portrait of readJson('resources/portraits/portraits.json')) {
+    add('portrait', portrait.nid, [`portraits/${portrait.nid}.png`]);
+  }
+  const eventSource = events.flatMap((event) => event._source ?? []).join('\n');
+  for (const [nid, frameCount] of readJson('resources/panoramas/panoramas.json')) {
+    const paths = frameCount > 1
+      ? Array.from({ length: frameCount }, (_, index) => `panoramas/${nid}${index}.png`)
+      : [`panoramas/${nid}.png`, `panoramas/${nid}0.png`];
+    const referenced = eventSource.includes(`background;${nid}`) ||
+      eventSource.includes(`panorama;${nid}`) ||
+      nid === 'title_background';
+    add('panorama', nid, paths, referenced ? 'required' : 'optional-catalog-entry');
+  }
+  for (const nid of readJson('resources/map_sprites/map_sprites.json')) {
+    add('map-sprite-stand', nid, [`map_sprites/${nid}-stand.png`]);
+    add('map-sprite-move', nid, [`map_sprites/${nid}-move.png`]);
+  }
+  for (const tileset of readJson('resources/tilesets/tilesets.json')) {
+    add('tileset', tileset.nid, [`tilesets/${tileset.nid}.png`]);
+    if (Object.keys(tileset.autotiles ?? {}).length > 0) {
+      add('tileset-autotiles', tileset.nid, [`tilesets/${tileset.nid}_autotiles.png`]);
+    }
+  }
+  for (const folder of ['icons16', 'icons32', 'icons80']) {
+    for (const icon of readJson(`resources/${folder}/${folder}.json`)) {
+      add(folder, icon.nid, [`${folder}/${icon.nid}.png`]);
+    }
+  }
+  for (const animation of readJson('resources/animations/animations.json')) {
+    add('map-animation', animation.nid, [`animations/${animation.nid}.png`]);
+  }
+  for (const combatAnimation of readJson('resources/combat_anims/combat_anims.json')) {
+    for (const weaponAnimation of combatAnimation.weapon_anims) {
+      const nid = `${combatAnimation.nid}-${weaponAnimation.nid}`;
+      add('combat-animation', nid, [`combat_anims/${nid}.png`]);
+    }
+  }
+  for (const effect of readJson('resources/combat_effects/combat_effects.json')) {
+    // Parent spell scripts may be command-only composites which reference
+    // child effects and intentionally own no sprite sheet.
+    if ((effect.frames ?? []).length > 0) {
+      add('combat-effect', effect.nid, [`combat_effects/${effect.nid}.png`]);
+    } else {
+      add('combat-effect-composite', effect.nid, [], 'metadata-only');
+      checks.at(-1).found = true;
+    }
+  }
+  for (const [nid] of readJson('resources/music/music.json')) {
+    add('music', nid, ['ogg', 'mp3', 'wav'].map((extension) =>
+      `music/${nid}.${extension}`));
+  }
+  for (const [nid] of readJson('resources/sfx/sfx.json')) {
+    add('sfx', nid, ['ogg', 'mp3', 'wav'].map((extension) =>
+      `sfx/${nid}.${extension}`));
+  }
+
+  const missing = checks.filter((check) => !check.found);
+  return {
+    checks: checks.length,
+    requiredMissing: missing.filter((check) => check.classification === 'required'),
+    optionalMissing: missing.filter((check) => check.classification !== 'required'),
+    metadataOnly: checks.filter((check) => check.classification === 'metadata-only').length,
+    categories: countBy(checks.map((check) => check.category)),
+  };
+}
+
+const resourceAudit = auditResources();
+
 const manifest = {
   generatedBy: 'node scripts/rekka-audit.mjs --write',
   project: {
@@ -177,6 +262,7 @@ const manifest = {
     files: resourceFiles.length,
     categories: resourceCategories,
     customSprites: customSpriteFiles,
+    audit: resourceAudit,
   },
 };
 
@@ -210,6 +296,33 @@ evidence, not proof of behavior.
   ${expressions.evalSubstitutions.length} eval substitutions, and
   ${expressions.loops.length} event loops
 - ${resourceFiles.length} resource files
+- ${resourceAudit.checks} catalog-backed runtime resource checks,
+  ${resourceAudit.requiredMissing.length} required files missing,
+  ${resourceAudit.optionalMissing.length} unreferenced optional catalog entries
+  missing, and ${resourceAudit.metadataOnly} command-only combat effects
+
+## Resource audit
+
+${table(resourceAudit.categories, [
+  { key: 'nid', label: 'Category' },
+  { key: 'uses', label: 'Checks' },
+])}
+
+### Missing required resources
+
+${resourceAudit.requiredMissing.length > 0 ? table(resourceAudit.requiredMissing, [
+  { key: 'category', label: 'Category' },
+  { key: 'nid', label: 'NID' },
+  { key: 'paths', label: 'Expected paths' },
+]) : 'None.'}
+
+### Missing optional catalog entries
+
+${resourceAudit.optionalMissing.length > 0 ? table(resourceAudit.optionalMissing, [
+  { key: 'category', label: 'Category' },
+  { key: 'nid', label: 'NID' },
+  { key: 'classification', label: 'Classification' },
+]) : 'None.'}
 
 ## Structurally risky project-used item components
 
@@ -274,3 +387,5 @@ console.log(`- Item/skill component NIDs: ${itemComponents.length}/${skillCompon
 console.log(`- Used custom Python components: ${usedCustom.length}/${customComponents.length}`);
 console.log(`- Conditions/evals/loops: ${expressions.conditions.length}/${expressions.evalSubstitutions.length}/${expressions.loops.length}`);
 console.log(`- Structurally risky item/skill NIDs: ${riskyItems.length}/${riskySkills.length}`);
+console.log(`- Resource checks/required missing/optional missing: ${resourceAudit.checks}/${resourceAudit.requiredMissing.length}/${resourceAudit.optionalMissing.length}`);
+if (resourceAudit.requiredMissing.length > 0) process.exitCode = 1;

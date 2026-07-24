@@ -2715,6 +2715,105 @@
     "customSprites": [
       "resources/custom_sprites/logo.png",
       "resources/custom_sprites/press_start.png"
-    ]
+    ],
+    "audit": {
+      "checks": 1330,
+      "requiredMissing": [],
+      "optionalMissing": [
+        {
+          "category": "panorama",
+          "nid": "title_background_1",
+          "classification": "optional-catalog-entry",
+          "found": false,
+          "paths": [
+            "panoramas/title_background_1.png",
+            "panoramas/title_background_10.png"
+          ]
+        },
+        {
+          "category": "panorama",
+          "nid": "213",
+          "classification": "optional-catalog-entry",
+          "found": false,
+          "paths": [
+            "panoramas/213.png",
+            "panoramas/2130.png"
+          ]
+        },
+        {
+          "category": "panorama",
+          "nid": "321",
+          "classification": "optional-catalog-entry",
+          "found": false,
+          "paths": [
+            "panoramas/321.png",
+            "panoramas/3210.png"
+          ]
+        }
+      ],
+      "metadataOnly": 26,
+      "categories": [
+        {
+          "nid": "combat-animation",
+          "uses": 142
+        },
+        {
+          "nid": "combat-effect",
+          "uses": 99
+        },
+        {
+          "nid": "combat-effect-composite",
+          "uses": 26
+        },
+        {
+          "nid": "icons16",
+          "uses": 125
+        },
+        {
+          "nid": "icons32",
+          "uses": 9
+        },
+        {
+          "nid": "icons80",
+          "uses": 50
+        },
+        {
+          "nid": "map-animation",
+          "uses": 63
+        },
+        {
+          "nid": "map-sprite-move",
+          "uses": 97
+        },
+        {
+          "nid": "map-sprite-stand",
+          "uses": 97
+        },
+        {
+          "nid": "music",
+          "uses": 58
+        },
+        {
+          "nid": "panorama",
+          "uses": 52
+        },
+        {
+          "nid": "portrait",
+          "uses": 138
+        },
+        {
+          "nid": "sfx",
+          "uses": 255
+        },
+        {
+          "nid": "tileset",
+          "uses": 93
+        },
+        {
+          "nid": "tileset-autotiles",
+          "uses": 26
+        }
+      ]
+    }
   }
 }

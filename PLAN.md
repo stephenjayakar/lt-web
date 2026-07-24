@@ -79,8 +79,8 @@ conditions, substitutions, loops, shops, abilities, and combat events.
   `{e:...}`/`{eval:...}` substitutions.
 - [x] Preserve deterministic RNG consumption for `get_random`,
   `get_random_choice`, combat previews, retries, saves, and turnwheel replay.
-- [ ] Validate all 161 distinct `if`/`elif` expressions, all 80 distinct eval
-  substitutions, and all 34 event loops against expected Python results.
+- [ ] Validate all 330 distinct event conditions, all 69 distinct eval
+  substitutions, and all 33 event loops against expected Python results.
 - [ ] Add scenarios for global shop selection, dynamic generic units,
   conditional recruitment, victory/route branches, and random-skill events.
 - [ ] Verify trigger-local payloads such as `unit`, `unit2`, `item`, `item2`,
@@ -226,7 +226,7 @@ alternate-route/optional-content scenarios and no event/state softlocks.
 - [x] Load Rekka's custom `logo.png` and `press_start.png`; render visible custom
   art or an explicit project-title fallback for its transparent files, with
   configured title music and an audio-unlock-safe start.
-- [ ] Audit every referenced panorama, portrait, map sprite, tileset, icon,
+- [x] Audit every referenced panorama, portrait, map sprite, tileset, icon,
   animation, combat animation/effect, music track, and SFX; distinguish optional
   fallback from required-resource failure.
 - [ ] Visually verify title, save select, prep/base, representative maps,
@@ -279,10 +279,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-1. Audit referenced Rekka resources and classify required failures versus
-   optional fallbacks.
-2. Exercise event entrypoints and only-once/chaining behavior systematically.
-3. Complete browser UX/audio/input QA, save migration coverage, and the release
+1. Exercise event entrypoints and only-once/chaining behavior systematically.
+2. Complete browser UX/audio/input QA, save migration coverage, and the release
    gate.
 
 ## Already present — verify, do not reimplement blindly
