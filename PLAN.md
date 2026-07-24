@@ -247,7 +247,7 @@ touch, and visual/audio QA has no release-blocking defects.
 
 ## P6 — Save, turnwheel, AI, and determinism
 
-- [ ] Round-trip saves containing combat arts, equipped accessories, transformed
+- [x] Round-trip saves containing combat arts, equipped accessories, transformed
   units, multi-skill children, temporary statuses, custom component data,
   dynamically added components, convoy items, and pending chapter events.
 - [ ] Test undo/redo for every new persistent mutation: money costs, item copies,
