@@ -140,6 +140,7 @@ export class GameState {
   shopItems: any[] | null;
   shopStock: number[] | null;
   shopId: string | null;
+  shopFlavor: string | null;
   currentEvent: GameEvent | null;
   _moveOrigin: [number, number] | null;
   _moveAction: MoveAction | null;
@@ -253,6 +254,7 @@ export class GameState {
     this.shopItems = null;
     this.shopStock = null;
     this.shopId = null;
+    this.shopFlavor = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._moveAction = null;
@@ -457,6 +459,7 @@ export class GameState {
     this.shopItems = null;
     this.shopStock = null;
     this.shopId = null;
+    this.shopFlavor = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._moveAction = null;
@@ -523,6 +526,7 @@ export class GameState {
     this.shopItems = null;
     this.shopStock = null;
     this.shopId = null;
+    this.shopFlavor = null;
     this.currentEvent = null;
     this._moveOrigin = null;
     this._moveAction = null;

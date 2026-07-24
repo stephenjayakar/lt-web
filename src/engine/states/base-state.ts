@@ -324,6 +324,7 @@ export class BaseMainState extends State {
             }
             game.shopItems = itemNids;
             game.shopStock = stocks;
+            game.shopFlavor = 'market';
             // Select first available player unit as the shopper
             game.shopUnit = null;
             for (const unit of game.units.values()) {

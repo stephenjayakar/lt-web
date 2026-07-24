@@ -193,7 +193,8 @@ Deviation, with no Missing/Partial rows in the Rekka-generated inventory.
 - [ ] Verify menu/state flows in their campaign contexts:
   - [x] Base/prep entry and return, unit management/convoy access, formation,
     options, and enabled save routes.
-  - [ ] Trading, shops and armory/vendor stock, support, promotion, and records.
+  - [x] Chapter-conditioned armory/vendor entry, flavor, and exact stock.
+  - [ ] Trading, support, promotion, and records.
 - [ ] Verify every recruitment, talk, visit, chest/door, reinforcement, boss,
   escape/seize/defeat/survive objective, route split, and chapter transition.
 - [ ] Add campaign checkpoints covering early, midgame, late, final map, ending,

@@ -812,4 +812,55 @@ test.describe('Rekka all-level compatibility', () => {
     await page.evaluate(() => (window as any).__harness.settle(1_200));
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('free');
   });
+
+  test('Rekka chapter armory and vendor events open with their exact stock', async ({ page }) => {
+    const scenarios = [
+      {
+        level: '3',
+        eventNid: 'Global Armory',
+        flavor: 'armory',
+        items: ['Slim_Sword', 'Slim_Lance', 'Hand_Axe'],
+      },
+      {
+        level: '7',
+        eventNid: 'Global Vendor',
+        flavor: 'vendor',
+        items: ['Vulnerary', 'Heal', 'Fire'],
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      await page.goto(`/?harness=true&project=rekka.ltproj&level=${scenario.level}&clean=true&bundle=false`);
+      await waitForHarness(page);
+      await page.evaluate(({ eventNid }) => {
+        const game = (window as any).__gameRef;
+        const shopper = [...game.units.values()].find((unit: any) => unit.team === 'player');
+        game.getParty().money = 99_999;
+        game.eventManager.triggerSpecific(eventNid, {
+          type: eventNid,
+          unitNid: shopper.nid,
+          unit1: shopper,
+        }, true);
+        game.state.change('event');
+      }, scenario);
+      await page.evaluate(() => (window as any).__harness.stepFrames(30, null));
+
+      const opened = await page.evaluate(() => {
+        const game = (window as any).__gameRef;
+        const state = game.state.getCurrentState() as any;
+        return {
+          state: state?.name,
+          flavor: state?.shopFlavor,
+          items: state?.shopItems.map((item: any) => item.nid) ?? [],
+          stock: [...(state?.shopStock ?? [])],
+        };
+      });
+      expect(opened).toEqual({
+        state: 'shop',
+        flavor: scenario.flavor,
+        items: scenario.items,
+        stock: scenario.items.map(() => -1),
+      });
+    }
+  });
 });
