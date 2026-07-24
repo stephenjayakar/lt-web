@@ -79,11 +79,11 @@ conditions, substitutions, loops, shops, abilities, and combat events.
   `{e:...}`/`{eval:...}` substitutions.
 - [x] Preserve deterministic RNG consumption for `get_random`,
   `get_random_choice`, combat previews, retries, saves, and turnwheel replay.
-- [ ] Validate all 330 distinct event conditions, all 69 distinct eval
+- [x] Validate all 330 distinct event conditions, all 69 distinct eval
   substitutions, and all 33 event loops against expected Python results.
-- [ ] Add scenarios for global shop selection, dynamic generic units,
+- [x] Add scenarios for global shop selection, dynamic generic units,
   conditional recruitment, victory/route branches, and random-skill events.
-- [ ] Verify trigger-local payloads such as `unit`, `unit2`, `item`, `item2`,
+- [x] Verify trigger-local payloads such as `unit`, `unit2`, `item`, `item2`,
   `mode`, `stat_changes`, `created_unit`, and loop variables.
 
 Gate: every distinct Rekka expression parses and has a focused value/side-effect
