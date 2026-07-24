@@ -2717,7 +2717,7 @@
       "resources/custom_sprites/press_start.png"
     ],
     "audit": {
-      "checks": 1330,
+      "checks": 1442,
       "requiredMissing": [],
       "optionalMissing": [
         {
@@ -2749,6 +2749,33 @@
             "panoramas/321.png",
             "panoramas/3210.png"
           ]
+        },
+        {
+          "category": "event-portrait",
+          "nid": "DEBUG Dreams of Home: Eirika",
+          "classification": "debug-only-fixture",
+          "found": false,
+          "paths": [
+            "portraits/Eirika.png"
+          ]
+        },
+        {
+          "category": "event-portrait",
+          "nid": "DEBUG Dreams of Home: Seth",
+          "classification": "debug-only-fixture",
+          "found": false,
+          "paths": [
+            "portraits/Seth.png"
+          ]
+        },
+        {
+          "category": "event-portrait",
+          "nid": "DEBUG Trigger: Eirika",
+          "classification": "debug-only-fixture",
+          "found": false,
+          "paths": [
+            "portraits/Eirika.png"
+          ]
         }
       ],
       "metadataOnly": 26,
@@ -2764,6 +2791,26 @@
         {
           "nid": "combat-effect-composite",
           "uses": 26
+        },
+        {
+          "nid": "event-map-animation",
+          "uses": 56
+        },
+        {
+          "nid": "event-music",
+          "uses": 3
+        },
+        {
+          "nid": "event-panorama",
+          "uses": 6
+        },
+        {
+          "nid": "event-portrait",
+          "uses": 4
+        },
+        {
+          "nid": "event-sfx",
+          "uses": 43
         },
         {
           "nid": "icons16",

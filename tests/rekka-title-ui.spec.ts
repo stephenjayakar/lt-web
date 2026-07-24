@@ -9,7 +9,7 @@ async function waitForHarness(page: import('@playwright/test').Page): Promise<vo
 test.describe('Rekka title presentation', () => {
   test('loads authored title resources, falls back for transparent art, and starts safely', async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.setViewportSize({ width: 480, height: 320 });
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -49,8 +49,8 @@ test.describe('Rekka title presentation', () => {
       promptHasVisiblePixels: false,
     });
 
-    await page.locator('#game-canvas').screenshot({
-      path: testInfo.outputPath('rekka-title-desktop.png'),
+    await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-title-desktop.png', {
+      maxDiffPixelRatio: 0.01,
     });
 
     const start = await page.evaluate(() => {
@@ -70,7 +70,7 @@ test.describe('Rekka title presentation', () => {
 
   test('retains the 240×160 title composition in a narrow mobile viewport', async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -103,8 +103,8 @@ test.describe('Rekka title presentation', () => {
       .toBeCloseTo(geometry.cssWidth / geometry.cssHeight, 2);
     expect(geometry.withinViewport).toBe(true);
 
-    await page.locator('#game-canvas').screenshot({
-      path: testInfo.outputPath('rekka-title-mobile.png'),
+    await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-title-mobile.png', {
+      maxDiffPixelRatio: 0.01,
     });
   });
 });

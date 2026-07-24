@@ -8024,7 +8024,7 @@ export class ShopState extends State {
 
     // Money display
     const moneyStr = `Gold: ${this.money}`;
-    surf.drawText(moneyStr, W - 4 - moneyStr.length * 5, 4, '#FFD700', FONT);
+    surf.drawTextRight(moneyStr, W - 4, 4, '#FFD700', FONT);
 
     // Unit name
     if (this.unit) {

@@ -635,7 +635,7 @@ test.describe('Rekka all-level compatibility', () => {
     }
   });
 
-  test('Final chapter boss events reach Rekka credits and return to title', async ({ page }, testInfo) => {
+  test('Final chapter boss events reach Rekka credits and return to title', async ({ page }) => {
     test.setTimeout(90_000);
     await page.goto('/?harness=true&project=rekka.ltproj&level=46&clean=true&bundle=false');
     await waitForHarness(page);
@@ -754,8 +754,8 @@ test.describe('Rekka all-level compatibility', () => {
       waitAtCenter: true,
     });
     await page.evaluate(() => (window as any).__harness.stepFrames(380, null));
-    await page.locator('#game-canvas').screenshot({
-      path: testInfo.outputPath('rekka-final-portraits-credits.png'),
+    await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-final-portraits-credits.png', {
+      maxDiffPixelRatio: 0.01,
     });
 
     for (let i = 0; i < 80; i++) {
@@ -769,7 +769,7 @@ test.describe('Rekka all-level compatibility', () => {
       .toBe('title');
   });
 
-  test('Chapter 7 preparations expose manage, formation, options, save, and fight', async ({ page }, testInfo) => {
+  test('Chapter 7 preparations expose manage, formation, options, save, and fight', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=false&bundle=false');
     await waitForHarness(page);
     await page.evaluate(() => (window as any).__harness.settle(1_200));
@@ -796,8 +796,8 @@ test.describe('Rekka all-level compatibility', () => {
       convoy: 1,
       music: 'skateboard_p_instrumental',
     });
-    await page.locator('#game-canvas').screenshot({
-      path: testInfo.outputPath('rekka-chapter-7-preparations.png'),
+    await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-chapter-7-preparations.png', {
+      maxDiffPixelRatio: 0.01,
     });
 
     const openPrepOption = async (label: string) => {
@@ -948,6 +948,10 @@ test.describe('Rekka all-level compatibility', () => {
         items: scenario.items,
         stock: scenario.items.map(() => -1),
       });
+      await expect(page.locator('#game-canvas')).toHaveScreenshot(
+        `rekka-${scenario.flavor}-chapter-${scenario.level}.png`,
+        { maxDiffPixelRatio: 0.01 },
+      );
     }
   });
 
