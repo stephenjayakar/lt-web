@@ -371,7 +371,7 @@ export class UnitObject {
 
   /** Whether an item is an accessory (Python `item_system.is_accessory`). */
   private isAccessory(item: ItemObject): boolean {
-    return item.hasComponent('accessory');
+    return item.isAccessory();
   }
 
   /** Return all items including multi_item subitems (Python `get_all_items`). */

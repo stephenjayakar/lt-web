@@ -3510,7 +3510,7 @@ export class EquipItemAction extends Action {
     super();
     this.unit = unit;
     this.item = item;
-    this.previousEquipped = item.hasComponent('accessory')
+    this.previousEquipped = item.isAccessory()
       ? unit.equippedAccessory
       : unit.equippedWeapon;
   }
@@ -3551,7 +3551,7 @@ export class UnequipItemAction extends Action {
     const lookingForAccessory = this.isEquippedAccessory;
     for (const candidate of this.unit.items) {
       if (candidate === this.item) continue;
-      if (candidate.hasComponent('accessory') !== lookingForAccessory) continue;
+      if (candidate.isAccessory() !== lookingForAccessory) continue;
       if (this.unit.canEquip(candidate)) {
         this.unit.equip(candidate);
         break;
@@ -3588,8 +3588,8 @@ export class BringToTopItemAction extends Action {
     const idx = this.unit.items.indexOf(this.item);
     if (idx === -1) return;
     this.unit.items.splice(idx, 1);
-    if (this.item.hasComponent('accessory')) {
-      const nonaccessoryCount = this.unit.items.filter((i) => !i.hasComponent('accessory')).length;
+    if (this.item.isAccessory()) {
+      const nonaccessoryCount = this.unit.items.filter((i) => !i.isAccessory()).length;
       this.unit.items.splice(nonaccessoryCount, 0, this.item);
     } else {
       this.unit.items.unshift(this.item);

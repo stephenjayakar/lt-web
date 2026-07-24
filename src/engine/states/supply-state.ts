@@ -64,7 +64,7 @@ function getGame(): any {
 export function tooMuchInInventory(unit: UnitObject, db: any): boolean {
   const numItems = Number(db.getConstant('num_items', 5));
   const numAccessories = Number(db.getConstant('num_accessories', 0));
-  const accessories = unit.items.filter((i) => i.hasComponent('accessory')).length;
+  const accessories = unit.items.filter((i) => i.isAccessory()).length;
   const normal = unit.items.length - accessories;
   return normal > numItems || accessories > numAccessories;
 }
@@ -337,8 +337,8 @@ export class ItemDiscardState extends State {
     const numItems = Number(game.db.getConstant('num_items', 5));
     const numAccessories = Number(game.db.getConstant('num_accessories', 0));
     const locked = unit.items.filter((i) => this.isRowLocked(i));
-    const lockedNormal = locked.filter((i) => !i.hasComponent('accessory'));
-    const lockedAccessories = locked.filter((i) => i.hasComponent('accessory'));
+    const lockedNormal = locked.filter((i) => !i.isAccessory());
+    const lockedAccessories = locked.filter((i) => i.isAccessory());
     let target: ItemObject | null = null;
     if (lockedNormal.length > numItems) target = lockedNormal[lockedNormal.length - 1];
     else if (lockedAccessories.length > numAccessories) target = lockedAccessories[lockedAccessories.length - 1];
@@ -360,13 +360,13 @@ export class ItemDiscardState extends State {
 
   private buildMenu(): void {
     const unit = this.unit!;
-    const newAccessory = this.newItem?.hasComponent('accessory') ?? null;
+    const newAccessory = this.newItem?.isAccessory() ?? null;
     const options: MenuOption[] = unit.items.map((item, index) => ({
       label: item.name,
       value: `item_${index}`,
       enabled: !this.isRowLocked(item) &&
         // Python: only items of the same accessory-class as the new item.
-        (newAccessory === null || item.hasComponent('accessory') === newAccessory),
+        (newAccessory === null || item.isAccessory() === newAccessory),
     }));
     this.menu = new ChoiceMenu(options, 12, 24);
   }

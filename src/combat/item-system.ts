@@ -312,9 +312,9 @@ export function isRepairableItem(item: ItemObject): boolean {
 
 /** Match LT's separate accessory/non-accessory inventory capacity. */
 export function inventoryFull(unit: UnitObject, item: ItemObject, db: Database): boolean {
-  const accessory = item.hasComponent('accessory');
+  const accessory = item.isAccessory();
   const limit = Number(db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
-  const count = unit.items.filter((candidate) => candidate.hasComponent('accessory') === accessory).length;
+  const count = unit.items.filter((candidate) => candidate.isAccessory() === accessory).length;
   return count >= limit;
 }
 
@@ -347,7 +347,7 @@ export function traceItemRestrict(
   const itemTags = Array.isArray(tags) ? tags.map(String) : tags ? [String(tags)] : [];
   if (itemTags.includes('NoTrace')) return false;
   if (!targetItem.nid.includes('Fragarach') && targetItem.uses <= 0) return false;
-  if (targetItem.hasComponent('accessory') || targetItem.hasComponent('equippable_accessory')) {
+  if (targetItem.isAccessory()) {
     return false;
   }
   if (targetItem.hasComponent('locked') || targetItem.hasComponent('undiscardable')) return false;

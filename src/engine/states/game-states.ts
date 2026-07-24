@@ -2005,6 +2005,12 @@ export class MenuState extends State {
     if (hasUsableItem) {
       options.push({ label: 'Item', value: 'item', enabled: true });
     }
+    const accessories = unit.items.filter((item) =>
+      item.isAccessory() && unit.canEquip(item),
+    );
+    if (accessories.length > 0) {
+      options.push({ label: 'Accessory', value: 'accessory', enabled: true });
+    }
 
     // Trade option — if adjacent allied unit exists and unit hasn't traded/attacked
     if (unit.canTrade()) {
@@ -2183,6 +2189,9 @@ export class MenuState extends State {
       } else if (value === 'item') {
         this.menu = null;
         game.state.change('item_use');
+      } else if (value === 'accessory') {
+        this.menu = null;
+        game.state.change('accessory_choice');
       } else if (value === 'steal' && this.stealAbilityItem) {
         game.memory.set('item_use_item', this.stealAbilityItem);
         this.menu = null;
@@ -2424,6 +2433,79 @@ export class MenuState extends State {
     if (this.menu) {
       this.menu.draw(surf);
     }
+    return surf;
+  }
+}
+
+// ============================================================================
+// 4b. AccessoryChoiceState - Equip an accessory without consuming the action
+// ============================================================================
+
+export class AccessoryChoiceState extends State {
+  readonly name = 'accessory_choice';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private accessories: ItemObject[] = [];
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject = game.selectedUnit;
+    if (!unit) {
+      game.state.back();
+      return;
+    }
+    this.accessories = unit.items.filter((item) =>
+      item.isAccessory() && unit.canEquip(item),
+    );
+    if (this.accessories.length === 0) {
+      game.state.back();
+      return;
+    }
+    const options = this.accessories.map((item, index) => ({
+      label: `${unit.equippedAccessory === item ? 'E ' : ''}${item.name}`,
+      value: `accessory_${index}`,
+      enabled: true,
+    }));
+    this.menu = new ChoiceMenu(
+      options,
+      Math.max(4, viewport.width - 100),
+      Math.max(4, (viewport.height - options.length * 16) / 2),
+    );
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result) {
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    const index = Number(result.selected.slice('accessory_'.length));
+    const item = this.accessories[index];
+    const unit: UnitObject = game.selectedUnit;
+    if (item && unit && unit.equippedAccessory !== item) {
+      game.actionLog.doAction(new EquipItemAction(unit, item));
+      game.actionLog.doAction(new BringToTopItemAction(unit, item));
+    }
+    this.menu = null;
+    game.state.back();
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
     return surf;
   }
 }
@@ -8848,9 +8930,9 @@ export class EventState extends State {
   /** Match LT's item/accessory inventory capacity check (skill offsets remain a P3 hook gap). */
   private inventoryFull(unit: UnitObject, item: ItemObject): boolean {
     const game = getGame();
-    const accessory = item.hasComponent('accessory');
+    const accessory = item.isAccessory();
     const limit = Number(game.db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
-    const count = unit.items.filter((candidate) => candidate.hasComponent('accessory') === accessory).length;
+    const count = unit.items.filter((candidate) => candidate.isAccessory() === accessory).length;
     return count >= limit;
   }
 

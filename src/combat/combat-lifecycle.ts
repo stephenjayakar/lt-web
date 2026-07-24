@@ -524,9 +524,9 @@ export function applyDroppableItemPickups(
     const killer = deadUnit === attacker ? dropRecipient : attacker;
     if (!killer) continue;
     actionLog.doAction(new SetItemDroppableAction(item, false));
-    const accessory = item.hasComponent('accessory');
+    const accessory = item.isAccessory();
     const limit = Number(db.getConstant(accessory ? 'num_accessories' : 'num_items', accessory ? 0 : 5));
-    const count = killer.items.filter((candidate) => candidate.hasComponent('accessory') === accessory).length;
+    const count = killer.items.filter((candidate) => candidate.isAccessory() === accessory).length;
     const full = count >= limit;
     if (!full) {
       actionLog.doAction(new MoveItemBetweenUnitsAction(deadUnit, killer, item));
