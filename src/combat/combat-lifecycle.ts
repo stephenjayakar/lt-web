@@ -36,9 +36,10 @@ import {
   drawBackDestinations,
   advanceDestinations,
   pivotDestination,
+  rekkaMovementEndpoints,
   shoveDestination,
 } from './item-system';
-import { checkAlly, checkEnemy, ignoreForcedMovement } from './skill-system';
+import { checkAlly, checkEnemy, ignoreForcedMovement, movementType } from './skill-system';
 import { evaluateEquation } from './combat-calcs';
 
 interface CombatLifecycleGame {
@@ -54,6 +55,35 @@ interface CombatLifecycleGame {
   getMoney?: () => number;
   items?: Map<string, ItemObject>;
   memory?: Map<string, unknown>;
+}
+
+function nearestOpenTile(
+  game: CombatLifecycleGame,
+  unit: UnitObject,
+  origin: [number, number],
+): [number, number] | null {
+  if (!game.board || !game.db) return null;
+  const defaultMovement = game.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+  const movementGroup = movementType(unit, defaultMovement, game);
+  for (let radius = 0; radius < 10; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const dy = radius - Math.abs(dx);
+      for (const candidate of [
+        [origin[0] + dx, origin[1] + dy],
+        [origin[0] + dx, origin[1] - dy],
+      ] as [number, number][]) {
+        if (!game.board.checkBounds(candidate[0], candidate[1])) continue;
+        const occupant = game.board.getUnit(candidate[0], candidate[1]);
+        if ((!occupant || occupant === unit) &&
+            game.board.getMovementCost(
+              candidate[0], candidate[1], movementGroup, game.db,
+            ) <= Math.max(5, unit.getMovement())) {
+          return candidate;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 interface DroppableGame {
@@ -847,6 +877,33 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
               game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
               game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
               applied += 2;
+            }
+          } else if (
+            (componentNid === 'phasewalk' ||
+              componentNid === 'charge' ||
+              componentNid === 'bullrush') &&
+            mark.defender.position && game.db
+          ) {
+            const endpoints = rekkaMovementEndpoints(
+              mark.attacker, strike.item, game.board, game.db, game,
+            );
+            const endpoint = endpoints.get(
+              `${mark.defender.position[0]},${mark.defender.position[1]}`,
+            );
+            if (endpoint) {
+              const occupant = game.board.getUnit(endpoint[0], endpoint[1]);
+              if (occupant && occupant !== mark.attacker &&
+                  componentNid !== 'phasewalk') {
+                const open = nearestOpenTile(game, occupant, endpoint);
+                if (open) {
+                  game.actionLog.doAction(new WarpUnitAction(occupant, open, game.board));
+                  applied++;
+                }
+              }
+              game.actionLog.doAction(
+                new WarpUnitAction(mark.attacker, endpoint, game.board),
+              );
+              applied++;
             }
           }
         }

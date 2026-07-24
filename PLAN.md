@@ -101,7 +101,7 @@ unsafe Python/eval bridge.
   validation)
 - [x] `gold_cost` (availability, payment, refund, undo/redo)
 - [x] `trace` (item targeting, one-use copy, ownership, AI, save identity)
-- [ ] Audit and port any reachable `cleave_2_range_aoe`, `phasewalk`, `charge`,
+- [x] Audit and port any reachable `cleave_2_range_aoe`, `phasewalk`, `charge`,
   or `bullrush` content even if current static usage is zero.
 
 ### Custom skill components
@@ -116,7 +116,7 @@ unsafe Python/eval bridge.
   3 `event_after_crit`, plus hit/dodge/strike variants
 - [x] Availability restrictions, including four
   `cannot_use_items_except_armor` uses
-- [ ] Preserve exact hook ordering, playback markers, event payloads, charge
+- [x] Preserve exact hook ordering, playback markers, event payloads, charge
   triggering, action reversal, and save/restore state.
 
 Gate: every custom component referenced by project data has a golden test against

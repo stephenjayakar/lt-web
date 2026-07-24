@@ -397,6 +397,7 @@ export class CombatPhaseSolver {
           const baseCritMult = this.criticalMultiplier(striker, item, db);
           dmg = dmg * baseCritMult + critDmgMod;
         }
+        dmg = this.applyCustomHitDamage(item, target, dmg);
       }
       dmg = Math.max(0, dmg);
     }
@@ -976,6 +977,8 @@ export class CombatPhaseSolver {
         if (glancing) {
           dmg = Math.trunc(dmg / 2);
         }
+
+        dmg = this.applyCustomHitDamage(item, target, dmg);
       }
       dmg = Math.max(0, dmg);
     }
@@ -999,5 +1002,18 @@ export class CombatPhaseSolver {
     this.lifecycle?.endStrike(procs);
     this.updateGuardGauges(striker, item, target, db);
     return strike;
+  }
+
+  private applyCustomHitDamage(
+    item: ItemObject,
+    target: UnitObject,
+    damage: number,
+  ): number {
+    if (!item.hasComponent('cleave_2_range_aoe')) return damage;
+    const suzerain = this.game?.units?.get?.('SuzerainC21') as UnitObject | undefined;
+    const ennis = this.game?.units?.get?.('Ennis') as UnitObject | undefined;
+    const protectedTarget = target === suzerain ||
+      (!suzerain && target === ennis && ennis.party !== 'Ennis');
+    return protectedTarget ? 0 : Math.max(0, target.currentHp - 1);
   }
 }
