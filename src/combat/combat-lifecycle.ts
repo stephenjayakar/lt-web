@@ -20,11 +20,13 @@ import {
   SwapUnitsAction,
   AddSkillAction,
   SetSkillDataAction,
+  GainMoneyAction,
 } from '../engine/action';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import {
   drawBackDestinations,
+  advanceDestinations,
   pivotDestination,
   shoveDestination,
 } from './item-system';
@@ -39,6 +41,8 @@ interface CombatLifecycleGame {
   actionLog?: Pick<ActionLog, 'doAction'>;
   board?: GameBoard | null;
   db?: Database;
+  currentParty?: string;
+  getMoney?: () => number;
 }
 
 interface DroppableGame {
@@ -394,6 +398,18 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
               game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
               applied += 2;
             }
+          } else if (componentNid === 'advance' && !ignoreForcedMovement(mark.defender)) {
+            const destinations = advanceDestinations(
+              mark.attacker,
+              mark.defender,
+              Number(strike.item.getComponent<number>('advance') ?? 1),
+              { board: game.board, db: game.db, game },
+            );
+            if (destinations) {
+              game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
+              game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
+              applied += 2;
+            }
           }
         }
       }
@@ -433,6 +449,18 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
     }
   }
   return applied;
+}
+
+/** Apply item start-combat resource hooks once for the initiating item. */
+export function applyCombatItemStartHooks(
+  game: CombatLifecycleGame,
+  item: ItemObject,
+): number {
+  if (!game.actionLog) return 0;
+  const goldCost = item.getComponent<number>('gold_cost');
+  if (typeof goldCost !== 'number' || goldCost <= 0) return 0;
+  game.actionLog.doAction(new GainMoneyAction(-goldCost, game.currentParty));
+  return 1;
 }
 
 /**
