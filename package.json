@@ -12,6 +12,8 @@
     "test:soak:seeded": "SOAK_SEED_BASE=1000 node scripts/sacred-stones-soak.mjs",
     "audit:parity": "node scripts/parity-audit.mjs --check",
     "audit:parity:write": "node scripts/parity-audit.mjs --write",
+    "audit:rekka": "node scripts/rekka-audit.mjs --check",
+    "audit:rekka:write": "node scripts/rekka-audit.mjs --write",
     "audit:states": "node scripts/state-parity.mjs --check",
     "audit:states:write": "node scripts/state-parity.mjs --write",
     "bundle": "node scripts/bundle-assets.mjs",

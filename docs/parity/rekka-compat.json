@@ -1,0 +1,2720 @@
+{
+  "generatedBy": "node scripts/rekka-audit.mjs --write",
+  "project": {
+    "path": "lt-maker/rekka.ltproj",
+    "nid": "FE7A",
+    "levels": 48,
+    "events": 899,
+    "items": 462,
+    "skills": 586,
+    "units": 118,
+    "classes": 84,
+    "files": 1733
+  },
+  "levels": [
+    {
+      "nid": "0",
+      "name": "Prologue: A Girl From The Plains"
+    },
+    {
+      "nid": "1",
+      "name": "Chapter 1: Footsteps of Fate"
+    },
+    {
+      "nid": "2",
+      "name": "Chapter 2: Sword of Spirits"
+    },
+    {
+      "nid": "3",
+      "name": "Chapter 3: Band of Mercenaries"
+    },
+    {
+      "nid": "4",
+      "name": "Chapter 4: In Occupation's Shadow"
+    },
+    {
+      "nid": "5",
+      "name": "Chapter 5: Beyond the Borders"
+    },
+    {
+      "nid": "6",
+      "name": "Chapter 6: Blood of Pride"
+    },
+    {
+      "nid": "7",
+      "name": "Chapter 7: Siblings Abroad"
+    },
+    {
+      "nid": "8",
+      "name": "Chapter 8: The Black Shadow"
+    },
+    {
+      "nid": "9",
+      "name": "Chapter 9: Vortex of Strategy"
+    },
+    {
+      "nid": "10",
+      "name": "Chapter 10: A Grim Reunion"
+    },
+    {
+      "nid": "11",
+      "name": "Chapter 11: The Distant Plains"
+    },
+    {
+      "nid": "12",
+      "name": "Chapter 12: Taking Leave"
+    },
+    {
+      "nid": "13",
+      "name": "Chapter 13: Another Journey"
+    },
+    {
+      "nid": "14",
+      "name": "Chapter 14: Birds of a Feather"
+    },
+    {
+      "nid": "15",
+      "name": "Chapter 15: In Search of Truth"
+    },
+    {
+      "nid": "16",
+      "name": "Chapter 16: The Peddler Merlinus"
+    },
+    {
+      "nid": "17",
+      "name": "Chapter 17: False Friends"
+    },
+    {
+      "nid": "18",
+      "name": "Chapter 18: Talons Alight"
+    },
+    {
+      "nid": "19",
+      "name": "Chapter 19: Noble Lady of Caelin"
+    },
+    {
+      "nid": "20",
+      "name": "Chapter 20: Whereabouts Unknown"
+    },
+    {
+      "nid": "21",
+      "name": "Chapter 21: The Port of Badon"
+    },
+    {
+      "nid": "22",
+      "name": "Chapter 22: Pirate Ship"
+    },
+    {
+      "nid": "23",
+      "name": "Chapter 23: The Dread Isle"
+    },
+    {
+      "nid": "24",
+      "name": "Chapter 24: Prisoner of Magic"
+    },
+    {
+      "nid": "25",
+      "name": "Chapter 25: A Glimpse in Time"
+    },
+    {
+      "nid": "26",
+      "name": "Chapter 26: Dragon's Gate"
+    },
+    {
+      "nid": "27",
+      "name": "Chapter 27: New Resolve"
+    },
+    {
+      "nid": "28",
+      "name": "Chapter 28: Kinship's Bond"
+    },
+    {
+      "nid": "29",
+      "name": "Chapter 29: Living Legend"
+    },
+    {
+      "nid": "30",
+      "name": "Chapter 30: Genesis"
+    },
+    {
+      "nid": "31",
+      "name": "Chapter 31: Four-fanged offense I"
+    },
+    {
+      "nid": "32",
+      "name": "Chapter 32: Four-fanged offense II"
+    },
+    {
+      "nid": "33",
+      "name": "Chapter 33: Crazed Beast"
+    },
+    {
+      "nid": "34",
+      "name": "Chapter 34: Unfulfilled Heart"
+    },
+    {
+      "nid": "35",
+      "name": "Chapter 35: Pale Flower of Darkness I"
+    },
+    {
+      "nid": "36",
+      "name": "Chapter 36: Pale Flower of Darkness II"
+    },
+    {
+      "nid": "37",
+      "name": "Chapter 37: Battle before Dawn"
+    },
+    {
+      "nid": "38",
+      "name": "Chapter 38: Night of Farewells"
+    },
+    {
+      "nid": "39",
+      "name": "Chapter 39: Cog of Destiny"
+    },
+    {
+      "nid": "40",
+      "name": "Chapter 40: Valorous Roland"
+    },
+    {
+      "nid": "41",
+      "name": "Chapter 41: The Berserker"
+    },
+    {
+      "nid": "42",
+      "name": "Chapter 42: Sands of Time"
+    },
+    {
+      "nid": "43",
+      "name": "Chapter 43: Battle Preparations"
+    },
+    {
+      "nid": "44",
+      "name": "Chapter 44: Victory or Death"
+    },
+    {
+      "nid": "45",
+      "name": "Chapter 45: The value of life"
+    },
+    {
+      "nid": "46",
+      "name": "Final Chapter: Light"
+    },
+    {
+      "nid": "DEBUG",
+      "name": "DEBUG"
+    }
+  ],
+  "commands": [
+    {
+      "nid": "add",
+      "uses": 596
+    },
+    {
+      "nid": "add_base_convo",
+      "uses": 1
+    },
+    {
+      "nid": "add_group",
+      "uses": 8
+    },
+    {
+      "nid": "add_lore",
+      "uses": 1
+    },
+    {
+      "nid": "add_portrait",
+      "uses": 2
+    },
+    {
+      "nid": "add_region",
+      "uses": 12
+    },
+    {
+      "nid": "add_skill",
+      "uses": 1
+    },
+    {
+      "nid": "add_skill_component",
+      "uses": 2
+    },
+    {
+      "nid": "add_tag",
+      "uses": 3
+    },
+    {
+      "nid": "add_talk",
+      "uses": 17
+    },
+    {
+      "nid": "add_unit",
+      "uses": 719
+    },
+    {
+      "nid": "add_weather",
+      "uses": 3
+    },
+    {
+      "nid": "alert",
+      "uses": 25
+    },
+    {
+      "nid": "autolevel_to",
+      "uses": 23
+    },
+    {
+      "nid": "base",
+      "uses": 1
+    },
+    {
+      "nid": "break_item",
+      "uses": 1
+    },
+    {
+      "nid": "center_cursor",
+      "uses": 317
+    },
+    {
+      "nid": "change_ai",
+      "uses": 70
+    },
+    {
+      "nid": "change_background",
+      "uses": 7
+    },
+    {
+      "nid": "change_class",
+      "uses": 3
+    },
+    {
+      "nid": "change_growths",
+      "uses": 10
+    },
+    {
+      "nid": "change_music",
+      "uses": 7
+    },
+    {
+      "nid": "change_objective_simple",
+      "uses": 3
+    },
+    {
+      "nid": "change_party",
+      "uses": 14
+    },
+    {
+      "nid": "change_stats",
+      "uses": 10
+    },
+    {
+      "nid": "change_team",
+      "uses": 48
+    },
+    {
+      "nid": "change_tilemap",
+      "uses": 1
+    },
+    {
+      "nid": "choice",
+      "uses": 3
+    },
+    {
+      "nid": "credits",
+      "uses": 19
+    },
+    {
+      "nid": "elif",
+      "uses": 61
+    },
+    {
+      "nid": "else",
+      "uses": 18
+    },
+    {
+      "nid": "enable_fog_of_war",
+      "uses": 1
+    },
+    {
+      "nid": "enable_turnwheel",
+      "uses": 1
+    },
+    {
+      "nid": "end",
+      "uses": 122
+    },
+    {
+      "nid": "end_turn",
+      "uses": 1
+    },
+    {
+      "nid": "endf",
+      "uses": 34
+    },
+    {
+      "nid": "equip_item",
+      "uses": 1
+    },
+    {
+      "nid": "finish",
+      "uses": 1
+    },
+    {
+      "nid": "flicker_cursor",
+      "uses": 4
+    },
+    {
+      "nid": "for",
+      "uses": 34
+    },
+    {
+      "nid": "game_var",
+      "uses": 57
+    },
+    {
+      "nid": "give_item",
+      "uses": 157
+    },
+    {
+      "nid": "give_money",
+      "uses": 6
+    },
+    {
+      "nid": "give_skill",
+      "uses": 114
+    },
+    {
+      "nid": "give_wexp",
+      "uses": 8
+    },
+    {
+      "nid": "has_attacked",
+      "uses": 138
+    },
+    {
+      "nid": "hide_layer",
+      "uses": 8
+    },
+    {
+      "nid": "if",
+      "uses": 122
+    },
+    {
+      "nid": "inc_game_var",
+      "uses": 2
+    },
+    {
+      "nid": "inc_level_var",
+      "uses": 33
+    },
+    {
+      "nid": "interact_unit",
+      "uses": 3
+    },
+    {
+      "nid": "kill_unit",
+      "uses": 7
+    },
+    {
+      "nid": "level_var",
+      "uses": 115
+    },
+    {
+      "nid": "load_unit",
+      "uses": 6
+    },
+    {
+      "nid": "lose_game",
+      "uses": 6
+    },
+    {
+      "nid": "make_generic",
+      "uses": 25
+    },
+    {
+      "nid": "map_anim",
+      "uses": 60
+    },
+    {
+      "nid": "move_cursor",
+      "uses": 12
+    },
+    {
+      "nid": "move_group",
+      "uses": 1
+    },
+    {
+      "nid": "move_unit",
+      "uses": 54
+    },
+    {
+      "nid": "multi_add_portrait",
+      "uses": 1
+    },
+    {
+      "nid": "multi_remove_portrait",
+      "uses": 1
+    },
+    {
+      "nid": "music",
+      "uses": 3
+    },
+    {
+      "nid": "music_clear",
+      "uses": 5
+    },
+    {
+      "nid": "pair_up",
+      "uses": 3
+    },
+    {
+      "nid": "prep",
+      "uses": 35
+    },
+    {
+      "nid": "remove",
+      "uses": 4
+    },
+    {
+      "nid": "remove_all_units",
+      "uses": 1
+    },
+    {
+      "nid": "remove_item",
+      "uses": 1
+    },
+    {
+      "nid": "remove_map_anim",
+      "uses": 11
+    },
+    {
+      "nid": "remove_portrait",
+      "uses": 1
+    },
+    {
+      "nid": "remove_region",
+      "uses": 28
+    },
+    {
+      "nid": "remove_skill",
+      "uses": 72
+    },
+    {
+      "nid": "remove_talk",
+      "uses": 20
+    },
+    {
+      "nid": "remove_unit",
+      "uses": 24
+    },
+    {
+      "nid": "reset",
+      "uses": 12
+    },
+    {
+      "nid": "resurrect",
+      "uses": 16
+    },
+    {
+      "nid": "separate",
+      "uses": 1
+    },
+    {
+      "nid": "set_current_hp",
+      "uses": 26
+    },
+    {
+      "nid": "set_custom_options",
+      "uses": 1
+    },
+    {
+      "nid": "set_fog_of_war",
+      "uses": 1
+    },
+    {
+      "nid": "set_stats",
+      "uses": 143
+    },
+    {
+      "nid": "shop",
+      "uses": 41
+    },
+    {
+      "nid": "show_layer",
+      "uses": 200
+    },
+    {
+      "nid": "sound",
+      "uses": 43
+    },
+    {
+      "nid": "spawn_group",
+      "uses": 1
+    },
+    {
+      "nid": "speak",
+      "uses": 6
+    },
+    {
+      "nid": "table",
+      "uses": 1
+    },
+    {
+      "nid": "transition",
+      "uses": 12
+    },
+    {
+      "nid": "unchoice",
+      "uses": 1
+    },
+    {
+      "nid": "unlock",
+      "uses": 1
+    },
+    {
+      "nid": "wait",
+      "uses": 55
+    },
+    {
+      "nid": "win_game",
+      "uses": 54
+    }
+  ],
+  "components": {
+    "items": [
+      {
+        "nid": "advance",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "advance_target_restrict",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "all_allies_except_self_aoe",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "allow_same_target",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "ally_blast_aoe",
+        "uses": 7,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "ally_equation_blast_aoe",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "alternate_damage_formula",
+        "uses": 5,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "alternate_resist_formula",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "attack_after_combat",
+        "uses": 10,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "blast_aoe",
+        "uses": 3,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "brave",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "c_uses",
+        "uses": 13,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "can_unlock",
+        "uses": 4,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "cannot_be_countered",
+        "uses": 4,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "crit",
+        "uses": 144,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "custom_triangle_multiplier",
+        "uses": 4,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "damage",
+        "uses": 153,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "draw_back",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "draw_back_target_restrict",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "effective_damage",
+        "uses": 62,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "empty_tile_target_restrict",
+        "uses": 10,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "enemy_blast_aoe",
+        "uses": 5,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "enemy_line_aoe",
+        "uses": 3,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "equation_blast_aoe",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "equation_heal",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "equippable_accessory",
+        "uses": 88,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "eval_special_range",
+        "uses": 5,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "eval_target_restrict_2",
+        "uses": 9,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "event_after_combat_even_miss",
+        "uses": 48,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "event_after_combat_on_hit",
+        "uses": 5,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "event_on_hit",
+        "uses": 33,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "exp",
+        "uses": 37,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "gba_steal",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "global_range",
+        "uses": 7,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "gold_cost",
+        "uses": 3,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "heal",
+        "uses": 13,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "hit",
+        "uses": 151,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "hp_cost",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "ignore_weapon_advantage",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "item_tags",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "level_exp",
+        "uses": 147,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "lifelink",
+        "uses": 4,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "locked",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "magic",
+        "uses": 69,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "magic_at_range",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "map_cast_sfx",
+        "uses": 12,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "map_hit_add_blend",
+        "uses": 42,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "map_hit_sfx",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "max_equation_range",
+        "uses": 13,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "max_range",
+        "uses": 250,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "menu_after_combat",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "min_range",
+        "uses": 269,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "multi_target",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "no_ai",
+        "uses": 5,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "no_attack_after_move",
+        "uses": 3,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "no_double",
+        "uses": 8,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "no_map_hp_display",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "permanent_stat_change",
+        "uses": 9,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "pivot",
+        "uses": 2,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "pivot_target_restrict",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "prf_class",
+        "uses": 8,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "prf_unit",
+        "uses": 11,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "promote",
+        "uses": 2,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "reaver",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "refresh",
+        "uses": 12,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "repair",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "restore",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "restore_specific",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "self_status_on_hit",
+        "uses": 23,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "sequence_item",
+        "uses": 5,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "shove",
+        "uses": 5,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "shove_on_end_combat",
+        "uses": 1,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "shove_target_restrict",
+        "uses": 4,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "siege_weapon",
+        "uses": 8,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "smart_blast_aoe",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "spell",
+        "uses": 169,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "stat_change",
+        "uses": 37,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "status_on_equip",
+        "uses": 116,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "status_on_hit",
+        "uses": 64,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "status_on_hold",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "steal",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "store_unit",
+        "uses": 5,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "swap",
+        "uses": 1,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "swap_on_end_combat",
+        "uses": 1,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "target_ally",
+        "uses": 118,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "target_enemy",
+        "uses": 186,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "target_tile",
+        "uses": 22,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "target_unit",
+        "uses": 18,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "trace",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "trade",
+        "uses": 2,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "transform",
+        "uses": 5,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "traversable_tile_target_restrict",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "unload_unit",
+        "uses": 4,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "unlock_staff",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "usable",
+        "uses": 16,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "usable_in_base",
+        "uses": 11,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "uses",
+        "uses": 154,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "uses_options",
+        "uses": 167,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "value",
+        "uses": 252,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "warning",
+        "uses": 6,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "weapon",
+        "uses": 137,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "weapon_rank",
+        "uses": 151,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "weapon_type",
+        "uses": 163,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "weight",
+        "uses": 142,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "wexp",
+        "uses": 77,
+        "structuralStatus": "consumed"
+      }
+    ],
+    "skills": [
+      {
+        "nid": "ability",
+        "uses": 135,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "additional_accessories",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "all_brave",
+        "uses": 9,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "allowed_weapons",
+        "uses": 42,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "alternate_critical_multiplier_formula",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "armsthrift",
+        "uses": 2,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "attack_pre_proc",
+        "uses": 2,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "attack_proc",
+        "uses": 3,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "aura",
+        "uses": 9,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "aura_range",
+        "uses": 9,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "aura_target",
+        "uses": 9,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "avoid",
+        "uses": 14,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "cannot_double",
+        "uses": 13,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "cannot_use_items",
+        "uses": 9,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "cannot_use_items_except_armor",
+        "uses": 4,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "cannot_use_magic_items",
+        "uses": 3,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "canter",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "canto",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "canto_plus",
+        "uses": 3,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "change_ai",
+        "uses": 3,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "change_buy_price",
+        "uses": 1,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "charges_per_turn",
+        "uses": 30,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "class_skill",
+        "uses": 343,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "combat_art",
+        "uses": 42,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "combat_artist",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "combat_condition",
+        "uses": 36,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "condition",
+        "uses": 64,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "crit",
+        "uses": 13,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "crit_avoid",
+        "uses": 5,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "damage",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "damage_multiplier",
+        "uses": 8,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "death_tether",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "decreasing_sight_range_bonus",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "defense_pre_proc",
+        "uses": 1,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "defense_speed",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "desperation",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "display_skill_icon_in_combat",
+        "uses": 4,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "distant_counter",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "disvantage",
+        "uses": 2,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "drain_charge",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "dynamic_accuracy",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "dynamic_avoid",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "dynamic_crit_accuracy",
+        "uses": 4,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "dynamic_damage",
+        "uses": 26,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "dynamic_damage_multiplier",
+        "uses": 7,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "dynamic_resist",
+        "uses": 5,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "empower_heal",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "end_time",
+        "uses": 4,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "endstep_damage",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "enemy_exp_multiplier",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "enemy_oversplash",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "eval_galeforce",
+        "uses": 14,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_after_combat",
+        "uses": 13,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_after_combat_when_hit",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_after_crit",
+        "uses": 3,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_after_hit",
+        "uses": 17,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_after_initiated_combat",
+        "uses": 3,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "event_after_strike",
+        "uses": 4,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_before_combat",
+        "uses": 10,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_on_remove",
+        "uses": 6,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "event_on_upkeep",
+        "uses": 20,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "event_when_hit",
+        "uses": 2,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "exp_multiplier",
+        "uses": 4,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "gain_skill_after_attack",
+        "uses": 3,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "gain_skill_after_combat",
+        "uses": 3,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "gain_skill_after_kill",
+        "uses": 3,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "gain_skill_after_take_damage",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "gain_skill_after_take_miss",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "galeforce",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "give_status_after_combat",
+        "uses": 3,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "givebacker",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "global",
+        "uses": 5,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "grey_if_inactive",
+        "uses": 10,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "grounded",
+        "uses": 3,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "growth_change",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "guaranteed_crit",
+        "uses": 2,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "has_tags",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "hidden",
+        "uses": 76,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "hidden_if_inactive",
+        "uses": 16,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "hit",
+        "uses": 5,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "ignore_alliances",
+        "uses": 2,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "ignore_damage",
+        "uses": 7,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "ignore_terrain",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "immune_status",
+        "uses": 4,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "item_override",
+        "uses": 18,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "lifelink",
+        "uses": 8,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "live_to_serve",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "locktouch",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "lost_on_end_chapter",
+        "uses": 45,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "lost_on_end_combat2",
+        "uses": 17,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "lost_on_endstep",
+        "uses": 2,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "lost_on_kill",
+        "uses": 6,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "lost_on_upkeep",
+        "uses": 26,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "miracle",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "modify_ai_priority",
+        "uses": 2,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "modify_maximum_range",
+        "uses": 3,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "movement_type",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "multi_skill",
+        "uses": 26,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "negate",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "negative",
+        "uses": 26,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "nine_lives_event",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "no_attack_after_move",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "pass",
+        "uses": 1,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "post_combat_splash",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "post_combat_splash_aoe",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "powerstaff",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "proc_rate",
+        "uses": 5,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "reflect_status",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "regeneration",
+        "uses": 3,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "resist",
+        "uses": 11,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "resist_multiplier",
+        "uses": 13,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "second_wind",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "sight_range_bonus",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "skill_before_combat",
+        "uses": 6,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "stack",
+        "uses": 38,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "stat_change",
+        "uses": 57,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "stat_change_expression",
+        "uses": 2,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "stat_multiplier",
+        "uses": 34,
+        "structuralStatus": "hook-only"
+      },
+      {
+        "nid": "time",
+        "uses": 31,
+        "structuralStatus": "reference-only"
+      },
+      {
+        "nid": "true_miracle_event_after_combat",
+        "uses": 1,
+        "structuralStatus": "custom-or-unknown"
+      },
+      {
+        "nid": "TrueMiracle",
+        "uses": 3,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "unit_flickering_tint",
+        "uses": 4,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "unit_tint",
+        "uses": 1,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "unselectable",
+        "uses": 10,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "upkeep_event",
+        "uses": 2,
+        "structuralStatus": "unreferenced"
+      },
+      {
+        "nid": "upkeep_stat_change",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "vantage",
+        "uses": 2,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "wexp_multiplier",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference"
+      },
+      {
+        "nid": "wexp_usable_skill",
+        "uses": 1,
+        "structuralStatus": "consumed"
+      },
+      {
+        "nid": "witch_warp_expression",
+        "uses": 5,
+        "structuralStatus": "unreferenced"
+      }
+    ],
+    "custom": [
+      {
+        "nid": "do_nothing",
+        "kind": "item",
+        "pythonClass": "DoNothing",
+        "hooks": [],
+        "uses": 0
+      },
+      {
+        "nid": "advance",
+        "kind": "item",
+        "pythonClass": "Advance",
+        "hooks": [
+          "_check_advance",
+          "on_hit"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "advance_target_restrict",
+        "kind": "item",
+        "pythonClass": "AdvanceTargetRestrict",
+        "hooks": [
+          "target_restrict",
+          "on_hit",
+          "end_combat"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "gold_cost",
+        "kind": "item",
+        "pythonClass": "GoldCost",
+        "hooks": [
+          "available",
+          "start_combat",
+          "reverse_use"
+        ],
+        "uses": 3
+      },
+      {
+        "nid": "cleave_2_range_aoe",
+        "kind": "item",
+        "pythonClass": "Cleave2RangeAOE",
+        "hooks": [
+          "on_hit",
+          "splash",
+          "splash_positions"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "phasewalk",
+        "kind": "item",
+        "pythonClass": "Phasewalk",
+        "hooks": [
+          "_specially_traversable",
+          "_determine_valid_endpoints",
+          "valid_targets",
+          "on_hit"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "charge",
+        "kind": "item",
+        "pythonClass": "Charge",
+        "hooks": [
+          "_specially_traversable",
+          "_determine_valid_endpoints",
+          "valid_targets",
+          "target_restrict",
+          "on_hit"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "bullrush",
+        "kind": "item",
+        "pythonClass": "Bullrush",
+        "hooks": [
+          "_specially_traversable",
+          "_determine_valid_endpoints",
+          "valid_targets",
+          "target_restrict",
+          "on_hit"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "trace",
+        "kind": "item",
+        "pythonClass": "Trace",
+        "hooks": [
+          "init",
+          "target_restrict",
+          "ai_targets",
+          "targets_items",
+          "item_restrict",
+          "on_hit",
+          "end_combat",
+          "ai_priority"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "do_nothing",
+        "kind": "skill",
+        "pythonClass": "DoNothing",
+        "hooks": [],
+        "uses": 0
+      },
+      {
+        "nid": "stax",
+        "kind": "skill",
+        "pythonClass": "Stax",
+        "hooks": [],
+        "uses": 0
+      },
+      {
+        "nid": "nine_lives_event",
+        "kind": "skill",
+        "pythonClass": "NineLivesMiracle",
+        "hooks": [
+          "after_take_strike"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "powerstaff",
+        "kind": "skill",
+        "pythonClass": "Powerstaff",
+        "hooks": [
+          "end_combat"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "combat_artist",
+        "kind": "skill",
+        "pythonClass": "CombatArtist",
+        "hooks": [
+          "end_combat"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "second_wind",
+        "kind": "skill",
+        "pythonClass": "SecondWind",
+        "hooks": [
+          "end_combat"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "givebacker",
+        "kind": "skill",
+        "pythonClass": "GiveBacker",
+        "hooks": [
+          "modify_damage"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "eval_galeforce",
+        "kind": "skill",
+        "pythonClass": "EvalGaleforce",
+        "hooks": [
+          "end_combat"
+        ],
+        "uses": 14
+      },
+      {
+        "nid": "event_after_combat",
+        "kind": "skill",
+        "pythonClass": "EventAfterCombat",
+        "hooks": [
+          "end_combat"
+        ],
+        "uses": 13
+      },
+      {
+        "nid": "true_miracle_event_after_combat",
+        "kind": "skill",
+        "pythonClass": "TrueMiracleEventAfterCombat",
+        "hooks": [
+          "after_take_strike",
+          "end_combat"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "event_after_combat_when_hit",
+        "kind": "skill",
+        "pythonClass": "EventAfterCombatWhenHit",
+        "hooks": [
+          "after_take_strike",
+          "end_combat"
+        ],
+        "uses": 1
+      },
+      {
+        "nid": "event_when_hit",
+        "kind": "skill",
+        "pythonClass": "EventWhenHit",
+        "hooks": [
+          "after_take_strike"
+        ],
+        "uses": 2
+      },
+      {
+        "nid": "event_after_strike",
+        "kind": "skill",
+        "pythonClass": "EventAfterStrike",
+        "hooks": [
+          "after_strike"
+        ],
+        "uses": 4
+      },
+      {
+        "nid": "event_after_hit",
+        "kind": "skill",
+        "pythonClass": "EventAfterHit",
+        "hooks": [
+          "after_strike"
+        ],
+        "uses": 17
+      },
+      {
+        "nid": "event_after_crit",
+        "kind": "skill",
+        "pythonClass": "EventAfterCrit",
+        "hooks": [
+          "after_strike"
+        ],
+        "uses": 3
+      },
+      {
+        "nid": "event_on_upkeep",
+        "kind": "skill",
+        "pythonClass": "EventOnUpkeep",
+        "hooks": [
+          "on_upkeep"
+        ],
+        "uses": 20
+      },
+      {
+        "nid": "cannot_use_specific_item",
+        "kind": "skill",
+        "pythonClass": "CannotUseSpecificItem",
+        "hooks": [
+          "available"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "can_only_use_specific_item",
+        "kind": "skill",
+        "pythonClass": "CanOnlyUseSpecificItem",
+        "hooks": [
+          "available"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "cannot_use_items_except_armor",
+        "kind": "skill",
+        "pythonClass": "CannotUseItemsExceptArmor",
+        "hooks": [
+          "available"
+        ],
+        "uses": 4
+      },
+      {
+        "nid": "event_before_combat",
+        "kind": "skill",
+        "pythonClass": "EventBeforeCombat",
+        "hooks": [
+          "start_combat"
+        ],
+        "uses": 10
+      },
+      {
+        "nid": "true_miracle_event",
+        "kind": "skill",
+        "pythonClass": "TrueMiracleEvent",
+        "hooks": [
+          "after_take_strike"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "event_when_dodging",
+        "kind": "skill",
+        "pythonClass": "EventWhenDodging",
+        "hooks": [
+          "after_take_strike"
+        ],
+        "uses": 0
+      },
+      {
+        "nid": "disvantage",
+        "kind": "skill",
+        "pythonClass": "Disvantage",
+        "hooks": [
+          "disvantage"
+        ],
+        "uses": 2
+      },
+      {
+        "nid": "event_on_strike",
+        "kind": "skill",
+        "pythonClass": "EventOnStrike",
+        "hooks": [
+          "after_strike"
+        ],
+        "uses": 0
+      }
+    ]
+  },
+  "expressions": {
+    "conditions": [
+      "'Boss' not in target.tags",
+      "'HasAttacked' in [skill.nid for skill in game.get_unit('{unit}').skills]",
+      "(combat_calcs.compute_advantage(unit, target, item, target.get_weapon()) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon()).accuracy < 0) or (combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False).accuracy < 0)",
+      "(unit.get_hp() == 0 and unit.traveler and u(unit.traveler).dead) or (unit2.get_hp() == 0 and unit2.traveler and u(unit2.traveler).dead)",
+      "1 == item_funcs.num_stacks(unit, unit.get_accessory().status_on_equip.value)",
+      "False",
+      "True",
+      "any_unit_in_region('BlueZone', team='player')",
+      "any_unit_in_region('GrayZone', team='player')",
+      "any_unit_in_region('RedZone', team='player')",
+      "any_unit_in_region('Zone1', team='player')",
+      "any_unit_in_region('Zone2', team='player')",
+      "any_unit_in_region('Zone3', team='player')",
+      "any_unit_in_region('Zone4', team='player')",
+      "any_unit_in_region('oops', team='player')",
+      "cf.SETTINGS['debug']",
+      "check_pair('Dorcas', 'Lyn')",
+      "check_pair('Eliwood', 'Heath')",
+      "check_pair('Eliwood', 'Legault')",
+      "check_pair('Eliwood','Geitz')",
+      "check_pair('Eliwood','Nino')",
+      "check_pair('Hector', 'Heath')",
+      "check_pair('Lyn', 'Rath')",
+      "check_pair('Lyn', 'Serra')",
+      "check_pair('Lyn','Wallace')",
+      "check_pair('Madeline', 'Marcel')",
+      "check_pair('Matthew', 'Guy')",
+      "check_pair('Nino', 'Marcel')",
+      "check_pair('Priscilla','Raven')",
+      "check_pair('Raven','Lucius')",
+      "check_pair('Serra', 'Erk')",
+      "check_pair('Vaida','Eliwood')",
+      "game._current_level.nid == '11'",
+      "game._current_level.nid == '12'",
+      "game._current_level.nid == '14'",
+      "game._current_level.nid == '15'",
+      "game._current_level.nid == '17'",
+      "game._current_level.nid == '19'",
+      "game._current_level.nid == '19' and region.nid == 'Armory1'",
+      "game._current_level.nid == '19' and region.nid == 'Armory2'",
+      "game._current_level.nid == '21'",
+      "game._current_level.nid == '22'",
+      "game._current_level.nid == '27' and region.nid == 'Armory1'",
+      "game._current_level.nid == '27' and region.nid == 'Armory2'",
+      "game._current_level.nid == '27' and region.nid == 'Vendor_1'",
+      "game._current_level.nid == '27' and region.nid == 'Vendor_2'",
+      "game._current_level.nid == '3'",
+      "game._current_level.nid == '33'",
+      "game._current_level.nid == '34'",
+      "game._current_level.nid == '39'",
+      "game._current_level.nid == '42' and region.nid == 'Armory1'",
+      "game._current_level.nid == '42' and region.nid == 'Armory2'",
+      "game._current_level.nid == '42' and region.nid == 'Armory3'",
+      "game._current_level.nid == '42' and region.nid == 'Armory_4'",
+      "game._current_level.nid == '42' and region.nid == 'Vendor_1'",
+      "game._current_level.nid == '42' and region.nid == 'Vendor_2'",
+      "game._current_level.nid == '5'",
+      "game._current_level.nid == '7'",
+      "game._current_level.nid == '9'",
+      "game._current_level.nid in ('31','32') and region.nid == 'Armory1'",
+      "game._current_level.nid in ('31','32') and region.nid == 'Armory_2'",
+      "game._current_level.nid in ('31','32') and region.nid == 'Vendor_1'",
+      "game._current_level.nid in ('31','32') and region.nid == 'Vendor_2'",
+      "game.check_alive('Guy') and game.get_unit('Guy').team == 'enemy'",
+      "game.check_alive('Kishuna')",
+      "game.check_dead(\"Bool\")",
+      "game.check_dead(\"BrendanMorph\")",
+      "game.check_dead(\"Carjiga\")",
+      "game.check_dead(\"DarinMorph\")",
+      "game.check_dead(\"Denning\")",
+      "game.check_dead(\"Eubans\")",
+      "game.check_dead(\"FIRE\")",
+      "game.check_dead(\"Heintz\")",
+      "game.check_dead(\"JermeMorph\")",
+      "game.check_dead(\"KennethMorph\")",
+      "game.check_dead(\"Kishuna_End\")",
+      "game.check_dead(\"Linus\")",
+      "game.check_dead(\"LinusMorph\")",
+      "game.check_dead(\"Lloyd\")",
+      "game.check_dead(\"LloydMorph\")",
+      "game.check_dead(\"Nergal\")",
+      "game.check_dead(\"Nils\")",
+      "game.check_dead(\"Oleg\")",
+      "game.check_dead(\"Uhai\")",
+      "game.check_dead(\"UhaiMorph\")",
+      "game.check_dead(\"UrsulaMorph\")",
+      "game.check_dead(\"Wire\")",
+      "game.check_dead(\"Zoldam\")",
+      "game.game_vars.get('TimeLockCountdown', 0) == 1",
+      "game.game_vars['BribeNumber'] < 1",
+      "game.game_vars['bribe'] == 'Spend Gold'",
+      "game.game_vars['direction'] == 'East'",
+      "game.game_vars['direction'] == 'North'",
+      "game.game_vars['direction'] == 'South'",
+      "game.game_vars['direction'] == 'West'",
+      "game.get_money() < {eval:2**{v:BribeNumber}*1000}",
+      "game.get_money() >= 1000 and any([skill.nid == 'Bribe' for skill in game.get_unit('Marcel').skills])",
+      "game.get_unit('Light')",
+      "game.get_unit('Matryoshka1')",
+      "game.get_unit('Matryoshka2')",
+      "game.get_unit('Matryoshka3')",
+      "game.get_unit('Matryoshka4')",
+      "game.get_unit('Matryoshka5')",
+      "game.get_unit('Matryoshka6')",
+      "game.get_unit('Matryoshka7')",
+      "game.get_unit('Phantom')",
+      "game.get_unit('Sword')",
+      "game.turncount == 1",
+      "game.turncount == 10",
+      "game.turncount == 11",
+      "game.turncount == 12",
+      "game.turncount == 13",
+      "game.turncount == 14",
+      "game.turncount == 15",
+      "game.turncount == 16",
+      "game.turncount == 17",
+      "game.turncount == 18",
+      "game.turncount == 19",
+      "game.turncount == 2",
+      "game.turncount == 20",
+      "game.turncount == 21",
+      "game.turncount == 22",
+      "game.turncount == 23",
+      "game.turncount == 24",
+      "game.turncount == 25",
+      "game.turncount == 26",
+      "game.turncount == 27",
+      "game.turncount == 28",
+      "game.turncount == 29",
+      "game.turncount == 3",
+      "game.turncount == 30",
+      "game.turncount == 31",
+      "game.turncount == 32",
+      "game.turncount == 33",
+      "game.turncount == 34",
+      "game.turncount == 35",
+      "game.turncount == 4",
+      "game.turncount == 5",
+      "game.turncount == 6",
+      "game.turncount == 7",
+      "game.turncount == 8",
+      "game.turncount == 9",
+      "game.turncount == {v:blood}",
+      "game.turncount == {v:sea}",
+      "game.turncount == {v:shadow}",
+      "has_skill(unit, 'Angel')",
+      "has_skill(unit, 'Bided')",
+      "has_skill(unit, 'Braved')",
+      "has_skill(unit, 'Emulate')",
+      "has_skill(unit, 'Grudge')",
+      "has_skill(unit, 'InvincibleBluff')",
+      "has_skill(unit, 'NoOuts')",
+      "has_skill(unit, 'NoRuns')",
+      "has_skill(unit, 'OneOuts')",
+      "has_skill(unit, 'OneRun')",
+      "has_skill(unit, 'RefreshStatus')",
+      "has_skill(unit, 'Repel')",
+      "has_skill(unit, 'SoulAtlas')",
+      "has_skill(unit, 'Squadron')",
+      "has_skill(unit, 'TangledUpInBlue')",
+      "has_skill(unit, 'ThirdStrike')",
+      "has_skill(unit, 'ThreeRuns')",
+      "has_skill(unit, 'TwoOuts')",
+      "has_skill(unit, 'TwoRuns')",
+      "has_skill(unit, 'Waiter')",
+      "has_skill(unit2, 'Poisoned')",
+      "item == 'A'",
+      "item == 'B'",
+      "item == 'C'",
+      "item_funcs.num_stacks(unit, 'DefaultStack') == 0",
+      "item_funcs.num_stacks(unit, 'DefaultStack') > 0",
+      "item_funcs.num_stacks(unit, 'MomentumStack') != 0",
+      "item_system.weapon_type(target, target.get_weapon()) == '{v:MostRecentSource}'",
+      "len(game.get_enemy_units()) == 0",
+      "len({v:UndeployedUnits}) > 0",
+      "movement_funcs.check_traversable(unit, game.level_vars.get('BottomPos'))",
+      "movement_funcs.check_traversable(unit, game.level_vars.get('LeftPos'))",
+      "movement_funcs.check_traversable(unit, game.level_vars.get('RightPos'))",
+      "movement_funcs.check_traversable(unit, game.level_vars.get('TopPos'))",
+      "not unit2.get_weapon() or item_system.damage(unit2, unit2.get_weapon()) is None",
+      "not(has_skill(unit, 'Equalized'))",
+      "not(has_skill(unit, 'PowerSwapped'))",
+      "region.nid == 'Arena'",
+      "region.nid == 'Castle'",
+      "region.nid == 'Chest'",
+      "region.nid == 'Chest1'",
+      "region.nid == 'Chest2'",
+      "region.nid == 'Chest3'",
+      "region.nid == 'Chest4'",
+      "region.nid == 'Chest5'",
+      "region.nid == 'Destruct'",
+      "region.nid == 'Destruct1'",
+      "region.nid == 'Destruct2'",
+      "region.nid == 'Destruct3'",
+      "region.nid == 'Door1'",
+      "region.nid == 'Door2'",
+      "region.nid == 'Door3'",
+      "region.nid == 'Door4'",
+      "region.nid == 'Door5'",
+      "region.nid == 'Door6'",
+      "region.nid == 'House'",
+      "region.nid == 'House1'",
+      "region.nid == 'House2'",
+      "region.nid == 'House3'",
+      "region.nid == 'House4'",
+      "region.nid == 'House5'",
+      "region.nid == 'House6'",
+      "region.nid == 'House7'",
+      "region.nid == 'Ruins'",
+      "region.nid == 'Ruins1'",
+      "region.nid == 'Ruins2'",
+      "region.nid == 'Ruins3'",
+      "region.nid == 'Tavern'",
+      "region.nid == 'ThiefEscape'",
+      "region.nid == 'Throne'",
+      "region.nid == 'Village'",
+      "region.nid == 'Village1'",
+      "region.nid == 'Village2'",
+      "region.nid == 'castle1'",
+      "region.nid == 'castle2'",
+      "region.nid == 'castle3'",
+      "region.nid == 'switch1'",
+      "region.nid == 'switch2'",
+      "region.nid == 'switch3'",
+      "stat_changes['CON'] >= 1",
+      "stat_changes['DEF'] >= 1",
+      "stat_changes['HP'] >= 1",
+      "stat_changes['LCK'] >= 1",
+      "stat_changes['MAG'] >= 1",
+      "stat_changes['MOV'] >= 1",
+      "stat_changes['RES'] >= 1",
+      "stat_changes['SKL'] >= 1",
+      "stat_changes['SPD'] >= 1",
+      "stat_changes['STR'] >= 1",
+      "target.get_hp() != 1",
+      "target.get_stat('SPD') > unit.get_stat('SPD') + 3",
+      "target.team == 'enemy'",
+      "unit == 'Dreams of Home'",
+      "unit.get_hp() == 0 and unit.traveler and u(unit.traveler).dead",
+      "unit.get_stat('SPD') > target.get_stat('SPD') + 3",
+      "unit.nid == 'Athos'",
+      "unit.nid == 'Eliwood'",
+      "unit.nid == 'Hector'",
+      "unit.nid == 'Lyn'",
+      "unit.nid == 'Marcel'",
+      "unit.nid == 'Ninian'",
+      "unit.nid == 'Snag'",
+      "unit.nid == 'Snag1'",
+      "unit.nid == 'Snag2'",
+      "unit.nid == 'Snag3'",
+      "unit.nid == 'Snag4'",
+      "unit.nid == 'Snag5'",
+      "unit.nid == 'Snag6'",
+      "unit.nid == 'Snag7'",
+      "unit.nid == 'Wall'",
+      "unit.nid == 'Wall1'",
+      "unit.nid == 'Wall10'",
+      "unit.nid == 'Wall11'",
+      "unit.nid == 'Wall2'",
+      "unit.nid == 'Wall3'",
+      "unit.nid == 'Wall4'",
+      "unit.nid == 'Wall5'",
+      "unit.nid == 'Wall6'",
+      "unit.nid == 'Wall7'",
+      "unit.nid == 'Wall8'",
+      "unit.nid == 'Wall9'",
+      "unit.position == {v:position_t1}",
+      "unit.team == 'enemy'",
+      "unit.team == 'player'",
+      "unit2.get_hp() == 0 and 'Mounted' not in unit2.tags and 'Boss' not in unit2.tags and not unit.traveler",
+      "unit2.team == 'enemy'",
+      "{v:Coinflip} == 0",
+      "{v:Coinflip} == 1",
+      "{v:HeadsOrTails} == 0",
+      "{v:HeadsOrTails} == 1",
+      "{v:bluezone} == 0",
+      "{v:castle1} == 1 and {v:castle3} == 1",
+      "{v:castle2} == 1 and {v:castle1} == 1",
+      "{v:castle2} == 1 and {v:castle3} == 1",
+      "{v:frost_number} == 0",
+      "{v:frost_number} == 1",
+      "{v:frost_number} == 2",
+      "{v:greyzone} == 0",
+      "{v:greyzone} == 1",
+      "{v:greyzone} == 2",
+      "{v:greyzone} == 3",
+      "{v:greyzone} == 4",
+      "{v:hoppa_turn} + 1 == game.turncount",
+      "{v:linus} == 1 and {v:lloyd} == 1 and {v:uhai} == 1 and {v:kenneth} == 1 and {v:jerme} == 1 and {v:darin} == 1 and {v:brendan} == 1",
+      "{v:linus} == 1 and {v:ursula} == 1 and {v:lloyd} == 1 and {v:kenneth} == 1 and {v:jerme} == 1 and {v:darin} == 1 and {v:brendan} == 1",
+      "{v:linus} == 1 and {v:ursula} == 1 and {v:uhai} == 1 and {v:kenneth} == 1 and {v:jerme} == 1 and {v:darin} == 1 and {v:brendan} == 1",
+      "{v:linus} == 1 and {v:ursula} == 1 and {v:uhai} == 1 and {v:kenneth} == 1 and {v:jerme} == 1 and {v:darin} == 1 and {v:lloyd} == 1",
+      "{v:linus} == 1 and {v:ursula} == 1 and {v:uhai} == 1 and {v:kenneth} == 1 and {v:jerme} == 1 and {v:lloyd} == 1 and {v:brendan} == 1",
+      "{v:linus} == 1 and {v:ursula} == 1 and {v:uhai} == 1 and {v:kenneth} == 1 and {v:lloyd} == 1 and {v:darin} == 1 and {v:brendan} == 1",
+      "{v:linus} == 1 and {v:ursula} == 1 and {v:uhai} == 1 and {v:lloyd} == 1 and {v:jerme} == 1 and {v:darin} == 1 and {v:brendan} == 1",
+      "{v:lloyd} == 1 and {v:ursula} == 1 and {v:uhai} == 1 and {v:kenneth} == 1 and {v:jerme} == 1 and {v:darin} == 1 and {v:brendan} == 1",
+      "{v:redzone} == 0",
+      "{v:redzone} == 1",
+      "{v:redzone} == 2",
+      "{v:redzone} == 3",
+      "{v:redzone} == 4",
+      "{v:sd_turn} + 1 == game.turncount",
+      "{v:stockMarketUser} > {v:stockMarket}",
+      "{v:switch1} == 1 and {v:switch3} == 1",
+      "{v:switch2} == 1 and {v:switch1} == 1",
+      "{v:switch2} == 1 and {v:switch3} == 1",
+      "{v:swoop_turn} + 1 == game.turncount",
+      "{v:targetStatCON} == {v:StatMax}",
+      "{v:targetStatDEF} == {v:StatMax}",
+      "{v:targetStatLUK} == {v:StatMax}",
+      "{v:targetStatMAG} == {v:StatMax}",
+      "{v:targetStatRES} == {v:StatMax}",
+      "{v:targetStatSKL} == {v:StatMax}",
+      "{v:targetStatSPD} == {v:StatMax}",
+      "{v:targetStatSTR} == {v:StatMax}",
+      "{v:zone1} == 0",
+      "{v:zone1} == 1",
+      "{v:zone1} == 2",
+      "{v:zone1} == 3",
+      "{v:zone2} == 0",
+      "{v:zone2} == 1",
+      "{v:zone2} == 2",
+      "{v:zone2} == 3",
+      "{v:zone3} == 0",
+      "{v:zone3} == 1",
+      "{v:zone3} == 2",
+      "{v:zone3} == 3",
+      "{v:zone4} == 0",
+      "{v:zone4} == 1",
+      "{v:zone4} == 2"
+    ],
+    "evalSubstitutions": [
+      "','.join([str(game.board.bounds[2]+1), str(game.board.bounds[3]+1)])",
+      "','.join([str(unit.position[0]-2), str(unit.position[1]-2)])",
+      "(unit.get_hp()) - (unit.get_max_hp() // 4)",
+      "-(game.get_money())",
+      "-(game.get_money()) - game.get_money()",
+      "game.board.bounds[2]+1",
+      "game.board.bounds[3]+1",
+      "game.game_vars['deploy']",
+      "game.get_region('ReturnPoint').position",
+      "game.get_unit('Nils')",
+      "game.get_unit('Nils').get_max_hp()",
+      "game.get_unit(unit.nid).get_hp() + stat_changes['HP']",
+      "game.get_unit(unit.nid).get_max_hp()",
+      "item.nid",
+      "stat_changes['CON']",
+      "stat_changes['DEF']",
+      "stat_changes['HP']",
+      "stat_changes['LCK']",
+      "stat_changes['MAG']",
+      "stat_changes['MOV']",
+      "stat_changes['RES']",
+      "stat_changes['SKL']",
+      "stat_changes['SPD']",
+      "stat_changes['STR']",
+      "target.get_hp()",
+      "target.get_max_hp()",
+      "target.get_stat('CON')",
+      "target.get_stat('DEF')",
+      "target.get_stat('LCK')",
+      "target.get_stat('MAG')",
+      "target.get_stat('RES')",
+      "target.get_stat('SKL')",
+      "target.get_stat('SPD')",
+      "target.get_stat('STR')",
+      "target_pos",
+      "unit.get_hp()",
+      "unit.get_hp() + 10",
+      "unit.get_hp() - 10",
+      "unit.get_hp() // 2",
+      "unit.get_max_hp()",
+      "unit.klass",
+      "unit.level",
+      "unit.position",
+      "unit.stats.get('CON')",
+      "unit.stats.get('DEF')",
+      "unit.stats.get('HP') // 2",
+      "unit.stats.get('MAG')",
+      "unit.stats.get('MOV')",
+      "unit.stats.get('RES')",
+      "unit.stats.get('SKL')",
+      "unit.stats.get('SPD')",
+      "unit.stats.get('STR')",
+      "unit.traveler",
+      "unit2.get_hp()",
+      "unit2.get_hp() - unit.get_internal_level()",
+      "unit2.get_hp() // 2",
+      "unit2.klass",
+      "unit2.level",
+      "unit2.stats.get('CON')",
+      "unit2.stats.get('DEF')",
+      "unit2.stats.get('HP')",
+      "unit2.stats.get('HP') // 2",
+      "unit2.stats.get('MAG')",
+      "unit2.stats.get('MOV')",
+      "unit2.stats.get('RES')",
+      "unit2.stats.get('SKL')",
+      "unit2.stats.get('SPD')",
+      "unit2.stats.get('STR')",
+      "unit2.traveler"
+    ],
+    "loops": [
+      "LockedUnit;[unit.nid for unit in game.get_all_units()]",
+      "PLAYER_UNITS;[unit.nid for unit in game.get_player_units()]",
+      "RETURN_UNIT;[unit.nid for unit in game.get_player_units() if has_skill(unit, 'Return')]",
+      "RIVAL;[unit.nid for unit in get_allies_within_distance(unit.position, 3) if has_skill(unit, 'Rival_a')]",
+      "WTAItem;[item.nid for item in unit.items if (combat_calcs.compute_advantage(unit, target, item, target.get_weapon()) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon()).accuracy > 0) or (combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False).accuracy > 0)]",
+      "ally;[unit.nid for unit in target_system.get_adj_units(game.get_unit(unit.nid))]",
+      "heal_unit;[unit.nid for unit in get_allies_within_distance(unit.position, 1)]",
+      "hopped;[unit.nid for unit in get_units_within_distance(unit.position, 5)]",
+      "item_clone;[item for item in game.get_unit('Nils').items]",
+      "item_clone;[item for item in unit.items]",
+      "item_clone;[item for item in unit2.items]",
+      "linked_unit;[unit.nid for unit in game.get_player_units() if has_skill(unit, 'Soullinked')]",
+      "lost_skills;[skill.nid for skill in game.get_unit(unit.nid).skills]",
+      "old_skills;[skill.nid for skill in game.get_unit(unit.nid).skills]",
+      "pulled_unit;[unit.nid for unit in get_units_within_distance(unit.position, 5) if not(has_skill(unit, 'Magnetize'))]",
+      "received_skills;[skill.nid for skill in game.get_unit(unit.nid).skills]",
+      "skill_clone;[s.nid for s in unit.skills]",
+      "skill_clone;[s.nid for s in unit2.skills]",
+      "units;[unit.nid for unit in game.get_units_in_party() if unit.position]",
+      "x;[i for i in range (0, item_funcs.num_stacks(unit, \"MomentumStack\"))]",
+      "x;[i for i in range (0,{v:skill_len})]",
+      "x;[i for i in range (item_funcs.num_stacks(unit, 'BraveStack'))]",
+      "x;[i for i in range(item_funcs.num_stacks(unit, 'TangledUpInBlueStack'))]",
+      "x;[i for i in range(len({v:hoppa_pos}))]",
+      "x;[i for i in range({v:hp_number})]",
+      "x;[unit for unit in game.get_enemy_units(game.get_unit(unit.nid)) if unit.klass == unit2.klass]",
+      "x;[unit for unit in {v:five}]",
+      "x;[unit for unit in {v:four}]",
+      "x;[unit for unit in {v:one}]",
+      "x;[unit for unit in {v:seven}]",
+      "x;[unit for unit in {v:six}]",
+      "x;[unit for unit in {v:three}]",
+      "x;[unit for unit in {v:two}]"
+    ],
+    "namespaces": [
+      {
+        "nid": "_current_level",
+        "uses": 31
+      },
+      {
+        "nid": "board",
+        "uses": 4
+      },
+      {
+        "nid": "cf",
+        "uses": 1
+      },
+      {
+        "nid": "combat_calcs",
+        "uses": 8
+      },
+      {
+        "nid": "game",
+        "uses": 149
+      },
+      {
+        "nid": "game_vars",
+        "uses": 1
+      },
+      {
+        "nid": "item",
+        "uses": 2
+      },
+      {
+        "nid": "item_funcs",
+        "uses": 7
+      },
+      {
+        "nid": "item_system",
+        "uses": 2
+      },
+      {
+        "nid": "level_vars",
+        "uses": 4
+      },
+      {
+        "nid": "movement_funcs",
+        "uses": 4
+      },
+      {
+        "nid": "region",
+        "uses": 58
+      },
+      {
+        "nid": "s",
+        "uses": 2
+      },
+      {
+        "nid": "skill",
+        "uses": 5
+      },
+      {
+        "nid": "stats",
+        "uses": 19
+      },
+      {
+        "nid": "status_on_equip",
+        "uses": 1
+      },
+      {
+        "nid": "target",
+        "uses": 24
+      },
+      {
+        "nid": "target_system",
+        "uses": 1
+      },
+      {
+        "nid": "unit",
+        "uses": 88
+      },
+      {
+        "nid": "unit2",
+        "uses": 28
+      }
+    ],
+    "forms": [
+      {
+        "name": "list-comprehension",
+        "uses": 35
+      },
+      {
+        "name": "generator-expression",
+        "uses": 1
+      },
+      {
+        "name": "floor-division",
+        "uses": 5
+      },
+      {
+        "name": "exponentiation",
+        "uses": 1
+      },
+      {
+        "name": "membership",
+        "uses": 41
+      },
+      {
+        "name": "slice-or-index",
+        "uses": 68
+      },
+      {
+        "name": "string-join",
+        "uses": 2
+      }
+    ]
+  },
+  "resources": {
+    "files": 1697,
+    "categories": [
+      {
+        "nid": "animations",
+        "uses": 64
+      },
+      {
+        "nid": "combat_anims",
+        "uses": 144
+      },
+      {
+        "nid": "combat_effects",
+        "uses": 101
+      },
+      {
+        "nid": "combat_palettes",
+        "uses": 246
+      },
+      {
+        "nid": "custom_components",
+        "uses": 9
+      },
+      {
+        "nid": "custom_sprites",
+        "uses": 2
+      },
+      {
+        "nid": "fonts",
+        "uses": 45
+      },
+      {
+        "nid": "icons16",
+        "uses": 126
+      },
+      {
+        "nid": "icons32",
+        "uses": 10
+      },
+      {
+        "nid": "icons80",
+        "uses": 51
+      },
+      {
+        "nid": "map_icons",
+        "uses": 13
+      },
+      {
+        "nid": "map_sprites",
+        "uses": 196
+      },
+      {
+        "nid": "music",
+        "uses": 60
+      },
+      {
+        "nid": "panoramas",
+        "uses": 50
+      },
+      {
+        "nid": "portraits",
+        "uses": 140
+      },
+      {
+        "nid": "sfx",
+        "uses": 256
+      },
+      {
+        "nid": "system",
+        "uses": 1
+      },
+      {
+        "nid": "tilemaps",
+        "uses": 63
+      },
+      {
+        "nid": "tilesets",
+        "uses": 120
+      }
+    ],
+    "customSprites": [
+      "resources/custom_sprites/logo.png",
+      "resources/custom_sprites/press_start.png"
+    ]
+  }
+}

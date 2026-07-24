@@ -955,6 +955,39 @@ function findMatchingParen(str: string, start: number): number {
   return -1;
 }
 
+/** Translate Python any/all generator expressions without losing nested calls. */
+function translateGeneratorExpressions(expression: string): string {
+  let translated = expression;
+  for (let pass = 0; pass < 20; pass++) {
+    const match = /\b(any|all)\s*\(/g.exec(translated);
+    if (!match || match.index === undefined) break;
+    const open = translated.indexOf('(', match.index);
+    const close = findMatchingParen(translated, open);
+    if (close < 0) break;
+    const inner = translated.slice(open + 1, close);
+    const forParts = splitAtTopLevel(inner, ' for ');
+    if (forParts.length !== 2) {
+      // This any/all call is not a generator. Move it out of consideration.
+      const prefix = translated.slice(0, close + 1).replace(
+        new RegExp(`\\b${match[1]}\\s*\\(`),
+        match[1] === 'any' ? '__any__(' : '__all__(',
+      );
+      translated = prefix + translated.slice(close + 1);
+      continue;
+    }
+    const inParts = splitAtTopLevel(forParts[1], ' in ');
+    if (inParts.length !== 2) break;
+    const variable = inParts[0].trim();
+    const ifParts = splitAtTopLevel(inParts[1], ' if ');
+    const collection = ifParts[0].trim();
+    const predicate = (ifParts[1] ?? forParts[0]).trim();
+    const method = match[1] === 'any' ? 'some' : 'every';
+    const replacement = `(${collection}).${method}((${variable}) => (${predicate}))`;
+    translated = translated.slice(0, match.index) + replacement + translated.slice(close + 1);
+  }
+  return translated;
+}
+
 // ============================================================
 // JavaScript-based fallback evaluator for complex Python conditions
 // ============================================================
@@ -1002,17 +1035,41 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   // Unit wrapper: ensures consistent API
   function wrapUnit(u: any) {
     if (!u) return null;
+    const checkFlanking = (): boolean => {
+      if (!u.position || !game.board) return false;
+      const [x, y] = u.position;
+      const up = game.board.getUnit(x, y - 1);
+      const down = game.board.getUnit(x, y + 1);
+      const left = game.board.getUnit(x - 1, y);
+      const right = game.board.getUnit(x + 1, y);
+      const enemy = (other: any) =>
+        !!other && !(game.db?.areAllied?.(u.team, other.team) ?? u.team === other.team);
+      return (enemy(up) && enemy(down)) || (enemy(left) && enemy(right));
+    };
     return {
+      _raw: u,
       nid: u.nid,
       name: u.name,
       team: u.team,
       position: u.position,
+      previous_position: u.previousPosition ?? u.previous_position ?? null,
       tags: u.tags ?? [],
       klass: u.klass,
       dead: u.isDead?.() ?? u.dead ?? false,
       level: u.level,
+      stats: u.stats ?? {},
+      growths: u.growths ?? {},
+      skills: u.skills ?? [],
+      items: u.items ?? [],
+      accessories: u.items?.filter((candidate: any) =>
+        candidate.hasComponent?.('accessory') ||
+        candidate.hasComponent?.('equippable_accessory')) ?? [],
       current_hp: u.currentHp ?? u.current_hp,
       max_hp: u.maxHp ?? u.max_hp,
+      get_hp: () => u.currentHp ?? u.current_hp ?? 0,
+      get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
+      get_stat: (nid: string) => u.getStat?.(nid) ?? u.stats?.[nid] ?? 0,
+      check_flanking: checkFlanking,
     };
   }
 
@@ -1074,7 +1131,22 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
   };
 
-  return gameProxy;
+  gameProxy._current_level = gameProxy.level;
+  return {
+    game: gameProxy,
+    wrapUnit,
+    target_system: {
+      get_adj_units(candidate: any) {
+        const raw = candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
+        if (!raw?.position || !game.board) return [];
+        const [x, y] = raw.position;
+        return [[x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]]
+          .map(([adjX, adjY]) => game.board.getUnit(adjX, adjY))
+          .filter(Boolean)
+          .map(wrapUnit);
+      },
+    },
+  };
 }
 
 /**
@@ -1090,7 +1162,7 @@ function evaluateWithJsFallback(
   if (!game) return undefined;
 
   // Translate Python idioms to JavaScript
-  let jsExpr = condition;
+  let jsExpr = translateGeneratorExpressions(condition);
 
   // Python `len(x)` -> `x.length`
   jsExpr = jsExpr.replace(/\blen\s*\(/g, '__len__(');
@@ -1105,18 +1177,16 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\bor\b/g, '||');
   jsExpr = jsExpr.replace(/\bnot\b/g, '!');
 
-  // Python `'x' in list` -> `list.includes('x')` (simple cases)
-  // This is hard to do generically with regex, so we leave it for
-  // the pattern matcher above which handles these well.
-
-  // Python `any(expr for x in xs)` -> `xs.some(x => expr)`
+  // Python tuple membership. Rekka uses this for turn schedules.
   jsExpr = jsExpr.replace(
-    /\bany\s*\(\s*(.+?)\s+for\s+(\w+)\s+in\s+(.+?)\s*\)/g,
-    '($3).some(($2) => ($1))',
+    /([\w.()[\]'"]+)\s+(!\s*)?in\s+\(([^()]*)\)/g,
+    (_whole, needle, negated, values) =>
+      `${negated ? '!' : ''}[${values}].includes(${needle})`,
   );
 
   // Build scope
-  const gameProxy = buildEvalScope(ctx);
+  const evalScope = buildEvalScope(ctx);
+  const gameProxy = evalScope.game;
 
   // Build check_pair / check_default helpers
   const unit1 = ctx.unit1;
@@ -1143,6 +1213,8 @@ function evaluateWithJsFallback(
     if (x && typeof x === 'object' && 'size' in x) return x.size;
     return 0;
   };
+  const __any__ = (values: any) => Array.from(values ?? []).some(Boolean);
+  const __all__ = (values: any) => Array.from(values ?? []).every(Boolean);
 
   // v() helper: level vars take priority over game vars
   const v = (varName: string, fallback?: any) => {
@@ -1155,20 +1227,8 @@ function evaluateWithJsFallback(
   const cf = { SETTINGS: { debug: false } };
 
   // Wrap unit/region from context
-  const unit = unit1 ? {
-    nid: unit1.nid, name: unit1.name, team: unit1.team,
-    position: unit1.position, tags: unit1.tags ?? [],
-    klass: unit1.klass, level: unit1.level, exp: unit1.exp,
-    stats: unit1.stats, growths: unit1.growths,
-    dead: unit1.isDead?.() ?? false,
-  } : null;
-  const target = unit2 ? {
-    nid: unit2.nid, name: unit2.name, team: unit2.team,
-    position: unit2.position, tags: unit2.tags ?? [],
-    klass: unit2.klass, level: unit2.level, exp: unit2.exp,
-    stats: unit2.stats, growths: unit2.growths, wexp: unit2.wexp ?? {},
-    dead: unit2.isDead?.() ?? false,
-  } : null;
+  const unit = evalScope.wrapUnit?.(unit1) ?? null;
+  const target = evalScope.wrapUnit?.(unit2) ?? null;
   const region = ctx.region ? {
     nid: ctx.region.nid, position: ctx.region.position,
     size: ctx.region.size, region_type: ctx.region.region_type,
@@ -1196,8 +1256,8 @@ function evaluateWithJsFallback(
     // eslint-disable-next-line no-new-func
     const fn = new Function(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
-      'check_pair', 'check_default', '__len__', 'v', 'cf', 'support_rank_nid',
-      '_qf',
+      'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
+      'support_rank_nid', 'target_system', '_qf',
       `"use strict";
        // Spread query engine functions into local scope
        var u = _qf.u, get_item = _qf.get_item, has_item = _qf.has_item,
@@ -1221,8 +1281,8 @@ function evaluateWithJsFallback(
     );
     return fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
-      check_pair, check_default, __len__, v, cf, support_rank_nid,
-      _queryFuncs,
+      check_pair, check_default, __len__, __any__, __all__, v, cf,
+      support_rank_nid, evalScope.target_system, _queryFuncs,
     );
   } catch (e) {
     // Expression evaluation failed — log the error for debugging
