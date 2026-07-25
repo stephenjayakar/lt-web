@@ -6,6 +6,26 @@ import { OnlyOnceEventAction, SetGameVarAction } from '../engine/action';
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 
+type ItemAvailabilityEvaluator = (
+  unit: any,
+  item: any,
+  db: any,
+  game?: any,
+) => boolean;
+
+let itemAvailabilityEvaluator: ItemAvailabilityEvaluator | null = null;
+
+/**
+ * Register item_system.available without importing the item dispatcher here.
+ * item-system already depends on the expression evaluator, so registration
+ * preserves that one-way module dependency while exposing Python's eval API.
+ */
+export function setItemAvailabilityEvaluator(
+  evaluator: ItemAvailabilityEvaluator,
+): void {
+  itemAvailabilityEvaluator = evaluator;
+}
+
 // Lazy accessor to avoid circular-import issues at module evaluation time.
 function _getPythonEvents() {
   return { isPyev1: _isPyev1, PythonEventProcessor: _PythonEventProcessor };
@@ -1222,6 +1242,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   const gameProxy: any = {
     turncount: game.turnCount ?? game.turncount ?? 0,
     turn_count: game.turnCount ?? game.turncount ?? 0,
+    units: Array.from(game.units?.values?.() ?? []).map(wrapUnit),
     game_vars: wrapVars(game.gameVars),
     level_vars: wrapVars(game.levelVars),
     board: { bounds: game.board?.bounds ?? [0, 0, 0, 0] },
@@ -1243,6 +1264,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get_enemy_units() { return getTeamUnits('enemy'); },
     get_player_units() { return getTeamUnits('player'); },
     get_units_in_party() { return getTeamUnits('player'); },
+    get_all_units_in_party() { return getTeamUnits('player'); },
     get_all_units() {
       const units: any[] = [];
       if (game.units) {
@@ -1309,6 +1331,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
   const unwrapItem = (candidate: any) => candidate?._raw ?? candidate;
   const itemSystem = {
+    available(candidate: any, candidateItem: any) {
+      const rawUnit = unwrapUnit(candidate);
+      const rawItem = unwrapItem(candidateItem);
+      if (!rawUnit || !rawItem || !itemAvailabilityEvaluator) return false;
+      return itemAvailabilityEvaluator(rawUnit, rawItem, game.db, game);
+    },
     weapon_type(_unit: any, candidate: any) {
       return componentValue(unwrapItem(candidate), 'weapon_type');
     },

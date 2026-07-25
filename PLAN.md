@@ -1,4 +1,4 @@
-# Rekka no Ken Alternative — Web Compatibility Plan
+# LT Web Project Compatibility Plan
 
 This plan tracks the work required for `lt-maker/rekka.ltproj` to play from the
 title screen through the ending in the web runtime with the same authored
@@ -279,8 +279,59 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Complete. Rekka's campaign, runtime components, browser presentation, audio,
-input, save/turnwheel, AI, determinism, and release gates are verified.
+Embrace of the Fog P8.1: establish a current-project compatibility inventory,
+all-level boot/event-settle coverage, and a count-locked component contract.
+Then port the highest-use project-local item/skill hooks in lifecycle groups,
+starting with copy safety, combat-art procs, tethering, and evaluated item math.
+
+## P8 — Embrace of the Fog 2.0
+
+Target: public `LordTweed/Tweeds_Roguelite` commit `d9d2975` (2026-07-25),
+installed as `lt-maker/eotf.ltproj`. Completion means a fresh browser profile can start a
+new game, use the free-roaming base and permanent progression, complete short
+and full three-act runs across difficulty modifiers, save/resume safely, and
+return to the base without compatibility warnings or silent mechanic loss.
+
+### P8.1 — Discovery and executable compatibility contract
+
+- [x] Pin a current EotF source snapshot and record its project scale.
+- [x] Add a generated EotF inventory for commands, expressions, components,
+  custom Python hooks, and catalog-backed resources.
+- [x] Add all-level clean-boot and level-start settlement smoke coverage.
+- [ ] Classify all missing catalog resources as intentional or repair them.
+- [ ] Count-lock every verified EotF item and skill component in strict mode.
+
+### P8.2 — Expressions, event flow, and project-local components
+
+- [ ] Execute every distinct EotF condition, eval substitution, and loop form.
+- [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
+  component, and trigger-script event flows with real project payloads.
+- [ ] Port all 53 used project-local item components with focused value-shape,
+  mutation-order, targeting, combat, undo/redo, and save coverage.
+- [ ] Port all 108 used project-local skill components with focused lifecycle,
+  proc-order, charge, tether, status, damage-redirection, and save coverage.
+
+### P8.3 — Roguelite systems and campaign proof
+
+- [ ] Verify title/new-game flow and persistent-record initialization.
+- [ ] Verify free-roaming base interactions, summoning, permanent upgrades,
+  lore/codex, system unlocks, skill inheritance, and difficulty selection.
+- [ ] Verify stage-choice generation, camps, shops, events, supports,
+  accessories, stratagems, rewards, trials, bosses, and run abandonment.
+- [ ] Add deterministic short-run and full-run checkpoints through all acts,
+  including death/victory returns to base and metaprogression persistence.
+- [ ] Verify save/load, suspend, migration, turnwheel, AI, RNG, audio, rendering,
+  keyboard, pointer, touch, and gamepad behavior on the real project.
+
+### P8.4 — Release gate
+
+- [ ] EotF compatibility audit is clean.
+- [ ] EotF all-level boot and event-settle suites are green.
+- [ ] EotF base, short-run, full-run, and optional-system checkpoints are green.
+- [ ] Build, engine parity audit, full serial Playwright suite, visual/audio
+  checklist, and `git diff --check` are green.
+- [ ] Package the project for browser delivery and document installation,
+  licensing/credits, save storage, and known intentional deviations.
 
 ## Already present — verify, do not reimplement blindly
 

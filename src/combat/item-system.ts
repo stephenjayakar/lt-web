@@ -11,10 +11,14 @@
 
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
-import type { ItemObject } from '../objects/item';
+import { createItemTree, type ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
-import { evaluateCondition, evaluateExpression } from '../events/event-manager';
+import {
+  evaluateCondition,
+  evaluateExpression,
+  setItemAvailabilityEvaluator,
+} from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
 import {
   alternateSplash,
@@ -284,6 +288,8 @@ function itemComponentsAvailable(
       .filter(([, entry]) => entry[0])
       .map(([nid]) => nid));
     for (const skill of unit.skills) {
+      if (!skill.hasComponent('wexp_usable_skill') &&
+          !skill.hasComponent('wexp_unusable_skill')) continue;
       if (!availabilitySkillActive(unit, skill, item, game)) continue;
       for (const nid of componentList(skill.getComponent('wexp_usable_skill'))) usableTypes.add(nid);
       for (const nid of componentList(skill.getComponent('wexp_unusable_skill'))) usableTypes.delete(nid);
@@ -319,11 +325,8 @@ function itemComponentsAvailable(
   return true;
 }
 
-/**
- * Python item_funcs.available(): every item and skill availability hook must
- * pass, with direct availability components inherited from the immediate parent.
- */
-export function available(
+/** Python item_system.available(): item and active item-override hooks only. */
+export function itemSystemAvailable(
   unit: UnitObject,
   item: ItemObject,
   db: Database,
@@ -334,8 +337,8 @@ export function available(
   // Active item_override skills append item-prefab components to the child's
   // ordinary hook dispatch. Availability hooks on those prefabs must also pass.
   for (const skill of unit.skills) {
-    if (!availabilitySkillActive(unit, skill, item, game)) continue;
     const overrideNid = skill.getComponent<string>('item_override');
+    if (!overrideNid || !availabilitySkillActive(unit, skill, item, game)) continue;
     const override = overrideNid ? db.items.get(overrideNid) : null;
     if (override && !itemComponentsAvailable(
       unit, item, new Map(override.components), db, game,
@@ -346,7 +349,25 @@ export function available(
     unit, item.parentItem, item.parentItem.components, db, game,
   )) return false;
 
+  return true;
+}
+
+/**
+ * Python item_funcs.available(): both item_system and skill_system availability
+ * hooks must pass.
+ */
+export function available(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+): boolean {
+  if (!itemSystemAvailable(unit, item, db, game)) return false;
+
   for (const skill of unit.skills) {
+    if (!skill.hasComponent('cannot_use_items') &&
+        !skill.hasComponent('cannot_use_items_except_armor') &&
+        !skill.hasComponent('cannot_use_magic_items')) continue;
     if (!availabilitySkillActive(unit, skill, item, game)) continue;
     if (skill.hasComponent('cannot_use_items')) return false;
     if (skill.hasComponent('cannot_use_items_except_armor') &&
@@ -357,6 +378,13 @@ export function available(
 
   return true;
 }
+
+setItemAvailabilityEvaluator((unit, item, db, game) => {
+  const runtimeItem = typeof item?.hasComponent === 'function'
+    ? item
+    : createItemTree(item, (nid) => db.items.get(nid));
+  return itemSystemAvailable(unit, runtimeItem, db, game);
+});
 
 /** Python item_system.can_unlock: evaluate this item's region restriction. */
 export function canUnlock(
