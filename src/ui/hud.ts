@@ -7,21 +7,18 @@ import type { InitiativeTracker } from '../engine/initiative';
  * Base dimensions at the "mobile" reference size (CSS pixels).
  * These get multiplied by hudScale() on larger screens.
  */
-const BASE_UNIT_PANEL_W = 160;
-const BASE_UNIT_PANEL_H = 96;
-const BASE_TERRAIN_PANEL_W = 128;
-const BASE_TERRAIN_PANEL_H = 74;
-const BASE_PANEL_MARGIN = 8;
-const BASE_INNER_PAD = 8;
-const BASE_LINE_HEIGHT = 20;
-const BASE_FONT_MAIN = 14;
-const BASE_FONT_SUB = 12;
-const BASE_HP_LABEL_OFFSET = 24;
-const BASE_HP_BAR_HEIGHT = 10;
+const BASE_UNIT_PANEL_W = 124;
+const BASE_UNIT_PANEL_H = 58;
+const BASE_TERRAIN_PANEL_W = 78;
+const BASE_TERRAIN_PANEL_H = 44;
+const BASE_PANEL_MARGIN = 5;
+const BASE_INNER_PAD = 5;
 
-const BG_COLOR = 'rgba(16, 16, 32, 0.82)';
-const BORDER_COLOR = 'rgba(160, 160, 200, 0.5)';
-const INNER_BORDER = 'rgba(80, 80, 120, 0.4)';
+const BG_COLOR = 'rgba(12, 18, 35, 0.92)';
+const BORDER_LIGHT = 'rgba(224, 232, 255, 0.88)';
+const BORDER_MID = 'rgba(86, 108, 154, 0.95)';
+const BORDER_DARK = 'rgba(18, 25, 52, 0.98)';
+const INNER_BORDER = 'rgba(55, 72, 112, 0.72)';
 
 /**
  * Compute a scale factor for the HUD based on screen size.
@@ -107,7 +104,7 @@ export class HUD {
    * All sizes are in CSS pixels scaled by DPR and hudScale.
    */
   drawScreen(
-    ctx: CanvasRenderingContext2D, screenW: number, screenH: number, _db: Database,
+    ctx: CanvasRenderingContext2D, screenW: number, screenH: number, db: Database,
     initiative?: InitiativeTracker | null,
     units?: Map<string, UnitObject> | null,
   ): void {
@@ -117,7 +114,7 @@ export class HUD {
     const hs = hudScale(screenW, screenH);
 
     if (this.hoveredUnit) {
-      this.drawUnitInfo(ctx, this.hoveredUnit, dpr, hs, screenW, screenH);
+      this.drawUnitInfo(ctx, this.hoveredUnit, db, dpr, hs);
     }
     if (this.terrainName) {
       this.drawTerrainInfo(ctx, dpr, hs, screenW, screenH);
@@ -154,7 +151,7 @@ export class HUD {
 
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(barX, barY, barW, barH);
-    ctx.strokeStyle = BORDER_COLOR;
+    ctx.strokeStyle = BORDER_MID;
     ctx.lineWidth = dpr * hs;
     ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
 
@@ -191,73 +188,83 @@ export class HUD {
   }
 
   private drawUnitInfo(
-    ctx: CanvasRenderingContext2D, unit: UnitObject,
-    dpr: number, hs: number, _screenW: number, screenH: number,
+    ctx: CanvasRenderingContext2D,
+    unit: UnitObject,
+    db: Database,
+    dpr: number,
+    hs: number,
   ): void {
     const s = dpr * hs;
     const margin = BASE_PANEL_MARGIN * s;
     const pad = BASE_INNER_PAD * s;
     const pw = BASE_UNIT_PANEL_W * s;
     const ph = BASE_UNIT_PANEL_H * s;
-    const lh = BASE_LINE_HEIGHT * s;
-
     const px = margin;
     const py = margin;
+    const accent = teamChipColor(unit.team);
+    this.drawPanelFrame(ctx, px, py, pw, ph, s, accent);
 
-    // Background
-    ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(px, py, pw, ph);
-
-    // Double border
-    const bw = dpr * hs;
-    ctx.strokeStyle = BORDER_COLOR;
-    ctx.lineWidth = bw;
-    ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+    const portraitSize = 34 * s;
+    const portraitX = px + pad;
+    const portraitY = py + pad;
+    ctx.fillStyle = 'rgba(5, 9, 20, 0.86)';
+    ctx.fillRect(portraitX, portraitY, portraitSize, portraitSize);
     ctx.strokeStyle = INNER_BORDER;
-    ctx.strokeRect(px + bw + 0.5, py + bw + 0.5, pw - 2 * bw - 1, ph - 2 * bw - 1);
+    ctx.lineWidth = Math.max(1, s);
+    ctx.strokeRect(
+      portraitX + 0.5 * s,
+      portraitY + 0.5 * s,
+      portraitSize - s,
+      portraitSize - s,
+    );
 
-    let textX = px + pad;
-    let textY = py + pad;
+    const textX = portraitX + portraitSize + 6 * s;
+    const textRight = px + pw - pad;
     ctx.textBaseline = 'top';
 
-    // Chibi portrait (32x32 from sprite sheet at position 96,16)
-    const chibiDisplaySize = 36 * s; // slightly larger than native 32 for readability
+    // Chibi portrait: the same 32×32 source used by the Python unit-info card.
     const chibiImg = unit.portraitNid ? this.chibiCache.get(unit.portraitNid) : undefined;
     if (chibiImg) {
-      const chibiX = px + pad * 0.5;
-      const chibiY = py + pad * 0.5;
-      // Draw chibi: source rect (96, 16, 32, 32) from the 128x112 sprite sheet
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(chibiImg, 96, 16, 32, 32, chibiX, chibiY, chibiDisplaySize, chibiDisplaySize);
-      // Shift text to the right of the chibi
-      textX = px + pad * 0.5 + chibiDisplaySize + pad * 0.5;
+      ctx.drawImage(
+        chibiImg,
+        96, 16, 32, 32,
+        portraitX + s, portraitY + s,
+        portraitSize - 2 * s, portraitSize - 2 * s,
+      );
     }
 
-    // Unit name
-    ctx.font = `bold ${BASE_FONT_MAIN * s}px monospace`;
-    ctx.fillStyle = 'white';
-    ctx.fillText(unit.name, textX, textY);
-    textY += lh;
+    ctx.font = `bold ${10 * s}px monospace`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(this.fitLabel(ctx, unit.name, textRight - textX), textX, py + 6 * s);
 
-    // Class + Level
-    ctx.font = `${BASE_FONT_SUB * s}px monospace`;
-    ctx.fillStyle = 'rgba(200, 200, 220, 1)';
-    ctx.fillText(`Lv ${unit.level} ${unit.klass}`, textX, textY);
-    textY += lh;
+    const className = db.classes.get(unit.klass)?.name ?? unit.klass.replaceAll('_', ' ');
+    ctx.font = `${7 * s}px monospace`;
+    ctx.fillStyle = 'rgba(194, 205, 232, 1)';
+    ctx.fillText(
+      this.fitLabel(ctx, `Lv ${unit.level}  ${className}`, textRight - textX),
+      textX,
+      py + 19 * s,
+    );
 
-    // HP bar
-    ctx.font = `${BASE_FONT_SUB * s}px monospace`;
-    ctx.fillStyle = 'rgba(200, 200, 220, 1)';
-    ctx.fillText('HP', textX, textY);
-    const barX = textX + BASE_HP_LABEL_OFFSET * s;
-    const barW = pw - (textX - px) - pad - BASE_HP_LABEL_OFFSET * s;
-    this.drawHpBar(ctx, barX, textY + 2 * dpr * hs, unit.currentHp, unit.maxHp, barW, BASE_HP_BAR_HEIGHT * s);
-    textY += lh;
-
-    // HP numbers
-    ctx.font = `${BASE_FONT_SUB * s}px monospace`;
-    ctx.fillStyle = 'rgba(200, 200, 220, 1)';
-    ctx.fillText(`${unit.currentHp}/${unit.maxHp}`, textX, textY);
+    const hpY = py + 34 * s;
+    ctx.font = `bold ${7 * s}px monospace`;
+    ctx.fillStyle = 'rgba(170, 202, 255, 1)';
+    ctx.fillText('HP', textX, hpY);
+    const hpText = `${unit.currentHp} / ${unit.maxHp}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'right';
+    ctx.fillText(hpText, textRight, hpY);
+    ctx.textAlign = 'left';
+    this.drawHpBar(
+      ctx,
+      textX,
+      py + 45 * s,
+      unit.currentHp,
+      unit.maxHp,
+      textRight - textX,
+      5 * s,
+    );
   }
 
   private drawTerrainInfo(
@@ -269,44 +276,75 @@ export class HUD {
     const pad = BASE_INNER_PAD * s;
     const pw = BASE_TERRAIN_PANEL_W * s;
     const ph = BASE_TERRAIN_PANEL_H * s;
-    const lh = BASE_LINE_HEIGHT * s;
 
     const px = screenW * dpr - pw - margin;
     const py = margin;
+    this.drawPanelFrame(ctx, px, py, pw, ph, s, 'rgba(206, 174, 78, 0.9)');
 
-    // Background
-    ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(px, py, pw, ph);
-
-    // Double border
-    const bw = dpr * hs;
-    ctx.strokeStyle = BORDER_COLOR;
-    ctx.lineWidth = bw;
-    ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-    ctx.strokeStyle = INNER_BORDER;
-    ctx.strokeRect(px + bw + 0.5, py + bw + 0.5, pw - 2 * bw - 1, ph - 2 * bw - 1);
-
-    const textX = px + pad;
-    let textY = py + pad;
+    const centerX = px + pw / 2;
     ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${9 * s}px monospace`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(this.fitLabel(ctx, this.terrainName, pw - 2 * pad), centerX, py + 6 * s);
 
-    // Terrain name
-    ctx.font = `bold ${BASE_FONT_MAIN * s}px monospace`;
-    ctx.fillStyle = 'white';
-    ctx.fillText(this.terrainName, textX, textY);
-    textY += lh;
+    const statY = py + 23 * s;
+    ctx.font = `bold ${7 * s}px monospace`;
+    ctx.fillStyle = 'rgba(170, 221, 181, 1)';
+    ctx.fillText(`DEF ${this.terrainDefense}`, px + pw * 0.28, statY);
+    ctx.fillStyle = 'rgba(170, 205, 246, 1)';
+    ctx.fillText(`AVO ${this.terrainAvoid}`, px + pw * 0.73, statY);
+    ctx.textAlign = 'left';
+  }
 
-    // Defense bonus
-    ctx.font = `${BASE_FONT_SUB * s}px monospace`;
-    ctx.fillStyle = 'rgba(160, 220, 160, 1)';
-    const defText = `Def ${this.terrainDefense >= 0 ? '+' : ''}${this.terrainDefense}`;
-    ctx.fillText(defText, textX, textY);
-    textY += lh;
+  private drawPanelFrame(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    scale: number,
+    accent: string,
+  ): void {
+    const notch = 2 * scale;
+    ctx.fillStyle = BORDER_DARK;
+    ctx.fillRect(x + notch, y, width - 2 * notch, height);
+    ctx.fillRect(x, y + notch, width, height - 2 * notch);
+    ctx.fillStyle = BG_COLOR;
+    ctx.fillRect(x + notch, y + notch, width - 2 * notch, height - 2 * notch);
 
-    // Avoid bonus
-    ctx.fillStyle = 'rgba(160, 200, 240, 1)';
-    const avoText = `Avo ${this.terrainAvoid >= 0 ? '+' : ''}${this.terrainAvoid}`;
-    ctx.fillText(avoText, textX, textY);
+    ctx.lineWidth = Math.max(1, scale);
+    ctx.strokeStyle = BORDER_LIGHT;
+    ctx.beginPath();
+    ctx.moveTo(x + notch, y + 0.5 * scale);
+    ctx.lineTo(x + width - notch, y + 0.5 * scale);
+    ctx.moveTo(x + 0.5 * scale, y + notch);
+    ctx.lineTo(x + 0.5 * scale, y + height - notch);
+    ctx.stroke();
+
+    ctx.strokeStyle = BORDER_MID;
+    ctx.beginPath();
+    ctx.moveTo(x + width - 0.5 * scale, y + notch);
+    ctx.lineTo(x + width - 0.5 * scale, y + height - notch);
+    ctx.moveTo(x + notch, y + height - 0.5 * scale);
+    ctx.lineTo(x + width - notch, y + height - 0.5 * scale);
+    ctx.stroke();
+
+    ctx.fillStyle = accent;
+    ctx.fillRect(x + 4 * scale, y + 3 * scale, width - 8 * scale, scale);
+  }
+
+  private fitLabel(
+    ctx: CanvasRenderingContext2D,
+    label: string,
+    maxWidth: number,
+  ): string {
+    if (ctx.measureText(label).width <= maxWidth) return label;
+    let fitted = label;
+    while (fitted.length > 1 && ctx.measureText(`${fitted}…`).width > maxWidth) {
+      fitted = fitted.slice(0, -1);
+    }
+    return `${fitted}…`;
   }
 
   private drawHpBar(
@@ -317,8 +355,7 @@ export class HUD {
   ): void {
     const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
 
-    // Background
-    ctx.fillStyle = 'rgba(32, 32, 32, 1)';
+    ctx.fillStyle = 'rgba(4, 7, 14, 1)';
     ctx.fillRect(x, y, width, height);
 
     // Fill
@@ -333,9 +370,19 @@ export class HUD {
       ctx.fillRect(x, y, filledWidth, height);
     }
 
-    // Border
-    ctx.strokeStyle = 'rgba(120, 120, 120, 1)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(200, 218, 242, 0.8)';
+    ctx.lineWidth = Math.max(1, height / 5);
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+
+    // Small separators echo the original engine's segmented HP strip.
+    ctx.strokeStyle = 'rgba(8, 18, 28, 0.62)';
+    ctx.lineWidth = Math.max(1, height / 6);
+    const segment = Math.max(6, width / 8);
+    for (let marker = x + segment; marker < x + width; marker += segment) {
+      ctx.beginPath();
+      ctx.moveTo(Math.round(marker) + 0.5, y + 1);
+      ctx.lineTo(Math.round(marker) + 0.5, y + height - 1);
+      ctx.stroke();
+    }
   }
 }

@@ -11,9 +11,22 @@ test.describe('Rekka visual baselines', () => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=true&bundle=false');
     await waitForHarness(page);
     await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const hovered = [...game.units.values()].find((unit: any) =>
+        unit.team === 'player' && unit.position);
+      if (hovered?.position) game.cursor.setPos(hovered.position[0], hovered.position[1]);
       (window as any).__harness.stepFrames(5, null);
       await new Promise((resolve) => setTimeout(resolve, 100));
       (window as any).__harness.stepFrames(1, null);
+      const canvas = document.querySelector('#game-canvas') as HTMLCanvasElement;
+      game.hud.drawScreen(
+        canvas.getContext('2d'),
+        window.innerWidth,
+        window.innerHeight,
+        game.db,
+        game.initiative,
+        game.units,
+      );
     });
     await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-chapter-7-map.png', {
       maxDiffPixelRatio: 0.01,
