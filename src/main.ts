@@ -17,11 +17,15 @@ import { ResourceManager } from './data/resource-manager';
 import { Database } from './data/database';
 import { AudioManager } from './audio/audio-manager';
 import { initGameState, game } from './engine/game-state';
-import { reportUnimplemented } from './engine/strict-mode';
+import { isStrictMode, reportUnimplemented } from './engine/strict-mode';
 import {
   REKKA_ITEM_COMPONENTS,
   REKKA_SKILL_COMPONENTS,
 } from './engine/rekka-component-support';
+import {
+  EOTF_ITEM_COMPONENTS,
+  EOTF_SKILL_COMPONENTS,
+} from './engine/eotf-component-support';
 import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
@@ -341,11 +345,14 @@ function showProjectPicker(): Promise<string> {
 // ---------------------------------------------------------------------------
 
 function logUnknownComponents(db: Database, projectPath: string): void {
+  const componentNids = (components: any): string[] => components instanceof Map
+    ? [...components.keys()]
+    : Array.isArray(components)
+      ? components.map((component: any) =>
+        Array.isArray(component) ? component[0] : component)
+      : Object.keys(components ?? {});
+
   if (projectPath === 'rekka.ltproj') {
-    const componentNids = (components: any): string[] => components instanceof Map
-      ? [...components.keys()]
-      : (components ?? []).map((component: any) =>
-        Array.isArray(component) ? component[0] : component);
     for (const item of db.items.values()) {
       for (const nid of componentNids(item.components)) {
         if (!REKKA_ITEM_COMPONENTS.has(nid)) {
@@ -359,6 +366,35 @@ function logUnknownComponents(db: Database, projectPath: string): void {
           reportUnimplemented('skill-component', nid, `Rekka skill ${skill.nid}`);
         }
       }
+    }
+    return;
+  }
+
+  if (projectPath === 'eotf.ltproj') {
+    const missingItems = new Set<string>();
+    const missingSkills = new Set<string>();
+    for (const item of db.items.values()) {
+      for (const nid of componentNids(item.components)) {
+        if (!EOTF_ITEM_COMPONENTS.has(nid)) missingItems.add(nid);
+      }
+    }
+    for (const skill of db.skills.values()) {
+      for (const nid of componentNids(skill.components)) {
+        if (!EOTF_SKILL_COMPONENTS.has(nid)) missingSkills.add(nid);
+      }
+    }
+    if (isStrictMode()) {
+      for (const nid of missingItems) {
+        reportUnimplemented('item-component', nid, 'Embrace of the Fog');
+      }
+      for (const nid of missingSkills) {
+        reportUnimplemented('skill-component', nid, 'Embrace of the Fog');
+      }
+    } else if (missingItems.size > 0 || missingSkills.size > 0) {
+      console.debug(
+        `[EotFCompatibility] ${missingItems.size} item and ${missingSkills.size} ` +
+        'skill component NIDs remain outside the verified project contract',
+      );
     }
     return;
   }
@@ -400,16 +436,6 @@ function logUnknownComponents(db: Database, projectPath: string): void {
     'cleave_aoe', 'aura', 'aura_range', 'aura_target', 'show_aura', 'hide_aura',
     'canto', 'canto_speed', 'canto_range', 'ignore_forced_movement',
   ]);
-
-  // Prefab components are [nid, value] pair arrays; runtime objects use Maps.
-  const componentNids = (components: any): string[] => {
-    if (!components) return [];
-    if (components instanceof Map) return Array.from(components.keys());
-    if (Array.isArray(components)) {
-      return components.map((c: any) => (Array.isArray(c) ? c[0] : c)).filter((n: any) => typeof n === 'string');
-    }
-    return Object.keys(components);
-  };
 
   // Collect unknown item components
   for (const itemPrefab of db.items.values()) {

@@ -65,7 +65,7 @@ function extractCustomComponents(relativePath, kind) {
 function readSupportSet(exportName) {
   const source = read('src/engine/eotf-component-support.ts');
   const match = source.match(
-    new RegExp(`export const ${exportName} = new Set\\(\\[([\\s\\S]*?)\\]\\);`),
+    new RegExp(`export const ${exportName} = new Set(?:<[^>]+>)?\\(\\[([\\s\\S]*?)\\]\\);`),
   );
   if (!match) throw new Error(`Could not read ${exportName}`);
   return new Set([...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]));

@@ -279,10 +279,10 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.1: establish a current-project compatibility inventory,
-all-level boot/event-settle coverage, and a count-locked component contract.
-Then port the highest-use project-local item/skill hooks in lifecycle groups,
-starting with copy safety, combat-art procs, tethering, and evaluated item math.
+Embrace of the Fog P8.2: port `self_nihil` through every skill-condition
+dispatcher, then cover the post-combat, post-kill, and upkeep event lifecycle
+hooks. Continue count-locking only components whose real EotF value shapes and
+runtime behavior have focused coverage.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -303,6 +303,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 
 ### P8.2 — Expressions, event flow, and project-local components
 
+- [x] Preserve Python component-object expression semantics for EotF's
+  `blue`, `combat_art_proc`, `copysafe`, `has_affinities`, `shit`, `subskills`,
+  and `tether_parameters` skill components.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

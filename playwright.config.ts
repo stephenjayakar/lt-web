@@ -1,5 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
+
 export default defineConfig({
   testDir: './tests',
   // Resource-heavy project boots and long event simulations can exceed one
@@ -9,14 +11,14 @@ export default defineConfig({
   timeout: 120_000,
   retries: 0,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${port}`,
     // Use a fixed viewport so screenshots are deterministic
     viewport: { width: 480, height: 320 },
     screenshot: 'off',
   },
   webServer: {
-    command: 'npm run dev -- --port 5173',
-    port: 5173,
+    command: `npm run dev -- --port ${port}`,
+    port,
     reuseExistingServer: true,
     timeout: 30_000,
   },

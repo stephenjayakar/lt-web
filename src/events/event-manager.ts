@@ -1137,7 +1137,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     };
   }
 
-  // Unit wrapper: ensures consistent API
   function wrapMapping(value: any) {
     if (value instanceof Map) return value;
     return {
@@ -1149,26 +1148,117 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     };
   }
 
-  function componentValue(item: any, nid: string): any {
-    return item?.getComponent?.(nid) ??
-      (item?.components instanceof Map ? item.components.get(nid) : undefined);
+  function componentEntries(candidate: any): [string, any][] {
+    const components = candidate?.components;
+    if (components instanceof Map) return [...components.entries()];
+    if (Array.isArray(components)) {
+      return components.filter((entry): entry is [string, any] =>
+        Array.isArray(entry) && typeof entry[0] === 'string');
+    }
+    return components && typeof components === 'object'
+      ? Object.entries(components)
+      : [];
   }
 
-  function wrapItem(item: any) {
-    if (!item) return null;
+  function componentValue(candidate: any, nid: string): any {
+    if (typeof candidate?.getComponent === 'function') {
+      return candidate.hasComponent?.(nid) ? candidate.getComponent(nid) : undefined;
+    }
+    return componentEntries(candidate).find(([component]) => component === nid)?.[1];
+  }
+
+  function wrapComponent(nid: string, value: any) {
     return {
-      _raw: item,
-      nid: item.nid,
-      name: item.name,
-      tags: componentValue(item, 'item_tags') ?? item.tags ?? [],
-      status_on_equip: componentValue(item, 'status_on_equip') === undefined
-        ? undefined
-        : { value: componentValue(item, 'status_on_equip') },
+      nid,
+      value: value && typeof value === 'object' && !Array.isArray(value)
+        ? wrapMapping(value)
+        : value,
     };
   }
 
-  function wrapUnit(u: any) {
+  function wrapComponents(candidate: any) {
+    const values = new Map(componentEntries(candidate).map(([nid, value]) =>
+      [nid, wrapComponent(nid, value)]));
+    return {
+      get(nid: string) {
+        return values.get(nid) ?? null;
+      },
+      has(nid: string) {
+        return values.has(nid);
+      },
+      values() {
+        return [...values.values()];
+      },
+      [Symbol.iterator]() {
+        return values.values();
+      },
+    };
+  }
+
+  const wrappedItems = new WeakMap<object, any>();
+  function wrapItem(item: any): any {
+    if (!item) return null;
+    if (typeof item !== 'object') return item;
+    const existing = wrappedItems.get(item);
+    if (existing) return existing;
+    const components = wrapComponents(item);
+    const target = {
+      _raw: item,
+      uid: item.uid,
+      nid: item.nid,
+      name: item.name,
+      desc: item.desc,
+      tags: componentValue(item, 'item_tags') ?? item.tags ?? [],
+      components,
+    };
+    const wrapped = new Proxy(target as Record<string, any>, {
+      get(proxyTarget, property: string | symbol) {
+        if (property in proxyTarget) return proxyTarget[property as string];
+        if (typeof property === 'string' && components.has(property)) {
+          return components.get(property);
+        }
+        return item[property as keyof typeof item];
+      },
+    });
+    wrappedItems.set(item, wrapped);
+    return wrapped;
+  }
+
+  const wrappedSkills = new WeakMap<object, any>();
+  function wrapSkill(skill: any): any {
+    if (!skill) return null;
+    if (typeof skill !== 'object') return skill;
+    const existing = wrappedSkills.get(skill);
+    if (existing) return existing;
+    const components = wrapComponents(skill);
+    const target = {
+      _raw: skill,
+      uid: skill.uid,
+      nid: skill.nid,
+      name: skill.name,
+      desc: skill.desc,
+      data: wrapMapping(skill.data),
+      components,
+    };
+    const wrapped = new Proxy(target as Record<string, any>, {
+      get(proxyTarget, property: string | symbol) {
+        if (property in proxyTarget) return proxyTarget[property as string];
+        if (typeof property === 'string' && components.has(property)) {
+          return components.get(property);
+        }
+        return skill[property as keyof typeof skill];
+      },
+    });
+    wrappedSkills.set(skill, wrapped);
+    return wrapped;
+  }
+
+  const wrappedUnits = new WeakMap<object, any>();
+  function wrapUnit(u: any): any {
     if (!u) return null;
+    if (typeof u !== 'object') return u;
+    const existing = wrappedUnits.get(u);
+    if (existing) return existing;
     const checkFlanking = (): boolean => {
       if (!u.position || !game.board) return false;
       const [x, y] = u.position;
@@ -1180,7 +1270,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         !!other && !(game.db?.areAllied?.(u.team, other.team) ?? u.team === other.team);
       return (enemy(up) && enemy(down)) || (enemy(left) && enemy(right));
     };
-    return {
+    const wrapped = {
       _raw: u,
       nid: u.nid,
       name: u.name,
@@ -1191,10 +1281,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       klass: u.klass,
       traveler: u.traveler ?? u.rescuing ?? null,
       dead: u.isDead?.() ?? u.dead ?? false,
+      is_dying: u.isDying ?? u.is_dying ?? false,
       level: u.level,
       stats: wrapMapping(u.stats),
       growths: u.growths ?? {},
-      skills: u.skills ?? [],
+      skills: (u.skills ?? []).map(wrapSkill),
       items: (u.items ?? []).map(wrapItem),
       accessories: u.items?.filter((candidate: any) =>
         candidate.hasComponent?.('accessory') ||
@@ -1205,10 +1296,14 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
       get_stat: (nid: string) => u.getStat?.(nid) ?? u.stats?.[nid] ?? 0,
       get_internal_level: () => u.getInternalLevel?.() ?? u.level ?? 1,
+      get_field: (nid: string, fallback?: any) =>
+        u.fields?.has?.(nid) ? u.fields.get(nid) : fallback,
       get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
       get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
     };
+    wrappedUnits.set(u, wrapped);
+    return wrapped;
   }
 
   // Helper: get all alive units of a team
@@ -1242,7 +1337,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   const gameProxy: any = {
     turncount: game.turnCount ?? game.turncount ?? 0,
     turn_count: game.turnCount ?? game.turncount ?? 0,
-    units: Array.from(game.units?.values?.() ?? []).map(wrapUnit),
+    get units() {
+      return Array.from(game.units?.values?.() ?? []).map(wrapUnit);
+    },
     game_vars: wrapVars(game.gameVars),
     level_vars: wrapVars(game.levelVars),
     board: { bounds: game.board?.bounds ?? [0, 0, 0, 0] },
@@ -1418,9 +1515,44 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     }
     return selected;
   };
+  function wrapCatalog(catalog: any, wrapper: (value: any) => any) {
+    const rawValues = catalog?.values
+      ? Array.from(catalog.values())
+      : Array.isArray(catalog) ? catalog : [];
+    return {
+      get(nid: string) {
+        const raw = catalog?.get?.(nid) ??
+          rawValues.find((candidate: any) => candidate?.nid === nid);
+        return wrapper(raw);
+      },
+      values() {
+        return rawValues.map(wrapper);
+      },
+      filter(predicate: (value: any, index: number) => boolean) {
+        return rawValues.map(wrapper).filter(predicate);
+      },
+      map(mapper: (value: any, index: number) => any) {
+        return rawValues.map(wrapper).map(mapper);
+      },
+      some(predicate: (value: any, index: number) => boolean) {
+        return rawValues.map(wrapper).some(predicate);
+      },
+      every(predicate: (value: any, index: number) => boolean) {
+        return rawValues.map(wrapper).every(predicate);
+      },
+      get length() {
+        return rawValues.length;
+      },
+      *[Symbol.iterator]() {
+        for (const value of rawValues) yield wrapper(value);
+      },
+    };
+  }
+
   const databaseProxy = new Proxy(game.db ?? {}, {
     get(target, property: string | symbol) {
-      if (property === 'skills') return Array.from(target.skills?.values?.() ?? []);
+      if (property === 'skills') return wrapCatalog(target.skills, wrapSkill);
+      if (property === 'items') return wrapCatalog(target.items, wrapItem);
       return target[property as keyof typeof target];
     },
   });
@@ -1428,6 +1560,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     game: gameProxy,
     wrapUnit,
     wrapItem,
+    wrapSkill,
     DB: databaseProxy,
     utils: {
       calculate_distance(left: [number, number] | null, right: [number, number] | null) {
@@ -1496,9 +1629,15 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\bor\b/g, '||');
   jsExpr = jsExpr.replace(/\bnot\b/g, '!');
 
-  // Python tuple membership. Rekka uses this for turn schedules.
+  // Python membership inside translated comprehensions/generators. Direct
+  // top-level membership is handled by evaluateCondition before this fallback.
   jsExpr = jsExpr.replace(
-    /([\w.()[\]'"]+)\s+(!\s*)?in\s+\(([^()]*)\)/g,
+    /((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s+(!\s*)?in\s+(\[[^\]]*\]|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\)))*)/g,
+    (_whole, needle, negated, haystack) =>
+      `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
+  );
+  jsExpr = jsExpr.replace(
+    /((?:'[^']*'|"[^"]*"|[\w.()[\]'"]+))\s+(!\s*)?in\s+\(([^()]*)\)/g,
     (_whole, needle, negated, values) =>
       `${negated ? '!' : ''}[${values}].includes(${needle})`,
   );
@@ -1605,26 +1744,40 @@ function evaluateWithJsFallback(
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'combat_calcs', 'movement_funcs', 'target_system',
       'max', 'min', 'str', 'range', '_qf', '_locals',
+      '_wrapUnit', '_wrapItem', '_wrapSkill',
       `"use strict";
        ${localDeclarations}
        // Spread query engine functions into local scope
-       var u = _qf.u, get_item = _qf.get_item, has_item = _qf.has_item,
-           get_subitem = _qf.get_subitem, get_skill = _qf.get_skill,
+       var _units = values => Array.from(values || []).map(_wrapUnit),
+           u = (...args) => _wrapUnit(_qf.u(...args)),
+           get_item = (...args) => _wrapItem(_qf.get_item(...args)),
+           has_item = _qf.has_item,
+           get_subitem = (...args) => _wrapItem(_qf.get_subitem(...args)),
+           get_skill = (...args) => _wrapSkill(_qf.get_skill(...args)),
            has_skill = _qf.has_skill, get_klass = _qf.get_klass,
-           get_class = _qf.get_class, get_closest_allies = _qf.get_closest_allies,
-           get_units_within_distance = _qf.get_units_within_distance,
-           get_allies_within_distance = _qf.get_allies_within_distance,
-           get_units_in_area = _qf.get_units_in_area, get_debuff_count = _qf.get_debuff_count,
-           get_units_in_region = _qf.get_units_in_region, any_unit_in_region = _qf.any_unit_in_region,
+           get_class = _qf.get_class,
+           get_closest_allies = (...args) => Array.from(_qf.get_closest_allies(...args) || [])
+             .map(pair => [_wrapUnit(pair[0]), pair[1]]),
+           get_units_within_distance = (...args) => _units(_qf.get_units_within_distance(...args)),
+           get_allies_within_distance = (...args) => _units(_qf.get_allies_within_distance(...args)),
+           get_units_in_area = (...args) => _units(_qf.get_units_in_area(...args)),
+           get_debuff_count = _qf.get_debuff_count,
+           get_units_in_region = (...args) => _units(_qf.get_units_in_region(...args)),
+           any_unit_in_region = _qf.any_unit_in_region,
            is_dead = _qf.is_dead, check_alive = _qf.check_alive,
            get_internal_level = _qf.get_internal_level,
            get_support_rank = _qf.get_support_rank, get_terrain = _qf.get_terrain,
            has_achievement = _qf.has_achievement, check_shove = _qf.check_shove,
            get_money = _qf.get_money, get_bexp = _qf.get_bexp,
-           is_roam = _qf.is_roam, get_roam_unit = _qf.get_roam_unit,
-           ai_group_active = _qf.ai_group_active, get_team_units = _qf.get_team_units,
-           get_player_units = _qf.get_player_units, get_enemy_units = _qf.get_enemy_units,
-           get_all_units = _qf.get_all_units, get_convoy_inventory = _qf.get_convoy_inventory;
+           is_roam = _qf.is_roam,
+           get_roam_unit = (...args) => _wrapUnit(_qf.get_roam_unit(...args)),
+           ai_group_active = _qf.ai_group_active,
+           get_team_units = (...args) => _units(_qf.get_team_units(...args)),
+           get_player_units = (...args) => _units(_qf.get_player_units(...args)),
+           get_enemy_units = (...args) => _units(_qf.get_enemy_units(...args)),
+           get_all_units = (...args) => _units(_qf.get_all_units(...args)),
+           get_convoy_inventory = (...args) =>
+             Array.from(_qf.get_convoy_inventory(...args) || []).map(_wrapItem);
        return (${jsExpr});`,
     );
     return fn(
@@ -1634,6 +1787,7 @@ function evaluateWithJsFallback(
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
       evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
       _queryFuncs, ctx.localArgs ?? new Map(),
+      evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
     );
   } catch (e) {
     // Expression evaluation failed — log the error for debugging
