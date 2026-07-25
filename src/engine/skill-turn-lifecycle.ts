@@ -8,9 +8,10 @@ import {
 } from './action';
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
-import { evaluateCondition, type EventManager } from '../events/event-manager';
+import type { EventManager } from '../events/event-manager';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
+import { skillConditionActive } from '../combat/skill-system';
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
 
@@ -37,7 +38,6 @@ function isConditionActive(
 ): boolean {
   const parent = skill.data.get('multiSkillSource');
   if (parent instanceof SkillObject && !isConditionActive(game, unit, parent)) return false;
-  const condition = skill.getComponent<string>('condition');
   if (skill.hasComponent('build_charge') &&
       Number(skill.data.get('charge') ?? 0) < Number(skill.data.get('total_charge') ?? 0)) {
     return false;
@@ -50,14 +50,7 @@ function isConditionActive(
   const manaRequirement = skill.getComponent<number>('cost_mana') ??
     skill.getComponent<number>('check_mana');
   if (typeof manaRequirement === 'number' && mana < manaRequirement) return false;
-  return !condition || evaluateCondition(condition, {
-    game,
-    unit1: unit,
-    position: unit.position ?? undefined,
-    gameVars: game.gameVars,
-    levelVars: game.levelVars,
-    localArgs: new Map([['skill', skill]]),
-  });
+  return skillConditionActive(skill, unit, { game });
 }
 
 function maximumMana(game: SkillTurnGame, unit: UnitObject): number {

@@ -13,6 +13,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'combat_art_proc',
   'copysafe',
   'has_affinities',
+  'self_nihil',
   'shit',
   'subskills',
   'tether_parameters',

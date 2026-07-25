@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 263 unverified
+- 270 skill-component NIDs; 262 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -446,7 +446,6 @@ focused browser coverage.
 | savage_blow_fates | 6 | project-local-or-unknown |
 | savage_status | 21 | project-local-or-unknown |
 | savage_statuses | 3 | project-local-or-unknown |
-| self_nihil | 24 | project-local-or-unknown |
 | shitty_lifelink | 1 | project-local-or-unknown |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
