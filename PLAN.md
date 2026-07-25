@@ -279,9 +279,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port combat cleanup and persistence hooks, beginning
-with permanent damage, post-combat status removal, heal-on-kill, and
-combat-scoped skill loss. Continue count-locking only
+Embrace of the Fog P8.2: port EotF's remaining survival and combat-charge
+hooks, including full miracle, target-aware procs, kill/combat charge
+increments, and depleted-charge removal. Continue count-locking only
 components whose real EotF value shapes and runtime behavior have focused
 coverage.
 
@@ -326,6 +326,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve strike-ordered self, critical, target-adjacent, and ranged
   ally lifelink with overkill clamps, plus ranged post-combat ally healing,
   exact charges, and undo/redo behavior.
+- [x] Preserve permanent max-HP damage and Undying Will reconciliation,
+  kill healing, enemy status removal, and configurable combat-count expiry
+  with fields, skill data, stacks, and undo/redo intact.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

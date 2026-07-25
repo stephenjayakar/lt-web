@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 218 unverified
+- 270 skill-component NIDs; 213 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -313,7 +313,6 @@ focused browser coverage.
 | eval_damage | 30 | hook-only |
 | eval_extra_damage | 7 | project-local-or-unknown |
 | eval_galeforce | 3 | project-local-or-unknown |
-| eval_heal_on_kill | 1 | project-local-or-unknown |
 | eval_hit | 21 | hook-only |
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | unreferenced |
@@ -342,7 +341,6 @@ focused browser coverage.
 | growth_change_expression | 3 | project-local-or-unknown |
 | has_tags | 82 | consumed |
 | heal_after_follow_up | 1 | project-local-or-unknown |
-| heal_on_kill | 6 | project-local-or-unknown |
 | hidden | 678 | consumed |
 | hidden_if_inactive | 122 | consumed |
 | hide_aura | 96 | reference-only |
@@ -363,7 +361,6 @@ focused browser coverage.
 | lost_on_charges_depleted | 2 | project-local-or-unknown |
 | lost_on_end_chapter | 524 | consumed |
 | lost_on_end_combat2 | 55 | consumed |
-| lost_on_end_next_combat | 20 | project-local-or-unknown |
 | lost_on_endstep | 61 | reference-only |
 | lost_on_strike | 2 | project-local-or-unknown |
 | lost_on_take_hit | 11 | project-local-or-unknown |
@@ -384,7 +381,6 @@ focused browser coverage.
 | paragon | 2 | project-local-or-unknown |
 | pass | 7 | hook-only |
 | pcc_static | 3 | unreferenced |
-| permanent_damage | 1 | project-local-or-unknown |
 | post_combat_damage | 2 | unreferenced |
 | post_combat_damage_percent | 1 | unreferenced |
 | post_combat_splash | 3 | consumed |
@@ -395,7 +391,6 @@ focused browser coverage.
 | redirect_damage | 3 | project-local-or-unknown |
 | redirect_partial_damage | 2 | project-local-or-unknown |
 | regeneration | 9 | reference-only |
-| remove_status_after_combat | 2 | project-local-or-unknown |
 | rescue_bonus | 3 | project-local-or-unknown |
 | resist | 37 | hook-and-reference |
 | resist_follow_up | 1 | hook-only |

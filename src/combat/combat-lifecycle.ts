@@ -469,6 +469,19 @@ function componentOption(rawValue: unknown, key: string): unknown {
     : (rawValue as Record<string, unknown>)[key];
 }
 
+function legacyMultipleOption(
+  rawValue: unknown,
+  key: string,
+  fallback: string,
+): string {
+  if (Array.isArray(rawValue)) {
+    const entry = rawValue.find((candidate: unknown) =>
+      Array.isArray(candidate) && candidate[0] === key);
+    return String(entry?.[1] ?? fallback);
+  }
+  return String(componentOption(rawValue, key) ?? fallback);
+}
+
 /** Apply Python's persistent post-strike/end-combat skill hooks. */
 export function applyCombatSkillEndHooks(
   game: CombatLifecycleGame,
@@ -875,6 +888,35 @@ export function applyCombatSkillEndHooks(
           applied += healed;
         }
       }
+      const flatKillHeal = skill.getComponent<unknown>('heal_on_kill');
+      if (flatKillHeal !== undefined && isHookTarget && target.currentHp <= 0) {
+        const amount = combatComponentNumber(
+          game, flatKillHeal, unit, target, item, skill, mode,
+        );
+        game.actionLog.doAction(new SetCurrentHpAction(
+          unit,
+          unit.currentHp + modifiedHealAmount(amount, unit, unit, game),
+        ));
+        applied++;
+      }
+      const evalKillHeal = skill.getComponent<unknown>('eval_heal_on_kill');
+      if (evalKillHeal !== undefined && isHookTarget && target.currentHp <= 0) {
+        const amount = Math.max(0, combatComponentNumber(
+          game, evalKillHeal, unit, target, item, skill, mode,
+        ));
+        game.actionLog.doAction(new SetCurrentHpAction(
+          unit,
+          unit.currentHp + modifiedHealAmount(amount, unit, unit, game),
+        ));
+        applied++;
+      }
+      const removeStatus = skill.getComponent<unknown>('remove_status_after_combat');
+      if (typeof removeStatus === 'string' && enemyHookTarget) {
+        const status = target.skills.find((candidate) => candidate.nid === removeStatus);
+        if (status) game.actionLog.doAction(new RemoveSkillAction(target, status));
+        triggerSkillCharge(game, skill);
+        applied++;
+      }
 
       if (target.currentHp <= 0) {
         applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_kill'));
@@ -1012,10 +1054,14 @@ export function applyCombatSkillEndHooks(
   for (const unit of participants) {
     const attackStrike = strikes.find((strike) => strike.attacker === unit);
     const defenseStrike = strikes.find((strike) => strike.defender === unit);
-    const target = attackStrike?.defender
-      ?? defenseStrike?.attacker
-      ?? (unit === initiator ? primaryTarget : initiator)
-      ?? null;
+    const onlySplash = !!attackStrike && !strikes.some((strike) =>
+      strike.attacker === unit && strike.mode !== 'splash');
+    const target = onlySplash
+      ? null
+      : (attackStrike?.defender
+        ?? defenseStrike?.attacker
+        ?? (unit === initiator ? primaryTarget : initiator)
+        ?? null);
     const mode = attackStrike?.mode ?? (unit === initiator ? 'attack' : 'defense');
     for (const skill of [...unit.skills]) {
       const raw = skill.getComponent<unknown>('lost_on_end_combat2');
@@ -1035,6 +1081,38 @@ export function applyCombatSkillEndHooks(
         if (!allied && options.lost_on_enemy !== false) remove = true;
       }
       if (remove) {
+        game.actionLog.doAction(new RemoveSkillAction(unit, skill));
+        applied++;
+      }
+    }
+    for (const skill of [...unit.skills]) {
+      const raw = skill.getComponent<unknown>('lost_on_end_next_combat');
+      if (raw === undefined) continue;
+      let remove = false;
+      const decrement = (): void => {
+        const current = Number(skill.data.get('combats') ??
+          legacyMultipleOption(raw, 'NumberOfCombats (X)', '2'));
+        const next = (Number.isFinite(current) ? current : 2) - 1;
+        game.actionLog!.doAction(new SetSkillDataAction(skill, 'combats', next));
+        if (next <= 0) remove = true;
+      };
+      if (target === unit &&
+          legacyMultipleOption(raw, 'LostOnSelf (T/F)', 'T') === 'T') {
+        decrement();
+      }
+      if (target && checkAlly(unit, target, game.db) &&
+          legacyMultipleOption(raw, 'LostOnAlly (T/F)', 'T') === 'T') {
+        decrement();
+      }
+      if (target && checkEnemy(unit, target, game.db) &&
+          legacyMultipleOption(raw, 'LostOnEnemy (T/F)', 'T') === 'T') {
+        decrement();
+      }
+      if (!target &&
+          legacyMultipleOption(raw, 'LostOnSplash (T/F)', 'T') === 'T') {
+        decrement();
+      }
+      if (remove && unit.skills.includes(skill)) {
         game.actionLog.doAction(new RemoveSkillAction(unit, skill));
         applied++;
       }

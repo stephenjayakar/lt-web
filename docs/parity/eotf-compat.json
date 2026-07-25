@@ -2726,7 +2726,7 @@
         "nid": "eval_heal_on_kill",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_hit",
@@ -3050,7 +3050,7 @@
         "nid": "heal_on_kill",
         "uses": 6,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "hidden",
@@ -3188,7 +3188,7 @@
         "nid": "lost_on_end_next_combat",
         "uses": 20,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_endstep",
@@ -3314,7 +3314,7 @@
         "nid": "permanent_damage",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "post_combat_damage",
@@ -3386,7 +3386,7 @@
         "nid": "remove_status_after_combat",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "rescue_bonus",

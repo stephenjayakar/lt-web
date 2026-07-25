@@ -33,6 +33,7 @@ import {
   type CombatProcCue,
 } from './proc-presentation';
 import { levelUpUnit } from '../engine/leveling';
+import { applyPermanentDamage } from './skill-system';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -513,6 +514,26 @@ export class MapCombat {
           );
         }
       }
+      const collapsePermanentHp = (unit: UnitObject): void => {
+        if (unit === this.attacker) {
+          atkHp = applyPermanentDamage(
+            unit,
+            atkHp,
+            this.game ?? { db: this.db },
+          );
+        } else if (defenderHps.has(unit)) {
+          defenderHps.set(
+            unit,
+            applyPermanentDamage(
+              unit,
+              defenderHps.get(unit) ?? unit.currentHp,
+              this.game ?? { db: this.db },
+            ),
+          );
+        }
+      };
+      collapsePermanentHp(strike.attacker);
+      collapsePermanentHp(strike.defender);
     }
 
     // Miracle: a unit that would die at the end of combat is instead

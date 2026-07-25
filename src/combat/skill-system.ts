@@ -312,6 +312,53 @@ export function modifiedHealAmount(
   return Math.trunc(multiplier * (baseAmount + additive));
 }
 
+/**
+ * EotF `permanent_damage`: reconcile temporary Undying Will stacks, then
+ * collapse maximum HP to the unit's post-strike HP with a floor of one.
+ * Called from combat result walks so each later strike observes the new cap.
+ */
+export function applyPermanentDamage(
+  unit: UnitObject,
+  currentHp: number,
+  game: any,
+): number {
+  if (!unit.skills.some((skill) =>
+    skill.hasComponent('permanent_damage') &&
+    skillConditionActive(skill, unit, { game }))) {
+    return currentHp;
+  }
+  const trackedRaw = Number(unit.fields.get('Undeath_Current_HP'));
+  const tracked = Number.isFinite(trackedRaw) ? trackedRaw : unit.maxHp;
+  let currentMax = unit.maxHp;
+  const willPrefab = game?.db?.skills.get('Undying_Will');
+  if (currentMax > tracked && willPrefab) {
+    for (let index = 0; index < currentMax - tracked; index++) {
+      unit.skills.push(new SkillObject(willPrefab));
+    }
+  } else if (currentMax < tracked) {
+    let count = Math.trunc(tracked - currentMax);
+    for (let index = unit.skills.length - 1; index >= 0 && count > 0; index--) {
+      if (unit.skills[index].nid !== 'Undying_Will') continue;
+      unit.skills.splice(index, 1);
+      count--;
+    }
+  }
+  const reconcile = Math.trunc(tracked - currentMax);
+  unit.stats.HP = Math.max(
+    0,
+    Math.min(unit.getStatCap('HP'), (unit.stats.HP ?? 0) + reconcile),
+  );
+  currentMax = unit.maxHp;
+  const collapse = Math.max(currentHp - currentMax, 1 - currentMax);
+  unit.stats.HP = Math.max(
+    0,
+    Math.min(unit.getStatCap('HP'), (unit.stats.HP ?? 0) + collapse),
+  );
+  const nextHp = Math.max(0, Math.min(currentHp, unit.maxHp));
+  unit.fields.set('Undeath_Current_HP', unit.maxHp);
+  return nextHp;
+}
+
 export interface UnitSpriteTint {
   color: [number, number, number];
   alpha: number;

@@ -12,6 +12,7 @@ interface UnitMutationSnapshot {
   stats: Record<string, number>;
   growthPoints: Record<string, number>;
   wexp: Record<string, number>;
+  fields: Map<string, any>;
   skills: SkillObject[];
   statusEffects: StatusEffect[];
   items: ItemObject[];
@@ -57,6 +58,7 @@ function capture(units: UnitObject[], explicitItems: ItemObject[]): CombatMutati
       stats: { ...unit.stats },
       growthPoints: { ...unit.growthPoints },
       wexp: { ...unit.wexp },
+      fields: new Map(unit.fields),
       skills: [...unit.skills],
       statusEffects: copyStatusEffects(unit.statusEffects),
       items: [...unit.items],
@@ -85,6 +87,7 @@ function restore(snapshot: CombatMutationSnapshot): void {
     unit.stats = { ...state.stats };
     unit.growthPoints = { ...state.growthPoints };
     unit.wexp = { ...state.wexp };
+    unit.fields = new Map(state.fields);
     unit.skills = [...state.skills];
     unit.statusEffects = copyStatusEffects(state.statusEffects);
     unit.items = [...state.items];

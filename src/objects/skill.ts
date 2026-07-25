@@ -85,6 +85,12 @@ export class SkillObject {
     if (this.components.has('upkeep_stat_change')) {
       this.data.set('counter', 0);
     }
+    const combatExpiry = this.components.get('lost_on_end_next_combat');
+    if (Array.isArray(combatExpiry)) {
+      const configured = combatExpiry.find((entry: unknown) =>
+        Array.isArray(entry) && entry[0] === 'NumberOfCombats (X)');
+      this.data.set('combats', String(configured?.[1] ?? '2'));
+    }
   }
 
   /**
