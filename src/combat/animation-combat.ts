@@ -385,6 +385,11 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board, script);
     this.procPlayback = [...solver.procPlayback];
     this.guardGaugeResults = new Map(solver.guardGaugeResults);
+    for (const strike of this.strikes) {
+      for (const effect of strike.allySkillHpChanges ?? []) {
+        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
+      }
+    }
     this.lifecycleRecord.finish();
 
     // HP init
@@ -1240,14 +1245,44 @@ export class AnimationCombat implements AnimationCombatOwner {
           : eclipseDamage(targetHp);
       }
       if (strike.attacker === this.attacker) {
-        // Lifelink after_strike: heal per hitting strike, clamping the
-        // strike's damage to the defender's remaining HP so overkill damage
-        // never heals. Mirrors Python `Lifelink.after_strike`.
-        const heal = lifelinkHealForStrike(this.attacker, this.attackItem, strike, defHp);
-        if (heal > 0) atkHp = Math.min(attackerMaxHp, atkHp + heal);
+        const itemHeal = lifelinkHealForStrike(
+          strike.attacker,
+          this.attackItem,
+          strike,
+          defHp,
+        );
+        atkHp = Math.max(0, Math.min(
+          attackerMaxHp,
+          atkHp + itemHeal + (strike.selfSkillHpChange ?? 0),
+        ));
         defHp -= damage;
       } else {
+        const itemHeal = lifelinkHealForStrike(
+          strike.attacker,
+          this.defenseItem ?? strike.item,
+          strike,
+          atkHp,
+        );
+        defHp = Math.max(0, Math.min(
+          this.defender.maxHp,
+          defHp + itemHeal + (strike.selfSkillHpChange ?? 0),
+        ));
         atkHp -= damage;
+      }
+      for (const effect of strike.allySkillHpChanges ?? []) {
+        if (effect.unit === this.attacker) {
+          atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + effect.amount));
+        } else if (effect.unit === this.defender) {
+          defHp = Math.max(0, Math.min(
+            this.defender.maxHp,
+            defHp + effect.amount,
+          ));
+        } else {
+          effect.unit.currentHp = Math.max(
+            0,
+            Math.min(effect.unit.maxHp, effect.unit.currentHp + effect.amount),
+          );
+        }
       }
     }
 
