@@ -146,6 +146,7 @@ function triggerSkillEvent(
   item: ItemObject | null,
   item2: ItemObject | null,
   mode: string,
+  extraLocalArgs: Iterable<readonly [string, unknown]> = [],
 ): boolean {
   if (typeof nid !== 'string' || !nid || !game.eventManager) return false;
   return game.eventManager.triggerSpecific(nid, {
@@ -159,6 +160,7 @@ function triggerSkillEvent(
       ['item', item],
       ['item2', item2],
       ['mode', mode],
+      ...extraLocalArgs,
     ]),
   });
 }
@@ -271,6 +273,21 @@ export function queueCombatSkillEvents(
   defenseItem: ItemObject | null,
 ): number {
   let queued = 0;
+  const playback = strikes.map((strike) => {
+    let mainAttacker = strike.attacker;
+    if (strike.assist) {
+      if (strike.attacker === initiator.strikePartner) mainAttacker = initiator;
+      else if (strike.attacker === primaryTarget.strikePartner) {
+        mainAttacker = primaryTarget;
+      }
+    }
+    return {
+      nid: strike.crit ? 'mark_crit' : strike.hit ? 'mark_hit' : 'mark_miss',
+      attacker: strike.attacker,
+      defender: strike.defender,
+      main_attacker: mainAttacker,
+    };
+  });
   for (const strike of strikes) {
     const mode = strike.mode ?? (strike.isCounter ? 'defense' : 'attack');
     const defenderItem = equippedWeapon(strike.defender);
@@ -367,6 +384,7 @@ export function queueCombatSkillEvents(
       )) continue;
       for (const [component, value] of skill.components) {
         const fires = component === 'event_after_combat' ||
+          (component === 'event_after_kill' && participant.target.currentHp <= 0) ||
           (component === 'event_after_combat_when_hit' && gotHit) ||
           (component === 'true_miracle_event_after_combat' && strikes.some(
             (strike) => strike.defender === participant.unit &&
@@ -375,7 +393,11 @@ export function queueCombatSkillEvents(
         if (fires && triggerSkillEvent(
           game, value, component, participant.unit, participant.target,
           participant.item, participant.item2, participant.mode,
-        )) queued++;
+          component === 'event_after_combat' ? [['playback', playback]] : [],
+        )) {
+          queued++;
+          if (component === 'event_after_kill') triggerSkillCharge(game, skill);
+        }
       }
     }
   }

@@ -1006,9 +1006,9 @@ function translateGeneratorExpressions(expression: string): string {
       continue;
     }
     const inParts = splitAtTopLevel(forParts[1], ' in ');
-    if (inParts.length !== 2) break;
+    if (inParts.length < 2) break;
     const variable = inParts[0].trim();
-    const ifParts = splitAtTopLevel(inParts[1], ' if ');
+    const ifParts = splitAtTopLevel(inParts.slice(1).join(' in '), ' if ');
     const collection = ifParts[0].trim();
     const predicate = (ifParts[1] ?? forParts[0]).trim();
     const method = match[1] === 'any' ? 'some' : 'every';
@@ -1059,13 +1059,13 @@ function translateListComprehensions(expression: string): string {
         continue;
       }
       const inParts = splitAtTopLevel(forParts[1], ' in ');
-      if (inParts.length !== 2) {
+      if (inParts.length < 2) {
         if (open === 0) break;
         open = translated.lastIndexOf('[', open - 1);
         continue;
       }
       const variable = inParts[0].trim();
-      const ifParts = splitAtTopLevel(inParts[1], ' if ');
+      const ifParts = splitAtTopLevel(inParts.slice(1).join(' in '), ' if ');
       const collection = ifParts[0].trim();
       const filter = ifParts[1]?.trim();
       const mapped = filter
@@ -1280,6 +1280,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       tags: u.tags ?? [],
       klass: u.klass,
       traveler: u.traveler ?? u.rescuing ?? null,
+      get strike_partner() {
+        return wrapUnit(u.strikePartner ?? u.strike_partner ?? null);
+      },
       dead: u.isDead?.() ?? u.dead ?? false,
       is_dying: u.isDying ?? u.is_dying ?? false,
       level: u.level,
@@ -1622,6 +1625,7 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\bTrue\b/g, 'true');
   jsExpr = jsExpr.replace(/\bFalse\b/g, 'false');
   jsExpr = jsExpr.replace(/\bNone\b/g, 'null');
+  jsExpr = jsExpr.replace(/\bis\s+not\b/g, '!==');
   jsExpr = jsExpr.replace(/\bis\b/g, '===');
 
   // Python `and`/`or`/`not` -> `&&`/`||`/`!`
@@ -1723,6 +1727,21 @@ function evaluateWithJsFallback(
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
+  const expressionLocals = new Map(ctx.localArgs ?? []);
+  const playback = expressionLocals.get('playback');
+  if (Array.isArray(playback)) {
+    expressionLocals.set('playback', playback.map((mark: any) => {
+      if (!mark || typeof mark !== 'object') return mark;
+      return {
+        ...mark,
+        attacker: evalScope.wrapUnit?.(mark.attacker) ?? mark.attacker,
+        defender: evalScope.wrapUnit?.(mark.defender) ?? mark.defender,
+        main_attacker: evalScope.wrapUnit?.(
+          mark.main_attacker ?? mark.mainAttacker,
+        ) ?? mark.main_attacker ?? mark.mainAttacker,
+      };
+    }));
+  }
   const reservedLocals = new Set([
     'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
     'target_pos', 'item', 'mode', 'stat_changes', 'support_rank_nid',
@@ -1786,7 +1805,7 @@ function evaluateWithJsFallback(
       support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
       evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
-      _queryFuncs, ctx.localArgs ?? new Map(),
+      _queryFuncs, expressionLocals,
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
     );
   } catch (e) {

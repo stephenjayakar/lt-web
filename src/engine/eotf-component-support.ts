@@ -12,9 +12,13 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'blue',
   'combat_art_proc',
   'copysafe',
+  'event_after_combat',
+  'event_after_kill',
   'has_affinities',
   'self_nihil',
   'shit',
   'subskills',
   'tether_parameters',
+  'upkeep_event',
+  'upkeep_skill_gain',
 ]);
