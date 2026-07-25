@@ -630,14 +630,14 @@ test.describe('Rekka project-local item components', () => {
       initial: {
         isAccessory: true,
         equipped: 'DuelRing',
-        weapon: null,
+        weapon: 'Iron_Sword',
         skills: ['Duel'],
       },
       fullAtOne: true,
       action: 'EquipItemAction',
       swapped: {
         equipped: 'MoraleRing',
-        weapon: null,
+        weapon: 'Iron_Sword',
         hasDuel: false,
         hasMorale: true,
       },

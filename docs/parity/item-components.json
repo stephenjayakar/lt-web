@@ -8187,6 +8187,10 @@
         {
           "source": "src/objects/item.ts",
           "line": 145
+        },
+        {
+          "source": "src/objects/unit.ts",
+          "line": 412
         }
       ],
       "directReads": [
@@ -8197,6 +8201,10 @@
         {
           "source": "src/objects/item.ts",
           "line": 145
+        },
+        {
+          "source": "src/objects/unit.ts",
+          "line": 412
         }
       ],
       "matchingWebHooks": [

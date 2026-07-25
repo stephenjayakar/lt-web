@@ -269,7 +269,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 - [x] `npm run build`
 - [x] `npm run audit:parity`
 - [x] Rekka component/expression/resource inventory is clean
-- [x] Rekka all-level boot and event-settle suites are green
+- [x] Rekka all-level boot, event-settle, and deployed generic weapon-rank
+  suites are green
 - [x] Rekka checkpoint campaign and optional-content suites are green
 - [x] Full serial Playwright suite is green
 - [x] `git diff --check`
@@ -280,7 +281,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 ## Active Next Slice
 
 Complete. Rekka's campaign, runtime components, browser presentation, audio,
-input, save/turnwheel, AI, determinism, and release gates are verified.
+input, save/turnwheel, AI, determinism, authored unique/generic weapon
+availability, small-map widescreen framing, and release gates are verified.
 
 ## Already present — verify, do not reimplement blindly
 

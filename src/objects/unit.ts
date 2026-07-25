@@ -224,15 +224,15 @@ export class UnitObject {
 
     // --- Weapon experience ---
     // wexp_gain format: { "Sword": [usable, starting_wexp, cap], ... }
-    // We store the starting wexp value for each weapon type the unit can use.
-    // The `usable` flag indicates whether the class allows this weapon type.
-    // The `cap` limits maximum wexp gain (not enforced at construction).
+    // Unique prefabs store their actual starting WEXP in the numeric field.
+    // Python copies that value for every weapon type regardless of the
+    // prefab entry's `usable` flag; class usability is checked separately by
+    // item-system. Generic synthetic prefabs use class WEXP and follow the
+    // same numeric-copy rule.
     this.wexp = {};
     for (const [wtype, entry] of Object.entries(prefab.wexp_gain)) {
-      const [usable, startingWexp, _cap] = entry;
-      if (usable) {
-        this.wexp[wtype] = startingWexp;
-      }
+      const [, startingWexp] = entry;
+      this.wexp[wtype] = startingWexp;
     }
 
     this.sprite = null;
@@ -399,6 +399,24 @@ export class UnitObject {
     for (const item of this.items) append(item);
     return result;
   }
+
+  /**
+   * Raise a generic unit's WEXP to the ranks required by its authored loadout.
+   * Python does this immediately after creating a level unit's starting items,
+   * allowing later-chapter generics to wield Silver/Brave/siege equipment even
+   * when their class's baseline WEXP is lower.
+   */
+  calculateNeededWexpFromItems(db: Database): void {
+    for (const item of this.getAllItems()) {
+      const weaponType = item.getWeaponType();
+      const rank = item.getComponent<string>('weapon_rank');
+      if (!weaponType || !rank) continue;
+      const requirement = db.weaponRanks.find((entry) => entry.rank === rank)?.requirement;
+      if (requirement === undefined) continue;
+      this.wexp[weaponType] = Math.max(this.wexp[weaponType] ?? 0, requirement);
+    }
+  }
+
   /** True if the unit can currently equip `item` (Python `can_equip`). */
   canEquip(item: ItemObject): boolean {
     // Python: item_system.equippable(unit, item) and item_funcs.available(unit, item).

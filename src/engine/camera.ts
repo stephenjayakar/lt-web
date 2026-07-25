@@ -204,7 +204,10 @@ export class Camera {
 
   getOffset(): [number, number] {
     const shake = this.shakeOffsets[this.shakeIdx];
-    return [Math.round(this.x) + shake[0], Math.round(this.y) + shake[1]];
+    return [
+      this.presentationOffset(this.x, this.mapPixelW, viewport.width) + shake[0],
+      this.presentationOffset(this.y, this.mapPixelH, viewport.height) + shake[1],
+    ];
   }
 
   /** Start a screen shake with a named pattern or custom offsets. */
@@ -235,8 +238,8 @@ export class Camera {
   }
 
   getCullRect(): { x: number; y: number; w: number; h: number } {
-    const ox = Math.round(this.x);
-    const oy = Math.round(this.y);
+    const ox = this.presentationOffset(this.x, this.mapPixelW, viewport.width);
+    const oy = this.presentationOffset(this.y, this.mapPixelH, viewport.height);
     return {
       x: ox - TILEWIDTH,
       y: oy - TILEHEIGHT,
@@ -262,5 +265,18 @@ export class Camera {
 
     this.targetX = Math.max(0, Math.min(this.targetX, maxX));
     this.targetY = Math.max(0, Math.min(this.targetY, maxY));
+  }
+
+  /**
+   * Center maps that are smaller than the responsive scene. The simulation
+   * camera remains clamped to world position 0, while render/input consumers
+   * receive a negative offset that produces balanced engine-style letterbox
+   * space instead of pinning the map to the upper-left corner.
+   */
+  private presentationOffset(position: number, mapSize: number, viewportSize: number): number {
+    if (mapSize < viewportSize) {
+      return Math.round((mapSize - viewportSize) / 2);
+    }
+    return Math.round(position);
   }
 }

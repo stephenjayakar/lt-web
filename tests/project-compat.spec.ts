@@ -123,6 +123,37 @@ test.describe('rekka.ltproj compatibility', () => {
     expect(unexpectedErrors()).toEqual([]);
   });
 
+  test('Chapter 1 unique-unit WEXP enables authored weapons and Attack menu', async ({ page }) => {
+    await page.goto('/?harness=true&project=rekka.ltproj&level=1&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const lyn = game.units.get('Lyn');
+
+      // Put Lyn beside Chapter 1's first brigand, then exercise the ordinary
+      // select -> confirm move -> action-menu flow.
+      harness.warpUnit('Lyn', 3, 6);
+      game.cursor.setPos(3, 6);
+      harness.stepFrames(1, 'SELECT');
+      harness.stepFrames(2, null);
+      harness.stepFrames(1, 'SELECT');
+      harness.stepFrames(2, null);
+
+      const state = game.state.getCurrentState();
+      return {
+        swordWexp: lyn.wexp.Sword,
+        state: state?.name,
+        options: state?.menu?.options?.map((option: any) => option.value) ?? [],
+      };
+    });
+
+    expect(result.swordWexp).toBe(1);
+    expect(result.state).toBe('menu');
+    expect(result.options).toContain('attack');
+  });
+
   test('combat resolution: Lyn vs enemy Soldier via resolveCombat', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
     await waitForHarness(page);
