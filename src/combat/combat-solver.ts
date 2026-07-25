@@ -10,6 +10,7 @@ import {
   CombatSkillLifecycle,
   type CombatProcMark,
 } from './combat-skill-lifecycle';
+import { AddSkillAction } from '../engine/action';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
@@ -127,7 +128,7 @@ export class CombatPhaseSolver {
     ignoreDying: boolean = false,
   ): void {
     if (!strike.hit && !hasDamageOnMiss(strike.item)) {
-      this.applyAfterTakeSkillGains(target, strike);
+      this.applyPostStrikeSkillEffects(target, strike);
       return;
     }
     const before = hp.hp;
@@ -149,31 +150,102 @@ export class CombatPhaseSolver {
       ];
       this.customSurvivalTriggered.add(proc.skill);
       hp.hp = proc.component === 'ignore_damage' ? before : 1;
-      this.applyAfterTakeSkillGains(target, strike);
+      this.applyPostStrikeSkillEffects(target, strike);
       return;
     }
     hp.hp = ignoreDying && after <= 0 ? 1 : after;
-    this.applyAfterTakeSkillGains(target, strike);
+    this.applyPostStrikeSkillEffects(target, strike);
   }
 
-  private applyAfterTakeSkillGains(target: UnitObject, strike: CombatStrike): void {
+  private combatSkillActive(
+    unit: UnitObject,
+    skill: SkillObject,
+    strike: CombatStrike,
+  ): boolean {
+    if (skill.hasComponent('combat_condition') &&
+        !skill.data.get('_combat_condition')) return false;
+    if (skill.hasComponent('build_charge') &&
+        Number(skill.data.get('charge') ?? 0) <
+          Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0)) {
+      return false;
+    }
+    if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+        Number(skill.data.get('charge') ?? 0) <= 0) return false;
+    return skillSystem.skillConditionActive(skill, unit, {
+      game: this.game,
+      item: unit === strike.attacker ? strike.item : unit.equippedWeapon,
+      target: unit === strike.attacker ? strike.defender : strike.attacker,
+    });
+  }
+
+  private grantImmediateSkills(
+    recipient: UnitObject,
+    source: UnitObject,
+    sourceSkill: SkillObject,
+    skillNids: unknown[],
+  ): void {
     const db = this.game?.db;
     if (!db) return;
+    let attempted = false;
+    for (const skillNid of skillNids) {
+      if (typeof skillNid !== 'string') continue;
+      const prefab = db.skills.get(skillNid);
+      if (!prefab) continue;
+      const granted = new SkillObject(prefab);
+      granted.initiatorNid = source.nid;
+      new AddSkillAction(recipient, granted).execute();
+      attempted = true;
+    }
+    if (attempted) skillSystem.consumeMiracleCharge(sourceSkill);
+  }
+
+  private applyPostStrikeSkillEffects(
+    target: UnitObject,
+    strike: CombatStrike,
+  ): void {
+    if (strike.hit) {
+      for (const sourceSkill of [...strike.attacker.skills]) {
+        if (!this.combatSkillActive(strike.attacker, sourceSkill, strike)) continue;
+        const status = sourceSkill.getComponent<string>('give_status_after_hit');
+        if (status) {
+          this.grantImmediateSkills(
+            strike.defender,
+            strike.attacker,
+            sourceSkill,
+            [status],
+          );
+        }
+      }
+    }
+
     for (const sourceSkill of [...target.skills]) {
-      const skillNids: string[] = [];
+      if (!this.combatSkillActive(target, sourceSkill, strike)) continue;
       const missSkill = sourceSkill.getComponent<string>('gain_skill_after_take_miss');
       const damageSkill = sourceSkill.getComponent<string>('gain_skill_after_take_damage');
-      if (!strike.hit && missSkill) skillNids.push(missSkill);
-      if (strike.damage > 0 && damageSkill) skillNids.push(damageSkill);
-      if (skillNids.length === 0) continue;
-      for (const skillNid of skillNids) {
-        const prefab = db.skills.get(skillNid);
-        if (!prefab || target.skills.some((skill) => skill.nid === skillNid)) continue;
-        const granted = new SkillObject(prefab);
-        granted.initiatorNid = target.nid;
-        target.skills.push(granted);
+      if (!strike.hit && missSkill) {
+        this.grantImmediateSkills(target, target, sourceSkill, [missSkill]);
       }
-      skillSystem.consumeMiracleCharge(sourceSkill);
+      if (strike.damage > 0 && damageSkill) {
+        this.grantImmediateSkills(target, target, sourceSkill, [damageSkill]);
+      }
+      const reflected = sourceSkill.getComponent<string>('give_status_on_take_hit');
+      if (reflected) {
+        this.grantImmediateSkills(
+          strike.attacker,
+          target,
+          sourceSkill,
+          [reflected],
+        );
+      }
+      const reflectedStatuses = sourceSkill.getComponent<unknown>('give_statuses_on_take_hit');
+      if (Array.isArray(reflectedStatuses) && reflectedStatuses.length > 0) {
+        this.grantImmediateSkills(
+          strike.attacker,
+          target,
+          sourceSkill,
+          reflectedStatuses,
+        );
+      }
     }
   }
 

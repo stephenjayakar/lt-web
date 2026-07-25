@@ -113,9 +113,11 @@ test.describe('combat status skill hooks', () => {
 
     expect(result).not.toBeNull();
     expect(result!.afterHit).toEqual({
-      changed: { applied: 1, hasStatus: true, initiator: 'Eirika', charge: 1 },
+      // Per-strike status hooks execute inside CombatPhaseSolver so later
+      // strikes can observe them; the end-combat dispatcher must not repeat it.
+      changed: { applied: 0, hasStatus: false, initiator: null, charge: 2 },
       reversed: { hasStatus: false, charge: 2 },
-      redone: { hasStatus: true, charge: 1 },
+      redone: { hasStatus: false, charge: 2 },
     });
     expect(result!.onHitMiss.changed.applied).toBe(0);
     expect(result!.onHitMiss.changed.hasStatus).toBe(false);
