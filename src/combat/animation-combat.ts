@@ -20,6 +20,7 @@ import {
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
+import { applyPermanentDamage } from './skill-system';
 import {
   CombatLifecycleRecord,
   type CombatProcMark,
@@ -1283,6 +1284,32 @@ export class AnimationCombat implements AnimationCombatOwner {
             Math.min(effect.unit.maxHp, effect.unit.currentHp + effect.amount),
           );
         }
+      }
+      if (strike.attacker === this.attacker) {
+        atkHp = applyPermanentDamage(
+          strike.attacker,
+          atkHp,
+          this.game ?? { db: this.db },
+        );
+      } else {
+        defHp = applyPermanentDamage(
+          strike.attacker,
+          defHp,
+          this.game ?? { db: this.db },
+        );
+      }
+      if (strike.defender === this.attacker) {
+        atkHp = applyPermanentDamage(
+          strike.defender,
+          atkHp,
+          this.game ?? { db: this.db },
+        );
+      } else {
+        defHp = applyPermanentDamage(
+          strike.defender,
+          defHp,
+          this.game ?? { db: this.db },
+        );
       }
     }
 

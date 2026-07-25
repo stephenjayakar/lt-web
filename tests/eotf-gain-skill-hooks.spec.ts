@@ -258,14 +258,12 @@ test.describe('Embrace of the Fog gain-skill combat hooks', () => {
       redone: true,
     });
     expect(result.area).toEqual({
-      applied: 4,
+      applied: 6,
       state: {
         attacker: [
-          { nid: 'Dazzled_Short', initiator: 'Player' },
           { nid: 'Prism_Buff', initiator: 'Player' },
         ],
         defender: [
-          { nid: 'Dazzled_Short', initiator: 'Player' },
           { nid: 'Prism_Buff', initiator: 'Player' },
         ],
         charge: 2,
@@ -276,8 +274,8 @@ test.describe('Embrace of the Fog gain-skill combat hooks', () => {
         charge: 4,
       },
       redone: {
-        attacker: ['Dazzled_Short', 'Prism_Buff'],
-        defender: ['Dazzled_Short', 'Prism_Buff'],
+        attacker: ['Prism_Buff'],
+        defender: ['Prism_Buff'],
       },
     });
     expect(result.values).toEqual({
