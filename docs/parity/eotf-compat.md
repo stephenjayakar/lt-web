@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 243 unverified
+- 270 skill-component NIDs; 233 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -244,8 +244,6 @@ focused browser coverage.
 | aura_target | 262 | consumed |
 | avoid | 76 | hook-and-reference |
 | berserked | 7 | project-local-or-unknown |
-| better_give_ally_status_after_combat_on_hit | 1 | project-local-or-unknown |
-| better_give_status_after_combat_on_hit | 10 | project-local-or-unknown |
 | better_post_combat_damage | 4 | project-local-or-unknown |
 | better_post_combat_splash | 1 | project-local-or-unknown |
 | better_recoil | 5 | project-local-or-unknown |
@@ -348,14 +346,6 @@ focused browser coverage.
 | gain_skills_after_combat | 1 | project-local-or-unknown |
 | gain_terrain | 1 | project-local-or-unknown |
 | galeforce | 6 | consumed |
-| give_ally_status_after_combat | 4 | consumed |
-| give_status_after_attack | 3 | consumed |
-| give_status_after_combat | 23 | consumed |
-| give_status_after_combat_on_hit | 12 | consumed |
-| give_status_after_hit | 11 | consumed |
-| give_status_on_take_hit | 4 | project-local-or-unknown |
-| give_statuses_after_combat | 6 | project-local-or-unknown |
-| give_statuses_on_take_hit | 3 | project-local-or-unknown |
 | global | 29 | reference-only |
 | grey_if_inactive | 38 | consumed |
 | grounded | 10 | hook-only |

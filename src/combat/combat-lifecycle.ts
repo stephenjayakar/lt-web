@@ -416,13 +416,14 @@ function grantCombatStatus(
   target: UnitObject,
   skill: SkillObject,
   statusNid: string,
+  consumeCharge: boolean = true,
 ): number {
   const prefab = game.db?.skills.get(statusNid);
   if (!prefab || !game.actionLog) return 0;
   const status = new SkillObject(prefab);
   status.initiatorNid = source.nid;
   game.actionLog.doAction(new AddSkillAction(target, status));
-  triggerSkillCharge(game, skill);
+  if (consumeCharge) triggerSkillCharge(game, skill);
   return 1;
 }
 
@@ -435,7 +436,17 @@ export function applyCombatSkillEndHooks(
   procPlayback: CombatProcMark[] = [],
 ): number {
   if (!game.actionLog || !game.db) return 0;
+  initiator ??= strikes[0]?.attacker;
+  primaryTarget ??= strikes[0]?.defender;
   let applied = 0;
+  const processedGlobalHooks = new Map<SkillObject, Set<string>>();
+  const claimGlobalHook = (skill: SkillObject, component: string): boolean => {
+    const processed = processedGlobalHooks.get(skill) ?? new Set<string>();
+    if (processed.has(component)) return false;
+    processed.add(component);
+    processedGlobalHooks.set(skill, processed);
+    return true;
+  };
   const grantSkill = (
     unit: UnitObject,
     sourceSkill: SkillObject,
@@ -562,13 +573,6 @@ export function applyCombatSkillEndHooks(
     for (const skill of endCombatSkills) {
       if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
 
-      const afterHit = skill.getComponent<string>('give_status_after_hit');
-      if (afterHit) {
-        for (const strike of pairStrikes.filter((candidate) => candidate.hit)) {
-          applied += grantCombatStatus(game, unit, strike.defender, skill, afterHit);
-        }
-      }
-
       const afterCombat = skill.getComponent<string>('give_status_after_combat');
       if (afterCombat && !isAlly) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombat);
@@ -578,12 +582,77 @@ export function applyCombatSkillEndHooks(
         applied += grantCombatStatus(game, unit, target, skill, allyAfterCombat);
       }
       const afterAttack = skill.getComponent<string>('give_status_after_attack');
-      if (afterAttack && pairStrikes.length > 0) {
+      const isMainAttacker = unit === initiator || unit === initiator?.strikePartner;
+      const unitAttacked = strikes.some((strike) => strike.attacker === unit);
+      if (afterAttack && isMainAttacker && unitAttacked) {
         applied += grantCombatStatus(game, unit, target, skill, afterAttack);
       }
       const afterCombatHit = skill.getComponent<string>('give_status_after_combat_on_hit');
-      if (afterCombatHit && pairStrikes.some((strike) => strike.hit)) {
+      const unitHit = strikes.some((strike) =>
+        strike.attacker === unit && strike.hit);
+      if (afterCombatHit && isMainAttacker && unitHit) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombatHit);
+      }
+      const afterCombatStatuses = skill.getComponent<unknown>('give_statuses_after_combat');
+      if (!isAlly && Array.isArray(afterCombatStatuses) &&
+          afterCombatStatuses.length > 0) {
+        let granted = 0;
+        for (const statusNid of afterCombatStatuses) {
+          if (typeof statusNid !== 'string') continue;
+          granted += grantCombatStatus(
+            game, unit, target, skill, statusNid, false,
+          );
+        }
+        if (granted > 0) {
+          triggerSkillCharge(game, skill);
+          applied += granted;
+        }
+      }
+      const betterAfterHit = skill.getComponent<string>(
+        'better_give_status_after_combat_on_hit',
+      );
+      if (betterAfterHit && claimGlobalHook(
+        skill,
+        'better_give_status_after_combat_on_hit',
+      )) {
+        const targets = new Set(strikes
+          .filter((strike) =>
+            strike.attacker === unit && strike.hit &&
+            checkEnemy(strike.attacker, strike.defender, game.db!))
+          .map((strike) => strike.defender));
+        let granted = 0;
+        for (const hitTarget of targets) {
+          granted += grantCombatStatus(
+            game, unit, hitTarget, skill, betterAfterHit, false,
+          );
+        }
+        if (granted > 0) {
+          triggerSkillCharge(game, skill);
+          applied += granted;
+        }
+      }
+      const betterAllyAfterHit = skill.getComponent<string>(
+        'better_give_ally_status_after_combat_on_hit',
+      );
+      if (betterAllyAfterHit && claimGlobalHook(
+        skill,
+        'better_give_ally_status_after_combat_on_hit',
+      )) {
+        const targets = new Set(strikes
+          .filter((strike) =>
+            strike.attacker === unit && strike.hit &&
+            !checkEnemy(strike.attacker, strike.defender, game.db!))
+          .map((strike) => strike.defender));
+        let granted = 0;
+        for (const hitTarget of targets) {
+          granted += grantCombatStatus(
+            game, unit, hitTarget, skill, betterAllyAfterHit, false,
+          );
+        }
+        if (granted > 0) {
+          triggerSkillCharge(game, skill);
+          applied += granted;
+        }
       }
 
       if (target.currentHp <= 0) {

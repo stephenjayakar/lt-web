@@ -2865,7 +2865,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1087
+          "line": 1156
         }
       ],
       "directReads": [],
@@ -2893,7 +2893,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1104
+          "line": 1173
         }
       ],
       "directReads": [],
@@ -2929,11 +2929,11 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1105
+          "line": 1174
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 20
+          "line": 22
         }
       ],
       "directReads": [],
@@ -2959,11 +2959,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 811
+          "line": 883
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 824
+          "line": 896
         },
         {
           "source": "src/combat/item-system.ts",
@@ -3296,7 +3296,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1005
+          "line": 1074
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -3310,7 +3310,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1005
+          "line": 1074
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -4004,13 +4004,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1011
+          "line": 1080
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1011
+          "line": 1080
         }
       ],
       "matchingWebHooks": [],
@@ -5053,7 +5053,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 920
+          "line": 989
         }
       ],
       "directReads": [],
@@ -5100,11 +5100,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 915
+          "line": 984
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 920
+          "line": 989
         }
       ],
       "directReads": [],
@@ -5194,11 +5194,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 932
+          "line": 1001
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 935
+          "line": 1004
         },
         {
           "source": "src/engine/action.ts",
@@ -5236,11 +5236,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 916
+          "line": 985
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 932
+          "line": 1001
         }
       ],
       "directReads": [],
@@ -5266,17 +5266,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 938
+          "line": 1007
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 943
+          "line": 1012
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 943
+          "line": 1012
         }
       ],
       "matchingWebHooks": [],
@@ -5346,17 +5346,17 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 950
+          "line": 1019
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 954
+          "line": 1023
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 954
+          "line": 1023
         }
       ],
       "matchingWebHooks": [],
@@ -5639,7 +5639,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1087
+          "line": 1156
         }
       ],
       "directReads": [],
@@ -5667,7 +5667,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1106
+          "line": 1175
         }
       ],
       "directReads": [],
@@ -5697,7 +5697,7 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1116
+          "line": 1185
         }
       ],
       "directReads": [],
@@ -8246,7 +8246,7 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 655
+          "line": 724
         },
         {
           "source": "src/combat/item-system.ts",
@@ -8320,7 +8320,7 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 655
+          "line": 724
         },
         {
           "source": "src/combat/item-system.ts",
@@ -8581,11 +8581,11 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 924
+          "line": 996
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 949
+          "line": 1021
         },
         {
           "source": "src/combat/item-system.ts",
@@ -8647,11 +8647,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 924
+          "line": 996
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 949
+          "line": 1021
         },
         {
           "source": "src/combat/item-system.ts",
@@ -8812,7 +8812,7 @@
         },
         {
           "source": "src/combat/combat-solver.ts",
-          "line": 381
+          "line": 453
         },
         {
           "source": "src/combat/item-system.ts",
