@@ -17,7 +17,7 @@ const warnedNids = new Set<string>();
  * fail their compatibility suites. Loud-by-default in dev is provided by
  * the once-per-nid console.warn below instead.
  */
-function isStrictMode(): boolean {
+export function isStrictMode(): boolean {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
     return params.get('strict') === 'true';

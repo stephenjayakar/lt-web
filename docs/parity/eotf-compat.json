@@ -2276,7 +2276,7 @@
         "nid": "blue",
         "uses": 39,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "booster_blocker",
@@ -2414,7 +2414,7 @@
         "nid": "combat_art_proc",
         "uses": 138,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_charge_increase_better",
@@ -2456,7 +2456,7 @@
         "nid": "copysafe",
         "uses": 1085,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit",
@@ -3032,7 +3032,7 @@
         "nid": "has_affinities",
         "uses": 32,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "has_tags",
@@ -3452,7 +3452,7 @@
         "nid": "shit",
         "uses": 80,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shitty_lifelink",
@@ -3524,7 +3524,7 @@
         "nid": "subskills",
         "uses": 27,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "subtle_stat_change",
@@ -3536,7 +3536,7 @@
         "nid": "tether_parameters",
         "uses": 201,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "time",

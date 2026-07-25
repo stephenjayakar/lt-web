@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 270 unverified
+- 270 skill-component NIDs; 263 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -255,7 +255,6 @@ focused browser coverage.
 | block_specific_status | 4 | project-local-or-unknown |
 | block_status | 1 | project-local-or-unknown |
 | bloody_moon | 1 | project-local-or-unknown |
-| blue | 39 | project-local-or-unknown |
 | booster_blocker | 3 | project-local-or-unknown |
 | build_charge | 7 | consumed |
 | cannot_double | 39 | hook-and-reference |
@@ -278,14 +277,12 @@ focused browser coverage.
 | close_counter | 8 | hook-and-reference |
 | combat_art | 172 | consumed |
 | combat_art_all | 1 | project-local-or-unknown |
-| combat_art_proc | 138 | project-local-or-unknown |
 | combat_charge_increase_better | 3 | project-local-or-unknown |
 | combat_charge_increase_by_stat | 1 | consumed |
 | combat_condition | 472 | consumed |
 | combat_trigger_charge | 3 | project-local-or-unknown |
 | combined_time | 56 | reference-only |
 | condition | 558 | consumed |
-| copysafe | 1085 | project-local-or-unknown |
 | crit | 81 | hook-and-reference |
 | crit_avoid | 33 | hook-and-reference |
 | crit_event | 5 | project-local-or-unknown |
@@ -381,7 +378,6 @@ focused browser coverage.
 | grounded | 10 | hook-only |
 | growth_change | 22 | hook-and-reference |
 | growth_change_expression | 3 | project-local-or-unknown |
-| has_affinities | 32 | project-local-or-unknown |
 | has_tags | 82 | consumed |
 | heal_after_follow_up | 1 | project-local-or-unknown |
 | heal_on_kill | 6 | project-local-or-unknown |
@@ -451,7 +447,6 @@ focused browser coverage.
 | savage_status | 21 | project-local-or-unknown |
 | savage_statuses | 3 | project-local-or-unknown |
 | self_nihil | 24 | project-local-or-unknown |
-| shit | 80 | project-local-or-unknown |
 | shitty_lifelink | 1 | project-local-or-unknown |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
@@ -463,9 +458,7 @@ focused browser coverage.
 | stat_change_at_apply_expression | 8 | project-local-or-unknown |
 | stat_change_expression | 84 | hook-only |
 | stat_multiplier | 34 | hook-only |
-| subskills | 27 | project-local-or-unknown |
 | subtle_stat_change | 3 | hook-only |
-| tether_parameters | 201 | project-local-or-unknown |
 | time | 89 | reference-only |
 | trigger_charge | 1 | project-local-or-unknown |
 | True_Miracle_Event | 4 | project-local-or-unknown |
