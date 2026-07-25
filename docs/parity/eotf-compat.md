@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 253 unverified
+- 270 skill-component NIDs; 243 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -235,8 +235,6 @@ focused browser coverage.
 | alternate_damage_formula | 14 | hook-and-reference |
 | alternate_magic_damage_formula | 3 | project-local-or-unknown |
 | alternate_resist_formula | 4 | hook-and-reference |
-| aoe_gain_skill_after_combat | 4 | project-local-or-unknown |
-| aoe_gain_skill_after_kill | 2 | project-local-or-unknown |
 | armsthrift | 3 | consumed |
 | armsthrift_always | 1 | project-local-or-unknown |
 | attack_proc | 10 | reference-only |
@@ -347,14 +345,6 @@ focused browser coverage.
 | gain_on_hit | 1 | project-local-or-unknown |
 | gain_on_miss | 1 | project-local-or-unknown |
 | gain_on_strike | 4 | project-local-or-unknown |
-| gain_skill_after_active_kill | 33 | consumed |
-| gain_skill_after_attack | 3 | consumed |
-| gain_skill_after_combat | 27 | consumed |
-| gain_skill_after_combat_on_take_hit | 2 | project-local-or-unknown |
-| gain_skill_after_crit | 6 | project-local-or-unknown |
-| gain_skill_after_kill | 29 | consumed |
-| gain_skill_after_take_damage | 7 | consumed |
-| gain_skill_after_take_miss | 3 | consumed |
 | gain_skills_after_combat | 1 | project-local-or-unknown |
 | gain_terrain | 1 | project-local-or-unknown |
 | galeforce | 6 | consumed |
