@@ -4,6 +4,7 @@ import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 import { evaluateCondition } from '../events/event-manager';
 import { available as itemAvailable } from './item-system';
+import { skillConditionActive } from './skill-system';
 
 export interface CombatArtOption {
   skill: SkillObject;
@@ -25,15 +26,7 @@ export function combatArtReady(
   }
   if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
       Number(skill.data.get('charge') ?? 0) <= 0) return false;
-  const condition = skill.getComponent<string>('condition');
-  return !condition || evaluateCondition(condition, {
-    game,
-    unit1: unit,
-    position: unit.position ?? undefined,
-    gameVars: game.gameVars,
-    levelVars: game.levelVars,
-    localArgs: new Map([['skill', skill]]),
-  });
+  return skillConditionActive(skill, unit, { game });
 }
 
 export function getCombatArtOptions(

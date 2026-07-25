@@ -114,19 +114,61 @@ function hasAnySkill(unit: UnitObject, componentNid: string): boolean {
   return unit.skills.some(s => s.hasComponent(componentNid));
 }
 
+export interface SkillConditionContext {
+  game?: any;
+  item?: ItemObject | null;
+  target?: UnitObject | null;
+  localArgs?: Map<string, unknown>;
+}
+
+/** EotF SelfNihil condition hook, including inherited multi-skill gates. */
+export function selfNihilActive(skill: SkillObject, unit: UnitObject): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject && !selfNihilActive(parent, unit)) return false;
+  const blockedNids = skill.getComponent<unknown>('self_nihil');
+  return !Array.isArray(blockedNids) || !unit.skills.some((candidate) =>
+    blockedNids.includes(candidate.nid));
+}
+
+/**
+ * Python `skill_system.condition`: a multi-skill child inherits its parent's
+ * gate, every Conditional expression must pass, and EotF's `self_nihil`
+ * component disables the owning skill when any listed skill is present.
+ *
+ * `self_nihil` declares `ignore_conditional = True`, so it must be evaluated
+ * independently of (and before) the ordinary Conditional component.
+ */
+export function skillConditionActive(
+  skill: SkillObject,
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject &&
+      !skillConditionActive(parent, unit, context)) return false;
+  if (!selfNihilActive(skill, unit)) return false;
+
+  const condition = skill.getComponent<string>('condition');
+  if (!condition) return true;
+  const localArgs = new Map(context.localArgs ?? []);
+  if (!localArgs.has('skill')) localArgs.set('skill', skill);
+  return evaluateCondition(condition, {
+    game: context.game,
+    unit1: unit,
+    unit2: context.target ?? undefined,
+    item: context.item ?? unit.equippedWeapon ?? undefined,
+    position: unit.position ?? undefined,
+    gameVars: context.game?.gameVars,
+    levelVars: context.game?.levelVars,
+    localArgs,
+  });
+}
+
 /** Python can_select: any active Unselectable component vetoes player control. */
 export function canSelect(unit: UnitObject, game?: any): boolean {
   return !unit.skills.some((skill) => {
     if (!skill.hasComponent('unselectable')) return false;
-    const condition = skill.getComponent<string>('condition');
-    return !condition || evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      item: unit.equippedWeapon ?? undefined,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    });
+    return skillConditionActive(skill, unit, { game });
   });
 }
 
@@ -183,16 +225,7 @@ export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): nu
   for (const skill of unit.skills) {
     const raw = skill.getComponent<unknown>('empower_heal');
     if (raw === undefined) continue;
-    const condition = skill.getComponent<string>('condition');
-    if (condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      unit2: target,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-      localArgs: new Map([['skill', skill]]),
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game, target })) continue;
     const value = typeof raw === 'number'
       ? raw
       : evaluateExpression(String(raw), {
@@ -223,15 +256,7 @@ export function unitSpriteTint(
 ): UnitSpriteTint | null {
   let result: UnitSpriteTint | null = null;
   for (const skill of unit.skills) {
-    const condition = skill.getComponent<string>('condition');
-    if (condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-      localArgs: new Map([['skill', skill]]),
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
     const staticColor = skill.getComponent<[number, number, number]>('unit_tint');
     if (staticColor) result = { color: staticColor, alpha: 1 };
     const flickerColor =
@@ -410,15 +435,7 @@ export function damagePreventionSkill(
 ): CustomSurvivalSkill | null {
   for (const skill of unit.skills) {
     if (alreadyTriggered.has(skill)) continue;
-    const condition = skill.getComponent<string>('condition');
-    if (condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      item: unit.equippedWeapon ?? undefined,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
     if (skill.hasComponent('build_charge')) {
       const charge = Number(skill.data.get('charge') ?? 0);
       const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
@@ -649,15 +666,7 @@ export function movementType(unit: UnitObject, defaultType: string, game?: any):
   for (const skill of unit.skills) {
     const value = skill.getComponent<string>('movement_type');
     if (typeof value !== 'string' || !value) continue;
-    const condition = skill.getComponent<string>('condition');
-    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      item: unit.equippedWeapon ?? undefined,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
     result = value;
   }
   return result;
@@ -697,14 +706,7 @@ export function aiPriorityMultiplier(unit: UnitObject, game?: any): number {
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>('modify_ai_priority');
     if (typeof value !== 'number') continue;
-    const condition = skill.getComponent<string>('condition');
-    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
     result *= value;
   }
   return result;
@@ -721,15 +723,7 @@ export function priceSkillMultiplier(
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>(componentNid);
     if (typeof value !== 'number') continue;
-    const condition = skill.getComponent<string>('condition');
-    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      item,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game, item })) continue;
     result = value;
   }
   return result;
@@ -747,14 +741,7 @@ export function witchWarpPositions(
   for (const skill of unit.skills) {
     const value = skill.getComponent<string>('witch_warp_expression');
     if (typeof value !== 'string' || !value) continue;
-    const condition = skill.getComponent<string>('condition');
-    if (typeof condition === 'string' && condition && !evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    })) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
     sourceSkill = skill;
     expression = value;
   }

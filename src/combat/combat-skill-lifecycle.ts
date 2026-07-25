@@ -11,7 +11,7 @@ import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from './combat-calcs';
 import type { CombatStrike } from './combat-solver';
-import { checkEnemy } from './skill-system';
+import { checkEnemy, selfNihilActive } from './skill-system';
 
 export type ProcKind = 'attack_proc' | 'defense_proc' | 'attack_pre_proc' | 'defense_pre_proc';
 
@@ -199,6 +199,7 @@ export class CombatSkillLifecycle {
     const requiredMana = skill.getComponent<number>('cost_mana') ??
       skill.getComponent<number>('check_mana');
     if (typeof requiredMana === 'number' && mana < requiredMana) return false;
+    if (!selfNihilActive(skill, unit)) return false;
     const condition = skill.getComponent<string>('condition');
     if (condition && !this.evaluateSkillExpression(
       condition, unit, null, item, null, '', skill,

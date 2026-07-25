@@ -28,6 +28,7 @@ import {
   empowerSplash,
   inventoryCapacityOffsets,
   movementType,
+  skillConditionActive,
   type AlternateSplash,
 } from './skill-system';
 
@@ -236,20 +237,7 @@ function cleave2Positions(
 }
 
 function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][number], item: ItemObject, game?: any): boolean {
-  const parent = skill.data.get('multiSkillSource');
-  if (parent instanceof SkillObject && !availabilitySkillActive(unit, parent, item, game)) {
-    return false;
-  }
-  const condition = skill.getComponent<string>('condition');
-  if (!condition) return true;
-  return evaluateCondition(condition, {
-    game,
-    unit1: unit,
-    item,
-    position: unit.position ?? undefined,
-    gameVars: game?.gameVars,
-    levelVars: game?.levelVars,
-  });
+  return skillConditionActive(skill, unit, { game, item });
 }
 
 function itemComponentsAvailable(
@@ -1710,18 +1698,7 @@ function isEffectiveAgainstTags(
  * (`item = unit.equipped_weapon`).
  */
 export function skillCondition(skill: SkillObject, unit: UnitObject, game?: any): boolean {
-  const parent = skill.data.get('multiSkillSource');
-  if (parent instanceof SkillObject && !skillCondition(parent, unit, game)) return false;
-  const condition = skill.getComponent<string>('condition');
-  if (!condition) return true;
-  return evaluateCondition(condition, {
-    game,
-    unit1: unit,
-    item: unit.equippedWeapon ?? undefined,
-    position: unit.position ?? undefined,
-    gameVars: game?.gameVars,
-    levelVars: game?.levelVars,
-  });
+  return skillConditionActive(skill, unit, { game });
 }
 
 /**

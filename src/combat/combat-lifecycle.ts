@@ -39,7 +39,13 @@ import {
   rekkaMovementEndpoints,
   shoveDestination,
 } from './item-system';
-import { checkAlly, checkEnemy, ignoreForcedMovement, movementType } from './skill-system';
+import {
+  checkAlly,
+  checkEnemy,
+  ignoreForcedMovement,
+  movementType,
+  skillConditionActive,
+} from './skill-system';
 import { evaluateEquation } from './combat-calcs';
 
 interface CombatLifecycleGame {
@@ -115,17 +121,7 @@ function combatSkillEnabled(
   if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) return false;
   if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
       Number.isFinite(charge) && charge <= 0) return false;
-  const condition = skill.getComponent<string>('condition');
-  return !condition || evaluateCondition(condition, {
-    game,
-    unit1: unit,
-    unit2: target,
-    item,
-    position: unit.position ?? undefined,
-    gameVars: game.gameVars,
-    levelVars: game.levelVars,
-    localArgs: new Map([['skill', skill]]),
-  });
+  return skillConditionActive(skill, unit, { game, target, item });
 }
 
 export function triggerSkillCharge(
@@ -779,16 +775,7 @@ export function queueAfterInitiatedCombatEvents(
   for (const skill of bearer.skills) {
     const nid = skill.getComponent<unknown>('event_after_initiated_combat');
     if (typeof nid !== 'string' || nid.length === 0) continue;
-    const condition = skill.getComponent<string>('condition');
-    if (condition && !evaluateCondition(condition, {
-      game,
-      unit1: bearer,
-      unit2: target,
-      position: bearer.position ?? undefined,
-      item,
-      gameVars: game.gameVars,
-      levelVars: game.levelVars,
-    })) continue;
+    if (!skillConditionActive(skill, bearer, { game, target, item })) continue;
 
     if (manager.triggerSpecific(nid, {
       type: 'event_after_initiated_combat',

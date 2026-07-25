@@ -24,8 +24,11 @@ import {
   getEquippedWeapon,
 } from '../../combat/combat-calcs';
 import { FONT } from '../../rendering/bmp-font';
-import { growthChange, modifiedMaximumRange } from '../../combat/skill-system';
-import { evaluateCondition } from '../../events/event-manager';
+import {
+  growthChange,
+  modifiedMaximumRange,
+  skillConditionActive,
+} from '../../combat/skill-system';
 import type { SkillObject } from '../../objects/skill';
 
 // ---------------------------------------------------------------------------
@@ -65,18 +68,7 @@ export function skillInfoPresentation(
   if (typeof manaRequirement === 'number') {
     active &&= Number(unit.currentMana ?? 0) >= manaRequirement;
   }
-  const condition = skill.getComponent<string>('condition');
-  if (condition) {
-    active &&= evaluateCondition(condition, {
-      game,
-      unit1: unit,
-      item: unit.equippedWeapon ?? undefined,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-      localArgs: new Map([['skill', skill]]),
-    });
-  }
+  active &&= skillConditionActive(skill, unit, { game });
   if (!active && skill.hasComponent('hidden_if_inactive')) return 'hidden';
   if (!active && skill.hasComponent('grey_if_inactive')) return 'grey';
   return 'normal';

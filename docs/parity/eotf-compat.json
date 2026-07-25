@@ -3446,7 +3446,7 @@
         "nid": "self_nihil",
         "uses": 24,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shit",
