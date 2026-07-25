@@ -427,7 +427,48 @@ function grantCombatStatus(
   return 1;
 }
 
-/** Apply Python's persistent post-strike/end-combat status skill hooks. */
+function combatComponentNumber(
+  game: CombatLifecycleGame,
+  rawValue: unknown,
+  unit: UnitObject,
+  target: UnitObject,
+  item: ItemObject,
+  skill: SkillObject,
+  mode: string,
+): number {
+  if (typeof rawValue === 'number') return Math.trunc(rawValue);
+  if (typeof rawValue !== 'string' || rawValue.length === 0) return 0;
+  try {
+    const value = evaluateExpression(rawValue, {
+      game,
+      unit1: unit,
+      unit2: target,
+      position: unit.position ?? undefined,
+      item,
+      gameVars: game.gameVars,
+      levelVars: game.levelVars,
+      localArgs: new Map<string, unknown>([
+        ['item2', equippedWeapon(target)],
+        ['mode', mode],
+        ['skill', skill],
+      ]),
+    });
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+  } catch (error) {
+    console.error(`Could not evaluate combat component ${rawValue}`, error);
+    return 0;
+  }
+}
+
+function componentOption(rawValue: unknown, key: string): unknown {
+  if (!rawValue || typeof rawValue !== 'object') return undefined;
+  return rawValue instanceof Map
+    ? rawValue.get(key)
+    : (rawValue as Record<string, unknown>)[key];
+}
+
+/** Apply Python's persistent post-strike/end-combat skill hooks. */
 export function applyCombatSkillEndHooks(
   game: CombatLifecycleGame,
   strikes: CombatStrike[],
@@ -572,6 +613,11 @@ export function applyCombatSkillEndHooks(
     }
     for (const skill of endCombatSkills) {
       if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
+      const isMainAttacker = unit === initiator || unit === initiator?.strikePartner;
+      const hookTarget = isMainAttacker ? primaryTarget : initiator;
+      const isHookTarget = !!hookTarget && target === hookTarget;
+      const unitAttacked = strikes.some((strike) => strike.attacker === unit);
+      const mode = isMainAttacker ? 'attack' : 'defense';
 
       const afterCombat = skill.getComponent<string>('give_status_after_combat');
       if (afterCombat && !isAlly) {
@@ -582,8 +628,6 @@ export function applyCombatSkillEndHooks(
         applied += grantCombatStatus(game, unit, target, skill, allyAfterCombat);
       }
       const afterAttack = skill.getComponent<string>('give_status_after_attack');
-      const isMainAttacker = unit === initiator || unit === initiator?.strikePartner;
-      const unitAttacked = strikes.some((strike) => strike.attacker === unit);
       if (afterAttack && isMainAttacker && unitAttacked) {
         applied += grantCombatStatus(game, unit, target, skill, afterAttack);
       }
@@ -652,6 +696,142 @@ export function applyCombatSkillEndHooks(
         if (granted > 0) {
           triggerSkillCharge(game, skill);
           applied += granted;
+        }
+      }
+
+      const activateHpHook = (
+        component: string,
+        affected: UnitObject,
+        nextHp: number,
+      ): void => {
+        game.actionLog!.doAction(new SetCurrentHpAction(affected, nextHp));
+        triggerSkillCharge(game, skill);
+        claimGlobalHook(skill, component);
+        applied++;
+      };
+      const enemyHookTarget = isHookTarget && checkEnemy(unit, target, game.db);
+      const flatDamage = skill.getComponent<unknown>('better_post_combat_damage');
+      if (flatDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+          !processedGlobalHooks.get(skill)?.has('better_post_combat_damage')) {
+        const amount = combatComponentNumber(
+          game, flatDamage, unit, target, item, skill, mode,
+        );
+        activateHpHook(
+          'better_post_combat_damage',
+          target,
+          Math.max(1, target.currentHp - amount),
+        );
+      }
+      const evalDamage = skill.getComponent<unknown>('eval_post_combat_damage');
+      if (evalDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+          !processedGlobalHooks.get(skill)?.has('eval_post_combat_damage')) {
+        const amount = combatComponentNumber(
+          game, evalDamage, unit, target, item, skill, mode,
+        );
+        activateHpHook(
+          'eval_post_combat_damage',
+          target,
+          Math.max(1, target.currentHp - amount),
+        );
+      }
+      const healing = skill.getComponent<unknown>('post_combat_healing');
+      if (healing !== undefined && enemyHookTarget && unit.currentHp > 0 &&
+          !processedGlobalHooks.get(skill)?.has('post_combat_healing')) {
+        const amount = combatComponentNumber(
+          game, healing, unit, target, item, skill, mode,
+        );
+        activateHpHook(
+          'post_combat_healing',
+          unit,
+          Math.min(unit.maxHp, unit.currentHp + amount),
+        );
+      }
+      const evalHealing = skill.getComponent<unknown>('eval_post_combat_healing');
+      if (evalHealing !== undefined && isHookTarget && unit.currentHp > 0 &&
+          !processedGlobalHooks.get(skill)?.has('eval_post_combat_healing')) {
+        const amount = combatComponentNumber(
+          game, evalHealing, unit, target, item, skill, mode,
+        );
+        activateHpHook(
+          'eval_post_combat_healing',
+          unit,
+          Math.min(unit.maxHp, unit.currentHp + amount),
+        );
+      }
+      const recoil = skill.getComponent<unknown>('better_recoil');
+      const foughtEnemy = strikes.some((strike) =>
+        strike.attacker === unit && checkEnemy(unit, strike.defender, game.db!));
+      if (recoil !== undefined && isHookTarget && unit.currentHp > 0 &&
+          (enemyHookTarget || foughtEnemy) &&
+          !processedGlobalHooks.get(skill)?.has('better_recoil')) {
+        const amount = combatComponentNumber(
+          game, recoil, unit, target, item, skill, mode,
+        );
+        activateHpHook(
+          'better_recoil',
+          unit,
+          Math.max(1, unit.currentHp - amount),
+        );
+      }
+      const evalAll = skill.getComponent<unknown>('eval_post_combat_damage_all');
+      if (evalAll !== undefined && claimGlobalHook(
+        skill,
+        'eval_post_combat_damage_all',
+      )) {
+        const allTargets = new Set(strikes
+          .filter((strike) =>
+            strike.attacker === unit &&
+            checkEnemy(unit, strike.defender, game.db!))
+          .map((strike) => strike.defender));
+        let damaged = 0;
+        for (const hitTarget of allTargets) {
+          if (hitTarget.currentHp <= 0) continue;
+          const amount = combatComponentNumber(
+            game, evalAll, unit, target, item, skill, mode,
+          );
+          game.actionLog.doAction(new SetCurrentHpAction(
+            hitTarget,
+            Math.max(1, hitTarget.currentHp - amount),
+          ));
+          damaged++;
+        }
+        if (damaged > 0) {
+          triggerSkillCharge(game, skill);
+          applied += damaged;
+        }
+      }
+      const betterSplash = skill.getComponent<unknown>('better_post_combat_splash');
+      if (betterSplash !== undefined && isHookTarget && unitAttacked &&
+          target.position && claimGlobalHook(skill, 'better_post_combat_splash')) {
+        const configuredRange = Number(componentOption(betterSplash, 'range') ?? 1);
+        const range = Number.isFinite(configuredRange)
+          ? Math.max(0, Math.trunc(configuredRange))
+          : 1;
+        const rawAmount = Number(componentOption(
+          betterSplash,
+          'Amount/Percentage',
+        ) ?? 5);
+        const percentage = componentOption(betterSplash, 'is percent?') === true;
+        let damaged = 0;
+        for (const splashTarget of game.units?.values?.() ?? []) {
+          if (!splashTarget.position || checkAlly(unit, splashTarget, game.db) ||
+              splashTarget.currentHp <= 0) continue;
+          const distance =
+            Math.abs(splashTarget.position[0] - target.position[0]) +
+            Math.abs(splashTarget.position[1] - target.position[1]);
+          if (distance > range) continue;
+          const amount = percentage
+            ? Math.trunc(splashTarget.maxHp * (rawAmount / 100))
+            : Math.trunc(rawAmount);
+          game.actionLog.doAction(new SetCurrentHpAction(
+            splashTarget,
+            Math.max(1, splashTarget.currentHp - amount),
+          ));
+          damaged++;
+        }
+        if (damaged > 0) {
+          triggerSkillCharge(game, skill);
+          applied += damaged;
         }
       }
 
