@@ -49,7 +49,7 @@ Summary: 158/241 referenced in web source; 81/241 expose at least one matching w
 | stack | Stack | lt-maker/app/engine/skill_components/attribute_components.py:35 | ATTRIBUTE |  |  | 2 | src/engine/action.ts:3574<br>src/engine/action.ts:3576<br>src/engine/states/game-states.ts:11036<br>+5 more |  | consumed |
 | feat | Feat | lt-maker/app/engine/skill_components/attribute_components.py:44 | ATTRIBUTE |  |  |  | src/engine/learned-skills.ts:12 | mention | reference-only |
 | negative | Negative | lt-maker/app/engine/skill_components/attribute_components.py:49 | ATTRIBUTE | condition |  | 3 | src/combat/item-system.ts:1054<br>src/engine/action.ts:3624<br>src/engine/states/game-states.ts:2766 |  | consumed |
-| global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  | src/engine/game-state.ts:1196<br>src/engine/game-state.ts:1198 |  | reference-only |
+| global | Global | lt-maker/app/engine/skill_components/attribute_components.py:57 | ATTRIBUTE |  |  |  | src/engine/game-state.ts:1199<br>src/engine/game-state.ts:1201 |  | reference-only |
 | negate | Negate | lt-maker/app/engine/skill_components/attribute_components.py:62 | ATTRIBUTE |  |  | 1 | src/combat/item-system.ts:1715 |  | consumed |
 | negate_tags | NegateTags | lt-maker/app/engine/skill_components/attribute_components.py:67 | ATTRIBUTE |  |  | 1 | src/combat/item-system.ts:1716 |  | consumed |
 | has_tags | HasTags | lt-maker/app/engine/skill_components/attribute_components.py:74 | ATTRIBUTE | additional_tags |  | 1 | src/combat/item-system.ts:1660 |  | consumed |
@@ -67,7 +67,7 @@ Summary: 158/241 referenced in web source; 81/241 expose at least one matching w
 | wexp_usable_skill | CanUseWeaponType | lt-maker/app/engine/skill_components/base_components.py:115 | BASE | usable_wtypes |  | 1 | src/combat/item-system.ts:288 | mention | consumed |
 | wexp_unusable_skill | CannotUseWeaponType | lt-maker/app/engine/skill_components/base_components.py:125 | BASE | forbidden_wtypes |  | 1 | src/combat/item-system.ts:289 |  | consumed |
 | enemy_wexp_multiplier | EnemyWexpMultiplier | lt-maker/app/engine/skill_components/base_components.py:135 | BASE | enemy_wexp_multiplier | enemyWexpMultiplier |  | src/combat/skill-system.ts:1039<br>src/main.ts:394 |  | hook-and-reference |
-| locktouch | Locktouch | lt-maker/app/engine/skill_components/base_components.py:145 | BASE | can_unlock |  | 1 | src/objects/unit.ts:536 |  | consumed |
+| locktouch | Locktouch | lt-maker/app/engine/skill_components/base_components.py:145 | BASE | can_unlock |  | 1 | src/objects/unit.ts:554 |  | consumed |
 | sight_range_bonus | SightRangeBonus | lt-maker/app/engine/skill_components/base_components.py:153 | BASE | sight_range | sightRange | 1 | src/combat/skill-system.ts:1049<br>src/combat/skill-system.ts:1059<br>src/main.ts:397 |  | hook-and-reference |
 | decreasing_sight_range_bonus | DecreasingSightRangeBonus | lt-maker/app/engine/skill_components/base_components.py:164 | BASE | init, sight_range, on_upkeep | sightRange | 1 | src/combat/skill-system.ts:1050<br>src/combat/skill-system.ts:1065<br>src/main.ts:397 |  | hook-and-reference |
 | ignore_fatigue | IgnoreFatigue | lt-maker/app/engine/skill_components/base_components.py:184 | BASE | ignore_fatigue |  |  |  |  | unreferenced |

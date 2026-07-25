@@ -1510,11 +1510,11 @@
       "webReferences": [
         {
           "source": "src/engine/game-state.ts",
-          "line": 1196
+          "line": 1199
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1198
+          "line": 1201
         }
       ],
       "directReads": [],
@@ -2092,13 +2092,13 @@
       "webReferences": [
         {
           "source": "src/objects/unit.ts",
-          "line": 536
+          "line": 554
         }
       ],
       "directReads": [
         {
           "source": "src/objects/unit.ts",
-          "line": 536
+          "line": 554
         }
       ],
       "matchingWebHooks": [],

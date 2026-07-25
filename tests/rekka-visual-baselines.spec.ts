@@ -7,6 +7,29 @@ async function waitForHarness(page: import('@playwright/test').Page): Promise<vo
 }
 
 test.describe('Rekka visual baselines', () => {
+  test('Chapter 1 small map is centered in a widescreen viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/?harness=true&project=rekka.ltproj&level=1&clean=true&bundle=false');
+    await waitForHarness(page);
+    await page.evaluate(() => (window as any).__harness.stepFrames(8, null));
+
+    const placement = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const cull = game.camera.getCullRect();
+      const viewportWidth = cull.w - 32;
+      const mapWidth = game.tilemap.width * 16;
+      return {
+        renderedOffsetX: cull.x + 16,
+        centeredOffsetX: Math.round((mapWidth - viewportWidth) / 2),
+      };
+    });
+
+    expect(placement.renderedOffsetX).toBe(placement.centeredOffsetX);
+    await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-chapter-1-widescreen.png', {
+      maxDiffPixelRatio: 0.02,
+    });
+  });
+
   test('representative chapter map renders project tiles, units, and HUD', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=true&bundle=false');
     await waitForHarness(page);

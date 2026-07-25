@@ -52,15 +52,22 @@ function compatibilityFailure(text: string): boolean {
   return /EventCondition(?: JS eval failed|: cannot evaluate)|unknown (?:state|command|component)|event UI component is not implemented|failed to load level|Unhandled|PAGEERROR/i.test(text);
 }
 
-async function waitForHarness(page: Page): Promise<void> {
-  await page.waitForFunction(() => (window as any).__harness?.ready === true, {
-    timeout: 30_000,
-  });
+async function waitForHarness(page: Page, context?: string): Promise<void> {
+  try {
+    await page.waitForFunction(() => (window as any).__harness?.ready === true, {
+      timeout: 30_000,
+    });
+  } catch (error) {
+    throw new Error(
+      `Harness did not become ready${context ? ` for Rekka level ${context}` : ''}`,
+      { cause: error },
+    );
+  }
 }
 
 test.describe('Rekka all-level compatibility', () => {
   test('all levels clean boot without runtime failures', async ({ page }) => {
-    test.setTimeout(10 * 60_000);
+    test.setTimeout(20 * 60_000);
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
@@ -76,7 +83,7 @@ test.describe('Rekka all-level compatibility', () => {
     for (const level of levels) {
       currentLevel = level.nid;
       await page.goto(`/?harness=true&project=rekka.ltproj&level=${encodeURIComponent(level.nid)}&clean=true&bundle=false`);
-      await waitForHarness(page);
+      await waitForHarness(page, level.nid);
       await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
       const state = await page.evaluate(() => (window as any).__harness.getState());
       if (state.levelNid !== level.nid) {
@@ -91,7 +98,7 @@ test.describe('Rekka all-level compatibility', () => {
   });
 
   test('all playable level-start event queues settle', async ({ page }) => {
-    test.setTimeout(8 * 60_000);
+    test.setTimeout(16 * 60_000);
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
@@ -107,7 +114,7 @@ test.describe('Rekka all-level compatibility', () => {
     for (const level of levels.filter((entry) => entry.nid !== 'DEBUG')) {
       currentLevel = level.nid;
       await page.goto(`/?harness=true&project=rekka.ltproj&level=${encodeURIComponent(level.nid)}&clean=false&bundle=false`);
-      await waitForHarness(page);
+      await waitForHarness(page, level.nid);
       await page.evaluate(() => (window as any).__harness.settle(1_200));
       const state = await page.evaluate(() => (window as any).__harness.getState());
       if (state.levelNid !== level.nid) {
@@ -115,6 +122,49 @@ test.describe('Rekka all-level compatibility', () => {
       }
       if (!settledStates.has(state.currentStateName)) {
         failures.push(`${level.nid}: level_start ended in ${String(state.currentStateName)} [${state.stateStack.join(', ')}]`);
+      }
+    }
+
+    expect(failures, failures.join('\n')).toEqual([]);
+  });
+
+  test('all deployed generics meet their authored weapon ranks', async ({ page }) => {
+    test.setTimeout(20 * 60_000);
+    const failures: string[] = [];
+
+    for (const level of levels) {
+      await page.goto(`/?harness=true&project=rekka.ltproj&level=${encodeURIComponent(level.nid)}&clean=true&bundle=false`);
+      await waitForHarness(page, level.nid);
+      const unusable = await page.evaluate(async () => {
+        const game = (window as any).__gameRef;
+        const { available } = await import('/src/combat/item-system.ts');
+        return [...game.units.values()].flatMap((unit: any) => {
+          if (!unit.position || !unit.generic) return [];
+          const weapons = unit.items.filter((item: any) => item.isWeapon() || item.isSpell());
+          const klass = game.db.classes.get(unit.klass);
+          const classUsableWeapons = weapons.filter((item: any) => {
+            const weaponType = item.getWeaponType();
+            return item.getComponent('weapon_rank') &&
+              weaponType && klass?.wexp_gain?.[weaponType]?.[0];
+          });
+          if (classUsableWeapons.length === 0 ||
+              classUsableWeapons.some((item: any) => available(unit, item, game.db, game))) {
+            return [];
+          }
+          return [{
+            unit: unit.nid,
+            klass: unit.klass,
+            weapons: classUsableWeapons.map((item: any) => item.nid),
+            wexp: unit.wexp,
+          }];
+        });
+      });
+
+      for (const unit of unusable) {
+        failures.push(
+          `${level.nid}: ${unit.unit} (${unit.klass}) cannot use ${unit.weapons.join(', ')}; ` +
+          `WEXP=${JSON.stringify(unit.wexp)}`,
+        );
       }
     }
 

@@ -1144,8 +1144,9 @@ export class GameState {
     team: string,
     position: [number, number] | null,
     ai: NID,
+    generic: boolean = false,
   ): UnitObject {
-    const unit = this.buildUnit(prefab, team, ai);
+    const unit = this.buildUnit(prefab, team, ai, generic);
     this.registerUnit(unit, position);
     return unit;
   }
@@ -1158,7 +1159,7 @@ export class GameState {
    * registration step in an undoable action while construction itself
    * (which has no observable side effects on shared state) happens eagerly.
    */
-  buildUnit(prefab: UnitPrefab, team: string, ai: NID): UnitObject {
+  buildUnit(prefab: UnitPrefab, team: string, ai: NID, generic: boolean = false): UnitObject {
     const klassDef = this.db.classes.get(prefab.klass);
     if (!klassDef) {
       throw new Error(
@@ -1169,6 +1170,7 @@ export class GameState {
     const unit = new UnitObject(prefab, klassDef);
     unit.team = team;
     unit.ai = ai;
+    unit.generic = generic;
 
     // Equip starting items
     for (const entry of prefab.starting_items) {
@@ -1188,6 +1190,7 @@ export class GameState {
         registerTree(item, `${unit.nid}_${item.nid}_${unit.items.length}`);
       }
     }
+    if (generic) unit.calculateNeededWexpFromItems(this.db);
 
     // Python UnitObject creates every DB-wide Global skill before personal and
     // class skills. These mechanic-level skills must exist on newly built
@@ -1353,8 +1356,7 @@ export class GameState {
       affinity: '',
     };
 
-    const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
-    unit.generic = true;
+    const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai, true);
     unit.variant = data.variant ?? null;
     unit.faction = data.faction || null;
     const unitFaction = data.faction ? this.db.factions.get(data.faction) : null;
