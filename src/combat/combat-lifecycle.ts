@@ -440,16 +440,54 @@ export function applyCombatSkillEndHooks(
     unit: UnitObject,
     sourceSkill: SkillObject,
     skillNid: unknown,
-    initiated: boolean = false,
+    initiator: UnitObject | null = null,
+    consumeCharge: boolean = true,
   ): number => {
     if (typeof skillNid !== 'string') return 0;
     const prefab = game.db?.skills.get(skillNid);
     if (!prefab) return 0;
     const granted = new SkillObject(prefab);
-    if (initiated) granted.initiatorNid = unit.nid;
+    if (initiator) granted.initiatorNid = initiator.nid;
     game.actionLog!.doAction(new AddSkillAction(unit, granted));
-    triggerSkillCharge(game, sourceSkill);
+    if (consumeCharge) triggerSkillCharge(game, sourceSkill);
     return 1;
+  };
+  const grantAreaSkills = (
+    unit: UnitObject,
+    sourceSkill: SkillObject,
+    rawValue: unknown,
+  ): number => {
+    if (!unit.position || !rawValue || typeof rawValue !== 'object') return 0;
+    const get = (key: string): unknown => rawValue instanceof Map
+      ? rawValue.get(key)
+      : (rawValue as Record<string, unknown>)[key];
+    const skillNid = get('skill');
+    const configuredRange = Number(get('range') ?? 1);
+    const range = Number.isFinite(configuredRange)
+      ? Math.max(0, Math.trunc(configuredRange))
+      : 1;
+    const targetKind = String(get('target') ?? 'ally');
+    let granted = 0;
+    for (const candidate of game.units?.values?.() ?? []) {
+      if (!candidate.position || candidate === unit) continue;
+      if (game.board?.getUnit(
+        candidate.position[0],
+        candidate.position[1],
+      ) !== candidate) continue;
+      const distance = Math.abs(candidate.position[0] - unit.position[0]) +
+        Math.abs(candidate.position[1] - unit.position[1]);
+      if (distance > range) continue;
+      const allied = checkAlly(unit, candidate, game.db);
+      if ((allied && (targetKind === 'ally' || targetKind === 'any')) ||
+          (!allied && (targetKind === 'enemy' || targetKind === 'any'))) {
+        granted += grantSkill(candidate, sourceSkill, skillNid, unit, false);
+      }
+    }
+    if (get('affect_self') === true) {
+      granted += grantSkill(unit, sourceSkill, skillNid, unit, false);
+    }
+    if (granted > 0) triggerSkillCharge(game, sourceSkill);
+    return granted;
   };
   for (const strike of strikes) {
     const proc = strike.survivalProc;
@@ -553,11 +591,45 @@ export function applyCombatSkillEndHooks(
         if (unit === initiator) {
           applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_active_kill'));
         }
+        applied += grantAreaSkills(
+          unit,
+          skill,
+          skill.getComponent('aoe_gain_skill_after_kill'),
+        );
       }
       applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_combat'));
       if (unit === initiator && pairStrikes.some((strike) => strike.attacker === unit)) {
         applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_attack'));
       }
+      if ((unit === initiator || unit === initiator?.strikePartner) &&
+          strikes.some((strike) => strike.attacker === unit && strike.crit)) {
+        applied += grantSkill(
+          unit,
+          skill,
+          skill.getComponent('gain_skill_after_crit'),
+          target,
+        );
+      }
+      if (strikes.some((strike) => strike.defender === unit && strike.hit)) {
+        applied += grantSkill(
+          unit,
+          skill,
+          skill.getComponent('gain_skill_after_combat_on_take_hit'),
+          unit,
+        );
+      }
+      if (unit === initiator && target.currentHp > 0 && strikes.length > 0) {
+        applied += grantSkill(
+          unit,
+          skill,
+          skill.getComponent('gain_skill_after_active_not_kill'),
+        );
+      }
+      applied += grantAreaSkills(
+        unit,
+        skill,
+        skill.getComponent('aoe_gain_skill_after_combat'),
+      );
 
       const splashDamage = Number(skill.getComponent<number>('post_combat_splash') ?? 0);
       const splashAoe = Number(skill.getComponent<number>('post_combat_splash_aoe') ?? 0);

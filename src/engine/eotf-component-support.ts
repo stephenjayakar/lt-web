@@ -9,6 +9,8 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
 ]);
 
 export const EOTF_SKILL_COMPONENTS = new Set<string>([
+  'aoe_gain_skill_after_combat',
+  'aoe_gain_skill_after_kill',
   'blue',
   'combat_art_proc',
   'copysafe',
@@ -19,6 +21,14 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'event_after_combat_if_take_damage',
   'event_after_kill',
   'event_before_combat',
+  'gain_skill_after_active_kill',
+  'gain_skill_after_attack',
+  'gain_skill_after_combat',
+  'gain_skill_after_combat_on_take_hit',
+  'gain_skill_after_crit',
+  'gain_skill_after_kill',
+  'gain_skill_after_take_damage',
+  'gain_skill_after_take_miss',
   'has_affinities',
   'self_nihil',
   'shit',
