@@ -43,6 +43,7 @@ import {
   checkAlly,
   checkEnemy,
   ignoreForcedMovement,
+  modifiedHealAmount,
   movementType,
   skillConditionActive,
 } from './skill-system';
@@ -743,7 +744,10 @@ export function applyCombatSkillEndHooks(
         activateHpHook(
           'post_combat_healing',
           unit,
-          Math.min(unit.maxHp, unit.currentHp + amount),
+          Math.min(
+            unit.maxHp,
+            unit.currentHp + modifiedHealAmount(amount, unit, unit, game),
+          ),
         );
       }
       const evalHealing = skill.getComponent<unknown>('eval_post_combat_healing');
@@ -755,7 +759,10 @@ export function applyCombatSkillEndHooks(
         activateHpHook(
           'eval_post_combat_healing',
           unit,
-          Math.min(unit.maxHp, unit.currentHp + amount),
+          Math.min(
+            unit.maxHp,
+            unit.currentHp + modifiedHealAmount(amount, unit, unit, game),
+          ),
         );
       }
       const recoil = skill.getComponent<unknown>('better_recoil');
@@ -832,6 +839,40 @@ export function applyCombatSkillEndHooks(
         if (damaged > 0) {
           triggerSkillCharge(game, skill);
           applied += damaged;
+        }
+      }
+      const allyStrikeheal = skill.getComponent<unknown>('ally_strikeheal_ranged');
+      if (allyStrikeheal !== undefined && isHookTarget && unitAttacked &&
+          unit.position && claimGlobalHook(skill, 'ally_strikeheal_ranged')) {
+        const configuredRange = Number(componentOption(allyStrikeheal, 'range') ?? 1);
+        const range = Number.isFinite(configuredRange)
+          ? Math.max(0, Math.trunc(configuredRange))
+          : 1;
+        const rawAmount = Number(componentOption(
+          allyStrikeheal,
+          'Amount/Percentage',
+        ) ?? 5);
+        const percentage = componentOption(allyStrikeheal, 'is percent?') === true;
+        let healed = 0;
+        for (const ally of game.units?.values?.() ?? []) {
+          if (!ally.position || !checkAlly(unit, ally, game.db)) continue;
+          if (game.board?.getUnit(ally.position[0], ally.position[1]) !== ally) continue;
+          const distance =
+            Math.abs(ally.position[0] - unit.position[0]) +
+            Math.abs(ally.position[1] - unit.position[1]);
+          if (distance > range) continue;
+          const amount = percentage
+            ? Math.trunc(ally.maxHp * (rawAmount / 100))
+            : Math.trunc(rawAmount);
+          game.actionLog.doAction(new SetCurrentHpAction(
+            ally,
+            ally.currentHp + modifiedHealAmount(amount, ally, unit, game),
+          ));
+          healed++;
+        }
+        if (healed > 0) {
+          triggerSkillCharge(game, skill);
+          applied += healed;
         }
       }
 

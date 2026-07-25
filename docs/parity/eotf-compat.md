@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 226 unverified
+- 270 skill-component NIDs; 218 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -223,9 +223,6 @@ focused browser coverage.
 | additional_inventory | 3 | project-local-or-unknown |
 | all_brave | 5 | hook-only |
 | allowed_weapons | 167 | consumed |
-| ally_lifelink_ranged | 2 | project-local-or-unknown |
-| ally_lifelink_target | 1 | project-local-or-unknown |
-| ally_strikeheal_ranged | 1 | project-local-or-unknown |
 | alternate_accuracy_formula | 2 | hook-and-reference |
 | alternate_avoid_formula | 4 | hook-and-reference |
 | alternate_crit_accuracy_formula | 3 | hook-and-reference |
@@ -305,8 +302,7 @@ focused browser coverage.
 | dynamic_resist_multiplier | 8 | project-local-or-unknown |
 | dynamic_stat_change | 2 | project-local-or-unknown |
 | empower_heal | 10 | hook-and-reference |
-| empower_heal_received | 2 | unreferenced |
-| empower_heal_received_multiplier | 3 | project-local-or-unknown |
+| empower_heal_received | 2 | reference-only |
 | end_time | 43 | reference-only |
 | enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
@@ -319,7 +315,6 @@ focused browser coverage.
 | eval_galeforce | 3 | project-local-or-unknown |
 | eval_heal_on_kill | 1 | project-local-or-unknown |
 | eval_hit | 21 | hook-only |
-| eval_lifelink | 3 | project-local-or-unknown |
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | unreferenced |
 | eval_proc_rate | 2 | project-local-or-unknown |
@@ -361,8 +356,6 @@ focused browser coverage.
 | is_terrain | 9 | unreferenced |
 | item_override | 199 | consumed |
 | kill_charge_increase | 3 | project-local-or-unknown |
-| lifelink | 16 | consumed |
-| lifelink_on_crit | 2 | project-local-or-unknown |
 | limit_maximum_range | 8 | reference-only |
 | limited_charge | 2 | project-local-or-unknown |
 | live_to_serve | 1 | consumed |
@@ -412,7 +405,6 @@ focused browser coverage.
 | savage_blow_fates | 6 | project-local-or-unknown |
 | savage_status | 21 | project-local-or-unknown |
 | savage_statuses | 3 | project-local-or-unknown |
-| shitty_lifelink | 1 | project-local-or-unknown |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
 | smart_oversplash | 3 | hook-and-reference |

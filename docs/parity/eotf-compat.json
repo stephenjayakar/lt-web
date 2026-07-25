@@ -2084,19 +2084,19 @@
         "nid": "ally_lifelink_ranged",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ally_lifelink_target",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ally_strikeheal_ranged",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_accuracy_formula",
@@ -2641,14 +2641,14 @@
       {
         "nid": "empower_heal_received",
         "uses": 2,
-        "structuralStatus": "unreferenced",
+        "structuralStatus": "reference-only",
         "semanticStatus": "unverified"
       },
       {
         "nid": "empower_heal_received_multiplier",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "end_time",
@@ -2738,7 +2738,7 @@
         "nid": "eval_lifelink",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_max_range",
@@ -3134,13 +3134,13 @@
         "nid": "lifelink",
         "uses": 16,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lifelink_on_crit",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "limit_maximum_range",
@@ -3458,7 +3458,7 @@
         "nid": "shitty_lifelink",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "sight_range_bonus",

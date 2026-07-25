@@ -243,6 +243,75 @@ export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): nu
   return total;
 }
 
+function healingSkillValue(
+  skill: SkillObject,
+  component: string,
+  owner: UnitObject,
+  other: UnitObject,
+  game: any,
+): number | null {
+  const raw = skill.getComponent<unknown>(component);
+  if (raw === undefined) return null;
+  if (!skillConditionActive(skill, owner, { game, target: other })) return null;
+  const value = typeof raw === 'number'
+    ? raw
+    : evaluateExpression(String(raw), {
+      game,
+      unit1: owner,
+      unit2: other,
+      position: owner.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map([['skill', skill]]),
+    });
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+/** EotF's shared `_get_heal_amount`, including additive and multiplier hooks. */
+export function modifiedHealAmount(
+  baseAmount: number,
+  target: UnitObject,
+  healer: UnitObject | null,
+  game: any,
+): number {
+  if (baseAmount <= 0) return baseAmount;
+  let additive = 0;
+  let multiplier = 1;
+  if (healer) {
+    additive += empowerHeal(healer, target, game);
+    for (const skill of healer.skills) {
+      const value = healingSkillValue(
+        skill,
+        'empower_heal_multiplier',
+        healer,
+        target,
+        game,
+      );
+      if (value !== null) multiplier *= value;
+    }
+  }
+  for (const skill of target.skills) {
+    const received = healingSkillValue(
+      skill,
+      'empower_heal_received',
+      target,
+      healer ?? target,
+      game,
+    );
+    if (received !== null) additive += received;
+    const receivedMultiplier = healingSkillValue(
+      skill,
+      'empower_heal_received_multiplier',
+      target,
+      healer ?? target,
+      game,
+    );
+    if (receivedMultiplier !== null) multiplier *= receivedMultiplier;
+  }
+  return Math.trunc(multiplier * (baseAmount + additive));
+}
+
 export interface UnitSpriteTint {
   color: [number, number, number];
   alpha: number;

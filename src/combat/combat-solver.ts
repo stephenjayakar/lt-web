@@ -11,6 +11,7 @@ import {
   type CombatProcMark,
 } from './combat-skill-lifecycle';
 import { AddSkillAction } from '../engine/action';
+import { evaluateExpression } from '../events/event-manager';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
@@ -48,6 +49,10 @@ export interface CombatStrike {
   defenseProcs?: CombatProcMark[];
   /** Rekka project-local lethal-strike prevention hook consumed by this strike. */
   survivalProc?: skillSystem.CustomSurvivalSkill;
+  /** Net self HP change from skill after_strike hooks, applied in strike order. */
+  selfSkillHpChange?: number;
+  /** Ally HP changes from skill after_strike hooks, applied in strike order. */
+  allySkillHpChanges?: Array<{ unit: UnitObject; amount: number }>;
 }
 
 /** Valid CombatScript tokens for interact_unit. */
@@ -128,6 +133,7 @@ export class CombatPhaseSolver {
     ignoreDying: boolean = false,
   ): void {
     if (!strike.hit && !hasDamageOnMiss(strike.item)) {
+      strike.selfSkillHpChange = 0;
       this.applyPostStrikeSkillEffects(target, strike);
       return;
     }
@@ -150,10 +156,18 @@ export class CombatPhaseSolver {
       ];
       this.customSurvivalTriggered.add(proc.skill);
       hp.hp = proc.component === 'ignore_damage' ? before : 1;
+      this.applySelfLifelink(
+        strike,
+        Math.max(0, Math.min(before, before - hp.hp)),
+      );
       this.applyPostStrikeSkillEffects(target, strike);
       return;
     }
     hp.hp = ignoreDying && after <= 0 ? 1 : after;
+    this.applySelfLifelink(
+      strike,
+      Math.max(0, Math.min(before, strike.damage)),
+    );
     this.applyPostStrikeSkillEffects(target, strike);
   }
 
@@ -197,6 +211,132 @@ export class CombatPhaseSolver {
       attempted = true;
     }
     if (attempted) skillSystem.consumeMiracleCharge(sourceSkill);
+  }
+
+  private evaluateSkillNumber(
+    expression: string,
+    strike: CombatStrike,
+    skill: SkillObject,
+  ): number {
+    try {
+      const value = evaluateExpression(expression, {
+        game: this.game,
+        unit1: strike.attacker,
+        unit2: strike.defender,
+        position: strike.attacker.position ?? undefined,
+        item: strike.item,
+        gameVars: this.game?.gameVars,
+        levelVars: this.game?.levelVars,
+        localArgs: new Map<string, unknown>([
+          ['item2', strike.defender.equippedWeapon],
+          ['mode', strike.mode ?? (strike.isCounter ? 'defense' : 'attack')],
+          ['skill', skill],
+        ]),
+      });
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+    } catch (error) {
+      console.error(`Could not evaluate lifelink component ${expression}`, error);
+      return 0;
+    }
+  }
+
+  private applySelfLifelink(strike: CombatStrike, trueDamage: number): void {
+    strike.selfSkillHpChange = 0;
+    strike.allySkillHpChanges = [];
+    if (!strike.hit) return;
+    for (const skill of [...strike.attacker.skills]) {
+      if (!this.combatSkillActive(strike.attacker, skill, strike)) continue;
+      const apply = (
+        amount: number,
+        triggerAtZero: boolean = false,
+        useHealModifiers: boolean = false,
+      ): void => {
+        const adjusted = useHealModifiers
+          ? skillSystem.modifiedHealAmount(
+            amount,
+            strike.attacker,
+            strike.attacker,
+            this.game,
+          )
+          : amount;
+        if (adjusted === 0 && !triggerAtZero) return;
+        strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + adjusted;
+        skillSystem.consumeMiracleCharge(skill);
+      };
+      const lifelink = skill.getComponent<unknown>('lifelink');
+      if (typeof lifelink === 'number') {
+        apply(Math.trunc(trueDamage * lifelink), true);
+      }
+      const unbounded = skill.getComponent<unknown>('shitty_lifelink');
+      if (typeof unbounded === 'number') {
+        apply(Math.trunc(strike.damage * unbounded), false, true);
+      }
+      const evaluated = skill.getComponent<unknown>('eval_lifelink');
+      if (typeof evaluated === 'string') {
+        apply(this.evaluateSkillNumber(evaluated, strike, skill), false, true);
+      }
+      const onCrit = skill.getComponent<unknown>('lifelink_on_crit');
+      if (strike.crit && typeof onCrit === 'number') {
+        apply(Math.trunc(trueDamage * onCrit), false, true);
+      }
+      const grantAllies = (
+        percentage: number,
+        center: UnitObject,
+        range: number,
+        includeSelf: boolean,
+      ): void => {
+        const amount = Math.trunc(trueDamage * percentage);
+        if (amount <= 0 || !center.position) return;
+        let granted = 0;
+        for (const candidate of this.game?.units?.values?.() ?? []) {
+          if (!candidate.position) continue;
+          if (candidate === strike.attacker && !includeSelf) continue;
+          if (!skillSystem.checkAlly(strike.attacker, candidate, this.game.db)) continue;
+          if (this.game.board?.getUnit(
+            candidate.position[0],
+            candidate.position[1],
+          ) !== candidate) continue;
+          const distance =
+            Math.abs(candidate.position[0] - center.position[0]) +
+            Math.abs(candidate.position[1] - center.position[1]);
+          if (distance > range) continue;
+          strike.allySkillHpChanges!.push({
+            unit: candidate,
+            amount: skillSystem.modifiedHealAmount(
+              amount,
+              candidate,
+              strike.attacker,
+              this.game,
+            ),
+          });
+          granted++;
+        }
+        if (granted > 0) skillSystem.consumeMiracleCharge(skill);
+      };
+      const adjacent = skill.getComponent<unknown>('ally_lifelink');
+      if (typeof adjacent === 'number') {
+        grantAllies(adjacent, strike.attacker, 1, false);
+      }
+      const targetAdjacent = skill.getComponent<unknown>('ally_lifelink_target');
+      if (typeof targetAdjacent === 'number') {
+        grantAllies(targetAdjacent, strike.defender, 1, false);
+      }
+      const ranged = skill.getComponent<unknown>('ally_lifelink_ranged');
+      if (ranged && typeof ranged === 'object') {
+        const option = (key: string): unknown => ranged instanceof Map
+          ? ranged.get(key)
+          : (ranged as Record<string, unknown>)[key];
+        const percentage = Number(option('percentage') ?? 0.5);
+        const range = Math.max(0, Math.trunc(Number(option('range') ?? 1)));
+        grantAllies(
+          Number.isFinite(percentage) ? percentage : 0.5,
+          strike.attacker,
+          Number.isFinite(range) ? range : 1,
+          option('include self?') === true,
+        );
+      }
+    }
   }
 
   private applyPostStrikeSkillEffects(

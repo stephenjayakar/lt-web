@@ -267,6 +267,11 @@ export class MapCombat {
     this.procPlayback = [...solver.procPlayback];
     this.guardGaugeResults = new Map(solver.guardGaugeResults);
     this.miracleSavedSet = new Set(solver.miracleSaved);
+    for (const strike of this.strikes) {
+      for (const effect of strike.allySkillHpChanges ?? []) {
+        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
+      }
+    }
     this.lifecycleRecord.finish();
 
     this.state = 'init';
@@ -442,17 +447,71 @@ export class MapCombat {
           : eclipseDamage(targetHp);
       }
       if (strike.defender === this.attacker) {
+        const itemHeal = lifelinkHealForStrike(
+          strike.attacker,
+          strike.attacker === this.attacker
+            ? this.attackItem
+            : (this.defenseItem ?? strike.item),
+          strike,
+          atkHp,
+        );
+        const selfChange = itemHeal + (strike.selfSkillHpChange ?? 0);
+        if (defenderHps.has(strike.attacker)) {
+          defenderHps.set(
+            strike.attacker,
+            Math.max(0, Math.min(
+              strike.attacker.maxHp,
+              (defenderHps.get(strike.attacker) ?? strike.attacker.currentHp) +
+                selfChange,
+            )),
+          );
+        }
         atkHp -= damage;
       } else if (defenderHps.has(strike.defender)) {
         const before = defenderHps.get(strike.defender) ?? strike.defender.currentHp;
         // Lifelink after_strike: heal per hitting attacker strike, clamping
         // the strike's damage to the defender's remaining HP so overkill
         // damage never heals. Mirrors Python `Lifelink.after_strike`.
+        const itemHeal = lifelinkHealForStrike(
+          strike.attacker,
+          strike.attacker === this.attacker
+            ? this.attackItem
+            : (this.defenseItem ?? strike.item),
+          strike,
+          before,
+        );
+        const selfChange = itemHeal + (strike.selfSkillHpChange ?? 0);
         if (strike.attacker === this.attacker) {
-          const heal = lifelinkHealForStrike(this.attacker, this.attackItem, strike, before);
-          if (heal > 0) atkHp = Math.min(attackerMaxHp, atkHp + heal);
+          atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + selfChange));
+        } else if (defenderHps.has(strike.attacker)) {
+          defenderHps.set(
+            strike.attacker,
+            Math.max(0, Math.min(
+              strike.attacker.maxHp,
+              (defenderHps.get(strike.attacker) ?? strike.attacker.currentHp) +
+                selfChange,
+            )),
+          );
         }
         defenderHps.set(strike.defender, before - damage);
+      }
+      for (const effect of strike.allySkillHpChanges ?? []) {
+        if (effect.unit === this.attacker) {
+          atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + effect.amount));
+        } else if (defenderHps.has(effect.unit)) {
+          defenderHps.set(
+            effect.unit,
+            Math.max(0, Math.min(
+              effect.unit.maxHp,
+              (defenderHps.get(effect.unit) ?? effect.unit.currentHp) + effect.amount,
+            )),
+          );
+        } else {
+          effect.unit.currentHp = Math.max(
+            0,
+            Math.min(effect.unit.maxHp, effect.unit.currentHp + effect.amount),
+          );
+        }
       }
     }
 
