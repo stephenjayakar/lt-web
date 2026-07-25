@@ -8,10 +8,21 @@ interface RekkaLevel {
   name: string;
 }
 
+interface RekkaEvent {
+  nid: string;
+  level_nid: string | null;
+  trigger: string | null;
+  _source: string[];
+}
+
 const levels = JSON.parse(fs.readFileSync(
   path.join(process.cwd(), 'lt-maker/rekka.ltproj/game_data/levels.json'),
   'utf8',
 )) as RekkaLevel[];
+const events = JSON.parse(fs.readFileSync(
+  path.join(process.cwd(), 'lt-maker/rekka.ltproj/game_data/events.json'),
+  'utf8',
+)) as RekkaEvent[];
 const settledStates = new Set(['free', 'prep_main', 'base_main']);
 const rekkaManifest = JSON.parse(fs.readFileSync(
   path.join(process.cwd(), 'docs/parity/rekka-compat.json'),
@@ -165,6 +176,65 @@ test.describe('Rekka all-level compatibility', () => {
           `${level.nid}: ${unit.unit} (${unit.klass}) cannot use ${unit.weapons.join(', ')}; ` +
           `WEXP=${JSON.stringify(unit.wexp)}`,
         );
+      }
+    }
+
+    expect(failures, failures.join('\n')).toEqual([]);
+  });
+
+  test('every chapter victory event runs level-end and loads its successor', async ({ page }) => {
+    test.setTimeout(20 * 60_000);
+    const failures: string[] = [];
+    const playable = levels.filter((level) => level.nid !== 'DEBUG');
+
+    for (let index = 0; index < playable.length - 1; index++) {
+      const level = playable[index];
+      const expectedNext = playable[index + 1].nid;
+      // Chapter 33's three-stage victory is covered by the dedicated real
+      // seize-flow regression below. For other chapters, select the shortest
+      // authored victory event so this sweep exercises their own win command
+      // plus all level_end scripts and successor loading.
+      if (level.nid === '33') continue;
+      const victory = events
+        .filter((event) =>
+          event.level_nid === level.nid &&
+          event._source.some((line) => line.trim() === 'win_game'))
+        .sort((left, right) => left._source.length - right._source.length)[0];
+      if (!victory) {
+        failures.push(`${level.nid}: no authored victory event`);
+        continue;
+      }
+
+      await page.goto(`/?harness=true&project=rekka.ltproj&level=${encodeURIComponent(level.nid)}&clean=true&bundle=false`);
+      await waitForHarness(page, level.nid);
+      await page.evaluate(async ({ eventNid }) => {
+        const game = (window as any).__gameRef;
+        const { GameEvent } = await import('/src/events/event-manager.ts');
+        const prefab = game.db.events.get(eventNid);
+        if (!prefab) throw new Error(`Missing event ${eventNid}`);
+        game.eventManager.eventQueue.push(new GameEvent(prefab, {
+          type: prefab.trigger ?? 'test',
+          levelNid: game.currentLevel?.nid ?? '',
+        }));
+        game.state.change('event');
+        (window as any).__harness.settle(3_000);
+      }, { eventNid: victory.nid });
+
+      try {
+        await page.waitForFunction(
+          (nextLevel) => (window as any).__gameRef?.currentLevel?.nid === nextLevel,
+          expectedNext,
+          { timeout: 30_000 },
+        );
+        const state = await page.evaluate(() => (window as any).__harness.getState());
+        if (state.levelNid !== expectedNext) {
+          failures.push(
+            `${level.nid}: ${victory.nid} reached ${String(state.levelNid)}, ` +
+            `expected ${expectedNext}`,
+          );
+        }
+      } catch {
+        failures.push(`${level.nid}: ${victory.nid} did not load ${expectedNext}`);
       }
     }
 

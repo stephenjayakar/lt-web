@@ -269,8 +269,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 - [x] `npm run build`
 - [x] `npm run audit:parity`
 - [x] Rekka component/expression/resource inventory is clean
-- [x] Rekka all-level boot, event-settle, and deployed generic weapon-rank
-  suites are green
+- [x] Rekka all-level boot, event-settle, authored victory-transition, and
+  deployed generic weapon-rank suites are green
 - [x] Rekka checkpoint campaign and optional-content suites are green
 - [x] Full serial Playwright suite is green
 - [x] `git diff --check`
