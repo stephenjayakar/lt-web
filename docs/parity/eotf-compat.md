@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 233 unverified
+- 270 skill-component NIDs; 226 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -244,9 +244,6 @@ focused browser coverage.
 | aura_target | 262 | consumed |
 | avoid | 76 | hook-and-reference |
 | berserked | 7 | project-local-or-unknown |
-| better_post_combat_damage | 4 | project-local-or-unknown |
-| better_post_combat_splash | 1 | project-local-or-unknown |
-| better_recoil | 5 | project-local-or-unknown |
 | blinded | 6 | project-local-or-unknown |
 | block_specific_status | 4 | project-local-or-unknown |
 | block_status | 1 | project-local-or-unknown |
@@ -325,9 +322,6 @@ focused browser coverage.
 | eval_lifelink | 3 | project-local-or-unknown |
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | unreferenced |
-| eval_post_combat_damage | 3 | project-local-or-unknown |
-| eval_post_combat_damage_all | 1 | project-local-or-unknown |
-| eval_post_combat_healing | 1 | project-local-or-unknown |
 | eval_proc_rate | 2 | project-local-or-unknown |
 | eval_range | 3 | unreferenced |
 | eval_regeneration | 11 | project-local-or-unknown |
@@ -400,7 +394,6 @@ focused browser coverage.
 | permanent_damage | 1 | project-local-or-unknown |
 | post_combat_damage | 2 | unreferenced |
 | post_combat_damage_percent | 1 | unreferenced |
-| post_combat_healing | 3 | project-local-or-unknown |
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |
 | proc_rate | 12 | consumed |

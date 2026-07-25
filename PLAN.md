@@ -279,9 +279,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port the post-combat damage, healing, recoil,
-lifelink, and splash family with lethal/nonlethal floors, multi-target
-aggregation, charge timing, and reversal. Continue count-locking only
+Embrace of the Fog P8.2: finish strike-timed self/ally lifelink and ranged
+post-combat ally healing with exact overkill clamps, recipient selection,
+charge timing, and reversal. Continue count-locking only
 components whose real EotF value shapes and runtime behavior have focused
 coverage.
 
@@ -319,6 +319,9 @@ return to the base without compatibility warnings or silent mechanic loss.
   initiator, charge, immediate-combat snapshot, and undo/redo behavior.
 - [x] Preserve per-strike and end-combat `give_*status*` timing, enemy/ally
   and AoE recipients, initiator attribution, status reactions, charges, and
+  undo/redo behavior.
+- [x] Preserve EotF's flat/evaluated post-combat damage and healing,
+  multi-target damage, nonlethal recoil, percentage splash, charges, and
   undo/redo behavior.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
