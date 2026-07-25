@@ -2474,7 +2474,7 @@
         "nid": "crit_event",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage",
@@ -2660,13 +2660,13 @@
         "nid": "endstep_event",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "endstep_skill_gain",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_exp_multiplier",
@@ -2804,7 +2804,7 @@
         "nid": "event_after_combat_if_take_damage",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_initiated_combat",
@@ -2822,7 +2822,7 @@
         "nid": "event_before_combat",
         "uses": 23,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_on_remove",

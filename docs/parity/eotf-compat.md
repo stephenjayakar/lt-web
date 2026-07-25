@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 258 unverified
+- 270 skill-component NIDs; 253 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -285,7 +285,6 @@ focused browser coverage.
 | condition | 558 | consumed |
 | crit | 81 | hook-and-reference |
 | crit_avoid | 33 | hook-and-reference |
-| crit_event | 5 | project-local-or-unknown |
 | damage | 49 | hook-and-reference |
 | damage_multiplier | 24 | hook-and-reference |
 | dazzled | 5 | project-local-or-unknown |
@@ -316,8 +315,6 @@ focused browser coverage.
 | empower_heal_received | 2 | unreferenced |
 | empower_heal_received_multiplier | 3 | project-local-or-unknown |
 | end_time | 43 | reference-only |
-| endstep_event | 5 | project-local-or-unknown |
-| endstep_skill_gain | 2 | project-local-or-unknown |
 | enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
 | eval_avoid | 10 | hook-only |
@@ -339,9 +336,7 @@ focused browser coverage.
 | eval_range | 3 | unreferenced |
 | eval_regeneration | 11 | project-local-or-unknown |
 | eval_upkeep_damage | 5 | project-local-or-unknown |
-| event_after_combat_if_take_damage | 4 | project-local-or-unknown |
 | event_after_initiated_combat | 35 | consumed |
-| event_before_combat | 23 | project-local-or-unknown |
 | event_on_remove | 14 | consumed |
 | event_on_strike | 1 | project-local-or-unknown |
 | event_stack_on_take_hit | 4 | project-local-or-unknown |

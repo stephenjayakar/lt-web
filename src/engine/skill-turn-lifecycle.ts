@@ -94,8 +94,9 @@ export function applySkillTurnHooks(
       const conditional = isConditionActive(game, unit, skill);
 
       for (const [component, rawValue] of skill.components) {
-        if (phase === 'upkeep' &&
-            (component === 'event_on_upkeep' || component === 'upkeep_event') &&
+        if (((phase === 'upkeep' &&
+              (component === 'event_on_upkeep' || component === 'upkeep_event')) ||
+             (phase === 'endstep' && component === 'endstep_event')) &&
             conditional) {
           if (typeof rawValue === 'string' && rawValue && game.eventManager?.triggerSpecific(
             rawValue,
@@ -114,8 +115,8 @@ export function applySkillTurnHooks(
             effects.push({ unit, skill, component });
           }
         } else if (
-          phase === 'upkeep' &&
-          component === 'upkeep_skill_gain' &&
+          ((phase === 'upkeep' && component === 'upkeep_skill_gain') ||
+           (phase === 'endstep' && component === 'endstep_skill_gain')) &&
           conditional
         ) {
           const prefab = typeof rawValue === 'string'
