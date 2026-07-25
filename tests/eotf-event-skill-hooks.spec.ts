@@ -187,4 +187,181 @@ test.describe('Embrace of the Fog event skill hooks', () => {
       upkeepSkillGain: 'Spectral_Steed_Status',
     });
   });
+
+  test('orders pre-combat, crit, damage-taken, and endstep hooks', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const {
+        queueCombatSkillEvents,
+        queueCombatSkillStartEvents,
+      } = await import('/src/combat/combat-lifecycle.ts');
+      const { applySkillTurnHooks } =
+        await import('/src/engine/skill-turn-lifecycle.ts');
+
+      const attacker = game.units.get('Player');
+      const defender = game.units.get('Keeper');
+      const oldAttackerSkills = attacker.skills;
+      const oldDefenderSkills = defender.skills;
+      const item = new ItemObject({
+        nid: '_EotfAdjacentHookWeapon',
+        name: 'EotF Adjacent Hook Weapon',
+        desc: '',
+        components: [['weapon', null]],
+      });
+      const make = (nid: string, components: [string, any][]) =>
+        new SkillObject({ nid, name: nid, desc: '', components });
+      attacker.skills = [make('_EotfAttackEvents', [
+        ['event_before_combat', '_EotfBeforeCombat'],
+        ['crit_event', '_EotfCrit'],
+      ])];
+      defender.skills = [make('_EotfDefenseEvents', [
+        ['event_after_combat_if_take_damage', '_EotfTookDamage'],
+      ])];
+      const calls: any[] = [];
+      const originalEventManager = game.eventManager;
+      game.eventManager = {
+        triggerSpecific(nid: string, trigger: any) {
+          calls.push({
+            nid,
+            type: trigger.type,
+            unit1: trigger.unit1.nid,
+            unit2: trigger.unit2.nid,
+            item: trigger.localArgs.get('item')?.nid ?? null,
+            item2: trigger.localArgs.get('item2')?.nid ?? null,
+            mode: trigger.localArgs.get('mode'),
+          });
+          return true;
+        },
+      };
+      const started = queueCombatSkillStartEvents(
+        game, attacker, defender, item, item,
+      );
+      const ended = queueCombatSkillEvents(game, [{
+        attacker,
+        defender,
+        item,
+        hit: true,
+        crit: true,
+        damage: 4,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0],
+      }], attacker, defender, item, item);
+      const combatCalls = [...calls];
+
+      calls.length = 0;
+      const endstepSource = make('_EotfEndstepHooks', [
+        ['endstep_event', '_EotfEndstepEvent'],
+        ['endstep_skill_gain', 'Mana_Channeling'],
+      ]);
+      attacker.skills = [endstepSource];
+      const beforeEndstep = game.actionLog.actionIndex;
+      const effects = applySkillTurnHooks(game, [attacker], 'endstep');
+      const granted = attacker.skills.some(
+        (skill: any) => skill.nid === 'Mana_Channeling',
+      );
+      game.actionLog.runActionBackward();
+      const removedOnRewind = !attacker.skills.some(
+        (skill: any) => skill.nid === 'Mana_Channeling',
+      );
+      game.actionLog.runActionForward();
+      const restoredOnRedo = attacker.skills.some(
+        (skill: any) => skill.nid === 'Mana_Channeling',
+      );
+
+      const componentValue = (skillNid: string, componentNid: string) =>
+        game.db.skills.get(skillNid)?.components.find(
+          ([nid]: [string, any]) => nid === componentNid,
+        )?.[1];
+      const values = {
+        eventBeforeCombat: componentValue('OffhandAttack', 'event_before_combat'),
+        critEvent: componentValue('The_Storm', 'crit_event'),
+        damageEvent: componentValue(
+          'Hoplon_Defense',
+          'event_after_combat_if_take_damage',
+        ),
+        endstepEvent: componentValue('Repertoire', 'endstep_event'),
+        endstepSkillGain: componentValue(
+          'Gift_of_Magic',
+          'endstep_skill_gain',
+        ),
+      };
+
+      attacker.skills = oldAttackerSkills;
+      defender.skills = oldDefenderSkills;
+      game.eventManager = originalEventManager;
+      return {
+        started,
+        ended,
+        combatCalls,
+        endstep: {
+          calls,
+          effects: effects.map((effect: any) => effect.component),
+          granted,
+          removedOnRewind,
+          restoredOnRedo,
+          actions: game.actionLog.actionIndex - beforeEndstep,
+        },
+        values,
+      };
+    });
+
+    expect(result.started).toBe(1);
+    expect(result.ended).toBe(2);
+    expect(result.combatCalls).toEqual([
+      {
+        nid: '_EotfBeforeCombat',
+        type: 'event_before_combat',
+        unit1: 'Player',
+        unit2: 'Keeper',
+        item: '_EotfAdjacentHookWeapon',
+        item2: '_EotfAdjacentHookWeapon',
+        mode: 'attack',
+      },
+      {
+        nid: '_EotfCrit',
+        type: 'crit_event',
+        unit1: 'Player',
+        unit2: 'Keeper',
+        item: '_EotfAdjacentHookWeapon',
+        item2: '_EotfAdjacentHookWeapon',
+        mode: 'attack',
+      },
+      {
+        nid: '_EotfTookDamage',
+        type: 'event_after_combat_if_take_damage',
+        unit1: 'Keeper',
+        unit2: 'Player',
+        item: '_EotfAdjacentHookWeapon',
+        item2: '_EotfAdjacentHookWeapon',
+        mode: 'defense',
+      },
+    ]);
+    expect(result.endstep).toEqual({
+      calls: [{
+        nid: '_EotfEndstepEvent',
+        type: 'endstep_event',
+        unit1: 'Player',
+        unit2: 'Player',
+        item: null,
+        item2: null,
+        mode: null,
+      }],
+      effects: ['endstep_event', 'endstep_skill_gain'],
+      granted: true,
+      removedOnRewind: true,
+      restoredOnRedo: true,
+      actions: 1,
+    });
+    expect(result.values).toEqual({
+      eventBeforeCombat: 'Global Ability_Offhand_Attack',
+      critEvent: 'Global Ability_The_Storm_Crit',
+      damageEvent: 'Global Item_Hoplon_Guard',
+      endstepEvent: 'Global Ability_Repertoire',
+      endstepSkillGain: 'Mana_Channeling',
+    });
+  });
 });

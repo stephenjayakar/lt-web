@@ -279,10 +279,10 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port the adjacent endstep, pre-combat, critical-hit,
-and conditional post-combat event hooks with exact trigger payloads and
-ordering. Continue count-locking only components whose real EotF value shapes
-and runtime behavior have focused coverage.
+Embrace of the Fog P8.2: port the `gain_skill_after_*` combat lifecycle family
+with exact recipient, initiator, charge, and reversal behavior. Continue
+count-locking only components whose real EotF value shapes and runtime behavior
+have focused coverage.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -311,6 +311,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve playback-aware `event_after_combat`, charged
   `event_after_kill`, `upkeep_event`, and reversible `upkeep_skill_gain`
   lifecycle behavior.
+- [x] Preserve ordered `event_before_combat`, `crit_event`,
+  `event_after_combat_if_take_damage`, `endstep_event`, and reversible
+  `endstep_skill_gain` lifecycle behavior.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

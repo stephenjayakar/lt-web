@@ -378,6 +378,10 @@ export function queueCombatSkillEvents(
   }
   for (const participant of participants) {
     const gotHit = strikes.some((strike) => strike.defender === participant.unit && strike.hit);
+    const tookDamage = strikes.some((strike) =>
+      strike.defender === participant.unit && strike.hit && strike.damage > 0);
+    const dealtCrit = strikes.some((strike) =>
+      strike.attacker === participant.unit && strike.crit);
     for (const skill of participant.unit.skills) {
       if (participant.item && !combatSkillEnabled(
         game, participant.unit, skill, participant.target, participant.item,
@@ -385,6 +389,8 @@ export function queueCombatSkillEvents(
       for (const [component, value] of skill.components) {
         const fires = component === 'event_after_combat' ||
           (component === 'event_after_kill' && participant.target.currentHp <= 0) ||
+          (component === 'crit_event' && dealtCrit) ||
+          (component === 'event_after_combat_if_take_damage' && tookDamage) ||
           (component === 'event_after_combat_when_hit' && gotHit) ||
           (component === 'true_miracle_event_after_combat' && strikes.some(
             (strike) => strike.defender === participant.unit &&
