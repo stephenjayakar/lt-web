@@ -2798,7 +2798,7 @@
         "nid": "event_after_combat",
         "uses": 71,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_if_take_damage",
@@ -2816,7 +2816,7 @@
         "nid": "event_after_kill",
         "uses": 42,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_before_combat",
@@ -3596,13 +3596,13 @@
         "nid": "upkeep_event",
         "uses": 58,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_skill_gain",
         "uses": 36,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_stat_change",

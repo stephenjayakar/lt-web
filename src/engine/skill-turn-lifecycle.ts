@@ -1,5 +1,6 @@
 import type { ActionLog } from './action';
 import {
+  AddSkillAction,
   ChangeManaAction,
   DamageAction,
   HealAction,
@@ -110,6 +111,18 @@ export function applySkillTurnHooks(
               ]),
             },
           )) {
+            effects.push({ unit, skill, component });
+          }
+        } else if (
+          phase === 'upkeep' &&
+          component === 'upkeep_skill_gain' &&
+          conditional
+        ) {
+          const prefab = typeof rawValue === 'string'
+            ? game.db?.skills.get(rawValue)
+            : null;
+          if (prefab) {
+            game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(prefab)));
             effects.push({ unit, skill, component });
           }
         } else if (phase === 'upkeep' && component === 'upkeep_charge_increase') {
