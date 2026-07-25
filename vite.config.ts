@@ -17,7 +17,9 @@ function discoverProjects(): string[] {
     if (!existsSync(dir)) continue;
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.isDirectory() && entry.name.endsWith('.ltproj')) {
+        const isDirectory = entry.isDirectory() ||
+          (entry.isSymbolicLink() && statSync(join(dir, entry.name)).isDirectory());
+        if (isDirectory && entry.name.endsWith('.ltproj')) {
           projects.add(entry.name);
         }
       }

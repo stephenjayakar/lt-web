@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 
 async function waitForHarness(page: Page): Promise<void> {
@@ -12,10 +14,17 @@ test.describe('Web player shell', () => {
     await expect(page.getByText('keyboard, pointer, touch, and gamepad input')).toBeVisible();
 
     const campaigns = page.getByLabel('Available campaigns').getByRole('button');
-    await expect(campaigns).toHaveCount(3);
+    expect(await campaigns.count()).toBeGreaterThanOrEqual(2);
     await expect(page.getByRole('button', { name: 'Launch Default Campaign' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Launch Rekka' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Launch Testing Proj' })).toBeVisible();
+    if (fs.existsSync(path.join(process.cwd(), 'lt-maker/rekka.ltproj'))) {
+      await expect(page.getByRole('button', { name: 'Launch Rekka' })).toBeVisible();
+    }
+    if (fs.existsSync(path.join(process.cwd(), 'lt-maker/eotf.ltproj'))) {
+      await expect(
+        page.getByRole('button', { name: 'Launch Embrace of the Fog' }),
+      ).toBeVisible();
+    }
   });
 
   test('control help is usable without leaking input into the game', async ({ page }) => {

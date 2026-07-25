@@ -301,6 +301,8 @@ function showProjectPicker(): Promise<string> {
       const rawName = proj.replace(/\.ltproj$/, '').replace(/_/g, ' ');
       const displayName = rawName === 'default'
         ? 'Default Campaign'
+        : rawName.toLowerCase() === 'eotf'
+          ? 'Embrace of the Fog'
         : rawName.replace(/\b\w/g, (letter) => letter.toUpperCase());
       btn.className = 'project-picker__button';
       btn.type = 'button';

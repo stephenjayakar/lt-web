@@ -14,6 +14,8 @@
     "audit:parity:write": "node scripts/parity-audit.mjs --write",
     "audit:rekka": "node scripts/rekka-audit.mjs --check",
     "audit:rekka:write": "node scripts/rekka-audit.mjs --write",
+    "audit:eotf": "node scripts/eotf-audit.mjs --check",
+    "audit:eotf:write": "node scripts/eotf-audit.mjs --write",
     "audit:states": "node scripts/state-parity.mjs --check",
     "audit:states:write": "node scripts/state-parity.mjs --write",
     "bundle": "node scripts/bundle-assets.mjs",
