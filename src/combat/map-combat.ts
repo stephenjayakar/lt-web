@@ -185,6 +185,7 @@ export class MapCombat {
   private guardGaugeResults: Map<UnitObject, number> = new Map();
   /** Units saved from death by a 'miracle' skill (see CombatPhaseSolver.miracleSaved). */
   private miracleSavedSet: Set<UnitObject> = new Set();
+  private miracleRestoreHps: Map<UnitObject, number> = new Map();
 
   /** Public read-only view of which units were saved from death this combat by 'miracle'. */
   get miracleSaved(): ReadonlySet<UnitObject> {
@@ -268,6 +269,7 @@ export class MapCombat {
     this.procPlayback = [...solver.procPlayback];
     this.guardGaugeResults = new Map(solver.guardGaugeResults);
     this.miracleSavedSet = new Set(solver.miracleSaved);
+    this.miracleRestoreHps = new Map(solver.miracleRestoreHp);
     for (const strike of this.strikes) {
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
@@ -540,9 +542,13 @@ export class MapCombat {
     // resurrected at 1 HP (Python Miracle.cleanup_combat). The solver has
     // already determined eligibility (skill present + charge available) and
     // consumed the charge; here we just apply the floor to the actual HP.
-    if (atkHp <= 0 && this.miracleSavedSet.has(this.attacker)) atkHp = 1;
+    if (atkHp <= 0 && this.miracleSavedSet.has(this.attacker)) {
+      atkHp = this.miracleRestoreHps.get(this.attacker) ?? 1;
+    }
     for (const [unit, hp] of defenderHps) {
-      if (hp <= 0 && this.miracleSavedSet.has(unit)) defenderHps.set(unit, 1);
+      if (hp <= 0 && this.miracleSavedSet.has(unit)) {
+        defenderHps.set(unit, this.miracleRestoreHps.get(unit) ?? 1);
+      }
     }
 
     // Clamp HP
