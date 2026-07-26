@@ -28,6 +28,7 @@ import {
   RemoveItemFromConvoy,
   RemoveItemFromUnitAction,
   RemoveSkillAction,
+  RegisterItemTreeAction,
   SetSkillDataAction,
   type MoveAction,
 } from './action';
@@ -523,7 +524,7 @@ export class GameState {
     // Preserve convoy items from all parties
     for (const party of this.parties.values()) {
       for (const item of party.convoy) {
-        const itemKey = `convoy_${party.nid}_${item.nid}_${Math.random().toString(36).slice(2, 8)}`;
+        const itemKey = `convoy_${party.nid}_${item.uid}_${item.nid}`;
         this.persistentItems.set(itemKey, item);
       }
     }
@@ -717,7 +718,10 @@ export class GameState {
           this.units.set(persistedUnit.nid, persistedUnit);
           // Re-register items
           for (let i = 0; i < persistedUnit.items.length; i++) {
-            this.items.set(`${persistedUnit.nid}_${persistedUnit.items[i].nid}_${i}`, persistedUnit.items[i]);
+            this.registerItemTreeDirect(
+              persistedUnit.items[i],
+              `${persistedUnit.nid}_${persistedUnit.items[i].nid}_${i}`,
+            );
           }
           placedPersistentUnits.add(unitData.nid);
         } else {
@@ -736,9 +740,16 @@ export class GameState {
         this.units.set(nid, unit);
         // Re-register items
         for (let i = 0; i < unit.items.length; i++) {
-          this.items.set(`${unit.nid}_${unit.items[i].nid}_${i}`, unit.items[i]);
+          this.registerItemTreeDirect(
+            unit.items[i],
+            `${unit.nid}_${unit.items[i].nid}_${i}`,
+          );
         }
       }
+    }
+    for (const party of this.parties.values()) {
+      party.convoy.forEach((item, index) =>
+        this.registerItemTreeDirect(item, `convoy_${party.nid}_${index}_${item.nid}`));
     }
 
     // Clear the persistent storage now that units have been restored
@@ -1155,6 +1166,50 @@ export class GameState {
     return this.units.get(nid) ?? null;
   }
 
+  /** Python item_registry lookup by stable numeric UID. */
+  getItem(itemUid: number | string): ItemObject | null {
+    const uid = Number(itemUid);
+    if (!Number.isFinite(uid)) return null;
+    for (const item of new Set(this.items.values())) {
+      if (item.uid === uid) return item;
+    }
+    return null;
+  }
+
+  /** Register a new recursive item tree through the reversible action log. */
+  registerItem(item: ItemObject): void {
+    if ([...this.items.values()].includes(item)) return;
+    this.actionLog.doAction(
+      new RegisterItemTreeAction(this.items, item, `item_${item.uid}_${item.nid}`),
+    );
+  }
+
+  /** Register an already-owned tree during deterministic construction/load. */
+  registerItemTreeDirect(item: ItemObject, key: string): void {
+    this.items.set(key, item);
+    item.subitems.forEach((child, index) =>
+      this.registerItemTreeDirect(child, `${key}_sub_${index}_${child.nid}`));
+  }
+
+  /** Python-facing aliases used by raw PYEV1 event code. */
+  get_item(itemUid: number | string): ItemObject | null {
+    return this.getItem(itemUid);
+  }
+
+  register_item(item: ItemObject): void {
+    this.registerItem(item);
+  }
+
+  get item_registry(): {
+    get: (uid: number | string) => ItemObject | null;
+    values: () => IterableIterator<ItemObject>;
+  } {
+    return {
+      get: (uid) => this.getItem(uid),
+      values: () => new Set(this.items.values()).values(),
+    };
+  }
+
   // ========================================================================
   // Party system
   // ========================================================================
@@ -1285,11 +1340,7 @@ export class GameState {
         item.droppable = isDroppable;
         unit.items.push(item);
         unit.onAddItem(item);
-        const registerTree = (node: ItemObject, key: string) => {
-          this.items.set(key, node);
-          node.subitems.forEach((child, index) => registerTree(child, `${key}_sub_${index}_${child.nid}`));
-        };
-        registerTree(item, `${unit.nid}_${item.nid}_${unit.items.length}`);
+        this.registerItemTreeDirect(item, `${unit.nid}_${item.nid}_${unit.items.length}`);
       }
     }
 

@@ -6,7 +6,11 @@
 import type { NID, LevelPrefab, ItemPrefab, SkillPrefab, RegionData } from '../data/types';
 import type { Database } from '../data/database';
 import type { UnitObject, StatusEffect } from '../objects/unit';
-import { ItemObject as ItemObjectCtor } from '../objects/item';
+import {
+  ItemObject as ItemObjectCtor,
+  getNextItemUid,
+  setNextItemUid,
+} from '../objects/item';
 import type { ItemObject } from '../objects/item';
 import { SkillObject as SkillObjectCtor, setNextSkillUid, getNextSkillUid } from '../objects/skill';
 import type { SkillObject } from '../objects/skill';
@@ -112,6 +116,8 @@ export interface UnitSaveData {
 }
 
 export interface ItemSaveData {
+  /** Optional for saves written before Python-compatible item identity. */
+  uid?: number;
   nid: string;
   name: string;
   desc: string;
@@ -237,6 +243,7 @@ export interface SaveDict {
   items: ItemSaveData[];
   skills: SkillSaveData[];
   level: LevelSaveData | null;
+  itemCounter?: number;
   skillCounter?: number;
   turncount: number;
   playtime: number;
@@ -585,6 +592,7 @@ function serializeItem(item: ItemObject, mapKey: string, itemKeyByObject: Map<It
   }
 
   return {
+    uid: item.uid,
     nid: item.nid,
     name: item.name,
     desc: item.desc,
@@ -957,6 +965,8 @@ export function buildSaveDict(game: any): SaveDict {
     initiative,
     overworld,
     eventQueue,
+    // Persist item identity separately from container-derived map keys.
+    itemCounter: getNextItemUid(),
     // Persist the skill uid counter so subsequent constructions stay monotonic
     // and restored uids don't collide with new ones (Python set_next_uids).
     skillCounter: getNextSkillUid(),
@@ -1191,6 +1201,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   }
 
   // 5. Restore items FIRST (units reference items by key)
+  setNextItemUid(100);
   const itemsByKey = new Map<string, ItemObject>();
   for (const itemData of s.items) {
     try {
@@ -1206,6 +1217,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
       };
 
       const item = new ItemCtor(prefab);
+      if (typeof itemData.uid === 'number') item.uid = itemData.uid;
 
       // Override runtime state from save
       item.name = itemData.name;
@@ -1232,6 +1244,13 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
     } catch (err) {
       console.warn(`Failed to restore item "${itemData.nid}" (key: ${itemData.mapKey}):`, err);
     }
+  }
+  if (s.itemCounter !== undefined) {
+    setNextItemUid(s.itemCounter);
+  } else {
+    let maxUid = 99;
+    for (const item of itemsByKey.values()) maxUid = Math.max(maxUid, item.uid);
+    setNextItemUid(maxUid + 1);
   }
   // Reconnect recursive item graphs only after every saved item exists.
   for (const itemData of s.items) {

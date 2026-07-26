@@ -1,6 +1,17 @@
 import type { NID, ItemPrefab } from '../data/types';
 import type { UnitObject } from './unit';
 
+/** Python ItemObject.next_uid parity; the next constructed item takes this UID. */
+let nextItemUid = 100;
+
+export function setNextItemUid(n: number): void {
+  nextItemUid = Math.max(Math.trunc(n), 100);
+}
+
+export function getNextItemUid(): number {
+  return nextItemUid;
+}
+
 type ItemRangeEvaluator = (
   kind: 'minimum' | 'maximum',
   unit: UnitObject,
@@ -41,6 +52,8 @@ export function setItemComponentResolver(resolver: ItemComponentResolver): void 
  * "max_range", "weapon_type", "weapon_rank", "value", "uses", etc.
  */
 export class ItemObject {
+  /** Per-instance identity, stable across ownership changes and save/load. */
+  uid: number;
   readonly nid: NID;
   name: string;
   desc: string;
@@ -69,6 +82,7 @@ export class ItemObject {
   maxUses: number;
 
   constructor(prefab: ItemPrefab) {
+    this.uid = nextItemUid++;
     this.nid = prefab.nid;
     this.name = prefab.name;
     this.desc = prefab.desc;
