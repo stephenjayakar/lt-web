@@ -268,18 +268,39 @@ function healingSkillValue(
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-/** EotF's shared `_get_heal_amount`, including additive and multiplier hooks. */
+/** Standard Heal/EquationHeal additive modifiers, without EotF multipliers. */
+export function additiveHealAmount(
+  baseAmount: number,
+  target: UnitObject,
+  healer: UnitObject | null,
+  game: any,
+): number {
+  let additive = 0;
+  if (healer) {
+    additive += empowerHeal(healer, target, game);
+  }
+  for (const skill of target.skills) {
+    const received = healingSkillValue(
+      skill,
+      'empower_heal_received',
+      target,
+      healer ?? target,
+      game,
+    );
+    if (received !== null) additive += received;
+  }
+  return baseAmount + additive;
+}
+
+/** EotF EvalHeal's shared `_get_heal_amount`, including multiplier hooks. */
 export function modifiedHealAmount(
   baseAmount: number,
   target: UnitObject,
   healer: UnitObject | null,
   game: any,
 ): number {
-  if (baseAmount <= 0) return baseAmount;
-  let additive = 0;
   let multiplier = 1;
   if (healer) {
-    additive += empowerHeal(healer, target, game);
     for (const skill of healer.skills) {
       const value = healingSkillValue(
         skill,
@@ -292,14 +313,6 @@ export function modifiedHealAmount(
     }
   }
   for (const skill of target.skills) {
-    const received = healingSkillValue(
-      skill,
-      'empower_heal_received',
-      target,
-      healer ?? target,
-      game,
-    );
-    if (received !== null) additive += received;
     const receivedMultiplier = healingSkillValue(
       skill,
       'empower_heal_received_multiplier',
@@ -309,7 +322,7 @@ export function modifiedHealAmount(
     );
     if (receivedMultiplier !== null) multiplier *= receivedMultiplier;
   }
-  return Math.trunc(multiplier * (baseAmount + additive));
+  return Math.trunc(multiplier * additiveHealAmount(baseAmount, target, healer, game));
 }
 
 /**

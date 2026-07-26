@@ -21,7 +21,11 @@ import {
   getEquippedWeapon,
   evaluateEquation,
 } from '../combat/combat-calcs';
-import { available as itemAvailable, stealItemRestrict } from '../combat/item-system';
+import {
+  available as itemAvailable,
+  healAmount as itemHealAmount,
+  stealItemRestrict,
+} from '../combat/item-system';
 import {
   aiPriorityMultiplier,
   checkAlly,
@@ -1018,8 +1022,8 @@ export class AIController {
     const helpTerm = Math.min(1, Math.max(0, missingHealth / maxHp));
 
     // Get heal amount — for staves, pass the caster's MAG stat
-    const mag = unit.getStatValue('MAG') ?? unit.getStatValue('STR') ?? 0;
-    const healAmount = item.getHealAmount(mag);
+    const healAmount = itemHealAmount(unit, item, target, this.gameRef) ??
+      item.getHealAmount(unit.getStatValue('MAG') ?? unit.getStatValue('STR') ?? 0);
     const effectiveHeal = Math.min(healAmount, missingHealth);
     const healTerm = Math.min(1, Math.max(0, effectiveHeal / maxHp));
 

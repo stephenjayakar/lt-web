@@ -41,6 +41,7 @@ import {
   pivotDestination,
   rekkaMovementEndpoints,
   shoveDestination,
+  healAmount as itemHealAmount,
 } from './item-system';
 import {
   checkAlly,
@@ -1411,6 +1412,27 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         .filter((candidate) => candidate.hit)
         .map((candidate) => [candidate.defender.nid, candidate]),
     ).values()];
+    for (const mark of itemMarks.filter((candidate) => candidate.hit)) {
+      const healing = itemHealAmount(mark.attacker, strike.item, mark.defender, game);
+      if (healing !== null) {
+        game.actionLog.doAction(new SetCurrentHpAction(
+          mark.defender,
+          mark.defender.currentHp + healing,
+        ));
+        applied++;
+      }
+      if (strike.item.hasComponent('restore_no_target_restrict')) {
+        for (const skill of [...mark.defender.skills]) {
+          if (!skill.hasComponent('negative')) continue;
+          game.actionLog.doAction(new RemoveSkillAction(mark.defender, skill));
+          applied++;
+        }
+      }
+      if (strike.item.hasComponent('refresh_no_target_restrict')) {
+        game.actionLog.doAction(new ResetAction(mark.defender));
+        applied++;
+      }
+    }
     applied += applyItemEndResourceHooks(game, firstMark.attacker, strike.item);
     if (game.board) {
       for (const componentNid of strike.item.components.keys()) {

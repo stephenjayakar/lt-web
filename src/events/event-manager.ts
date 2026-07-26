@@ -1083,6 +1083,13 @@ function translateListComprehensions(expression: string): string {
 function translateFloorDivision(expression: string): string {
   let translated = expression;
   for (let pass = 0; pass < 10 && translated.includes('//'); pass++) {
+    const topLevel = splitAtTopLevel(translated, '//');
+    if (topLevel.length === 2 &&
+        splitAtTopLevel(translated, ' if ').length === 1 &&
+        /^[\w.()[\]'"]+$/.test(topLevel[1].trim())) {
+      translated = `Math.floor((${topLevel[0].trim()}) / (${topLevel[1].trim()}))`;
+      continue;
+    }
     const next = translated.replace(
       /([\w.()[\]'"]+)\s*\/\/\s*([\w.()[\]'"]+)/,
       'Math.floor(($1) / ($2))',

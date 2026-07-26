@@ -22,18 +22,60 @@ import {
 import type { CombatStrike } from './combat-solver';
 import {
   alternateSplash,
+  additiveHealAmount,
   armsthriftRestoration,
   checkAlly,
   checkEnemy,
   empowerSplash,
   inventoryCapacityOffsets,
   movementType,
+  modifiedHealAmount,
   skillConditionActive,
   type AlternateSplash,
 } from './skill-system';
 import { itemResourcesAvailable } from './item-resource-lifecycle';
 
 export type TargetPosition = [number, number];
+
+/** Resolve standard and EotF project-local item healing for one target. */
+export function healAmount(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  game: any,
+): number | null {
+  const evaluated = item.getComponent<unknown>('eval_heal');
+  if (typeof evaluated === 'string') {
+    try {
+      const value = Number(evaluateExpression(evaluated, {
+        game,
+        unit1: unit,
+        unit2: target,
+        item,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs: new Map([['target', target]]),
+      }));
+      return modifiedHealAmount(
+        Number.isFinite(value) ? Math.trunc(value) : 0,
+        target,
+        unit,
+        game,
+      );
+    } catch {
+      return modifiedHealAmount(0, target, unit, game);
+    }
+  }
+  const unrestricted = item.getComponent<unknown>('heal_no_target_restrict');
+  if (typeof unrestricted === 'number') {
+    return Math.trunc(additiveHealAmount(unrestricted, target, unit, game));
+  }
+  const direct = item.getComponent<unknown>('heal');
+  return typeof direct === 'number'
+    ? Math.trunc(additiveHealAmount(direct, target, unit, game))
+    : null;
+}
 
 /**
  * Union the positions contributed by LT's basic target components.

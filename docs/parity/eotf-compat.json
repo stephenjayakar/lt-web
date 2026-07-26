@@ -1218,7 +1218,7 @@
         "nid": "eval_heal",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_hit",
@@ -1374,7 +1374,7 @@
         "nid": "heal_no_target_restrict",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "hit",
@@ -1644,7 +1644,7 @@
         "nid": "refresh_no_target_restrict",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "remove_on_end_chapter",
@@ -1668,13 +1668,13 @@
         "nid": "restore_after_combat",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "restore_no_target_restrict",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "restore_specific",
