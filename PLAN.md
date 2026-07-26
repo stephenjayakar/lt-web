@@ -417,6 +417,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 50 EotF Canto, Canto+, Canto Sharp, fixed Canter, and
   evaluated Canter uses with Python gating, maximum movement resolution,
   Canto Control, player/AI post-combat routing, and exact turnwheel replay.
+- [x] Preserve all 7 EotF accessory swaps, inventory expansions, and item-slot
+  penalties with independent last-active hook resolution across supply,
+  theft, reward, and discard capacity checks.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

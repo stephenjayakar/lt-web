@@ -2059,14 +2059,14 @@
       {
         "nid": "additional_accessories",
         "uses": 3,
-        "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "additional_inventory",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_brave",
@@ -2366,7 +2366,7 @@
         "nid": "change_item_slots",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "change_variant",

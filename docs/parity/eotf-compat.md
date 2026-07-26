@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 99 unverified
+- 270 skill-component NIDs; 96 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -141,8 +141,6 @@ focused browser coverage.
 
 | NID | Uses | Engine audit status |
 |---|---|---|
-| additional_accessories | 3 | consumed |
-| additional_inventory | 3 | project-local-or-unknown |
 | all_brave | 5 | hook-only |
 | alternate_accuracy_formula | 2 | hook-and-reference |
 | alternate_avoid_formula | 4 | hook-and-reference |
@@ -164,7 +162,6 @@ focused browser coverage.
 | cannot_use_magic_items_eval | 2 | project-local-or-unknown |
 | change_ai | 15 | reference-only |
 | change_buy_price | 1 | reference-only |
-| change_item_slots | 1 | project-local-or-unknown |
 | change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
 | close_counter | 8 | hook-and-reference |
