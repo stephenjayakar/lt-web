@@ -2216,7 +2216,7 @@
         "nid": "berserked",
         "uses": 7,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "better_give_ally_status_after_combat_on_hit",
@@ -2252,7 +2252,7 @@
         "nid": "blinded",
         "uses": 6,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "block_specific_status",
@@ -2492,7 +2492,7 @@
         "nid": "dazzled",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "defense_proc",
@@ -2852,13 +2852,13 @@
         "nid": "fatal_block",
         "uses": 14,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "fatal_damage",
         "uses": 9,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "full_miracle",
@@ -3272,7 +3272,7 @@
         "nid": "no_stackz",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "null_refresh",
@@ -3284,7 +3284,7 @@
         "nid": "null_sweep",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "pairup_bonus",
@@ -3296,7 +3296,7 @@
         "nid": "paragon",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "pass",
