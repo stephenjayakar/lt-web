@@ -1008,7 +1008,7 @@
         "nid": "attack_after_combat",
         "uses": 248,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "blast_aoe",
@@ -1020,13 +1020,13 @@
         "nid": "brave",
         "uses": 7,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "brave_on_attack",
         "uses": 23,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "buff_ally",
@@ -1050,13 +1050,13 @@
         "nid": "cannot_be_countered",
         "uses": 28,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_counter",
         "uses": 40,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "cooldown",
@@ -1092,7 +1092,7 @@
         "nid": "damage_on_miss",
         "uses": 3,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "draw_back",
@@ -1548,7 +1548,7 @@
         "nid": "no_double",
         "uses": 88,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_equip",

@@ -1022,7 +1022,7 @@ export function canCounterattack(
   if (!skillSystem.canCounter(defender)) return false;
 
   // Find the defender's equipped weapon
-  const defWeapon = defender.items.find((i) => i.isWeapon());
+  const defWeapon = getEquippedWeapon(defender, _db, game);
   if (!defWeapon) return false;
 
   // Check if the weapon itself can counter
