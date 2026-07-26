@@ -1710,7 +1710,7 @@
         "nid": "self_unload_unit",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "sequence_item",

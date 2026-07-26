@@ -40,6 +40,7 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'restore_no_target_restrict',
   'self_remove_skill',
   'self_stacks_on_hit',
+  'self_unload_unit',
   'self_shove_flex_stops',
   'shove_flex_stops',
   'shove_flex_stops_event',

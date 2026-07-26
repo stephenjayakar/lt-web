@@ -235,6 +235,7 @@ export class ItemObject {
       this.isPermanentBooster() || deterministicStatus || this.hasComponent('restore') ||
       this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair') ||
       this.hasComponent('store_unit') || this.hasComponent('unload_unit') ||
+      this.hasComponent('self_unload_unit') ||
       this.hasComponent('promote') || this.hasComponent('force_promote') ||
       this.hasComponent('class_change') || this.hasComponent('force_class_change');
     return directEffect || this.subitems.some((subitem) => subitem.hasCoreUseEffect());
