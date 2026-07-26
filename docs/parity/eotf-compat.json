@@ -1097,7 +1097,7 @@
       {
         "nid": "draw_back",
         "uses": 2,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "unverified"
       },
       {
@@ -1535,7 +1535,7 @@
       {
         "nid": "no_ai",
         "uses": 32,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
@@ -1583,7 +1583,7 @@
       {
         "nid": "pivot",
         "uses": 5,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "unverified"
       },
       {
@@ -2078,7 +2078,7 @@
         "nid": "allowed_weapons",
         "uses": 167,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ally_lifelink_ranged",
@@ -2402,7 +2402,7 @@
         "nid": "combat_art",
         "uses": 172,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_art_all",
@@ -3122,7 +3122,7 @@
         "nid": "item_override",
         "uses": 199,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "kill_charge_increase",
@@ -3632,13 +3632,13 @@
         "nid": "wexp_unusable_skill",
         "uses": 15,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp_usable_skill",
         "uses": 40,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "witch_warp",

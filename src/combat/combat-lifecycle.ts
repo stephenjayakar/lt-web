@@ -46,6 +46,7 @@ import {
   rekkaMovementEndpoints,
   shoveDestination,
   healAmount as itemHealAmount,
+  effectiveItemComponents,
   inventoryFull,
 } from './item-system';
 import {
@@ -1722,7 +1723,12 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
     }
     applied += applyItemEndResourceHooks(game, firstMark.attacker, strike.item);
     if (game.board) {
-      for (const componentNid of strike.item.components.keys()) {
+      for (const [componentNid, componentValue] of effectiveItemComponents(
+        firstMark.attacker,
+        strike.item,
+        game.db,
+        game,
+      )) {
         const initiationOnly = componentNid === 'shove_on_end_combat_initiate' ||
           componentNid === 'shove_flexible_on_end_combat_initiate' ||
           componentNid === 'pivot_on_end_combat_initiate' ||
@@ -1738,7 +1744,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destination = shoveDestination(
               mark.defender,
               mark.attacker.position,
-              Number(strike.item.getComponent<number>(componentNid) ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
             );
             if (destination) {
@@ -1752,7 +1758,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destination = eotfShoveDestination(
               mark.defender,
               mark.attacker.position,
-              Number(strike.item.getComponent<number>(componentNid) ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
               componentNid === 'shove_flexible_on_end_combat_initiate',
             );
@@ -1763,7 +1769,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
           } else if ((componentNid === 'shove_flex_stops' ||
               componentNid === 'shove_flex_stops_event') &&
               mark.attacker.position && !ignoreForcedMovement(mark.defender)) {
-            const rawValue = strike.item.getComponent<unknown>(componentNid);
+            const rawValue = componentValue;
             const magnitude = componentNid === 'shove_flex_stops_event'
               ? Number(componentOption(rawValue, 'magnitude') ?? 0)
               : Number(rawValue ?? 1);
@@ -1808,7 +1814,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
               eotfSelfShoveMagnitude(
                 game,
                 mark,
-                strike.item.getComponent<unknown>('self_shove_flex_stops'),
+                componentValue,
               ),
               { board: game.board, db: game.db, game },
               true,
@@ -1829,7 +1835,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destination = pivotDestination(
               mark.attacker,
               mark.defender.position,
-              Number(strike.item.getComponent<number>('pivot') ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
             );
             if (destination) {
@@ -1843,7 +1849,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destination = eotfPivotDestination(
               mark.attacker,
               mark.defender.position,
-              Number(strike.item.getComponent<number>(componentNid) ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
             );
             if (destination) {
@@ -1854,7 +1860,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destinations = drawBackDestinations(
               mark.attacker,
               mark.defender,
-              Number(strike.item.getComponent<number>('draw_back') ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
             );
             if (destinations) {
@@ -1868,7 +1874,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destinations = eotfDrawBackDestinations(
               mark.attacker,
               mark.defender,
-              Number(strike.item.getComponent<number>(componentNid) ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
             );
             if (destinations) {
@@ -1884,7 +1890,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             const destinations = advanceDestinations(
               mark.attacker,
               mark.defender,
-              Number(strike.item.getComponent<number>('advance') ?? 1),
+              Number(componentValue ?? 1),
               { board: game.board, db: game.db, game },
             );
             if (destinations) {

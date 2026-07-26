@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 131 unverified
+- 270 skill-component NIDs; 126 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -50,7 +50,7 @@ focused browser coverage.
 | custom_triangle_multiplier | 3 | hook-and-reference |
 | damage | 739 | hook-and-reference |
 | damage_on_miss | 3 | consumed |
-| draw_back | 2 | consumed |
+| draw_back | 2 | reference-only |
 | draw_back_target_restrict | 2 | hook-and-reference |
 | eclipse | 1 | consumed |
 | effective | 7 | consumed |
@@ -99,14 +99,14 @@ focused browser coverage.
 | multi_status_on_hold | 20 | consumed |
 | multi_target | 9 | hook-and-reference |
 | never_use_battle_animation | 3 | unreferenced |
-| no_ai | 32 | reference-only |
+| no_ai | 32 | consumed |
 | no_attack_after_move | 9 | hook-and-reference |
 | no_double | 88 | hook-and-reference |
 | no_equip | 37 | unreferenced |
 | no_map_hp_display | 19 | consumed |
 | permanent_growth_change | 2 | consumed |
 | permanent_stat_change | 22 | hook-and-reference |
-| pivot | 5 | consumed |
+| pivot | 5 | reference-only |
 | pivot_target_restrict | 3 | hook-and-reference |
 | prf_class | 12 | hook-and-reference |
 | prf_tags | 14 | hook-and-reference |
@@ -164,7 +164,6 @@ focused browser coverage.
 | additional_accessories | 3 | consumed |
 | additional_inventory | 3 | project-local-or-unknown |
 | all_brave | 5 | hook-only |
-| allowed_weapons | 167 | consumed |
 | alternate_accuracy_formula | 2 | hook-and-reference |
 | alternate_avoid_formula | 4 | hook-and-reference |
 | alternate_crit_accuracy_formula | 3 | hook-and-reference |
@@ -197,7 +196,6 @@ focused browser coverage.
 | change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
 | close_counter | 8 | hook-and-reference |
-| combat_art | 172 | consumed |
 | combat_charge_increase_by_stat | 1 | consumed |
 | dazzled | 5 | project-local-or-unknown |
 | defense_proc | 3 | reference-only |
@@ -239,7 +237,6 @@ focused browser coverage.
 | ignore_terrain | 7 | hook-and-reference |
 | immune_status | 14 | consumed |
 | is_terrain | 9 | unreferenced |
-| item_override | 199 | consumed |
 | limit_maximum_range | 8 | reference-only |
 | live_to_serve | 1 | consumed |
 | locktouch | 6 | consumed |
@@ -288,8 +285,6 @@ focused browser coverage.
 | vantage | 10 | hook-and-reference |
 | visual_charge | 2 | project-local-or-unknown |
 | wexp_multiplier | 1 | hook-and-reference |
-| wexp_unusable_skill | 15 | consumed |
-| wexp_usable_skill | 40 | consumed |
 | witch_warp | 2 | unreferenced |
 | witch_warp_expression | 6 | consumed |
 
