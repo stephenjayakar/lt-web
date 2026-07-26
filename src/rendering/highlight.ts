@@ -1,7 +1,8 @@
 import { Surface } from '../engine/surface';
 import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS } from '../engine/constants';
 
-export type HighlightType = 'move' | 'attack' | 'spell' | 'splash' | 'selected' | 'threat';
+export type HighlightType =
+  'move' | 'attack' | 'spell' | 'splash' | 'selected' | 'threat' | 'aura';
 
 /** Base RGBA for each highlight type (alpha is the centre value of the pulse). */
 const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> = {
@@ -11,6 +12,7 @@ const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> 
   splash:   [200, 100, 255, 0.20],
   selected: [255, 255, 0,   0.30],
   threat:   [180, 0,   80,  0.22],  // Magenta/purple for enemy threat zones
+  aura:     [190, 120, 255, 0.20],
 };
 
 /**
@@ -19,6 +21,8 @@ const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> 
  */
 export class HighlightManager {
   private highlights: Map<string, HighlightType> = new Map(); // "x,y" -> type
+  /** Aura is an overlay layer so clearing hover never destroys threat ranges. */
+  private auraHighlights = new Set<string>();
 
   /** Current pulse multiplier (0..1), updated each frame. */
   private pulse: number = 1.0;
@@ -33,6 +37,7 @@ export class HighlightManager {
 
   clear(): void {
     this.highlights.clear();
+    this.auraHighlights.clear();
   }
 
   setMoveHighlights(positions: [number, number][]): void {
@@ -72,8 +77,16 @@ export class HighlightManager {
     }
   }
 
+  setAuraHighlights(positions: [number, number][]): void {
+    this.auraHighlights = new Set(positions.map(([x, y]) => `${x},${y}`));
+  }
+
   /** Clear all highlights of a specific type. */
   clearType(type: HighlightType): void {
+    if (type === 'aura') {
+      this.auraHighlights.clear();
+      return;
+    }
     for (const [key, t] of this.highlights) {
       if (t === type) this.highlights.delete(key);
     }
@@ -81,6 +94,7 @@ export class HighlightManager {
 
   /** Check if any highlights of a given type exist. */
   hasType(type: HighlightType): boolean {
+    if (type === 'aura') return this.auraHighlights.size > 0;
     for (const t of this.highlights.values()) {
       if (t === type) return true;
     }
@@ -88,7 +102,9 @@ export class HighlightManager {
   }
 
   getHighlights(): Map<string, HighlightType> {
-    return this.highlights;
+    const merged = new Map(this.highlights);
+    for (const key of this.auraHighlights) merged.set(key, 'aura');
+    return merged;
   }
 
   /**
@@ -98,7 +114,7 @@ export class HighlightManager {
    * @param offsetY  Camera offset Y.
    */
   draw(surf: Surface, offsetX: number, offsetY: number): void {
-    for (const [key, type] of this.highlights) {
+    for (const [key, type] of this.getHighlights()) {
       const parts = key.split(',');
       const tileX = parseInt(parts[0], 10);
       const tileY = parseInt(parts[1], 10);

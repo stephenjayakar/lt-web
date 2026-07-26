@@ -274,6 +274,13 @@ export function skillConditionActive(
     }
   }
   if (!selfNihilActive(skill, unit)) return false;
+  if (skill.hasComponent('is_terrain')) {
+    const classTags = context.game?.db?.classes?.get?.(unit.klass)?.tags;
+    if (unit.tags.includes('Flying') ||
+        (Array.isArray(classTags) && classTags.includes('Flying'))) {
+      return false;
+    }
+  }
 
   const condition = skill.getComponent<string>('condition');
   if (!condition) return true;
@@ -1091,6 +1098,7 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
     const hasPreparedDynamic = skill.data.has('_dynamic_stat_changes');
     const needsActiveGate =
       skill.hasComponent('condition') ||
+      skill.hasComponent('is_terrain') ||
       skill.hasComponent('combat_condition') ||
       skill.hasComponent('build_charge') ||
       hasDrainingCharge(skill) ||

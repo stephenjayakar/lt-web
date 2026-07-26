@@ -103,6 +103,22 @@ function getShellPositions(
   return result;
 }
 
+/** Python hover highlights for every visible aura owned by one unit. */
+export function auraHighlightPositions(
+  unit: UnitObject,
+  board: GameBoard,
+): [number, number][] {
+  if (!unit.position) return [];
+  const positions = new Map<string, [number, number]>();
+  for (const info of getAuraInfos(unit)) {
+    if (info.parentSkill.hasComponent('hide_aura')) continue;
+    for (const position of getShellPositions(unit.position, info.range, board)) {
+      positions.set(`${position[0]},${position[1]}`, position);
+    }
+  }
+  return [...positions.values()];
+}
+
 /** Python `apply_aura`'s target-filter check (ally/enemy/unit), minus LOS. */
 function auraTargets(owner: UnitObject, target: UnitObject, filter: string, db: Database): boolean {
   if (owner === target) return false;

@@ -3002,13 +3002,13 @@
         "nid": "global",
         "uses": 29,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "grey_if_inactive",
         "uses": 38,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "grounded",
@@ -3038,7 +3038,7 @@
         "nid": "has_tags",
         "uses": 82,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "heal_after_follow_up",
@@ -3062,13 +3062,13 @@
         "nid": "hidden_if_inactive",
         "uses": 122,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "hide_aura",
         "uses": 96,
-        "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "hide_skill_icon_in_combat",
@@ -3115,8 +3115,8 @@
       {
         "nid": "is_terrain",
         "uses": 9,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "item_override",
@@ -3260,7 +3260,7 @@
         "nid": "negative",
         "uses": 71,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_attack_after_move",
@@ -3488,7 +3488,7 @@
         "nid": "stack",
         "uses": 224,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "start_and_end_event_initiate",

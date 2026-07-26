@@ -23,6 +23,7 @@ import { viewport, isSmallScreen } from '../viewport';
 
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
+import { auraHighlightPositions } from '../../combat/aura-system';
 import type {
   RegionData,
   DifficultyMode,
@@ -1733,6 +1734,7 @@ export class OptionMenuState extends State {
 
 export class FreeState extends MapState {
   readonly name = 'free';
+  private auraHoverNid: string | null = null;
 
   override begin(): StateResult {
     const game = getGame();
@@ -1740,6 +1742,7 @@ export class FreeState extends MapState {
 
     // Clear any stale highlights from previous states (matching Python's FreeState.begin)
     game.highlight.clear();
+    this.auraHoverNid = null;
 
     // Check for free roam mode
     const roamInfo = game.roamInfo;
@@ -1940,6 +1943,13 @@ export class FreeState extends MapState {
     // Update HUD hover info
     const pos = game.cursor.getHover();
     const unit = game.board.getUnit(pos.x, pos.y);
+    const auraHoverNid = unit?.nid ?? null;
+    if (auraHoverNid !== this.auraHoverNid) {
+      game.highlight.setAuraHighlights(
+        unit ? auraHighlightPositions(unit, game.board) : [],
+      );
+      this.auraHoverNid = auraHoverNid;
+    }
     const terrainNid = game.board.getTerrain(pos.x, pos.y);
     const terrainDef = terrainNid ? game.db.terrain.get(terrainNid) : null;
     const [tDef, tAvo] = getTerrainBonuses(terrainDef, game.db);
