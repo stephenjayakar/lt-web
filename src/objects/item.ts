@@ -138,11 +138,13 @@ export class ItemObject {
   }
 
   getWeaponType(): NID | undefined {
-    return this.getComponent<NID>('weapon_type');
+    return this.getComponent<NID>('weapon_type') ??
+      this.getComponent<NID>('weapon_type_exempt');
   }
 
   getWeaponRank(): string | undefined {
-    return this.getComponent<string>('weapon_rank');
+    return this.getComponent<string>('weapon_rank') ??
+      this.getComponent<string>('magic_weapon_rank');
   }
 
   getValue(): number {

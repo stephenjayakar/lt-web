@@ -876,15 +876,16 @@ export class AnimationCombat implements AnimationCombatOwner {
     const isLeftDefending = (defAnim === this.leftAnim);
 
     if (strike.hit || hasDamageOnMiss(strike.item)) {
+      const totalDamage = strike.damage + (strike.extraDamage ?? 0);
       // Apply damage to target HP
       if (isLeftDefending) {
-        this.leftTargetHp = Math.max(0, this.leftTargetHp - strike.damage);
+        this.leftTargetHp = Math.max(0, this.leftTargetHp - totalDamage);
       } else {
-        this.rightTargetHp = Math.max(0, this.rightTargetHp - strike.damage);
+        this.rightTargetHp = Math.max(0, this.rightTargetHp - totalDamage);
       }
 
       // Determine HP drain duration
-      const hpChange = strike.damage;
+      const hpChange = totalDamage;
       this.hpDrainFrames = Math.max(HP_DRAIN_MIN_FRAMES, Math.min(HP_DRAIN_MAX_FRAMES, hpChange));
 
       // Defender takes hit
@@ -902,7 +903,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       // --- Hit/Crit/Kill sounds (Python: _handle_playback + item_system_base) ---
       const defenderHp = isLeftDefending ? this.leftTargetHp : this.rightTargetHp;
       const isLethal = defenderHp <= 0;
-      if (strike.damage === 0) {
+      if (totalDamage === 0) {
         this.playSound('No Damage');
       } else if (strike.crit) {
         // Crit: play critical hit sound (+ final hit if lethal)
@@ -930,6 +931,16 @@ export class AnimationCombat implements AnimationCombatOwner {
           elapsed: 0,
           duration: 1200,
         });
+        if ((strike.extraDamage ?? 0) > 0) {
+          this.damagePopups.push({
+            x: defUnit.position[0],
+            y: defUnit.position[1],
+            value: strike.extraDamage ?? 0,
+            isCrit: false,
+            elapsed: 0,
+            duration: 1200,
+          });
+        }
       }
     } else {
       // Miss — Python replaces 'Attack Miss 2' with 'Miss' in animation combat
@@ -1051,7 +1062,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     const isLeftDefending = (anim === this.rightAnim);
     const strike = this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
 
-    if (strike && strike.hit && strike.damage > 0) {
+    if (strike && strike.hit && strike.damage + (strike.extraDamage ?? 0) > 0) {
       this.sparks.push({
         x: 0, y: 0,
         type: 'hit',
@@ -1082,7 +1093,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     const isLeftDefending = (anim === this.rightAnim);
     const strike = this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
 
-    if (strike && strike.hit && strike.damage > 0) {
+    if (strike && strike.hit && strike.damage + (strike.extraDamage ?? 0) > 0) {
       this.sparks.push({
         x: 0, y: 0,
         type: 'crit',
@@ -1247,6 +1258,7 @@ export class AnimationCombat implements AnimationCombatOwner {
           ? eclipseFe7Damage(targetHp)
           : eclipseDamage(targetHp);
       }
+      damage += strike.extraDamage ?? 0;
       if (strike.attacker === this.attacker) {
         const itemHeal = lifelinkHealForStrike(
           strike.attacker,

@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 185 unverified
+- 185 item-component NIDs; 174 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -52,7 +52,6 @@ focused browser coverage.
 | crit | 701 | hook-and-reference |
 | custom_triangle_multiplier | 3 | hook-and-reference |
 | damage | 739 | hook-and-reference |
-| damage_any | 8 | project-local-or-unknown |
 | damage_on_miss | 3 | consumed |
 | draw_back | 2 | consumed |
 | draw_back_on_end_combat_initiate | 1 | project-local-or-unknown |
@@ -69,15 +68,8 @@ focused browser coverage.
 | equation_heal | 3 | hook-and-reference |
 | eval_ally_blast_aoe | 4 | project-local-or-unknown |
 | eval_available | 197 | hook-and-reference |
-| eval_damage | 33 | project-local-or-unknown |
-| eval_damage_any | 1 | project-local-or-unknown |
-| eval_dragon | 23 | project-local-or-unknown |
-| eval_dragon_magic | 13 | project-local-or-unknown |
-| eval_extra_damage | 9 | project-local-or-unknown |
 | eval_heal | 4 | project-local-or-unknown |
-| eval_hit | 2 | project-local-or-unknown |
 | eval_hp_cost | 4 | hook-only |
-| eval_magic | 1 | project-local-or-unknown |
 | eval_max_range | 24 | project-local-or-unknown |
 | eval_min_range | 3 | project-local-or-unknown |
 | eval_smartblast_aoe | 20 | project-local-or-unknown |
@@ -86,7 +78,6 @@ focused browser coverage.
 | eval_target_restrict | 10 | hook-only |
 | eval_target_restrict_2 | 138 | hook-and-reference |
 | eval_warning | 1 | consumed |
-| eval_weight | 2 | project-local-or-unknown |
 | event_after_combat_even_miss | 126 | consumed |
 | event_after_combat_on_hit | 67 | consumed |
 | event_after_use | 8 | consumed |
@@ -112,7 +103,6 @@ focused browser coverage.
 | locked | 92 | hook-and-reference |
 | magic | 333 | hook-and-reference |
 | magic_at_range | 4 | hook-and-reference |
-| magic_weapon_rank | 5 | project-local-or-unknown |
 | map_cast_anim | 9 | consumed |
 | map_cast_sfx | 12 | consumed |
 | map_hit_add_blend | 157 | consumed |
@@ -207,7 +197,6 @@ focused browser coverage.
 | weapon | 697 | hook-and-reference |
 | weapon_rank | 352 | hook-and-reference |
 | weapon_type | 674 | hook-and-reference |
-| weapon_type_exempt | 26 | project-local-or-unknown |
 | weight | 687 | hook-and-reference |
 | wexp | 21 | consumed |
 
@@ -301,10 +290,10 @@ focused browser coverage.
 | eval_canter | 3 | project-local-or-unknown |
 | eval_crit | 17 | hook-only |
 | eval_crit_additional | 13 | project-local-or-unknown |
-| eval_damage | 30 | hook-only |
+| eval_damage | 30 | hook-and-reference |
 | eval_extra_damage | 7 | project-local-or-unknown |
 | eval_galeforce | 3 | project-local-or-unknown |
-| eval_hit | 21 | hook-only |
+| eval_hit | 21 | hook-and-reference |
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | unreferenced |
 | eval_range | 3 | unreferenced |

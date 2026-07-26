@@ -6,6 +6,17 @@
  * a booting project from being mistaken for a compatible project.
  */
 export const EOTF_ITEM_COMPONENTS = new Set<string>([
+  'damage_any',
+  'eval_damage',
+  'eval_damage_any',
+  'eval_dragon',
+  'eval_dragon_magic',
+  'eval_extra_damage',
+  'eval_hit',
+  'eval_magic',
+  'eval_weight',
+  'magic_weapon_rank',
+  'weapon_type_exempt',
 ]);
 
 export const EOTF_SKILL_COMPONENTS = new Set<string>([
