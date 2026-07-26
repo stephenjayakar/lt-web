@@ -32,8 +32,48 @@ async function waitForHarness(page: Page): Promise<void> {
   });
 }
 
+async function initializeCampaignRecords(page: Page): Promise<void> {
+  await page.goto('/?harness=true&project=eotf.ltproj&level=X&clean=true&bundle=false');
+  await waitForHarness(page);
+  await page.evaluate(async () => {
+    const game = (window as any).__gameRef;
+    const records = await import('/src/engine/records.ts');
+    const { GameEvent } = await import('/src/events/event-manager.ts');
+    records.RECORDS.clear();
+    const prefab = [...game.db.events.values()]
+      .find((event: any) => event.name === 'Records_Setup');
+    if (!prefab) throw new Error('Missing EOtF Records_Setup event');
+    game.eventManager.eventQueue.push(new GameEvent(prefab, {
+      type: 'on_startup',
+      levelNid: 'X',
+    }, () => game));
+    game.state.change('event');
+  });
+  await page.evaluate(
+    (states) => (window as any).__harness.settle(2_000, states),
+    [...settledStates],
+  );
+  const initialized = await page.evaluate(async () => {
+    const { RECORDS } = await import('/src/engine/records.ts');
+    return {
+      availableUnits: RECORDS.get('Available_Units'),
+      inheritance: RECORDS.get('skill_inheritance'),
+      gameSpeed: RECORDS.get('Game_Speed'),
+    };
+  });
+  expect(initialized).toEqual({
+    availableUnits: ['Player'],
+    inheritance: { Nothing: 'None', Patchwork: 'Player' },
+    gameSpeed: 1,
+  });
+}
+
 test.describe('Embrace of the Fog project compatibility', () => {
   test.skip(!projectAvailable, 'lt-maker/eotf.ltproj is not installed');
+
+  test('authored startup records initialize campaign prerequisites', async ({ page }) => {
+    await initializeCampaignRecords(page);
+  });
 
   test('project picker discovers a linked EotF checkout with a friendly name', async ({ page }) => {
     await page.goto('/');
@@ -243,36 +283,52 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(failures, failures.join('\n')).toEqual([]);
   });
 
-  test('all level-start event queues settle without compatibility failures', async ({ page }) => {
-    test.setTimeout(15 * 60_000);
-    const failures: string[] = [];
-    let currentLevel = 'startup';
-    page.on('pageerror', (error) => {
-      failures.push(`${currentLevel}: PAGEERROR: ${error.message}`);
-    });
-    page.on('console', (message) => {
-      const text = message.text();
-      if (!expectedAssetNoise(text) && compatibilityFailure(text)) {
-        failures.push(`${currentLevel}: ${message.type().toUpperCase()}: ${text}`);
-      }
-    });
+  test.describe('all level-start event queues settle without compatibility failures', () => {
+    test.describe.configure({ mode: 'parallel' });
+    const shardCount = 4;
+    for (let shard = 0; shard < shardCount; shard++) {
+      test(`catalog shard ${shard + 1}/${shardCount}`, async ({ page }) => {
+        test.setTimeout(15 * 60_000);
+        const failures: string[] = [];
+        const observedFailures = new Set<string>();
+        let currentLevel = 'startup';
+        page.on('pageerror', (error) => {
+          failures.push(`${currentLevel}: PAGEERROR: ${error.message}`);
+        });
+        page.on('console', (message) => {
+          const text = message.text();
+          if (!expectedAssetNoise(text) && compatibilityFailure(text)) {
+            const failure = `${currentLevel}: ${message.type().toUpperCase()}: ${text.split('\n', 1)[0]}`;
+            if (!observedFailures.has(failure)) {
+              observedFailures.add(failure);
+              failures.push(failure);
+            }
+          }
+        });
 
-    for (const level of levels) {
-      currentLevel = level.nid;
-      await page.goto(`/?harness=true&project=eotf.ltproj&level=${encodeURIComponent(level.nid)}&clean=false&bundle=false`);
-      await waitForHarness(page);
-      await page.evaluate(() => (window as any).__harness.settle(1_500));
-      const state = await page.evaluate(() => (window as any).__harness.getState());
-      if (state.levelNid !== level.nid) {
-        failures.push(`${level.nid}: loaded level ${String(state.levelNid)}`);
-      }
-      if (!settledStates.has(state.currentStateName)) {
-        failures.push(
-          `${level.nid}: level_start ended in ${String(state.currentStateName)} [${state.stateStack.join(', ')}]`,
-        );
-      }
+        await initializeCampaignRecords(page);
+        for (const [index, level] of levels.entries()) {
+          if (index % shardCount !== shard) continue;
+          currentLevel = level.nid;
+          await page.goto(`/?harness=true&project=eotf.ltproj&level=${encodeURIComponent(level.nid)}&clean=false&bundle=false`);
+          await waitForHarness(page);
+          await page.evaluate(
+            (states) => (window as any).__harness.settle(300, states),
+            [...settledStates],
+          );
+          const state = await page.evaluate(() => (window as any).__harness.getState());
+          if (state.levelNid !== level.nid) {
+            failures.push(`${level.nid}: loaded level ${String(state.levelNid)}`);
+          }
+          if (!settledStates.has(state.currentStateName)) {
+            failures.push(
+              `${level.nid}: level_start ended in ${String(state.currentStateName)} [${state.stateStack.join(', ')}]`,
+            );
+          }
+        }
+
+        expect(failures, failures.join('\n')).toEqual([]);
+      });
     }
-
-    expect(failures, failures.join('\n')).toEqual([]);
   });
 });

@@ -1390,7 +1390,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2020
+          "line": 2061
         },
         {
           "source": "src/native.ts",
@@ -5168,7 +5168,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1964
+          "line": 2005
         },
         {
           "source": "src/objects/item.ts",
@@ -7662,7 +7662,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2153
+          "line": 2194
         }
       ],
       "directReads": [
@@ -8491,7 +8491,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2025
+          "line": 2066
         }
       ],
       "directReads": [

@@ -941,7 +941,7 @@
         },
         {
           "source": "src/harness.ts",
-          "line": 586
+          "line": 585
         }
       ],
       "directReads": [
@@ -1907,7 +1907,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1984
+          "line": 2025
         },
         {
           "source": "src/objects/item.ts",
@@ -2020,7 +2020,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1980
+          "line": 2021
         },
         {
           "source": "src/objects/item.ts",
@@ -2411,7 +2411,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1655
+          "line": 1696
         },
         {
           "source": "src/main.ts",
@@ -2452,7 +2452,7 @@
       "webReferences": [
         {
           "source": "src/events/event-manager.ts",
-          "line": 1656
+          "line": 1697
         },
         {
           "source": "src/objects/item.ts",
@@ -2549,7 +2549,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1544
+          "line": 1585
         }
       ],
       "directReads": [
@@ -3997,11 +3997,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2053
+          "line": 2094
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2055
+          "line": 2096
         }
       ],
       "directReads": [
@@ -6777,7 +6777,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2448
+          "line": 2490
         },
         {
           "source": "src/main.ts",
@@ -8603,19 +8603,19 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1961
+          "line": 2002
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2054
+          "line": 2095
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2056
+          "line": 2097
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2685
+          "line": 2727
         },
         {
           "source": "src/main.ts",
@@ -8711,7 +8711,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1968
+          "line": 2009
         },
         {
           "source": "src/main.ts",
@@ -8787,11 +8787,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1984
+          "line": 2025
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1999
+          "line": 2040
         },
         {
           "source": "src/main.ts",
@@ -8869,7 +8869,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2000
+          "line": 2041
         },
         {
           "source": "src/main.ts",
@@ -9099,7 +9099,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1964
+          "line": 2005
         },
         {
           "source": "src/objects/item.ts",
