@@ -1100,14 +1100,61 @@ function translateListComprehensions(expression: string): string {
       const ifParts = splitAtTopLevel(inParts.slice(1).join(' in '), ' if ');
       const collection = ifParts[0].trim();
       const filter = ifParts[1]?.trim();
+      let projection = forParts[0].trim();
+      if (projection.startsWith('(') && projection.endsWith(')')) {
+        const tupleParts = splitAtTopLevel(projection.slice(1, -1), ',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (tupleParts.length > 1) projection = `[${tupleParts.join(', ')}]`;
+      }
       const mapped = filter
-        ? `(${collection}).filter((${variable}) => (${filter})).map((${variable}) => (${forParts[0].trim()}))`
-        : `(${collection}).map((${variable}) => (${forParts[0].trim()}))`;
+        ? `(${collection}).filter((${variable}) => (${filter})).map((${variable}) => (${projection}))`
+        : `(${collection}).map((${variable}) => (${projection}))`;
       translated = translated.slice(0, open) + mapped + translated.slice(close + 1);
       changed = true;
       break;
     }
     if (!changed) break;
+  }
+  return translated;
+}
+
+/** Translate Python sorted(values, key=lambda x: ..., reverse=True). */
+function translateSortedCalls(expression: string): string {
+  let translated = expression;
+  for (let pass = 0; pass < 20; pass++) {
+    const match = /\bsorted\s*\(/g.exec(translated);
+    if (!match || match.index === undefined) break;
+    const open = translated.indexOf('(', match.index);
+    const close = findMatchingParen(translated, open);
+    if (close < 0) break;
+    const args = splitAtTopLevel(translated.slice(open + 1, close), ',')
+      .map((part) => part.trim());
+    const values = args[0];
+    const keyArg = args.find((part) => part.startsWith('key='));
+    const reverseArg = args.find((part) => part.startsWith('reverse='));
+    let key = '(value) => value';
+    if (keyArg) {
+      const lambda = keyArg.slice('key='.length).trim();
+      const lambdaMatch = /^lambda\s+([A-Za-z_]\w*)\s*:\s*([\s\S]+)$/.exec(lambda);
+      if (!lambdaMatch) break;
+      let body = lambdaMatch[2].trim();
+      if (body.startsWith('(') && body.endsWith(')')) {
+        const tupleParts = splitAtTopLevel(body.slice(1, -1), ',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (tupleParts.length > 1) body = `[${tupleParts.join(', ')}]`;
+      }
+      key = `(${lambdaMatch[1]}) => (${body})`;
+    }
+    const reverse = reverseArg
+      ? reverseArg.slice('reverse='.length).trim()
+      : 'false';
+    const replacement = `__sorted__(${values}, ${key}, ${reverse})`;
+    translated =
+      translated.slice(0, match.index) +
+      replacement +
+      translated.slice(close + 1);
   }
   return translated;
 }
@@ -1610,6 +1657,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     level: {
       regions: wrapRegions(regions),
       nid: game.currentLevel?.nid ?? '',
+      get units() {
+        return Array.from(game.units?.values?.() ?? []).map(wrapUnit);
+      },
     },
     phase: {
       get_current() {
@@ -1646,6 +1696,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       return units;
     },
     get_money() { return game.getMoney?.() ?? 0; },
+    get_data(nid: string) {
+      return game.db?.rawData?.get?.(String(nid)) ?? null;
+    },
     get_random(minimum: number, maximum: number) {
       const seed = Number(game.gameVars?.get?.('_random_seed') ?? 0);
       const storedSeed = Number(game.gameVars?.get?.('_other_random_seed'));
@@ -1945,11 +1998,12 @@ function evaluateWithJsFallback(
 
   // Translate Python idioms to JavaScript
   let jsExpr = condition.replace(
-    /(?<!for\s)((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s+(!\s*)?in\s+(\[[^\]]*\])/g,
+    /(?<!for\s)(?!not\b)((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\))|(?:\[[^\]]+\]))*))\s+(not\s+|!\s*)?in\s+(\[[^\]]*\])/g,
     (_whole, needle, negated, haystack) =>
       `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
   );
   jsExpr = translateListComprehensions(jsExpr);
+  jsExpr = translateSortedCalls(jsExpr);
   jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
 
   // Python `len(x)` -> `x.length`
@@ -1982,7 +2036,7 @@ function evaluateWithJsFallback(
   // Python membership inside translated comprehensions/generators. Direct
   // top-level membership is handled by evaluateCondition before this fallback.
   jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s+(!\s*)?in\s+(\[[^\]]*\]|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\)))*)/g,
+    /((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\))|(?:\[[^\]]+\]))*))\s+(!\s*)?in\s+(\[[^\]]*\]|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\)))*)/g,
     (_whole, needle, negated, haystack) =>
       `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
   );
@@ -2028,6 +2082,33 @@ function evaluateWithJsFallback(
   };
   const __any__ = (values: any) => Array.from(values ?? []).some(Boolean);
   const __all__ = (values: any) => Array.from(values ?? []).every(Boolean);
+  const compareSortKeys = (left: any, right: any): number => {
+    if (Array.isArray(left) && Array.isArray(right)) {
+      const length = Math.max(left.length, right.length);
+      for (let index = 0; index < length; index++) {
+        const compared = compareSortKeys(left[index], right[index]);
+        if (compared !== 0) return compared;
+      }
+      return 0;
+    }
+    if (left === right) return 0;
+    if (left === undefined || left === null) return -1;
+    if (right === undefined || right === null) return 1;
+    return left < right ? -1 : 1;
+  };
+  const __sorted__ = (
+    values: Iterable<any> | undefined,
+    key: (value: any) => any = (value) => value,
+    reverse = false,
+  ) => Array.from(values ?? [])
+    .map((value, index) => ({ value, index, key: key(value) }))
+    .sort((left, right) => {
+      const compared = compareSortKeys(left.key, right.key);
+      return compared === 0
+        ? left.index - right.index
+        : (reverse ? -compared : compared);
+    })
+    .map((entry) => entry.value);
 
   // v() helper: level vars take priority over game vars
   const v = (varName: string, fallback?: any) => {
@@ -2165,7 +2246,7 @@ function evaluateWithJsFallback(
     // eslint-disable-next-line no-new-func
     const fn = new Function(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
-      'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
+      'check_pair', 'check_default', '__len__', '__any__', '__all__', '__sorted__', 'v', 'cf',
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'unit_funcs', 'combat_calcs', 'movement_funcs', 'target_system',
       'max', 'min', 'sum', 'math', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge',
@@ -2208,7 +2289,7 @@ function evaluateWithJsFallback(
     );
     return fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
-      check_pair, check_default, __len__, __any__, __all__, v, cf,
+      check_pair, check_default, __len__, __any__, __all__, __sorted__, v, cf,
       support_rank_nid, mode, stat_changes, evalScope.DB, RECORDS, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.unit_funcs,
       evalScope.combat_calcs, evalScope.movement_funcs, evalScope.target_system,
