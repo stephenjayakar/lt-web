@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 141 unverified
+- 270 skill-component NIDs; 138 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -176,9 +176,6 @@ focused browser coverage.
 | armsthrift | 3 | consumed |
 | armsthrift_always | 1 | project-local-or-unknown |
 | attack_proc | 10 | reference-only |
-| aura | 262 | consumed |
-| aura_range | 262 | consumed |
-| aura_target | 262 | consumed |
 | berserked | 7 | project-local-or-unknown |
 | blinded | 6 | project-local-or-unknown |
 | block_specific_status | 4 | project-local-or-unknown |

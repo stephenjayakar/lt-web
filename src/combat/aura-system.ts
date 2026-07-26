@@ -28,7 +28,7 @@ import type { UnitObject } from '../objects/unit';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { SkillObject } from '../objects/skill';
-import { initializeSkillData } from './skill-system';
+import { initializeSkillData, isCantoSkill } from './skill-system';
 
 /** Tag keys stored on a skill instance granted by an aura's propagation. */
 export const AURA_SOURCE_TYPE_KEY = 'auraSourceType';
@@ -42,6 +42,9 @@ export function isAuraSourcedSkill(skill: SkillObject): boolean {
 
 /** Strip every aura-sourced skill from `unit` (used before full re-derivation). */
 export function removeAllAuraSourcedSkills(unit: UnitObject): void {
+  for (const skill of unit.skills) {
+    if (isAuraSourcedSkill(skill)) skill.ownerNid = null;
+  }
   unit.skills = unit.skills.filter((skill) => !isAuraSourcedSkill(skill));
 }
 
@@ -79,8 +82,13 @@ function getShellPositions(
   const [cx, cy] = origin;
   const seen = new Set<string>();
   const result: [number, number][] = [];
-  for (let dx = -range; dx <= range; dx++) {
-    for (let dy = -range; dy <= range; dy++) {
+  const [minX, minY, maxX, maxY] = board.bounds;
+  const dxMin = Math.max(-range, minX - cx);
+  const dxMax = Math.min(range, maxX - cx);
+  const dyMin = Math.max(-range, minY - cy);
+  const dyMax = Math.min(range, maxY - cy);
+  for (let dx = dxMin; dx <= dxMax; dx++) {
+    for (let dy = dyMin; dy <= dyMax; dy++) {
       const dist = Math.abs(dx) + Math.abs(dy);
       if (dist < 1 || dist > range) continue;
       const x = cx + dx;
@@ -123,12 +131,13 @@ export function refreshAuras(
 ): void {
   if (!board) return;
 
-  const allUnits = Array.from(units).filter((u) => u.position);
+  const allUnits = Array.from(units);
+  const positionedUnits = allUnits.filter((unit) => unit.position);
 
   // 1. Compute desired coverage: for each aura holder, which units in range
   // should carry the child skill.
   const desired: DesiredEntry[] = [];
-  for (const owner of allUnits) {
+  for (const owner of positionedUnits) {
     if (!owner.position) continue;
     for (const info of getAuraInfos(owner)) {
       const positions = getShellPositions(owner.position, info.range, board);
@@ -146,9 +155,38 @@ export function refreshAuras(
     }
   }
 
+  // Python UnitObject.add_skill retains only the first non-displaceable aura
+  // source for a non-stack child, and at most the authored stack limit for
+  // stack children. Preserve desired traversal order so removing the first
+  // source exposes the next qualifying aura on the following refresh.
+  const limitedDesired: DesiredEntry[] = [];
+  const desiredGroups = new Map<string, DesiredEntry[]>();
+  for (const entry of desired) {
+    const key = `${entry.targetUnit.nid}|${entry.childNid}`;
+    const group = desiredGroups.get(key) ?? [];
+    group.push(entry);
+    desiredGroups.set(key, group);
+  }
+  for (const entries of desiredGroups.values()) {
+    const first = entries[0];
+    const prefab = db.skills?.get?.(first.childNid);
+    const configuredLimit = Number(
+      prefab?.components?.find?.(
+        ([nid]: [string, unknown]) => nid === 'stack' || nid === 'stax',
+      )?.[1] ?? 1,
+    );
+    const stackLimit = Number.isFinite(configuredLimit)
+      ? Math.max(1, Math.trunc(configuredLimit))
+      : 1;
+    const naturalCount = first.targetUnit.skills.filter(
+      (skill) => !isAuraSourcedSkill(skill) && skill.nid === first.childNid,
+    ).length;
+    limitedDesired.push(...entries.slice(0, Math.max(0, stackLimit - naturalCount)));
+  }
+
   const desiredKey = (d: DesiredEntry) =>
     `${d.targetUnit.nid}|${d.ownerNid}|${d.parentUid}|${d.childNid}`;
-  const desiredSet = new Set(desired.map(desiredKey));
+  const desiredSet = new Set(limitedDesired.map(desiredKey));
 
   // 2. Remove aura-sourced skills that are no longer desired.
   for (const unit of allUnits) {
@@ -160,12 +198,13 @@ export function refreshAuras(
       )}|${skill.nid}`;
       if (!desiredSet.has(key)) {
         unit.skills.splice(i, 1);
+        skill.ownerNid = null;
       }
     }
   }
 
   // 3. Add aura-sourced skills that are newly desired (and not already present).
-  for (const d of desired) {
+  for (const d of limitedDesired) {
     const alreadyHas = d.targetUnit.skills.some(
       (skill) =>
         isAuraSourcedSkill(skill) &&
@@ -189,6 +228,6 @@ export function refreshAuras(
 
   // Keep hasCanto in sync in case an aura child skill grants/loses canto.
   for (const unit of allUnits) {
-    unit.hasCanto = unit.skills.some((s) => s.hasComponent('canto'));
+    unit.hasCanto = unit.skills.some(isCantoSkill);
   }
 }
