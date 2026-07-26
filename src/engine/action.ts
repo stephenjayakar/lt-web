@@ -6,6 +6,7 @@ import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
 import {
   initializeSkillData,
+  hasDrainingCharge,
   onPairup,
   onRemoveRescue,
   onRescue,
@@ -3589,6 +3590,8 @@ export class AddSkillAction extends Action {
   private displacedAction: RemoveSkillAction | null = null;
   private multiSkillActions: AddSkillAction[] = [];
   private initializedMultiSkill = false;
+  private statusPreparationActions: Action[] = [];
+  private initializedStatusPreparation = false;
   private statusReactionActions: Action[] = [];
   private initializedStatusReactions = false;
 
@@ -3616,6 +3619,33 @@ export class AddSkillAction extends Action {
     }
     this.added = this.unit.skills.filter((skill) => skill.nid === this.skill.nid).length < stackLimit;
     if (this.added) {
+      if (!this.initializedStatusPreparation) {
+        this.initializedStatusPreparation = true;
+        const game = _getGame?.();
+        if (game) {
+          for (const protector of [...this.unit.skills]) {
+            if (!skillCondition(protector, this.unit, game)) continue;
+            if (protector.hasComponent('build_charge') &&
+                Number(protector.data.get('charge') ?? 0) <
+                  Number(protector.data.get('total_charge') ?? 0)) continue;
+            if (hasDrainingCharge(protector) &&
+                Number(protector.data.get('charge') ?? 0) <= 0) continue;
+            for (const [component] of protector.components) {
+              if (component !== 'resist_status') continue;
+              if (!this.skill.hasComponent('time') &&
+                  !this.skill.hasComponent('end_time') &&
+                  !this.skill.hasComponent('combined_time')) continue;
+              const turns = Number(this.skill.data.get('turns'));
+              if (Number.isFinite(turns)) {
+                this.statusPreparationActions.push(
+                  new SetSkillDataAction(this.skill, 'turns', Math.min(turns, 1)),
+                );
+              }
+            }
+          }
+        }
+      }
+      for (const action of this.statusPreparationActions) action.execute();
       this.skill.ownerNid = this.unit.nid;
       this.unit.skills.push(this.skill);
     }
@@ -3645,17 +3675,48 @@ export class AddSkillAction extends Action {
         for (const protector of [...this.unit.skills]) {
           if (protector === this.skill) continue;
           if (!skillCondition(protector, this.unit, game)) continue;
-          if (protector.hasComponent('reflect_status') && this.skill.initiatorNid) {
-            const initiator = game.units.get(this.skill.initiatorNid);
-            const prefab = game.db.skills.get(this.skill.nid);
-            if (initiator && prefab) {
-              this.statusReactionActions.push(
-                new AddSkillAction(initiator, new SkillObject(prefab)),
-              );
+          if (protector.hasComponent('build_charge') &&
+              Number(protector.data.get('charge') ?? 0) <
+                Number(protector.data.get('total_charge') ?? 0)) continue;
+          if (hasDrainingCharge(protector) &&
+              Number(protector.data.get('charge') ?? 0) <= 0) continue;
+          for (const [component, value] of protector.components) {
+            if (component === 'reflect_status' && this.skill.initiatorNid) {
+              const initiator = game.units.get(this.skill.initiatorNid);
+              const prefab = game.db.skills.get(this.skill.nid);
+              if (initiator && prefab) {
+                this.statusReactionActions.push(
+                  new AddSkillAction(initiator, new SkillObject(prefab)),
+                );
+              }
+            } else if (
+              component === 'immune_status' &&
+              this.skill.hasComponent('negative')
+            ) {
+              this.statusReactionActions.push(new RemoveSkillAction(this.unit, this.skill));
+            } else if (
+              component === 'block_status' &&
+              this.skill.hasComponent('negative')
+            ) {
+              this.statusReactionActions.push(new RemoveSkillAction(this.unit, this.skill));
+              if (protector.hasComponent('build_charge')) {
+                this.statusReactionActions.push(
+                  new SetSkillDataAction(protector, 'charge', 0),
+                );
+              } else if (hasDrainingCharge(protector)) {
+                this.statusReactionActions.push(new SetSkillDataAction(
+                  protector,
+                  'charge',
+                  Number(protector.data.get('charge') ?? 0) - 1,
+                ));
+              }
+            } else if (
+              component === 'block_specific_status' &&
+              Array.isArray(value) &&
+              value.includes(this.skill.nid)
+            ) {
+              this.statusReactionActions.push(new RemoveSkillAction(this.unit, this.skill));
             }
-          }
-          if (protector.hasComponent('immune_status') && this.skill.hasComponent('negative')) {
-            this.statusReactionActions.push(new RemoveSkillAction(this.unit, this.skill));
           }
         }
       }
@@ -3671,6 +3732,9 @@ export class AddSkillAction extends Action {
       this.skill.ownerNid = null;
       for (const action of [...this.multiSkillActions].reverse()) action.reverse();
       this.displacedAction?.reverse();
+    }
+    if (this.added) {
+      for (const action of [...this.statusPreparationActions].reverse()) action.reverse();
     }
     this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
   }

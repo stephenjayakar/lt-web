@@ -2258,13 +2258,13 @@
         "nid": "block_specific_status",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "block_status",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "bloody_moon",
@@ -2443,7 +2443,7 @@
       {
         "nid": "combined_time",
         "uses": 56,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -2653,7 +2653,7 @@
       {
         "nid": "end_time",
         "uses": 43,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -3109,8 +3109,8 @@
       {
         "nid": "immune_status",
         "uses": 14,
-        "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "is_terrain",
@@ -3356,7 +3356,7 @@
         "nid": "purge_ailments",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "recoil",
@@ -3415,8 +3415,8 @@
       {
         "nid": "resist_status",
         "uses": 3,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "ride_the_lightning",
@@ -3541,7 +3541,7 @@
       {
         "nid": "time",
         "uses": 89,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
