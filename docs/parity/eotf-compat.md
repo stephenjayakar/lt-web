@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 148 unverified
+- 185 item-component NIDs; 145 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -70,9 +70,6 @@ focused browser coverage.
 | event_after_combat_even_miss | 126 | consumed |
 | event_after_combat_on_hit | 67 | consumed |
 | event_after_use | 8 | consumed |
-| event_before_combat | 7 | project-local-or-unknown |
-| event_for_each_after_combat_on_hit | 2 | project-local-or-unknown |
-| event_on_break | 2 | project-local-or-unknown |
 | event_on_hit | 218 | consumed |
 | exp | 5 | consumed |
 | galeforce_on_crit | 1 | project-local-or-unknown |
