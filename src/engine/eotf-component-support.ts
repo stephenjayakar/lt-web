@@ -36,6 +36,7 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'pivot_always_on_end_combat_initiate',
   'pivot_on_end_combat_initiate',
   'refresh_no_target_restrict',
+  'remove_on_end_chapter',
   'restore_after_combat',
   'restore_no_target_restrict',
   'self_remove_skill',

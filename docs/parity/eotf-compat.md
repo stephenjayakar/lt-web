@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 135 unverified
+- 185 item-component NIDs; 134 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -116,7 +116,6 @@ focused browser coverage.
 | promote | 9 | hook-and-reference |
 | reaver | 7 | hook-and-reference |
 | refresh | 11 | hook-and-reference |
-| remove_on_end_chapter | 11 | project-local-or-unknown |
 | repair | 1 | hook-and-reference |
 | restore | 5 | hook-and-reference |
 | restore_specific | 5 | hook-and-reference |

@@ -23,7 +23,13 @@ import { Cursor } from './cursor';
 import { ArrowRenderer } from '../rendering/movement-arrows';
 import { UnitMarkerIcons } from '../rendering/unit-markers';
 import { PhaseController } from './phase';
-import { ActionLog, RemoveSkillAction, type MoveAction } from './action';
+import {
+  ActionLog,
+  RemoveItemFromConvoy,
+  RemoveItemFromUnitAction,
+  RemoveSkillAction,
+  type MoveAction,
+} from './action';
 import { GameBoard } from '../objects/game-board';
 import { UnitObject } from '../objects/unit';
 import { ItemObject, createItemTree } from '../objects/item';
@@ -350,7 +356,12 @@ export class GameState {
     return TileMapObject.fromPrefab(tilemapData, tilesetImages, tilesetDefs, autotileImages);
   }
 
-  cleanUpLevel(): void {
+  /**
+   * Run item on_end_chapter hooks before either full or forced chapter cleanup.
+   * The current party convoy is checked first, then the runtime owner and
+   * current-party inventories, matching EotF's RemoveOnEndChapter component.
+   */
+  applyItemEndChapterHooks(): number {
     const chapterItems = new Set<ItemObject>(this.items.values());
     for (const unit of this.units.values()) {
       for (const item of unit.items) chapterItems.add(item);
@@ -366,6 +377,30 @@ export class GameState {
       for (const child of item.subitems) resetItemTree(child);
     };
     for (const item of [...chapterItems]) resetItemTree(item);
+
+    let removed = 0;
+    const party = this.getParty();
+    const partyUnits = this.getAllUnitsInParty();
+    for (const item of chapterItems) {
+      if (!item.hasComponent('remove_on_end_chapter')) continue;
+      if (party?.convoy.includes(item)) {
+        this.actionLog.doAction(new RemoveItemFromConvoy(item, party.nid));
+        removed++;
+        continue;
+      }
+      const owner = item.owner && item.owner.items.includes(item)
+        ? item.owner
+        : partyUnits.find((unit) => unit.items.includes(item));
+      if (owner) {
+        this.actionLog.doAction(new RemoveItemFromUnitAction(owner, item));
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  cleanUpLevel(): void {
+    this.applyItemEndChapterHooks();
 
     // Remove all units from the board
     for (const unit of this.units.values()) {

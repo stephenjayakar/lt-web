@@ -3069,6 +3069,8 @@ export class TakeItemFromConvoy extends Action {
 export class RemoveItemFromConvoy extends Action {
   item: ItemObject;
   partyNid: string | null;
+  private itemIndex: number = -1;
+  private removed: boolean = false;
 
   constructor(item: ItemObject, partyNid?: string) {
     super();
@@ -3079,18 +3081,29 @@ export class RemoveItemFromConvoy extends Action {
   execute(): void {
     const game = _getGame?.();
     if (!game) return;
+    this.removed = false;
     const party = game.getParty(this.partyNid);
     if (party) {
       const idx = party.convoy.indexOf(this.item);
-      if (idx !== -1) party.convoy.splice(idx, 1);
+      if (idx !== -1) {
+        this.itemIndex = idx;
+        party.convoy.splice(idx, 1);
+        this.removed = true;
+      }
     }
   }
 
   reverse(): void {
     const game = _getGame?.();
-    if (!game) return;
+    if (!game || !this.removed) return;
     const party = game.getParty(this.partyNid);
-    if (party) party.convoy.push(this.item);
+    if (party) {
+      const index = this.itemIndex >= 0
+        ? Math.min(this.itemIndex, party.convoy.length)
+        : party.convoy.length;
+      party.convoy.splice(index, 0, this.item);
+      this.removed = false;
+    }
   }
 }
 

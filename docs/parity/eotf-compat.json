@@ -1650,7 +1650,7 @@
         "nid": "remove_on_end_chapter",
         "uses": 11,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "repair",

@@ -361,6 +361,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 5 real uses of EotF's self-unload sequence hook across
   weakly traversable targeting, user warping, cursor follow, parent event
   routing, free-action semantics, sequence-tree identity, and turnwheel replay.
+- [x] Remove all 11 EotF chapter-temporary items from current-party unit and
+  convoy inventories before persistent snapshots, including exact action
+  replay and full/non-full cleanup entry points.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
