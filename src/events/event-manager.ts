@@ -1243,6 +1243,17 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     const wrapped = new Proxy(target as Record<string, any>, {
       get(proxyTarget, property: string | symbol) {
         if (property in proxyTarget) return proxyTarget[property as string];
+        if (property === 'parent_skill') {
+          const directParent = skill.data?.get?.('multiSkillSource');
+          if (directParent) return wrapSkill(directParent);
+          const ownerNid = skill.data?.get?.('auraOwnerNid');
+          const parentUid = skill.data?.get?.('auraParentSkillUid');
+          const owner = ownerNid ? game.units?.get?.(ownerNid) : null;
+          const auraParent = owner?.skills?.find?.(
+            (candidate: any) => candidate.uid === parentUid,
+          );
+          return wrapSkill(auraParent);
+        }
         if (typeof property === 'string' && components.has(property)) {
           return components.get(property);
         }

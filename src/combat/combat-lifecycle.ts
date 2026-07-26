@@ -162,6 +162,49 @@ export function triggerSkillCharge(
   }
 }
 
+function rootItem(item: ItemObject): ItemObject {
+  let root = item;
+  while (root.parentItem) root = root.parentItem;
+  return root;
+}
+
+/**
+ * Python Ability.end_combat_unconditional and EotF's charged variants.
+ * Returns the number of charge-bearing skill instances triggered.
+ */
+export function triggerAbilityItemCharge(
+  game: CombatLifecycleGame,
+  unit: UnitObject,
+  item: ItemObject,
+  mode: string,
+): number {
+  const usedNid = rootItem(item).nid;
+  let triggered = 0;
+  for (const skill of [...unit.skills]) {
+    const ability = skill.getComponent<string>('ability');
+    if (ability === usedNid) {
+      triggerSkillCharge(game, skill, unit);
+      triggered++;
+    }
+    const attackAbility = skill.getComponent<string>('ability_attack_charge');
+    if (attackAbility === usedNid && mode === 'attack') {
+      triggerSkillCharge(game, skill, unit);
+      triggered++;
+    }
+    const parentAbility = skill.getComponent<string>('ability_parent');
+    if (parentAbility !== usedNid) continue;
+    const ownerNid = skill.data.get('auraOwnerNid');
+    const parentUid = skill.data.get('auraParentSkillUid');
+    const owner = typeof ownerNid === 'string' ? game.units?.get(ownerNid) : null;
+    const parent = owner?.skills.find((candidate) => candidate.uid === parentUid);
+    if (owner && parent) {
+      triggerSkillCharge(game, parent, owner);
+      triggered++;
+    }
+  }
+  return triggered;
+}
+
 function triggerSkillEvent(
   game: CombatLifecycleGame,
   nid: unknown,
@@ -1086,6 +1129,17 @@ export function applyCombatSkillEndHooks(
       }
 
       if (skill.hasComponent('combat_art') && skill.data.get('active') === true) {
+        const sharedSkillNid = skill.getComponent<string>('combat_art_all');
+        if (sharedSkillNid) {
+          for (const ally of game.units?.values?.() ?? []) {
+            const inSharedParty = ally.team === 'player' &&
+              (ally.party === game.currentParty || ally.party === 'Flex');
+            if (!inSharedParty || ally.nid === unit.nid) continue;
+            const sharedSkill = ally.skills.find((candidate) =>
+              candidate.nid === sharedSkillNid);
+            if (sharedSkill) triggerSkillCharge(game, sharedSkill, ally);
+          }
+        }
         const child = unit.skills.find((candidate) =>
           candidate.data.get('combatArtSource') === skill);
         triggerSkillCharge(game, skill);
@@ -1100,6 +1154,23 @@ export function applyCombatSkillEndHooks(
         applied++;
       }
     }
+  }
+
+  // Ability items are generated outside inventory and may strike many targets;
+  // consume their owning skill charge once per unit/root-item encounter.
+  const abilityItemsByUnit = new Map<UnitObject, Set<ItemObject>>();
+  for (const strike of strikes) {
+    const root = rootItem(strike.item);
+    const seen = abilityItemsByUnit.get(strike.attacker) ?? new Set<ItemObject>();
+    if (seen.has(root)) continue;
+    seen.add(root);
+    abilityItemsByUnit.set(strike.attacker, seen);
+    applied += triggerAbilityItemCharge(
+      game,
+      strike.attacker,
+      strike.item,
+      strike.mode ?? (strike.attacker === initiator ? 'attack' : 'defense'),
+    );
   }
 
   // Python LostOnEndCombat2 marks itself during cleanup_combat and resolves
@@ -1546,5 +1617,45 @@ export function queueCombatItemEvents(game: CombatLifecycleGame, strikes: Combat
       queued++;
     }
   }
+  return queued;
+}
+
+/** Resolve an auto-hit event spell aimed at an empty tile (Python on_hit/end_combat). */
+export function queueDirectItemUseEvents(
+  game: CombatLifecycleGame,
+  unit: UnitObject,
+  item: ItemObject,
+  targetPosition: [number, number],
+  target: UnitObject | null = null,
+): number {
+  const manager = game.eventManager;
+  if (!manager) return 0;
+  let queued = 0;
+  const trigger = (component: string): void => {
+    const nid = eventNid(item, component);
+    if (!nid) return;
+    if (manager.triggerSpecific(nid, {
+      type: component,
+      unit1: unit,
+      unit2: target ?? undefined,
+      unitNid: unit.nid,
+      position: unit.position ? [...unit.position] as [number, number] : undefined,
+      item,
+      localArgs: new Map<string, unknown>([
+        ['target_pos', targetPosition],
+        ['mode', 'attack'],
+        ['attack_info', [0, 0]],
+        ['item', item],
+        ['item2', null],
+      ]),
+    })) queued++;
+  };
+  for (const component of ['event_on_use', 'event_on_hit']) trigger(component);
+  for (const component of [
+    'event_after_use',
+    'event_after_combat',
+    'event_after_combat_on_hit',
+    'event_after_combat_even_miss',
+  ]) trigger(component);
   return queued;
 }

@@ -1295,19 +1295,19 @@
       {
         "nid": "event_after_combat_even_miss",
         "uses": 126,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
         "nid": "event_after_combat_on_hit",
         "uses": 67,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
         "nid": "event_after_use",
         "uses": 8,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
@@ -1331,7 +1331,7 @@
       {
         "nid": "event_on_hit",
         "uses": 218,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
@@ -2036,19 +2036,19 @@
         "nid": "ability",
         "uses": 510,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ability_attack_charge",
         "uses": 11,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ability_parent",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "active_combat_charge_increase",
@@ -2408,7 +2408,7 @@
         "nid": "combat_art_all",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_art_proc",

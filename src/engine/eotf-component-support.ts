@@ -10,6 +10,9 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
 
 export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'True_Miracle_Event',
+  'ability',
+  'ability_attack_charge',
+  'ability_parent',
   'active_combat_charge_increase',
   'ally_lifelink_ranged',
   'ally_lifelink_target',
@@ -22,6 +25,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'better_post_combat_splash',
   'better_recoil',
   'blue',
+  'combat_art_all',
   'combat_art_proc',
   'combat_charge_increase_better',
   'combat_trigger_charge',
