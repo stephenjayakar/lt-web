@@ -94,6 +94,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'ally_lifelink_ranged',
   'ally_lifelink_target',
   'ally_strikeheal_ranged',
+  'all_brave',
   'alternate_accuracy_formula',
   'alternate_avoid_formula',
   'alternate_crit_accuracy_formula',
