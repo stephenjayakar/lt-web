@@ -2054,7 +2054,7 @@
         "nid": "active_combat_charge_increase",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "additional_accessories",
@@ -2420,7 +2420,7 @@
         "nid": "combat_charge_increase_better",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_charge_increase_by_stat",
@@ -2438,7 +2438,7 @@
         "nid": "combat_trigger_charge",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combined_time",
@@ -2504,7 +2504,7 @@
         "nid": "defense_proc_with_target",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "defense_speed",
@@ -2540,7 +2540,7 @@
         "nid": "drain_charge_all",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_accuracy",
@@ -2774,7 +2774,7 @@
         "nid": "eval_proc_rate",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_range",
@@ -2864,7 +2864,7 @@
         "nid": "full_miracle",
         "uses": 6,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_on_hit",
@@ -3128,7 +3128,7 @@
         "nid": "kill_charge_increase",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lifelink",
@@ -3152,7 +3152,7 @@
         "nid": "limited_charge",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "live_to_serve",
@@ -3170,7 +3170,7 @@
         "nid": "lost_on_charges_depleted",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_end_chapter",
@@ -3554,7 +3554,7 @@
         "nid": "True_Miracle_Event",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "TrueMiracle",

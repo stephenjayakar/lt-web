@@ -479,28 +479,62 @@ export function ignoreDyingInCombat(unit: UnitObject): boolean {
  * respects charge components (build_charge/drain_charge/charges_per_turn)
  * the same way attack/defense procs do.
  */
-export function miracleSkill(unit: UnitObject): SkillObject | null {
+export function miracleSkill(
+  unit: UnitObject,
+): { skill: SkillObject; full: boolean } | null {
   for (const skill of unit.skills) {
-    if (!skill.hasComponent('miracle')) continue;
+    const full = skill.hasComponent('full_miracle');
+    if (!skill.hasComponent('miracle') && !full) continue;
     if (skill.hasComponent('build_charge')) {
       const charge = Number(skill.data.get('charge') ?? 0);
       const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
       if (charge < total) continue;
     }
-    if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    if (hasDrainingCharge(skill)) {
       if (Number(skill.data.get('charge') ?? 0) <= 0) continue;
     }
-    return skill;
+    return { skill, full };
   }
   return null;
 }
 
+export function hasDrainingCharge(skill: SkillObject): boolean {
+  return skill.hasComponent('drain_charge') ||
+    skill.hasComponent('charges_per_turn') ||
+    skill.hasComponent('drain_charge_all') ||
+    skill.hasComponent('limited_charge') ||
+    skill.hasComponent('lost_on_charges_depleted');
+}
+
 /** Consume the charge (if any) on a triggered miracle skill (Python TriggerCharge). */
-export function consumeMiracleCharge(skill: SkillObject): void {
+export function consumeMiracleCharge(
+  skill: SkillObject,
+  owner?: UnitObject,
+  game?: any,
+): void {
   if (skill.hasComponent('build_charge')) {
     skill.data.set('charge', 0);
-  } else if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
-    skill.data.set('charge', Number(skill.data.get('charge') ?? 0) - 1);
+  } else if (hasDrainingCharge(skill)) {
+    const next = Number(skill.data.get('charge') ?? 0) - 1;
+    skill.data.set('charge', next);
+    if (skill.hasComponent('drain_charge_all') && owner && game?.units) {
+      for (const candidate of game.units.values()) {
+        const sharesCharge = owner.team === 'player'
+          ? candidate.team === 'player' &&
+            (candidate.party === game.currentParty || candidate.party === 'Flex')
+          : (owner.team === 'enemy' || owner.team === 'enemy2') &&
+            (candidate.team === 'enemy' || candidate.team === 'enemy2');
+        if (candidate.nid === owner.nid || !sharesCharge) continue;
+        const shared = candidate.skills.find(
+          (candidateSkill: SkillObject) => candidateSkill.nid === skill.nid,
+        );
+        if (shared) shared.data.set('charge', next);
+      }
+    }
+    if (skill.hasComponent('lost_on_charges_depleted') &&
+        next <= 0 && owner?.skills.includes(skill)) {
+      owner.skills.splice(owner.skills.indexOf(skill), 1);
+    }
   }
 }
 
@@ -508,6 +542,7 @@ export type CustomSurvivalComponent =
   | 'nine_lives_event'
   | 'true_miracle_event'
   | 'true_miracle_event_after_combat'
+  | 'True_Miracle_Event'
   | 'TrueMiracle'
   | 'ignore_damage';
 
@@ -529,12 +564,13 @@ export function customSurvivalSkill(
       const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
       if (charge < total) continue;
     }
-    if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+    if (hasDrainingCharge(skill) &&
         Number(skill.data.get('charge') ?? 0) <= 0) continue;
     for (const [component, value] of skill.components) {
       if (component === 'nine_lives_event' ||
           component === 'true_miracle_event' ||
-          component === 'true_miracle_event_after_combat') {
+          component === 'true_miracle_event_after_combat' ||
+          component === 'True_Miracle_Event') {
         return { skill, component, value };
       }
     }
@@ -557,7 +593,7 @@ export function damagePreventionSkill(
       const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
       if (charge < total) continue;
     }
-    if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+    if (hasDrainingCharge(skill) &&
         Number(skill.data.get('charge') ?? 0) <= 0) continue;
     for (const [component, value] of skill.components) {
       if (component === 'ignore_damage') return { skill, component, value };
@@ -565,7 +601,8 @@ export function damagePreventionSkill(
       if (lethal && (
         component === 'nine_lives_event' ||
         component === 'true_miracle_event' ||
-        component === 'true_miracle_event_after_combat'
+        component === 'true_miracle_event_after_combat' ||
+        (component === 'True_Miracle_Event' && !unit.tags.includes('IgnoringDamage'))
       )) return { skill, component, value };
     }
   }

@@ -73,6 +73,7 @@ export class CombatPhaseSolver {
    * should treat a unit in this set as surviving at 1 HP instead of dying.
    */
   readonly miracleSaved: Set<UnitObject> = new Set();
+  readonly miracleRestoreHp: Map<UnitObject, number> = new Map();
   private customSurvivalTriggered: Set<SkillObject> = new Set();
 
   constructor(randomRoll?: () => number, game?: any) {
@@ -94,6 +95,7 @@ export class CombatPhaseSolver {
     this.procPlayback.length = 0;
     this.guardGaugeResults.clear();
     this.miracleSaved.clear();
+    this.miracleRestoreHp.clear();
     this.customSurvivalTriggered.clear();
     for (const unit of [attacker, ...defenders]) {
       this.guardGaugeResults.set(unit, unit.getGuardGauge());
@@ -118,11 +120,12 @@ export class CombatPhaseSolver {
    */
   private applyMiracleCleanup(unit: UnitObject, hp: { hp: number }): void {
     if (hp.hp > 0) return;
-    const skill = skillSystem.miracleSkill(unit);
-    if (!skill) return;
-    skillSystem.consumeMiracleCharge(skill);
-    hp.hp = 1;
+    const miracle = skillSystem.miracleSkill(unit);
+    if (!miracle) return;
+    skillSystem.consumeMiracleCharge(miracle.skill, unit, this.game);
+    hp.hp = miracle.full ? unit.maxHp : 1;
     this.miracleSaved.add(unit);
+    this.miracleRestoreHp.set(unit, hp.hp);
   }
 
   /** Apply one strike to a simulated HP reference, including Rekka survival hooks. */
@@ -183,7 +186,7 @@ export class CombatPhaseSolver {
           Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0)) {
       return false;
     }
-    if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+    if (skillSystem.hasDrainingCharge(skill) &&
         Number(skill.data.get('charge') ?? 0) <= 0) return false;
     return skillSystem.skillConditionActive(skill, unit, {
       game: this.game,
@@ -210,7 +213,7 @@ export class CombatPhaseSolver {
       new AddSkillAction(recipient, granted).execute();
       attempted = true;
     }
-    if (attempted) skillSystem.consumeMiracleCharge(sourceSkill);
+    if (attempted) skillSystem.consumeMiracleCharge(sourceSkill, source, this.game);
   }
 
   private evaluateSkillNumber(
@@ -262,7 +265,7 @@ export class CombatPhaseSolver {
           : amount;
         if (adjusted === 0 && !triggerAtZero) return;
         strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + adjusted;
-        skillSystem.consumeMiracleCharge(skill);
+        skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
       };
       const lifelink = skill.getComponent<unknown>('lifelink');
       if (typeof lifelink === 'number') {
@@ -312,7 +315,9 @@ export class CombatPhaseSolver {
           });
           granted++;
         }
-        if (granted > 0) skillSystem.consumeMiracleCharge(skill);
+        if (granted > 0) {
+          skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
+        }
       };
       const adjacent = skill.getComponent<unknown>('ally_lifelink');
       if (typeof adjacent === 'number') {

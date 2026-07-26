@@ -279,11 +279,10 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port EotF's remaining survival and combat-charge
-hooks, including full miracle, target-aware procs, kill/combat charge
-increments, and depleted-charge removal. Continue count-locking only
-components whose real EotF value shapes and runtime behavior have focused
-coverage.
+Embrace of the Fog P8.2: port the next coherent project-local combat hook
+family selected from the generated compatibility inventory. Continue
+count-locking only components whose real EotF value shapes and runtime
+behavior have focused coverage.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -329,6 +328,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve permanent max-HP damage and Undying Will reconciliation,
   kill healing, enemy status removal, and configurable combat-count expiry
   with fields, skill data, stacks, and undo/redo intact.
+- [x] Preserve full and event-driven miracle survival, target-aware defense
+  proc rates, combat/kill charge increments, shared and limited charges, and
+  reversible depleted-charge removal.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

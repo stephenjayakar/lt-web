@@ -11,7 +11,12 @@ import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from './combat-calcs';
 import type { CombatStrike } from './combat-solver';
-import { checkEnemy, selfNihilActive } from './skill-system';
+import {
+  checkEnemy,
+  consumeMiracleCharge,
+  hasDrainingCharge,
+  selfNihilActive,
+} from './skill-system';
 
 export type ProcKind = 'attack_proc' | 'defense_proc' | 'attack_pre_proc' | 'defense_pre_proc';
 
@@ -192,7 +197,7 @@ export class CombatSkillLifecycle {
       const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
       if (charge < total) return false;
     }
-    if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    if (hasDrainingCharge(skill)) {
       if (Number(skill.data.get('charge') ?? 0) <= 0) return false;
     }
     const mana = Number(unit.currentMana ?? 0);
@@ -253,7 +258,31 @@ export class CombatSkillLifecycle {
     return this.evaluateSkillExpression(expression, unit, null, item, null, '', skill);
   }
 
-  private procRate(skill: SkillObject, unit: UnitObject): number {
+  private procRate(
+    skill: SkillObject,
+    unit: UnitObject,
+    target: UnitObject,
+    targetAware: boolean,
+  ): number {
+    const targetExpression = targetAware
+      ? skill.getComponent<string>('eval_proc_rate')
+      : null;
+    if (typeof targetExpression === 'string') {
+      const value = evaluateExpression(
+        targetExpression.replace(/\bint\s*\(/g, 'Math.trunc('),
+        {
+          game: this.game,
+          unit1: unit,
+          unit2: target,
+          position: unit.position ?? undefined,
+          gameVars: this.game?.gameVars,
+          levelVars: this.game?.levelVars,
+          localArgs: new Map([['skill', skill]]),
+        },
+      );
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+    }
     const rate = skill.getComponent<number | string>('proc_rate');
     if (typeof rate === 'number') return rate;
     if (typeof rate === 'string') {
@@ -293,11 +322,16 @@ export class CombatSkillLifecycle {
     const candidates = forcedParents ?? [...unit.skills];
     const activated: ActiveProc[] = [];
     for (const parentSkill of candidates) {
-      const procNid = parentSkill.getComponent<string>(kind);
+      let procNid = parentSkill.getComponent<string>(kind);
+      let targetAware = false;
+      if (!procNid && kind === 'defense_proc') {
+        procNid = parentSkill.getComponent<string>('defense_proc_with_target');
+        targetAware = !!procNid;
+      }
       if (!procNid || !isEnemy(this.db, unit, target)) continue;
       if (!forcedParents) {
         if (!this.active(parentSkill, unit, item) || !this.weaponAllowed(parentSkill, unit, item)) continue;
-        if (this.roll() >= this.procRate(parentSkill, unit)) continue;
+        if (this.roll() >= this.procRate(parentSkill, unit, target, targetAware)) continue;
       }
       const prefab = this.db.skills.get(procNid);
       if (!prefab) continue;
@@ -325,8 +359,8 @@ export class CombatSkillLifecycle {
     const skill = active.parentSkill;
     if (skill.hasComponent('build_charge')) {
       skill.data.set('charge', 0);
-    } else if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
-      skill.data.set('charge', Number(skill.data.get('charge') ?? 0) - 1);
+    } else if (hasDrainingCharge(skill)) {
+      consumeMiracleCharge(skill, active.unit, this.game);
     }
   }
 

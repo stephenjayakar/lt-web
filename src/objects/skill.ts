@@ -64,7 +64,10 @@ export class SkillObject {
     // condition or proc hook is queried.
     const buildCharge = this.components.get('build_charge');
     const drainCharge = this.components.get('drain_charge') ??
-      this.components.get('charges_per_turn');
+      this.components.get('charges_per_turn') ??
+      this.components.get('drain_charge_all') ??
+      this.components.get('limited_charge') ??
+      this.components.get('lost_on_charges_depleted');
     if (typeof buildCharge === 'number') {
       this.data.set('charge', 0);
       this.data.set('total_charge', buildCharge);

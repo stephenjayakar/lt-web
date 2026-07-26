@@ -42,6 +42,7 @@ import {
 import {
   checkAlly,
   checkEnemy,
+  hasDrainingCharge,
   ignoreForcedMovement,
   modifiedHealAmount,
   movementType,
@@ -120,7 +121,7 @@ function combatSkillEnabled(
   const total = Number(skill.data.get('total_charge'));
   const charge = Number(skill.data.get('charge'));
   if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) return false;
-  if ((skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) &&
+  if (hasDrainingCharge(skill) &&
       Number.isFinite(charge) && charge <= 0) return false;
   return skillConditionActive(skill, unit, { game, target, item });
 }
@@ -128,13 +129,36 @@ function combatSkillEnabled(
 export function triggerSkillCharge(
   game: CombatLifecycleGame,
   skill: SkillObject,
+  owner?: UnitObject,
 ): void {
   if (!game.actionLog) return;
+  owner ??= [...(game.units?.values?.() ?? [])].find((unit) =>
+    unit.skills.includes(skill));
   if (skill.hasComponent('build_charge')) {
     game.actionLog.doAction(new SetSkillDataAction(skill, 'charge', 0));
-  } else if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+  } else if (hasDrainingCharge(skill)) {
     const charge = Number(skill.data.get('charge') ?? 0);
-    game.actionLog.doAction(new SetSkillDataAction(skill, 'charge', charge - 1));
+    const next = charge - 1;
+    game.actionLog.doAction(new SetSkillDataAction(skill, 'charge', next));
+    if (skill.hasComponent('drain_charge_all') && owner) {
+      for (const candidate of game.units?.values?.() ?? []) {
+        const sharesCharge = owner.team === 'player'
+          ? candidate.team === 'player' &&
+            (candidate.party === game.currentParty || candidate.party === 'Flex')
+          : (owner.team === 'enemy' || owner.team === 'enemy2') &&
+            (candidate.team === 'enemy' || candidate.team === 'enemy2');
+        if (candidate.nid === owner.nid || !sharesCharge) continue;
+        const shared = candidate.skills.find((candidateSkill) =>
+          candidateSkill.nid === skill.nid);
+        if (shared) {
+          game.actionLog.doAction(new SetSkillDataAction(shared, 'charge', next));
+        }
+      }
+    }
+    if (skill.hasComponent('lost_on_charges_depleted') &&
+        next <= 0 && owner?.skills.includes(skill)) {
+      game.actionLog.doAction(new RemoveSkillAction(owner, skill));
+    }
   }
 }
 
@@ -329,10 +353,11 @@ export function queueCombatSkillEvents(
       }
     }
     const survival = strike.survivalProc;
-    if (survival?.component === 'true_miracle_event' && triggerSkillEvent(
+    if ((survival?.component === 'true_miracle_event' ||
+        survival?.component === 'True_Miracle_Event') && triggerSkillEvent(
       game,
       survival.value,
-      'true_miracle_event',
+      survival.component,
       strike.defender,
       strike.attacker,
       defenderItem,
@@ -566,6 +591,7 @@ export function applyCombatSkillEndHooks(
         applied++;
       }
     } else if (proc.component === 'true_miracle_event' ||
+        proc.component === 'True_Miracle_Event' ||
         proc.component === 'TrueMiracle' ||
         proc.component === 'ignore_damage') {
       triggerSkillCharge(game, proc.skill);
@@ -626,12 +652,41 @@ export function applyCombatSkillEndHooks(
       }
     }
     for (const skill of endCombatSkills) {
-      if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
       const isMainAttacker = unit === initiator || unit === initiator?.strikePartner;
       const hookTarget = isMainAttacker ? primaryTarget : initiator;
       const isHookTarget = !!hookTarget && target === hookTarget;
       const unitAttacked = strikes.some((strike) => strike.attacker === unit);
       const mode = isMainAttacker ? 'attack' : 'defense';
+      const enemyHookTarget = isHookTarget && checkEnemy(unit, target, game.db);
+      const incrementCharge = (component: string, rawAmount: unknown): void => {
+        if (!claimGlobalHook(skill, component) || skill.data.get('active')) return;
+        const current = Number(skill.data.get('charge') ?? 0);
+        const total = Number(skill.data.get('total_charge') ?? current);
+        const amount = Number(rawAmount ?? 1);
+        game.actionLog!.doAction(new SetSkillDataAction(
+          skill,
+          'charge',
+          Math.min(total, current + (Number.isFinite(amount) ? amount : 1)),
+        ));
+        applied++;
+      };
+      const activeIncrease = skill.getComponent<unknown>(
+        'active_combat_charge_increase',
+      );
+      if (activeIncrease !== undefined && isMainAttacker && unitAttacked) {
+        incrementCharge('active_combat_charge_increase', activeIncrease);
+      }
+      const combatIncrease = skill.getComponent<unknown>(
+        'combat_charge_increase_better',
+      );
+      if (combatIncrease !== undefined && enemyHookTarget) {
+        incrementCharge('combat_charge_increase_better', combatIncrease);
+      }
+      const killIncrease = skill.getComponent<unknown>('kill_charge_increase');
+      if (killIncrease !== undefined && isHookTarget && target.currentHp <= 0) {
+        incrementCharge('kill_charge_increase', killIncrease);
+      }
+      if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
 
       const afterCombat = skill.getComponent<string>('give_status_after_combat');
       if (afterCombat && !isAlly) {
@@ -723,7 +778,6 @@ export function applyCombatSkillEndHooks(
         claimGlobalHook(skill, component);
         applied++;
       };
-      const enemyHookTarget = isHookTarget && checkEnemy(unit, target, game.db);
       const flatDamage = skill.getComponent<unknown>('better_post_combat_damage');
       if (flatDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
           !processedGlobalHooks.get(skill)?.has('better_post_combat_damage')) {
@@ -915,6 +969,11 @@ export function applyCombatSkillEndHooks(
         const status = target.skills.find((candidate) => candidate.nid === removeStatus);
         if (status) game.actionLog.doAction(new RemoveSkillAction(target, status));
         triggerSkillCharge(game, skill);
+        applied++;
+      }
+      if (skill.hasComponent('combat_trigger_charge') && enemyHookTarget &&
+          strikes.some((strike) => strike.attacker === unit && strike.hit)) {
+        triggerSkillCharge(game, skill, unit);
         applied++;
       }
 

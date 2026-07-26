@@ -276,6 +276,7 @@ export class AnimationCombat implements AnimationCombatOwner {
   private lifecycleRecord: CombatLifecycleRecord;
   private lifecycleRecorded: boolean = false;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
+  private miracleRestoreHps: Map<UnitObject, number> = new Map();
 
   // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
@@ -386,6 +387,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board, script);
     this.procPlayback = [...solver.procPlayback];
     this.guardGaugeResults = new Map(solver.guardGaugeResults);
+    this.miracleRestoreHps = new Map(solver.miracleRestoreHp);
     for (const strike of this.strikes) {
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
@@ -1313,6 +1315,12 @@ export class AnimationCombat implements AnimationCombatOwner {
       }
     }
 
+    if (atkHp <= 0 && this.miracleRestoreHps.has(this.attacker)) {
+      atkHp = this.miracleRestoreHps.get(this.attacker) ?? 1;
+    }
+    if (defHp <= 0 && this.miracleRestoreHps.has(this.defender)) {
+      defHp = this.miracleRestoreHps.get(this.defender) ?? 1;
+    }
     atkHp = Math.max(0, atkHp);
     defHp = Math.max(0, defHp);
 
