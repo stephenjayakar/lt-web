@@ -217,6 +217,13 @@ export function applySkillTurnHooks(
             game.actionLog.doAction(new ChangeManaAction(unit, amount, maximumMana(game, unit)));
             effects.push({ unit, skill, component, value: amount });
           }
+        } else if (phase === 'upkeep' && component === 'purge_ailments' && conditional) {
+          for (const ailment of [...unit.skills]) {
+            if (ailment.hasComponent('negative')) {
+              game.actionLog.doAction(new RemoveSkillAction(unit, ailment));
+            }
+          }
+          effects.push({ unit, skill, component });
         } else if (
           ((phase === 'upkeep' && component === 'upkeep_damage') ||
             (phase === 'endstep' && component === 'endstep_damage')) &&

@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 118 unverified
+- 270 skill-component NIDs; 113 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -157,8 +157,6 @@ focused browser coverage.
 | attack_proc | 10 | reference-only |
 | berserked | 7 | project-local-or-unknown |
 | blinded | 6 | project-local-or-unknown |
-| block_specific_status | 4 | project-local-or-unknown |
-| block_status | 1 | project-local-or-unknown |
 | bloody_moon | 1 | project-local-or-unknown |
 | booster_blocker | 3 | project-local-or-unknown |
 | cannot_trade | 2 | unreferenced |
@@ -212,7 +210,6 @@ focused browser coverage.
 | ignore_damage | 22 | reference-only |
 | ignore_rescue_penalty | 8 | hook-and-reference |
 | ignore_terrain | 7 | hook-and-reference |
-| immune_status | 14 | consumed |
 | is_terrain | 9 | unreferenced |
 | limit_maximum_range | 8 | reference-only |
 | live_to_serve | 1 | consumed |
@@ -236,10 +233,8 @@ focused browser coverage.
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |
 | proc_rate | 12 | consumed |
-| purge_ailments | 1 | project-local-or-unknown |
 | rescue_bonus | 3 | project-local-or-unknown |
 | resist_follow_up | 1 | hook-only |
-| resist_status | 3 | unreferenced |
 | ride_the_lightning | 1 | project-local-or-unknown |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
