@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 193 unverified
+- 270 skill-component NIDs; 185 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -235,7 +235,6 @@ focused browser coverage.
 | dynamic_defense_speed | 8 | unreferenced |
 | dynamic_multiattacks | 23 | hook-and-reference |
 | dynamic_resist | 70 | hook-and-reference |
-| dynamic_resist_multiplier | 8 | project-local-or-unknown |
 | dynamic_stat_change | 2 | project-local-or-unknown |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
@@ -256,14 +255,9 @@ focused browser coverage.
 | eval_upkeep_damage | 5 | project-local-or-unknown |
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
-| event_on_strike | 1 | project-local-or-unknown |
-| event_stack_on_take_hit | 4 | project-local-or-unknown |
 | exp_multiplier | 1 | hook-and-reference |
 | fatal_block | 14 | project-local-or-unknown |
 | fatal_damage | 9 | project-local-or-unknown |
-| gain_on_hit | 1 | project-local-or-unknown |
-| gain_on_miss | 1 | project-local-or-unknown |
-| gain_on_strike | 4 | project-local-or-unknown |
 | gain_skills_after_combat | 1 | project-local-or-unknown |
 | gain_terrain | 1 | project-local-or-unknown |
 | galeforce | 6 | consumed |
@@ -292,8 +286,6 @@ focused browser coverage.
 | lost_on_end_chapter | 524 | consumed |
 | lost_on_end_combat2 | 55 | consumed |
 | lost_on_endstep | 61 | reference-only |
-| lost_on_strike | 2 | project-local-or-unknown |
-| lost_on_take_hit | 11 | project-local-or-unknown |
 | lost_on_upkeep | 79 | reference-only |
 | miracle | 1 | consumed |
 | modify_ai_priority | 44 | hook-and-reference |

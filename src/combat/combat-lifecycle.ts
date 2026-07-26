@@ -244,7 +244,7 @@ function triggerSkillEvent(
   target: UnitObject,
   item: ItemObject | null,
   item2: ItemObject | null,
-  mode: string,
+  mode: string | null,
   extraLocalArgs: Iterable<readonly [string, unknown]> = [],
 ): boolean {
   if (typeof nid !== 'string' || !nid || !game.eventManager) return false;
@@ -391,7 +391,7 @@ export function queueCombatSkillEvents(
   for (const strike of strikes) {
     const mode = strike.mode ?? (strike.isCounter ? 'defense' : 'attack');
     const defenderItem = equippedWeapon(strike.defender);
-    const attackerSkills = [...strike.attacker.skills];
+    const attackerSkills = [...(strike.attackHookSkills ?? strike.attacker.skills)];
     for (const mark of strike.attackProcs ?? []) {
       if (!attackerSkills.includes(mark.procSkill)) attackerSkills.push(mark.procSkill);
     }
@@ -414,11 +414,11 @@ export function queueCombatSkillEvents(
           game, value, component, strike.attacker, strike.defender,
           component === 'event_on_strike' ? null : strike.item,
           component === 'event_on_strike' ? null : defenderItem,
-          component === 'event_on_strike' ? '' : mode,
+          component === 'event_on_strike' ? null : mode,
         )) queued++;
       }
     }
-    const defenderSkills = [...strike.defender.skills];
+    const defenderSkills = [...(strike.defenseHookSkills ?? strike.defender.skills)];
     for (const mark of strike.defenseProcs ?? []) {
       if (!defenderSkills.includes(mark.procSkill)) defenderSkills.push(mark.procSkill);
     }
@@ -441,10 +441,17 @@ export function queueCombatSkillEvents(
       }
       for (const [component, value] of skill.components) {
         const fires = (component === 'event_when_hit' && strike.hit) ||
-          (component === 'event_when_dodging' && !strike.hit);
+          (component === 'event_when_dodging' && !strike.hit) ||
+          (component === 'event_stack_on_take_hit' &&
+            strike.hit &&
+            !strike.guarded &&
+            !!game.db &&
+            checkEnemy(strike.defender, strike.attacker, game.db));
         if (fires && triggerSkillEvent(
           game, value, component, strike.defender, strike.attacker,
-          defenderItem, strike.item, mode,
+          component === 'event_stack_on_take_hit' ? null : defenderItem,
+          component === 'event_stack_on_take_hit' ? null : strike.item,
+          component === 'event_stack_on_take_hit' ? null : mode,
         )) queued++;
       }
     }

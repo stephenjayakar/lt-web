@@ -2624,7 +2624,7 @@
         "nid": "dynamic_resist_multiplier",
         "uses": 8,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_stat_change",
@@ -2834,13 +2834,13 @@
         "nid": "event_on_strike",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_stack_on_take_hit",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "exp_multiplier",
@@ -2870,19 +2870,19 @@
         "nid": "gain_on_hit",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_on_miss",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_on_strike",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_active_kill",
@@ -2923,13 +2923,13 @@
       {
         "nid": "gain_skill_after_take_damage",
         "uses": 7,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_take_miss",
         "uses": 3,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -2977,7 +2977,7 @@
       {
         "nid": "give_status_after_hit",
         "uses": 11,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -3200,13 +3200,13 @@
         "nid": "lost_on_strike",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_take_hit",
         "uses": 11,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_upkeep",
