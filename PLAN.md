@@ -286,9 +286,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 ## Active Next Slice
 
 Embrace of the Fog P8.2: continue the activated event-expression surface with
-the remaining item/registry, board/target, and record-fallback helpers, deep
-comprehensions, and campaign-valid prerequisites for the all-level settlement
-gate.
+the remaining raw-PYEV1 item factory/component access, board/target, and
+record-fallback helpers, deep comprehensions, and campaign-valid prerequisites
+for the all-level settlement gate.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -322,6 +322,10 @@ return to the base without compatibility warnings or silent mechanic loss.
   `game.get_player_units`, 141 `game.get_enemy_units`, and nine
   `game.get_team_units` expressions, including preparation order and save
   compatibility.
+- [x] Preserve Python item-instance identity for EotF's 256 `game.get_item`,
+  two `game.item_registry`, and two `game.register_item` expressions: recursive
+  trees receive monotonic numeric UIDs, event creation/registration is
+  reversible, and UID/counter state survives current and legacy saves.
 - [x] Preserve Python component-object expression semantics for EotF's
   `blue`, `combat_art_proc`, `copysafe`, `has_affinities`, `shit`, `subskills`,
   and `tether_parameters` skill components.

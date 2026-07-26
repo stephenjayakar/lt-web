@@ -70,6 +70,7 @@ import {
   SetItemDataAction,
   SetItemUsesAction,
   GiveItemAction,
+  RegisterItemTreeAction,
   PutItemInConvoy,
   StoreItemAction,
   TakeItemFromConvoy,
@@ -11978,6 +11979,11 @@ export class EventState extends State {
         let giBannerText: string | undefined;
         if (giItemPrefab) {
           const giItem = createItemTree(giItemPrefab, (nid) => game.db.items.get(nid));
+          game.actionLog.doAction(new RegisterItemTreeAction(
+            game.items,
+            giItem,
+            `event_${giItem.uid}_${giItem.nid}`,
+          ));
           game.actionLog.doAction(new SetItemDroppableAction(giItem, args.includes('droppable')));
           if (giUnitNid.toLowerCase() === 'convoy') {
             const giParty = game.getParty(args[2] || undefined);
@@ -12104,12 +12110,8 @@ export class EventState extends State {
         const duplicate = parent?.subitems.some((child) => child.nid === childNid) ?? false;
         if (parent?.hasComponent('multi_item') && childPrefab && !(duplicate && args.includes('no_duplicate'))) {
           const child = createItemTree(childPrefab, (nid) => game.db.items.get(nid));
-          const key = `event_sub_${parent.nid}_${child.nid}_${game.items.size}`;
-          const registerTree = (node: ItemObject, nodeKey: string) => {
-            game.items.set(nodeKey, node);
-            node.subitems.forEach((nested, index) => registerTree(nested, `${nodeKey}_sub_${index}_${nested.nid}`));
-          };
-          registerTree(child, key);
+          const key = `event_sub_${parent.uid}_${child.uid}_${child.nid}`;
+          game.actionLog.doAction(new RegisterItemTreeAction(game.items, child, key));
           game.actionLog.doAction(new AddSubItemAction(parent, child));
           if (args.includes('equip')) {
             console.warn('Event add_item_to_multiitem: equip flag awaits multi-item selection UI parity');

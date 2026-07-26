@@ -2,7 +2,11 @@ import type { NID, EventPrefab } from '../data/types';
 import { isPyev1 as _isPyev1, PythonEventProcessor as _PythonEventProcessor } from './python-events';
 import { GameQueryEngine } from '../engine/query-engine';
 import type { ActionLog } from '../engine/action';
-import { OnlyOnceEventAction, SetGameVarAction } from '../engine/action';
+import {
+  OnlyOnceEventAction,
+  RegisterItemTreeAction,
+  SetGameVarAction,
+} from '../engine/action';
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS } from '../engine/records';
@@ -1485,6 +1489,18 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       desc: item.desc,
       tags: componentValue(item, 'item_tags') ?? item.tags ?? [],
       components,
+      data: wrapMapping(item.data),
+      uses: item.uses,
+      max_uses: item.maxUses,
+      get owner_nid() {
+        return item.owner?.nid ?? item.ownerNid ?? item.owner_nid ?? null;
+      },
+      get subitems() {
+        return (item.subitems ?? []).map(wrapItem);
+      },
+      get parent_item() {
+        return wrapItem(item.parentItem ?? item.parent_item ?? null);
+      },
     };
     const wrapped = new Proxy(target as Record<string, any>, {
       get(proxyTarget, property: string | symbol) {
@@ -1725,6 +1741,33 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get_unit(nid: string) {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
       return wrapUnit(u);
+    },
+    get_item(uid: number | string) {
+      const item = game.getItem?.(uid) ??
+        Array.from(new Set(game.items?.values?.() ?? []))
+          .find((candidate: any) => candidate.uid === Number(uid));
+      return wrapItem(item);
+    },
+    item_registry: {
+      get(uid: number | string) {
+        return gameProxy.get_item(uid);
+      },
+      values() {
+        return Array.from(new Set(game.items?.values?.() ?? [])).map(wrapItem);
+      },
+      [Symbol.iterator]() {
+        return this.values()[Symbol.iterator]();
+      },
+    },
+    register_item(candidate: any) {
+      const item = candidate?._raw ?? candidate;
+      if (!item || Array.from(game.items?.values?.() ?? []).includes(item)) return;
+      const key = `item_${item.uid}_${item.nid}`;
+      if (game.actionLog?.doAction) {
+        game.actionLog.doAction(new RegisterItemTreeAction(game.items, item, key));
+      } else {
+        game.registerItem?.(item);
+      }
     },
     get_enemy_units(onlyOnField: boolean = true) {
       return getAllUnits(onlyOnField).filter((unit) =>
