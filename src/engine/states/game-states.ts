@@ -3140,7 +3140,7 @@ function finishCoreItemUse(
   }
   triggerAbilityItemCharge(game, unit, item, 'use');
   if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
-  else game.actionLog.doAction(new WaitAction(unit));
+  else if (!canAttackAfterCombat(unit, item)) game.actionLog.doAction(new WaitAction(unit));
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
 }
 
@@ -3222,9 +3222,11 @@ export function applyCoreSequenceItem(
         const target = game.board.getUnit(resolved.mainTarget[0], resolved.mainTarget[1]);
         if (target && !ignoreForcedMovement(target)) storedUnit = target;
       }
-      if (child.hasComponent('unload_unit') && storedUnit &&
+      if ((child.hasComponent('unload_unit') || child.hasComponent('self_unload_unit')) &&
+          storedUnit &&
           !game.board.getUnit(position[0], position[1])) {
         game.actionLog.doAction(new WarpUnitAction(storedUnit, position, game.board));
+        game.cursor.setPos(position[0], position[1]);
         applied = true;
         storedUnit = null;
       }
@@ -3235,6 +3237,18 @@ export function applyCoreSequenceItem(
   if (!applied) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
     return false;
+  }
+  const finalPosition = [...targetsByItem].reverse()
+    .flatMap((positions) => [...positions].reverse())
+    .find((position): position is [number, number] => !!position);
+  if (finalPosition) {
+    queueDirectItemUseEvents(
+      game,
+      unit,
+      item,
+      finalPosition,
+      game.board.getUnit(finalPosition[0], finalPosition[1]),
+    );
   }
   finishCoreItemUse(unit, item, [...targets.values()], new Map(), false, true);
   return true;
@@ -3808,6 +3822,7 @@ export class ItemTargetingState extends MapState {
       game.memory.delete('item_use_item');
       game.highlight.clear();
       game.state.back();
+      if (game.eventManager?.hasActiveEvents()) game.state.change('event');
     }
   }
 

@@ -1402,6 +1402,19 @@ export function targetRestrict(
     if (context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db) > 5) return false;
   }
 
+  if (item.hasComponent('self_unload_unit')) {
+    if (context.board.getUnit(defPos[0], defPos[1])) return false;
+    const defaultMovement = context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
+    const movementGroup = movementType(unit, defaultMovement, context.game);
+    const movementCost = context.board.getMovementCost(
+      defPos[0],
+      defPos[1],
+      movementGroup,
+      context.db,
+    );
+    if (movementCost > Math.max(5, unit.getMovement())) return false;
+  }
+
   if (item.hasComponent('empty_tile_target_restrict') &&
       context.board.getUnit(defPos[0], defPos[1])) {
     return false;
