@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 33 unverified
+- 270 skill-component NIDs; 30 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -167,13 +167,10 @@ focused browser coverage.
 | post_combat_splash_aoe | 3 | consumed |
 | skill_before_combat | 16 | consumed |
 | smart_oversplash | 3 | hook-and-reference |
-| specific_witch_warp | 2 | unreferenced |
 | stack | 224 | consumed |
 | TrueMiracle | 19 | reference-only |
 | unit_anim | 54 | unreferenced |
 | unit_flickering_tint | 54 | consumed |
-| witch_warp | 2 | unreferenced |
-| witch_warp_expression | 6 | consumed |
 
 ## Used project-local Python components
 

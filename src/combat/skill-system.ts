@@ -1839,42 +1839,70 @@ export function priceSkillMultiplier(
   return result;
 }
 
-/** Project-used Witch Warp expression destinations, deduplicated in unit order. */
+/** Python UNIQUE Witch Warp destinations across generic, specific, and expression forms. */
 export function witchWarpPositions(
   unit: UnitObject,
   board: any,
   db: any,
   game?: any,
 ): [number, number][] {
-  let sourceSkill: SkillObject | null = null;
-  let expression: string | null = null;
+  let source: {
+    skill: SkillObject;
+    component: 'witch_warp' | 'specific_witch_warp' | 'witch_warp_expression';
+    value: unknown;
+  } | null = null;
   for (const skill of unit.skills) {
-    const value = skill.getComponent<string>('witch_warp_expression');
-    if (typeof value !== 'string' || !value) continue;
-    if (!skillConditionActive(skill, unit, { game })) continue;
-    sourceSkill = skill;
-    expression = value;
+    for (const [component, value] of skill.components) {
+      if (component !== 'witch_warp' &&
+          component !== 'specific_witch_warp' &&
+          component !== 'witch_warp_expression') continue;
+      if (!evaluatedSkillActive(skill, unit, { game }, new Map([
+        ['skill', skill],
+      ]))) continue;
+      source = { skill, component, value };
+    }
   }
-  if (!sourceSkill || !expression) return [];
+  if (!source) return [];
 
   const defaultMovement = db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
   const movementGroup = movementType(unit, defaultMovement, game);
   const result: [number, number][] = [];
   const seen = new Set<string>();
-  for (const target of board.getAllUnits()) {
-    if (!target.position) continue;
-    const allowed = evaluateCondition(expression, {
-      game,
-      unit1: target,
-      unit2: unit,
-      position: target.position,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-      localArgs: new Map([['skill', sourceSkill]]),
+  let candidates: UnitObject[];
+  if (source.component === 'specific_witch_warp') {
+    const nids = Array.isArray(source.value)
+      ? source.value.filter((value): value is string => typeof value === 'string')
+      : [];
+    const units = board.getAllUnits() as UnitObject[];
+    candidates = nids.flatMap((nid) => {
+      const target = game?.units?.get?.(nid) ??
+        units.find((candidate) => candidate.nid === nid);
+      return target ? [target] : [];
     });
-    if (!allowed) continue;
+  } else {
+    candidates = board.getAllUnits();
+  }
+  for (const target of candidates) {
+    if (!target.position) continue;
+    if (source.component === 'witch_warp' && target.team !== unit.team) continue;
+    if (source.component === 'witch_warp_expression') {
+      if (typeof source.value !== 'string' || !source.value) continue;
+      const allowed = evaluateCondition(source.value, {
+        game,
+        unit1: target,
+        unit2: unit,
+        position: target.position,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs: new Map([['skill', source.skill]]),
+      });
+      if (!allowed) continue;
+    }
     const [x, y] = target.position;
-    for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]] as [number, number][]) {
+    const directions: [number, number][] = source.component === 'witch_warp'
+      ? [[0, -1], [0, 1], [-1, 0], [1, 0]]
+      : [[0, -1], [-1, 0], [1, 0], [0, 1]];
+    for (const [dx, dy] of directions) {
       const position: [number, number] = [x + dx, y + dy];
       const key = `${position[0]},${position[1]}`;
       if (seen.has(key) || !board.checkBounds(position[0], position[1]) ||
