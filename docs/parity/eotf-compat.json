@@ -2282,7 +2282,7 @@
         "nid": "booster_blocker",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "build_charge",
@@ -3278,7 +3278,7 @@
         "nid": "null_refresh",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "null_sweep",
@@ -3392,7 +3392,7 @@
         "nid": "rescue_bonus",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "resist",
@@ -3494,7 +3494,7 @@
         "nid": "start_and_end_event_initiate",
         "uses": 8,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change",
@@ -3548,7 +3548,7 @@
         "nid": "trigger_charge",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "True_Miracle_Event",
@@ -3584,7 +3584,7 @@
         "nid": "upkeep_aoe_skill_gain",
         "uses": 6,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_damage",
@@ -3620,7 +3620,7 @@
         "nid": "visual_charge",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp_multiplier",

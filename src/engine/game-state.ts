@@ -415,6 +415,9 @@ export class GameState {
           if (component === 'build_charge') {
             this.actionLog.doAction(new SetSkillDataAction(skill, 'charge', 0));
             reset++;
+          } else if (component === 'visual_charge') {
+            this.actionLog.doAction(new SetSkillDataAction(skill, 'charge', 0));
+            reset++;
           } else if (component === 'drain_charge' || component === 'charges_per_turn') {
             const total = Number(
               skill.data.get('total_charge') ?? skill.getComponent(component) ?? 0,
