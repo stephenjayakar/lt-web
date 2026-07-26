@@ -114,12 +114,14 @@ test.describe('Embrace of the Fog item calculation hooks', () => {
         attackerItems: attacker.items,
         attackerAffinity: attacker.affinity,
         attackerSkills: attacker.skills,
+        defenderSkills: defender.skills,
         defenderHp: defender.currentHp,
         defenderStats: { ...defender.stats },
         defenderTags: [...defender.tags],
       };
       attacker.items = [item];
       attacker.skills = [];
+      defender.skills = [];
       attacker.affinity = 'Water';
       attacker.stats.HP = 30;
       attacker.currentHp = 30;
@@ -153,6 +155,7 @@ test.describe('Embrace of the Fog item calculation hooks', () => {
       attacker.items = old.attackerItems;
       attacker.affinity = old.attackerAffinity;
       attacker.skills = old.attackerSkills;
+      defender.skills = old.defenderSkills;
       defender.currentHp = old.defenderHp;
       defender.stats = old.defenderStats;
       defender.tags = old.defenderTags;

@@ -60,6 +60,8 @@ export interface CombatStrike {
   selfSkillHpChange?: number;
   /** Ally HP changes from skill after_strike hooks, applied in strike order. */
   allySkillHpChanges?: Array<{ unit: UnitObject; amount: number }>;
+  /** Damage rewritten to a cover unit by EotF after_take_strike hooks. */
+  redirectedDamage?: Array<{ unit: UnitObject; amount: number }>;
   /** Skill snapshots retained for event dispatch after immediate mutations. */
   attackHookSkills?: SkillObject[];
   defenseHookSkills?: SkillObject[];
@@ -99,6 +101,8 @@ export class CombatPhaseSolver {
   readonly miracleSaved: Set<UnitObject> = new Set();
   readonly miracleRestoreHp: Map<UnitObject, number> = new Map();
   private customSurvivalTriggered: Set<SkillObject> = new Set();
+  /** Simulated HP for non-target cover units across precomputed strikes. */
+  private coverHps: Map<UnitObject, number> = new Map();
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -122,6 +126,7 @@ export class CombatPhaseSolver {
     this.miracleSaved.clear();
     this.miracleRestoreHp.clear();
     this.customSurvivalTriggered.clear();
+    this.coverHps.clear();
     for (const unit of [attacker, ...defenders]) {
       this.guardGaugeResults.set(unit, unit.getGuardGauge());
     }
@@ -167,11 +172,10 @@ export class CombatPhaseSolver {
     }
     const before = hp.hp;
     const totalDamage = strike.damage + (strike.extraDamage ?? 0);
-    const after = before - totalDamage;
     const proc = totalDamage > 0
       ? skillSystem.damagePreventionSkill(
         target,
-        after <= 0,
+        before - totalDamage <= 0,
         this.customSurvivalTriggered,
         this.game,
       )
@@ -194,22 +198,29 @@ export class CombatPhaseSolver {
         { kind: 'defense_proc', unit: target, parentSkill: proc.skill, procSkill: proc.skill },
       ];
       this.customSurvivalTriggered.add(proc.skill);
-      hp.hp = proc.component === 'ignore_damage' ? before : 1;
       this.applySelfLifelink(
         strike,
-        Math.max(0, Math.min(before, before - hp.hp)),
+        Math.max(
+          0,
+          Math.min(before, strike.damage + (strike.extraDamage ?? 0)),
+        ),
       );
       this.applyPostStrikeSkillEffects(target, strike);
+      const resolvedDamage = strike.damage + (strike.extraDamage ?? 0);
+      hp.hp = ignoreDying && before - resolvedDamage <= 0
+        ? 1
+        : Math.min(target.maxHp, before - resolvedDamage);
       return;
     }
-    hp.hp = ignoreDying && after <= 0
-      ? 1
-      : Math.min(target.maxHp, after);
     this.applySelfLifelink(
       strike,
       Math.max(0, Math.min(before, strike.damage)),
     );
     this.applyPostStrikeSkillEffects(target, strike);
+    const resolvedDamage = strike.damage + (strike.extraDamage ?? 0);
+    hp.hp = ignoreDying && before - resolvedDamage <= 0
+      ? 1
+      : Math.min(target.maxHp, before - resolvedDamage);
   }
 
   private evaluatedExtraDamage(
@@ -221,7 +232,9 @@ export class CombatPhaseSolver {
     glancing: boolean,
     grandmasterHit?: number,
   ): number {
-    if (!hit || guarded || glancing || target.tags.includes('IgnoringDamage') ||
+    if (!hit || guarded || glancing ||
+        target.tags.includes('IgnoringDamage') ||
+        skillSystem.additionalTags(target, this.game).has('IgnoringDamage') ||
         !item.hasComponent('eval_extra_damage')) return 0;
     let value = Math.max(0, extraDamage(striker, item, this.game));
     if (grandmasterHit !== undefined) value = Math.trunc(value * grandmasterHit / 100);
@@ -428,6 +441,7 @@ export class CombatPhaseSolver {
     strike: CombatStrike,
   ): void {
     const deferredMutations: DeferredStrikeSkillMutation[] = [];
+    strike.redirectedDamage = [];
     if (strike.hit) {
       const status = strike.item.getComponent<unknown>('status_on_hit');
       const selfStatus = strike.item.getComponent<unknown>('self_status_on_hit');
@@ -550,6 +564,54 @@ export class CombatPhaseSolver {
           // EotF uses action.do here: later strikes must no longer receive
           // this skill's defensive contribution.
           new RemoveSkillAction(target, sourceSkill).do();
+        } else if (
+          (component === 'redirect_damage' ||
+            component === 'redirect_partial_damage') &&
+          !strike.guarded
+        ) {
+          const configuredCover = sourceSkill.data.get('cover');
+          const coverNid = typeof configuredCover === 'string'
+            ? configuredCover
+            : sourceSkill.initiatorNid ??
+              (typeof sourceSkill.data.get('auraOwnerNid') === 'string'
+                ? sourceSkill.data.get('auraOwnerNid')
+                : null);
+          if (!sourceSkill.data.has('cover')) {
+            sourceSkill.data.set('cover', coverNid ?? null);
+          }
+          const cover = typeof coverNid === 'string'
+            ? this.game?.units?.get?.(coverNid) ??
+              this.game?.getUnit?.(coverNid)
+            : null;
+          const coverHp = cover
+            ? (this.coverHps.get(cover) ?? cover.currentHp)
+            : 0;
+          if (!cover || cover.dead || coverHp <= 0) continue;
+
+          const fraction = component === 'redirect_damage'
+            ? 1
+            : Number(value);
+          if (!Number.isFinite(fraction)) continue;
+          let redirected = 0;
+          const rewrite = (damage: number): number => {
+            if (damage <= 0) return damage;
+            const coverAmount = Math.trunc(damage * fraction);
+            const targetAmount = Math.trunc(damage * (1 - fraction));
+            // Python checks each ChangeHP independently against the cover's
+            // current HP and requires a strict inequality.
+            if (coverAmount <= 0 || coverAmount >= coverHp) return damage;
+            redirected += coverAmount;
+            strike.redirectedDamage!.push({ unit: cover, amount: coverAmount });
+            return targetAmount;
+          };
+          strike.damage = rewrite(strike.damage);
+          if (strike.extraDamage !== undefined) {
+            strike.extraDamage = rewrite(strike.extraDamage);
+          }
+          if (redirected > 0) {
+            this.coverHps.set(cover, Math.max(0, coverHp - redirected));
+            skillSystem.consumeMiracleCharge(sourceSkill, target, this.game);
+          }
         }
       }
     }
@@ -921,7 +983,9 @@ export class CombatPhaseSolver {
             mainDefender, defenseItem, attacker, db, true, token, board, 'defense', [phase, 0],
           );
           result.push(strike);
-          if (strike.hit) attackerHp -= strike.damage + (strike.extraDamage ?? 0);
+          const attackerHpRef = { hp: attackerHp };
+          this.applyStrikeDamage(attacker, attackerHpRef, strike);
+          attackerHp = attackerHpRef.hp;
           continue;
         }
         const forcedToken = token === '--' ? undefined : token;
@@ -935,7 +999,9 @@ export class CombatPhaseSolver {
               attacker, attackItem, mainDefender, db, rngMode, false, board, 'attack', [phase, 0],
             );
           result.push(strike);
-          if (strike.hit) defenderHp -= strike.damage + (strike.extraDamage ?? 0);
+          const defenderHpRef = { hp: defenderHp };
+          this.applyStrikeDamage(mainDefender, defenderHpRef, strike);
+          defenderHp = defenderHpRef.hp;
           appendSplash(forcedToken, strike);
         } else {
           appendSplash(forcedToken, undefined, [this.nextPhase(attacker), 0]);

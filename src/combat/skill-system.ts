@@ -121,6 +121,75 @@ export interface SkillConditionContext {
   localArgs?: Map<string, unknown>;
 }
 
+/**
+ * Run EotF skill init hooks that depend on the fully constructed runtime
+ * instance. Python AddSkill assigns initiator_nid before skill_system.init,
+ * then freezes StatChangeAtApplyExpression into skill.data.
+ */
+export function initializeSkillData(
+  skill: SkillObject,
+  owner: UnitObject,
+  game?: any,
+): void {
+  skill.ownerNid = owner.nid;
+  if ((skill.hasComponent('redirect_damage') ||
+      skill.hasComponent('redirect_partial_damage')) &&
+      !skill.data.has('cover')) {
+    const auraOwner = skill.data.get('auraOwnerNid');
+    skill.data.set(
+      'cover',
+      skill.initiatorNid ??
+        (typeof auraOwner === 'string' ? auraOwner : null),
+    );
+  }
+  if (!skill.hasComponent('stat_change_at_apply_expression') ||
+      skill.data.has('stat_changes')) return;
+
+  const configured = skill.getComponent<unknown>('stat_change_at_apply_expression');
+  const changes: Record<string, number> = {};
+  if (Array.isArray(configured)) {
+    for (const entry of configured) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
+      const expression = entry[1];
+      let value = 0;
+      if (typeof expression === 'string') {
+        try {
+          const evaluated = Number(evaluateExpression(expression, {
+            game,
+            gameVars: game?.gameVars,
+            levelVars: game?.levelVars,
+            localArgs: new Map<string, unknown>([['skill', skill]]),
+          }));
+          if (Number.isFinite(evaluated)) value = Math.trunc(evaluated);
+        } catch (error) {
+          console.error(
+            `Could not initialize stat changes for ${skill.nid}: ${expression}`,
+            error,
+          );
+        }
+      }
+      changes[entry[0]] = value;
+    }
+  }
+  skill.data.set('stat_changes', changes);
+}
+
+/** Python skill_system.additional_tags, including EotF RedirectDamage. */
+export function additionalTags(unit: UnitObject, game?: any): Set<string> {
+  const tags = new Set<string>();
+  for (const skill of unit.skills) {
+    if (!skillConditionActive(skill, unit, { game })) continue;
+    const configured = skill.getComponent<unknown>('has_tags');
+    if (Array.isArray(configured)) {
+      for (const tag of configured) {
+        if (typeof tag === 'string') tags.add(tag);
+      }
+    }
+    if (skill.hasComponent('redirect_damage')) tags.add('IgnoringDamage');
+  }
+  return tags;
+}
+
 /** EotF SelfNihil condition hook, including inherited multi-skill gates. */
 export function selfNihilActive(skill: SkillObject, unit: UnitObject): boolean {
   const parent = skill.data.get('multiSkillSource');
@@ -615,7 +684,9 @@ export function damagePreventionSkill(
         component === 'nine_lives_event' ||
         component === 'true_miracle_event' ||
         component === 'true_miracle_event_after_combat' ||
-        (component === 'True_Miracle_Event' && !unit.tags.includes('IgnoringDamage'))
+        (component === 'True_Miracle_Event' &&
+          !unit.tags.includes('IgnoringDamage') &&
+          !additionalTags(unit, game).has('IgnoringDamage'))
       )) return { skill, component, value };
     }
   }
@@ -685,6 +756,14 @@ export function statChange(unit: UnitObject, statNid: string): number {
           total += entry[1] * counter;
         }
       }
+    }
+    const frozenChanges = skill.data.get('stat_changes');
+    if (frozenChanges instanceof Map) {
+      const value = Number(frozenChanges.get(statNid) ?? 0);
+      if (Number.isFinite(value)) total += value;
+    } else if (frozenChanges && typeof frozenChanges === 'object') {
+      const value = Number((frozenChanges as Record<string, unknown>)[statNid] ?? 0);
+      if (Number.isFinite(value)) total += value;
     }
   }
   return total;

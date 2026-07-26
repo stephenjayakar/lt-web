@@ -391,6 +391,9 @@ export class AnimationCombat implements AnimationCombatOwner {
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
       }
+      for (const effect of strike.redirectedDamage ?? []) {
+        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
+      }
     }
     this.lifecycleRecord.finish();
 
@@ -1310,6 +1313,19 @@ export class AnimationCombat implements AnimationCombatOwner {
           );
         }
       }
+      for (const effect of strike.redirectedDamage ?? []) {
+        if (effect.unit === this.attacker) {
+          atkHp = Math.max(0, atkHp - effect.amount);
+        } else if (effect.unit === this.defender) {
+          defHp = Math.max(0, defHp - effect.amount);
+        } else {
+          effect.unit.currentHp = Math.max(
+            0,
+            effect.unit.currentHp - effect.amount,
+          );
+          if (effect.unit.currentHp <= 0) effect.unit.dead = true;
+        }
+      }
       if (strike.attacker === this.attacker) {
         atkHp = applyPermanentDamage(
           strike.attacker,
@@ -1406,6 +1422,7 @@ export class AnimationCombat implements AnimationCombatOwner {
       attackerDead,
       defenderDead,
       this.db,
+      this.game,
     );
 
     // Fixed staff EXP replaces the ordinary level-difference combat formula.

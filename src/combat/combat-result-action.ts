@@ -14,6 +14,7 @@ interface UnitMutationSnapshot {
   wexp: Record<string, number>;
   fields: Map<string, any>;
   skills: SkillObject[];
+  skillOwners: Map<SkillObject, string | null>;
   statusEffects: StatusEffect[];
   items: ItemObject[];
   hasCanto: boolean;
@@ -60,6 +61,7 @@ function capture(units: UnitObject[], explicitItems: ItemObject[]): CombatMutati
       wexp: { ...unit.wexp },
       fields: new Map(unit.fields),
       skills: [...unit.skills],
+      skillOwners: new Map(unit.skills.map((skill) => [skill, skill.ownerNid])),
       statusEffects: copyStatusEffects(unit.statusEffects),
       items: [...unit.items],
       hasCanto: unit.hasCanto,
@@ -88,7 +90,13 @@ function restore(snapshot: CombatMutationSnapshot): void {
     unit.growthPoints = { ...state.growthPoints };
     unit.wexp = { ...state.wexp };
     unit.fields = new Map(state.fields);
+    for (const skill of unit.skills) {
+      if (!state.skills.includes(skill)) skill.ownerNid = null;
+    }
     unit.skills = [...state.skills];
+    for (const [skill, ownerNid] of state.skillOwners) {
+      skill.ownerNid = ownerNid;
+    }
     unit.statusEffects = copyStatusEffects(state.statusEffects);
     unit.items = [...state.items];
     unit.hasCanto = state.hasCanto;

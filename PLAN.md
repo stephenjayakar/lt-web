@@ -376,6 +376,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 32 EotF per-strike gain, removal, event, and damage
   mitigation uses with immediate/deferred ordering, combat-condition and
   charge gates, full expression context, and exact turnwheel replay.
+- [x] Preserve all 13 EotF cover and application-time stat uses with
+  strict/partial HP-action rewriting, aura-owner cover, frozen expression
+  values, charge, save identity, and exact turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

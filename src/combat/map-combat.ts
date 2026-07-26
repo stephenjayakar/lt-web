@@ -274,6 +274,9 @@ export class MapCombat {
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
       }
+      for (const effect of strike.redirectedDamage ?? []) {
+        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
+      }
     }
     this.lifecycleRecord.finish();
 
@@ -517,6 +520,26 @@ export class MapCombat {
           );
         }
       }
+      for (const effect of strike.redirectedDamage ?? []) {
+        if (effect.unit === this.attacker) {
+          atkHp = Math.max(0, atkHp - effect.amount);
+        } else if (defenderHps.has(effect.unit)) {
+          defenderHps.set(
+            effect.unit,
+            Math.max(
+              0,
+              (defenderHps.get(effect.unit) ?? effect.unit.currentHp) -
+                effect.amount,
+            ),
+          );
+        } else {
+          effect.unit.currentHp = Math.max(
+            0,
+            effect.unit.currentHp - effect.amount,
+          );
+          if (effect.unit.currentHp <= 0) effect.unit.dead = true;
+        }
+      }
       const collapsePermanentHp = (unit: UnitObject): void => {
         if (unit === this.attacker) {
           atkHp = applyPermanentDamage(
@@ -620,6 +643,7 @@ export class MapCombat {
       attackerDead,
       deadDefenders,
       this.db,
+      this.game,
     );
     if (attackerPartner && attackerPartnerItem) {
       grantPartnerCombatWexp(

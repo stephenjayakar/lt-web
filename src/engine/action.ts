@@ -4,7 +4,14 @@ import { SkillObject } from '../objects/skill';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
-import { onPairup, onRemoveRescue, onRescue, onSeparate, isCantoSkill } from '../combat/skill-system';
+import {
+  initializeSkillData,
+  onPairup,
+  onRemoveRescue,
+  onRescue,
+  onSeparate,
+  isCantoSkill,
+} from '../combat/skill-system';
 import { skillCondition } from '../combat/item-system';
 import { autoLevelUnit, levelUpUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
@@ -3589,6 +3596,7 @@ export class AddSkillAction extends Action {
     super();
     this.unit = unit;
     this.skill = skill;
+    initializeSkillData(skill, unit, _getGame?.());
   }
 
   execute(): void {
@@ -3607,7 +3615,10 @@ export class AddSkillAction extends Action {
       this.displacedAction.execute();
     }
     this.added = this.unit.skills.filter((skill) => skill.nid === this.skill.nid).length < stackLimit;
-    if (this.added) this.unit.skills.push(this.skill);
+    if (this.added) {
+      this.skill.ownerNid = this.unit.nid;
+      this.unit.skills.push(this.skill);
+    }
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     if (!this.added) return;
     if (!this.initializedMultiSkill) {
@@ -3657,6 +3668,7 @@ export class AddSkillAction extends Action {
       for (const action of [...this.statusReactionActions].reverse()) action.reverse();
       const index = this.unit.skills.indexOf(this.skill);
       if (index >= 0) this.unit.skills.splice(index, 1);
+      this.skill.ownerNid = null;
       for (const action of [...this.multiSkillActions].reverse()) action.reverse();
       this.displacedAction?.reverse();
     }
@@ -3698,6 +3710,7 @@ export class RemoveSkillAction extends Action {
   execute(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
+    if (this.index >= 0) this.skill.ownerNid = null;
     if (this.index >= 0) {
       if (!this.initializedMultiSkill) {
         this.initializedMultiSkill = true;
@@ -3712,6 +3725,7 @@ export class RemoveSkillAction extends Action {
 
   reverse(): void {
     if (this.index >= 0 && !this.unit.skills.includes(this.skill)) {
+      this.skill.ownerNid = this.unit.nid;
       this.unit.skills.splice(this.index, 0, this.skill);
     }
     for (const action of [...this.multiSkillActions].reverse()) action.reverse();

@@ -1112,6 +1112,7 @@ function restoreSkillInstance(
   const dataEntries = skillEntry.data ?? savedSkillData?.data ?? [];
   skill.data = new Map<string, any>(dataEntries);
   skill.initiatorNid = skillEntry.initiatorNid ?? savedSkillData?.initiatorNid ?? null;
+  skill.ownerNid = savedSkillData?.ownerNid ?? null;
 
   // Reconnect item-source: the live ItemObject reference was swapped for the
   // item's mapKey at serialize time. Restore the exact object so mutations
@@ -1434,6 +1435,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
             }
             (skill as any).data = new Map<string, any>(instanceData ?? savedSkillData?.data ?? []);
             skill.initiatorNid = skillEntry.initiatorNid ?? null;
+            skill.ownerNid = unit.nid;
             unit.skills.push(skill);
           } else if (savedSkillData) {
             const syntheticSkillPrefab: SkillPrefab = {
@@ -1447,6 +1449,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
             const skill = new SkillCtor(syntheticSkillPrefab);
             (skill as any).data = new Map<string, any>(instanceData ?? savedSkillData.data);
             skill.initiatorNid = skillEntry.initiatorNid ?? null;
+            skill.ownerNid = unit.nid;
             unit.skills.push(skill);
           } else {
             console.warn(`Unit "${unitData.nid}": skill "${skillNid}" not found in DB or save`);

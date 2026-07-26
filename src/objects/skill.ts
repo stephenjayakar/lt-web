@@ -41,6 +41,9 @@ export class SkillObject {
   /** NID of the unit that initiated/granted this skill (Python `initiator_nid`). */
   initiatorNid: string | null = null;
 
+  /** NID of the unit currently holding this skill (Python `owner_nid`). */
+  ownerNid: string | null = null;
+
   /** Runtime data store for skill state (e.g., torch counters). */
   data: Map<string, any>;
 

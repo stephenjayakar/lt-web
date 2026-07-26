@@ -40,6 +40,7 @@ interface ActiveProc extends CombatProcMark {
 interface SkillSnapshot {
   skills: SkillObject[];
   data: Map<SkillObject, Map<string, any>>;
+  owners: Map<SkillObject, string | null>;
   currentMana: number | undefined;
 }
 
@@ -47,6 +48,7 @@ function captureSkills(units: UnitObject[]): Map<UnitObject, SkillSnapshot> {
   return new Map([...new Set(units)].map((unit) => [unit, {
     skills: [...unit.skills],
     data: new Map(unit.skills.map((skill) => [skill, new Map(skill.data)])),
+    owners: new Map(unit.skills.map((skill) => [skill, skill.ownerNid])),
     currentMana: unit.currentMana,
   }]));
 }
@@ -56,6 +58,7 @@ function restoreSkills(snapshot: Map<UnitObject, SkillSnapshot>): void {
     unit.skills = [...state.skills];
     unit.currentMana = state.currentMana;
     for (const [skill, data] of state.data) skill.data = new Map(data);
+    for (const [skill, ownerNid] of state.owners) skill.ownerNid = ownerNid;
   }
 }
 
