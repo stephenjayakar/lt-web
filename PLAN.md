@@ -436,6 +436,8 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 671 EotF global, conditional-visibility, tag, terrain,
   negative, stack, and aura-visibility markers, including flying terrain
   immunity and hover aura ranges that retain underlying threat highlights.
+- [x] Preserve all 61 EotF durability, effectiveness-negation, and standard
+  survival components, including Python-ordered Armsthrift restoration.
 - [x] Preserve all 7 EotF accessory swaps, inventory expansions, and item-slot
   penalties with independent last-active hook resolution across supply,
   theft, reward, and discard capacity checks.

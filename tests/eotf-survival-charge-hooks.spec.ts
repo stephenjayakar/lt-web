@@ -8,6 +8,242 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog survival and charge hooks', () => {
+  test('count-locks all 61 standard durability, negate, and survival uses', async ({
+    page,
+  }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const selected = new Set([
+        'armsthrift',
+        'ignore_damage',
+        'miracle',
+        'negate',
+        'negate_tags',
+        'TrueMiracle',
+      ]);
+      const counts: Record<string, number> = {};
+      const invalid: string[] = [];
+      for (const skill of game.db.skills.values()) {
+        for (const [nid, value] of skill.components) {
+          if (!selected.has(nid)) continue;
+          counts[nid] = (counts[nid] ?? 0) + 1;
+          if (nid === 'armsthrift' && typeof value !== 'number') {
+            invalid.push(`${skill.nid}:${nid}`);
+          } else if (nid === 'negate_tags' &&
+              (!Array.isArray(value) ||
+               value.some((tag: unknown) => typeof tag !== 'string'))) {
+            invalid.push(`${skill.nid}:${nid}`);
+          } else if (!['armsthrift', 'negate_tags'].includes(nid) && value !== null) {
+            invalid.push(`${skill.nid}:${nid}`);
+          }
+        }
+      }
+      return { counts, invalid };
+    });
+
+    expect(result).toEqual({
+      counts: {
+        armsthrift: 3,
+        ignore_damage: 22,
+        miracle: 1,
+        negate: 3,
+        negate_tags: 13,
+        TrueMiracle: 19,
+      },
+      invalid: [],
+    });
+  });
+
+  test('preserves real Armsthrift, negate, and standard survival behavior', async ({
+    page,
+  }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const {
+        dynamicDamage,
+        usesConsumedByStrikes,
+      } = await import('/src/combat/item-system.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const attacker = game.units.get('Player');
+      const defender = game.units.get('Keeper');
+      const old = {
+        attackerSkills: attacker.skills,
+        defenderSkills: defender.skills,
+        attackerItems: attacker.items,
+        defenderItems: defender.items,
+        defenderHp: defender.currentHp,
+        defenderDead: defender.dead,
+        defenderTags: defender.tags,
+        defenderTeam: defender.team,
+      };
+      attacker.skills = [new SkillObject(game.db.skills.get('Armsthrift_Patcher'))];
+      defender.team = 'enemy';
+      const durable = new ItemObject({
+        nid: '_ArmsthriftWeapon',
+        name: '',
+        desc: '',
+        components: [['weapon', null], ['uses', 5]],
+      });
+      const unrepairable = new ItemObject({
+        nid: '_UnrepairableWeapon',
+        name: '',
+        desc: '',
+        components: [['weapon', null], ['uses', 5], ['unrepairable', null]],
+      });
+      const strike = (item: any) => ({
+        attacker,
+        defender,
+        item,
+        hit: true,
+        crit: false,
+        damage: 0,
+        isCounter: false,
+        mode: 'attack',
+        attackInfo: [0, 0] as [number, number],
+      });
+      const durability = {
+        repairable: usesConsumedByStrikes(attacker, durable, [strike(durable)]),
+        unrepairable: usesConsumedByStrikes(
+          attacker,
+          unrepairable,
+          [strike(unrepairable)],
+        ),
+      };
+
+      const effective = new ItemObject({
+        nid: '_EffectiveWeapon',
+        name: '',
+        desc: '',
+        components: [
+          ['weapon', null],
+          ['damage', 10],
+          ['effective_damage', {
+            effective_tags: ['Flying'],
+            effective_multiplier: 3,
+          }],
+        ],
+      });
+      defender.tags = ['Flying'];
+      const effectiveness = (skillNid: string | null) => {
+        defender.skills = skillNid
+          ? [new SkillObject(game.db.skills.get(skillNid))]
+          : [];
+        return dynamicDamage(
+          attacker,
+          effective,
+          defender,
+          null,
+          'attack',
+          [0, 0],
+          0,
+          game.db,
+          game,
+        );
+      };
+      const negation = {
+        plain: effectiveness(null),
+        matching: effectiveness('Winged_Guard'),
+        unrelated: effectiveness('Armor_Guard'),
+        universal: effectiveness('Divinity'),
+      };
+
+      const lethal = new ItemObject({
+        nid: '_LethalWeapon',
+        name: '',
+        desc: '',
+        components: [
+          ['weapon', null],
+          ['damage', 100],
+          ['hit', 100],
+          ['uses', 20],
+        ],
+      });
+      attacker.skills = [];
+      attacker.items = [lethal];
+      defender.items = [];
+      const survive = (skillNid: string) => {
+        const skill = new SkillObject(game.db.skills.get(skillNid));
+        defender.skills = [skill];
+        defender.currentHp = defender.maxHp;
+        defender.dead = false;
+        const combat = new MapCombat(
+          attacker,
+          lethal,
+          defender,
+          null,
+          game.db,
+          'classic',
+          game.board,
+          ['hit1', 'end'],
+          undefined,
+          game,
+        );
+        combat.applyResults();
+        return {
+          hp: defender.currentHp,
+          dead: defender.dead,
+          component: combat.strikes.find((candidate: any) =>
+            candidate.survivalProc)?.survivalProc?.component ?? null,
+          miracle: combat.miracleSaved.has(defender),
+          charge: skill.data.get('charge') ?? null,
+        };
+      };
+      const survival = {
+        ignore: survive('Ignore_Damage'),
+        trueMiracle: survive('True_Miracle'),
+        cleanupMiracle: survive('Contingency_S2'),
+      };
+
+      attacker.skills = old.attackerSkills;
+      defender.skills = old.defenderSkills;
+      attacker.items = old.attackerItems;
+      defender.items = old.defenderItems;
+      defender.currentHp = old.defenderHp;
+      defender.dead = old.defenderDead;
+      defender.tags = old.defenderTags;
+      defender.team = old.defenderTeam;
+      return { durability, negation, survival, maxHp: defender.maxHp };
+    });
+
+    expect(result.durability).toEqual({
+      repairable: 0,
+      unrepairable: 1,
+    });
+    expect(result.negation).toEqual({
+      plain: 20,
+      matching: 0,
+      unrelated: 20,
+      universal: 0,
+    });
+    expect(result.survival).toEqual({
+      ignore: {
+        hp: result.maxHp,
+        dead: false,
+        component: 'ignore_damage',
+        miracle: false,
+        charge: null,
+      },
+      trueMiracle: {
+        hp: 1,
+        dead: false,
+        component: 'TrueMiracle',
+        miracle: false,
+        charge: null,
+      },
+      cleanupMiracle: {
+        hp: 1,
+        dead: false,
+        component: null,
+        miracle: true,
+        charge: 1,
+      },
+    });
+  });
+
   test('restores full HP after lethal combat and rewinds the consumed charge', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(async () => {
