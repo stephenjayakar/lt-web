@@ -2786,13 +2786,13 @@
         "nid": "eval_regeneration",
         "uses": 11,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_upkeep_damage",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat",
@@ -3044,7 +3044,7 @@
         "nid": "heal_after_follow_up",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "heal_on_kill",
@@ -3319,14 +3319,14 @@
       {
         "nid": "post_combat_damage",
         "uses": 2,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "post_combat_damage_percent",
         "uses": 1,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "post_combat_healing",
@@ -3361,8 +3361,8 @@
       {
         "nid": "recoil",
         "uses": 9,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "redirect_damage",
@@ -3380,7 +3380,7 @@
         "nid": "regeneration",
         "uses": 9,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "remove_status_after_combat",
@@ -3590,7 +3590,7 @@
         "nid": "upkeep_damage",
         "uses": 2,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_event",

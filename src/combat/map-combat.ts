@@ -470,7 +470,10 @@ export class MapCombat {
             )),
           );
         }
-        atkHp = Math.min(this.attacker.maxHp, atkHp - damage);
+        atkHp = Math.min(
+          this.attacker.maxHp,
+          atkHp - damage + (strike.defenderSkillHpChange ?? 0),
+        );
       } else if (defenderHps.has(strike.defender)) {
         const before = defenderHps.get(strike.defender) ?? strike.defender.currentHp;
         // Lifelink after_strike: heal per hitting attacker strike, clamping
@@ -499,7 +502,10 @@ export class MapCombat {
         }
         defenderHps.set(
           strike.defender,
-          Math.min(strike.defender.maxHp, before - damage),
+          Math.min(
+            strike.defender.maxHp,
+            before - damage + (strike.defenderSkillHpChange ?? 0),
+          ),
         );
       }
       for (const effect of strike.allySkillHpChanges ?? []) {
