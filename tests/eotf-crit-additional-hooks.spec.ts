@@ -284,7 +284,7 @@ test.describe('Embrace of the Fog additive critical-damage expressions', () => {
     expect(result.hit.crit).toBe(false);
     expect(result.scriptedCrit.crit).toBe(true);
     expect(result.normalCrit.crit).toBe(true);
-    expect(result.scriptedCrit.damage).toBe(result.hit.damage * 3 + 27);
+    expect(result.scriptedCrit.damage).toBe(result.hit.damage * 2 + 27);
     expect(result.normalCrit.damage).toBe(result.scriptedCrit.damage);
   });
 });

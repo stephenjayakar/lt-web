@@ -427,9 +427,10 @@ export function accuracy(
 ): number {
   game ??= _eqGameRef?.();
   // Python precedence: skill override > item override > skill alternate > item alternate > default.
+  const formulaContext = { game, item, target };
   const eqName = skillSystem.accuracyFormulaOverride(unit) ??
     itemSystem.accuracyFormulaOverride(unit, item) ??
-    skillSystem.accuracyFormula(unit) ??
+    skillSystem.accuracyFormula(unit, formulaContext) ??
     itemSystem.accuracyFormula(unit, item) ??
     'HIT';
 
@@ -458,9 +459,10 @@ export function avoid(
 ): number {
   game ??= _eqGameRef?.();
   // Defensive item formulas come from the attacking item in LT.
+  const formulaContext = { game, item: itemToAvoid, target };
   const eqName = skillSystem.avoidFormulaOverride(unit) ??
     (itemToAvoid ? itemSystem.avoidFormulaOverride(unit, itemToAvoid) : undefined) ??
-    skillSystem.avoidFormula(unit) ??
+    skillSystem.avoidFormula(unit, formulaContext) ??
     (itemToAvoid ? itemSystem.avoidFormula(unit, itemToAvoid) : undefined) ??
     'AVOID';
 
@@ -509,9 +511,10 @@ export function damage(
       !item.hasComponent('eval_damage_any') &&
       !item.hasComponent('equation_damage')) return 0;
   game ??= _eqGameRef?.();
+  const formulaContext = { game, item, target };
   const eqName = skillSystem.damageFormulaOverride(unit) ??
     itemSystem.damageFormulaOverride(unit, item) ??
-    skillSystem.damageFormula(unit) ??
+    skillSystem.damageFormula(unit, formulaContext) ??
     itemSystem.damageFormula(unit, item, game) ??
     'DAMAGE';
 
@@ -544,9 +547,10 @@ export function defense(
   game ??= _eqGameRef?.();
   // Python precedence mirrors the other formula hooks: defensive skill
   // override, attacking item override, defensive skill alternate, item alternate.
+  const formulaContext = { game, item: attackItem, target };
   const formulaOverride = skillSystem.resistFormulaOverride(unit) ??
     itemSystem.resistFormulaOverride(unit, attackItem) ??
-    skillSystem.resistFormula(unit) ??
+    skillSystem.resistFormula(unit, formulaContext) ??
     itemSystem.resistFormula(unit, attackItem, game);
 
   const magic = isMagic(attackItem);
@@ -658,9 +662,10 @@ export function critAccuracy(
   attackInfo: [number, number] = [0, 0],
 ): number {
   game ??= _eqGameRef?.();
+  const formulaContext = { game, item, target };
   const formula = skillSystem.critAccuracyFormulaOverride(unit) ??
     itemSystem.critAccuracyFormulaOverride(unit, item) ??
-    skillSystem.critAccuracyFormula(unit) ??
+    skillSystem.critAccuracyFormula(unit, formulaContext) ??
     itemSystem.critAccuracyFormula(unit, item) ??
     'CRIT_HIT';
   const base = resolveEquation(db, formula, 'SKL // 2', unit);
@@ -682,9 +687,10 @@ export function critAvoid(
   attackInfo: [number, number] = [0, 0],
 ): number {
   game ??= _eqGameRef?.();
+  const formulaContext = { game, item: itemToAvoid, target };
   const formula = skillSystem.critAvoidFormulaOverride(unit) ??
     (itemToAvoid ? itemSystem.critAvoidFormulaOverride(unit, itemToAvoid) : undefined) ??
-    skillSystem.critAvoidFormula(unit) ??
+    skillSystem.critAvoidFormula(unit, formulaContext) ??
     (itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined) ??
     'CRIT_AVOID';
   return resolveEquation(db, formula, 'LCK', unit) +
