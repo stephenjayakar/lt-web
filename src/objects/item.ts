@@ -250,7 +250,8 @@ export class ItemObject {
       this.hasComponent('stacks_on_hit') ||
       this.hasComponent('self_stacks_on_hit');
     const steal = this.hasComponent('steal') || this.hasComponent('gba_steal') ||
-      this.hasComponent('trace');
+      this.hasComponent('steal_con') || this.hasComponent('gimme_that') ||
+      this.hasComponent('thief_staff') || this.hasComponent('trace');
     return hitResolvedStatus || eotfStatus || steal ||
       this.subitems.some((subitem) => subitem.hasCombatUseEffect());
   }

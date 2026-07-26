@@ -30,6 +30,7 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'event_before_combat',
   'event_for_each_after_combat_on_hit',
   'event_on_break',
+  'gimme_that',
   'heal_no_target_restrict',
   'magic_weapon_rank',
   'pivot_always_on_end_combat_initiate',
@@ -44,6 +45,7 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'shove_flex_stops_event',
   'shove_flexible_on_end_combat_initiate',
   'shove_on_end_combat_initiate',
+  'steal_con',
   'stack_cost',
   'stack_cost_multi',
   'start_cooldown',
@@ -51,6 +53,7 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'status_after_combat_on_hit_foe_only',
   'statuses_after_combat_on_hit',
   'target_tile_unless_ally',
+  'thief_staff',
   'weapon_type_exempt',
 ]);
 

@@ -533,7 +533,32 @@ export function unstealable(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('locked') || item.hasComponent('unstealable');
 }
 
-/** Per-item Steal eligibility; generic Steal allows unequipped weapons, GBA Steal does not. */
+/** Whether an item routes through LT's target-inventory Steal flow. */
+export function isStealItem(item: ItemObject): boolean {
+  return item.hasComponent('steal') || item.hasComponent('gba_steal') ||
+    item.hasComponent('steal_con') || item.hasComponent('gimme_that') ||
+    item.hasComponent('thief_staff');
+}
+
+/**
+ * Unit-level target gate shared by targeting and AI.
+ * EotF Thief Staff is unconditional; its other theft abilities retain the
+ * normal STEAL_ATK/STEAL_DEF gate, while Gimme That also checks STR.
+ */
+export function stealTargetStatRestrict(
+  stealer: UnitObject,
+  stealItem: ItemObject,
+  defender: UnitObject,
+  stealAtk: number,
+  stealDef: number,
+): boolean {
+  if (stealItem.hasComponent('thief_staff')) return true;
+  if (stealAtk < stealDef) return false;
+  return !stealItem.hasComponent('gimme_that') ||
+    stealer.getStatValue('STR') - 5 >= defender.getStatValue('STR');
+}
+
+/** Per-item Steal eligibility, including EotF's three project-local variants. */
 export function stealItemRestrict(
   stealer: UnitObject,
   stealItem: ItemObject,
@@ -541,10 +566,20 @@ export function stealItemRestrict(
   targetItem: ItemObject,
   db: Database,
 ): boolean {
-  if (unstealable(defender, targetItem) || inventoryFull(stealer, targetItem, db)) return false;
+  if (unstealable(defender, targetItem)) return false;
+  const eotfSteal = stealItem.hasComponent('steal_con') ||
+    stealItem.hasComponent('gimme_that') ||
+    stealItem.hasComponent('thief_staff');
+  if (inventoryFull(stealer, targetItem, db) &&
+      (!eotfSteal || stealer.team !== 'player')) return false;
   if (stealItem.hasComponent('gba_steal')) {
     return !targetItem.isWeapon() && !targetItem.isSpell();
   }
+  if (stealItem.hasComponent('steal_con') || stealItem.hasComponent('gimme_that')) {
+    const weight = targetItem.getComponent<unknown>('weight');
+    if (typeof weight === 'number' && stealer.getStatValue('CON') < weight) return false;
+  }
+  if (stealItem.hasComponent('gimme_that')) return true;
   return targetItem !== defender.getEquippedWeapon();
 }
 
@@ -1341,12 +1376,12 @@ export function targetRestrict(
     if (!validRegion) return false;
   }
 
-  if (item.hasComponent('steal') || item.hasComponent('gba_steal')) {
+  if (isStealItem(item)) {
     const defender = context.board.getUnit(defPos[0], defPos[1]);
     if (!defender) return false;
     const stealAtk = context.evaluateEquation?.('STEAL_ATK', unit, item) ?? unit.getStatValue('SPD');
     const stealDef = context.evaluateEquation?.('STEAL_DEF', defender, item) ?? defender.getStatValue('SPD');
-    if (stealAtk < stealDef) return false;
+    if (!stealTargetStatRestrict(unit, item, defender, stealAtk, stealDef)) return false;
     if (!defender.items.some((candidate) => stealItemRestrict(unit, item, defender, candidate, context.db))) {
       return false;
     }

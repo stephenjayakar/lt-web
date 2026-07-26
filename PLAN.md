@@ -355,6 +355,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 57 real uses of EotF's immediate and end-combat item
   status/stack hooks, including mid-combat phase recalculation, support-AI
   valuation, self-stack removal, and single-action turnwheel replay.
+- [x] Preserve all 5 real uses of EotF's CON-gated, equipped-item, and
+  unconditional theft hooks across target/item restrictions, player choice,
+  AI valuation, hit transfer, records, overflow discard, and turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

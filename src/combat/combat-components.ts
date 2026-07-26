@@ -277,7 +277,10 @@ function resolveStolenItem(
   defender: UnitObject,
   strikes: CombatStrike[],
 ): ItemObject | null {
-  if (!item.hasComponent('steal') && !item.hasComponent('gba_steal')) return null;
+  const steals = item.hasComponent('steal') || item.hasComponent('gba_steal') ||
+    item.hasComponent('steal_con') || item.hasComponent('gimme_that') ||
+    item.hasComponent('thief_staff');
+  if (!steals) return null;
   const targetItem = item.data.get('target_item') as ItemObject | undefined;
   item.data.delete('target_item');
   const hit = strikes.some((strike) => strike.attacker === attacker && strike.item === item && strike.hit);

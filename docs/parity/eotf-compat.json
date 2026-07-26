@@ -1356,7 +1356,7 @@
         "nid": "gimme_that",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "global_range",
@@ -1854,7 +1854,7 @@
         "nid": "steal_con",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "store_unit",
@@ -1920,7 +1920,7 @@
         "nid": "thief_staff",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "trade",

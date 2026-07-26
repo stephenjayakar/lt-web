@@ -28,6 +28,7 @@ import {
   ResetAction,
   SetItemUsesAction,
   SetCurrentHpAction,
+  UpdateRecordsAction,
 } from '../engine/action';
 import {
   applyItemEndResourceHooks,
@@ -45,6 +46,7 @@ import {
   rekkaMovementEndpoints,
   shoveDestination,
   healAmount as itemHealAmount,
+  inventoryFull,
 } from './item-system';
 import {
   checkAlly,
@@ -1368,6 +1370,33 @@ export function applyDroppableItemPickups(
     }
   }
   return { banners, pendingDiscards };
+}
+
+/**
+ * Apply a successful Steal transfer and report Python's forced-discard followup.
+ * EotF's custom theft components allow a player to select an item while full,
+ * then force-give it before opening item_discard; enemy inventories never
+ * receive this overflow path.
+ */
+export function applyStolenItemTransfer(
+  actionLog: Pick<ActionLog, 'doAction'>,
+  db: Database,
+  attacker: UnitObject,
+  defender: UnitObject,
+  item: ItemObject,
+): { unit: UnitObject; item: ItemObject } | null {
+  const needsDiscard = attacker.team === 'player' && inventoryFull(attacker, item, db);
+  actionLog.doAction(new MoveItemBetweenUnitsAction(defender, attacker, item));
+  if (attacker.team !== 'player') {
+    actionLog.doAction(new SetItemDroppableAction(item, true));
+  }
+  actionLog.doAction(new UpdateRecordsAction(
+    'steal',
+    attacker.nid,
+    defender.nid,
+    item.nid,
+  ));
+  return needsDiscard ? { unit: attacker, item } : null;
 }
 
 function eventNid(item: ItemObject, component: string): string | null {
