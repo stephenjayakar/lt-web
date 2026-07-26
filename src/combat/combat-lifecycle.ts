@@ -1542,6 +1542,39 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         applied++;
       }
     }
+    const critMark = itemMarks.find((candidate) => candidate.crit);
+    if (critMark) {
+      const blitzStrike = critMark.attacker.skills.find((skill) => {
+        const overrideNid = skill.getComponent<string>('item_override');
+        const override = overrideNid ? game.db?.items.get(overrideNid) : null;
+        if (!override?.components.some(([nid]) => nid === 'galeforce_on_crit')) return false;
+        if (!skillConditionActive(skill, critMark.attacker, {
+          game,
+          target: critMark.defender,
+          item: strike.item,
+        })) return false;
+        if (skill.hasComponent('build_charge')) {
+          const charge = Number(skill.data.get('charge') ?? 0);
+          const total = Number(
+            skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
+          );
+          if (charge < total) return false;
+        }
+        return !hasDrainingCharge(skill) ||
+          Number(skill.data.get('charge') ?? 0) > 0;
+      });
+      if (blitzStrike) {
+        const prefab = game.db.skills.get('Galeforce_Status');
+        if (prefab) {
+          const status = new SkillObject(prefab);
+          status.initiatorNid = critMark.attacker.nid;
+          game.actionLog.doAction(new AddSkillAction(critMark.attacker, status));
+          applied++;
+        }
+        triggerSkillCharge(game, blitzStrike, critMark.attacker);
+        applied++;
+      }
+    }
     applied += applyItemEndResourceHooks(game, firstMark.attacker, strike.item);
     if (game.board) {
       for (const componentNid of strike.item.components.keys()) {

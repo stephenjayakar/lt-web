@@ -31,6 +31,7 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'event_for_each_after_combat_on_hit',
   'event_on_break',
   'gimme_that',
+  'galeforce_on_crit',
   'heal_no_target_restrict',
   'magic_weapon_rank',
   'pivot_always_on_end_combat_initiate',

@@ -364,6 +364,8 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Remove all 11 EotF chapter-temporary items from current-party unit and
   convoy inventories before persistent snapshots, including exact action
   replay and full/non-full cleanup entry points.
+- [x] Preserve EotF's Blitz Strike crit refresh with active-phase and shared
+  charge gating, multi-crit deduplication, and exact turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
