@@ -3854,7 +3854,7 @@ export class RemoveSkillAction extends Action {
     if (typeof eventNid !== 'string' || eventNid.length === 0) return;
 
     const game = _getGame?.();
-    if (!game?.db?.events?.has?.(eventNid)) return;
+    if (!game?.eventManager?.getPrefab?.(eventNid)) return;
     game.eventManager?.triggerSpecific(eventNid, {
       type: 'event_on_remove',
       unit1: this.unit,

@@ -285,10 +285,10 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port the next coherent engine-generic skill family
-selected from the generated compatibility inventory. Continue count-locking
-only components whose real EotF value shapes and runtime behavior have focused
-coverage.
+Embrace of the Fog P8.2: complete the activated event-expression surface,
+starting with `game.get_data`, keyed `sorted`/lambda expressions, nested
+comprehensions, and campaign-valid prerequisites for the all-level settlement
+gate.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -303,12 +303,17 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Pin a current EotF source snapshot and record its project scale.
 - [x] Add a generated EotF inventory for commands, expressions, components,
   custom Python hooks, and catalog-backed resources.
-- [x] Add all-level clean-boot and level-start settlement smoke coverage.
+- [x] Add all-level clean-boot smoke coverage.
+- [ ] Make all-level event settlement green against the hydrated event catalog
+  with campaign-valid prerequisites.
 - [ ] Classify all missing catalog resources as intentional or repair them.
 - [ ] Count-lock every verified EotF item and skill component in strict mode.
 
 ### P8.2 — Expressions, event flow, and project-local components
 
+- [ ] Preserve EotF event expressions that use `game.get_data`, keyed
+  `sorted`/lambda expressions, nested comprehensions, and absent-record
+  fallbacks exposed by the hydrated 2,339-event catalog.
 - [x] Preserve Python component-object expression semantics for EotF's
   `blue`, `combat_art_proc`, `copysafe`, `has_affinities`, `shit`, `subskills`,
   and `tether_parameters` skill components.
@@ -438,6 +443,9 @@ return to the base without compatibility warnings or silent mechanic loss.
   immunity and hover aura ranges that retain underlying threat highlights.
 - [x] Preserve all 61 EotF durability, effectiveness-negation, and standard
   survival components, including Python-ordered Armsthrift restoration.
+- [x] Preserve all 85 remaining engine-generic EotF skill components across
+  AOE selection, pair-up grants, combat charge, pre/post-combat effects,
+  Galeforce, removal events, and initiated-combat event gating.
 - [x] Preserve all 7 EotF accessory swaps, inventory expansions, and item-slot
   penalties with independent last-active hook resolution across supply,
   theft, reward, and discard capacity checks.

@@ -405,6 +405,9 @@ test.describe('Embrace of the Fog per-strike skill hooks', () => {
       const removalCalls: any[] = [];
       const originalEventManager = game.eventManager;
       game.eventManager = {
+        getPrefab(nid: string) {
+          return game.db.events.get(nid);
+        },
         triggerSpecific(nid: string, trigger: any) {
           removalCalls.push({ nid, trigger });
           return true;

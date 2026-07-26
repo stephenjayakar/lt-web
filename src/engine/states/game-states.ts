@@ -6255,32 +6255,29 @@ export class CombatState extends State {
           game.state.change('item_discard');
         }
 
-        // If events were triggered by combat (combat_end, combat_death), push EventState.
-        // BUT skip this when combat was triggered from an event (interact_unit) —
-        // EventState is already on the stack below and will resume processing.
-        // Matches Python's handle_state_stack which does `pass` for event_combat.
-        if (!wasEventCombat && game.eventManager?.hasActiveEvents()) {
-          game.state.change('event');
-        }
-        // Trade staves open the same two-column inventory flow as Python's
-        // Trade.end_combat, even when the units are no longer adjacent.
-        else if (!wasEventCombat && tradePair) {
-          game.selectedUnit = tradePair.unit;
-          if (tradePair.partner.position) {
-            game.cursor.setPos(tradePair.partner.position[0], tradePair.partner.position[1]);
+        if (!wasEventCombat) {
+          // Queue the post-combat continuation before EventState so the event
+          // is layered above it and pops back to the correct state. Python's
+          // stack preserves menu/Canto/trade while combat events run.
+          if (tradePair) {
+            game.selectedUnit = tradePair.unit;
+            if (tradePair.partner.position) {
+              game.cursor.setPos(tradePair.partner.position[0], tradePair.partner.position[1]);
+            }
+            game.memory.set('trade_partner', tradePair.partner);
+            game.state.change('trade');
+          } else if (returnsToMenu && !attacker.isDead()) {
+            game.selectedUnit = attacker;
+            game.memory.set('menu_after_combat', attacker.nid);
+            game.state.change('menu');
+          } else if (attacker.team === 'player' && hasCanto) {
+            game.selectedUnit = attacker;
+            game.state.change('move');
           }
-          game.memory.set('trade_partner', tradePair.partner);
-          game.state.change('trade');
-        }
-        else if (!wasEventCombat && returnsToMenu && !attacker.isDead()) {
-          game.selectedUnit = attacker;
-          game.memory.set('menu_after_combat', attacker.nid);
-          game.state.change('menu');
-        }
-        // If Canto, re-enter move state for remaining movement
-        else if (!wasEventCombat && attacker.team === 'player' && hasCanto) {
-          game.selectedUnit = attacker;
-          game.state.change('move');
+
+          if (game.eventManager?.hasActiveEvents()) {
+            game.state.change('event');
+          }
         }
         break;
       }

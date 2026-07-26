@@ -2390,7 +2390,7 @@
         "nid": "Cleave",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "close_counter",
@@ -2426,7 +2426,7 @@
         "nid": "combat_charge_increase_by_stat",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_condition",
@@ -2678,7 +2678,7 @@
         "nid": "enemy_oversplash",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_avoid",
@@ -2810,7 +2810,7 @@
         "nid": "event_after_initiated_combat",
         "uses": 35,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_kill",
@@ -2828,7 +2828,7 @@
         "nid": "event_on_remove",
         "uses": 14,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_on_strike",
@@ -2948,7 +2948,7 @@
         "nid": "galeforce",
         "uses": 6,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "give_ally_status_after_combat",
@@ -3290,7 +3290,7 @@
         "nid": "pairup_bonus",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "paragon",
@@ -3338,13 +3338,13 @@
         "nid": "post_combat_splash",
         "uses": 3,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "post_combat_splash_aoe",
         "uses": 3,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "proc_rate",
@@ -3470,13 +3470,13 @@
         "nid": "skill_before_combat",
         "uses": 16,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "smart_oversplash",
         "uses": 3,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "specific_witch_warp",

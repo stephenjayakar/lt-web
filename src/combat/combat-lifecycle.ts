@@ -1697,7 +1697,7 @@ export function queueAfterInitiatedCombatEvents(
   for (const skill of bearer.skills) {
     const nid = skill.getComponent<unknown>('event_after_initiated_combat');
     if (typeof nid !== 'string' || nid.length === 0) continue;
-    if (!skillConditionActive(skill, bearer, { game, target, item })) continue;
+    if (!combatSkillEnabled(game, bearer, skill, target, item, item2, mode)) continue;
 
     if (manager.triggerSpecific(nid, {
       type: 'event_after_initiated_combat',
