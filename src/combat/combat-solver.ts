@@ -705,9 +705,12 @@ export class CombatPhaseSolver {
       } else {
         dmg = normalDamage;
         if (crit) {
-          const critDmgMod = skillSystem.modifyCritDamage(striker, item);
           const baseCritMult = this.criticalMultiplier(striker, item, db);
-          dmg = dmg * baseCritMult + critDmgMod;
+          dmg *= baseCritMult;
+          dmg += skillSystem.modifyCritDamage(striker, item, this.game);
+          dmg += skillSystem.dynamicCritDamageAddition(
+            striker, item, target, defWeapon, mode, attackInfo, dmg, this.game,
+          );
         }
         dmg = this.applyCustomHitDamage(item, target, dmg);
       }
@@ -1294,9 +1297,12 @@ export class CombatPhaseSolver {
 
         // Crit damage
         if (crit) {
-          const critDmgMod = skillSystem.modifyCritDamage(striker, item);
           const baseCritMult = this.criticalMultiplier(striker, item, db);
-          dmg = dmg * baseCritMult + critDmgMod;
+          dmg *= baseCritMult;
+          dmg += skillSystem.modifyCritDamage(striker, item, this.game);
+          dmg += skillSystem.dynamicCritDamageAddition(
+            striker, item, target, defWeapon, mode, attackInfo, dmg, this.game,
+          );
         }
 
         // Grandmaster mode scales hit damage by to-hit%; DamageOnMiss calls

@@ -750,9 +750,90 @@ export function modifyCritAvoid(unit: UnitObject, _item: ItemObject | null): num
   return sumSkillValues(unit, 'modify_crit_avoid') + sumSkillValues(unit, 'crit_avoid');
 }
 
-/** Bonus crit damage from skills. */
-export function modifyCritDamage(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_crit_damage');
+/**
+ * Bonus crit damage from skills.
+ *
+ * EotF's `eval_crit_additional` component names its Python hook
+ * `modify_crit_addition`, while LT's generated dispatch surface calls
+ * `modify_crit_damage`. The shipped Python build therefore leaves these
+ * authored values dormant. Treat the component as the intended additive
+ * crit-damage hook so the project's definitions function in the port.
+ */
+export function modifyCritDamage(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+): number {
+  let total = sumSkillValues(unit, 'modify_crit_damage');
+  for (const skill of unit.skills) {
+    const expression = skill.getComponent<string>('eval_crit_additional');
+    if (!expression || !skillConditionActive(skill, unit, { game, item })) continue;
+    const value = evaluateExpression(expression, {
+      game,
+      unit1: unit,
+      item: item ?? undefined,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map<string, unknown>([
+        ['item', item],
+        ['skill', skill],
+      ]),
+    });
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) total += Math.trunc(numeric);
+  }
+  return total;
+}
+
+/**
+ * EotF's target-aware additive critical-damage expression.
+ *
+ * Like `eval_crit_additional`, this custom hook is absent from LT's generated
+ * hook registry. Invoke it at the intended critical-addition stage and pass
+ * the running critical damage as `base_value`.
+ */
+export function dynamicCritDamageAddition(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: [number, number],
+  baseValue: number,
+  game?: any,
+): number {
+  let total = 0;
+  for (const skill of unit.skills) {
+    const expression = skill.getComponent<string>('dynamic_crit_additional');
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['item2', item2],
+      ['mode', mode],
+      ['skill', skill],
+      ['attack_info', attackInfo],
+      ['base_value', baseValue],
+    ]);
+    if (!expression || !skillConditionActive(skill, unit, {
+      game,
+      item,
+      target,
+      localArgs,
+    })) continue;
+    const value = evaluateExpression(expression, {
+      game,
+      unit1: unit,
+      unit2: target,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs,
+    });
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) total += Math.trunc(numeric);
+  }
+  return total;
 }
 
 /** Dynamic crit bonus evaluated with the full Python combat local context. */
