@@ -2,9 +2,8 @@ import type { ActionLog } from './action';
 import {
   AddSkillAction,
   ChangeManaAction,
-  DamageAction,
-  HealAction,
   RemoveSkillAction,
+  SetCurrentHpAction,
   SetSkillDataAction,
 } from './action';
 import type { UnitObject } from '../objects/unit';
@@ -12,7 +11,11 @@ import { SkillObject } from '../objects/skill';
 import type { EventManager } from '../events/event-manager';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
-import { skillConditionActive } from '../combat/skill-system';
+import {
+  modifiedHealAmount,
+  skillConditionActive,
+} from '../combat/skill-system';
+import { evaluateExpression } from '../events/event-manager';
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
 
@@ -75,6 +78,37 @@ function setData(
   value: number,
 ): void {
   game.actionLog.doAction(new SetSkillDataAction(skill, key, value));
+}
+
+function evaluatedTurnAmount(
+  game: SkillTurnGame,
+  unit: UnitObject,
+  skill: SkillObject,
+  expression: unknown,
+): number {
+  if (typeof expression !== 'string') return 0;
+  try {
+    const value = Number(evaluateExpression(expression, {
+      game,
+      unit1: unit,
+      position: unit.position ?? undefined,
+      gameVars: game.gameVars,
+      levelVars: game.levelVars,
+      localArgs: new Map([['skill', skill]]),
+    }));
+    return Number.isFinite(value) ? Math.trunc(value) : 0;
+  } catch (error) {
+    console.error(`Could not evaluate skill turn amount ${expression}`, error);
+    return 0;
+  }
+}
+
+function applyHpChange(
+  game: SkillTurnGame,
+  unit: UnitObject,
+  amount: number,
+): void {
+  game.actionLog.doAction(new SetCurrentHpAction(unit, unit.currentHp + amount));
 }
 
 /**
@@ -161,8 +195,20 @@ export function applySkillTurnHooks(
           effects.push({ unit, skill, component, value });
         } else if (phase === 'upkeep' && component === 'regeneration' && conditional) {
           const amount = Math.trunc(unit.maxHp * Number(rawValue ?? 0));
-          if (amount > 0 && unit.currentHp < unit.maxHp) {
-            game.actionLog.doAction(new HealAction(unit, amount));
+          if (amount !== 0 && unit.currentHp < unit.maxHp) {
+            applyHpChange(game, unit, amount);
+            effects.push({ unit, skill, component, value: amount });
+          }
+        } else if (
+          phase === 'upkeep' &&
+          component === 'eval_regeneration' &&
+          conditional &&
+          unit.currentHp < unit.maxHp
+        ) {
+          const baseAmount = evaluatedTurnAmount(game, unit, skill, rawValue);
+          if (baseAmount !== 0) {
+            const amount = modifiedHealAmount(baseAmount, unit, null, game);
+            applyHpChange(game, unit, amount);
             effects.push({ unit, skill, component, value: amount });
           }
         } else if (phase === 'upkeep' && component === 'mana_regeneration' && conditional) {
@@ -178,11 +224,19 @@ export function applySkillTurnHooks(
         ) {
           const amount = Math.trunc(Number(rawValue ?? 0));
           if (amount !== 0) {
-            if (amount > 0) game.actionLog.doAction(new DamageAction(unit, amount));
-            else game.actionLog.doAction(new HealAction(unit, -amount));
+            applyHpChange(game, unit, -amount);
             triggerCharge(game, skill);
             effects.push({ unit, skill, component, value: -amount });
           }
+        } else if (
+          phase === 'upkeep' &&
+          component === 'eval_upkeep_damage' &&
+          conditional
+        ) {
+          const amount = evaluatedTurnAmount(game, unit, skill, rawValue);
+          applyHpChange(game, unit, -amount);
+          triggerCharge(game, skill);
+          effects.push({ unit, skill, component, value: -amount });
         }
       }
 

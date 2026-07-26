@@ -1024,6 +1024,30 @@ export function applyCombatSkillEndHooks(
           Math.max(1, target.currentHp - amount),
         );
       }
+      const standardDamage = skill.getComponent<unknown>('post_combat_damage');
+      if (standardDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+          !processedGlobalHooks.get(skill)?.has('post_combat_damage')) {
+        const amount = Math.trunc(Number(standardDamage));
+        if (Number.isFinite(amount)) {
+          activateHpHook(
+            'post_combat_damage',
+            target,
+            Math.max(1, target.currentHp - amount),
+          );
+        }
+      }
+      const percentDamage = skill.getComponent<unknown>('post_combat_damage_percent');
+      if (percentDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+          !processedGlobalHooks.get(skill)?.has('post_combat_damage_percent')) {
+        const amount = Math.trunc(target.maxHp * Number(percentDamage));
+        if (Number.isFinite(amount)) {
+          activateHpHook(
+            'post_combat_damage_percent',
+            target,
+            Math.max(1, target.currentHp - amount),
+          );
+        }
+      }
       const evalDamage = skill.getComponent<unknown>('eval_post_combat_damage');
       if (evalDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
           !processedGlobalHooks.get(skill)?.has('eval_post_combat_damage')) {
@@ -1080,6 +1104,19 @@ export function applyCombatSkillEndHooks(
           unit,
           Math.max(1, unit.currentHp - amount),
         );
+      }
+      const standardRecoil = skill.getComponent<unknown>('recoil');
+      if (standardRecoil !== undefined && isHookTarget && unit.currentHp > 0 &&
+          (enemyHookTarget || foughtEnemy) &&
+          !processedGlobalHooks.get(skill)?.has('recoil')) {
+        const amount = Math.trunc(Number(standardRecoil));
+        if (Number.isFinite(amount)) {
+          activateHpHook(
+            'recoil',
+            unit,
+            Math.max(1, unit.currentHp - amount),
+          );
+        }
       }
       const evalAll = skill.getComponent<unknown>('eval_post_combat_damage_all');
       if (evalAll !== undefined && claimGlobalHook(

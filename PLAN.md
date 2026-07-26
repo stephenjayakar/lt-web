@@ -405,6 +405,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 437 EotF action-retention, brave, counter, doubling, and
   miss-damage item uses with equipped-weapon authority, exact weapon/spell/
   siege defaults, and base-plus-override numeric accumulation.
+- [x] Preserve all 40 EotF signed/evaluated regeneration, upkeep damage,
+  standard recoil, nonlethal post-combat damage, and immediate follow-up
+  healing uses with charge timing and exact turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 126 unverified
+- 270 skill-component NIDs; 118 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -191,8 +191,6 @@ focused browser coverage.
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | consumed |
 | eval_range | 3 | unreferenced |
-| eval_regeneration | 11 | project-local-or-unknown |
-| eval_upkeep_damage | 5 | project-local-or-unknown |
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
 | exp_multiplier | 1 | hook-and-reference |
@@ -207,7 +205,6 @@ focused browser coverage.
 | growth_change | 22 | hook-and-reference |
 | growth_change_expression | 3 | project-local-or-unknown |
 | has_tags | 82 | hook-and-reference |
-| heal_after_follow_up | 1 | project-local-or-unknown |
 | hidden_if_inactive | 122 | consumed |
 | hide_aura | 96 | reference-only |
 | hide_skill_icon_in_combat | 4 | consumed |
@@ -236,14 +233,10 @@ focused browser coverage.
 | paragon | 2 | project-local-or-unknown |
 | pass | 7 | hook-only |
 | pcc_static | 3 | unreferenced |
-| post_combat_damage | 2 | unreferenced |
-| post_combat_damage_percent | 1 | unreferenced |
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |
 | proc_rate | 12 | consumed |
 | purge_ailments | 1 | project-local-or-unknown |
-| recoil | 9 | unreferenced |
-| regeneration | 9 | reference-only |
 | rescue_bonus | 3 | project-local-or-unknown |
 | resist_follow_up | 1 | hook-only |
 | resist_status | 3 | unreferenced |
@@ -261,7 +254,6 @@ focused browser coverage.
 | unit_flickering_tint | 54 | consumed |
 | unselectable | 15 | hook-and-reference |
 | upkeep_aoe_skill_gain | 6 | project-local-or-unknown |
-| upkeep_damage | 2 | reference-only |
 | vantage | 10 | hook-and-reference |
 | visual_charge | 2 | project-local-or-unknown |
 | wexp_multiplier | 1 | hook-and-reference |

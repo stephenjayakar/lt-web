@@ -1284,7 +1284,10 @@ export class AnimationCombat implements AnimationCombatOwner {
           attackerMaxHp,
           atkHp + itemHeal + (strike.selfSkillHpChange ?? 0),
         ));
-        defHp = Math.min(this.defender.maxHp, defHp - damage);
+        defHp = Math.min(
+          this.defender.maxHp,
+          defHp - damage + (strike.defenderSkillHpChange ?? 0),
+        );
       } else {
         const itemHeal = lifelinkHealForStrike(
           strike.attacker,
@@ -1296,7 +1299,10 @@ export class AnimationCombat implements AnimationCombatOwner {
           this.defender.maxHp,
           defHp + itemHeal + (strike.selfSkillHpChange ?? 0),
         ));
-        atkHp = Math.min(this.attacker.maxHp, atkHp - damage);
+        atkHp = Math.min(
+          this.attacker.maxHp,
+          atkHp - damage + (strike.defenderSkillHpChange ?? 0),
+        );
       }
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (effect.unit === this.attacker) {

@@ -58,6 +58,8 @@ export interface CombatStrike {
   survivalProc?: skillSystem.CustomSurvivalSkill;
   /** Net self HP change from skill after_strike hooks, applied in strike order. */
   selfSkillHpChange?: number;
+  /** Defender healing appended by after_take_strike hooks after strike damage. */
+  defenderSkillHpChange?: number;
   /** Ally HP changes from skill after_strike hooks, applied in strike order. */
   allySkillHpChanges?: Array<{ unit: UnitObject; amount: number }>;
   /** Damage rewritten to a cover unit by EotF after_take_strike hooks. */
@@ -167,7 +169,7 @@ export class CombatPhaseSolver {
   ): void {
     if (!strike.hit && !hasDamageOnMiss(strike.item)) {
       strike.selfSkillHpChange = 0;
-      this.applyPostStrikeSkillEffects(target, strike);
+      this.applyPostStrikeSkillEffects(target, strike, hp.hp);
       return;
     }
     const before = hp.hp;
@@ -205,22 +207,28 @@ export class CombatPhaseSolver {
           Math.min(before, strike.damage + (strike.extraDamage ?? 0)),
         ),
       );
-      this.applyPostStrikeSkillEffects(target, strike);
+      this.applyPostStrikeSkillEffects(target, strike, before);
       const resolvedDamage = strike.damage + (strike.extraDamage ?? 0);
       hp.hp = ignoreDying && before - resolvedDamage <= 0
         ? 1
-        : Math.min(target.maxHp, before - resolvedDamage);
+        : Math.min(
+            target.maxHp,
+            before - resolvedDamage + (strike.defenderSkillHpChange ?? 0),
+          );
       return;
     }
     this.applySelfLifelink(
       strike,
       Math.max(0, Math.min(before, strike.damage)),
     );
-    this.applyPostStrikeSkillEffects(target, strike);
+    this.applyPostStrikeSkillEffects(target, strike, before);
     const resolvedDamage = strike.damage + (strike.extraDamage ?? 0);
     hp.hp = ignoreDying && before - resolvedDamage <= 0
       ? 1
-      : Math.min(target.maxHp, before - resolvedDamage);
+      : Math.min(
+          target.maxHp,
+          before - resolvedDamage + (strike.defenderSkillHpChange ?? 0),
+        );
   }
 
   private evaluatedExtraDamage(
@@ -447,6 +455,7 @@ export class CombatPhaseSolver {
   private applyPostStrikeSkillEffects(
     target: UnitObject,
     strike: CombatStrike,
+    targetHpBefore: number,
   ): void {
     const deferredMutations: DeferredStrikeSkillMutation[] = [];
     strike.redirectedDamage = [];
@@ -562,6 +571,26 @@ export class CombatPhaseSolver {
             sourceSkill,
             value,
           );
+        } else if (
+          component === 'heal_after_follow_up' &&
+          strike.hit &&
+          (strike.damage > 0 || (strike.extraDamage ?? 0) > 0) &&
+          strike.attackInfo[0] > 0 &&
+          targetHpBefore >
+            (strike.damage > 0 ? strike.damage : (strike.extraDamage ?? 0))
+        ) {
+          const baseAmount = Math.trunc(Number(value));
+          if (Number.isFinite(baseAmount)) {
+            strike.defenderSkillHpChange =
+              (strike.defenderSkillHpChange ?? 0) +
+              skillSystem.modifiedHealAmount(
+                baseAmount,
+                target,
+                target,
+                this.game,
+              );
+            skillSystem.consumeMiracleCharge(sourceSkill, target, this.game);
+          }
         } else if (
           component === 'lost_on_take_hit' &&
           strike.hit &&
