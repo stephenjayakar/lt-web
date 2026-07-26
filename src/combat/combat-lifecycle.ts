@@ -123,15 +123,37 @@ function combatSkillEnabled(
   skill: SkillObject,
   target: UnitObject,
   item: ItemObject,
+  item2: ItemObject | null = null,
+  mode: string = 'attack',
 ): boolean {
   const parent = skill.data.get('multiSkillSource');
   if (parent instanceof SkillObject &&
-      !combatSkillEnabled(game, unit, parent, target, item)) return false;
+      !combatSkillEnabled(game, unit, parent, target, item, item2, mode)) return false;
   const total = Number(skill.data.get('total_charge'));
   const charge = Number(skill.data.get('charge'));
   if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) return false;
   if (hasDrainingCharge(skill) &&
       Number.isFinite(charge) && charge <= 0) return false;
+  const combatCondition = skill.getComponent<string>('combat_condition');
+  if (combatCondition) {
+    const snapshot = skill.data.get('_combat_condition');
+    if (typeof snapshot === 'boolean') {
+      if (!snapshot) return false;
+    } else if (!evaluateCondition(combatCondition, {
+      game,
+      unit1: unit,
+      unit2: target,
+      position: unit.position ?? undefined,
+      item,
+      gameVars: game.gameVars,
+      levelVars: game.levelVars,
+      localArgs: new Map<string, unknown>([
+        ['item2', item2],
+        ['mode', mode],
+        ['skill', skill],
+      ]),
+    })) return false;
+  }
   return skillConditionActive(skill, unit, { game, target, item });
 }
 
@@ -299,6 +321,7 @@ export function queueCombatSkillStartEvents(
     for (const skill of [...participant.unit.skills]) {
       if (participant.item && !combatSkillEnabled(
         game, participant.unit, skill, participant.target, participant.item,
+        participant.item2, participant.mode,
       )) continue;
       const beforeCombat = skill.getComponent<unknown>('skill_before_combat');
       if (beforeCombat && typeof beforeCombat === 'object') {
@@ -373,7 +396,15 @@ export function queueCombatSkillEvents(
       if (!attackerSkills.includes(mark.procSkill)) attackerSkills.push(mark.procSkill);
     }
     for (const skill of attackerSkills) {
-      if (!combatSkillEnabled(game, strike.attacker, skill, strike.defender, strike.item)) continue;
+      if (!combatSkillEnabled(
+        game,
+        strike.attacker,
+        skill,
+        strike.defender,
+        strike.item,
+        defenderItem,
+        mode,
+      )) continue;
       for (const [component, value] of skill.components) {
         const fires = component === 'event_after_strike' ||
           component === 'event_on_strike' ||
@@ -392,7 +423,20 @@ export function queueCombatSkillEvents(
       if (!defenderSkills.includes(mark.procSkill)) defenderSkills.push(mark.procSkill);
     }
     for (const skill of defenderSkills) {
-      if (!combatSkillEnabled(game, strike.defender, skill, strike.attacker, defenderItem ?? strike.item)) {
+      const defenderMode = mode === 'attack'
+        ? 'defense'
+        : mode === 'defense'
+          ? 'attack'
+          : 'splash';
+      if (!combatSkillEnabled(
+        game,
+        strike.defender,
+        skill,
+        strike.attacker,
+        defenderItem ?? strike.item,
+        strike.item,
+        defenderMode,
+      )) {
         continue;
       }
       for (const [component, value] of skill.components) {
@@ -463,6 +507,7 @@ export function queueCombatSkillEvents(
     for (const skill of participant.unit.skills) {
       if (participant.item && !combatSkillEnabled(
         game, participant.unit, skill, participant.target, participant.item,
+        participant.item2, participant.mode,
       )) continue;
       for (const [component, value] of skill.components) {
         const fires = component === 'event_after_combat' ||
@@ -610,6 +655,15 @@ export function applyCombatSkillEndHooks(
   initiator ??= strikes[0]?.attacker;
   primaryTarget ??= strikes[0]?.defender;
   let applied = 0;
+  const conditionOwners = new Set<UnitObject>([
+    ...(initiator ? [initiator] : []),
+    ...(primaryTarget ? [primaryTarget] : []),
+    ...strikes.flatMap((strike) => [strike.attacker, strike.defender]),
+  ]);
+  const conditionSkills = new Set<SkillObject>([
+    ...[...conditionOwners].flatMap((unit) => [...unit.skills]),
+    ...procPlayback.flatMap((mark) => [mark.parentSkill, mark.procSkill]),
+  ]);
   const processedGlobalHooks = new Map<SkillObject, Set<string>>();
   const claimGlobalHook = (skill: SkillObject, component: string): boolean => {
     const processed = processedGlobalHooks.get(skill) ?? new Set<string>();
@@ -777,7 +831,15 @@ export function applyCombatSkillEndHooks(
       if (killIncrease !== undefined && isHookTarget && target.currentHp <= 0) {
         incrementCharge('kill_charge_increase', killIncrease);
       }
-      if (!combatSkillEnabled(game, unit, skill, target, item)) continue;
+      if (!combatSkillEnabled(
+        game,
+        unit,
+        skill,
+        target,
+        item,
+        equippedWeapon(target),
+        mode,
+      )) continue;
 
       const afterCombat = skill.getComponent<string>('give_status_after_combat');
       if (afterCombat && !isAlly) {
@@ -811,6 +873,79 @@ export function applyCombatSkillEndHooks(
           triggerSkillCharge(game, skill);
           applied += granted;
         }
+      }
+      const applySavageTargets = (
+        component: string,
+        rangeValue: unknown,
+        apply: (splashTarget: UnitObject) => number,
+      ): number => {
+        if (!enemyHookTarget || !target.position ||
+            !claimGlobalHook(skill, component)) return 0;
+        const configuredRange = Number(rangeValue ?? 1);
+        const range = Number.isFinite(configuredRange)
+          ? Math.max(0, Math.trunc(configuredRange))
+          : 1;
+        let count = 0;
+        for (const splashTarget of game.units?.values?.() ?? []) {
+          if (!splashTarget.position || splashTarget === target ||
+              !checkEnemy(unit, splashTarget, game.db!)) continue;
+          if (game.board?.getUnit(
+            splashTarget.position[0],
+            splashTarget.position[1],
+          ) !== splashTarget) continue;
+          const distance =
+            Math.abs(splashTarget.position[0] - target.position[0]) +
+            Math.abs(splashTarget.position[1] - target.position[1]);
+          if (distance <= range) count += apply(splashTarget);
+        }
+        return count;
+      };
+      const savageStatus = skill.getComponent<unknown>('savage_status');
+      if (savageStatus !== undefined) {
+        const statusNid = componentOption(savageStatus, 'status');
+        applied += applySavageTargets(
+          'savage_status',
+          componentOption(savageStatus, 'range'),
+          (splashTarget) => typeof statusNid === 'string'
+            ? grantCombatStatus(
+              game, unit, splashTarget, skill, statusNid, false,
+            )
+            : 0,
+        );
+      }
+      const savageStatuses = skill.getComponent<unknown>('savage_statuses');
+      if (savageStatuses !== undefined) {
+        const statusNids = componentOption(savageStatuses, 'statuses');
+        applied += applySavageTargets(
+          'savage_statuses',
+          componentOption(savageStatuses, 'range'),
+          (splashTarget) => {
+            if (!Array.isArray(statusNids)) return 0;
+            let granted = 0;
+            for (const statusNid of statusNids) {
+              if (typeof statusNid !== 'string') continue;
+              granted += grantCombatStatus(
+                game, unit, splashTarget, skill, statusNid, false,
+              );
+            }
+            return granted;
+          },
+        );
+      }
+      const savageBlow = skill.getComponent<unknown>('savage_blow_fates');
+      if (savageBlow !== undefined) {
+        applied += applySavageTargets(
+          'savage_blow_fates',
+          savageBlow,
+          (splashTarget) => {
+            const damage = Math.trunc(splashTarget.currentHp * 0.2);
+            game.actionLog!.doAction(new SetCurrentHpAction(
+              splashTarget,
+              Math.max(1, splashTarget.currentHp - damage),
+            ));
+            return 1;
+          },
+        );
       }
       const betterAfterHit = skill.getComponent<string>(
         'better_give_status_after_combat_on_hit',
@@ -1298,6 +1433,9 @@ export function applyCombatSkillEndHooks(
   }
   game.memory?.delete('combat_art_parent');
   game.memory?.delete('combat_art_weapons');
+  for (const skill of conditionSkills) {
+    skill.data.delete('_combat_condition');
+  }
   return applied;
 }
 
