@@ -1973,7 +1973,10 @@ export function armsthriftRestoration(unit: UnitObject, item: ItemObject): numbe
   let restored = 0;
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>('armsthrift');
-    if (typeof value === 'number') restored += Math.max(0, value - 1);
+    // Python queues the ordinary use loss before Armsthrift's SetObjData.
+    // Its authored `value - 1` assignment therefore cancels `value` points
+    // from that already-queued loss in the web's aggregate durability model.
+    if (typeof value === 'number') restored += Math.max(0, value);
   }
   return restored;
 }

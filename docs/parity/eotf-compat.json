@@ -2168,7 +2168,7 @@
         "nid": "armsthrift",
         "uses": 3,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "armsthrift_always",
@@ -3092,7 +3092,7 @@
         "nid": "ignore_damage",
         "uses": 22,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_rescue_penalty",
@@ -3218,7 +3218,7 @@
         "nid": "miracle",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "modify_ai_priority",
@@ -3248,13 +3248,13 @@
         "nid": "negate",
         "uses": 3,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "negate_tags",
         "uses": 13,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "negative",
@@ -3560,7 +3560,7 @@
         "nid": "TrueMiracle",
         "uses": 19,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "unit_anim",

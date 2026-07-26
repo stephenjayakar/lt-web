@@ -1230,10 +1230,10 @@ export function usesConsumedByStrikes(
   const persistentRestoration = armsthriftRestoration(unit, item);
   const restored = qualifying.reduce((total, strike) => {
     const procRestoration = item.hasComponent('unrepairable')
-      ? 0
-      : (strike.attackProcs ?? []).reduce((sum, mark) => {
+        ? 0
+        : (strike.attackProcs ?? []).reduce((sum, mark) => {
           const value = mark.procSkill.getComponent<number>('armsthrift');
-          return sum + (typeof value === 'number' ? Math.max(0, value - 1) : 0);
+          return sum + (typeof value === 'number' ? Math.max(0, value) : 0);
         }, 0);
     return total + persistentRestoration + procRestoration;
   }, 0);
