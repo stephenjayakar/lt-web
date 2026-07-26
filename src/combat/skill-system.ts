@@ -765,8 +765,88 @@ export function statChange(unit: UnitObject, statNid: string): number {
       const value = Number((frozenChanges as Record<string, unknown>)[statNid] ?? 0);
       if (Number.isFinite(value)) total += value;
     }
+    const dynamicChanges = skill.data.get('_dynamic_stat_changes');
+    if (dynamicChanges instanceof Map) {
+      const value = Number(dynamicChanges.get(statNid) ?? 0);
+      if (Number.isFinite(value)) total += value;
+    } else if (dynamicChanges && typeof dynamicChanges === 'object') {
+      const value = Number(
+        (dynamicChanges as Record<string, unknown>)[statNid] ?? 0,
+      );
+      if (Number.isFinite(value)) total += value;
+    }
   }
   return total;
+}
+
+/** Freeze EotF DynamicStatChange expressions for one combat encounter. */
+export function prepareDynamicStatChanges(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: 'attack' | 'defense',
+  game?: any,
+): void {
+  for (const skill of unit.skills) {
+    const configured = skill.getComponent<unknown>('dynamic_stat_change');
+    if (!Array.isArray(configured)) continue;
+    const localArgs = new Map<string, unknown>([
+      ['item', item], ['item2', item2], ['mode', mode], ['skill', skill],
+      ['playback', []],
+    ]);
+    if (skill.hasComponent('build_charge')) {
+      const charge = Number(skill.data.get('charge') ?? 0);
+      const maximum = Number(
+        skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
+      );
+      if (charge < maximum) continue;
+    }
+    if (hasDrainingCharge(skill) &&
+        Number(skill.data.get('charge') ?? 0) <= 0) continue;
+    const combatCondition = skill.getComponent<string>('combat_condition');
+    if (combatCondition) {
+      const snapshot = skill.data.get('_combat_condition');
+      const enabled = typeof snapshot === 'boolean'
+        ? snapshot
+        : evaluateCondition(combatCondition, {
+          game,
+          unit1: unit,
+          unit2: target,
+          item: item ?? undefined,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+          localArgs,
+        });
+      if (!enabled) continue;
+    }
+    if (!skillConditionActive(skill, unit, { game, item, target, localArgs })) continue;
+    const changes = new Map<string, number>();
+    for (const entry of configured) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
+      const raw = typeof entry[1] === 'number'
+        ? entry[1]
+        : typeof entry[1] === 'string'
+          ? Number(evaluateExpression(entry[1], {
+            game,
+            unit1: unit,
+            unit2: target,
+            item: item ?? undefined,
+            position: unit.position ?? undefined,
+            gameVars: game?.gameVars,
+            levelVars: game?.levelVars,
+            localArgs,
+          }))
+          : 0;
+      changes.set(entry[0], Number.isFinite(raw) ? Math.trunc(raw) : 0);
+    }
+    skill.data.set('_dynamic_stat_changes', changes);
+  }
+}
+
+export function clearDynamicStatChanges(unit: UnitObject): void {
+  for (const skill of unit.skills) skill.data.delete('_dynamic_stat_changes');
 }
 
 /**
@@ -1203,21 +1283,142 @@ export function dynamicAvoid(
 }
 
 /** Dynamic extra attacks from skills. */
-export function dynamicMultiattacks(
+function evaluatedCombatSkillTotal(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  component: string,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
 ): number {
   let total = 0;
   for (const skill of unit.skills) {
-    const val = skill.getComponent<number>('dynamic_multiattacks');
-    if (typeof val === 'number') total += val;
+    if (!skill.hasComponent(component)) continue;
+    if (skill.hasComponent('build_charge')) {
+      const charge = Number(skill.data.get('charge') ?? 0);
+      const maximum = Number(
+        skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
+      );
+      if (charge < maximum) continue;
+    }
+    if (hasDrainingCharge(skill) &&
+        Number(skill.data.get('charge') ?? 0) <= 0) continue;
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['item2', item2],
+      ['mode', mode],
+      ['skill', skill],
+      ['attack_info', attackInfo],
+      ['base_value', baseValue],
+    ]);
+    if (combatCalcs) localArgs.set('combat_calcs', combatCalcs);
+    const combatCondition = skill.getComponent<string>('combat_condition');
+    if (combatCondition) {
+      const snapshot = skill.data.get('_combat_condition');
+      const enabled = typeof snapshot === 'boolean'
+        ? snapshot
+        : evaluateCondition(combatCondition, {
+          game,
+          unit1: unit,
+          unit2: target,
+          item: item ?? undefined,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+          localArgs,
+        });
+      if (!enabled) continue;
+    }
+    if (!skillConditionActive(skill, unit, { game, item, target, localArgs })) continue;
+    const configured = skill.getComponent<unknown>(component);
+    const value = typeof configured === 'number'
+      ? configured
+      : typeof configured === 'string'
+        ? Number(evaluateExpression(configured, {
+          game,
+          unit1: unit,
+          unit2: target,
+          item: item ?? undefined,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+          localArgs,
+        }))
+        : 0;
+    if (Number.isFinite(value)) total += Math.trunc(value);
   }
   return total;
+}
+
+export function dynamicMultiattacks(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_multiattacks', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
+}
+
+export function dynamicAttacks(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_attacks', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
+}
+
+export function dynamicBlitzes(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_blitzes', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
+}
+
+export function evaluatedExtraDamage(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'eval_extra_damage', item, target, item2, mode,
+    attackInfo, baseValue, game,
+  );
 }
 
 // ============================================================
@@ -1316,7 +1517,8 @@ export function resistMultiplier(
 /** Override the damage formula name. Default: null (use standard). */
 export function damageFormula(unit: UnitObject): string | undefined {
   return getSkillValue<string>(unit, 'damage_formula') ??
-    getSkillValue<string>(unit, 'alternate_damage_formula');
+    getSkillValue<string>(unit, 'alternate_damage_formula') ??
+    getSkillValue<string>(unit, 'alternate_magic_damage_formula');
 }
 
 export function damageFormulaOverride(unit: UnitObject): string | undefined {

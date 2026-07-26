@@ -2144,7 +2144,7 @@
         "nid": "alternate_magic_damage_formula",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_resist_formula",
@@ -2557,8 +2557,8 @@
       {
         "nid": "dynamic_attacks",
         "uses": 13,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_avoid",
@@ -2570,7 +2570,7 @@
         "nid": "dynamic_blitzes",
         "uses": 6,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_crit_accuracy",
@@ -2612,7 +2612,7 @@
         "nid": "dynamic_multiattacks",
         "uses": 23,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_resist",
@@ -2630,7 +2630,7 @@
         "nid": "dynamic_stat_change",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "empower_heal",
@@ -2714,7 +2714,7 @@
         "nid": "eval_extra_damage",
         "uses": 7,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_galeforce",
