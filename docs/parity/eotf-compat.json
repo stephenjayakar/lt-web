@@ -2353,14 +2353,14 @@
       {
         "nid": "change_ai",
         "uses": 15,
-        "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "change_buy_price",
         "uses": 1,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "change_item_slots",
@@ -2672,7 +2672,7 @@
         "nid": "enemy_exp_multiplier",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_oversplash",
@@ -2846,7 +2846,7 @@
         "nid": "exp_multiplier",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "fatal_block",
@@ -3224,7 +3224,7 @@
         "nid": "modify_ai_priority",
         "uses": 44,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "modify_maximum_range",
@@ -3626,7 +3626,7 @@
         "nid": "wexp_multiplier",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp_unusable_skill",

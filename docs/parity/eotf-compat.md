@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 51 unverified
+- 270 skill-component NIDs; 45 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -143,19 +143,15 @@ focused browser coverage.
 |---|---|---|
 | armsthrift | 3 | consumed |
 | cannot_trade | 2 | unreferenced |
-| change_ai | 15 | reference-only |
-| change_buy_price | 1 | reference-only |
 | change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
 | display_skill_icon_in_combat | 12 | consumed |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
-| enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
-| exp_multiplier | 1 | hook-and-reference |
 | galeforce | 6 | consumed |
 | global | 29 | reference-only |
 | grey_if_inactive | 38 | consumed |
@@ -171,7 +167,6 @@ focused browser coverage.
 | live_to_serve | 1 | consumed |
 | locktouch | 6 | consumed |
 | miracle | 1 | consumed |
-| modify_ai_priority | 44 | hook-and-reference |
 | negate | 3 | consumed |
 | negate_tags | 13 | consumed |
 | negative | 71 | consumed |
@@ -189,7 +184,6 @@ focused browser coverage.
 | unit_anim | 54 | unreferenced |
 | unit_flickering_tint | 54 | consumed |
 | unselectable | 15 | hook-and-reference |
-| wexp_multiplier | 1 | hook-and-reference |
 | witch_warp | 2 | unreferenced |
 | witch_warp_expression | 6 | consumed |
 

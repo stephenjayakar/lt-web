@@ -173,8 +173,8 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   condition-aware movement-type/Pass/terrain/grounding overrides, and
   no-attack-after-move restrictions.
 - [x] Targeting/AI/economy: five `witch_warp_expression` uses,
-  `ignore_alliances`, additional accessory capacity, buy-price changes, and
-  AI-priority modifiers.
+  `ignore_alliances`, additional accessory capacity, condition-aware AI
+  overrides and priority, buy-price changes, and EXP/WEXP multipliers.
 - [x] Confirm attack/pre-attack proc ordering in the real Rekka combat-art and
   custom-event cases; existing generic proc coverage is not sufficient.
 
