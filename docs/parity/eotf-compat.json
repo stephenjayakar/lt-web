@@ -2180,7 +2180,7 @@
         "nid": "attack_proc",
         "uses": 10,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "attack_speed",
@@ -2498,7 +2498,7 @@
         "nid": "defense_proc",
         "uses": 3,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "defense_proc_with_target",
@@ -3350,7 +3350,7 @@
         "nid": "proc_rate",
         "uses": 12,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "purge_ailments",
