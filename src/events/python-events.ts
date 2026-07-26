@@ -41,6 +41,8 @@ type PyLineType =
   | 'for'
   | 'while'
   | 'assign'
+  | 'augassign'
+  | 'return'
   | 'comment'
   | 'blank'
   | 'expr';
@@ -59,6 +61,119 @@ interface PyLine {
   // For 'assign': target variable name and value expression
   assignTarget?: string;
   assignValue?: string;
+  assignOperator?: '+=' | '-=';
+}
+
+type PyevExpressionEvaluator = (
+  expression: string,
+  game: any,
+  localVars: Map<string, any>,
+) => any;
+
+let pyevExpressionEvaluator: PyevExpressionEvaluator | null = null;
+
+/** Registered by event-manager so PYEV1 shares the full event expression surface. */
+export function setPyevExpressionEvaluator(evaluator: PyevExpressionEvaluator): void {
+  pyevExpressionEvaluator = evaluator;
+}
+
+function splitPyevArguments(source: string): string[] {
+  const result: string[] = [];
+  let start = 0;
+  let quote: string | null = null;
+  let depth = 0;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote && source[index - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if ('([{'.includes(char)) {
+      depth++;
+    } else if (')]}'.includes(char)) {
+      depth--;
+    } else if (char === ',' && depth === 0) {
+      result.push(source.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  const tail = source.slice(start).trim();
+  if (tail) result.push(tail);
+  return result;
+}
+
+function matchingParen(source: string, opening: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = opening; index < source.length; index++) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote && source[index - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === '(') depth++;
+    else if (char === ')' && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function parsePyevCommandCall(
+  source: string,
+): { name: string; args: string[]; flags: string[] } | null {
+  const match = source.match(/^([A-Za-z_]\w*)\s*\(/);
+  if (!match) return null;
+  const opening = source.indexOf('(', match[1].length);
+  const closing = matchingParen(source, opening);
+  if (closing < 0) return null;
+  const remainder = source.slice(closing + 1).trim();
+  let flags: string[] = [];
+  if (remainder) {
+    const flagMatch = remainder.match(/^\.FLAGS\s*\(/);
+    if (!flagMatch) return null;
+    const flagOpening = remainder.indexOf('(');
+    const flagClosing = matchingParen(remainder, flagOpening);
+    if (flagClosing < 0 || remainder.slice(flagClosing + 1).trim()) return null;
+    flags = splitPyevArguments(remainder.slice(flagOpening + 1, flagClosing));
+  }
+  return {
+    name: match[1],
+    args: splitPyevArguments(source.slice(opening + 1, closing)),
+    flags,
+  };
+}
+
+function delimiterBalance(source: string): number {
+  let balance = 0;
+  let quote: string | null = null;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote && source[index - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if ('([{'.includes(char)) balance++;
+    else if (')]}'.includes(char)) balance--;
+  }
+  return balance;
+}
+
+function joinPyevContinuations(source: string[]): string[] {
+  const result: string[] = [];
+  for (let index = 0; index < source.length; index++) {
+    let logical = source[index];
+    let balance = delimiterBalance(logical);
+    while (balance > 0 && index + 1 < source.length) {
+      const continuation = source[++index].trim();
+      logical += ` ${continuation}`;
+      balance += delimiterBalance(continuation);
+    }
+    result.push(logical);
+  }
+  return result;
 }
 
 // ============================================================
@@ -141,7 +256,7 @@ export class PythonEventProcessor {
 
         case 'command':
           this.pointer++;
-          return line.command!;
+          return this.materializeCommand(line.command!);
 
         case 'if':
           this.handleIf();
@@ -169,6 +284,16 @@ export class PythonEventProcessor {
           this.handleAssign(line);
           this.pointer++;
           continue;
+
+        case 'augassign':
+          this.handleAugAssign(line);
+          this.pointer++;
+          continue;
+
+        case 'return':
+          this.pointer = this.lines.length;
+          this._finished = true;
+          return null;
 
         case 'expr':
           // Evaluate expression for side effects
@@ -220,9 +345,10 @@ export class PythonEventProcessor {
 
   private parseScript(source: string[]): PyLine[] {
     const lines: PyLine[] = [];
+    const logicalSource = joinPyevContinuations(source);
 
-    for (let i = 0; i < source.length; i++) {
-      const raw = source[i];
+    for (let i = 0; i < logicalSource.length; i++) {
+      const raw = logicalSource[i];
 
       // Skip the #pyev1 header
       if (i === 0 && raw.trim() === '#pyev1') continue;
@@ -242,9 +368,13 @@ export class PythonEventProcessor {
         continue;
       }
 
-      // Calculate indentation level (spaces / 4)
-      const leadingSpaces = raw.length - raw.trimStart().length;
-      const indent = Math.floor(leadingSpaces / 4);
+      // Preserve the exact indentation width. Python permits a block to use
+      // any consistent increase, and authored projects can contain non-four-
+      // space blocks (EOtF has an eleven-space `return` beneath an eight-space
+      // `if`). Collapsing widths into four-space levels changes that control
+      // flow.
+      const leadingWhitespace = raw.match(/^[\t ]*/)?.[0] ?? '';
+      const indent = leadingWhitespace.replace(/\t/g, '    ').length;
 
       // $command lines
       if (content.startsWith('$')) {
@@ -282,6 +412,11 @@ export class PythonEventProcessor {
         continue;
       }
 
+      if (content === 'return') {
+        lines.push({ indent, raw: content, type: 'return' });
+        continue;
+      }
+
       // for VAR in ITERABLE:
       if (content.startsWith('for ') && content.includes(' in ') && content.endsWith(':')) {
         const match = content.match(/^for\s+(\w+)\s+in\s+(.+):$/);
@@ -313,7 +448,19 @@ export class PythonEventProcessor {
       // The lookahead (?!=) ensures we don't match == or ===.
       // Since we already matched ^\w+\s* before the =, the char before = is
       // always whitespace or a word char, so we only need the lookahead.
-      const assignMatch = content.match(/^(\w+)\s*=(?!=)\s*(.+)$/);
+      const augAssignMatch = content.match(/^([A-Za-z_]\w*(?:\.\w+)*)\s*(\+=|-=)\s*(.+)$/);
+      if (augAssignMatch) {
+        lines.push({
+          indent,
+          raw: content,
+          type: 'augassign',
+          assignTarget: augAssignMatch[1],
+          assignOperator: augAssignMatch[2] as '+=' | '-=',
+          assignValue: augAssignMatch[3],
+        });
+        continue;
+      }
+      const assignMatch = content.match(/^([A-Za-z_]\w*(?:\.\w+)*)\s*=(?!=)\s*(.+)$/);
       if (assignMatch) {
         lines.push({
           indent,
@@ -337,6 +484,18 @@ export class PythonEventProcessor {
   // ------------------------------------------------------------------
 
   private parseCommandLine(line: string): EventCommand {
+    const functionCall = parsePyevCommandCall(line);
+    if (functionCall) {
+      return {
+        type: resolveAlias(functionCall.name.toLowerCase()) as EventCommandType,
+        args: [],
+        _pyevArgExprs: functionCall.args,
+        _pyevFlagExprs: functionCall.flags,
+      } as EventCommand & {
+        _pyevArgExprs: string[];
+        _pyevFlagExprs: string[];
+      };
+    }
     // Tokenize respecting quotes and parentheses
     const tokens = tokenizePyevLine(line);
     const name = tokens[0]?.toLowerCase() ?? '';
@@ -493,10 +652,44 @@ export class PythonEventProcessor {
   private handleAssign(line: PyLine): void {
     try {
       const value = this.evalExpr(line.assignValue!);
-      this.localVars.set(line.assignTarget!, value);
+      this.setAssignmentTarget(line.assignTarget!, value);
     } catch (e) {
       console.warn(`PYEV1: assignment failed for "${line.raw}"`, e);
     }
+  }
+
+  private handleAugAssign(line: PyLine): void {
+    const current = this.getAssignmentTarget(line.assignTarget!);
+    const value = this.evalExpr(line.assignValue!);
+    const next = line.assignOperator === '-='
+      ? Number(current) - Number(value)
+      : Array.isArray(current)
+        ? [...current, ...Array.from(value ?? [])]
+        : current + value;
+    this.setAssignmentTarget(line.assignTarget!, next);
+  }
+
+  private getAssignmentTarget(target: string): any {
+    const [root, ...properties] = target.split('.');
+    let value = this.localVars.get(root);
+    if (value === undefined && root === 'game') value = this.gameGetter?.();
+    for (const property of properties) value = (value?._raw ?? value)?.[property];
+    return value;
+  }
+
+  private setAssignmentTarget(target: string, value: any): void {
+    const [root, ...properties] = target.split('.');
+    if (properties.length === 0) {
+      this.localVars.set(root, value);
+      return;
+    }
+    let owner = this.localVars.get(root);
+    if (owner === undefined && root === 'game') owner = this.gameGetter?.();
+    owner = owner?._raw ?? owner;
+    for (const property of properties.slice(0, -1)) {
+      owner = owner?.[property]?._raw ?? owner?.[property];
+    }
+    if (owner) owner[properties.at(-1)!] = value?._raw ?? value;
   }
 
   // ------------------------------------------------------------------
@@ -536,7 +729,7 @@ export class PythonEventProcessor {
         break;
 
       case 'command':
-        this._pendingCommands.push(line.command!);
+        this._pendingCommands.push(this.materializeCommand(line.command!));
         this.pointer++;
         break;
 
@@ -555,6 +748,16 @@ export class PythonEventProcessor {
       case 'assign':
         this.handleAssign(line);
         this.pointer++;
+        break;
+
+      case 'augassign':
+        this.handleAugAssign(line);
+        this.pointer++;
+        break;
+
+      case 'return':
+        this.pointer = this.lines.length;
+        this._finished = true;
         break;
 
       case 'expr':
@@ -748,6 +951,10 @@ export class PythonEventProcessor {
    */
   private evalExpr(expr: string): any {
     try {
+      const game = this.gameGetter ? this.gameGetter() : null;
+      if (pyevExpressionEvaluator && game) {
+        return pyevExpressionEvaluator(expr, game, this.localVars);
+      }
       // Translate Python syntax to JS
       const jsExpr = translatePythonToJs(expr);
 
@@ -762,6 +969,42 @@ export class PythonEventProcessor {
       console.warn(`PYEV1 eval error for expression: "${expr}"`, e);
       return undefined;
     }
+  }
+
+  private materializeCommand(command: EventCommand): EventCommand {
+    const deferred = command as EventCommand & {
+      _pyevArgExprs?: string[];
+      _pyevFlagExprs?: string[];
+    };
+    if (!deferred._pyevArgExprs) return command;
+    const stringify = (value: any): string => {
+      const raw = value?._raw ?? value;
+      if (raw === null || raw === undefined) return '';
+      if (typeof raw === 'string') return raw;
+      if (typeof raw === 'object') return JSON.stringify(raw);
+      return String(raw);
+    };
+    const evaluated = deferred._pyevArgExprs.map((expression) => this.evalExpr(expression));
+    const componentMutation = [
+      'add_item_component',
+      'modify_item_component',
+    ].includes(command.type);
+    const args = evaluated.map((value, index) => {
+      if (componentMutation && index === 3) {
+        const raw = value?._raw ?? value;
+        return JSON.stringify(raw);
+      }
+      return stringify(value);
+    });
+    return {
+      type: command.type,
+      args: [
+        ...args,
+        ...(deferred._pyevFlagExprs ?? []).map((expression) =>
+          stringify(this.evalExpr(expression))),
+        ...(componentMutation ? ['from_python'] : []),
+      ],
+    };
   }
 
   /**

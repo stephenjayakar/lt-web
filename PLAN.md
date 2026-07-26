@@ -286,9 +286,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 ## Active Next Slice
 
 Embrace of the Fog P8.2: continue the activated event-expression surface with
-the remaining raw-PYEV1 item factory/component access, board/target, and
-record-fallback helpers, deep comprehensions, and campaign-valid prerequisites
-for the all-level settlement gate.
+the remaining board/target and record-fallback helpers, deep comprehensions,
+and campaign-valid prerequisites for the all-level settlement gate.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -326,6 +325,10 @@ return to the base without compatibility warnings or silent mechanic loss.
   two `game.item_registry`, and two `game.register_item` expressions: recursive
   trees receive monotonic numeric UIDs, event creation/registration is
   reversible, and UID/counter state survives current and legacy saves.
+- [x] Execute both authored raw-PYEV1 events: God's Image now supports exact
+  Python indentation, comprehensions/augmented assignment, item creation and
+  component access, deterministic choice, function-style commands, and
+  reversible multi-item mutation; Hide Nikume updates boundary display state.
 - [x] Preserve Python component-object expression semantics for EotF's
   `blue`, `combat_art_proc`, `copysafe`, `has_affinities`, `shit`, `subskills`,
   and `tether_parameters` skill components.
