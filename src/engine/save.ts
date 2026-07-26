@@ -1769,7 +1769,7 @@ async function restoreLevel(
 
     // Create GameBoard
     game.board = new GameBoard(game.tilemap.width, game.tilemap.height);
-    game.board.onUnitPositionChanged = () => game.refreshAuras();
+    game.board.onUnitPositionChanged = () => game.refreshPositionSkills();
     game.board.initFromTilemap(game.tilemap);
 
     // Initialize fog grids and opacity
@@ -1795,8 +1795,8 @@ async function restoreLevel(
     for (const unit of unitsByNid.values()) {
       removeAllAuraSourcedSkills(unit);
     }
-    if (game.refreshAuras) {
-      game.refreshAuras();
+    if (game.refreshPositionSkills) {
+      game.refreshPositionSkills();
     }
 
     // Recalculate fog of war

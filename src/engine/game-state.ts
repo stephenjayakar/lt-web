@@ -47,6 +47,7 @@ import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
 import { isCantoSkill } from '../combat/skill-system';
 import { refreshAuras } from '../combat/aura-system';
+import { refreshPositionStatuses } from './position-status-system';
 import { MapSprite } from '../rendering/map-sprite';
 import { SupportController } from './support-system';
 import { InitiativeTracker } from './initiative';
@@ -668,7 +669,7 @@ export class GameState {
 
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
-    this.board.onUnitPositionChanged = () => this.refreshAuras();
+    this.board.onUnitPositionChanged = () => this.refreshPositionSkills();
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
@@ -734,6 +735,10 @@ export class GameState {
     // Clear the persistent storage now that units have been restored
     this.persistentUnits.clear();
     this.persistentItems.clear();
+
+    // Board placement callbacks run before newly spawned units are registered
+    // in `this.units`; converge all source-derived skills after the spawn pass.
+    this.refreshPositionSkills();
 
     // d2. Initialize fog of war vision for all spawned units ----------------
     this.recalculateAllFow();
@@ -858,7 +863,7 @@ export class GameState {
 
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
-    this.board.onUnitPositionChanged = () => this.refreshAuras();
+    this.board.onUnitPositionChanged = () => this.refreshPositionSkills();
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
@@ -1337,6 +1342,7 @@ export class GameState {
     }
 
     this.units.set(unit.nid, unit);
+    this.refreshPositionSkills();
   }
 
   /**
@@ -1365,6 +1371,13 @@ export class GameState {
   refreshAuras(): void {
     if (!this.board) return;
     refreshAuras(this.units.values(), this.board, this.db);
+  }
+
+  /** Re-derive all position-sourced skills after any board registry change. */
+  refreshPositionSkills(): void {
+    if (!this.board) return;
+    refreshPositionStatuses(this.units.values(), this.board, this.db, this);
+    this.refreshAuras();
   }
 
   // ========================================================================
