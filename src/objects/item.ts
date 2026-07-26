@@ -202,7 +202,8 @@ export class ItemObject {
 
   /** Whether this item can heal (has 'heal' or 'equation_heal' component). */
   canHeal(): boolean {
-    return this.components.has('heal') || this.components.has('equation_heal');
+    return this.components.has('heal') || this.components.has('equation_heal') ||
+      this.components.has('eval_heal') || this.components.has('heal_no_target_restrict');
   }
 
   /** Whether this item is a stat booster (has 'permanent_stat_change' component). */
@@ -228,6 +229,9 @@ export class ItemObject {
     const deterministicStatus = !this.hasComponent('hit') &&
       (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
     const directEffect = this.hasComponent('heal') || this.hasComponent('equation_heal') ||
+      this.hasComponent('eval_heal') || this.hasComponent('heal_no_target_restrict') ||
+      this.hasComponent('restore_no_target_restrict') ||
+      this.hasComponent('refresh_no_target_restrict') ||
       this.isPermanentBooster() || deterministicStatus || this.hasComponent('restore') ||
       this.hasComponent('restore_specific') || this.hasComponent('refresh') || this.hasComponent('repair') ||
       this.hasComponent('store_unit') || this.hasComponent('unload_unit') ||

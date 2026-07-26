@@ -218,6 +218,7 @@ import {
   canAttackAfterCombat,
   transforms,
   inventoryFull as itemInventoryFull,
+  healAmount as itemHealAmount,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -2821,7 +2822,9 @@ function applyCoreTargetedEffects(
   }
 
   let applied = false;
-  if (item.hasComponent('heal') || item.hasComponent('equation_heal')) {
+  const customHeal = item.hasComponent('eval_heal') ||
+    item.hasComponent('heal_no_target_restrict');
+  if (item.hasComponent('heal') || item.hasComponent('equation_heal') || customHeal) {
     let healAmount = item.getComponent<number>('heal') ?? 0;
     const equationNid = item.getComponent<string>('equation_heal');
     if (equationNid) {
@@ -2830,10 +2833,14 @@ function applyCoreTargetedEffects(
     }
     for (const targetPosition of positions.values()) {
       const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
-      if (target && target.currentHp < target.maxHp) {
-        game.actionLog.doAction(new HealAction(
+      if (!target) continue;
+      const amount = customHeal
+        ? itemHealAmount(unit, item, target, game) ?? 0
+        : healAmount + empowerHeal(unit, target, game);
+      if (customHeal || target.currentHp < target.maxHp) {
+        game.actionLog.doAction(new SetCurrentHpAction(
           target,
-          healAmount + empowerHeal(unit, target, game),
+          target.currentHp + amount,
         ));
         applied = true;
       }
@@ -2860,7 +2867,8 @@ function applyCoreTargetedEffects(
     }
   }
 
-  if (item.hasComponent('restore') || item.hasComponent('restore_specific')) {
+  if (item.hasComponent('restore') || item.hasComponent('restore_specific') ||
+      item.hasComponent('restore_no_target_restrict')) {
     const specific = item.getComponent<string>('restore_specific');
     for (const targetPosition of positions.values()) {
       const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
@@ -2872,13 +2880,14 @@ function applyCoreTargetedEffects(
         game.actionLog.doAction(new RemoveSkillAction(target, skill));
         applied = true;
       }
+      if (item.hasComponent('restore_no_target_restrict')) applied = true;
     }
   }
 
-  if (item.hasComponent('refresh')) {
+  if (item.hasComponent('refresh') || item.hasComponent('refresh_no_target_restrict')) {
     for (const targetPosition of positions.values()) {
       const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
-      if (target?.finished) {
+      if (target && (target.finished || item.hasComponent('refresh_no_target_restrict'))) {
         game.actionLog.doAction(new RefreshUnitAction(target));
         applied = true;
       }
@@ -3591,10 +3600,24 @@ export class ItemTargetingState extends MapState {
 
     const combatStatus = activeItem.hasComponent('hit') &&
       (activeItem.hasComponent('status_on_hit') || activeItem.hasComponent('status_after_combat_on_hit'));
-    if (activeItem === this.item && combatStatus) {
-      const defender = game.board.getUnit(target[0], target[1]);
+    const customCombatUtility = activeItem.isSpell() && (
+      activeItem.hasComponent('eval_heal') ||
+      activeItem.hasComponent('heal_no_target_restrict') ||
+      activeItem.hasComponent('restore_no_target_restrict') ||
+      activeItem.hasComponent('refresh_no_target_restrict')
+    );
+    if (activeItem === this.item && (combatStatus || customCombatUtility)) {
+      let defender = game.board.getUnit(target[0], target[1]);
+      if (!defender && customCombatUtility) {
+        const resolved = game.targetSystem.getTargetFromPosition(unit, activeItem, target);
+        defender = [resolved.mainTarget, ...resolved.splash]
+          .filter((position): position is [number, number] => !!position)
+          .map((position) => game.board.getUnit(position[0], position[1]))
+          .find((candidate: UnitObject | null): candidate is UnitObject => !!candidate) ?? null;
+      }
       if (!defender) return;
       game.memory.set('combat_item', activeItem);
+      game.memory.set('combat_target_position', [...target]);
       game.combatTarget = defender;
       game.highlight.clear();
       game.state.change('combat');
@@ -5031,16 +5054,18 @@ export class TargetingState extends MapState {
 // 6. CombatState
 // ============================================================================
 
-function resolveCombatTargetGroup(
+export function resolveCombatTargetGroup(
   game: any,
   attacker: UnitObject,
   item: ItemObject,
   selectedDefender: UnitObject,
+  selectedPosition: [number, number] | null = null,
 ): { representative: UnitObject; mainDefender: UnitObject | null; splashDefenders: UnitObject[] } {
   let mainDefender: UnitObject | null = selectedDefender;
   let splashDefenders: UnitObject[] = [];
-  if (game.targetSystem && selectedDefender.position) {
-    const resolved = game.targetSystem.getTargetFromPosition(attacker, item, selectedDefender.position);
+  const targetPosition = selectedPosition ?? selectedDefender.position;
+  if (game.targetSystem && targetPosition) {
+    const resolved = game.targetSystem.getTargetFromPosition(attacker, item, targetPosition);
     mainDefender = resolved.mainTarget
       ? game.board.getUnit(resolved.mainTarget[0], resolved.mainTarget[1])
       : null;
@@ -5166,12 +5191,21 @@ export class CombatState extends State {
 
     const selectedCombatItem = game.memory.get('combat_item') as ItemObject | undefined;
     game.memory.delete('combat_item');
+    const selectedCombatPosition = game.memory.get('combat_target_position') as
+      [number, number] | undefined;
+    game.memory.delete('combat_target_position');
     const attackItem = selectedCombatItem ?? getEquippedWeapon(attacker, game.db, game);
     if (!attackItem) {
       game.state.back();
       return;
     }
-    const targetGroup = resolveCombatTargetGroup(game, attacker, attackItem, defender);
+    const targetGroup = resolveCombatTargetGroup(
+      game,
+      attacker,
+      attackItem,
+      defender,
+      selectedCombatPosition ?? null,
+    );
     const primaryDefender = targetGroup.mainDefender;
     const splashDefenders = targetGroup.splashDefenders;
     defender = targetGroup.representative;

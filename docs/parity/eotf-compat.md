@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 161 unverified
+- 185 item-component NIDs; 156 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -64,7 +64,6 @@ focused browser coverage.
 | enemy_line_aoe | 20 | hook-and-reference |
 | equation_heal | 3 | hook-and-reference |
 | eval_available | 197 | hook-and-reference |
-| eval_heal | 4 | project-local-or-unknown |
 | eval_special_range | 37 | hook-and-reference |
 | eval_target_restrict | 10 | hook-only |
 | eval_target_restrict_2 | 138 | hook-and-reference |
@@ -82,7 +81,6 @@ focused browser coverage.
 | gimme_that | 1 | project-local-or-unknown |
 | global_range | 31 | hook-and-reference |
 | heal | 34 | hook-and-reference |
-| heal_no_target_restrict | 4 | project-local-or-unknown |
 | hit | 722 | hook-and-reference |
 | hp_cost | 12 | hook-and-reference |
 | ignore_weapon_advantage | 5 | hook-and-reference |
@@ -126,12 +124,9 @@ focused browser coverage.
 | promote | 9 | hook-and-reference |
 | reaver | 7 | hook-and-reference |
 | refresh | 11 | hook-and-reference |
-| refresh_no_target_restrict | 1 | project-local-or-unknown |
 | remove_on_end_chapter | 11 | project-local-or-unknown |
 | repair | 1 | hook-and-reference |
 | restore | 5 | hook-and-reference |
-| restore_after_combat | 2 | project-local-or-unknown |
-| restore_no_target_restrict | 2 | project-local-or-unknown |
 | restore_specific | 5 | hook-and-reference |
 | self_remove_skill | 2 | project-local-or-unknown |
 | self_shove_flex_stops | 1 | project-local-or-unknown |
