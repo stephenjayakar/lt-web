@@ -122,6 +122,15 @@ should test undo and redo, not just `execute()`.
 
 Use the cheapest gate that can falsify the change, then broaden once at the end.
 
+EOtF's all-level settlement gate covers 159 distinct authored levels and remains
+required milestone/final coverage. Do not run it in the normal edit loop:
+focused expression tests should take seconds, targeted level shards should
+diagnose campaign failures, the full settlement gate should run only at
+milestones/final verification, and the full serial suite should run only at the
+release gate. Keep the comprehensive coverage, but preserve campaign
+prerequisites across in-process level transitions instead of paying for a full
+browser reload per level.
+
 | Change scope | Required verification |
 |---|---|
 | Docs only (`AGENTS.md`, prose-only `PLAN.md`) | `git diff --check` |
