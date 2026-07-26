@@ -138,6 +138,7 @@ function drawRoamMap(
 ): Surface {
   const game = getGame();
   if (!game.board || !game.tilemap) return surf;
+  game.syncSkillMapAnimations();
   game.camera.update();
   game.cursor.update();
 

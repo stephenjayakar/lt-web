@@ -310,6 +310,17 @@ export function hasActiveSkillComponent(
   });
 }
 
+/** Full condition/combat-condition/charge activity for one concrete skill. */
+export function isSkillActive(
+  skill: SkillObject,
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): boolean {
+  return evaluatedSkillActive(skill, unit, { game }, new Map([
+    ['skill', skill],
+  ]));
+}
+
 /** Python no_trade ALL_DEFAULT_FALSE skill hook. */
 export function noTrade(unit: UnitObject, game?: any): boolean {
   return hasActiveSkillComponent(unit, 'cannot_trade', game);
@@ -559,7 +570,7 @@ export function unitSpriteTint(
 ): UnitSpriteTint | null {
   let result: UnitSpriteTint | null = null;
   for (const skill of unit.skills) {
-    if (!skillConditionActive(skill, unit, { game })) continue;
+    if (!isSkillActive(skill, unit, game)) continue;
     const staticColor = skill.getComponent<[number, number, number]>('unit_tint');
     if (staticColor) result = { color: staticColor, alpha: 1 };
     const flickerColor =
@@ -569,6 +580,23 @@ export function unitSpriteTint(
       const phase = ((timeMs % 900) + 900) % 900;
       result = { color: flickerColor, alpha: phase < 300 ? 1 : 0 };
     }
+  }
+  return result;
+}
+
+/** Active looping map-animation overlays authored by UnitAnim skills. */
+export function activeUnitAnimations(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): { key: string; nid: string }[] {
+  const result: { key: string; nid: string }[] = [];
+  for (const skill of unit.skills) {
+    const nid = skill.getComponent<unknown>('unit_anim');
+    if (typeof nid !== 'string' || !nid || !isSkillActive(skill, unit, game)) continue;
+    result.push({
+      key: `${unit.nid}:${skill.uid}:${nid}`,
+      nid,
+    });
   }
   return result;
 }

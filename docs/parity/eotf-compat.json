@@ -2522,7 +2522,7 @@
         "nid": "display_skill_icon_in_combat",
         "uses": 12,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "distant_counter",
@@ -3074,7 +3074,7 @@
         "nid": "hide_skill_icon_in_combat",
         "uses": 4,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "hit",
@@ -3565,14 +3565,14 @@
       {
         "nid": "unit_anim",
         "uses": 54,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "unit_flickering_tint",
         "uses": 54,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "unselectable",

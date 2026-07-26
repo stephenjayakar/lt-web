@@ -29,6 +29,8 @@ export interface MapAnimPrefab {
 
 export class MapAnimation {
   readonly nid: string;
+  /** Derived UnitAnim identity; omitted for event/combat animations. */
+  skillAnimationKey: string | null = null;
   /** Position in pixel coords. */
   x: number;
   y: number;
@@ -100,9 +102,15 @@ export class MapAnimation {
     this.image = img;
     this.frameWidth = Math.floor(img.width / this.frameX);
     this.frameHeight = Math.floor(img.height / this.frameY);
-    // Center on tile
-    this.x += Math.floor((TILEWIDTH - this.frameWidth) / 2);
-    this.y += Math.floor((TILEHEIGHT - this.frameHeight) / 2);
+    // A following animation may have been positioned before its asynchronous
+    // image load completed, when frameWidth/frameHeight were still zero.
+    // Re-center from the unit tile instead of applying a second relative shift.
+    if (this.followUnit?.position) {
+      this.setTilePosition(this.followUnit.position[0], this.followUnit.position[1]);
+    } else {
+      this.x += Math.floor((TILEWIDTH - this.frameWidth) / 2);
+      this.y += Math.floor((TILEHEIGHT - this.frameHeight) / 2);
+    }
   }
 
   /** Get total duration in ms (approximate). */

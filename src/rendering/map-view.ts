@@ -173,6 +173,10 @@ export class MapView {
     }
 
     // 5.5. High map animations (above units/foreground)
+    for (const anim of tilemap.highAnimations) {
+      if (anim.followUnit?.position) anim.setTilePosition(anim.followUnit.position[0], anim.followUnit.position[1]);
+      else if (anim.followUnit) anim.done = true;
+    }
     tilemap.highAnimations = tilemap.highAnimations.filter(anim => !anim.update());
     for (const anim of tilemap.highAnimations) {
       anim.draw(this.mapSurface, cullRect.x, cullRect.y);

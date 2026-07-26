@@ -1,6 +1,7 @@
 import type { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 import type { CombatProcMark, ProcKind } from './combat-skill-lifecycle';
+import { isSkillActive } from './skill-system';
 
 /** Python gui.SkillIcon timing: 400ms in, 700ms hold, 150ms out. */
 export const PROC_CUE_DURATION_MS = 1250;
@@ -29,11 +30,12 @@ export function cueFromMark(mark: CombatProcMark): CombatProcCue {
   };
 }
 
-export function displaySkillCues(units: UnitObject[]): CombatProcCue[] {
+export function displaySkillCues(units: UnitObject[], game?: any): CombatProcCue[] {
   return units.flatMap((unit) => unit.skills
     .filter((skill) =>
       skill.hasComponent('display_skill_icon_in_combat') &&
-      !skill.hasComponent('hide_skill_icon_in_combat'))
+      !skill.hasComponent('hide_skill_icon_in_combat') &&
+      isSkillActive(skill, unit, game))
     .map((skill) => ({
       kind: 'display' as const,
       unit,

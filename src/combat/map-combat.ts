@@ -1048,7 +1048,7 @@ export class MapCombat {
       .map(cueFromMark);
     this.activeProcCues.push(...dedupeProcCues([
       ...preProcCues,
-      ...displaySkillCues(this.participants),
+      ...displaySkillCues(this.participants, this.game),
     ]));
   }
 

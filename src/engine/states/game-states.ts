@@ -453,6 +453,7 @@ function collectVisibleUnits(): {
 function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   const game = getGame();
   if (!game.board || !game.tilemap) return surf; // No level loaded
+  game.syncSkillMapAnimations();
   game.camera.update();
   game.cursor.update();
 
