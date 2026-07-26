@@ -2546,13 +2546,13 @@
         "nid": "dynamic_accuracy",
         "uses": 31,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_attack_speed",
         "uses": 18,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_attacks",
@@ -2564,7 +2564,7 @@
         "nid": "dynamic_avoid",
         "uses": 32,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_blitzes",
@@ -2576,7 +2576,7 @@
         "nid": "dynamic_crit_accuracy",
         "uses": 34,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_crit_additional",
@@ -2587,26 +2587,26 @@
       {
         "nid": "dynamic_crit_avoid",
         "uses": 24,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_damage",
         "uses": 228,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_damage_multiplier",
         "uses": 6,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_defense_speed",
         "uses": 8,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_multiattacks",
@@ -2618,7 +2618,7 @@
         "nid": "dynamic_resist",
         "uses": 70,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_resist_multiplier",
@@ -2683,8 +2683,8 @@
       {
         "nid": "eval_avoid",
         "uses": 10,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_canter",
@@ -2695,8 +2695,8 @@
       {
         "nid": "eval_crit",
         "uses": 17,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_crit_additional",
@@ -2708,7 +2708,7 @@
         "nid": "eval_damage",
         "uses": 30,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_extra_damage",
@@ -2732,7 +2732,7 @@
         "nid": "eval_hit",
         "uses": 21,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_lifelink",
@@ -3511,14 +3511,14 @@
       {
         "nid": "stat_change_expression",
         "uses": 84,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_multiplier",
         "uses": 34,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "subskills",

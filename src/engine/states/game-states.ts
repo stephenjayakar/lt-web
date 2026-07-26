@@ -5058,7 +5058,7 @@ export class TargetingState extends MapState {
         const unitPhases = 1 +
           computeBlitzPhases(unit, weapon, target, targetWeapon, 'attack', [0, 0], game) +
           computeExtraAttackPhases(unit, weapon, target, targetWeapon, 'attack', [0, 0], game) +
-          (canDouble(unit, weapon, target, targetWeapon, game.db) ? 1 : 0);
+          (canDouble(unit, weapon, target, targetWeapon, game.db, game) ? 1 : 0);
         const unitAttacks = unitPhases * computeStrikeCount(
           unit, weapon, target, targetWeapon, 'attack', [0, 0], game,
         );
@@ -5066,7 +5066,9 @@ export class TargetingState extends MapState {
           ? 1 +
             computeBlitzPhases(target, targetWeapon, unit, weapon, 'defense', [0, 0], game) +
             computeExtraAttackPhases(target, targetWeapon, unit, weapon, 'defense', [0, 0], game) +
-            (canDefenderDouble(unit, weapon, target, targetWeapon, game.db) ? 1 : 0)
+            (canDefenderDouble(
+              unit, weapon, target, targetWeapon, game.db, game,
+            ) ? 1 : 0)
           : 0;
         const targetAttacks = canCounter && targetWeapon
           ? targetPhases * computeStrikeCount(

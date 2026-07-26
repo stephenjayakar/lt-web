@@ -937,10 +937,14 @@ export class AIController {
     );
     if (missing.length === 0) return 0;
     const accuracy = item.hasComponent('hit')
-      ? Math.min(1, Math.max(0, computeHit(unit, item, target, this.db, this.board) / 100))
+      ? Math.min(1, Math.max(0, computeHit(
+        unit, item, target, this.db, this.board, this.gameRef,
+      ) / 100))
       : 1;
     const defenderWeapon = getEquippedWeapon(target, this.db, this.gameRef);
-    const attacks = 1 + (canDouble(unit, item, target, defenderWeapon, this.db) ? 1 : 0);
+    const attacks = 1 + (canDouble(
+      unit, item, target, defenderWeapon, this.db, this.gameRef,
+    ) ? 1 : 0);
     const distance = target.position ? this.distance(move, target.position) : 0;
     return checkEnemy(unit, target, this.db)
       ? -0.5 * accuracy * attacks + 0.01 * distance
@@ -1252,18 +1256,24 @@ export class AIController {
     offenseBias: number,
   ): number {
     // --- Offense ---
-    const expectedDamage = computeDamage(unit, item, target, this.db, this.board);
+    const expectedDamage = computeDamage(
+      unit, item, target, this.db, this.board, this.gameRef,
+    );
     const targetHP = Math.max(1, target.currentHp);
     const lethality = Math.min(1.0, expectedDamage / targetHP);
 
-    const hitChance = computeHit(unit, item, target, this.db, this.board);
+    const hitChance = computeHit(
+      unit, item, target, this.db, this.board, this.gameRef,
+    );
     const accuracy = hitChance / 100;
 
     const defenderWeapon = getEquippedWeapon(target, this.db, this.gameRef);
-    const doubles = canDouble(unit, item, target, defenderWeapon, this.db);
+    const doubles = canDouble(
+      unit, item, target, defenderWeapon, this.db, this.gameRef,
+    );
     const numAttacks = 1 + (doubles ? 1 : 0);
 
-    const critChance = computeCrit(unit, item, target, this.db);
+    const critChance = computeCrit(unit, item, target, this.db, this.gameRef);
     const critBonus = (critChance / 100) * 0.5;
 
     // Kill bonus: strongly prefer targets we can kill

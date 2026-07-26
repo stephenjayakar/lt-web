@@ -14,6 +14,12 @@ import { evaluateCondition, evaluateExpression } from '../events/event-manager';
 
 export type SkillFactory = (nid: string) => SkillObject | null;
 
+let skillGameRef: (() => any) | null = null;
+
+export function setSkillSystemGameRef(getter: () => any): void {
+  skillGameRef = getter;
+}
+
 /** Apply traveler skill hooks, including source-aware pairup_bonus grants. */
 export function onPairup(unit: UnitObject, leader: UnitObject, createSkill?: SkillFactory): SkillObject[] {
   const added: SkillObject[] = [];
@@ -737,7 +743,16 @@ export function hasCanto(unit: UnitObject): boolean {
  * Get the total stat change bonus from all skills for a given stat.
  * Skills with 'stat_change' component store [[statNid, amount], ...].
  */
-export function statChange(unit: UnitObject, statNid: string): number {
+const evaluatingStatChanges = new WeakMap<UnitObject, Set<string>>();
+
+export function statChange(unit: UnitObject, statNid: string, game?: any): number {
+  game ??= skillGameRef?.();
+  const activeStats = evaluatingStatChanges.get(unit) ?? new Set<string>();
+  const reentrant = activeStats.has(statNid);
+  if (!reentrant) {
+    activeStats.add(statNid);
+    evaluatingStatChanges.set(unit, activeStats);
+  }
   let total = 0;
   for (const skill of unit.skills) {
     const changes = skill.getComponent<any>('stat_change');
@@ -775,6 +790,37 @@ export function statChange(unit: UnitObject, statNid: string): number {
       );
       if (Number.isFinite(value)) total += value;
     }
+    const expressionChanges = skill.getComponent<unknown>('stat_change_expression');
+    if (!reentrant && Array.isArray(expressionChanges) &&
+        skillConditionActive(skill, unit, { game })) {
+      for (const entry of expressionChanges) {
+        if (!Array.isArray(entry) || entry[0] !== statNid) continue;
+        const value = Number(evaluateExpression(String(entry[1] ?? '0'), {
+          game,
+          unit1: unit,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+          localArgs: new Map<string, unknown>([['skill', skill]]),
+        }));
+        if (Number.isFinite(value)) total += Math.trunc(value);
+      }
+    }
+    const multipliers = skill.getComponent<unknown>('stat_multiplier');
+    if (!reentrant && Array.isArray(multipliers) &&
+        skillConditionActive(skill, unit, { game })) {
+      for (const entry of multipliers) {
+        if (!Array.isArray(entry) || entry[0] !== statNid) continue;
+        const multiplier = Number(entry[1]);
+        if (Number.isFinite(multiplier)) {
+          total += Math.trunc((multiplier - 1) * Number(unit.stats[statNid] ?? 0));
+        }
+      }
+    }
+  }
+  if (!reentrant) {
+    activeStats.delete(statNid);
+    if (activeStats.size === 0) evaluatingStatChanges.delete(unit);
   }
   return total;
 }
@@ -871,9 +917,108 @@ export function growthChange(unit: UnitObject, statNid: string): number {
 // Static modifier hooks (NUMERIC_ACCUM)
 // ============================================================
 
+interface EvaluatedSkillContext {
+  game?: any;
+  item?: ItemObject | null;
+  target?: UnitObject | null;
+  item2?: ItemObject | null;
+  mode?: string;
+  attackInfo?: any;
+  baseValue?: number;
+  combatCalcs?: Record<string, unknown>;
+}
+
+function evaluatedSkillActive(
+  skill: SkillObject,
+  unit: UnitObject,
+  context: EvaluatedSkillContext,
+  localArgs: Map<string, unknown>,
+): boolean {
+  if (skill.hasComponent('build_charge')) {
+    const charge = Number(skill.data.get('charge') ?? 0);
+    const maximum = Number(
+      skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
+    );
+    if (charge < maximum) return false;
+  }
+  if (hasDrainingCharge(skill) &&
+      Number(skill.data.get('charge') ?? 0) <= 0) return false;
+  const combatCondition = skill.getComponent<string>('combat_condition');
+  if (combatCondition) {
+    const snapshot = skill.data.get('_combat_condition');
+    const enabled = typeof snapshot === 'boolean'
+      ? snapshot
+      : evaluateCondition(combatCondition, {
+        game: context.game,
+        unit1: unit,
+        unit2: context.target ?? undefined,
+        item: context.item ?? undefined,
+        position: unit.position ?? undefined,
+        gameVars: context.game?.gameVars,
+        levelVars: context.game?.levelVars,
+        localArgs,
+      });
+    if (!enabled) return false;
+  }
+  return skillConditionActive(skill, unit, {
+    game: context.game,
+    item: context.item,
+    target: context.target,
+    localArgs,
+  });
+}
+
+function evaluatedStaticSkillTotal(
+  unit: UnitObject,
+  component: string,
+  context: EvaluatedSkillContext = {},
+): number {
+  context.game ??= skillGameRef?.();
+  let total = 0;
+  for (const skill of unit.skills) {
+    const expression = skill.getComponent<unknown>(component);
+    if (typeof expression !== 'string' && typeof expression !== 'number') continue;
+    const localArgs = new Map<string, unknown>([
+      ['item', context.item ?? null],
+      ['item2', context.item2 ?? null],
+      ['mode', context.mode ?? null],
+      ['skill', skill],
+      ['attack_info', context.attackInfo ?? null],
+      ['base_value', context.baseValue ?? 0],
+    ]);
+    if (context.combatCalcs) localArgs.set('combat_calcs', context.combatCalcs);
+    if (!evaluatedSkillActive(skill, unit, context, localArgs)) continue;
+    const value = typeof expression === 'number'
+      ? expression
+      : Number(evaluateExpression(expression, {
+        game: context.game,
+        unit1: unit,
+        unit2: context.target ?? undefined,
+        item: context.item ?? undefined,
+        position: unit.position ?? undefined,
+        gameVars: context.game?.gameVars,
+        levelVars: context.game?.levelVars,
+        localArgs,
+      }));
+    if (Number.isFinite(value)) total += Math.trunc(value);
+  }
+  return total;
+}
+
 /** Bonus damage from skills. */
-export function modifyDamage(unit: UnitObject, _item: ItemObject | null): number {
+export function modifyDamage(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
   let total = sumSkillValues(unit, 'modify_damage') + sumSkillValues(unit, 'damage');
+  total += evaluatedStaticSkillTotal(unit, 'eval_damage', {
+    game, item, target, item2, mode, attackInfo,
+  });
   // Rekka GiveBacker: each active copy adds the bearer's missing HP.
   // Custom components participate in NUMERIC_ACCUM just like built-ins.
   for (const skill of unit.skills) {
@@ -890,18 +1035,51 @@ export function modifyResist(unit: UnitObject, _item: ItemObject | null): number
 }
 
 /** Bonus accuracy from skills. */
-export function modifyAccuracy(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_accuracy') + sumSkillValues(unit, 'hit');
+export function modifyAccuracy(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  return sumSkillValues(unit, 'modify_accuracy') + sumSkillValues(unit, 'hit') +
+    evaluatedStaticSkillTotal(unit, 'eval_hit', {
+      game, item, target, item2, mode, attackInfo,
+    });
 }
 
 /** Bonus avoid from skills. */
-export function modifyAvoid(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_avoid') + sumSkillValues(unit, 'avoid');
+export function modifyAvoid(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  return sumSkillValues(unit, 'modify_avoid') + sumSkillValues(unit, 'avoid') +
+    evaluatedStaticSkillTotal(unit, 'eval_avoid', {
+      game, item, target, item2, mode, attackInfo,
+    });
 }
 
 /** Bonus crit accuracy from skills. */
-export function modifyCritAccuracy(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_crit_accuracy') + sumSkillValues(unit, 'crit');
+export function modifyCritAccuracy(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  return sumSkillValues(unit, 'modify_crit_accuracy') + sumSkillValues(unit, 'crit') +
+    evaluatedStaticSkillTotal(unit, 'eval_crit', {
+      game, item, target, item2, mode, attackInfo,
+    });
 }
 
 /** Bonus crit avoid from skills. */
@@ -1005,32 +1183,29 @@ export function dynamicCritAccuracy(
   attackInfo: [number, number],
   baseValue: number,
   game?: any,
+  combatCalcs?: Record<string, unknown>,
 ): number {
-  let total = 0;
-  for (const skill of unit.skills) {
-    const expression = skill.getComponent<string>('dynamic_crit_accuracy');
-    if (!expression) continue;
-    const value = evaluateExpression(expression, {
-      game,
-      unit1: unit,
-      unit2: target,
-      item,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-      localArgs: new Map<string, unknown>([
-        ['item', item],
-        ['item2', item2],
-        ['mode', mode],
-        ['skill', skill],
-        ['attack_info', attackInfo],
-        ['base_value', baseValue],
-      ]),
-    });
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) total += Math.trunc(numeric);
-  }
-  return total;
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_crit_accuracy', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
+}
+
+export function dynamicCritAvoid(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_crit_avoid', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
 }
 
 /** Last alternate critical multiplier equation, matching Python UNIQUE. */
@@ -1213,73 +1388,107 @@ export function modifyDefenseSpeed(unit: UnitObject, _item: ItemObject | null): 
 /** Dynamic damage modifier (situational bonuses). */
 export function dynamicDamage(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
 ): number {
-  let total = 0;
-  for (const skill of unit.skills) {
-    const val = skill.getComponent<number>('dynamic_damage');
-    if (typeof val === 'number') total += val;
-  }
-  return total;
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_damage', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
 }
 
 /** Dynamic resist modifier. */
 export function dynamicResist(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
 ): number {
-  let total = 0;
-  for (const skill of unit.skills) {
-    const val = skill.getComponent<number>('dynamic_resist');
-    if (typeof val === 'number') total += val;
-  }
-  return total;
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_resist', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
 }
 
 /** Dynamic accuracy modifier. */
 export function dynamicAccuracy(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
 ): number {
-  let total = 0;
-  for (const skill of unit.skills) {
-    const val = skill.getComponent<number>('dynamic_accuracy');
-    if (typeof val === 'number') total += val;
-  }
-  return total;
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_accuracy', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
 }
 
 /** Dynamic avoid modifier. */
 export function dynamicAvoid(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
 ): number {
-  let total = 0;
-  for (const skill of unit.skills) {
-    const val = skill.getComponent<number>('dynamic_avoid');
-    if (typeof val === 'number') total += val;
-  }
-  return total;
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_avoid', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
+}
+
+export function dynamicAttackSpeed(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_attack_speed', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
+}
+
+export function dynamicDefenseSpeed(
+  unit: UnitObject,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
+  combatCalcs?: Record<string, unknown>,
+): number {
+  return evaluatedCombatSkillTotal(
+    unit, 'dynamic_defense_speed', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs,
+  );
 }
 
 /** Dynamic extra attacks from skills. */
@@ -1295,18 +1504,10 @@ function evaluatedCombatSkillTotal(
   game?: any,
   combatCalcs?: Record<string, unknown>,
 ): number {
+  game ??= skillGameRef?.();
   let total = 0;
   for (const skill of unit.skills) {
     if (!skill.hasComponent(component)) continue;
-    if (skill.hasComponent('build_charge')) {
-      const charge = Number(skill.data.get('charge') ?? 0);
-      const maximum = Number(
-        skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
-      );
-      if (charge < maximum) continue;
-    }
-    if (hasDrainingCharge(skill) &&
-        Number(skill.data.get('charge') ?? 0) <= 0) continue;
     const localArgs = new Map<string, unknown>([
       ['item', item],
       ['item2', item2],
@@ -1316,24 +1517,11 @@ function evaluatedCombatSkillTotal(
       ['base_value', baseValue],
     ]);
     if (combatCalcs) localArgs.set('combat_calcs', combatCalcs);
-    const combatCondition = skill.getComponent<string>('combat_condition');
-    if (combatCondition) {
-      const snapshot = skill.data.get('_combat_condition');
-      const enabled = typeof snapshot === 'boolean'
-        ? snapshot
-        : evaluateCondition(combatCondition, {
-          game,
-          unit1: unit,
-          unit2: target,
-          item: item ?? undefined,
-          position: unit.position ?? undefined,
-          gameVars: game?.gameVars,
-          levelVars: game?.levelVars,
-          localArgs,
-        });
-      if (!enabled) continue;
-    }
-    if (!skillConditionActive(skill, unit, { game, item, target, localArgs })) continue;
+    if (!evaluatedSkillActive(
+      skill, unit,
+      { game, item, target, item2, mode, attackInfo, baseValue, combatCalcs },
+      localArgs,
+    )) continue;
     const configured = skill.getComponent<unknown>(component);
     const value = typeof configured === 'number'
       ? configured
@@ -1428,14 +1616,50 @@ export function evaluatedExtraDamage(
 /** Final damage multiplier (product of all). */
 export function damageMultiplier(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: any,
+  baseValue: number,
+  game?: any,
 ): number {
-  return productSkillValues(unit, 'damage_multiplier');
+  game ??= skillGameRef?.();
+  let result = 1;
+  for (const skill of unit.skills) {
+    if (!skill.hasComponent('damage_multiplier') &&
+        !skill.hasComponent('dynamic_damage_multiplier')) continue;
+    const localArgs = new Map<string, unknown>([
+      ['item', item], ['item2', item2], ['mode', mode], ['skill', skill],
+      ['attack_info', attackInfo], ['base_value', baseValue],
+    ]);
+    if (!evaluatedSkillActive(
+      skill, unit, { game, item, target, item2, mode, attackInfo, baseValue },
+      localArgs,
+    )) continue;
+    const fixed = skill.getComponent<number>('damage_multiplier');
+    if (typeof fixed === 'number') result *= fixed;
+    const expression = skill.getComponent<string>('dynamic_damage_multiplier');
+    if (expression) {
+      const value = Number(evaluateExpression(expression, {
+        game,
+        unit1: unit,
+        unit2: target,
+        item: item ?? undefined,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs,
+      }));
+      // LT's checked-in DynamicDamageMultiplier accidentally int-casts the
+      // result even though the component is documented as a fractional
+      // multiplier. EotF authors six fractional expressions (0.5, 0.75,
+      // 1.25, and stack-scaled values), so retain the evaluated float as the
+      // deliberate project-compatible behavior.
+      result *= Number.isFinite(value) ? value : 0;
+    }
+  }
+  return result;
 }
 
 /** Final resist multiplier (product of all). */

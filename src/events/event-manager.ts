@@ -1249,7 +1249,12 @@ function translateConditionalExpressions(expression: string): string {
   const ifIndex = findToken(grouped, ' if ');
   if (ifIndex < 0) return grouped;
   const elseIndex = findToken(grouped, ' else ', ifIndex + 4);
-  if (elseIndex < 0) return grouped;
+  if (elseIndex < 0) {
+    const whenTrue = grouped.slice(0, ifIndex).trim();
+    const condition = grouped.slice(ifIndex + 4).trim();
+    return `((${translateConditionalExpressions(condition)}) ? ` +
+      `(${translateConditionalExpressions(whenTrue)}) : (0))`;
+  }
   const whenTrue = grouped.slice(0, ifIndex).trim();
   const condition = grouped.slice(ifIndex + 4, elseIndex).trim();
   const whenFalse = grouped.slice(elseIndex + 6).trim();
@@ -1316,11 +1321,21 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         },
       });
     }
+    const entries = Object.entries(value ?? {});
     return {
       ...(value ?? {}),
       get(key: string, fallback?: any) {
         const result = value?.[key];
         return result === undefined ? fallback : result;
+      },
+      filter(predicate: (key: string, index: number) => boolean) {
+        return entries.map(([key]) => key).filter(predicate);
+      },
+      map(mapper: (key: string, index: number) => any) {
+        return entries.map(([key]) => key).map(mapper);
+      },
+      *[Symbol.iterator]() {
+        for (const [key] of entries) yield key;
       },
     };
   }
@@ -1345,12 +1360,20 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   }
 
   function wrapComponent(nid: string, value: any) {
-    return {
+    return new Proxy({
       nid,
       value: value && typeof value === 'object' && !Array.isArray(value)
         ? wrapMapping(value)
         : value,
-    };
+    }, {
+      get(target, property: string | symbol) {
+        if (property in target) return target[property as keyof typeof target];
+        if (value && typeof value === 'object' && typeof property === 'string') {
+          return value[property];
+        }
+        return undefined;
+      },
+    });
   }
 
   function wrapComponents(candidate: any) {
@@ -1478,7 +1501,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       is_dying: u.isDying ?? u.is_dying ?? false,
       level: u.level,
       stats: wrapMapping(u.stats),
+      wexp: wrapMapping(u.wexp),
       growths: u.growths ?? {},
+      generic: u.generic ?? false,
       skills: (u.skills ?? []).map(wrapSkill),
       items: (u.items ?? []).map(wrapItem),
       accessories: u.items?.filter((candidate: any) =>
@@ -1538,6 +1563,15 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     game_vars: wrapVars(game.gameVars),
     level_vars: wrapVars(game.levelVars),
     board: { bounds: game.board?.bounds ?? [0, 0, 0, 0] },
+    path_system: {
+      get_valid_moves(candidate: any) {
+        const raw = candidate?._raw ?? candidate;
+        const position = raw?.position;
+        if (!position) return [];
+        const [x, y] = position;
+        return [[x, y], [x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]];
+      },
+    },
     tilemap: {
       get_terrain(pos: [number, number] | null) {
         if (!pos) return null;
@@ -1560,6 +1594,18 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     get_enemy_units() { return getTeamUnits('enemy'); },
     get_player_units() { return getTeamUnits('player'); },
+    get_ally_units() {
+      const team = ctx.unit1?.team ?? 'player';
+      const units: any[] = [];
+      for (const candidate of game.units?.values?.() ?? []) {
+        if (!(candidate as any).isDead?.() &&
+            (game.db?.areAllied?.(team, (candidate as any).team) ??
+              team === (candidate as any).team)) {
+          units.push(wrapUnit(candidate));
+        }
+      }
+      return units;
+    },
     get_units_in_party() { return getTeamUnits('player'); },
     get_all_units_in_party() { return getTeamUnits('player'); },
     get_all_units() {
@@ -1640,6 +1686,22 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     damage(_unit: any, candidate: any) {
       return componentValue(unwrapItem(candidate), 'damage') ?? null;
     },
+    weapon_rank(_unit: any, candidate: any) {
+      const raw = unwrapItem(candidate);
+      return componentValue(raw, 'weapon_rank') ??
+        componentValue(raw, 'magic_weapon_rank') ?? null;
+    },
+    get_all_components(candidateUnit: any, candidateItem: any) {
+      const rawUnit = unwrapUnit(candidateUnit);
+      const rawItem = unwrapItem(candidateItem);
+      const entries = componentEntries(rawItem);
+      for (const skill of rawUnit?.skills ?? []) {
+        const overrideNid = componentValue(skill, 'item_override');
+        const override = overrideNid ? game.db?.items?.get?.(overrideNid) : null;
+        if (override) entries.push(...componentEntries(override));
+      }
+      return entries.map(([nid, value]) => wrapComponent(nid, value));
+    },
     is_weapon(_unit: any, candidate: any) {
       return !!unwrapItem(candidate)?.hasComponent?.('weapon');
     },
@@ -1673,6 +1735,29 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     check_enemy(left: any, right: any) {
       return !skillSystem.check_ally(left, right);
+    },
+    hidden(candidate: any) {
+      const raw = candidate?._raw ?? candidate;
+      return componentValue(raw, 'hidden') !== undefined;
+    },
+    empower_heal(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      return (raw?.skills ?? []).reduce((total: number, entry: any) => {
+        const value = Number(componentValue(entry, 'empower_heal') ?? 0);
+        return total + (Number.isFinite(value) ? value : 0);
+      }, 0);
+    },
+  };
+  const unitFuncs = {
+    check_focus(candidate: any, limit = 3) {
+      const raw = unwrapUnit(candidate);
+      if (!raw?.position) return 0;
+      return Array.from(game.units?.values?.() ?? []).filter((other: any) =>
+        other !== raw &&
+        !!other.position &&
+        skillSystem.check_ally(raw, other) &&
+        Math.abs(raw.position[0] - other.position[0]) +
+          Math.abs(raw.position[1] - other.position[1]) <= limit).length;
     },
   };
   const computeAdvantage = (
@@ -1774,6 +1859,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     item_funcs: itemFuncs,
     item_system: itemSystem,
     skill_system: skillSystem,
+    unit_funcs: unitFuncs,
     combat_calcs: {
       compute_advantage: computeAdvantage,
       ...(ctx.localArgs?.get('combat_calcs') as Record<string, unknown> ?? {}),
@@ -1791,6 +1877,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       },
     },
     target_system: {
+      get_adjacent_positions(pos: [number, number] | null) {
+        if (!pos) return [];
+        const [x, y] = pos;
+        return [[x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]]
+          .filter(([adjX, adjY]) => game.board?.inBounds?.(adjX, adjY) ?? true);
+      },
       get_adj_units(candidate: any) {
         const raw = candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
         if (!raw?.position || !game.board) return [];
@@ -1799,6 +1891,15 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
           .map(([adjX, adjY]) => game.board.getUnit(adjX, adjY))
           .filter(Boolean)
           .map(wrapUnit);
+      },
+    },
+    path_system: {
+      get_valid_moves(candidate: any) {
+        const raw = unwrapUnit(candidate);
+        const position = raw?.position;
+        if (!position) return [];
+        const [x, y] = position;
+        return [[x, y], [x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]];
       },
     },
   };
@@ -1818,7 +1919,12 @@ function evaluateWithJsFallback(
   if (!game) return undefined;
 
   // Translate Python idioms to JavaScript
-  let jsExpr = translateListComprehensions(condition);
+  let jsExpr = condition.replace(
+    /(?<!for\s)((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s+(!\s*)?in\s+(\[[^\]]*\])/g,
+    (_whole, needle, negated, haystack) =>
+      `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
+  );
+  jsExpr = translateListComprehensions(jsExpr);
   jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
 
   // Python `len(x)` -> `x.length`
@@ -1839,6 +1945,9 @@ function evaluateWithJsFallback(
     /\btag\s*=\s*(['"][^'"]+['"])/g,
     '{ tag: $1 }',
   );
+  jsExpr = jsExpr.replace(/\bdist\s*=\s*(\d+)/g, '$1');
+  jsExpr = jsExpr.replace(/\bforce\s*=\s*(true|false)/g, '$1');
+  jsExpr = jsExpr.replace(/\.stats\s*\(\s*([^)]*)\)/g, '.stats.get($1)');
 
   // Python `and`/`or`/`not` -> `&&`/`||`/`!`
   jsExpr = jsExpr.replace(/\band\b/g, '&&');
@@ -1925,8 +2034,27 @@ function evaluateWithJsFallback(
   const item = evalScope.wrapItem?.(ctx.item) ?? ctx.item ?? null;
   const mode = ctx.localArgs?.get('mode') ?? null;
   const stat_changes = ctx.localArgs?.get('stat_changes') ?? null;
-  const max = Math.max;
-  const min = Math.min;
+  const extremum = (
+    fn: (...values: number[]) => number,
+    values: any[],
+  ): number => {
+    const source = values.length === 1 &&
+      values[0] != null &&
+      typeof values[0] !== 'number' &&
+      typeof values[0][Symbol.iterator] === 'function'
+      ? Array.from(values[0])
+      : values;
+    return fn(...source.map(Number));
+  };
+  const max = (...values: any[]) => extremum(Math.max, values);
+  const min = (...values: any[]) => extremum(Math.min, values);
+  const sum = (values: Iterable<any> | undefined) =>
+    Array.from(values ?? []).reduce((total, value) => total + Number(value), 0);
+  const math = {
+    floor: Math.floor,
+    ceil: Math.ceil,
+    sqrt: Math.sqrt,
+  };
   const int = (value: any) => Math.trunc(Number(value));
   const set = (values: Iterable<any> | undefined) => new Set(values ?? []);
   const str = (value: any) => String(value);
@@ -1948,6 +2076,21 @@ function evaluateWithJsFallback(
     const skill = raw?.skills?.find?.((entry: any) => entry.nid === skillNid);
     return Number(skill?.data?.get?.('charge') ?? skill?.data?.charge ?? 0);
   };
+  const evaluate = (
+    expression: unknown,
+    candidate?: any,
+    candidateTarget?: any,
+    candidatePosition?: [number, number] | null,
+  ) => evaluateExpression(String(expression ?? '0'), {
+    game,
+    unit1: candidate?._raw ?? candidate ?? unit1,
+    unit2: candidateTarget?._raw ?? candidateTarget ?? unit2,
+    item: ctx.item,
+    position: candidatePosition ?? ctx.position,
+    gameVars: ctx.gameVars,
+    levelVars: ctx.levelVars,
+    localArgs: ctx.localArgs,
+  });
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
@@ -1999,8 +2142,9 @@ function evaluateWithJsFallback(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
       'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
-      'item_system', 'skill_system', 'combat_calcs', 'movement_funcs', 'target_system',
-      'max', 'min', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge', '_qf', '_locals',
+      'item_system', 'skill_system', 'unit_funcs', 'combat_calcs', 'movement_funcs', 'target_system',
+      'max', 'min', 'sum', 'math', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge',
+      'evaluate', '_qf', '_locals',
       '_wrapUnit', '_wrapItem', '_wrapSkill',
       `"use strict";
        ${localDeclarations}
@@ -2041,9 +2185,9 @@ function evaluateWithJsFallback(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, v, cf,
       support_rank_nid, mode, stat_changes, evalScope.DB, RECORDS, evalScope.utils,
-      evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
-      evalScope.movement_funcs, evalScope.target_system, max, min, int, set, str, range,
-      get_stacks, get_charge,
+      evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.unit_funcs,
+      evalScope.combat_calcs, evalScope.movement_funcs, evalScope.target_system,
+      max, min, sum, math, int, set, str, range, get_stacks, get_charge, evaluate,
       _queryFuncs, expressionLocals,
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
     );

@@ -890,7 +890,9 @@ export class CombatPhaseSolver {
         guarded,
         false,
         this.game?.rngMode === 'grandmaster'
-          ? calcs.computeHit(striker, item, target, db, board, this.game, mode)
+          ? calcs.computeHit(
+            striker, item, target, db, board, this.game, mode, attackInfo,
+          )
           : undefined,
         mode,
         attackInfo,
@@ -1112,10 +1114,16 @@ export class CombatPhaseSolver {
     const defenderCanCounterNow = (): boolean =>
       calcs.canCounterattack(attacker, attackItem, defender, db, this.game);
     const attackerDoublesNow = (): boolean =>
-      calcs.canDouble(attacker, attackItem, defender, defenseItem, db);
+      calcs.canDouble(
+        attacker, attackItem, defender, defenseItem, db, this.game,
+        'attack', [this.phaseCounts.get(attacker) ?? 0, 0],
+      );
     const defenderDoublesNow = (): boolean =>
       !!defenseItem && defenderCanCounterNow() &&
-      calcs.canDefenderDouble(attacker, attackItem, defender, defenseItem, db);
+      calcs.canDefenderDouble(
+        attacker, attackItem, defender, defenseItem, db, this.game,
+        [this.phaseCounts.get(defender) ?? 0, 0],
+      );
     const defenderCanCounter = defenderCanCounterNow();
 
     // Compute strike counts (brave weapons, dynamic multiattacks from skills)
@@ -1380,7 +1388,9 @@ export class CombatPhaseSolver {
       { attack: [], defense: [] };
     // Compute hit chance with weapon triangle bonus
     const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
-    const baseHit = calcs.computeHit(striker, item, target, db, board, undefined, mode);
+    const baseHit = calcs.computeHit(
+      striker, item, target, db, board, this.game, mode, attackInfo,
+    );
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
     const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
