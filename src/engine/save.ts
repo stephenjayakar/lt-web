@@ -188,6 +188,8 @@ export interface PartySaveData {
   money: number;
   convoyItemKeys: string[];
   bexp: number;
+  /** Optional for saves written before preparation-order persistence. */
+  partyPrepManageSortOrder?: string[];
 }
 
 export interface SupportPairSaveData {
@@ -714,6 +716,7 @@ function serializeParty(party: PartyObject, itemKeyByObject: Map<ItemObject, str
     money: party.money,
     convoyItemKeys,
     bexp: party.bexp,
+    partyPrepManageSortOrder: [...party.partyPrepManageSortOrder],
   };
 }
 
@@ -1514,6 +1517,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
         partyData.money,
         partyData.bexp,
       );
+      party.partyPrepManageSortOrder = [...(partyData.partyPrepManageSortOrder ?? [])];
 
       // Restore convoy items
       party.convoy = [];
