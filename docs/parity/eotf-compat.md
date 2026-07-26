@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 70 unverified
+- 270 skill-component NIDs; 67 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -142,7 +142,6 @@ focused browser coverage.
 | NID | Uses | Engine audit status |
 |---|---|---|
 | armsthrift | 3 | consumed |
-| attack_proc | 10 | reference-only |
 | cannot_trade | 2 | unreferenced |
 | change_ai | 15 | reference-only |
 | change_buy_price | 1 | reference-only |
@@ -150,7 +149,6 @@ focused browser coverage.
 | Cleave | 1 | hook-and-reference |
 | close_counter | 8 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
-| defense_proc | 3 | reference-only |
 | desperation | 16 | hook-and-reference |
 | display_skill_icon_in_combat | 12 | consumed |
 | distant_counter | 19 | hook-and-reference |
@@ -195,7 +193,6 @@ focused browser coverage.
 | pcc_static | 3 | unreferenced |
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |
-| proc_rate | 12 | consumed |
 | resist_follow_up | 1 | hook-only |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |

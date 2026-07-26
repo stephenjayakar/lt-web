@@ -290,7 +290,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 140
+          "line": 141
         }
       ],
       "directReads": [
@@ -466,6 +466,10 @@
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 460
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 110
         }
       ],
       "directReads": [],
@@ -522,6 +526,10 @@
         {
           "source": "src/combat/combat-solver.ts",
           "line": 200
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 156
         }
       ],
       "directReads": [],
@@ -652,6 +660,10 @@
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 292
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 254
         }
       ],
       "directReads": [
@@ -726,7 +738,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 231
+          "line": 233
         }
       ],
       "directReads": [
@@ -1246,7 +1258,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 228
+          "line": 230
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -1404,7 +1416,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 139
+          "line": 140
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1765,7 +1777,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 129
+          "line": 130
         },
         {
           "source": "src/main.ts",
@@ -1812,7 +1824,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 131
+          "line": 132
         },
         {
           "source": "src/main.ts",
@@ -2128,7 +2140,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 285
+          "line": 288
         }
       ],
       "directReads": [
@@ -2171,7 +2183,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 284
+          "line": 287
         }
       ],
       "directReads": [
@@ -2527,7 +2539,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 127
+          "line": 128
         },
         {
           "source": "src/engine/game-state.ts",
@@ -2748,7 +2760,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 157
+          "line": 159
         },
         {
           "source": "src/engine/game-state.ts",
@@ -2833,7 +2845,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 138
+          "line": 139
         },
         {
           "source": "src/engine/game-state.ts",
@@ -3317,7 +3329,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 233
+          "line": 235
         }
       ],
       "directReads": [
@@ -3608,7 +3620,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 128
+          "line": 129
         }
       ],
       "directReads": [
@@ -3884,7 +3896,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 218
+          "line": 220
         }
       ],
       "directReads": [
@@ -3919,7 +3931,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 216
+          "line": 218
         }
       ],
       "directReads": [
@@ -3954,7 +3966,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 217
+          "line": 219
         }
       ],
       "directReads": [
@@ -3989,7 +4001,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 219
+          "line": 221
         }
       ],
       "directReads": [
@@ -4024,7 +4036,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 220
+          "line": 222
         }
       ],
       "directReads": [],
@@ -4087,7 +4099,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 209
+          "line": 211
         }
       ],
       "directReads": [
@@ -4122,7 +4134,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 205
+          "line": 207
         }
       ],
       "directReads": [
@@ -4157,7 +4169,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 204
+          "line": 206
         }
       ],
       "directReads": [
@@ -4192,7 +4204,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 203
+          "line": 205
         }
       ],
       "directReads": [
@@ -4227,7 +4239,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 211
+          "line": 213
         }
       ],
       "directReads": [],
@@ -4257,7 +4269,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 210
+          "line": 212
         }
       ],
       "directReads": [],
@@ -4316,7 +4328,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 253
+          "line": 256
         }
       ],
       "directReads": [
@@ -4359,7 +4371,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 249
+          "line": 251
         }
       ],
       "directReads": [
@@ -4402,7 +4414,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 250
+          "line": 252
         }
       ],
       "directReads": [
@@ -4572,7 +4584,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 270
+          "line": 273
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -4637,7 +4649,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 272
+          "line": 275
         }
       ],
       "directReads": [
@@ -4682,7 +4694,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 273
+          "line": 276
         }
       ],
       "directReads": [
@@ -4836,7 +4848,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 152
+          "line": 153
         },
         {
           "source": "src/engine/records.ts",
@@ -4921,7 +4933,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 181
+          "line": 183
         }
       ],
       "directReads": [
@@ -4978,7 +4990,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 258
+          "line": 261
         }
       ],
       "directReads": [],
@@ -5038,7 +5050,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 229
+          "line": 231
         },
         {
           "source": "src/engine/records.ts",
@@ -5163,7 +5175,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 186
+          "line": 188
         }
       ],
       "directReads": [
@@ -5218,7 +5230,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 114
+          "line": 115
         }
       ],
       "directReads": [],
@@ -5250,7 +5262,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 178
+          "line": 180
         }
       ],
       "directReads": [],
@@ -5306,7 +5318,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 149
+          "line": 150
         },
         {
           "source": "src/engine/records.ts",
@@ -5375,7 +5387,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 179
+          "line": 181
         }
       ],
       "directReads": [],
@@ -5407,7 +5419,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 150
+          "line": 151
         }
       ],
       "directReads": [],
@@ -5439,7 +5451,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 110
+          "line": 111
         }
       ],
       "directReads": [],
@@ -5471,7 +5483,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 156
+          "line": 158
         }
       ],
       "directReads": [],
@@ -5507,7 +5519,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 153
+          "line": 154
         }
       ],
       "directReads": [
@@ -5552,7 +5564,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 168
+          "line": 170
         }
       ],
       "directReads": [
@@ -5593,7 +5605,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 259
+          "line": 262
         }
       ],
       "directReads": [
@@ -5735,7 +5747,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 144
+          "line": 145
         }
       ],
       "directReads": [
@@ -5810,7 +5822,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 147
+          "line": 148
         }
       ],
       "directReads": [
@@ -5974,7 +5986,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 167
+          "line": 169
         },
         {
           "source": "src/main.ts",
@@ -6010,7 +6022,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 171
+          "line": 173
         },
         {
           "source": "src/main.ts",
@@ -6046,7 +6058,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 159
+          "line": 161
         },
         {
           "source": "src/main.ts",
@@ -6082,7 +6094,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 162
+          "line": 164
         },
         {
           "source": "src/main.ts",
@@ -6118,7 +6130,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 164
+          "line": 166
         }
       ],
       "directReads": [],
@@ -6150,7 +6162,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 166
+          "line": 168
         }
       ],
       "directReads": [],
@@ -6182,7 +6194,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 160
+          "line": 162
         }
       ],
       "directReads": [],
@@ -6214,7 +6226,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 169
+          "line": 171
         }
       ],
       "directReads": [],
@@ -6246,7 +6258,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 161
+          "line": 163
         }
       ],
       "directReads": [],
@@ -6278,7 +6290,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 170
+          "line": 172
         },
         {
           "source": "src/main.ts",
@@ -7065,7 +7077,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 134
+          "line": 135
         },
         {
           "source": "src/main.ts",
@@ -7121,7 +7133,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 135
+          "line": 136
         }
       ],
       "directReads": [
@@ -7173,7 +7185,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 136
+          "line": 137
         }
       ],
       "directReads": [
@@ -7225,7 +7237,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 133
+          "line": 134
         }
       ],
       "directReads": [
@@ -8229,7 +8241,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 111
+          "line": 112
         },
         {
           "source": "src/main.ts",
@@ -8264,7 +8276,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 112
+          "line": 113
         },
         {
           "source": "src/main.ts",
@@ -8299,7 +8311,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 113
+          "line": 114
         },
         {
           "source": "src/main.ts",
@@ -8441,7 +8453,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 256
+          "line": 259
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -8497,7 +8509,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 280
+          "line": 283
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -8601,7 +8613,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 260
+          "line": 263
         }
       ],
       "directReads": [],
@@ -8633,7 +8645,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 230
+          "line": 232
         }
       ],
       "directReads": [],
@@ -8695,7 +8707,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 276
+          "line": 279
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8748,7 +8760,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 174
+          "line": 176
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8803,7 +8815,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 146
+          "line": 147
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8864,7 +8876,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 282
+          "line": 285
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8915,7 +8927,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 240
+          "line": 242
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8951,7 +8963,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 243
+          "line": 245
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8993,7 +9005,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 238
+          "line": 240
         },
         {
           "source": "src/engine/game-state.ts",
@@ -9061,7 +9073,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 237
+          "line": 239
         },
         {
           "source": "src/engine/game-state.ts",
@@ -9147,7 +9159,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 279
+          "line": 282
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
