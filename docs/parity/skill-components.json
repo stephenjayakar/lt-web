@@ -810,13 +810,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 464
+          "line": 469
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 464
+          "line": 469
         }
       ],
       "matchingWebHooks": [],
@@ -841,13 +841,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 467
+          "line": 472
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 467
+          "line": 472
         }
       ],
       "matchingWebHooks": [],
@@ -1214,13 +1214,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1288
+          "line": 1381
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1288
+          "line": 1381
         }
       ],
       "matchingWebHooks": [
@@ -1243,7 +1243,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 153
+          "line": 163
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -1401,7 +1401,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 85
+          "line": 88
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1701,13 +1701,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 245
+          "line": 250
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 245
+          "line": 250
         }
       ],
       "matchingWebHooks": [
@@ -1843,13 +1843,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1278
+          "line": 1371
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1278
+          "line": 1371
         }
       ],
       "matchingWebHooks": [],
@@ -1876,21 +1876,21 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1258
+          "line": 1351
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1265
+          "line": 1358
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1258
+          "line": 1351
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1265
+          "line": 1358
         }
       ],
       "matchingWebHooks": [
@@ -1960,7 +1960,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1300
+          "line": 1393
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -1994,7 +1994,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1825
+          "line": 1938
         },
         {
           "source": "src/main.ts",
@@ -2026,7 +2026,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1829
+          "line": 1942
         },
         {
           "source": "src/main.ts",
@@ -2058,7 +2058,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1833
+          "line": 1946
         },
         {
           "source": "src/main.ts",
@@ -2168,7 +2168,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1837
+          "line": 1950
         },
         {
           "source": "src/main.ts",
@@ -2231,11 +2231,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1847
+          "line": 1960
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1857
+          "line": 1970
         },
         {
           "source": "src/main.ts",
@@ -2245,7 +2245,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1857
+          "line": 1970
         }
       ],
       "matchingWebHooks": [
@@ -2276,11 +2276,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1848
+          "line": 1961
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1863
+          "line": 1976
         },
         {
           "source": "src/main.ts",
@@ -2290,7 +2290,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1863
+          "line": 1976
         }
       ],
       "matchingWebHooks": [
@@ -2409,59 +2409,63 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 576
+          "line": 604
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 578
+          "line": 606
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 603
+          "line": 631
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 650
+          "line": 678
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 652
+          "line": 680
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 679
+          "line": 707
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 681
+          "line": 709
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 844
+          "line": 801
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 847
+          "line": 901
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 937
+          "line": 904
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 940
+          "line": 1000
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1686
+          "line": 1003
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1690
+          "line": 1799
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 1803
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 83
+          "line": 85
         },
         {
           "source": "src/engine/game-state.ts",
@@ -2543,55 +2547,59 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 576
+          "line": 604
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 578
+          "line": 606
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 603
+          "line": 631
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 650
+          "line": 678
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 652
+          "line": 680
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 679
+          "line": 707
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 681
+          "line": 709
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 844
+          "line": 801
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 847
+          "line": 901
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 937
+          "line": 904
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 940
+          "line": 1000
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1686
+          "line": 1003
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1690
+          "line": 1799
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 1803
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -2650,11 +2658,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 590
+          "line": 618
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 93
+          "line": 103
         },
         {
           "source": "src/engine/game-state.ts",
@@ -2688,7 +2696,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 590
+          "line": 618
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -2735,11 +2743,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 591
+          "line": 619
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 84
+          "line": 87
         },
         {
           "source": "src/engine/game-state.ts",
@@ -2777,7 +2785,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 591
+          "line": 619
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -3044,11 +3052,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 563
+          "line": 591
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 575
+          "line": 603
         },
         {
           "source": "src/harness.ts",
@@ -3066,7 +3074,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 575
+          "line": 603
         }
       ],
       "matchingWebHooks": [],
@@ -3095,11 +3103,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 634
+          "line": 662
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 688
+          "line": 716
         }
       ],
       "directReads": [],
@@ -3133,11 +3141,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 635
+          "line": 663
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 687
+          "line": 715
         }
       ],
       "directReads": [],
@@ -3223,7 +3231,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 155
+          "line": 166
         }
       ],
       "directReads": [
@@ -3295,7 +3303,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1368
+          "line": 1461
         }
       ],
       "directReads": [
@@ -3305,7 +3313,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1368
+          "line": 1461
         }
       ],
       "matchingWebHooks": [],
@@ -3330,7 +3338,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1240
+          "line": 1333
         }
       ],
       "directReads": [],
@@ -3356,13 +3364,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1224
+          "line": 1317
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1224
+          "line": 1317
         }
       ],
       "matchingWebHooks": [],
@@ -3418,7 +3426,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1226
+          "line": 1319
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3436,7 +3444,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1226
+          "line": 1319
         }
       ],
       "matchingWebHooks": [],
@@ -3507,12 +3515,24 @@
         {
           "source": "src/combat/item-system.ts",
           "line": 1752
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 529
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 86
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
           "line": 1752
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 529
         }
       ],
       "matchingWebHooks": [
@@ -3562,7 +3582,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 504
+          "line": 509
         }
       ],
       "directReads": [],
@@ -3590,7 +3610,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 509
+          "line": 514
         }
       ],
       "directReads": [],
@@ -3641,7 +3661,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 534
+          "line": 562
         }
       ],
       "directReads": [],
@@ -3669,7 +3689,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 539
+          "line": 567
         }
       ],
       "directReads": [],
@@ -3697,7 +3717,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 714
+          "line": 742
         },
         {
           "source": "src/main.ts",
@@ -3707,7 +3727,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 714
+          "line": 742
         }
       ],
       "matchingWebHooks": [
@@ -3734,7 +3754,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 492
+          "line": 497
         }
       ],
       "directReads": [],
@@ -3766,7 +3786,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 145
+          "line": 155
         }
       ],
       "directReads": [
@@ -3801,7 +3821,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 143
+          "line": 153
         }
       ],
       "directReads": [
@@ -3836,7 +3856,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 144
+          "line": 154
         }
       ],
       "directReads": [
@@ -3871,7 +3891,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 146
+          "line": 156
         }
       ],
       "directReads": [
@@ -3906,7 +3926,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 147
+          "line": 157
         }
       ],
       "directReads": [],
@@ -3969,7 +3989,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 137
+          "line": 147
         }
       ],
       "directReads": [
@@ -4004,7 +4024,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 134
+          "line": 144
         }
       ],
       "directReads": [
@@ -4039,7 +4059,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 133
+          "line": 143
         }
       ],
       "directReads": [
@@ -4074,7 +4094,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 132
+          "line": 142
         }
       ],
       "directReads": [
@@ -4109,7 +4129,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 139
+          "line": 149
         }
       ],
       "directReads": [],
@@ -4139,7 +4159,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 138
+          "line": 148
         }
       ],
       "directReads": [],
@@ -4363,15 +4383,23 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 744
+          "line": 772
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 758
+          "line": 787
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 815
         },
         {
           "source": "src/combat/terrain-bonuses.ts",
           "line": 27
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 187
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -4397,7 +4425,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 758
+          "line": 787
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 815
         }
       ],
       "matchingWebHooks": [
@@ -4424,17 +4456,25 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 793
+          "line": 789
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 850
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 175
+          "line": 189
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 793
+          "line": 789
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 850
         }
       ],
       "matchingWebHooks": [
@@ -4461,17 +4501,25 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 809
+          "line": 790
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 866
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 176
+          "line": 190
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 809
+          "line": 790
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 866
         }
       ],
       "matchingWebHooks": [
@@ -4523,7 +4571,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 904
+          "line": 961
         },
         {
           "source": "src/main.ts",
@@ -4533,7 +4581,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 904
+          "line": 961
         }
       ],
       "matchingWebHooks": [
@@ -4587,19 +4635,19 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1064
+          "line": 1115
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1072
+          "line": 1123
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1076
+          "line": 1127
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1080
+          "line": 1131
         },
         {
           "source": "src/combat/item-system.ts",
@@ -4611,7 +4659,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1018
+          "line": 1085
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 99
         },
         {
           "source": "src/engine/records.ts",
@@ -4688,7 +4740,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1019
+          "line": 1086
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4696,7 +4748,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 116
+          "line": 126
         }
       ],
       "directReads": [
@@ -4741,15 +4793,19 @@
       "webReferences": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1064
+          "line": 1115
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1073
+          "line": 1124
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1034
+          "line": 1111
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 179
         }
       ],
       "directReads": [],
@@ -4805,7 +4861,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1047
+          "line": 1126
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 164
         },
         {
           "source": "src/engine/records.ts",
@@ -4922,7 +4982,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1048
+          "line": 1127
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4930,7 +4990,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 119
+          "line": 129
         }
       ],
       "directReads": [
@@ -4969,19 +5029,23 @@
       "webReferences": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1064
+          "line": 1115
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1069
+          "line": 1120
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1063
+          "line": 1144
         },
         {
           "source": "src/combat/terrain-bonuses.ts",
           "line": 25
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 78
         }
       ],
       "directReads": [],
@@ -5009,11 +5073,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1064
+          "line": 1145
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 113
+          "line": 123
         }
       ],
       "directReads": [],
@@ -5053,7 +5117,7 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 634
+          "line": 665
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -5065,7 +5129,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1079
+          "line": 1162
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 96
         },
         {
           "source": "src/engine/records.ts",
@@ -5099,7 +5167,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 634
+          "line": 665
         },
         {
           "source": "src/combat/item-system.ts",
@@ -5130,11 +5198,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1080
+          "line": 1163
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 114
+          "line": 124
         }
       ],
       "directReads": [],
@@ -5162,7 +5230,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1087
+          "line": 1180
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 97
         }
       ],
       "directReads": [],
@@ -5190,7 +5262,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1376
+          "line": 1479
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 77
         }
       ],
       "directReads": [],
@@ -5218,7 +5294,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1381
+          "line": 1494
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 102
         }
       ],
       "directReads": [],
@@ -5246,21 +5326,25 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1630
+          "line": 1743
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1640
+          "line": 1753
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 100
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1630
+          "line": 1743
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1640
+          "line": 1753
         }
       ],
       "matchingWebHooks": [
@@ -5287,25 +5371,25 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1631
+          "line": 1744
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1642
+          "line": 1755
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 104
+          "line": 114
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1631
+          "line": 1744
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1642
+          "line": 1755
         }
       ],
       "matchingWebHooks": [
@@ -5332,13 +5416,17 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1717
+          "line": 1830
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 180
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1717
+          "line": 1830
         }
       ],
       "matchingWebHooks": [
@@ -5454,15 +5542,23 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 853
+          "line": 800
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 946
+          "line": 910
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1697
+          "line": 1009
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 1810
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 92
         }
       ],
       "directReads": [
@@ -5484,15 +5580,19 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 853
+          "line": 800
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 946
+          "line": 910
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1697
+          "line": 1009
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 1810
         }
       ],
       "matchingWebHooks": [],
@@ -5521,7 +5621,15 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 226
+          "line": 231
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 799
+        },
+        {
+          "source": "src/engine/eotf-component-support.ts",
+          "line": 94
         }
       ],
       "directReads": [
@@ -5531,7 +5639,11 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 226
+          "line": 231
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 799
         }
       ],
       "matchingWebHooks": [],
@@ -5677,11 +5789,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1401
+          "line": 1514
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 103
+          "line": 113
         },
         {
           "source": "src/main.ts",
@@ -5713,11 +5825,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1419
+          "line": 1532
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 107
+          "line": 117
         },
         {
           "source": "src/main.ts",
@@ -5749,11 +5861,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1437
+          "line": 1550
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 95
+          "line": 105
         },
         {
           "source": "src/main.ts",
@@ -5785,11 +5897,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1455
+          "line": 1568
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 98
+          "line": 108
         },
         {
           "source": "src/main.ts",
@@ -5821,11 +5933,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1189
+          "line": 1282
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 100
+          "line": 110
         }
       ],
       "directReads": [],
@@ -5853,11 +5965,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1206
+          "line": 1299
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 102
+          "line": 112
         }
       ],
       "directReads": [],
@@ -5885,11 +5997,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1472
+          "line": 1585
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 96
+          "line": 106
         }
       ],
       "directReads": [],
@@ -5917,11 +6029,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1489
+          "line": 1602
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 105
+          "line": 115
         }
       ],
       "directReads": [],
@@ -5949,11 +6061,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1574
+          "line": 1687
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 97
+          "line": 107
         }
       ],
       "directReads": [],
@@ -5981,11 +6093,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1557
+          "line": 1670
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 106
+          "line": 116
         },
         {
           "source": "src/main.ts",
@@ -6021,7 +6133,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1744
+          "line": 1857
         }
       ],
       "directReads": [
@@ -6058,7 +6170,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1749
+          "line": 1862
         },
         {
           "source": "src/main.ts",
@@ -6099,7 +6211,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1755
+          "line": 1868
         }
       ],
       "directReads": [
@@ -6136,7 +6248,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1759
+          "line": 1872
         },
         {
           "source": "src/main.ts",
@@ -6177,7 +6289,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1765
+          "line": 1878
         }
       ],
       "directReads": [
@@ -6214,7 +6326,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1769
+          "line": 1882
         },
         {
           "source": "src/main.ts",
@@ -6255,7 +6367,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1775
+          "line": 1888
         }
       ],
       "directReads": [
@@ -6292,7 +6404,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1779
+          "line": 1892
         },
         {
           "source": "src/main.ts",
@@ -6333,7 +6445,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1784
+          "line": 1897
         }
       ],
       "directReads": [
@@ -6370,7 +6482,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1788
+          "line": 1901
         }
       ],
       "directReads": [
@@ -6407,7 +6519,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1793
+          "line": 1906
         }
       ],
       "directReads": [
@@ -6444,7 +6556,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1797
+          "line": 1910
         }
       ],
       "directReads": [
@@ -6481,7 +6593,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1803
+          "line": 1916
         }
       ],
       "directReads": [
@@ -6518,7 +6630,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1807
+          "line": 1920
         }
       ],
       "directReads": [
@@ -6555,7 +6667,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1813
+          "line": 1926
         }
       ],
       "directReads": [
@@ -6592,7 +6704,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1817
+          "line": 1930
         }
       ],
       "directReads": [
@@ -6625,7 +6737,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1213
+          "line": 1306
         }
       ],
       "directReads": [],
@@ -6713,7 +6825,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 251
+          "line": 256
         },
         {
           "source": "src/main.ts",
@@ -6764,7 +6876,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 251
+          "line": 256
         }
       ],
       "directReads": [],
@@ -6794,7 +6906,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 251
+          "line": 256
         }
       ],
       "directReads": [],
@@ -6824,7 +6936,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 251
+          "line": 256
         }
       ],
       "directReads": [],
@@ -6852,7 +6964,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1248
+          "line": 1341
         },
         {
           "source": "src/events/event-manager.ts",
@@ -6862,7 +6974,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1248
+          "line": 1341
         }
       ],
       "matchingWebHooks": [
@@ -6916,7 +7028,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 529
+          "line": 557
         }
       ],
       "directReads": [],
@@ -7033,7 +7145,7 @@
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 544
+          "line": 572
         }
       ],
       "directReads": [
@@ -7108,13 +7220,13 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1323
+          "line": 1416
         }
       ],
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1323
+          "line": 1416
         }
       ],
       "matchingWebHooks": [],
@@ -7468,11 +7580,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 292
+          "line": 297
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 489
+          "line": 494
         }
       ],
       "directReads": [],
@@ -7502,11 +7614,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 293
+          "line": 298
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 490
+          "line": 495
         }
       ],
       "directReads": [],
@@ -7536,11 +7648,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 294
+          "line": 299
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 491
+          "line": 496
         }
       ],
       "directReads": [],
@@ -7569,7 +7681,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 301
+          "line": 306
         },
         {
           "source": "src/events/event-manager.ts",
@@ -7579,7 +7691,7 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 301
+          "line": 306
         }
       ],
       "matchingWebHooks": [
@@ -7606,7 +7718,7 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 360
+          "line": 365
         }
       ],
       "directReads": [],
@@ -8341,7 +8453,11 @@
       "webReferences": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 766
+          "line": 788
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 823
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -8355,7 +8471,11 @@
       "directReads": [
         {
           "source": "src/combat/skill-system.ts",
-          "line": 766
+          "line": 788
+        },
+        {
+          "source": "src/combat/skill-system.ts",
+          "line": 823
         }
       ],
       "matchingWebHooks": [
@@ -8510,7 +8630,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 159
+          "line": 170
         },
         {
           "source": "src/engine/game-state.ts",
@@ -8596,7 +8716,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 179
+          "line": 193
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",

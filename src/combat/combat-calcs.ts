@@ -530,8 +530,18 @@ export function damage(
 }
 
 /** Calculate defense/resistance against an incoming attack item. */
-export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, board?: GameBoard | null): number {
-  const game = _eqGameRef?.();
+export function defense(
+  unit: UnitObject,
+  attackItem: ItemObject,
+  db: Database,
+  board?: GameBoard | null,
+  game?: any,
+  target?: UnitObject | null,
+  item?: ItemObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'defense',
+  attackInfo: [number, number] = [0, 0],
+): number {
+  game ??= _eqGameRef?.();
   // Python precedence mirrors the other formula hooks: defensive skill
   // override, attacking item override, defensive skill alternate, item alternate.
   const formulaOverride = skillSystem.resistFormulaOverride(unit) ??
@@ -545,7 +555,9 @@ export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, 
   const baseDef = resolveEquation(db, eqName, defaultExpr, unit);
 
   // Add skill static modifier for resist
-  const skillMod = skillSystem.modifyResist(unit, null);
+  const skillMod = skillSystem.modifyResist(
+    unit, item ?? null, game, target, attackItem, mode, attackInfo,
+  );
 
   // Add terrain defense bonus (only for physical attacks)
   const terrainDef = (!magic && board) ? getTerrainBonusesForUnit(unit, board, db)[0] : 0;
@@ -554,7 +566,17 @@ export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, 
 }
 
 /** Calculate attack speed (for doubling checks). */
-export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): number {
+export function attackSpeed(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
+): number {
+  game ??= _eqGameRef?.();
   const formula = skillSystem.attackSpeedFormulaOverride(unit) ??
     itemSystem.attackSpeedFormulaOverride(unit, item) ??
     skillSystem.attackSpeedFormula(unit) ??
@@ -579,8 +601,10 @@ export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): n
   }
 
   // Add item + skill static modifiers
-  const itemMod = itemSystem.modifyAttackSpeed(unit, item, _eqGameRef?.());
-  const skillMod = skillSystem.modifyAttackSpeed(unit, item);
+  const itemMod = itemSystem.modifyAttackSpeed(unit, item, game);
+  const skillMod = skillSystem.modifyAttackSpeed(
+    unit, item, game, target, item2, mode, attackInfo,
+  );
 
   return baseAS + itemMod + skillMod;
 }
@@ -591,7 +615,12 @@ export function defenseSpeed(
   item: ItemObject,
   db: Database,
   itemToAvoid?: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'defense',
+  attackInfo: [number, number] = [0, 0],
 ): number {
+  game ??= _eqGameRef?.();
   const formula = skillSystem.defenseSpeedFormulaOverride(unit) ??
     (itemToAvoid ? itemSystem.defenseSpeedFormulaOverride(unit, itemToAvoid) : undefined) ??
     skillSystem.defenseSpeedFormula(unit) ??
@@ -610,8 +639,10 @@ export function defenseSpeed(
     base = spd - Math.max(0, item.getWeight() - con);
   }
   return base +
-    itemSystem.modifyDefenseSpeed(unit, item, _eqGameRef?.()) +
-    skillSystem.modifyDefenseSpeed(unit, item);
+    itemSystem.modifyDefenseSpeed(unit, item, game) +
+    skillSystem.modifyDefenseSpeed(
+      unit, item, game, target, itemToAvoid, mode, attackInfo,
+    );
 }
 
 export function critAccuracy(
@@ -644,14 +675,20 @@ export function critAvoid(
   itemToAvoid: ItemObject | null,
   db: Database,
   game?: any,
+  target?: UnitObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'defense',
+  attackInfo: [number, number] = [0, 0],
 ): number {
+  game ??= _eqGameRef?.();
   const formula = skillSystem.critAvoidFormulaOverride(unit) ??
     (itemToAvoid ? itemSystem.critAvoidFormulaOverride(unit, itemToAvoid) : undefined) ??
     skillSystem.critAvoidFormula(unit) ??
     (itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined) ??
     'CRIT_AVOID';
   return resolveEquation(db, formula, 'LCK', unit) +
-    skillSystem.modifyCritAvoid(unit, item);
+    skillSystem.modifyCritAvoid(
+      unit, item, game, target, itemToAvoid, mode, attackInfo,
+    );
 }
 
 function combatExpressionCalcs(
@@ -763,7 +800,11 @@ function computeDamageCore(
   const atk = damage(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
-  const def = defense(defender, attackItem, db, board);
+  const defenseMode = mode === 'attack' ? 'defense' : 'attack';
+  const def = defense(
+    defender, attackItem, db, board, game, attacker, defWeapon,
+    defenseMode, attackInfo,
+  );
 
   // Dynamic modifiers from items and skills
   const baseDmg = atk - def;
@@ -879,11 +920,19 @@ export function computeTrueSpeed(
 ): number {
   game ??= _eqGameRef?.();
   const expressionCalcs = combatExpressionCalcs(db, game);
-  let speed = attackSpeed(attacker, attackItem, db);
+  const defenseMode = mode === 'attack' ? 'defense' : 'attack';
+  let speed = attackSpeed(
+    attacker, attackItem, db, game, defender, defenseItem, mode, attackInfo,
+  );
   speed -= defenseItem
-    ? defenseSpeed(defender, defenseItem, db, attackItem)
+    ? defenseSpeed(
+      defender, defenseItem, db, attackItem, game, attacker,
+      defenseMode, attackInfo,
+    )
     : defender.getStatValue('SPD') +
-      skillSystem.modifyDefenseSpeed(defender, null);
+      skillSystem.modifyDefenseSpeed(
+        defender, null, game, attacker, attackItem, defenseMode, attackInfo,
+      );
   const atkSupport = getSupportBonusForCombat(attacker, game);
   const defSupport = getSupportBonusForCombat(defender, game);
   speed += atkSupport.attack_speed - defSupport.defense_speed;
@@ -916,7 +965,9 @@ export function canDouble(
   if (!itemSystem.canDouble(attacker, attackItem)) return false;
 
   // Skill prevents doubling?
-  if (skillSystem.noDouble(attacker)) return false;
+  if (skillSystem.noDouble(
+    attacker, game, attackItem, defender, defenseItem, mode, attackInfo,
+  )) return false;
 
   const thresholdExpr = db.getEquation('SPEED_TO_DOUBLE');
   const threshold = thresholdExpr ? evaluateEquation(thresholdExpr, attacker) : 4;
@@ -1110,7 +1161,8 @@ export function computeCrit(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
   const staticCritAvoid = critAvoid(
-    defender, defWeapon, attackItem, db, game,
+    defender, defWeapon, attackItem, db, game, attacker,
+    mode === 'attack' ? 'defense' : 'attack', attackInfo,
   );
 
   // Support bonuses
