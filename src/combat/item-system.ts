@@ -1062,27 +1062,127 @@ export function shoveDestination(
   context: TargetRestrictionContext,
 ): TargetPosition | null {
   if (!target.position || magnitude <= 0) return null;
-  const dx = target.position[0] - anchor[0];
-  const dy = target.position[1] - anchor[1];
-  if (dx === 0 && dy === 0) return null;
-  const step: TargetPosition = Math.abs(dx) >= Math.abs(dy)
-    ? [dx > 0 ? 1 : -1, 0]
-    : [0, dy > 0 ? 1 : -1];
-  let destination: TargetPosition = [target.position[0], target.position[1]];
+  const step: TargetPosition = [
+    Math.max(-1, Math.min(1, target.position[0] - anchor[0])),
+    Math.max(-1, Math.min(1, target.position[1] - anchor[1])),
+  ];
+  if (step[0] === 0 && step[1] === 0) return null;
+  let destination: TargetPosition | null = null;
   for (let index = 1; index <= magnitude; index++) {
     const candidate: TargetPosition = [
       target.position[0] + step[0] * index,
       target.position[1] + step[1] * index,
     ];
-    if (!context.board.inBounds(candidate[0], candidate[1])) return null;
+    if (!context.board.inBounds(candidate[0], candidate[1])) break;
     const occupant = context.board.getUnit(candidate[0], candidate[1]);
-    if (occupant && occupant !== target) return null;
+    if (occupant && occupant !== target) break;
     if (context.board.getMovementCost(
       candidate[0], candidate[1], movementGroup(target, context.db), context.db,
-    ) >= 99) return null;
+    ) > target.getMovement()) break;
     destination = candidate;
   }
   return destination;
+}
+
+/**
+ * EotF's authored shove variants support signed magnitudes. Strict variants
+ * inspect only the final tile, while flexible variants stop at the last valid
+ * tile and therefore also model pulls (negative magnitudes).
+ */
+export function eotfShoveDestination(
+  unit: UnitObject,
+  anchor: TargetPosition,
+  magnitude: number,
+  context: TargetRestrictionContext,
+  flexible: boolean,
+  towardAnchor: boolean = false,
+  onUnitCollision?: (unit: UnitObject, position: TargetPosition) => void,
+): TargetPosition | null {
+  if (!unit.position || magnitude === 0) return null;
+  const sign = magnitude < 0 ? -1 : 1;
+  const direction: TargetPosition = towardAnchor
+    ? [
+        Math.max(-1, Math.min(1, anchor[0] - unit.position[0])),
+        Math.max(-1, Math.min(1, anchor[1] - unit.position[1])),
+      ]
+    : [
+        Math.max(-1, Math.min(1, unit.position[0] - anchor[0])),
+        Math.max(-1, Math.min(1, unit.position[1] - anchor[1])),
+      ];
+  if (direction[0] === 0 && direction[1] === 0) return null;
+  const movement = movementGroup(unit, context.db);
+  const steps = Math.abs(magnitude);
+  let destination: TargetPosition | null = null;
+  for (let distance = flexible ? 1 : steps; distance <= steps; distance++) {
+    const candidate: TargetPosition = [
+      unit.position[0] + direction[0] * sign * distance,
+      unit.position[1] + direction[1] * sign * distance,
+    ];
+    const occupant = context.board.inBounds(candidate[0], candidate[1])
+      ? context.board.getUnit(candidate[0], candidate[1])
+      : null;
+    const valid = context.board.inBounds(candidate[0], candidate[1]) &&
+      (!occupant || occupant === unit) &&
+      context.board.getMovementCost(candidate[0], candidate[1], movement, context.db) <
+        (flexible ? unit.getMovement() + 1 : 99);
+    if (!valid) {
+      if (occupant && occupant !== unit) onUnitCollision?.(occupant, candidate);
+      break;
+    }
+    destination = candidate;
+    if (!flexible) break;
+  }
+  return destination;
+}
+
+/** EotF's initiation-only pivot ignores all finite terrain movement costs. */
+export function eotfPivotDestination(
+  unit: UnitObject,
+  anchor: TargetPosition,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): TargetPosition | null {
+  if (!unit.position || magnitude === 0) return null;
+  const dx = Math.max(-1, Math.min(1, unit.position[0] - anchor[0]));
+  const dy = Math.max(-1, Math.min(1, unit.position[1] - anchor[1]));
+  const destination: TargetPosition = [anchor[0] - dx * magnitude, anchor[1] - dy * magnitude];
+  if (!context.board.inBounds(destination[0], destination[1]) ||
+      context.board.getUnit(destination[0], destination[1])) return null;
+  return context.board.getMovementCost(
+    destination[0], destination[1], movementGroup(unit, context.db), context.db,
+  ) < 99 ? destination : null;
+}
+
+/** EotF's initiation-only draw-back ignores all finite terrain movement costs. */
+export function eotfDrawBackDestinations(
+  unit: UnitObject,
+  target: UnitObject,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): [TargetPosition, TargetPosition] | null {
+  if (!unit.position || !target.position || magnitude === 0) return null;
+  const dx = Math.max(-1, Math.min(1, target.position[0] - unit.position[0]));
+  const dy = Math.max(-1, Math.min(1, target.position[1] - unit.position[1]));
+  const unitDestination: TargetPosition = [
+    unit.position[0] - dx * magnitude,
+    unit.position[1] - dy * magnitude,
+  ];
+  const targetDestination: TargetPosition = [
+    target.position[0] - dx * magnitude,
+    target.position[1] - dy * magnitude,
+  ];
+  if (!context.board.inBounds(unitDestination[0], unitDestination[1]) ||
+      !context.board.inBounds(targetDestination[0], targetDestination[1]) ||
+      context.board.getUnit(unitDestination[0], unitDestination[1])) return null;
+  const unitCost = context.board.getMovementCost(
+    unitDestination[0], unitDestination[1], movementGroup(unit, context.db), context.db,
+  );
+  const targetCost = context.board.getMovementCost(
+    targetDestination[0], targetDestination[1], movementGroup(target, context.db), context.db,
+  );
+  return unitCost < 99 && targetCost < 99
+    ? [unitDestination, targetDestination]
+    : null;
 }
 
 export function pivotDestination(
