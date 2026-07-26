@@ -153,6 +153,33 @@ test.describe('Aura propagation and cleanup', () => {
     await waitForHarness(page);
     await stepFrames(page, 5);
 
+    // Keep this synthetic target-policy fixture local to the test. It was
+    // historically described as appended project data, but no such prefab is
+    // present in default.ltproj.
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.db.skills.set('TestEnemyAura', {
+        nid: 'TestEnemyAura',
+        name: 'Test Enemy Aura',
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components: [
+          ['aura', 'TestEnemyAura_child'],
+          ['aura_range', 2],
+          ['aura_target', 'enemy'],
+        ],
+      });
+      game.db.skills.set('TestEnemyAura_child', {
+        nid: 'TestEnemyAura_child',
+        name: 'Test Enemy Aura Child',
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components: [['hit', -10]],
+      });
+    });
+
     // Eirika [2,6] gets a synthetic enemy-target aura (range 2).
     const granted = await addSkill(page, 'Eirika', 'TestEnemyAura');
     expect(granted).toBe(true);

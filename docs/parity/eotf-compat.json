@@ -2192,19 +2192,19 @@
         "nid": "aura",
         "uses": 262,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "aura_range",
         "uses": 262,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "aura_target",
         "uses": 262,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "avoid",

@@ -391,6 +391,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Gate all 1,999 EotF condition/combat-condition, static stat, damage,
   hit/avoid, crit/dodge, resist, speed, multiplier, and cannot-double uses
   across forecasts, AI scoring, and combat snapshots.
+- [x] Preserve all 786 EotF aura child, range, and ally/enemy/unit target uses
+  with Python stack limits, stable source replacement, off-board cleanup,
+  movement undo, and save/load re-derivation.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
