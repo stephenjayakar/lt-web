@@ -2101,6 +2101,7 @@ export class GainExpAction extends Action {
 /** Apply cap-clamped permanent stat changes with exact HP and turnwheel restoration. */
 export class ApplyStatChangesAction extends Action {
   private unit: UnitObject;
+  private capUnit: UnitObject;
   private requested: Record<string, number>;
   private beforeStats: Record<string, number>;
   private beforeHp: number;
@@ -2108,9 +2109,14 @@ export class ApplyStatChangesAction extends Action {
   private afterHp: number = 0;
   private applied: Record<string, number> = {};
 
-  constructor(unit: UnitObject, requested: Record<string, number>) {
+  constructor(
+    unit: UnitObject,
+    requested: Record<string, number>,
+    capUnit: UnitObject = unit,
+  ) {
     super();
     this.unit = unit;
+    this.capUnit = capUnit;
     this.requested = { ...requested };
     this.beforeStats = { ...unit.stats };
     this.beforeHp = unit.currentHp;
@@ -2126,7 +2132,10 @@ export class ApplyStatChangesAction extends Action {
     for (const [stat, requested] of Object.entries(this.requested)) {
       if (this.unit.stats[stat] === undefined || !Number.isFinite(requested)) continue;
       const current = this.unit.stats[stat];
-      const amount = Math.max(-current, Math.min(requested, this.unit.getStatCap(stat) - current));
+      const amount = Math.max(
+        -current,
+        Math.min(requested, this.capUnit.getStatCap(stat) - current),
+      );
       this.unit.stats[stat] = current + amount;
       this.applied[stat] = amount;
     }

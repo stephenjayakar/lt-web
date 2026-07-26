@@ -279,9 +279,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port the next coherent project-local item or combat
-hook family selected from the generated compatibility inventory. Continue
-count-locking only components whose real EotF value shapes and runtime
+Embrace of the Fog P8.2: port the next coherent project-local skill or
+engine-generic item family selected from the generated compatibility inventory.
+Continue count-locking only components whose real EotF value shapes and runtime
 behavior have focused coverage.
 
 ## P8 — Embrace of the Fog 2.0
@@ -366,10 +366,12 @@ return to the base without compatibility warnings or silent mechanic loss.
   replay and full/non-full cleanup entry points.
 - [x] Preserve EotF's Blitz Strike crit refresh with active-phase and shared
   charge gating, multi-crit deduplication, and exact turnwheel replay.
+- [x] Port all 53 used project-local item components, including the final
+  immediate HP boosters and Solomon's signed RES-based damage/Monster healing.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
-- [ ] Port all 53 used project-local item components with focused value-shape,
+- [x] Port all 53 used project-local item components with focused value-shape,
   mutation-order, targeting, combat, undo/redo, and save coverage.
 - [ ] Port all 108 used project-local skill components with focused lifecycle,
   proc-order, charge, tether, status, damage-redirection, and save coverage.

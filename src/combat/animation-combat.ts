@@ -878,31 +878,45 @@ export class AnimationCombat implements AnimationCombatOwner {
       const totalDamage = strike.damage + (strike.extraDamage ?? 0);
       // Apply damage to target HP
       if (isLeftDefending) {
-        this.leftTargetHp = Math.max(0, this.leftTargetHp - totalDamage);
+        this.leftTargetHp = Math.max(
+          0,
+          Math.min(strike.defender.maxHp, this.leftTargetHp - totalDamage),
+        );
       } else {
-        this.rightTargetHp = Math.max(0, this.rightTargetHp - totalDamage);
+        this.rightTargetHp = Math.max(
+          0,
+          Math.min(strike.defender.maxHp, this.rightTargetHp - totalDamage),
+        );
       }
 
       // Determine HP drain duration
-      const hpChange = totalDamage;
+      const hpChange = Math.abs(totalDamage);
       this.hpDrainFrames = Math.max(HP_DRAIN_MIN_FRAMES, Math.min(HP_DRAIN_MAX_FRAMES, hpChange));
 
       // Defender takes hit
-      const damagedPose = this.atRange > 0 ? 'RangedDamaged' : 'Damaged';
-      defAnim.setPose(damagedPose);
+      if (totalDamage < 0) {
+        defAnim.setPose('Idle');
+      } else {
+        const damagedPose = this.atRange > 0 ? 'RangedDamaged' : 'Damaged';
+        defAnim.setPose(damagedPose);
+      }
 
       // Screen shake
-      const shakeIntensity = strike.crit ? 4 : 1;
-      this.shake(shakeIntensity);
-      this.platformShake();
+      if (totalDamage >= 0) {
+        const shakeIntensity = strike.crit ? 4 : 1;
+        this.shake(shakeIntensity);
+        this.platformShake();
+      }
 
       // Recoil offset
-      defAnim.lrOffset = [-1, -2, -3, -2, -1];
+      if (totalDamage >= 0) defAnim.lrOffset = [-1, -2, -3, -2, -1];
 
       // --- Hit/Crit/Kill sounds (Python: _handle_playback + item_system_base) ---
       const defenderHp = isLeftDefending ? this.leftTargetHp : this.rightTargetHp;
       const isLethal = defenderHp <= 0;
-      if (totalDamage === 0) {
+      if (totalDamage < 0) {
+        this.playSound('MapHeal');
+      } else if (totalDamage === 0) {
         this.playSound('No Damage');
       } else if (strike.crit) {
         // Crit: play critical hit sound (+ final hit if lethal)
@@ -925,8 +939,9 @@ export class AnimationCombat implements AnimationCombatOwner {
         this.damagePopups.push({
           x: defUnit.position[0],
           y: defUnit.position[1],
-          value: strike.damage,
+          value: Math.abs(strike.damage),
           isCrit: strike.crit,
+          isHeal: strike.damage < 0,
           elapsed: 0,
           duration: 1200,
         });
@@ -1266,7 +1281,7 @@ export class AnimationCombat implements AnimationCombatOwner {
           attackerMaxHp,
           atkHp + itemHeal + (strike.selfSkillHpChange ?? 0),
         ));
-        defHp -= damage;
+        defHp = Math.min(this.defender.maxHp, defHp - damage);
       } else {
         const itemHeal = lifelinkHealForStrike(
           strike.attacker,
@@ -1278,7 +1293,7 @@ export class AnimationCombat implements AnimationCombatOwner {
           this.defender.maxHp,
           defHp + itemHeal + (strike.selfSkillHpChange ?? 0),
         ));
-        atkHp -= damage;
+        atkHp = Math.min(this.attacker.maxHp, atkHp - damage);
       }
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (effect.unit === this.attacker) {
@@ -1329,8 +1344,8 @@ export class AnimationCombat implements AnimationCombatOwner {
     if (defHp <= 0 && this.miracleRestoreHps.has(this.defender)) {
       defHp = this.miracleRestoreHps.get(this.defender) ?? 1;
     }
-    atkHp = Math.max(0, atkHp);
-    defHp = Math.max(0, defHp);
+    atkHp = Math.max(0, Math.min(this.attacker.maxHp, atkHp));
+    defHp = Math.max(0, Math.min(this.defender.maxHp, defHp));
 
     this.attacker.currentHp = atkHp;
     this.defender.currentHp = defHp;

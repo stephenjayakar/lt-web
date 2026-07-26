@@ -79,6 +79,7 @@ import {
   AddSubItemAction,
   RemoveSubItemAction,
   HealAction,
+  DamageAction,
   WeaponUsesAction,
   SetCurrentHpAction,
   SetCurrentManaAction,
@@ -222,6 +223,7 @@ import {
   transforms,
   inventoryFull as itemInventoryFull,
   healAmount as itemHealAmount,
+  solomonHpChange,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -2848,7 +2850,8 @@ function applyCoreTargetedEffects(
 
   let applied = false;
   const customHeal = item.hasComponent('eval_heal') ||
-    item.hasComponent('heal_no_target_restrict');
+    item.hasComponent('heal_no_target_restrict') ||
+    item.hasComponent('solomon_heal');
   if (item.hasComponent('heal') || item.hasComponent('equation_heal') || customHeal) {
     let healAmount = item.getComponent<number>('heal') ?? 0;
     const equationNid = item.getComponent<string>('equation_heal');
@@ -2859,14 +2862,15 @@ function applyCoreTargetedEffects(
     for (const targetPosition of positions.values()) {
       const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
       if (!target) continue;
-      const amount = customHeal
-        ? itemHealAmount(unit, item, target, game) ?? 0
-        : healAmount + empowerHeal(unit, target, game);
+      const solomonChange = solomonHpChange(unit, item, target, game);
+      const amount = solomonChange ??
+        (customHeal
+          ? itemHealAmount(unit, item, target, game) ?? 0
+          : healAmount + empowerHeal(unit, target, game));
       if (customHeal || target.currentHp < target.maxHp) {
-        game.actionLog.doAction(new SetCurrentHpAction(
-          target,
-          target.currentHp + amount,
-        ));
+        game.actionLog.doAction(amount < 0
+          ? new DamageAction(target, -amount)
+          : new SetCurrentHpAction(target, target.currentHp + amount));
         applied = true;
       }
     }
@@ -2981,10 +2985,12 @@ function applyCoreTargetedEffects(
     if (!target) continue;
 
     for (const componentNid of item.components.keys()) {
-      if (componentNid === 'permanent_stat_change') {
+      if (componentNid === 'permanent_stat_change' ||
+          componentNid === 'permanent_stat_change_early') {
         game.actionLog.doAction(new ApplyStatChangesAction(
           target,
           item.getNumericComponentMap(componentNid),
+          componentNid === 'permanent_stat_change_early' ? unit : target,
         ));
         applied = true;
       } else if (componentNid === 'permanent_growth_change') {
@@ -3432,8 +3438,13 @@ function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): boolean 
     levelVars: game.levelVars,
   })) return false;
 
-  if (item.hasComponent('permanent_stat_change')) {
-    const changes = item.getNumericComponentMap('permanent_stat_change');
+  const permanentStatComponent = item.hasComponent('permanent_stat_change_early')
+    ? 'permanent_stat_change_early'
+    : item.hasComponent('permanent_stat_change')
+      ? 'permanent_stat_change'
+      : null;
+  if (permanentStatComponent) {
+    const changes = item.getNumericComponentMap(permanentStatComponent);
     if (!Object.entries(changes).some(([stat, amount]) =>
       amount <= 0 || unit.getStatValue(stat) < unit.getStatCap(stat))) return false;
   }
@@ -3517,12 +3528,17 @@ export class BaseUseState extends State {
         performPromotionOrClassChange(this.unit, options[0], game, 'promote');
         finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
       }
-    } else if (item.hasComponent('permanent_stat_change')) {
+    } else if (item.hasComponent('permanent_stat_change') ||
+        item.hasComponent('permanent_stat_change_early')) {
+      const componentNid = item.hasComponent('permanent_stat_change_early')
+        ? 'permanent_stat_change_early'
+        : 'permanent_stat_change';
       game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
       applyItemStartResourceHooks(game, this.unit, item);
       game.actionLog.doAction(new ApplyStatChangesAction(
         this.unit,
-        item.getNumericComponentMap('permanent_stat_change'),
+        item.getNumericComponentMap(componentNid),
+        this.unit,
       ));
       finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
     }
@@ -3642,6 +3658,7 @@ export class ItemTargetingState extends MapState {
     const customCombatUtility = activeItem.isSpell() && (
       activeItem.hasComponent('eval_heal') ||
       activeItem.hasComponent('heal_no_target_restrict') ||
+      activeItem.hasComponent('solomon_heal') ||
       activeItem.hasComponent('restore_no_target_restrict') ||
       activeItem.hasComponent('refresh_no_target_restrict')
     );
@@ -6888,7 +6905,9 @@ export class CombatState extends State {
         );
       } else {
         const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
-        const color = popup.isCrit
+        const color = popup.isHeal
+          ? `rgba(64,255,128,${alpha.toFixed(2)})`
+          : popup.isCrit
           ? `rgba(255,255,64,${alpha.toFixed(2)})`
           : `rgba(255,64,64,${alpha.toFixed(2)})`;
         const font = popup.isCrit ? '9px monospace' : '8px monospace';
@@ -6992,7 +7011,15 @@ export class CombatState extends State {
   /** Draw damage popups for map combat (tile-space positions). */
   private drawDamagePopupsMap(
     surf: Surface,
-    popups: Array<{ x: number; y: number; value: number; isCrit: boolean; elapsed: number; duration: number }>,
+    popups: Array<{
+      x: number;
+      y: number;
+      value: number;
+      isCrit: boolean;
+      isHeal?: boolean;
+      elapsed: number;
+      duration: number;
+    }>,
     cameraOffset: [number, number],
   ): void {
     for (const popup of popups) {
@@ -7006,7 +7033,9 @@ export class CombatState extends State {
         surf.drawText('Miss', px - 8, py, `rgba(200,200,255,${alpha.toFixed(2)})`, '7px monospace');
       } else {
         const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
-        const color = popup.isCrit
+        const color = popup.isHeal
+          ? `rgba(64,255,128,${alpha.toFixed(2)})`
+          : popup.isCrit
           ? `rgba(255,255,64,${alpha.toFixed(2)})`
           : `rgba(255,255,255,${alpha.toFixed(2)})`;
         const font = popup.isCrit ? '9px monospace' : '8px monospace';

@@ -97,6 +97,7 @@ export interface DamagePopup {
   y: number;         // tile y
   value: number;     // damage amount (0 = miss)
   isCrit: boolean;
+  isHeal?: boolean;
   elapsed: number;   // ms since spawn
   duration: number;  // total lifetime ms
 }
@@ -466,7 +467,7 @@ export class MapCombat {
             )),
           );
         }
-        atkHp -= damage;
+        atkHp = Math.min(this.attacker.maxHp, atkHp - damage);
       } else if (defenderHps.has(strike.defender)) {
         const before = defenderHps.get(strike.defender) ?? strike.defender.currentHp;
         // Lifelink after_strike: heal per hitting attacker strike, clamping
@@ -493,7 +494,10 @@ export class MapCombat {
             )),
           );
         }
-        defenderHps.set(strike.defender, before - damage);
+        defenderHps.set(
+          strike.defender,
+          Math.min(strike.defender.maxHp, before - damage),
+        );
       }
       for (const effect of strike.allySkillHpChanges ?? []) {
         if (effect.unit === this.attacker) {
@@ -549,11 +553,13 @@ export class MapCombat {
     }
 
     // Clamp HP
-    atkHp = Math.max(0, atkHp);
+    atkHp = Math.max(0, Math.min(this.attacker.maxHp, atkHp));
 
     // Apply to units
     this.attacker.currentHp = atkHp;
-    for (const [unit, hp] of defenderHps) unit.currentHp = Math.max(0, hp);
+    for (const [unit, hp] of defenderHps) {
+      unit.currentHp = Math.max(0, Math.min(unit.maxHp, hp));
+    }
     for (const [unit, gauge] of this.guardGaugeResults) unit.currentGuardGauge = gauge;
     if (this.db.getConstant('pairup', false)) {
       this.attacker.builtGuard = true;
@@ -803,7 +809,9 @@ export class MapCombat {
             this.hitSoundPlayed = true;
             if (strike.hit) {
               const configuredHitSfx = strike.item.getComponent<string>('map_hit_sfx');
-              if (configuredHitSfx) {
+              if (strike.damage < 0) {
+                this.audioManager.playSfx('MapHeal');
+              } else if (configuredHitSfx) {
                 this.audioManager.playSfx(configuredHitSfx);
               } else if (strike.crit) {
                 this.audioManager.playSfx('Critical Hit 1');
@@ -846,11 +854,20 @@ export class MapCombat {
         // Record drain animation start points
         this.hpDrainStartAttacker = this.attackerTargetHp;
         if (strike.defender === this.attacker) {
-          this.attackerTargetHp = Math.max(0, this.attackerTargetHp - totalDamage);
+          this.attackerTargetHp = Math.max(
+            0,
+            Math.min(this.attacker.maxHp, this.attackerTargetHp - totalDamage),
+          );
         } else if (this.defenderTargetHps.has(strike.defender)) {
           this.defenderTargetHps.set(
             strike.defender,
-            Math.max(0, (this.defenderTargetHps.get(strike.defender) ?? 0) - totalDamage),
+            Math.max(
+              0,
+              Math.min(
+                strike.defender.maxHp,
+                (this.defenderTargetHps.get(strike.defender) ?? 0) - totalDamage,
+              ),
+            ),
           );
         }
 
@@ -860,8 +877,9 @@ export class MapCombat {
           this.damagePopups.push({
             x: targetUnit.position[0],
             y: targetUnit.position[1],
-            value: strike.damage,
+            value: Math.abs(strike.damage),
             isCrit: strike.crit,
+            isHeal: strike.damage < 0,
             elapsed: 0,
             duration: 600,
           });

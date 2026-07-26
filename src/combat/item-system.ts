@@ -78,6 +78,27 @@ export function healAmount(
 }
 
 /**
+ * EotF Judge of Originators signed HP change.
+ * Positive values heal allied Monsters; negative values damage non-Monsters.
+ */
+export function solomonHpChange(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  game: any,
+): number | null {
+  const raw = item.getComponent<unknown>('solomon_heal');
+  if (typeof raw !== 'number') return null;
+  if (target.tags.includes('Monster')) return 8;
+  const resistanceDelta =
+    unit.getStatValue('RES') - target.getStatValue('RES');
+  return -Math.max(
+    0,
+    Math.trunc(additiveHealAmount(raw, target, unit, game) + resistanceDelta),
+  );
+}
+
+/**
  * Union the positions contributed by LT's basic target components.
  *
  * Mirrors item_system_base.valid_targets(): every component that defines the
@@ -1358,8 +1379,13 @@ export function targetRestrict(
         prefab.alternate_classes.length === 0) return false;
   }
 
-  if (item.hasComponent('permanent_stat_change')) {
-    const changes = item.getNumericComponentMap('permanent_stat_change');
+  const permanentStatComponent = item.hasComponent('permanent_stat_change_early')
+    ? 'permanent_stat_change_early'
+    : item.hasComponent('permanent_stat_change')
+      ? 'permanent_stat_change'
+      : null;
+  if (permanentStatComponent) {
+    const changes = item.getNumericComponentMap(permanentStatComponent);
     const canApply = affectedUnits.some((target) => Object.entries(changes).some(([stat, amount]) =>
       amount <= 0 || target.getStatValue(stat) < target.getStatCap(stat),
     ));
