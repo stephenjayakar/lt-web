@@ -399,6 +399,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 593 EotF item-override, combat-art, allowed-weapon, and
   weapon-access uses with reverse-skill precedence, condition/charge gating,
   expression dispatch, resource/status hooks, and weapon filtering.
+- [x] Preserve all 441 EotF alternate item-equation, effectiveness,
+  range-dependent magic, and weapon-triangle uses, including Python
+  base-plus-override numeric accumulation and effectiveness negation.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

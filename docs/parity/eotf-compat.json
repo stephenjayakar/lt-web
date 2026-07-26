@@ -972,37 +972,37 @@
         "nid": "alternate_accuracy_formula",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_attack_speed_formula",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_avoid_formula",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_damage_formula",
         "uses": 119,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_defense_speed_formula",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_resist_formula",
         "uses": 129,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "attack_after_combat",
@@ -1074,7 +1074,7 @@
         "nid": "custom_triangle_multiplier",
         "uses": 3,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage",
@@ -1122,19 +1122,19 @@
         "nid": "effective",
         "uses": 7,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "effective_damage",
         "uses": 154,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "effective_tag",
         "uses": 7,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "empty_tile_target_restrict",
@@ -1392,7 +1392,7 @@
         "nid": "ignore_weapon_advantage",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "item_icon_flash",
@@ -1440,7 +1440,7 @@
         "nid": "magic_at_range",
         "uses": 4,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "magic_weapon_rank",
@@ -1632,7 +1632,7 @@
         "nid": "reaver",
         "uses": 7,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "refresh",
