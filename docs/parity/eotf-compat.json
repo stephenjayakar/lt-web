@@ -1361,7 +1361,7 @@
       {
         "nid": "global_range",
         "uses": 31,
-        "structuralStatus": "hook-and-reference",
+        "structuralStatus": "hook-only",
         "semanticStatus": "unverified"
       },
       {
@@ -2744,13 +2744,13 @@
         "nid": "eval_max_range",
         "uses": 7,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_min_range",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_post_combat_damage",
@@ -2779,8 +2779,8 @@
       {
         "nid": "eval_range",
         "uses": 3,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_regeneration",
@@ -3145,8 +3145,8 @@
       {
         "nid": "limit_maximum_range",
         "uses": 8,
-        "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "limited_charge",
@@ -3230,13 +3230,13 @@
         "nid": "modify_maximum_range",
         "uses": 32,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "modify_minimum_range",
         "uses": 4,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "movement_type",

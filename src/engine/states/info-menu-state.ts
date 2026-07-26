@@ -27,6 +27,7 @@ import { FONT } from '../../rendering/bmp-font';
 import {
   growthChange,
   modifiedMaximumRange,
+  modifiedMinimumRange,
   skillConditionActive,
 } from '../../combat/skill-system';
 import type { SkillObject } from '../../objects/skill';
@@ -517,7 +518,7 @@ export class InfoMenuState extends State {
       this.drawBattleStat(surf, 'Avoid', String(avo), rightX + halfW, bsY + 12);
 
       // Range
-      const minR = weapon.getMinRange(unit, game);
+      const minR = modifiedMinimumRange(unit, weapon, game);
       const maxR = modifiedMaximumRange(unit, weapon, game);
       const rangeStr = minR === maxR ? String(minR) : `${minR}-${maxR}`;
       this.drawBattleStat(surf, 'Rng', rangeStr, rightX + halfW, bsY + 24);

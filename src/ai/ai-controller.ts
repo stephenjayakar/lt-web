@@ -33,6 +33,7 @@ import {
   checkAlly,
   checkEnemy,
   modifiedMaximumRange,
+  modifiedMinimumRange,
 } from '../combat/skill-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
@@ -1398,7 +1399,7 @@ export class AIController {
         continue;
       }
       const dist = this.distance(move, targetPos);
-      if (dist >= item.getMinRange(unit, this.gameRef) &&
+      if (dist >= modifiedMinimumRange(unit, item, this.gameRef) &&
           dist <= modifiedMaximumRange(unit, item, this.gameRef)) positions.push(move);
     }
 
@@ -1458,7 +1459,7 @@ export class AIController {
   private findCounterWeapon(defender: UnitObject, dist: number): ItemObject | null {
     for (const item of defender.items) {
       if (!item.isWeapon() || !itemAvailable(defender, item, this.db, this.gameRef)) continue;
-      if (dist >= item.getMinRange(defender, this.gameRef) &&
+      if (dist >= modifiedMinimumRange(defender, item, this.gameRef) &&
           dist <= modifiedMaximumRange(defender, item, this.gameRef)) {
         return item;
       }

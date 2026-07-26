@@ -9,6 +9,10 @@ import type { NID, AffinityDef, SupportPairPrefab, SupportRankRequirement } from
 import type { UnitObject } from '../objects/unit';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
+import {
+  modifiedMaximumRange,
+  modifiedMinimumRange,
+} from '../combat/skill-system';
 
 // ------------------------------------------------------------------
 // Interfaces
@@ -776,7 +780,10 @@ export class SupportController {
   private getUnitAttackRange(unit: UnitObject): [number, number] {
     for (const item of unit.items) {
       if (item.isWeapon()) {
-        return [item.getMinRange(unit, this.game), item.getMaxRange(unit, this.game)];
+        return [
+          modifiedMinimumRange(unit, item, this.game),
+          modifiedMaximumRange(unit, item, this.game),
+        ];
       }
     }
     return [0, 0];

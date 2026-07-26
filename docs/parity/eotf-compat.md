@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 62 unverified
+- 270 skill-component NIDs; 56 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -56,7 +56,7 @@ focused browser coverage.
 | event_on_hit | 218 | consumed |
 | exp | 5 | consumed |
 | gba_steal | 1 | hook-and-reference |
-| global_range | 31 | hook-and-reference |
+| global_range | 31 | hook-only |
 | heal | 34 | hook-and-reference |
 | hit | 722 | hook-and-reference |
 | hp_cost | 12 | hook-and-reference |
@@ -153,9 +153,6 @@ focused browser coverage.
 | empower_heal_received | 2 | reference-only |
 | enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
-| eval_max_range | 7 | consumed |
-| eval_min_range | 1 | consumed |
-| eval_range | 3 | unreferenced |
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
 | exp_multiplier | 1 | hook-and-reference |
@@ -173,13 +170,10 @@ focused browser coverage.
 | ignore_rescue_penalty | 8 | hook-and-reference |
 | ignore_terrain | 7 | hook-and-reference |
 | is_terrain | 9 | unreferenced |
-| limit_maximum_range | 8 | reference-only |
 | live_to_serve | 1 | consumed |
 | locktouch | 6 | consumed |
 | miracle | 1 | consumed |
 | modify_ai_priority | 44 | hook-and-reference |
-| modify_maximum_range | 32 | consumed |
-| modify_minimum_range | 4 | unreferenced |
 | movement_type | 38 | hook-and-reference |
 | negate | 3 | consumed |
 | negate_tags | 13 | consumed |
