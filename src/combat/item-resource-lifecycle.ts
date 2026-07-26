@@ -8,6 +8,7 @@ import {
 } from '../engine/action';
 import type { ItemObject } from '../objects/item';
 import type { UnitObject } from '../objects/unit';
+import type { Database } from '../data/database';
 
 export interface ItemResourceGame {
   actionLog?: Pick<ActionLog, 'doAction'>;
@@ -15,6 +16,33 @@ export interface ItemResourceGame {
   gameVars?: Map<string, unknown>;
   levelVars?: Map<string, unknown>;
   turnCount?: number;
+  db?: Database;
+}
+
+type ItemOverrideEntriesEvaluator = (
+  unit: UnitObject,
+  item: ItemObject,
+  game?: ItemResourceGame,
+) => [string, unknown][];
+
+let itemOverrideEntriesEvaluator: ItemOverrideEntriesEvaluator | null = null;
+
+/** Registered by item-system without introducing an item-system import cycle. */
+export function setItemOverrideEntriesEvaluator(
+  evaluator: ItemOverrideEntriesEvaluator,
+): void {
+  itemOverrideEntriesEvaluator = evaluator;
+}
+
+function resourceComponents(
+  unit: UnitObject,
+  item: ItemObject,
+  game?: ItemResourceGame,
+): [string, unknown][] {
+  return [
+    ...item.components.entries(),
+    ...(itemOverrideEntriesEvaluator?.(unit, item, game) ?? []),
+  ];
 }
 
 interface StackCost {
@@ -118,7 +146,7 @@ export function applyItemStartResourceHooks(
 ): number {
   if (!game.actionLog) return 0;
   let applied = 0;
-  for (const [component, raw] of item.components) {
+  for (const [component, raw] of resourceComponents(unit, item, game)) {
     if (component === 'gold_cost') {
       const amount = Number(raw);
       if (Number.isFinite(amount) && amount > 0) {
@@ -152,7 +180,7 @@ export function applyItemEndResourceHooks(
 ): number {
   if (!game.actionLog) return 0;
   let applied = 0;
-  for (const [component, raw] of item.components) {
+  for (const [component, raw] of resourceComponents(unit, item, game)) {
     if (component === 'eval_hp_cost') {
       const amount = evaluatedCost(raw, unit, item, game);
       if (amount !== null) {

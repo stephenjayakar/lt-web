@@ -11,13 +11,19 @@
 
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
-import { createItemTree, setItemRangeEvaluator, type ItemObject } from '../objects/item';
+import {
+  createItemTree,
+  setItemComponentResolver,
+  setItemRangeEvaluator,
+  type ItemObject,
+} from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import {
   evaluateCondition,
   evaluateExpression,
   setItemAvailabilityEvaluator,
+  setItemComponentEntriesEvaluator,
 } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
 import {
@@ -28,14 +34,24 @@ import {
   checkEnemy,
   empowerSplash,
   inventoryCapacityOffsets,
+  hasDrainingCharge,
   movementType,
   modifiedHealAmount,
   skillConditionActive,
   type AlternateSplash,
 } from './skill-system';
-import { itemResourcesAvailable } from './item-resource-lifecycle';
+import {
+  itemResourcesAvailable,
+  setItemOverrideEntriesEvaluator,
+} from './item-resource-lifecycle';
 
 export type TargetPosition = [number, number];
+
+let itemSystemGameRef: (() => any) | null = null;
+
+export function setItemSystemGameRef(ref: () => any): void {
+  itemSystemGameRef = ref;
+}
 
 /** Resolve standard and EotF project-local item healing for one target. */
 export function healAmount(
@@ -311,8 +327,86 @@ function cleave2Positions(
 }
 
 function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][number], item: ItemObject, game?: any): boolean {
+  if (skill.hasComponent('build_charge')) {
+    const charge = Number(skill.data.get('charge') ?? 0);
+    const total = Number(
+      skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
+    );
+    if (charge < total) return false;
+  }
+  if (hasDrainingCharge(skill) &&
+      Number(skill.data.get('charge') ?? 0) <= 0) return false;
   return skillConditionActive(skill, unit, { game, item });
 }
+
+const itemOverrideRecursion = new Set<number>();
+
+/**
+ * Python skill_system.item_override: reverse-scan active skills, with the
+ * first override for each component NID winning and the current skill omitted
+ * while its own condition is evaluated.
+ */
+export function itemOverrideComponents(
+  unit: UnitObject | null,
+  item: ItemObject | null,
+  db: Database,
+  game?: any,
+): [string, any][] {
+  if (!unit || !item) return [];
+  const result: [string, any][] = [];
+  const seen = new Set<string>();
+  for (let index = unit.skills.length - 1; index >= 0; index--) {
+    const skill = unit.skills[index];
+    const overrideNid = skill.getComponent<string>('item_override');
+    if (!overrideNid || itemOverrideRecursion.has(skill.uid)) continue;
+    itemOverrideRecursion.add(skill.uid);
+    let active = false;
+    try {
+      active = availabilitySkillActive(unit, skill, item, game);
+    } finally {
+      itemOverrideRecursion.delete(skill.uid);
+    }
+    if (!active) continue;
+    const prefab = db.items.get(overrideNid);
+    if (!prefab) continue;
+    for (const [component, value] of prefab.components) {
+      if (seen.has(component)) continue;
+      seen.add(component);
+      result.push([component, value]);
+    }
+  }
+  return result;
+}
+
+/** Base item components followed by active, precedence-filtered overrides. */
+export function effectiveItemComponents(
+  unit: UnitObject | null,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+): [string, any][] {
+  return [
+    ...item.components.entries(),
+    ...itemOverrideComponents(unit, item, db, game),
+  ];
+}
+
+setItemComponentResolver((item, component) => {
+  const game = itemSystemGameRef?.();
+  const unit = item.owner;
+  const db = game?.db as Database | undefined;
+  if (!unit || !db) return null;
+  const match = itemOverrideComponents(unit, item, db, game)
+    .find(([nid]) => nid === component);
+  return match
+    ? { found: true, value: match[1] }
+    : null;
+});
+
+setItemComponentEntriesEvaluator((unit, item, db, game) =>
+  effectiveItemComponents(unit, item, db, game));
+setItemOverrideEntriesEvaluator((unit, item, game) =>
+  game?.db ? itemOverrideComponents(unit, item, game.db, game) : []);
 
 function itemComponentsAvailable(
   unit: UnitObject,
@@ -350,13 +444,21 @@ function itemComponentsAvailable(
     const usableTypes = new Set(Object.entries(klass.wexp_gain)
       .filter(([, entry]) => entry[0])
       .map(([nid]) => nid));
+    const grantedTypes = new Set<string>();
+    const forbiddenTypes = new Set<string>();
     for (const skill of unit.skills) {
       if (!skill.hasComponent('wexp_usable_skill') &&
           !skill.hasComponent('wexp_unusable_skill')) continue;
       if (!availabilitySkillActive(unit, skill, item, game)) continue;
-      for (const nid of componentList(skill.getComponent('wexp_usable_skill'))) usableTypes.add(nid);
-      for (const nid of componentList(skill.getComponent('wexp_unusable_skill'))) usableTypes.delete(nid);
+      for (const nid of componentList(skill.getComponent('wexp_usable_skill'))) {
+        grantedTypes.add(nid);
+      }
+      for (const nid of componentList(skill.getComponent('wexp_unusable_skill'))) {
+        forbiddenTypes.add(nid);
+      }
     }
+    for (const nid of grantedTypes) usableTypes.add(nid);
+    for (const nid of forbiddenTypes) usableTypes.delete(nid);
     if (!usableTypes.has(weaponType) || Number(unit.wexp[weaponType] ?? 0) <= 0) return false;
   }
 
@@ -401,16 +503,11 @@ export function itemSystemAvailable(
 ): boolean {
   if (!itemComponentsAvailable(unit, item, item.components, db, game)) return false;
 
-  // Active item_override skills append item-prefab components to the child's
-  // ordinary hook dispatch. Availability hooks on those prefabs must also pass.
-  for (const skill of unit.skills) {
-    const overrideNid = skill.getComponent<string>('item_override');
-    if (!overrideNid || !availabilitySkillActive(unit, skill, item, game)) continue;
-    const override = overrideNid ? db.items.get(overrideNid) : null;
-    if (override && !itemComponentsAvailable(
-      unit, item, new Map(override.components), db, game,
-    )) return false;
-  }
+  // Python de-duplicates override component NIDs in reverse skill order.
+  const overrides = itemOverrideComponents(unit, item, db, game);
+  if (overrides.length > 0 && !itemComponentsAvailable(
+    unit, item, new Map(overrides), db, game,
+  )) return false;
 
   if (item.parentItem && !itemComponentsAvailable(
     unit, item.parentItem, item.parentItem.components, db, game,
@@ -1562,19 +1659,10 @@ function resolvePriceValue(
   db: Database,
   game?: unknown,
 ): number | null {
-  if (unit) {
-    for (let index = unit.skills.length - 1; index >= 0; index--) {
-      const skill = unit.skills[index];
-      const overrideNid = skill.getComponent<string>('item_override');
-      if (!overrideNid || !skillCondition(skill, unit, game)) continue;
-      const override = db.items.get(overrideNid);
-      if (!override) continue;
-      const overrideValue = override.components.find(([nid]) => nid === 'value')?.[1];
-      if (overrideValue !== undefined) return Number(overrideValue);
-    }
-  }
-
-  const value = item.getComponent<number>('value');
+  const overrideValue = itemOverrideComponents(unit, item, db, game)
+    .find(([nid]) => nid === 'value')?.[1];
+  if (overrideValue !== undefined) return Number(overrideValue);
+  const value = item.components.get('value') as number | undefined;
   return value === undefined ? null : Number(value);
 }
 

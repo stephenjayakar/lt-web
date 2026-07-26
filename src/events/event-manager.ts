@@ -13,11 +13,18 @@ type ItemAvailabilityEvaluator = (
   db: any,
   game?: any,
 ) => boolean;
+type ItemComponentEntriesEvaluator = (
+  unit: any,
+  item: any,
+  db: any,
+  game?: any,
+) => [string, any][];
 
 // `var` is intentional: item-system registers through this setter while an
 // event-manager/python-events cycle is still being initialized in Node-side
 // audit tests. A lexical binding would be in its TDZ at that point.
 var itemAvailabilityEvaluator: ItemAvailabilityEvaluator | null | undefined;
+var itemComponentEntriesEvaluator: ItemComponentEntriesEvaluator | null | undefined;
 
 /**
  * Register item_system.available without importing the item dispatcher here.
@@ -28,6 +35,13 @@ export function setItemAvailabilityEvaluator(
   evaluator: ItemAvailabilityEvaluator,
 ): void {
   itemAvailabilityEvaluator = evaluator;
+}
+
+/** Register Python item_system.get_all_components for expression evaluation. */
+export function setItemComponentEntriesEvaluator(
+  evaluator: ItemComponentEntriesEvaluator,
+): void {
+  itemComponentEntriesEvaluator = evaluator;
 }
 
 // Lazy accessor to avoid circular-import issues at module evaluation time.
@@ -1694,12 +1708,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get_all_components(candidateUnit: any, candidateItem: any) {
       const rawUnit = unwrapUnit(candidateUnit);
       const rawItem = unwrapItem(candidateItem);
-      const entries = componentEntries(rawItem);
-      for (const skill of rawUnit?.skills ?? []) {
-        const overrideNid = componentValue(skill, 'item_override');
-        const override = overrideNid ? game.db?.items?.get?.(overrideNid) : null;
-        if (override) entries.push(...componentEntries(override));
-      }
+      const entries = itemComponentEntriesEvaluator
+        ? itemComponentEntriesEvaluator(rawUnit, rawItem, game.db, game)
+        : componentEntries(rawItem);
       return entries.map(([nid, value]) => wrapComponent(nid, value));
     },
     is_weapon(_unit: any, candidate: any) {

@@ -11,6 +11,7 @@ import {
   initializeSkillData,
   wexpMultiplier,
 } from './skill-system';
+import { effectiveItemComponents } from './item-system';
 
 export interface WeaponRankUp {
   rank: string;
@@ -47,7 +48,12 @@ function addStatus(
 function applyStrikeStatuses(strikes: CombatStrike[], db: Database, game?: any): void {
   for (const strike of strikes) {
     if (!strike.hit) continue;
-    for (const [componentNid, value] of strike.item.components) {
+    for (const [componentNid, value] of effectiveItemComponents(
+      strike.attacker,
+      strike.item,
+      db,
+      game,
+    )) {
       if (componentNid === 'fatigue_on_hit') {
         const amount = Number(value);
         if (Number.isFinite(amount)) {

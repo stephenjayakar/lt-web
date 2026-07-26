@@ -10,9 +10,26 @@ type ItemRangeEvaluator = (
 
 let itemRangeEvaluator: ItemRangeEvaluator | null = null;
 
+export interface ItemComponentResolution {
+  found: boolean;
+  value: unknown;
+}
+
+type ItemComponentResolver = (
+  item: ItemObject,
+  component: string,
+) => ItemComponentResolution | null;
+
+let itemComponentResolver: ItemComponentResolver | null = null;
+
 /** Registered by item-system without introducing an ItemObject import cycle. */
 export function setItemRangeEvaluator(evaluator: ItemRangeEvaluator): void {
   itemRangeEvaluator = evaluator;
+}
+
+/** Registered by item-system for Python skill_system.item_override dispatch. */
+export function setItemComponentResolver(resolver: ItemComponentResolver): void {
+  itemComponentResolver = resolver;
 }
 
 /**
@@ -96,10 +113,13 @@ export class ItemObject {
   // ------------------------------------------------------------------
 
   hasComponent(name: string): boolean {
-    return this.components.has(name);
+    const override = itemComponentResolver?.(this, name);
+    return override?.found === true || this.components.has(name);
   }
 
   getComponent<T = any>(name: string): T | undefined {
+    const override = itemComponentResolver?.(this, name);
+    if (override?.found) return override.value as T;
     return this.components.get(name) as T | undefined;
   }
 
@@ -122,7 +142,7 @@ export class ItemObject {
 
   /** True when the item has a "weapon" component (melee or ranged). */
   isWeapon(): boolean {
-    return this.components.has('weapon') || this.components.has('siege_weapon');
+    return this.hasComponent('weapon') || this.hasComponent('siege_weapon');
   }
 
   /** Python item_system.is_accessory: both passive and equippable variants. */
@@ -177,38 +197,38 @@ export class ItemObject {
 
   /** Whether this item has a 'heal' component (consumable heal like Vulnerary). */
   isHealing(): boolean {
-    return this.components.has('heal');
+    return this.hasComponent('heal');
   }
 
   /** Whether this item is a spell (staff or magic). */
   isSpell(): boolean {
-    return this.components.has('spell') || this.components.has('magic');
+    return this.hasComponent('spell') || this.hasComponent('magic');
   }
 
   /** Whether this item is a 'usable' consumable (non-weapon, non-spell). */
   isUsable(): boolean {
-    return this.components.has('usable');
+    return this.hasComponent('usable');
   }
 
   /** Whether this item targets allies (heal staves, Vulneraries). */
   targetsAllies(): boolean {
-    return this.components.has('target_ally');
+    return this.hasComponent('target_ally');
   }
 
   /** Whether this item has the 'no_ai' flag (AI should not use). */
   hasNoAI(): boolean {
-    return this.components.has('no_ai');
+    return this.hasComponent('no_ai');
   }
 
   /** Whether this item can heal (has 'heal' or 'equation_heal' component). */
   canHeal(): boolean {
-    return this.components.has('heal') || this.components.has('equation_heal') ||
-      this.components.has('eval_heal') || this.components.has('heal_no_target_restrict');
+    return this.hasComponent('heal') || this.hasComponent('equation_heal') ||
+      this.hasComponent('eval_heal') || this.hasComponent('heal_no_target_restrict');
   }
 
   /** Whether this item is a stat booster (has 'permanent_stat_change' component). */
   isStatBooster(): boolean {
-    return this.components.has('permanent_stat_change');
+    return this.hasComponent('permanent_stat_change');
   }
 
   /** True for any item that permanently modifies a unit progression record. */
