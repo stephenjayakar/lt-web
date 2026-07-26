@@ -2270,7 +2270,7 @@
         "nid": "bloody_moon",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "blue",
@@ -3422,7 +3422,7 @@
         "nid": "ride_the_lightning",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "savage_blow_fates",

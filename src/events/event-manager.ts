@@ -518,6 +518,15 @@ export function evaluateCondition(
     const haystack = resolvePath(inMatch[2], context);
     if (Array.isArray(haystack)) return haystack.includes(needle);
     if (typeof haystack === 'string') return haystack.includes(needle);
+    if (haystack instanceof Set || haystack instanceof Map) {
+      return haystack.has(needle);
+    }
+    // Method-call haystacks such as game.game_vars.get('Active_Stratagems')
+    // are outside resolvePath's dotted-property subset. Let the full Python
+    // expression fallback translate their membership instead of silently
+    // treating them as absent.
+    const fallback = evaluateWithJsFallback(trimmed, context, false);
+    if (fallback !== undefined) return !!fallback;
     return false;
   }
 
@@ -528,6 +537,11 @@ export function evaluateCondition(
     const haystack = resolvePath(notInMatch[2], context);
     if (Array.isArray(haystack)) return !haystack.includes(needle);
     if (typeof haystack === 'string') return !haystack.includes(needle);
+    if (haystack instanceof Set || haystack instanceof Map) {
+      return !haystack.has(needle);
+    }
+    const fallback = evaluateWithJsFallback(trimmed, context, false);
+    if (fallback !== undefined) return !!fallback;
     return true;
   }
 

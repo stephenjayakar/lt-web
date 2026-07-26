@@ -3739,6 +3739,55 @@ export class AddSkillAction extends Action {
               value.includes(this.skill.nid)
             ) {
               this.statusReactionActions.push(new RemoveSkillAction(this.unit, this.skill));
+            } else if (
+              component === 'bloody_moon' &&
+              this.skill.nid === 'Bleeding'
+            ) {
+              const effectPrefabs = [
+                game.db.skills.get('Bloody_Moon_Effect'),
+                game.db.skills.get('Bloody_Moon_Effect_2'),
+              ];
+              if (effectPrefabs.every((prefab: unknown) => !!prefab)) {
+                for (const candidate of game.units.values() as Iterable<UnitObject>) {
+                  if (candidate.team !== 'player' || !candidate.position ||
+                      candidate.isDead() || candidate.tags.includes('Tile') ||
+                      !candidate.tags.includes('Beast')) continue;
+                  for (const prefab of effectPrefabs) {
+                    const effect = new SkillObject(prefab!);
+                    effect.initiatorNid = candidate.nid;
+                    this.statusReactionActions.push(
+                      new AddSkillAction(candidate, effect),
+                    );
+                  }
+                }
+              }
+            } else if (
+              component === 'ride_the_lightning' &&
+              this.skill.nid === 'Charged' &&
+              this.unit.position
+            ) {
+              const chargedPrefab = game.db.skills.get('Charged');
+              if (!chargedPrefab) continue;
+              for (const candidate of game.units.values() as Iterable<UnitObject>) {
+                if (candidate === this.unit || candidate.team !== 'player' ||
+                    !candidate.position || candidate.isDead() ||
+                    candidate.tags.includes('Tile') ||
+                    !candidate.skills.some(
+                      (skill: SkillObject) => skill.nid === 'Ride_the_Lightning',
+                    ) ||
+                    candidate.skills.some(
+                      (skill: SkillObject) => skill.nid === 'Charged',
+                    )) continue;
+                const distance =
+                  Math.abs(candidate.position[0] - this.unit.position[0]) +
+                  Math.abs(candidate.position[1] - this.unit.position[1]);
+                if (distance > 3) continue;
+                const charged = new SkillObject(chargedPrefab);
+                charged.initiatorNid = candidate.nid;
+                this.statusReactionActions.push(
+                  new AddSkillAction(candidate, charged),
+                );
+              }
             }
           }
         }

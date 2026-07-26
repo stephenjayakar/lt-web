@@ -1907,7 +1907,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1721
+          "line": 1735
         },
         {
           "source": "src/objects/item.ts",
@@ -2020,7 +2020,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1717
+          "line": 1731
         },
         {
           "source": "src/objects/item.ts",
@@ -2411,7 +2411,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1524
+          "line": 1538
         },
         {
           "source": "src/main.ts",
@@ -2452,7 +2452,7 @@
       "webReferences": [
         {
           "source": "src/events/event-manager.ts",
-          "line": 1525
+          "line": 1539
         },
         {
           "source": "src/objects/item.ts",
@@ -2549,7 +2549,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1425
+          "line": 1439
         }
       ],
       "directReads": [
@@ -3057,7 +3057,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 183
+          "line": 184
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -3593,7 +3593,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 222
+          "line": 223
         }
       ],
       "directReads": [
@@ -3997,11 +3997,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1785
+          "line": 1799
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1787
+          "line": 1801
         }
       ],
       "directReads": [
@@ -8190,19 +8190,19 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 648
+          "line": 662
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 649
+          "line": 663
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 657
+          "line": 671
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 670
+          "line": 684
         }
       ],
       "directReads": [
@@ -8573,19 +8573,19 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1698
+          "line": 1712
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1786
+          "line": 1800
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1788
+          "line": 1802
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2326
+          "line": 2340
         },
         {
           "source": "src/main.ts",
@@ -8681,7 +8681,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1705
+          "line": 1719
         },
         {
           "source": "src/main.ts",
@@ -8757,11 +8757,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1721
+          "line": 1735
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1731
+          "line": 1745
         },
         {
           "source": "src/main.ts",
@@ -8839,7 +8839,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1732
+          "line": 1746
         },
         {
           "source": "src/main.ts",
@@ -8908,7 +8908,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 218
+          "line": 219
         },
         {
           "source": "src/engine/records.ts",
@@ -9057,7 +9057,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 141
+          "line": 142
         },
         {
           "source": "src/engine/records.ts",
@@ -9069,7 +9069,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1701
+          "line": 1715
         },
         {
           "source": "src/objects/item.ts",
@@ -9147,7 +9147,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 138
+          "line": 139
         },
         {
           "source": "src/engine/records.ts",
@@ -9322,7 +9322,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 255
+          "line": 257
         },
         {
           "source": "src/engine/states/game-states.ts",
