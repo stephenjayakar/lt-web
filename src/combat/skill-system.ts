@@ -140,6 +140,29 @@ function getSkillValue<T>(unit: UnitObject, componentNid: string): T | undefined
   return result;
 }
 
+/**
+ * Resolve several component NIDs that implement one Python UNIQUE hook.
+ * Component aliases must compete in skill/component iteration order rather
+ * than one alias receiving permanent precedence over another.
+ */
+function getActiveSkillHookValue<T>(
+  unit: UnitObject,
+  componentNids: readonly string[],
+  context: SkillConditionContext = {},
+): T | undefined {
+  const accepted = new Set(componentNids);
+  let result: T | undefined;
+  for (const skill of unit.skills) {
+    const combatCondition = skill.getComponent<string>('combat_condition');
+    if (combatCondition && skill.data.get('_combat_condition') !== true) continue;
+    if (!skillConditionActive(skill, unit, context)) continue;
+    for (const [componentNid, value] of skill.components) {
+      if (accepted.has(componentNid)) result = value as T;
+    }
+  }
+  return result;
+}
+
 function hasAnySkill(unit: UnitObject, componentNid: string): boolean {
   return unit.skills.some(s => s.hasComponent(componentNid));
 }
@@ -1469,9 +1492,28 @@ export function dynamicCritAvoid(
   );
 }
 
-/** Last alternate critical multiplier equation, matching Python UNIQUE. */
-export function criticalMultiplierFormula(unit: UnitObject): string | null {
-  return getSkillValue<string>(unit, 'alternate_critical_multiplier_formula') ?? null;
+/** Last active alternate critical multiplier equation, matching Python UNIQUE. */
+export function criticalMultiplierFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | null {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['alternate_critical_multiplier_formula'],
+    context,
+  ) ?? null;
+}
+
+/** Last active alternate additive critical-damage equation. */
+export function criticalAdditionFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | null {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['alternate_critical_addition_formula'],
+    context,
+  ) ?? null;
 }
 
 /** Base item maximum range after skill additions and the optional hard cap. */
@@ -2041,10 +2083,15 @@ export function resistMultiplier(
 // ============================================================
 
 /** Override the damage formula name. Default: null (use standard). */
-export function damageFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'damage_formula') ??
-    getSkillValue<string>(unit, 'alternate_damage_formula') ??
-    getSkillValue<string>(unit, 'alternate_magic_damage_formula');
+export function damageFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | undefined {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['damage_formula', 'alternate_damage_formula', 'alternate_magic_damage_formula'],
+    context,
+  );
 }
 
 export function damageFormulaOverride(unit: UnitObject): string | undefined {
@@ -2052,9 +2099,15 @@ export function damageFormulaOverride(unit: UnitObject): string | undefined {
 }
 
 /** Override the resist formula name. */
-export function resistFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'resist_formula') ??
-    getSkillValue<string>(unit, 'alternate_resist_formula');
+export function resistFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | undefined {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['resist_formula', 'alternate_resist_formula'],
+    context,
+  );
 }
 
 export function resistFormulaOverride(unit: UnitObject): string | undefined {
@@ -2062,9 +2115,15 @@ export function resistFormulaOverride(unit: UnitObject): string | undefined {
 }
 
 /** Override the accuracy formula name. */
-export function accuracyFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'accuracy_formula') ??
-    getSkillValue<string>(unit, 'alternate_accuracy_formula');
+export function accuracyFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | undefined {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['accuracy_formula', 'alternate_accuracy_formula'],
+    context,
+  );
 }
 
 export function accuracyFormulaOverride(unit: UnitObject): string | undefined {
@@ -2072,27 +2131,45 @@ export function accuracyFormulaOverride(unit: UnitObject): string | undefined {
 }
 
 /** Override the avoid formula name. */
-export function avoidFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'avoid_formula') ??
-    getSkillValue<string>(unit, 'alternate_avoid_formula');
+export function avoidFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | undefined {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['avoid_formula', 'alternate_avoid_formula'],
+    context,
+  );
 }
 
 export function avoidFormulaOverride(unit: UnitObject): string | undefined {
   return getSkillValue<string>(unit, 'avoid_formula_override');
 }
 
-export function critAccuracyFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'crit_accuracy_formula') ??
-    getSkillValue<string>(unit, 'alternate_crit_accuracy_formula');
+export function critAccuracyFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | undefined {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['crit_accuracy_formula', 'alternate_crit_accuracy_formula'],
+    context,
+  );
 }
 
 export function critAccuracyFormulaOverride(unit: UnitObject): string | undefined {
   return getSkillValue<string>(unit, 'crit_accuracy_formula_override');
 }
 
-export function critAvoidFormula(unit: UnitObject): string | undefined {
-  return getSkillValue<string>(unit, 'crit_avoid_formula') ??
-    getSkillValue<string>(unit, 'alternate_crit_avoid_formula');
+export function critAvoidFormula(
+  unit: UnitObject,
+  context: SkillConditionContext = {},
+): string | undefined {
+  return getActiveSkillHookValue<string>(
+    unit,
+    ['crit_avoid_formula', 'alternate_crit_avoid_formula'],
+    context,
+  );
 }
 
 export function critAvoidFormulaOverride(unit: UnitObject): string | undefined {

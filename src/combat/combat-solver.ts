@@ -670,11 +670,32 @@ export class CombatPhaseSolver {
     }
   }
 
-  private criticalMultiplier(striker: UnitObject, item: ItemObject, db: Database): number {
-    const formula = skillSystem.criticalMultiplierFormula(striker);
-    if (!formula) return 3;
-    const expression = db.getEquation(formula) ?? formula;
+  private criticalMultiplier(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    db: Database,
+  ): number {
+    const formula = skillSystem.criticalMultiplierFormula(
+      striker,
+      { game: this.game, item, target },
+    ) ?? 'CRIT_MULT';
+    const expression = db.getEquation(formula) ?? (formula === 'CRIT_MULT' ? '3' : formula);
     return Math.max(0, calcs.evaluateEquation(expression, striker, { db, item }));
+  }
+
+  private criticalAddition(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    db: Database,
+  ): number {
+    const formula = skillSystem.criticalAdditionFormula(
+      striker,
+      { game: this.game, item, target },
+    ) ?? 'CRIT_ADD';
+    const expression = db.getEquation(formula) ?? (formula === 'CRIT_ADD' ? '0' : formula);
+    return calcs.evaluateEquation(expression, striker, { db, item });
   }
 
   private nextPhase(unit: UnitObject): number {
@@ -886,8 +907,9 @@ export class CombatPhaseSolver {
       } else {
         dmg = normalDamage;
         if (crit) {
-          const baseCritMult = this.criticalMultiplier(striker, item, db);
+          const baseCritMult = this.criticalMultiplier(striker, item, target, db);
           dmg *= baseCritMult;
+          dmg += this.criticalAddition(striker, item, target, db);
           dmg += skillSystem.modifyCritDamage(striker, item, this.game);
           dmg += skillSystem.dynamicCritDamageAddition(
             striker, item, target, defWeapon, mode, attackInfo, dmg, this.game,
@@ -1490,8 +1512,9 @@ export class CombatPhaseSolver {
 
         // Crit damage
         if (crit) {
-          const baseCritMult = this.criticalMultiplier(striker, item, db);
+          const baseCritMult = this.criticalMultiplier(striker, item, target, db);
           dmg *= baseCritMult;
+          dmg += this.criticalAddition(striker, item, target, db);
           dmg += skillSystem.modifyCritDamage(striker, item, this.game);
           dmg += skillSystem.dynamicCritDamageAddition(
             striker, item, target, defWeapon, mode, attackInfo, dmg, this.game,

@@ -2102,43 +2102,43 @@
         "nid": "alternate_accuracy_formula",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_avoid_formula",
         "uses": 4,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_crit_accuracy_formula",
         "uses": 3,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_crit_avoid_formula",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_critical_addition_formula",
         "uses": 1,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_critical_multiplier_formula",
         "uses": 7,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_damage_formula",
         "uses": 14,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_magic_damage_formula",
@@ -2150,7 +2150,7 @@
         "nid": "alternate_resist_formula",
         "uses": 4,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "aoe_gain_skill_after_combat",

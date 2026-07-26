@@ -69,6 +69,22 @@ test.describe('UNIQUE resolve policy: last-defined component wins (Python utils.
     expect(skillSystem.accuracyFormula(unit)).toBe('HIT3');
   });
 
+  test('formula aliases compete in skill order instead of fixed alias priority', () => {
+    const primary = makeSkill('primary', [['damage_formula', 'PRIMARY']]);
+    const alternate = makeSkill('alternate', [['alternate_damage_formula', 'ALTERNATE']]);
+    expect(skillSystem.damageFormula(fakeUnit([primary, alternate]))).toBe('ALTERNATE');
+    expect(skillSystem.damageFormula(fakeUnit([alternate, primary]))).toBe('PRIMARY');
+  });
+
+  test('inactive formulas do not shadow an earlier active formula', () => {
+    const active = makeSkill('active', [['alternate_damage_formula', 'ACTIVE']]);
+    const inactive = makeSkill('inactive', [
+      ['alternate_damage_formula', 'INACTIVE'],
+      ['condition', 'False'],
+    ]);
+    expect(skillSystem.damageFormula(fakeUnit([active, inactive]))).toBe('ACTIVE');
+  });
+
   test('accuracyFormula: default undefined when no skill defines the hook', () => {
     const unit = fakeUnit([makeSkill('unrelated', [['vantage', true]])]);
     expect(skillSystem.accuracyFormula(unit)).toBeUndefined();

@@ -164,7 +164,8 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   project-used kill/attack/combat/miss/damage skill-grant hooks, including
   immediate later-strike visibility, charge use, and turnwheel restoration.
 - [x] Combat math: `armsthrift`, `armsthrift_always`, `dynamic_crit_accuracy`,
-  `alternate_critical_multiplier_formula`, and maximum-range modification.
+  all 36 used alternate skill formula components (including additive critical
+  damage), and maximum-range modification.
 - [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
   movement-type overrides.
 - [x] Targeting/AI/economy: five `witch_warp_expression` uses,
@@ -279,10 +280,10 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port the next coherent project-local skill or
-engine-generic item family selected from the generated compatibility inventory.
-Continue count-locking only components whose real EotF value shapes and runtime
-behavior have focused coverage.
+Embrace of the Fog P8.2: port the next coherent engine-generic skill family
+selected from the generated compatibility inventory. Continue count-locking
+only components whose real EotF value shapes and runtime behavior have focused
+coverage.
 
 ## P8 — Embrace of the Fog 2.0
 

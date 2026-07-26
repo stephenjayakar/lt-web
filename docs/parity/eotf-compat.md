@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 79 unverified
+- 270 skill-component NIDs; 71 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -142,14 +142,6 @@ focused browser coverage.
 | NID | Uses | Engine audit status |
 |---|---|---|
 | all_brave | 5 | hook-only |
-| alternate_accuracy_formula | 2 | hook-and-reference |
-| alternate_avoid_formula | 4 | hook-and-reference |
-| alternate_crit_accuracy_formula | 3 | hook-and-reference |
-| alternate_crit_avoid_formula | 1 | hook-and-reference |
-| alternate_critical_addition_formula | 1 | unreferenced |
-| alternate_critical_multiplier_formula | 7 | hook-and-reference |
-| alternate_damage_formula | 14 | hook-and-reference |
-| alternate_resist_formula | 4 | hook-and-reference |
 | armsthrift | 3 | consumed |
 | attack_proc | 10 | reference-only |
 | cannot_trade | 2 | unreferenced |
