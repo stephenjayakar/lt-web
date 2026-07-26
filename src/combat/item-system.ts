@@ -545,13 +545,24 @@ export function available(
   for (const skill of unit.skills) {
     if (!skill.hasComponent('cannot_use_items') &&
         !skill.hasComponent('cannot_use_items_except_armor') &&
-        !skill.hasComponent('cannot_use_magic_items')) continue;
+        !skill.hasComponent('cannot_use_magic_items') &&
+        !skill.hasComponent('cannot_use_items_enemy') &&
+        !skill.hasComponent('cannot_use_magic_items_eval')) continue;
     if (!availabilitySkillActive(unit, skill, item, game)) continue;
     if (skill.hasComponent('cannot_use_items')) return false;
     if (skill.hasComponent('cannot_use_items_except_armor') &&
         weaponType(unit, item) !== 'Gear') return false;
     if (skill.hasComponent('cannot_use_magic_items') &&
-        (item.hasComponent('magic') || item.hasComponent('magic_at_range'))) return false;
+        item.hasComponent('magic')) return false;
+    if (skill.hasComponent('cannot_use_items_enemy') &&
+        item.hasComponent('target_enemy')) return false;
+    if (skill.hasComponent('cannot_use_magic_items_eval') &&
+        (item.hasComponent('magic') ||
+         (item.hasComponent('eval_magic') &&
+          evaluatedItemCondition('eval_magic', unit, item, game)) ||
+         (item.hasComponent('eval_dragon') &&
+          evaluatedItemCondition('eval_dragon', unit, item, game)) ||
+         item.hasComponent('eval_dragon_magic'))) return false;
   }
 
   return true;
