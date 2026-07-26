@@ -274,7 +274,6 @@ export class AnimationCombat implements AnimationCombatOwner {
   // -- Results cache ---------------------------------------------------------
   cachedResults: CombatResults | null = null;
   private lifecycleRecord: CombatLifecycleRecord;
-  private lifecycleRecorded: boolean = false;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
   private miracleRestoreHps: Map<UnitObject, number> = new Map();
 
@@ -1227,14 +1226,11 @@ export class AnimationCombat implements AnimationCombatOwner {
       return this.cachedResults;
     }
     if (actionLog) {
-      if (!this.lifecycleRecorded) {
-        actionLog.doAction(this.lifecycleRecord);
-        this.lifecycleRecorded = true;
-      }
       const action = new CombatResultAction<CombatResults>(
         this.participants,
         [this.attackItem, ...(this.defenseItem ? [this.defenseItem] : [])],
         () => this.computeResults(),
+        this.lifecycleRecord,
       );
       actionLog.doAction(action);
       this.cachedResults = action.getResult();

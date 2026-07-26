@@ -15,15 +15,10 @@
  * DefenderState get_next_state), lt-maker/app/engine/skill_components/
  * combat2_components.py (Miracle.cleanup_combat, Vantage, Desperation).
  *
- * Deferred (see PLAN.md): full scripted-combat token coverage beyond a
- * smoke test, and dynamic mid-combat re-evaluation of doubling eligibility
- * (Python recomputes attacker_num_phases/defender_num_phases on every
- * solver state transition; the web solver computes attackerDoubles /
- * defenderDoubles once up front in resolveCore and does not revisit it
- * mid-combat, so a status_on_hit that changes SPD mid-fight cannot add or
- * remove a double within that same combat on the web today). The test
- * below documents and locks the current (static) web behavior rather than
- * papering over the gap.
+ * Full scripted-combat token coverage beyond the current smoke cases remains
+ * separate work. Natural combat does re-evaluate strike counts, counter
+ * eligibility, and doubling between phases, so mid-combat status changes
+ * influence later phases like Python's state machine.
  */
 
 import { test, expect } from '@playwright/test';

@@ -244,9 +244,15 @@ export class ItemObject {
   hasCombatUseEffect(): boolean {
     const hitResolvedStatus = this.hasComponent('hit') &&
       (this.hasComponent('status_on_hit') || this.hasComponent('status_after_combat_on_hit'));
+    const eotfStatus = this.hasComponent('buff_ally') ||
+      this.hasComponent('statuses_after_combat_on_hit') ||
+      this.hasComponent('status_after_combat_on_hit_foe_only') ||
+      this.hasComponent('stacks_on_hit') ||
+      this.hasComponent('self_stacks_on_hit');
     const steal = this.hasComponent('steal') || this.hasComponent('gba_steal') ||
       this.hasComponent('trace');
-    return hitResolvedStatus || steal || this.subitems.some((subitem) => subitem.hasCombatUseEffect());
+    return hitResolvedStatus || eotfStatus || steal ||
+      this.subitems.some((subitem) => subitem.hasCombatUseEffect());
   }
 
   /**

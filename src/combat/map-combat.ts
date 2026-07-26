@@ -181,7 +181,6 @@ export class MapCombat {
   private hitSoundPlayed: boolean = false;
   private cachedResults: CombatResults | null = null;
   private lifecycleRecord: CombatLifecycleRecord;
-  private lifecycleRecorded: boolean = false;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
   /** Units saved from death by a 'miracle' skill (see CombatPhaseSolver.miracleSaved). */
   private miracleSavedSet: Set<UnitObject> = new Set();
@@ -411,10 +410,6 @@ export class MapCombat {
   applyResults(actionLog?: ActionLog): CombatResults {
     if (this.cachedResults) return this.cachedResults;
     if (actionLog) {
-      if (!this.lifecycleRecorded) {
-        actionLog.doAction(this.lifecycleRecord);
-        this.lifecycleRecorded = true;
-      }
       const action = new CombatResultAction<CombatResults>(
         this.participants,
         [...new Set([
@@ -423,6 +418,7 @@ export class MapCombat {
           ...this.strikes.map((strike) => strike.item),
         ])],
         () => this.computeResults(),
+        this.lifecycleRecord,
       );
       actionLog.doAction(action);
       this.cachedResults = action.getResult();

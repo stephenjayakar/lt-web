@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 145 unverified
+- 185 item-component NIDs; 139 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -42,7 +42,6 @@ focused browser coverage.
 | blast_aoe | 12 | hook-and-reference |
 | brave | 7 | hook-and-reference |
 | brave_on_attack | 23 | hook-and-reference |
-| buff_ally | 14 | project-local-or-unknown |
 | c_uses | 158 | hook-and-reference |
 | can_unlock | 5 | hook-and-reference |
 | cannot_be_countered | 28 | hook-and-reference |
@@ -122,9 +121,7 @@ focused browser coverage.
 | repair | 1 | hook-and-reference |
 | restore | 5 | hook-and-reference |
 | restore_specific | 5 | hook-and-reference |
-| self_remove_skill | 2 | project-local-or-unknown |
-| self_stacks_on_hit | 1 | project-local-or-unknown |
-| self_status_on_hit | 58 | reference-only |
+| self_status_on_hit | 58 | consumed |
 | self_unload_unit | 5 | project-local-or-unknown |
 | sequence_item | 30 | consumed |
 | shove | 7 | reference-only |
@@ -133,15 +130,12 @@ focused browser coverage.
 | siege_weapon | 4 | hook-and-reference |
 | solomon_heal | 1 | project-local-or-unknown |
 | spell | 635 | hook-and-reference |
-| stacks_on_hit | 2 | project-local-or-unknown |
 | stat_change | 26 | hook-and-reference |
 | status_after_combat_on_hit | 109 | consumed |
-| status_after_combat_on_hit_foe_only | 6 | project-local-or-unknown |
 | status_on_equip | 163 | consumed |
 | status_on_hit | 180 | consumed |
 | status_on_hold | 106 | consumed |
-| statuses_after_combat_on_hit | 32 | project-local-or-unknown |
-| statuses_on_hit | 36 | reference-only |
+| statuses_on_hit | 36 | consumed |
 | steal_con | 3 | project-local-or-unknown |
 | store_unit | 21 | consumed |
 | swap | 7 | reference-only |
