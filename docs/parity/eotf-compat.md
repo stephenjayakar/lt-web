@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 156 unverified
+- 185 item-component NIDs; 148 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -52,7 +52,6 @@ focused browser coverage.
 | damage | 739 | hook-and-reference |
 | damage_on_miss | 3 | consumed |
 | draw_back | 2 | consumed |
-| draw_back_on_end_combat_initiate | 1 | project-local-or-unknown |
 | draw_back_target_restrict | 2 | hook-and-reference |
 | eclipse | 1 | consumed |
 | effective | 7 | consumed |
@@ -115,8 +114,6 @@ focused browser coverage.
 | permanent_stat_change | 22 | hook-and-reference |
 | permanent_stat_change_early | 2 | project-local-or-unknown |
 | pivot | 5 | consumed |
-| pivot_always_on_end_combat_initiate | 1 | project-local-or-unknown |
-| pivot_on_end_combat_initiate | 4 | project-local-or-unknown |
 | pivot_target_restrict | 3 | hook-and-reference |
 | prf_class | 12 | hook-and-reference |
 | prf_tags | 14 | hook-and-reference |
@@ -129,17 +126,12 @@ focused browser coverage.
 | restore | 5 | hook-and-reference |
 | restore_specific | 5 | hook-and-reference |
 | self_remove_skill | 2 | project-local-or-unknown |
-| self_shove_flex_stops | 1 | project-local-or-unknown |
 | self_stacks_on_hit | 1 | project-local-or-unknown |
 | self_status_on_hit | 58 | reference-only |
 | self_unload_unit | 5 | project-local-or-unknown |
 | sequence_item | 30 | consumed |
 | shove | 7 | reference-only |
-| shove_flex_stops | 2 | project-local-or-unknown |
-| shove_flex_stops_event | 1 | project-local-or-unknown |
-| shove_flexible_on_end_combat_initiate | 9 | project-local-or-unknown |
 | shove_on_end_combat | 1 | reference-only |
-| shove_on_end_combat_initiate | 8 | project-local-or-unknown |
 | shove_target_restrict | 5 | hook-and-reference |
 | siege_weapon | 4 | hook-and-reference |
 | solomon_heal | 1 | project-local-or-unknown |

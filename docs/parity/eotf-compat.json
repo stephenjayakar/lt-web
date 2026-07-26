@@ -1104,7 +1104,7 @@
         "nid": "draw_back_on_end_combat_initiate",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "draw_back_target_restrict",
@@ -1590,13 +1590,13 @@
         "nid": "pivot_always_on_end_combat_initiate",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "pivot_on_end_combat_initiate",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "pivot_target_restrict",
@@ -1692,7 +1692,7 @@
         "nid": "self_shove_flex_stops",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "self_stacks_on_hit",
@@ -1728,19 +1728,19 @@
         "nid": "shove_flex_stops",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_flex_stops_event",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_flexible_on_end_combat_initiate",
         "uses": 9,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_on_end_combat",
@@ -1752,7 +1752,7 @@
         "nid": "shove_on_end_combat_initiate",
         "uses": 8,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_target_restrict",

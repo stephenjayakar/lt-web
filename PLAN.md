@@ -346,6 +346,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 13 real uses of EotF's evaluated/unrestricted healing,
   refresh, and restore item hooks across target routing, combat/AoE hits,
   direct consumables, AI valuation, modifiers, and undo/redo.
+- [x] Preserve all 27 real uses of EotF's strict, flexible, signed,
+  initiation-only, self, pivot, draw-back, and collision-event forced-movement
+  item hooks with exact blocking rules, payloads, and undo/redo.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
