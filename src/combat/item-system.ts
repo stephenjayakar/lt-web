@@ -1832,17 +1832,16 @@ export function isSpell(_unit: UnitObject, item: ItemObject): boolean {
 
 /** Can this item counter? */
 export function canCounter(_unit: UnitObject, item: ItemObject): boolean {
-  // Default true for weapons unless 'no_counter' is set
-  if (!item.hasComponent('weapon')) return false;
-  if (item.hasComponent('no_counter')) return false;
-  return true;
+  if (item.hasComponent('spell') || item.hasComponent('siege_weapon')) return false;
+  if (item.hasComponent('cannot_counter') || item.hasComponent('no_counter')) return false;
+  return item.hasComponent('weapon');
 }
 
 /** Can this item be countered? */
 export function canBeCountered(_unit: UnitObject, item: ItemObject): boolean {
-  if (item.hasComponent('spell')) return false;
+  if (item.hasComponent('spell') || item.hasComponent('siege_weapon')) return false;
   if (item.hasComponent('cannot_be_countered')) return false;
-  return true;
+  return item.hasComponent('weapon');
 }
 
 /** Can this weapon double? */
@@ -1851,7 +1850,7 @@ export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
   // Python NoDouble item component (nid 'no_double') prevents doubling.
   if (item.hasComponent('no_double')) return false;
   if (item.hasComponent('cannot_double')) return false;
-  return true;
+  return item.hasComponent('weapon') || item.hasComponent('siege_weapon');
 }
 
 // ============================================================
@@ -2242,9 +2241,12 @@ export function dynamicMultiattacks(
   _attackInfo: unknown,
   _baseValue: number,
 ): number {
-  if (item.hasComponent('brave')) return 1;
-  if (item.hasComponent('brave_on_attack') && mode === 'attack') return 1;
-  return 0;
+  let total = 0;
+  for (const [nid] of resolvedItemComponents(_unit, item)) {
+    if (nid === 'brave') total++;
+    else if (nid === 'brave_on_attack' && mode === 'attack') total++;
+  }
+  return total;
 }
 
 /** Dynamic accuracy modifier. */
@@ -2424,8 +2426,15 @@ export function hasDamageOnMiss(item: ItemObject): boolean {
 
 /** Damage dealt by damage_on_miss, or null when the item tree lacks the hook. */
 export function damageOnMiss(item: ItemObject, normalDamage: number): number | null {
-  const multiplier = item.getComponent<number>('damage_on_miss');
-  if (typeof multiplier === 'number') return Math.trunc(normalDamage * multiplier);
+  const multipliers = resolvedItemComponents(item.owner, item)
+    .filter(([nid, value]) => nid === 'damage_on_miss' && typeof value === 'number')
+    .map(([, value]) => value as number);
+  if (multipliers.length > 0) {
+    return multipliers.reduce(
+      (total, multiplier) => total + Math.trunc(normalDamage * multiplier),
+      0,
+    );
+  }
   for (const subitem of item.subitems) {
     const damage = damageOnMiss(subitem, normalDamage);
     if (damage !== null) return damage;

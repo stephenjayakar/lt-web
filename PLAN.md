@@ -402,6 +402,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 441 EotF alternate item-equation, effectiveness,
   range-dependent magic, and weapon-triangle uses, including Python
   base-plus-override numeric accumulation and effectiveness negation.
+- [x] Preserve all 437 EotF action-retention, brave, counter, doubling, and
+  miss-damage item uses with equipped-weapon authority, exact weapon/spell/
+  siege defaults, and base-plus-override numeric accumulation.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

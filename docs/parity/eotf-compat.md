@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 118 unverified
+- 185 item-component NIDs; 111 unverified
 - 270 skill-component NIDs; 126 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -32,17 +32,11 @@ focused browser coverage.
 | allow_less_than_max_targets | 6 | hook-and-reference |
 | allow_same_target | 1 | hook-and-reference |
 | ally_blast_aoe | 16 | hook-and-reference |
-| attack_after_combat | 248 | hook-and-reference |
 | blast_aoe | 12 | hook-and-reference |
-| brave | 7 | hook-and-reference |
-| brave_on_attack | 23 | hook-and-reference |
 | c_uses | 158 | hook-and-reference |
 | can_unlock | 5 | hook-and-reference |
-| cannot_be_countered | 28 | hook-and-reference |
-| cannot_counter | 40 | hook-and-reference |
 | crit | 701 | hook-and-reference |
 | damage | 739 | hook-and-reference |
-| damage_on_miss | 3 | consumed |
 | draw_back | 2 | reference-only |
 | draw_back_target_restrict | 2 | hook-and-reference |
 | eclipse | 1 | consumed |
@@ -89,7 +83,6 @@ focused browser coverage.
 | never_use_battle_animation | 3 | unreferenced |
 | no_ai | 32 | consumed |
 | no_attack_after_move | 9 | hook-and-reference |
-| no_double | 88 | hook-and-reference |
 | no_equip | 37 | unreferenced |
 | no_map_hp_display | 19 | consumed |
 | permanent_growth_change | 2 | consumed |
