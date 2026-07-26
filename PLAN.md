@@ -163,7 +163,7 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   `post_combat_splash`/`post_combat_splash_aoe`, `live_to_serve`, and all
   project-used kill/attack/combat/miss/damage skill-grant hooks, including
   immediate later-strike visibility, charge use, and turnwheel restoration.
-- [x] Combat math: `armsthrift`, `dynamic_crit_accuracy`,
+- [x] Combat math: `armsthrift`, `armsthrift_always`, `dynamic_crit_accuracy`,
   `alternate_critical_multiplier_formula`, and maximum-range modification.
 - [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
   movement-type overrides.

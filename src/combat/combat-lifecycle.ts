@@ -849,6 +849,33 @@ export function applyCombatSkillEndHooks(
         mode,
       )) continue;
 
+      const armsthriftAlways = skill.getComponent<unknown>('armsthrift_always');
+      if (armsthriftAlways !== undefined &&
+          claimGlobalHook(skill, 'armsthrift_always')) {
+        const configured = Number(armsthriftAlways);
+        const amount = Number.isFinite(configured) ? Math.trunc(configured) : 0;
+        const seen = new Set<ItemObject>();
+        const restoreUses = (current: ItemObject | null): number => {
+          if (!current || seen.has(current)) return 0;
+          seen.add(current);
+          let restored = restoreUses(current.parentItem);
+          // Python checks the concrete component attributes here rather than
+          // item-system availability. Parent and child items are independent.
+          if (!current.components.has('uses_options') ||
+              current.hasComponent('unrepairable')) return restored;
+          const hasUses = current.components.has('uses') ||
+            current.components.has('c_uses');
+          if (!hasUses) return restored;
+          game.actionLog!.doAction(new SetItemUsesAction(
+            current,
+            Math.min(current.uses + amount, current.maxUses),
+          ));
+          restored++;
+          return restored;
+        };
+        applied += restoreUses(item);
+      }
+
       const afterCombat = skill.getComponent<string>('give_status_after_combat');
       if (afterCombat && !isAlly) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombat);

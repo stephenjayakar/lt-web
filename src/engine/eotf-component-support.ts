@@ -97,6 +97,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'alternate_magic_damage_formula',
   'aoe_gain_skill_after_combat',
   'aoe_gain_skill_after_kill',
+  'armsthrift_always',
   'attack_speed',
   'aura',
   'aura_range',
