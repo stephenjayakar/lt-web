@@ -1260,6 +1260,13 @@ export function applyCombatSkillEndHooks(
         );
       }
       applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_combat'));
+      const multipleCombatGains = skill.getComponent<unknown>('gain_skills_after_combat');
+      if (Array.isArray(multipleCombatGains)) {
+        for (const skillNid of multipleCombatGains) {
+          applied += grantSkill(unit, skill, skillNid, null, false);
+        }
+        triggerSkillCharge(game, skill);
+      }
       if (unit === initiator && pairStrikes.some((strike) => strike.attacker === unit)) {
         applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_attack'));
       }
