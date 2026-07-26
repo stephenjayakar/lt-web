@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 167 unverified
+- 185 item-component NIDs; 161 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -47,7 +47,6 @@ focused browser coverage.
 | can_unlock | 5 | hook-and-reference |
 | cannot_be_countered | 28 | hook-and-reference |
 | cannot_counter | 40 | hook-and-reference |
-| cooldown | 86 | hook-and-reference |
 | crit | 701 | hook-and-reference |
 | custom_triangle_multiplier | 3 | hook-and-reference |
 | damage | 739 | hook-and-reference |
@@ -66,9 +65,7 @@ focused browser coverage.
 | equation_heal | 3 | hook-and-reference |
 | eval_available | 197 | hook-and-reference |
 | eval_heal | 4 | project-local-or-unknown |
-| eval_hp_cost | 4 | hook-only |
 | eval_special_range | 37 | hook-and-reference |
-| eval_stack_cost | 1 | project-local-or-unknown |
 | eval_target_restrict | 10 | hook-only |
 | eval_target_restrict_2 | 138 | hook-and-reference |
 | eval_warning | 1 | consumed |
@@ -152,10 +149,7 @@ focused browser coverage.
 | siege_weapon | 4 | hook-and-reference |
 | solomon_heal | 1 | project-local-or-unknown |
 | spell | 635 | hook-and-reference |
-| stack_cost | 9 | project-local-or-unknown |
-| stack_cost_multi | 5 | project-local-or-unknown |
 | stacks_on_hit | 2 | project-local-or-unknown |
-| start_cooldown | 2 | project-local-or-unknown |
 | stat_change | 26 | hook-and-reference |
 | status_after_combat_on_hit | 109 | consumed |
 | status_after_combat_on_hit_foe_only | 6 | project-local-or-unknown |

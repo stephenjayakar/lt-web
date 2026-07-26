@@ -172,6 +172,11 @@ import {
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { applySkillTurnHooks } from '../skill-turn-lifecycle';
+import {
+  applyItemEndResourceHooks,
+  applyItemStartResourceHooks,
+  applyItemUpkeepResourceHooks,
+} from '../../combat/item-resource-lifecycle';
 import { appendDialogLogEntry } from './objective-dialog-states';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
@@ -514,6 +519,36 @@ function getAvailableCombatItems(unit: UnitObject): ItemObject[] {
   return unit.items.filter((item) =>
     (item.isWeapon() || item.isSpell()) && itemAvailable(unit, item, game.db, game),
   );
+}
+
+/** Match BaseCombat.start_combat item-hook order for every armed participant. */
+function applyCombatParticipantItemStartHooks(
+  game: any,
+  attacker: UnitObject,
+  attackItem: ItemObject,
+  defenders: UnitObject[],
+): void {
+  const processed = new Set<ItemObject>();
+  const apply = (unit: UnitObject | null, item: ItemObject | null): void => {
+    if (!unit || !item || processed.has(item)) return;
+    processed.add(item);
+    applyCombatItemStartHooks(game, unit, item);
+  };
+
+  apply(attacker, attackItem);
+  const attackerPartner = attacker.strikePartner;
+  apply(
+    attackerPartner,
+    attackerPartner ? getEquippedWeapon(attackerPartner, game.db, game) : null,
+  );
+  for (const defender of defenders) {
+    const defenderPartner = defender.strikePartner;
+    apply(
+      defenderPartner,
+      defenderPartner ? getEquippedWeapon(defenderPartner, game.db, game) : null,
+    );
+    apply(defender, getEquippedWeapon(defender, game.db, game));
+  }
 }
 
 export interface SkillAbilityOption {
@@ -2993,8 +3028,11 @@ function finishCoreItemUse(
   targets: UnitObject[] = [],
   healingDone: Map<UnitObject, number> = new Map(),
   baseUse: boolean = false,
+  resourcesStarted: boolean = false,
 ): void {
   const game = getGame();
+  if (!resourcesStarted) applyItemStartResourceHooks(game, unit, item);
+  applyItemEndResourceHooks(game, unit, item);
   const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
   const allyHealing = [...healingDone.entries()]
     .filter(([target]) => target !== unit)
@@ -3078,13 +3116,19 @@ export function applyCoreTargetedItem(
   position: [number, number],
   targetItem: ItemObject | null = null,
 ): boolean {
+  const game = getGame();
+  const resourceStart = game.actionLog.getLength();
+  applyItemStartResourceHooks(game, unit, item);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
-  if (!applyCoreTargetedEffects(unit, item, position, targetItem)) return false;
+  if (!applyCoreTargetedEffects(unit, item, position, targetItem)) {
+    while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
+    return false;
+  }
   const healingDone = new Map(
     targets.map((target) => [target, Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp))]),
   );
-  finishCoreItemUse(unit, item, targets, healingDone);
+  finishCoreItemUse(unit, item, targets, healingDone, false, true);
   return true;
 }
 
@@ -3094,6 +3138,9 @@ export function applyCoreMultiTargetedItem(
   item: ItemObject,
   positions: [number, number][],
 ): boolean {
+  const game = getGame();
+  const resourceStart = game.actionLog.getLength();
+  applyItemStartResourceHooks(game, unit, item);
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
@@ -3104,14 +3151,17 @@ export function applyCoreMultiTargetedItem(
     }
     applied = applyCoreTargetedEffects(unit, item, position) || applied;
   }
-  if (!applied) return false;
+  if (!applied) {
+    while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
+    return false;
+  }
   const healingDone = new Map(
     [...targets.values()].map((target) => [
       target,
       Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp)),
     ]),
   );
-  finishCoreItemUse(unit, item, [...targets.values()], healingDone);
+  finishCoreItemUse(unit, item, [...targets.values()], healingDone, false, true);
   return true;
 }
 
@@ -3123,6 +3173,8 @@ export function applyCoreSequenceItem(
 ): boolean {
   const game = getGame();
   if (!item.hasComponent('sequence_item') || item.subitems.length === 0) return false;
+  const resourceStart = game.actionLog.getLength();
+  applyItemStartResourceHooks(game, unit, item);
   let storedUnit: UnitObject | null = null;
   let applied = false;
   const targets = new Map<string, UnitObject>();
@@ -3146,8 +3198,11 @@ export function applyCoreSequenceItem(
     }
   }
 
-  if (!applied) return false;
-  finishCoreItemUse(unit, item, [...targets.values()]);
+  if (!applied) {
+    while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
+    return false;
+  }
+  finishCoreItemUse(unit, item, [...targets.values()], new Map(), false, true);
   return true;
 }
 
@@ -3410,16 +3465,18 @@ export class BaseUseState extends State {
       }
       if (options.length === 1) {
         game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
+        applyItemStartResourceHooks(game, this.unit, item);
         performPromotionOrClassChange(this.unit, options[0], game, 'promote');
-        finishCoreItemUse(this.unit, item, [this.unit], new Map(), true);
+        finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
       }
     } else if (item.hasComponent('permanent_stat_change')) {
       game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
+      applyItemStartResourceHooks(game, this.unit, item);
       game.actionLog.doAction(new ApplyStatChangesAction(
         this.unit,
         item.getNumericComponentMap('permanent_stat_change'),
       ));
-      finishCoreItemUse(this.unit, item, [this.unit], new Map(), true);
+      finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
     }
     this.buildMenu();
   }
@@ -3565,13 +3622,14 @@ export class ItemTargetingState extends MapState {
       }
       if (options.length === 0) return;
       if (options.length === 1) {
+        applyItemStartResourceHooks(game, unit, this.item);
         performPromotionOrClassChange(
           defender,
           options[0],
           game,
           isClassChange ? 'change_class' : 'promote',
         );
-        finishCoreItemUse(unit, this.item, [defender]);
+        finishCoreItemUse(unit, this.item, [defender], new Map(), false, true);
         game.memory.delete('item_use_item');
         game.highlight.clear();
         game.state.back();
@@ -3661,8 +3719,9 @@ export class ItemTargetingState extends MapState {
           activeItem.hasComponent('event_after_combat') ||
           activeItem.hasComponent('event_after_combat_on_hit') ||
           activeItem.hasComponent('event_after_combat_even_miss'))) {
+        applyItemStartResourceHooks(game, unit, activeItem);
         queueDirectItemUseEvents(game, unit, activeItem, target);
-        finishCoreItemUse(unit, activeItem);
+        finishCoreItemUse(unit, activeItem, [], new Map(), false, true);
         game.memory.delete('item_use_item');
         game.highlight.clear();
         if (game.eventManager?.hasActiveEvents()) game.state.change('event');
@@ -3954,8 +4013,9 @@ export class PromotionChoiceState extends State {
       const baseUse = game.memory.get('promotion_choice_origin') === 'base_use';
       if (target && item && actor) {
         if (baseUse) game.actionLog.doAction(new MarkActionGroupStart(actor, 'item_use'));
+        applyItemStartResourceHooks(game, actor, item);
         performPromotionOrClassChange(target, newKlass, game, source);
-        finishCoreItemUse(actor, item, [target], new Map(), baseUse);
+        finishCoreItemUse(actor, item, [target], new Map(), baseUse, true);
       }
       this.cleanupMemory();
       game.memory.delete('item_use_item');
@@ -5111,8 +5171,6 @@ export class CombatState extends State {
       game.state.back();
       return;
     }
-    applyCombatItemStartHooks(game, attackItem);
-
     const targetGroup = resolveCombatTargetGroup(game, attacker, attackItem, defender);
     const primaryDefender = targetGroup.mainDefender;
     const splashDefenders = targetGroup.splashDefenders;
@@ -5136,6 +5194,15 @@ export class CombatState extends State {
       attacker.strikePartner = attackerPartner;
       primaryDefender.strikePartner = defenderPartner;
     }
+    applyCombatParticipantItemStartHooks(
+      game,
+      attacker,
+      attackItem,
+      [
+        ...(primaryDefender ? [primaryDefender] : []),
+        ...splashDefenders,
+      ],
+    );
 
     // Read and consume the combat script (set by interact_unit)
     const script = game.combatScript;
@@ -7634,11 +7701,17 @@ export class TurnChangeState extends State {
     const turnCount = game.phase.turnCount;
     const levelNid = game.currentLevel?.nid;
 
-    applySkillTurnHooks(
-      game,
-      game.getTeamUnits(currentTeam).filter((unit: UnitObject) => unit.position),
-      'upkeep',
+    const upkeepUnits = game.getTeamUnits(currentTeam).filter(
+      (candidate: UnitObject) => candidate.position,
     );
+    for (const unit of upkeepUnits) {
+      applySkillTurnHooks(game, [unit], 'upkeep');
+      applyItemUpkeepResourceHooks(
+        game,
+        unit,
+        getSkillAbilityOptions(game, unit).map((ability) => ability.item),
+      );
+    }
 
     // Clear highlights before clearing the state stack (the clear() calls
     // finish() not end(), so FreeState.end() won't run to clean up highlights)
@@ -7759,6 +7832,11 @@ export class InitiativeUpkeepState extends State {
     }
 
     applySkillTurnHooks(game, [unit], 'upkeep');
+    applyItemUpkeepResourceHooks(
+      game,
+      unit,
+      getSkillAbilityOptions(game, unit).map((ability) => ability.item),
+    );
 
     // Pop self
     game.state.back();
@@ -13927,7 +14005,6 @@ export class EventState extends State {
           // Immediate mode: resolve combat without visual animation
           const attackItem = iuAbilityItem ?? iuAttacker.items.find((i: ItemObject) => i.isWeapon());
           if (attackItem) {
-            applyCombatItemStartHooks(game, attackItem);
             const targetGroup = resolveCombatTargetGroup(game, iuAttacker, attackItem, iuDefender);
             const grouped = !targetGroup.mainDefender || targetGroup.splashDefenders.length > 0;
             const defItem = targetGroup.mainDefender
@@ -13938,6 +14015,15 @@ export class EventState extends State {
                 game, iuAttacker, targetGroup.mainDefender, attackItem, defItem,
               );
             }
+            applyCombatParticipantItemStartHooks(
+              game,
+              iuAttacker,
+              attackItem,
+              [
+                ...(targetGroup.mainDefender ? [targetGroup.mainDefender] : []),
+                ...targetGroup.splashDefenders,
+              ],
+            );
             const rngMode2 = game.db.getConstant('rng_mode', 'true_hit') as any;
             const mc = new MapCombat(
               iuAttacker, attackItem, targetGroup.representative, defItem,

@@ -340,6 +340,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 58 real uses of EotF's evaluated minimum/maximum range,
   smart/ally blast, all-unit and big-cleave AoE, and tile-unless-ally targeting
   across player targeting, counters, AI, threat ranges, and UI.
+- [x] Preserve all 107 real uses of EotF's stack, evaluated stack/HP, cooldown,
+  and starting-cooldown item resources across availability, combat, direct use,
+  upkeep, chapter cleanup, save data, and undo/redo.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

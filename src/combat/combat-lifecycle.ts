@@ -23,13 +23,16 @@ import {
   SwapUnitsAction,
   AddSkillAction,
   SetSkillDataAction,
-  GainMoneyAction,
   GiveItemAction,
   RegisterItemTreeAction,
   ResetAction,
   SetItemUsesAction,
   SetCurrentHpAction,
 } from '../engine/action';
+import {
+  applyItemEndResourceHooks,
+  applyItemStartResourceHooks,
+} from './item-resource-lifecycle';
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import {
@@ -1408,6 +1411,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         .filter((candidate) => candidate.hit)
         .map((candidate) => [candidate.defender.nid, candidate]),
     ).values()];
+    applied += applyItemEndResourceHooks(game, firstMark.attacker, strike.item);
     if (game.board) {
       for (const componentNid of strike.item.components.keys()) {
         const marks = componentNid === 'shove_on_end_combat' ||
@@ -1562,13 +1566,10 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
 /** Apply item start-combat resource hooks once for the initiating item. */
 export function applyCombatItemStartHooks(
   game: CombatLifecycleGame,
+  unit: UnitObject,
   item: ItemObject,
 ): number {
-  if (!game.actionLog) return 0;
-  const goldCost = item.getComponent<number>('gold_cost');
-  if (typeof goldCost !== 'number' || goldCost <= 0) return 0;
-  game.actionLog.doAction(new GainMoneyAction(-goldCost, game.currentParty));
-  return 1;
+  return applyItemStartResourceHooks(game, unit, item);
 }
 
 /**

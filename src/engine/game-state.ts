@@ -53,6 +53,7 @@ import { Recordkeeper } from './records';
 import { GameQueryEngine } from './query-engine';
 import { TargetSystem } from './target-system';
 import { getStartingClassSkillNids } from './learned-skills';
+import { applyItemEndChapterResourceHooks } from '../combat/item-resource-lifecycle';
 
 /**
  * GameState — The god object holding references to every major subsystem
@@ -350,6 +351,22 @@ export class GameState {
   }
 
   cleanUpLevel(): void {
+    const chapterItems = new Set<ItemObject>(this.items.values());
+    for (const unit of this.units.values()) {
+      for (const item of unit.items) chapterItems.add(item);
+    }
+    for (const party of this.parties.values()) {
+      for (const item of party.convoy) chapterItems.add(item);
+    }
+    const resetItems = new Set<ItemObject>();
+    const resetItemTree = (item: ItemObject): void => {
+      if (resetItems.has(item)) return;
+      resetItems.add(item);
+      applyItemEndChapterResourceHooks(item);
+      for (const child of item.subitems) resetItemTree(child);
+    };
+    for (const item of [...chapterItems]) resetItemTree(item);
+
     // Remove all units from the board
     for (const unit of this.units.values()) {
       if (unit.position && this.board) {

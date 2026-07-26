@@ -31,6 +31,7 @@ import {
   skillConditionActive,
   type AlternateSplash,
 } from './skill-system';
+import { itemResourcesAvailable } from './item-resource-lifecycle';
 
 export type TargetPosition = [number, number];
 
@@ -263,7 +264,7 @@ function itemComponentsAvailable(
   if (typeof hpCost === 'number' && unit.currentHp <= hpCost) return false;
   const goldCost = components.get('gold_cost');
   if (typeof goldCost === 'number' && Number(game?.getMoney?.() ?? 0) < goldCost) return false;
-  if (components.has('cooldown') && Number(item.data.get('cooldown') ?? 0) !== 0) return false;
+  if (!itemResourcesAvailable(unit, item, components, game)) return false;
 
   const mana = Number((unit as any).currentMana ?? db.getEquation('MANA') ?? 0);
   const manaCost = components.get('mana_cost');
