@@ -1190,11 +1190,31 @@ export class CombatPhaseSolver {
       : 1;
 
     // Check for skill-based ordering
+    const attackerSkillContext = {
+      game: this.game,
+      item: attackItem,
+      target: defender,
+      item2: defenseItem,
+      mode: 'attack',
+    };
+    const defenderSkillContext = {
+      game: this.game,
+      item: defenseItem,
+      target: attacker,
+      item2: attackItem,
+      mode: 'defense',
+    };
     const defenderHasVantage = defenderCanCounter && defenseItem &&
-      skillSystem.vantage(defender) && !skillSystem.disvantage(attacker);
-    const attackerHasDesperation = skillSystem.desperation(attacker);
-    const attackerHasDisvantage = skillSystem.disvantage(attacker) &&
-      !skillSystem.vantage(attacker);
+      skillSystem.vantage(defender, defenderSkillContext) &&
+      !skillSystem.disvantage(attacker, attackerSkillContext);
+    const attackerHasDesperation = skillSystem.desperation(
+      attacker,
+      attackerSkillContext,
+    );
+    const attackerHasDisvantage = skillSystem.disvantage(
+      attacker,
+      attackerSkillContext,
+    ) && !skillSystem.vantage(attacker, attackerSkillContext);
 
     // Check ignoreDyingInCombat (miracle)
     const attackerMiracle = skillSystem.ignoreDyingInCombat(attacker);

@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 67 unverified
+- 270 skill-component NIDs; 62 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -147,11 +147,8 @@ focused browser coverage.
 | change_buy_price | 1 | reference-only |
 | change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
-| close_counter | 8 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
-| desperation | 16 | hook-and-reference |
 | display_skill_icon_in_combat | 12 | consumed |
-| distant_counter | 19 | hook-and-reference |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
 | enemy_exp_multiplier | 1 | hook-and-reference |
@@ -193,7 +190,6 @@ focused browser coverage.
 | pcc_static | 3 | unreferenced |
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |
-| resist_follow_up | 1 | hook-only |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
 | smart_oversplash | 3 | hook-and-reference |
@@ -204,7 +200,6 @@ focused browser coverage.
 | unit_anim | 54 | unreferenced |
 | unit_flickering_tint | 54 | consumed |
 | unselectable | 15 | hook-and-reference |
-| vantage | 10 | hook-and-reference |
 | wexp_multiplier | 1 | hook-and-reference |
 | witch_warp | 2 | unreferenced |
 | witch_warp_expression | 6 | consumed |
