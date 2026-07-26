@@ -615,7 +615,7 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.pendingProcCues = dedupeProcCues([
       ...preProcCues('attack_pre_proc'),
       ...preProcCues('defense_pre_proc'),
-      ...displaySkillCues([this.attacker, this.defender]),
+      ...displaySkillCues([this.attacker, this.defender], this.game),
     ]);
     if (this.pendingProcCues.length > 0) this.startNextProcCue('pre_proc');
     else this.transition('begin_phase');

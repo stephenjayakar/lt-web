@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 30 unverified
+- 270 skill-component NIDs; 26 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -145,7 +145,6 @@ focused browser coverage.
 | change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
-| display_skill_icon_in_combat | 12 | consumed |
 | enemy_oversplash | 2 | hook-and-reference |
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
@@ -155,7 +154,6 @@ focused browser coverage.
 | has_tags | 82 | hook-and-reference |
 | hidden_if_inactive | 122 | consumed |
 | hide_aura | 96 | reference-only |
-| hide_skill_icon_in_combat | 4 | consumed |
 | ignore_damage | 22 | reference-only |
 | is_terrain | 9 | unreferenced |
 | miracle | 1 | consumed |
@@ -169,8 +167,6 @@ focused browser coverage.
 | smart_oversplash | 3 | hook-and-reference |
 | stack | 224 | consumed |
 | TrueMiracle | 19 | reference-only |
-| unit_anim | 54 | unreferenced |
-| unit_flickering_tint | 54 | consumed |
 
 ## Used project-local Python components
 

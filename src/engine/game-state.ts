@@ -45,10 +45,11 @@ import { AudioManager } from '../audio/audio-manager';
 import { HUD } from '../ui/hud';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
-import { isCantoSkill } from '../combat/skill-system';
+import { activeUnitAnimations, isCantoSkill } from '../combat/skill-system';
 import { refreshAuras } from '../combat/aura-system';
 import { refreshPositionStatuses } from './position-status-system';
 import { MapSprite } from '../rendering/map-sprite';
+import { MapAnimation } from '../rendering/map-animation';
 import { SupportController } from './support-system';
 import { InitiativeTracker } from './initiative';
 import { PartyObject } from './party';
@@ -1381,6 +1382,47 @@ export class GameState {
     if (!this.board) return;
     refreshPositionStatuses(this.units.values(), this.board, this.db, this);
     this.refreshAuras();
+  }
+
+  /** Rebuild derived, looping UnitAnim overlays without persisting them. */
+  syncSkillMapAnimations(): void {
+    if (!this.tilemap) return;
+    const desired = new Map<string, { unit: UnitObject; nid: string }>();
+    for (const unit of this.units.values()) {
+      if (!unit.position || unit.isDead()) continue;
+      for (const entry of activeUnitAnimations(unit, this)) {
+        desired.set(entry.key, { unit, nid: entry.nid });
+      }
+    }
+    this.tilemap.highAnimations = this.tilemap.highAnimations.filter(
+      (animation: MapAnimation) =>
+        !animation.skillAnimationKey || desired.has(animation.skillAnimationKey),
+    );
+    const existing = new Set(
+      this.tilemap.highAnimations
+        .map((animation: MapAnimation) => animation.skillAnimationKey)
+        .filter((key: string | null): key is string => !!key),
+    );
+    for (const [key, entry] of desired) {
+      if (existing.has(key) || !entry.unit.position) continue;
+      const prefab = this.db.mapAnimations.get(entry.nid);
+      if (!prefab) continue;
+      const animation = new MapAnimation(
+        prefab,
+        entry.unit.position[0],
+        entry.unit.position[1],
+        { loop: true },
+      );
+      animation.skillAnimationKey = key;
+      animation.followUnit = entry.unit;
+      this.tilemap.highAnimations.push(animation);
+      void this.resources.loadImage(`resources/animations/${entry.nid}.png`)
+        .then((image) => animation.setImage(image))
+        .catch(() => {
+          animation.done = true;
+          console.warn(`UnitAnim: no sprite sheet for "${entry.nid}"`);
+        });
+    }
   }
 
   // ========================================================================
