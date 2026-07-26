@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 174 unverified
+- 185 item-component NIDs; 167 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -29,7 +29,6 @@ focused browser coverage.
 | all_allies_aoe | 5 | hook-and-reference |
 | all_allies_except_self_aoe | 1 | hook-and-reference |
 | all_enemies_aoe | 2 | hook-and-reference |
-| all_units_aoe | 2 | project-local-or-unknown |
 | allow_less_than_max_targets | 6 | hook-and-reference |
 | allow_same_target | 1 | hook-and-reference |
 | ally_blast_aoe | 16 | hook-and-reference |
@@ -61,18 +60,13 @@ focused browser coverage.
 | effective_damage | 154 | hook-and-reference |
 | effective_tag | 7 | hook-and-reference |
 | empty_tile_target_restrict | 71 | hook-and-reference |
-| enemy_big_cleave_aoe | 1 | project-local-or-unknown |
 | enemy_blast_aoe | 53 | hook-and-reference |
 | enemy_cleave_aoe | 12 | hook-and-reference |
 | enemy_line_aoe | 20 | hook-and-reference |
 | equation_heal | 3 | hook-and-reference |
-| eval_ally_blast_aoe | 4 | project-local-or-unknown |
 | eval_available | 197 | hook-and-reference |
 | eval_heal | 4 | project-local-or-unknown |
 | eval_hp_cost | 4 | hook-only |
-| eval_max_range | 24 | project-local-or-unknown |
-| eval_min_range | 3 | project-local-or-unknown |
-| eval_smartblast_aoe | 20 | project-local-or-unknown |
 | eval_special_range | 37 | hook-and-reference |
 | eval_stack_cost | 1 | project-local-or-unknown |
 | eval_target_restrict | 10 | hook-only |
@@ -178,7 +172,6 @@ focused browser coverage.
 | target_enemy | 785 | hook-and-reference |
 | target_specific_tile | 12 | hook-and-reference |
 | target_tile | 208 | hook-and-reference |
-| target_tile_unless_ally | 4 | project-local-or-unknown |
 | target_unit | 72 | hook-and-reference |
 | text_color | 2 | unreferenced |
 | thief_staff | 1 | project-local-or-unknown |
@@ -295,7 +288,7 @@ focused browser coverage.
 | eval_galeforce | 3 | project-local-or-unknown |
 | eval_hit | 21 | hook-and-reference |
 | eval_max_range | 7 | consumed |
-| eval_min_range | 1 | unreferenced |
+| eval_min_range | 1 | consumed |
 | eval_range | 3 | unreferenced |
 | eval_regeneration | 11 | project-local-or-unknown |
 | eval_upkeep_damage | 5 | project-local-or-unknown |

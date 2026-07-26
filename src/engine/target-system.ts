@@ -53,7 +53,7 @@ export class TargetSystem {
   ): TargetPosition[] {
     if (!origin || !available(unit, item, this.db, this.game)) return [];
 
-    const minRange = item.getMinRange();
+    const minRange = item.getMinRange(unit, this.game);
     let maxRange = item.hasComponent('global_range')
       ? 99
       : modifiedMaximumRange(unit, item, this.game);
@@ -104,6 +104,7 @@ export class TargetSystem {
     const result = splash(unit, item, position, {
       board: this.board,
       db: this.db,
+      game: this.game,
       evaluateRangeEquation: (equationNid) => {
         const expression = this.db.getEquation(equationNid) ?? equationNid;
         return evaluateEquation(expression, unit, { db: this.db, item });

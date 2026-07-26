@@ -502,7 +502,7 @@ export class InfoMenuState extends State {
       this.drawBattleStat(surf, 'Avoid', String(avo), rightX + halfW, bsY + 12);
 
       // Range
-      const minR = weapon.getMinRange();
+      const minR = weapon.getMinRange(unit, game);
       const maxR = modifiedMaximumRange(unit, weapon, game);
       const rangeStr = minR === maxR ? String(minR) : `${minR}-${maxR}`;
       this.drawBattleStat(surf, 'Rng', rangeStr, rightX + halfW, bsY + 24);

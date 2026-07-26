@@ -280,7 +280,7 @@ export class PathSystem {
   private getAttackRange(unit: UnitObject): [number, number] {
     for (const item of unit.items) {
       if (item.isWeapon()) {
-        return [item.getMinRange(), item.getMaxRange()];
+        return [item.getMinRange(unit, this.game), item.getMaxRange(unit, this.game)];
       }
     }
     return [0, 0];

@@ -918,7 +918,8 @@ export class AIController {
     let bestAction: AIAction | null = null;
 
     for (const item of items) {
-      const isStaff = item.isSpell() || (item.targetsAllies() && item.getMaxRange() > 0);
+      const isStaff = item.isSpell() ||
+        (item.targetsAllies() && item.getMaxRange(unit, this.gameRef) > 0);
       const isSelfHeal = !isStaff && item.isHealing();
 
       if (isStaff) {
@@ -1284,7 +1285,7 @@ export class AIController {
         continue;
       }
       const dist = this.distance(move, targetPos);
-      if (dist >= item.getMinRange() &&
+      if (dist >= item.getMinRange(unit, this.gameRef) &&
           dist <= modifiedMaximumRange(unit, item, this.gameRef)) positions.push(move);
     }
 
@@ -1344,7 +1345,7 @@ export class AIController {
   private findCounterWeapon(defender: UnitObject, dist: number): ItemObject | null {
     for (const item of defender.items) {
       if (!item.isWeapon() || !itemAvailable(defender, item, this.db, this.gameRef)) continue;
-      if (dist >= item.getMinRange() &&
+      if (dist >= item.getMinRange(defender, this.gameRef) &&
           dist <= modifiedMaximumRange(defender, item, this.gameRef)) {
         return item;
       }

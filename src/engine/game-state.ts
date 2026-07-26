@@ -673,6 +673,7 @@ export class GameState {
       this.db.supportRanks,
       this.db.supportConstants,
       this.db.affinities,
+      this,
     );
     this.supports.initPairs();
 
