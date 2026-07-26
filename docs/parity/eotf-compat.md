@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 185 unverified
+- 270 skill-component NIDs; 182 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -266,7 +266,7 @@ focused browser coverage.
 | grounded | 10 | hook-only |
 | growth_change | 22 | hook-and-reference |
 | growth_change_expression | 3 | project-local-or-unknown |
-| has_tags | 82 | consumed |
+| has_tags | 82 | hook-and-reference |
 | heal_after_follow_up | 1 | project-local-or-unknown |
 | hidden | 678 | consumed |
 | hidden_if_inactive | 122 | consumed |
@@ -310,8 +310,6 @@ focused browser coverage.
 | proc_rate | 12 | consumed |
 | purge_ailments | 1 | project-local-or-unknown |
 | recoil | 9 | unreferenced |
-| redirect_damage | 3 | project-local-or-unknown |
-| redirect_partial_damage | 2 | project-local-or-unknown |
 | regeneration | 9 | reference-only |
 | rescue_bonus | 3 | project-local-or-unknown |
 | resist | 37 | hook-and-reference |
@@ -326,7 +324,6 @@ focused browser coverage.
 | stack | 224 | consumed |
 | start_and_end_event_initiate | 8 | project-local-or-unknown |
 | stat_change | 418 | hook-and-reference |
-| stat_change_at_apply_expression | 8 | project-local-or-unknown |
 | stat_change_expression | 84 | hook-only |
 | stat_multiplier | 34 | hook-only |
 | subtle_stat_change | 3 | hook-only |

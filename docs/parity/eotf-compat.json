@@ -3037,7 +3037,7 @@
       {
         "nid": "has_tags",
         "uses": 82,
-        "structuralStatus": "consumed",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "unverified"
       },
       {
@@ -3368,13 +3368,13 @@
         "nid": "redirect_damage",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "redirect_partial_damage",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "regeneration",
@@ -3506,7 +3506,7 @@
         "nid": "stat_change_at_apply_expression",
         "uses": 8,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change_expression",

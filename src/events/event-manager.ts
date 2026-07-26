@@ -1085,20 +1085,83 @@ function translateListComprehensions(expression: string): string {
 
 function translateFloorDivision(expression: string): string {
   let translated = expression;
-  for (let pass = 0; pass < 10 && translated.includes('//'); pass++) {
-    const topLevel = splitAtTopLevel(translated, '//');
-    if (topLevel.length === 2 &&
-        splitAtTopLevel(translated, ' if ').length === 1 &&
-        /^[\w.()[\]'"]+$/.test(topLevel[1].trim())) {
-      translated = `Math.floor((${topLevel[0].trim()}) / (${topLevel[1].trim()}))`;
-      continue;
+  for (let pass = 0; pass < 20; pass++) {
+    const operator = translated.indexOf('//');
+    if (operator < 0) break;
+
+    // Find the operands at the operator's current parenthesis depth. This
+    // avoids a regex greedily consuming an enclosing call such as
+    // min(game.get_unit(...).get_stat('MAG') // 2, 20).
+    let leftStart = 0;
+    let depth = 0;
+    for (let index = operator - 1; index >= 0; index--) {
+      const char = translated[index];
+      if (
+        depth === 0 &&
+        (translated.slice(Math.max(0, index - 5), index + 1) === ' else ' ||
+          translated.slice(Math.max(0, index - 3), index + 1) === ' if ' ||
+          translated.slice(Math.max(0, index - 4), index + 1) === ' and ' ||
+          translated.slice(Math.max(0, index - 3), index + 1) === ' or ')
+      ) {
+        leftStart = index + 1;
+        break;
+      }
+      if (char === ')' || char === ']' || char === '}') {
+        depth++;
+      } else if (char === '(' || char === '[' || char === '{') {
+        if (depth > 0) depth--;
+        else {
+          leftStart = index + 1;
+          break;
+        }
+      } else if (
+        depth === 0 &&
+        (char === ',' || char === '?' || char === ':' ||
+          /[+*%<>=&|]/.test(char))
+      ) {
+        leftStart = index + 1;
+        break;
+      }
     }
-    const next = translated.replace(
-      /([\w.()[\]'"]+)\s*\/\/\s*([\w.()[\]'"]+)/,
-      'Math.floor(($1) / ($2))',
-    );
-    if (next === translated) break;
-    translated = next;
+
+    let rightEnd = translated.length;
+    depth = 0;
+    for (let index = operator + 2; index < translated.length; index++) {
+      const char = translated[index];
+      if (char === '(' || char === '[' || char === '{') {
+        depth++;
+      } else if (char === ')' || char === ']' || char === '}') {
+        if (depth > 0) depth--;
+        else {
+          rightEnd = index;
+          break;
+        }
+      } else if (
+        depth === 0 &&
+        (char === ',' || char === '?' || char === ':' ||
+          /[+*%<>=&|]/.test(char))
+      ) {
+        rightEnd = index;
+        break;
+      } else if (
+        depth === 0 &&
+        (translated.startsWith(' if ', index) ||
+          translated.startsWith(' else ', index) ||
+          translated.startsWith(' and ', index) ||
+          translated.startsWith(' or ', index))
+      ) {
+        rightEnd = index;
+        break;
+      }
+    }
+
+    const left = translated.slice(leftStart, operator).trim();
+    const right = translated.slice(operator + 2, rightEnd).trim();
+    if (!left || !right) break;
+    translated =
+      translated.slice(0, leftStart) +
+      `Math.floor((${left}) / (${right}))` +
+      translated.slice(rightEnd);
   }
   return translated;
 }
@@ -1338,6 +1401,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       nid: skill.nid,
       name: skill.name,
       desc: skill.desc,
+      owner_nid: skill.ownerNid ?? null,
+      initiator_nid: skill.initiatorNid ?? null,
       data: wrapMapping(skill.data),
       components,
     };
@@ -1863,6 +1928,20 @@ function evaluateWithJsFallback(
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
   const expressionLocals = new Map(ctx.localArgs ?? []);
+  if (expressionLocals.has('skill')) {
+    expressionLocals.set(
+      'skill',
+      evalScope.wrapSkill?.(expressionLocals.get('skill')) ??
+        expressionLocals.get('skill'),
+    );
+  }
+  if (expressionLocals.has('item2')) {
+    expressionLocals.set(
+      'item2',
+      evalScope.wrapItem?.(expressionLocals.get('item2')) ??
+        expressionLocals.get('item2'),
+    );
+  }
   const playback = expressionLocals.get('playback');
   if (Array.isArray(playback)) {
     expressionLocals.set('playback', playback.map((mark: any) => {

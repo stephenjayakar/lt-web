@@ -8,6 +8,7 @@ import {
   enemyWexpMultiplier,
   checkEnemy,
   expMultiplier,
+  initializeSkillData,
   wexpMultiplier,
 } from './skill-system';
 
@@ -30,6 +31,7 @@ function addStatus(
   statusNid: string | undefined,
   db: Database,
   initiator?: UnitObject,
+  game?: any,
 ): void {
   if (!statusNid || target.skills.some((skill) => skill.nid === statusNid)) return;
   const prefab = db.skills.get(statusNid);
@@ -37,11 +39,12 @@ function addStatus(
   const skill = new SkillObject(prefab);
   // Python StatusOnHit: action.AddSkill(target, value, unit) — initiator is attacker.
   if (initiator) skill.initiatorNid = initiator.nid;
+  initializeSkillData(skill, target, game);
   target.skills.push(skill);
 }
 
 /** Apply item on-hit/end-combat status hooks after the strike sequence has resolved. */
-function applyStrikeStatuses(strikes: CombatStrike[], db: Database): void {
+function applyStrikeStatuses(strikes: CombatStrike[], db: Database, game?: any): void {
   for (const strike of strikes) {
     if (!strike.hit) continue;
     for (const [componentNid, value] of strike.item.components) {
@@ -63,6 +66,7 @@ function applyStrikeStatuses(strikes: CombatStrike[], db: Database): void {
       strike.item.getComponent<string>('status_after_combat_on_hit'),
       db,
       strike.attacker,
+      game,
     );
   }
 }
@@ -297,6 +301,7 @@ export function applyCombatComponents(
   attackerDead: boolean,
   defenderDead: boolean,
   db: Database,
+  game?: any,
 ): CombatComponentResults {
   return applyGroupCombatComponents(
     attacker,
@@ -307,6 +312,7 @@ export function applyCombatComponents(
     attackerDead,
     new Set(defenderDead ? [defender] : []),
     db,
+    game,
   );
 }
 
@@ -320,8 +326,9 @@ export function applyGroupCombatComponents(
   attackerDead: boolean,
   deadDefenders: Set<UnitObject>,
   db: Database,
+  game?: any,
 ): CombatComponentResults {
-  applyStrikeStatuses(strikes, db);
+  applyStrikeStatuses(strikes, db, game);
   const attackerWexp = grantGroupWexp(
     attacker, attackItem, mainDefender, strikes, attackerDead, deadDefenders, db,
   );
