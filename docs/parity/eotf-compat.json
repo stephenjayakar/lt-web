@@ -2636,13 +2636,13 @@
         "nid": "empower_heal",
         "uses": 10,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "empower_heal_received",
         "uses": 2,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "empower_heal_received_multiplier",
@@ -3158,7 +3158,7 @@
         "nid": "live_to_serve",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "locktouch",

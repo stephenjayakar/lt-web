@@ -358,7 +358,8 @@ export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): nu
   for (const skill of unit.skills) {
     const raw = skill.getComponent<unknown>('empower_heal');
     if (raw === undefined) continue;
-    if (!skillConditionActive(skill, unit, { game, target })) continue;
+    const localArgs = new Map<string, unknown>([['skill', skill]]);
+    if (!evaluatedSkillActive(skill, unit, { game, target }, localArgs)) continue;
     const value = typeof raw === 'number'
       ? raw
       : evaluateExpression(String(raw), {
@@ -368,7 +369,7 @@ export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): nu
         position: unit.position ?? undefined,
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
-        localArgs: new Map([['skill', skill]]),
+        localArgs,
       });
     const numeric = Number(value);
     if (Number.isFinite(numeric)) total += Math.trunc(numeric);
@@ -385,7 +386,13 @@ function healingSkillValue(
 ): number | null {
   const raw = skill.getComponent<unknown>(component);
   if (raw === undefined) return null;
-  if (!skillConditionActive(skill, owner, { game, target: other })) return null;
+  const localArgs = new Map<string, unknown>([['skill', skill]]);
+  if (!evaluatedSkillActive(
+    skill,
+    owner,
+    { game, target: other },
+    localArgs,
+  )) return null;
   const value = typeof raw === 'number'
     ? raw
     : evaluateExpression(String(raw), {
@@ -395,7 +402,7 @@ function healingSkillValue(
       position: owner.position ?? undefined,
       gameVars: game?.gameVars,
       levelVars: game?.levelVars,
-      localArgs: new Map([['skill', skill]]),
+      localArgs,
     });
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;

@@ -26,6 +26,7 @@ import {
   setItemComponentEntriesEvaluator,
 } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
+import { evaluateEquation } from './combat-calcs';
 import {
   alternateSplash,
   additiveHealAmount,
@@ -88,6 +89,12 @@ export function healAmount(
   const unrestricted = item.getComponent<unknown>('heal_no_target_restrict');
   if (typeof unrestricted === 'number') {
     return Math.trunc(additiveHealAmount(unrestricted, target, unit, game));
+  }
+  const equationNid = item.getComponent<unknown>('equation_heal');
+  if (typeof equationNid === 'string') {
+    const expression = game.db.getEquation(equationNid) ?? equationNid;
+    const base = evaluateEquation(expression, unit, { db: game.db, item });
+    return Math.trunc(additiveHealAmount(base, target, unit, game));
   }
   const direct = item.getComponent<unknown>('heal');
   return typeof direct === 'number'

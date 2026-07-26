@@ -162,7 +162,8 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 - [x] Pre/post combat: all six `skill_before_combat` grants,
   `post_combat_splash`/`post_combat_splash_aoe`, `live_to_serve`, and all
   project-used kill/attack/combat/miss/damage skill-grant hooks, including
-  immediate later-strike visibility, charge use, and turnwheel restoration.
+  condition-aware outgoing/received healing power, immediate later-strike
+  visibility, charge use, and turnwheel restoration.
 - [x] Combat math: `armsthrift`, `armsthrift_always`, `dynamic_crit_accuracy`,
   all five `all_brave` skills, all 36 used alternate skill formula components
   (including additive critical damage), all 13 generic attack/defense proc
