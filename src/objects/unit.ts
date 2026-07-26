@@ -9,7 +9,11 @@ import {
   dispatchHoldHooks,
   statChange as itemStatChange,
 } from '../combat/item-system';
-import { statChange as skillStatChange } from '../combat/skill-system';
+import {
+  canUnlock as skillCanUnlock,
+  noTrade as skillNoTrade,
+  statChange as skillStatChange,
+} from '../combat/skill-system';
 
 /** Lazy game ref so unit equip hooks can reach the db without a circular import. */
 let _getGameForUnits: (() => any) | null = null;
@@ -533,7 +537,7 @@ export class UnitObject {
   canUnlock(region: any): boolean {
     const game = gameForUnits();
     if (!game?.db) return false;
-    if (this.skills.some((skill) => skill.hasComponent('locktouch'))) return true;
+    if (skillCanUnlock(this, region, game)) return true;
     return this.getAllItems().some((item) =>
       itemAvailable(this, item, game.db, game) &&
       itemCanUnlock(this, item, region, game),
@@ -542,7 +546,8 @@ export class UnitObject {
 
   /** Get adjacent ally positions for trading. */
   canTrade(): boolean {
-    return !this.hasTraded && !this.hasAttacked;
+    return !this.hasTraded && !this.hasAttacked &&
+      !skillNoTrade(this, gameForUnits());
   }
 
   // ------------------------------------------------------------------

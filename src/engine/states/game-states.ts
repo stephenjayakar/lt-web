@@ -241,6 +241,7 @@ import {
   hasCanto as unitHasCanto,
   cantoMovement,
   canSelect,
+  canTradeWith,
   hasDrainingCharge,
   modifiedMaximumRange,
   modifiedMinimumRange,
@@ -2290,7 +2291,8 @@ export class MenuState extends State {
 
     // Trade option — if adjacent allied unit exists and unit hasn't traded/attacked
     if (unit.canTrade()) {
-      const adjacentAllies = getAdjacentAllies(unit, ux, uy);
+      const adjacentAllies = getAdjacentAllies(unit, ux, uy).filter((ally) =>
+        canTradeWith(unit, ally, game.db, game));
       if (adjacentAllies.length > 0) {
         options.push({ label: 'Trade', value: 'trade', enabled: true });
       }
@@ -4166,7 +4168,11 @@ export class TradeState extends State {
       return;
     }
 
-    this.adjacentAllies = getAdjacentAllies(unit, unit.position[0], unit.position[1]);
+    this.adjacentAllies = getAdjacentAllies(
+      unit,
+      unit.position[0],
+      unit.position[1],
+    ).filter((ally) => canTradeWith(unit, ally, game.db, game));
     if (this.adjacentAllies.length === 0) {
       game.state.back();
       return;

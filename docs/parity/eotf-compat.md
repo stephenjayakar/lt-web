@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 42 unverified
+- 270 skill-component NIDs; 37 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -142,7 +142,6 @@ focused browser coverage.
 | NID | Uses | Engine audit status |
 |---|---|---|
 | armsthrift | 3 | consumed |
-| cannot_trade | 2 | unreferenced |
 | change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
@@ -158,11 +157,8 @@ focused browser coverage.
 | hidden_if_inactive | 122 | consumed |
 | hide_aura | 96 | reference-only |
 | hide_skill_icon_in_combat | 4 | consumed |
-| ignore_alliances | 9 | hook-and-reference |
 | ignore_damage | 22 | reference-only |
-| ignore_rescue_penalty | 8 | hook-and-reference |
 | is_terrain | 9 | unreferenced |
-| locktouch | 6 | consumed |
 | miracle | 1 | consumed |
 | negate | 3 | consumed |
 | negate_tags | 13 | consumed |
@@ -180,7 +176,6 @@ focused browser coverage.
 | TrueMiracle | 19 | reference-only |
 | unit_anim | 54 | unreferenced |
 | unit_flickering_tint | 54 | consumed |
-| unselectable | 15 | hook-and-reference |
 | witch_warp | 2 | unreferenced |
 | witch_warp_expression | 6 | consumed |
 

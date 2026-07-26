@@ -20,6 +20,7 @@ import { viewport } from '../viewport';
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
 import type { LoreEntry } from '../../data/types';
+import { canTradeWith } from '../../combat/skill-system';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -1963,9 +1964,13 @@ export class BaseManageState extends State {
   private buildOptionMenu(): void {
     const game = getGame();
     const unit = game.units.get(this.selectedNid ?? '');
+    const tradePartners = unit
+      ? this.partyUnits().filter((candidate: any) =>
+          candidate !== unit && canTradeWith(unit, candidate, game.db, game))
+      : [];
     const hasBaseUseItem = !!unit?.items.some((item: any) => item.hasComponent('usable_in_base'));
     const options: MenuOption[] = [
-      { label: 'Trade', value: 'trade', enabled: this.partyUnits().length > 1, description: 'Trade items with an ally.' },
+      { label: 'Trade', value: 'trade', enabled: tradePartners.length > 0, description: 'Trade items with an ally.' },
       { label: 'Supply', value: 'supply', enabled: !!game.gameVars.get('_convoy'), description: 'Store and retrieve items.' },
       { label: 'Use', value: 'use', enabled: hasBaseUseItem, description: 'Use a base-compatible item.' },
       { label: 'Back', value: 'back', enabled: true, description: 'Return.' },
@@ -1975,8 +1980,11 @@ export class BaseManageState extends State {
   }
 
   private buildPartnerMenu(): void {
+    const game = getGame();
+    const unit = game.units.get(this.selectedNid ?? '');
     const options: MenuOption[] = this.partyUnits()
-      .filter((u: any) => u.nid !== this.selectedNid)
+      .filter((candidate: any) =>
+        !!unit && candidate !== unit && canTradeWith(unit, candidate, game.db, game))
       .map((u: any) => ({ label: u.name, value: u.nid, enabled: true, description: 'Trade with this unit.' }));
     options.push({ label: 'Back', value: 'back', enabled: true, description: 'Return.' });
     this.partnerMenu = new ChoiceMenu(options, 100, 40);

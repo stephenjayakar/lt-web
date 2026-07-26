@@ -9,8 +9,8 @@
     "dispatcherPythonNids": 255,
     "itemReferencedComponentNids": 172,
     "itemHookMappedComponentNids": 117,
-    "skillReferencedComponentNids": 183,
-    "skillHookMappedComponentNids": 88,
+    "skillReferencedComponentNids": 184,
+    "skillHookMappedComponentNids": 90,
     "structuralStatuses": {
       "dispatched-unverified": 248,
       "missing-parser": 4,
