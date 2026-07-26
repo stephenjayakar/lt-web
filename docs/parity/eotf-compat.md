@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 161 unverified
+- 270 skill-component NIDs; 155 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -187,7 +187,6 @@ focused browser coverage.
 | block_status | 1 | project-local-or-unknown |
 | bloody_moon | 1 | project-local-or-unknown |
 | booster_blocker | 3 | project-local-or-unknown |
-| build_charge | 7 | consumed |
 | cannot_double | 39 | hook-and-reference |
 | cannot_trade | 2 | unreferenced |
 | cannot_use_items | 6 | consumed |
@@ -202,8 +201,6 @@ focused browser coverage.
 | change_buy_price | 1 | reference-only |
 | change_item_slots | 1 | project-local-or-unknown |
 | change_variant | 4 | unreferenced |
-| charges_per_turn | 21 | consumed |
-| class_skill | 1651 | consumed |
 | Cleave | 1 | hook-and-reference |
 | close_counter | 8 | hook-and-reference |
 | combat_art | 172 | consumed |
@@ -221,7 +218,6 @@ focused browser coverage.
 | desperation | 16 | hook-and-reference |
 | display_skill_icon_in_combat | 12 | consumed |
 | distant_counter | 19 | hook-and-reference |
-| drain_charge | 540 | consumed |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
 | end_time | 43 | reference-only |
@@ -249,7 +245,6 @@ focused browser coverage.
 | growth_change_expression | 3 | project-local-or-unknown |
 | has_tags | 82 | hook-and-reference |
 | heal_after_follow_up | 1 | project-local-or-unknown |
-| hidden | 678 | consumed |
 | hidden_if_inactive | 122 | consumed |
 | hide_aura | 96 | reference-only |
 | hide_skill_icon_in_combat | 4 | consumed |
@@ -264,7 +259,6 @@ focused browser coverage.
 | limit_maximum_range | 8 | reference-only |
 | live_to_serve | 1 | consumed |
 | locktouch | 6 | consumed |
-| lost_on_end_chapter | 524 | consumed |
 | lost_on_end_combat2 | 55 | consumed |
 | lost_on_endstep | 61 | reference-only |
 | lost_on_upkeep | 79 | reference-only |

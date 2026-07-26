@@ -74,6 +74,21 @@ export function skillInfoPresentation(
   return 'normal';
 }
 
+/** Python info-menu visibility and stable class-skill-first ordering. */
+export function visibleSkillsForInfoMenu(
+  unit: UnitObject,
+  game: any,
+): SkillObject[] {
+  return unit.skills
+    .filter((skill) => skillInfoPresentation(skill, unit, game) !== 'hidden')
+    .map((skill, index) => ({ skill, index }))
+    .sort((left, right) =>
+      Number(right.skill.hasComponent('class_skill')) -
+        Number(left.skill.hasComponent('class_skill')) ||
+      left.index - right.index)
+    .map(({ skill }) => skill);
+}
+
 function getGame(): any {
   if (!_game) throw new Error('InfoMenuState: game reference not set.');
   return _game;
@@ -572,14 +587,7 @@ export class InfoMenuState extends State {
 
     const skillStartY = skillHeaderY + 14;
     // Python MultiSkill folds its sourced children into the visible wrapper.
-    const visibleSkills = unit.skills
-      .filter((skill) => skillInfoPresentation(skill, unit, game) !== 'hidden')
-      .map((skill, index) => ({ skill, index }))
-      .sort((left, right) =>
-        Number(right.skill.hasComponent('class_skill')) -
-          Number(left.skill.hasComponent('class_skill')) ||
-        left.index - right.index)
-      .map(({ skill }) => skill);
+    const visibleSkills = visibleSkillsForInfoMenu(unit, game);
     if (visibleSkills.length === 0) {
       this.drawSmallText(surf, '(none)', rightX + 4, skillStartY, COLOR_GREY);
     } else {
