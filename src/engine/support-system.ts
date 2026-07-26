@@ -80,6 +80,7 @@ function scaleEffect(e: SupportEffect, factor: number): SupportEffect {
 // ------------------------------------------------------------------
 
 export class SupportController {
+  private game: any;
   private pairPrefabs: SupportPairPrefab[];
   private supportRanks: string[];
   private supportConstants: Map<string, any>;
@@ -96,11 +97,13 @@ export class SupportController {
     supportRanks: string[],
     supportConstants: Map<string, any>,
     affinities: Map<string, AffinityDef>,
+    game?: any,
   ) {
     this.pairPrefabs = pairPrefabs;
     this.supportRanks = supportRanks;
     this.supportConstants = supportConstants;
     this.affinities = affinities;
+    this.game = game;
   }
 
   // ------------------------------------------------------------------
@@ -773,7 +776,7 @@ export class SupportController {
   private getUnitAttackRange(unit: UnitObject): [number, number] {
     for (const item of unit.items) {
       if (item.isWeapon()) {
-        return [item.getMinRange(), item.getMaxRange()];
+        return [item.getMinRange(unit, this.game), item.getMaxRange(unit, this.game)];
       }
     }
     return [0, 0];

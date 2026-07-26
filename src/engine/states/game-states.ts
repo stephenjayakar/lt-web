@@ -4579,7 +4579,7 @@ export class WeaponChoiceState extends State {
   private showWeaponRange(unit: UnitObject, weapon: ItemObject): void {
     const game = getGame();
     game.highlight.clear();
-    const minRange = weapon.getMinRange();
+    const minRange = weapon.getMinRange(unit, game);
     const maxRange = modifiedMaximumRange(unit, weapon, game);
     const ux = unit.position![0];
     const uy = unit.position![1];
@@ -4731,7 +4731,7 @@ export class TargetingState extends MapState {
     game.highlight.clear();
     const weapon = getEquippedWeapon(unit, game.db, game);
     if (weapon) {
-      const minRange = weapon.getMinRange();
+      const minRange = weapon.getMinRange(unit, game);
       const maxRange = modifiedMaximumRange(unit, weapon, game);
       const attackTiles: [number, number][] = [];
       const ux = unit.position[0];
@@ -4905,7 +4905,7 @@ export class TargetingState extends MapState {
             Math.abs(unit.position[1] - target.position[1])
           : 1;
         const canCounter = !!targetWeapon &&
-          distance >= targetWeapon.getMinRange() &&
+          distance >= targetWeapon.getMinRange(target, game) &&
           distance <= modifiedMaximumRange(target, targetWeapon, game);
         const counterHit = canCounter ? Math.max(0, Math.min(100,
           combatAccuracy(target, targetWeapon!, game.db) -

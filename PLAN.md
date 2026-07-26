@@ -337,6 +337,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 123 real uses of EotF's evaluated damage, hit, weight,
   physical/magic/dragon formula, separate extra-damage, ally-damage, exempt
   weapon-type, and Magician rank-bypass item components.
+- [x] Preserve all 58 real uses of EotF's evaluated minimum/maximum range,
+  smart/ally blast, all-unit and big-cleave AoE, and tile-unless-ally targeting
+  across player targeting, counters, AI, threat ranges, and UI.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

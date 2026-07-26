@@ -6,7 +6,9 @@
  * a booting project from being mistaken for a compatible project.
  */
 export const EOTF_ITEM_COMPONENTS = new Set<string>([
+  'all_units_aoe',
   'damage_any',
+  'eval_ally_blast_aoe',
   'eval_damage',
   'eval_damage_any',
   'eval_dragon',
@@ -14,8 +16,13 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'eval_extra_damage',
   'eval_hit',
   'eval_magic',
+  'eval_max_range',
+  'eval_min_range',
+  'eval_smartblast_aoe',
   'eval_weight',
+  'enemy_big_cleave_aoe',
   'magic_weapon_rank',
+  'target_tile_unless_ally',
   'weapon_type_exempt',
 ]);
 

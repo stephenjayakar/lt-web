@@ -11,7 +11,7 @@
 
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
-import { createItemTree, type ItemObject } from '../objects/item';
+import { createItemTree, setItemRangeEvaluator, type ItemObject } from '../objects/item';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import {
@@ -93,6 +93,15 @@ export function validTargets(
     }
   }
 
+  if (item.hasComponent('target_tile_unless_ally')) {
+    for (let x = 0; x < board.width; x++) {
+      for (let y = 0; y < board.height; y++) {
+        const occupant = board.getUnit(x, y);
+        if (!occupant || !checkAlly(unit, occupant, db)) add([x, y]);
+      }
+    }
+  }
+
   const targetUnits = item.hasComponent('target_unit');
   const targetEnemies = item.hasComponent('target_enemy');
   const targetAllies = item.hasComponent('target_ally');
@@ -141,6 +150,7 @@ export interface TargetRestrictionContext {
 export interface SplashContext {
   board: GameBoard;
   db: Database;
+  game?: any;
   evaluateRangeEquation?: (equationNid: string) => number;
 }
 
@@ -378,6 +388,11 @@ setItemAvailabilityEvaluator((unit, item, db, game) => {
     : createItemTree(item, (nid) => db.items.get(nid));
   return itemSystemAvailable(unit, runtimeItem, db, game);
 });
+
+setItemRangeEvaluator((kind, unit, item, game) =>
+  kind === 'minimum'
+    ? minimumRange(unit, item, game)
+    : maximumRange(unit, item, game));
 
 /** Python item_system.can_unlock: evaluate this item's region restriction. */
 export function canUnlock(
@@ -698,25 +713,57 @@ export function splash(
         .filter(([x, y]) => !!board.getUnit(x, y)),
     };
   }
+  if (item.hasComponent('enemy_big_cleave_aoe') && unit.position) {
+    const positions: TargetPosition[] = [];
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        const candidate: TargetPosition = [unit.position[0] + dx, unit.position[1] + dy];
+        if (board.inBounds(candidate[0], candidate[1]) &&
+            !samePosition(candidate, position)) positions.push(candidate);
+      }
+    }
+    return {
+      mainTarget: board.getUnit(position[0], position[1]) ? position : null,
+      splash: affectedUnits(positions, unit, context, 'enemy'),
+    };
+  }
+  if (item.hasComponent('all_units_aoe')) {
+    return {
+      mainTarget: null,
+      splash: board.getAllUnits()
+        .filter((target) => !!target.position)
+        .map((target) => [target.position![0], target.position![1]] as TargetPosition),
+    };
+  }
   const spell = isSpell(unit, item);
   const extraRange = empowerSplash(unit);
   const blastValue = item.getComponent<number>('blast_aoe')
     ?? item.getComponent<number>('enemy_blast_aoe')
     ?? item.getComponent<number>('ally_blast_aoe')
     ?? item.getComponent<number>('smart_blast_aoe');
+  const evaluatedSmartBlast = item.getComponent<string>('eval_smartblast_aoe');
+  const evaluatedAllyBlast = item.getComponent<string>('eval_ally_blast_aoe');
   const equationBlast = item.getComponent<string>('equation_blast_aoe')
     ?? item.getComponent<string>('ally_equation_blast_aoe');
 
-  if (blastValue !== undefined || equationBlast) {
-    const radius = (equationBlast
+  if (blastValue !== undefined || evaluatedSmartBlast || evaluatedAllyBlast || equationBlast) {
+    const radius = (evaluatedSmartBlast || evaluatedAllyBlast
+      ? Math.max(0, evaluatedItemNumber(
+        evaluatedSmartBlast ?? evaluatedAllyBlast, unit, item, context.game,
+      ))
+      : equationBlast
       ? Math.max(0, context.evaluateRangeEquation?.(equationBlast) ?? 0)
       : Math.max(0, Number(blastValue))) + extraRange;
-    const enemyOnly = item.hasComponent('enemy_blast_aoe') ||
+    const enemyOnly = !!evaluatedSmartBlast || item.hasComponent('enemy_blast_aoe') ||
       (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_enemy'));
-    const allyOnly = item.hasComponent('ally_blast_aoe') || item.hasComponent('ally_equation_blast_aoe') ||
+    const allyOnly = !!evaluatedAllyBlast ||
+      item.hasComponent('ally_blast_aoe') || item.hasComponent('ally_equation_blast_aoe') ||
       (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_ally'));
+    const result = resolveBlast(
+      unit, item, position, context, radius, enemyOnly ? 'enemy' : allyOnly ? 'ally' : 'all',
+    );
     return resultOrAlternate(
-      resolveBlast(unit, item, position, context, radius, enemyOnly ? 'enemy' : allyOnly ? 'ally' : 'all'),
+      evaluatedAllyBlast ? { mainTarget: null, splash: result.splash } : result,
       unit, item, position, context,
     );
   }
@@ -787,19 +834,45 @@ export function splashPositions(
     return cleave2Positions(position, board)
       .filter(([x, y]) => !board.getUnit(x, y));
   }
+  if (item.hasComponent('enemy_big_cleave_aoe') && unit.position) {
+    const positions: TargetPosition[] = [];
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        const candidate: TargetPosition = [unit.position[0] + dx, unit.position[1] + dy];
+        if (!board.inBounds(candidate[0], candidate[1]) ||
+            samePosition(candidate, position)) continue;
+        const occupant = board.getUnit(candidate[0], candidate[1]);
+        if (!occupant || checkEnemy(unit, occupant, context.db)) positions.push(candidate);
+      }
+    }
+    return positions;
+  }
+  if (item.hasComponent('all_units_aoe')) {
+    const positions: TargetPosition[] = [];
+    for (let x = 0; x < board.width; x++) {
+      for (let y = 0; y < board.height; y++) positions.push([x, y]);
+    }
+    return positions;
+  }
   const extraRange = empowerSplash(unit);
   const blastValue = item.getComponent<number>('blast_aoe')
     ?? item.getComponent<number>('enemy_blast_aoe')
     ?? item.getComponent<number>('ally_blast_aoe')
     ?? item.getComponent<number>('smart_blast_aoe');
+  const evaluatedSmartBlast = item.getComponent<string>('eval_smartblast_aoe');
+  const evaluatedAllyBlast = item.getComponent<string>('eval_ally_blast_aoe');
   const equationBlast = item.getComponent<string>('equation_blast_aoe')
     ?? item.getComponent<string>('ally_equation_blast_aoe');
-  if (blastValue !== undefined || equationBlast) {
-    const radius = (equationBlast
+  if (blastValue !== undefined || evaluatedSmartBlast || evaluatedAllyBlast || equationBlast) {
+    const radius = (evaluatedSmartBlast || evaluatedAllyBlast
+      ? Math.max(0, evaluatedItemNumber(
+        evaluatedSmartBlast ?? evaluatedAllyBlast, unit, item, context.game,
+      ))
+      : equationBlast
       ? Math.max(0, context.evaluateRangeEquation?.(equationBlast) ?? 0)
       : Math.max(0, Number(blastValue))) + extraRange;
     let positions = positionsInRadius(position, radius, board);
-    const enemyOnly = item.hasComponent('enemy_blast_aoe') ||
+    const enemyOnly = !!evaluatedSmartBlast || item.hasComponent('enemy_blast_aoe') ||
       (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_enemy'));
     if (enemyOnly) {
       positions = positions.filter((candidate) => {
@@ -1399,12 +1472,18 @@ export function crit(_unit: UnitObject, item: ItemObject): number | null {
 }
 
 /** Get the minimum range. */
-export function minimumRange(_unit: UnitObject, item: ItemObject): number {
+export function minimumRange(unit: UnitObject, item: ItemObject, game?: any): number {
+  if (item.hasComponent('eval_min_range')) {
+    return evaluatedItemNumber(item.getComponent('eval_min_range'), unit, item, game);
+  }
   return item.getComponent<number>('min_range') ?? 0;
 }
 
 /** Get the maximum range. */
-export function maximumRange(_unit: UnitObject, item: ItemObject): number {
+export function maximumRange(unit: UnitObject, item: ItemObject, game?: any): number {
+  if (item.hasComponent('eval_max_range')) {
+    return evaluatedItemNumber(item.getComponent('eval_max_range'), unit, item, game);
+  }
   return item.getComponent<number>('max_range') ?? 0;
 }
 

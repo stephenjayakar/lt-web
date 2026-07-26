@@ -1,6 +1,20 @@
 import type { NID, ItemPrefab } from '../data/types';
 import type { UnitObject } from './unit';
 
+type ItemRangeEvaluator = (
+  kind: 'minimum' | 'maximum',
+  unit: UnitObject,
+  item: ItemObject,
+  game?: any,
+) => number;
+
+let itemRangeEvaluator: ItemRangeEvaluator | null = null;
+
+/** Registered by item-system without introducing an ItemObject import cycle. */
+export function setItemRangeEvaluator(evaluator: ItemRangeEvaluator): void {
+  itemRangeEvaluator = evaluator;
+}
+
 /**
  * Runtime representation of an item instance.
  *
@@ -129,11 +143,17 @@ export class ItemObject {
     return this.getComponent<number>('weight') ?? 0;
   }
 
-  getMinRange(): number {
+  getMinRange(unit?: UnitObject, game?: any): number {
+    if (unit && itemRangeEvaluator) {
+      return itemRangeEvaluator('minimum', unit, this, game);
+    }
     return this.getComponent<number>('min_range') ?? 0;
   }
 
-  getMaxRange(): number {
+  getMaxRange(unit?: UnitObject, game?: any): number {
+    if (unit && itemRangeEvaluator) {
+      return itemRangeEvaluator('maximum', unit, this, game);
+    }
     return this.getComponent<number>('max_range') ?? 0;
   }
 

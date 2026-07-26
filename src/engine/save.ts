@@ -1859,6 +1859,7 @@ async function restoreLevel(
         game.db.supportRanks,
         game.db.supportConstants,
         game.db.affinities,
+        game,
       );
       game.supports.initPairs();
     }

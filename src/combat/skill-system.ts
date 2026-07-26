@@ -791,7 +791,7 @@ export function modifiedMaximumRange(
   item: ItemObject,
   game?: any,
 ): number {
-  let maximum = item.getMaxRange();
+  let maximum = item.getMaxRange(unit, game);
   for (const skill of unit.skills) {
     const flat = skill.getComponent<number>('modify_maximum_range');
     if (typeof flat === 'number') maximum += flat;

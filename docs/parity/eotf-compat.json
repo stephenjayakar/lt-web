@@ -948,7 +948,7 @@
         "nid": "all_units_aoe",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "allow_less_than_max_targets",
@@ -1146,7 +1146,7 @@
         "nid": "enemy_big_cleave_aoe",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_blast_aoe",
@@ -1176,7 +1176,7 @@
         "nid": "eval_ally_blast_aoe",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_available",
@@ -1242,19 +1242,19 @@
         "nid": "eval_max_range",
         "uses": 24,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_min_range",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_smartblast_aoe",
         "uses": 20,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_special_range",
@@ -1902,7 +1902,7 @@
         "nid": "target_tile_unless_ally",
         "uses": 4,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_unit",
@@ -2749,7 +2749,7 @@
       {
         "nid": "eval_min_range",
         "uses": 1,
-        "structuralStatus": "unreferenced",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
