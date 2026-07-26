@@ -352,6 +352,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 11 real uses of EotF's pre-combat, per-hit-target
   post-combat, and item-break event hooks with exact participant context,
   deduplication, ordering, and local payloads.
+- [x] Preserve all 57 real uses of EotF's immediate and end-combat item
+  status/stack hooks, including mid-combat phase recalculation, support-AI
+  valuation, self-stack removal, and single-action turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

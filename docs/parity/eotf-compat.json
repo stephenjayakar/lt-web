@@ -1032,7 +1032,7 @@
         "nid": "buff_ally",
         "uses": 14,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "c_uses",
@@ -1686,7 +1686,7 @@
         "nid": "self_remove_skill",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "self_shove_flex_stops",
@@ -1698,12 +1698,12 @@
         "nid": "self_stacks_on_hit",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "self_status_on_hit",
         "uses": 58,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {
@@ -1794,7 +1794,7 @@
         "nid": "stacks_on_hit",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "start_cooldown",
@@ -1818,7 +1818,7 @@
         "nid": "status_after_combat_on_hit_foe_only",
         "uses": 6,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_on_equip",
@@ -1842,12 +1842,12 @@
         "nid": "statuses_after_combat_on_hit",
         "uses": 32,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "statuses_on_hit",
         "uses": 36,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "unverified"
       },
       {

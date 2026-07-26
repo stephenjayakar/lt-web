@@ -890,6 +890,12 @@ export class AIController {
         continue;
       }
 
+      if ((item.isSpell() || item.hasComponent('weapon_type')) &&
+          item.targetsAllies() && this.itemStatusNids(item).length > 0) {
+        items.push(item);
+        continue;
+      }
+
       // Consumable healing items (Vulnerary, Elixir, etc.)
       if (item.isHealing() && !item.isWeapon()) {
         items.push(item);
@@ -897,6 +903,46 @@ export class AIController {
       }
     }
     return items;
+  }
+
+  private itemStatusNids(item: ItemObject): string[] {
+    const result: string[] = [];
+    const add = (value: unknown): void => {
+      if (typeof value === 'string') result.push(value);
+    };
+    add(item.getComponent('buff_ally'));
+    add(item.getComponent('status_after_combat_on_hit_foe_only'));
+    const statuses = item.getComponent<unknown>('statuses_after_combat_on_hit');
+    if (Array.isArray(statuses)) statuses.forEach(add);
+    for (const component of ['stacks_on_hit', 'self_stacks_on_hit']) {
+      const value = item.getComponent<unknown>(component);
+      if (!value || typeof value !== 'object') continue;
+      add(value instanceof Map
+        ? value.get('skill')
+        : (value as Record<string, unknown>).skill);
+    }
+    return [...new Set(result)];
+  }
+
+  private computeStatusPriority(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    move: [number, number],
+  ): number {
+    const missing = this.itemStatusNids(item).filter(
+      (nid) => !target.skills.some((skill) => skill.nid === nid),
+    );
+    if (missing.length === 0) return 0;
+    const accuracy = item.hasComponent('hit')
+      ? Math.min(1, Math.max(0, computeHit(unit, item, target, this.db, this.board) / 100))
+      : 1;
+    const defenderWeapon = getEquippedWeapon(target, this.db, this.gameRef);
+    const attacks = 1 + (canDouble(unit, item, target, defenderWeapon, this.db) ? 1 : 0);
+    const distance = target.position ? this.distance(move, target.position) : 0;
+    return checkEnemy(unit, target, this.db)
+      ? -0.5 * accuracy * attacks + 0.01 * distance
+      : 1 + 0.5 * accuracy * attacks + 0.01 * distance;
   }
 
   /**
@@ -930,13 +976,22 @@ export class AIController {
         // Staff: evaluate against each ally target from each valid position
         for (const target of targets) {
           if (target.isDead() || !target.position) continue;
-          // Skip fully healed allies
-          if (target.currentHp >= target.maxHp) continue;
+          const statusPriorityAvailable = this.computeStatusPriority(
+            unit,
+            item,
+            target,
+            validMoves[0],
+          ) > 0;
+          // Pure healing staves still require missing HP; status staves do not.
+          if (target.currentHp >= target.maxHp && !statusPriorityAvailable) continue;
 
           const attackPositions = this.getAttackPositions(unit, validMoves, target, item);
 
           for (const pos of attackPositions) {
-            const priority = this.computeHealPriority(unit, item, target);
+            const priority = Math.max(
+              this.computeHealPriority(unit, item, target),
+              this.computeStatusPriority(unit, item, target, pos),
+            );
             if (priority > bestPriority) {
               bestPriority = priority;
               const path = unit.position

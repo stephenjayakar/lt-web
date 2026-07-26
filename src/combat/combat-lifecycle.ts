@@ -1475,6 +1475,44 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         applied++;
       }
     }
+    const endStatuses = strike.item.getComponent<unknown>('statuses_after_combat_on_hit');
+    if (Array.isArray(endStatuses)) {
+      for (const mark of hitMarks) {
+        for (const statusNid of endStatuses) {
+          if (typeof statusNid !== 'string') continue;
+          const prefab = game.db.skills.get(statusNid);
+          if (!prefab) continue;
+          const status = new SkillObject(prefab);
+          status.initiatorNid = mark.attacker.nid;
+          game.actionLog.doAction(new AddSkillAction(mark.defender, status));
+          applied++;
+        }
+      }
+    }
+    const foeOnlyStatus = strike.item.getComponent<unknown>(
+      'status_after_combat_on_hit_foe_only',
+    );
+    if (typeof foeOnlyStatus === 'string') {
+      const prefab = game.db.skills.get(foeOnlyStatus);
+      if (prefab) {
+        for (const mark of hitMarks) {
+          if (!checkEnemy(mark.attacker, mark.defender, game.db)) continue;
+          const status = new SkillObject(prefab);
+          status.initiatorNid = mark.attacker.nid;
+          game.actionLog.doAction(new AddSkillAction(mark.defender, status));
+          applied++;
+        }
+      }
+    }
+    const selfRemove = strike.item.getComponent<unknown>('self_remove_skill');
+    if (typeof selfRemove === 'string') {
+      for (const skill of firstMark.attacker.skills.filter(
+        (candidate) => candidate.nid === selfRemove,
+      )) {
+        game.actionLog.doAction(new RemoveSkillAction(firstMark.attacker, skill));
+        applied++;
+      }
+    }
     applied += applyItemEndResourceHooks(game, firstMark.attacker, strike.item);
     if (game.board) {
       for (const componentNid of strike.item.components.keys()) {

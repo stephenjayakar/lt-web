@@ -118,15 +118,22 @@ export class CombatResultAction<Result> extends Action {
   private before: CombatMutationSnapshot | null = null;
   private after: CombatMutationSnapshot | null = null;
   private result: Result | null = null;
+  private lifecycleAction: Action | null;
 
-  constructor(units: UnitObject[], items: ItemObject[], resolve: () => Result) {
+  constructor(
+    units: UnitObject[],
+    items: ItemObject[],
+    resolve: () => Result,
+    lifecycleAction: Action | null = null,
+  ) {
     super();
     this.units = [...new Set(units)];
     this.items = [...new Set(items)];
     this.resolve = resolve;
+    this.lifecycleAction = lifecycleAction;
   }
 
-  execute(): void {
+  private applyResult(): void {
     if (this.after) {
       restore(this.after);
       return;
@@ -136,8 +143,19 @@ export class CombatResultAction<Result> extends Action {
     this.after = capture(this.units, this.items);
   }
 
+  override do(): void {
+    this.lifecycleAction?.do();
+    this.applyResult();
+  }
+
+  execute(): void {
+    this.lifecycleAction?.execute();
+    this.applyResult();
+  }
+
   reverse(): void {
     if (this.before) restore(this.before);
+    this.lifecycleAction?.reverse();
   }
 
   getResult(): Result {

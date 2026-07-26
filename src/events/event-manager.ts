@@ -13,7 +13,10 @@ type ItemAvailabilityEvaluator = (
   game?: any,
 ) => boolean;
 
-let itemAvailabilityEvaluator: ItemAvailabilityEvaluator | null = null;
+// `var` is intentional: item-system registers through this setter while an
+// event-manager/python-events cycle is still being initialized in Node-side
+// audit tests. A lexical binding would be in its TDZ at that point.
+var itemAvailabilityEvaluator: ItemAvailabilityEvaluator | null | undefined;
 
 /**
  * Register item_system.available without importing the item dispatcher here.

@@ -7,6 +7,7 @@
  */
 export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'all_units_aoe',
+  'buff_ally',
   'cooldown',
   'damage_any',
   'draw_back_on_end_combat_initiate',
@@ -36,6 +37,8 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'refresh_no_target_restrict',
   'restore_after_combat',
   'restore_no_target_restrict',
+  'self_remove_skill',
+  'self_stacks_on_hit',
   'self_shove_flex_stops',
   'shove_flex_stops',
   'shove_flex_stops_event',
@@ -44,6 +47,9 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'stack_cost',
   'stack_cost_multi',
   'start_cooldown',
+  'stacks_on_hit',
+  'status_after_combat_on_hit_foe_only',
+  'statuses_after_combat_on_hit',
   'target_tile_unless_ally',
   'weapon_type_exempt',
 ]);

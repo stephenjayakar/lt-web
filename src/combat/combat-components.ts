@@ -40,25 +40,12 @@ function addStatus(
   target.skills.push(skill);
 }
 
-function statusList(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String);
-  return value === undefined || value === null ? [] : [String(value)];
-}
-
 /** Apply item on-hit/end-combat status hooks after the strike sequence has resolved. */
 function applyStrikeStatuses(strikes: CombatStrike[], db: Database): void {
   for (const strike of strikes) {
     if (!strike.hit) continue;
     for (const [componentNid, value] of strike.item.components) {
-      if (componentNid === 'status_on_hit' && typeof value === 'string') {
-        addStatus(strike.defender, value, db, strike.attacker);
-      } else if (componentNid === 'self_status_on_hit' && typeof value === 'string') {
-        addStatus(strike.attacker, value, db, strike.attacker);
-      } else if (componentNid === 'statuses_on_hit') {
-        for (const statusNid of statusList(value)) {
-          addStatus(strike.defender, statusNid, db, strike.attacker);
-        }
-      } else if (componentNid === 'fatigue_on_hit') {
+      if (componentNid === 'fatigue_on_hit') {
         const amount = Number(value);
         if (Number.isFinite(amount)) {
           strike.defender.currentFatigue = Math.max(

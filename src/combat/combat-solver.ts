@@ -64,6 +64,7 @@ export class CombatPhaseSolver {
   private strikes: CombatStrike[];
   private randomRoll: () => number;
   private lifecycle: CombatSkillLifecycle | null = null;
+  private combatDb: Database | null = null;
   private phaseCounts: Map<UnitObject, number> = new Map();
   readonly procPlayback: CombatProcMark[] = [];
   readonly guardGaugeResults: Map<UnitObject, number> = new Map();
@@ -93,6 +94,7 @@ export class CombatPhaseSolver {
     defenders: UnitObject[],
     defenseItems: Map<UnitObject, ItemObject | null>,
   ): void {
+    this.combatDb = db;
     this.phaseCounts.clear();
     this.procPlayback.length = 0;
     this.guardGaugeResults.clear();
@@ -243,6 +245,24 @@ export class CombatPhaseSolver {
     if (attempted) skillSystem.consumeMiracleCharge(sourceSkill, source, this.game);
   }
 
+  /** Execute item on-hit status actions before the next strike is calculated. */
+  private grantImmediateItemSkills(
+    recipient: UnitObject,
+    source: UnitObject,
+    skillNids: unknown[],
+  ): void {
+    const db = this.game?.db ?? this.combatDb;
+    if (!db) return;
+    for (const skillNid of skillNids) {
+      if (typeof skillNid !== 'string') continue;
+      const prefab = db.skills.get(skillNid);
+      if (!prefab) continue;
+      const granted = new SkillObject(prefab);
+      granted.initiatorNid = source.nid;
+      new AddSkillAction(recipient, granted).execute();
+    }
+  }
+
   private evaluateSkillNumber(
     expression: string,
     strike: CombatStrike,
@@ -376,6 +396,45 @@ export class CombatPhaseSolver {
     strike: CombatStrike,
   ): void {
     if (strike.hit) {
+      const status = strike.item.getComponent<unknown>('status_on_hit');
+      const selfStatus = strike.item.getComponent<unknown>('self_status_on_hit');
+      const statuses = strike.item.getComponent<unknown>('statuses_on_hit');
+      const allyBuff = strike.item.getComponent<unknown>('buff_ally');
+      this.grantImmediateItemSkills(
+        strike.defender,
+        strike.attacker,
+        [
+          status,
+          allyBuff,
+          ...(Array.isArray(statuses) ? statuses : []),
+        ],
+      );
+      this.grantImmediateItemSkills(
+        strike.attacker,
+        strike.attacker,
+        [selfStatus],
+      );
+
+      const option = (value: unknown, key: string): unknown => {
+        if (!value || typeof value !== 'object') return undefined;
+        return value instanceof Map
+          ? value.get(key)
+          : (value as Record<string, unknown>)[key];
+      };
+      for (const [component, recipient] of [
+        ['stacks_on_hit', strike.defender],
+        ['self_stacks_on_hit', strike.attacker],
+      ] as const) {
+        const value = strike.item.getComponent<unknown>(component);
+        const skill = option(value, 'skill');
+        const amount = Math.max(0, Math.trunc(Number(option(value, 'amount') ?? 1)));
+        this.grantImmediateItemSkills(
+          recipient,
+          strike.attacker,
+          Array.from({ length: amount }, () => skill),
+        );
+      }
+
       for (const sourceSkill of [...strike.attacker.skills]) {
         if (!this.combatSkillActive(strike.attacker, sourceSkill, strike)) continue;
         const status = sourceSkill.getComponent<string>('give_status_after_hit');
@@ -874,18 +933,20 @@ export class CombatPhaseSolver {
     let defenderHp = defender.currentHp;
 
     // Determine capabilities
-    const defenderCanCounter = calcs.canCounterattack(attacker, attackItem, defender, db, this.game);
-    const attackerDoubles = calcs.canDouble(attacker, attackItem, defender, defenseItem, db);
-    const defenderDoubles =
-      defenderCanCounter && defenseItem
-        ? calcs.canDefenderDouble(attacker, attackItem, defender, defenseItem, db)
-        : false;
+    const defenderCanCounterNow = (): boolean =>
+      calcs.canCounterattack(attacker, attackItem, defender, db, this.game);
+    const attackerDoublesNow = (): boolean =>
+      calcs.canDouble(attacker, attackItem, defender, defenseItem, db);
+    const defenderDoublesNow = (): boolean =>
+      !!defenseItem && defenderCanCounterNow() &&
+      calcs.canDefenderDouble(attacker, attackItem, defender, defenseItem, db);
+    const defenderCanCounter = defenderCanCounterNow();
 
     // Compute strike counts (brave weapons, dynamic multiattacks from skills)
-    const attackerStrikeCount = calcs.computeStrikeCount(
+    const attackerStrikeCount = (): number => calcs.computeStrikeCount(
       attacker, attackItem, defender, defenseItem,
     );
-    const defenderStrikeCount = defenseItem
+    const defenderStrikeCount = (): number => defenseItem
       ? calcs.computeStrikeCount(defender, defenseItem, attacker, attackItem, 'defense')
       : 1;
 
@@ -966,80 +1027,80 @@ export class CombatPhaseSolver {
     if (defenderHasVantage && defenseItem) {
       // VANTAGE: Defender strikes first
       // 1. Defender initial counter
-      doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
 
       // 2. Attacker strikes (all if desperation, normal otherwise)
       if (attackerHasDesperation) {
         // Desperation: attacker does initial + double together
-        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
-        if (attackerDoubles) {
-          doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
+        if (attackerDoublesNow()) {
+          doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
         }
       } else {
-        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
       }
 
       // 3. Defender double counter (if not desperation, which already went)
-      if (!attackerHasDesperation && defenderDoubles) {
-        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      if (!attackerHasDesperation && defenderDoublesNow()) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
       }
 
       // 4. Attacker double (if not desperation, which already went)
-      if (!attackerHasDesperation && attackerDoubles) {
-        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      if (!attackerHasDesperation && attackerDoublesNow()) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
       }
 
       // 5. If desperation, defender double counter last
-      if (attackerHasDesperation && defenderDoubles) {
-        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      if (attackerHasDesperation && defenderDoublesNow()) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
       }
 
     } else if (attackerHasDisvantage && defenderCanCounter && defenseItem) {
       // DISVANTAGE: Attacker goes second (similar to vantage but without being a skill on the defender)
-      doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
-      doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
-      if (defenderDoubles) {
-        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
+      doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
+      if (defenderDoublesNow()) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
       }
-      if (attackerDoubles) {
-        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      if (attackerDoublesNow()) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
       }
 
     } else if (attackerHasDesperation) {
       // DESPERATION: All attacker strikes before any counter
       // 1. Attacker initial + double
-      doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
-      if (attackerDoubles) {
-        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
+      if (attackerDoublesNow()) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
       }
 
       // 2. Defender counter
-      if (defenderCanCounter && defenseItem) {
-        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      if (defenderCanCounterNow() && defenseItem) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
         // 3. Defender double counter
-        if (defenderDoubles) {
-          doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+        if (defenderDoublesNow()) {
+          doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
         }
       }
 
     } else {
       // STANDARD: attacker -> counter -> attacker double -> counter double
       // 1. Attacker initial strikes
-      doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
 
       // 2. Defender counter
-      if (defenderCanCounter && defenseItem) {
-        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      if (defenderCanCounterNow() && defenseItem) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
       }
 
       // 3. Attacker double
-      if (attackerDoubles) {
-        doStrikes(attacker, attackItem, defender, attackerStrikeCount, false, atkHp, defHp, defenderMiracle);
+      if (attackerDoublesNow()) {
+        doStrikes(attacker, attackItem, defender, attackerStrikeCount(), false, atkHp, defHp, defenderMiracle);
       }
 
       // 4. Defender double counter
-      if (defenderDoubles && defenseItem) {
-        doStrikes(defender, defenseItem, attacker, defenderStrikeCount, true, defHp, atkHp, attackerMiracle);
+      if (defenderDoublesNow() && defenseItem) {
+        doStrikes(defender, defenseItem, attacker, defenderStrikeCount(), true, defHp, atkHp, attackerMiracle);
       }
     }
 
