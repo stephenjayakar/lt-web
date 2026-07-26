@@ -5,6 +5,7 @@ import type { ActionLog } from '../engine/action';
 import { OnlyOnceEventAction, SetGameVarAction } from '../engine/action';
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
+import { RECORDS } from '../engine/records';
 
 type ItemAvailabilityEvaluator = (
   unit: any,
@@ -1302,7 +1303,19 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   }
 
   function wrapMapping(value: any) {
-    if (value instanceof Map) return value;
+    if (value instanceof Map) {
+      return new Proxy(value, {
+        get(target, property: string | symbol) {
+          if (property === 'get') return target.get.bind(target);
+          if (property === 'has') return target.has.bind(target);
+          if (typeof property === 'string' && target.has(property)) {
+            return target.get(property);
+          }
+          const result = target[property as keyof Map<any, any>];
+          return typeof result === 'function' ? result.bind(target) : result;
+        },
+      });
+    }
     return {
       ...(value ?? {}),
       get(key: string, fallback?: any) {
@@ -1761,7 +1774,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     item_funcs: itemFuncs,
     item_system: itemSystem,
     skill_system: skillSystem,
-    combat_calcs: { compute_advantage: computeAdvantage },
+    combat_calcs: {
+      compute_advantage: computeAdvantage,
+      ...(ctx.localArgs?.get('combat_calcs') as Record<string, unknown> ?? {}),
+    },
     movement_funcs: {
       check_traversable(candidate: any, pos: [number, number] | null) {
         const raw = unwrapUnit(candidate);
@@ -1818,6 +1834,10 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(
     /\bteam\s*=\s*(['"][^'"]+['"])/g,
     '{ team: $1 }',
+  );
+  jsExpr = jsExpr.replace(
+    /\btag\s*=\s*(['"][^'"]+['"])/g,
+    '{ tag: $1 }',
   );
 
   // Python `and`/`or`/`not` -> `&&`/`||`/`!`
@@ -1907,6 +1927,8 @@ function evaluateWithJsFallback(
   const stat_changes = ctx.localArgs?.get('stat_changes') ?? null;
   const max = Math.max;
   const min = Math.min;
+  const int = (value: any) => Math.trunc(Number(value));
+  const set = (values: Iterable<any> | undefined) => new Set(values ?? []);
   const str = (value: any) => String(value);
   const range = (start: number, end?: number) => {
     const from = end === undefined ? 0 : start;
@@ -1914,7 +1936,9 @@ function evaluateWithJsFallback(
     return Array.from({ length: Math.max(0, to - from) }, (_, index) => from + index);
   };
   const get_stacks = (candidate: any, skillNid: string) => {
-    const raw = candidate?._raw ?? candidate;
+    const raw = typeof candidate === 'string'
+      ? game.units?.get?.(candidate)
+      : candidate?._raw ?? candidate;
     return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
   };
   const get_charge = (candidate: any, skillNid: string) => {
@@ -1974,9 +1998,9 @@ function evaluateWithJsFallback(
     const fn = new Function(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
       'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
-      'support_rank_nid', 'mode', 'stat_changes', 'DB', 'utils', 'item_funcs',
+      'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'combat_calcs', 'movement_funcs', 'target_system',
-      'max', 'min', 'str', 'range', 'get_stacks', 'get_charge', '_qf', '_locals',
+      'max', 'min', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge', '_qf', '_locals',
       '_wrapUnit', '_wrapItem', '_wrapSkill',
       `"use strict";
        ${localDeclarations}
@@ -2016,9 +2040,9 @@ function evaluateWithJsFallback(
     return fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, v, cf,
-      support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.utils,
+      support_rank_nid, mode, stat_changes, evalScope.DB, RECORDS, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
-      evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
+      evalScope.movement_funcs, evalScope.target_system, max, min, int, set, str, range,
       get_stacks, get_charge,
       _queryFuncs, expressionLocals,
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,

@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 182 unverified
+- 270 skill-component NIDs; 176 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -172,7 +172,6 @@ focused browser coverage.
 | alternate_critical_addition_formula | 1 | unreferenced |
 | alternate_critical_multiplier_formula | 7 | hook-and-reference |
 | alternate_damage_formula | 14 | hook-and-reference |
-| alternate_magic_damage_formula | 3 | project-local-or-unknown |
 | alternate_resist_formula | 4 | hook-and-reference |
 | armsthrift | 3 | consumed |
 | armsthrift_always | 1 | project-local-or-unknown |
@@ -225,17 +224,13 @@ focused browser coverage.
 | drain_charge | 540 | consumed |
 | dynamic_accuracy | 31 | hook-and-reference |
 | dynamic_attack_speed | 18 | unreferenced |
-| dynamic_attacks | 13 | unreferenced |
 | dynamic_avoid | 32 | hook-and-reference |
-| dynamic_blitzes | 6 | project-local-or-unknown |
 | dynamic_crit_accuracy | 34 | hook-and-reference |
 | dynamic_crit_avoid | 24 | unreferenced |
 | dynamic_damage | 228 | hook-and-reference |
 | dynamic_damage_multiplier | 6 | hook-only |
 | dynamic_defense_speed | 8 | unreferenced |
-| dynamic_multiattacks | 23 | hook-and-reference |
 | dynamic_resist | 70 | hook-and-reference |
-| dynamic_stat_change | 2 | project-local-or-unknown |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
 | end_time | 43 | reference-only |
@@ -245,7 +240,6 @@ focused browser coverage.
 | eval_canter | 3 | project-local-or-unknown |
 | eval_crit | 17 | hook-only |
 | eval_damage | 30 | hook-and-reference |
-| eval_extra_damage | 7 | project-local-or-unknown |
 | eval_galeforce | 3 | project-local-or-unknown |
 | eval_hit | 21 | hook-and-reference |
 | eval_max_range | 7 | consumed |

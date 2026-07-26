@@ -623,7 +623,7 @@ export function computeHit(
  * Compute final damage (attacker damage - defender defense, min 0).
  * Includes dynamic modifiers, effective damage, multipliers, and support bonuses.
  */
-export function computeDamage(
+function computeDamageCore(
   attacker: UnitObject,
   attackItem: ItemObject,
   defender: UnitObject,
@@ -680,6 +680,48 @@ export function computeDamage(
   finalDmg = Math.floor(finalDmg * resMult);
 
   return Math.max(0, finalDmg);
+}
+
+export function computeDamage(
+  attacker: UnitObject,
+  attackItem: ItemObject,
+  defender: UnitObject,
+  db: Database,
+  board?: GameBoard | null,
+  game?: any,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  assist: boolean = false,
+  attackInfo: [number, number] = [0, 0],
+): number {
+  const defWeapon = defender.items.find((candidate) => candidate.isWeapon()) ?? null;
+  const attackerHasDynamicStats = attacker.skills.some((skill) =>
+    skill.hasComponent('dynamic_stat_change'));
+  const defenderHasDynamicStats = defender.skills.some((skill) =>
+    skill.hasComponent('dynamic_stat_change'));
+  const preparedAttacker = attackerHasDynamicStats &&
+    !attacker.skills.some((skill) => skill.data.has('_dynamic_stat_changes'));
+  const preparedDefender = defenderHasDynamicStats &&
+    !defender.skills.some((skill) => skill.data.has('_dynamic_stat_changes'));
+  if (preparedAttacker) {
+    skillSystem.prepareDynamicStatChanges(
+      attacker, attackItem, defender, defWeapon,
+      mode === 'defense' ? 'defense' : 'attack', game,
+    );
+  }
+  if (preparedDefender) {
+    skillSystem.prepareDynamicStatChanges(
+      defender, defWeapon, attacker, attackItem,
+      mode === 'attack' ? 'defense' : 'attack', game,
+    );
+  }
+  try {
+    return computeDamageCore(
+      attacker, attackItem, defender, db, board, game, mode, assist, attackInfo,
+    );
+  } finally {
+    if (preparedAttacker) skillSystem.clearDynamicStatChanges(attacker);
+    if (preparedDefender) skillSystem.clearDynamicStatChanges(defender);
+  }
 }
 
 export function computeAssistDamage(
@@ -944,6 +986,8 @@ export function computeStrikeCount(
   target: UnitObject,
   defenseItem: ItemObject | null,
   mode: 'attack' | 'defense' = 'attack',
+  attackInfo: [number, number] = [0, 0],
+  game?: any,
 ): number {
   let count = 1;
 
@@ -952,10 +996,72 @@ export function computeStrikeCount(
   count += itemExtra;
 
   // Dynamic multiattacks from skills
-  const skillExtra = skillSystem.dynamicMultiattacks(unit, item, target, defenseItem, mode, null, 0);
+  const db = game?.db ?? _eqGameRef?.()?.db;
+  const combatCalcs = db ? {
+    attack_speed: (candidate: any) => attackSpeed(candidate?._raw ?? candidate, item, db),
+    defense_speed: (candidate: any, candidateItem: any) => defenseSpeed(
+      candidate?._raw ?? candidate,
+      candidateItem?._raw ?? candidateItem ?? defenseItem ?? item,
+      db,
+      item,
+    ),
+  } : undefined;
+  const skillExtra = skillSystem.dynamicMultiattacks(
+    unit, item, target, defenseItem, mode, attackInfo, count - 1, game, combatCalcs,
+  );
   count += skillExtra;
 
-  return count;
+  return Math.max(1, count);
+}
+
+/** Extra attack phases from skills, excluding ordinary speed doubling. */
+export function computeExtraAttackPhases(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  defenseItem: ItemObject | null,
+  mode: 'attack' | 'defense',
+  attackInfo: [number, number],
+  game?: any,
+): number {
+  const db = game?.db ?? _eqGameRef?.()?.db;
+  const combatCalcs = db ? {
+    attack_speed: (candidate: any) => attackSpeed(candidate?._raw ?? candidate, item, db),
+    defense_speed: (candidate: any, candidateItem: any) => defenseSpeed(
+      candidate?._raw ?? candidate,
+      candidateItem?._raw ?? candidateItem ?? defenseItem ?? item,
+      db,
+      item,
+    ),
+  } : undefined;
+  return Math.max(0, skillSystem.dynamicAttacks(
+    unit, item, target, defenseItem, mode, attackInfo, 0, game, combatCalcs,
+  ));
+}
+
+/** EotF follow-up phases that resolve before the opponent can counter. */
+export function computeBlitzPhases(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  defenseItem: ItemObject | null,
+  mode: 'attack' | 'defense',
+  attackInfo: [number, number],
+  game?: any,
+): number {
+  const db = game?.db ?? _eqGameRef?.()?.db;
+  const combatCalcs = db ? {
+    attack_speed: (candidate: any) => attackSpeed(candidate?._raw ?? candidate, item, db),
+    defense_speed: (candidate: any, candidateItem: any) => defenseSpeed(
+      candidate?._raw ?? candidate,
+      candidateItem?._raw ?? candidateItem ?? defenseItem ?? item,
+      db,
+      item,
+    ),
+  } : undefined;
+  return Math.max(0, skillSystem.dynamicBlitzes(
+    unit, item, target, defenseItem, mode, attackInfo, 0, game, combatCalcs,
+  ));
 }
 
 // ------------------------------------------------------------------

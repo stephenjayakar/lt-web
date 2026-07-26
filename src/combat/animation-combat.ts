@@ -1593,7 +1593,11 @@ export class AnimationCombat implements AnimationCombatOwner {
         name: leftUnit.name,
         weapon: leftItem?.name ?? '',
         hit: leftItem ? Math.min(100, Math.max(0, computeHit(leftUnit, leftItem, rightUnit, this.db))) : null,
-        damage: leftItem ? Math.max(0, computeDamage(leftUnit, leftItem, rightUnit, this.db)) : null,
+        damage: leftItem
+          ? Math.max(0, computeDamage(
+            leftUnit, leftItem, rightUnit, this.db, undefined, this.game,
+          ))
+          : null,
         crit: leftItem ? Math.min(100, Math.max(0, computeCrit(leftUnit, leftItem, rightUnit, this.db))) : null,
       },
       rightHp: {
@@ -1602,7 +1606,11 @@ export class AnimationCombat implements AnimationCombatOwner {
         name: rightUnit.name,
         weapon: rightItem?.name ?? '',
         hit: rightItem ? Math.min(100, Math.max(0, computeHit(rightUnit, rightItem, leftUnit, this.db))) : null,
-        damage: rightItem ? Math.max(0, computeDamage(rightUnit, rightItem, leftUnit, this.db)) : null,
+        damage: rightItem
+          ? Math.max(0, computeDamage(
+            rightUnit, rightItem, leftUnit, this.db, undefined, this.game, 'defense',
+          ))
+          : null,
         crit: rightItem ? Math.min(100, Math.max(0, computeCrit(rightUnit, rightItem, leftUnit, this.db))) : null,
       },
       damagePopups: this.damagePopups,

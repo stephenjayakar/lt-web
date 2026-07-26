@@ -13,8 +13,10 @@ import { evaluateEquation } from './combat-calcs';
 import type { CombatStrike } from './combat-solver';
 import {
   checkEnemy,
+  clearDynamicStatChanges,
   consumeMiracleCharge,
   hasDrainingCharge,
+  prepareDynamicStatChanges,
   selfNihilActive,
 } from './skill-system';
 
@@ -121,6 +123,7 @@ export class CombatSkillLifecycle {
   private game: any;
   private preProcs: ActiveProc[] = [];
   private combatConditionSkills: Set<SkillObject> = new Set();
+  private dynamicStatUnits: Set<UnitObject> = new Set();
 
   constructor(db: Database, roll: () => number, game?: any) {
     this.db = db;
@@ -412,6 +415,20 @@ export class CombatSkillLifecycle {
         'defense',
       );
     }
+    if (mainTarget) {
+      prepareDynamicStatChanges(
+        attacker, item, mainTarget, defenseItems.get(mainTarget) ?? null,
+        'attack', this.game,
+      );
+      this.dynamicStatUnits.add(attacker);
+    }
+    for (const defender of defenders) {
+      prepareDynamicStatChanges(
+        defender, defenseItems.get(defender) ?? null, attacker, item,
+        'defense', this.game,
+      );
+      this.dynamicStatUnits.add(defender);
+    }
     if (mainTarget) this.applyStartCombatResources(attacker, item, mainTarget);
     for (const defender of defenders) {
       this.applyStartCombatResources(
@@ -480,5 +497,7 @@ export class CombatSkillLifecycle {
     // start-combat condition snapshot alive until that external lifecycle
     // stage consumes it; applyCombatSkillEndHooks performs the cleanup.
     this.combatConditionSkills.clear();
+    for (const unit of this.dynamicStatUnits) clearDynamicStatChanges(unit);
+    this.dynamicStatUnits.clear();
   }
 }

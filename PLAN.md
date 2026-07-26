@@ -379,6 +379,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 13 EotF cover and application-time stat uses with
   strict/partial HP-action rewriting, aura-owner cover, frozen expression
   values, charge, save identity, and exact turnwheel replay.
+- [x] Preserve all 54 EotF dynamic attack-phase, multi-hit, pre-counter blitz,
+  evaluated extra-damage, alternate magic-formula, and encounter-frozen stat
+  uses with full Python expression context and combat-order coverage.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

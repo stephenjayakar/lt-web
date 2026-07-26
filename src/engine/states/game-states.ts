@@ -197,9 +197,14 @@ import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentatio
 import {
   accuracy as combatAccuracy,
   attackSpeed,
+  canCounterattack,
+  canDefenderDouble,
+  canDouble,
+  computeBlitzPhases,
   computeCrit,
-  damage as combatDamage,
-  defense as combatDefense,
+  computeDamage,
+  computeExtraAttackPhases,
+  computeStrikeCount,
   evaluateEquation,
   getEquippedWeapon,
   isMagic,
@@ -5034,34 +5039,40 @@ export class TargetingState extends MapState {
         const hit = Math.max(0, Math.min(100,
           combatAccuracy(unit, weapon, game.db) -
           combatAvoid(target, game.db, game.board, weapon)));
-        const damage = Math.max(0,
-          combatDamage(unit, weapon, game.db) -
-          combatDefense(target, weapon, game.db, game.board));
+        const damage = computeDamage(
+          unit, weapon, target, game.db, game.board, game,
+        );
         const crit = computeCrit(unit, weapon, target, game.db, game);
         const targetWeapon = getEquippedWeapon(target, game.db, game);
-        const distance = unit.position && target.position
-          ? Math.abs(unit.position[0] - target.position[0]) +
-            Math.abs(unit.position[1] - target.position[1])
-          : 1;
         const canCounter = !!targetWeapon &&
-          distance >= targetWeapon.getMinRange(target, game) &&
-          distance <= modifiedMaximumRange(target, targetWeapon, game);
+          canCounterattack(unit, weapon, target, game.db, game);
         const counterHit = canCounter ? Math.max(0, Math.min(100,
           combatAccuracy(target, targetWeapon!, game.db) -
           combatAvoid(unit, game.db, game.board, targetWeapon))) : 0;
-        const counterDamage = canCounter ? Math.max(0,
-          combatDamage(target, targetWeapon!, game.db) -
-          combatDefense(unit, targetWeapon!, game.db, game.board)) : 0;
+        const counterDamage = canCounter ? computeDamage(
+          target, targetWeapon!, unit, game.db, game.board, game, 'defense',
+        ) : 0;
         const counterCrit = canCounter
           ? computeCrit(target, targetWeapon!, unit, game.db, game, 'defense')
           : 0;
-        const doubleThreshold = Number(game.db.getConstant('speed_to_double', 4));
-        const unitSpeed = attackSpeed(unit, weapon, game.db);
-        const targetSpeed = targetWeapon
-          ? attackSpeed(target, targetWeapon, game.db)
-          : target.getStatValue('SPD');
-        const unitAttacks = unitSpeed - targetSpeed >= doubleThreshold ? 2 : 1;
-        const targetAttacks = canCounter && targetSpeed - unitSpeed >= doubleThreshold ? 2 : 1;
+        const unitPhases = 1 +
+          computeBlitzPhases(unit, weapon, target, targetWeapon, 'attack', [0, 0], game) +
+          computeExtraAttackPhases(unit, weapon, target, targetWeapon, 'attack', [0, 0], game) +
+          (canDouble(unit, weapon, target, targetWeapon, game.db) ? 1 : 0);
+        const unitAttacks = unitPhases * computeStrikeCount(
+          unit, weapon, target, targetWeapon, 'attack', [0, 0], game,
+        );
+        const targetPhases = canCounter && targetWeapon
+          ? 1 +
+            computeBlitzPhases(target, targetWeapon, unit, weapon, 'defense', [0, 0], game) +
+            computeExtraAttackPhases(target, targetWeapon, unit, weapon, 'defense', [0, 0], game) +
+            (canDefenderDouble(unit, weapon, target, targetWeapon, game.db) ? 1 : 0)
+          : 0;
+        const targetAttacks = canCounter && targetWeapon
+          ? targetPhases * computeStrikeCount(
+            target, targetWeapon, unit, weapon, 'defense', [0, 0], game,
+          )
+          : 0;
 
         // Compact two-sided forecast. Values use the same combat-calcs layer as
         // the solver and do not consume either persistent RNG stream.
