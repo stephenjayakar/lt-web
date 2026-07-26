@@ -38,6 +38,7 @@ import {
   isCantoSkill,
   movementType,
   modifiedHealAmount,
+  noAttackAfterMove as skillNoAttackAfterMove,
   skillConditionActive,
   type AlternateSplash,
 } from './skill-system';
@@ -430,7 +431,10 @@ function itemComponentsAvailable(
   game?: any,
 ): boolean {
   if ((components.has('uses') || components.has('c_uses')) && item.uses <= 0) return false;
-  if (components.has('no_attack_after_move') && unit.hasMoved) return false;
+  if (unit.hasMoved && (
+    components.has('no_attack_after_move') ||
+    skillNoAttackAfterMove(unit, { game, item })
+  )) return false;
   const hpCost = components.get('hp_cost');
   if (typeof hpCost === 'number' && unit.currentHp <= hpCost) return false;
   const goldCost = components.get('gold_cost');

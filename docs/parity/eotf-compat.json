@@ -3013,8 +3013,8 @@
       {
         "nid": "grounded",
         "uses": 10,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "growth_change",
@@ -3104,7 +3104,7 @@
         "nid": "ignore_terrain",
         "uses": 7,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "immune_status",
@@ -3242,7 +3242,7 @@
         "nid": "movement_type",
         "uses": 38,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "negate",
@@ -3266,7 +3266,7 @@
         "nid": "no_attack_after_move",
         "uses": 3,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_stackz",
@@ -3301,8 +3301,8 @@
       {
         "nid": "pass",
         "uses": 7,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "pcc_static",

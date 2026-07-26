@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 56 unverified
+- 270 skill-component NIDs; 51 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -159,7 +159,6 @@ focused browser coverage.
 | galeforce | 6 | consumed |
 | global | 29 | reference-only |
 | grey_if_inactive | 38 | consumed |
-| grounded | 10 | hook-only |
 | growth_change | 22 | hook-and-reference |
 | has_tags | 82 | hook-and-reference |
 | hidden_if_inactive | 122 | consumed |
@@ -168,19 +167,15 @@ focused browser coverage.
 | ignore_alliances | 9 | hook-and-reference |
 | ignore_damage | 22 | reference-only |
 | ignore_rescue_penalty | 8 | hook-and-reference |
-| ignore_terrain | 7 | hook-and-reference |
 | is_terrain | 9 | unreferenced |
 | live_to_serve | 1 | consumed |
 | locktouch | 6 | consumed |
 | miracle | 1 | consumed |
 | modify_ai_priority | 44 | hook-and-reference |
-| movement_type | 38 | hook-and-reference |
 | negate | 3 | consumed |
 | negate_tags | 13 | consumed |
 | negative | 71 | consumed |
-| no_attack_after_move | 3 | hook-and-reference |
 | pairup_bonus | 1 | hook-and-reference |
-| pass | 7 | hook-only |
 | pcc_static | 3 | unreferenced |
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |

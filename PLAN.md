@@ -169,8 +169,9 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   parents and 12 authored proc rates, condition-aware Vantage/Desperation and
   close/distant counters, follow-up resistance, and all 55 authored minimum,
   maximum, evaluated, and capped skill-range modifications.
-- [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
-  movement-type overrides.
+- [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`,
+  condition-aware movement-type/Pass/terrain/grounding overrides, and
+  no-attack-after-move restrictions.
 - [x] Targeting/AI/economy: five `witch_warp_expression` uses,
   `ignore_alliances`, additional accessory capacity, buy-price changes, and
   AI-priority modifiers.

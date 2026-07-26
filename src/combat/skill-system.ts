@@ -562,16 +562,20 @@ function activeBooleanSkill(
   componentNid: string,
   context: EvaluatedSkillContext = {},
 ): boolean {
+  const resolvedContext = {
+    ...context,
+    game: context.game ?? skillGameRef?.(),
+  };
   return unit.skills.some((skill) => {
     if (!skill.hasComponent(componentNid)) return false;
     const localArgs = new Map<string, unknown>([
-      ['item', context.item ?? null],
-      ['item2', context.item2 ?? null],
-      ['mode', context.mode ?? null],
+      ['item', resolvedContext.item ?? null],
+      ['item2', resolvedContext.item2 ?? null],
+      ['mode', resolvedContext.mode ?? null],
       ['skill', skill],
-      ['attack_info', context.attackInfo ?? null],
+      ['attack_info', resolvedContext.attackInfo ?? null],
     ]);
-    return evaluatedSkillActive(skill, unit, context, localArgs);
+    return evaluatedSkillActive(skill, unit, resolvedContext, localArgs);
   });
 }
 
@@ -687,13 +691,20 @@ export function closeCounter(
 }
 
 /** Unit should not move after attacking (no canto override). */
-export function noAttackAfterMove(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'no_attack_after_move');
+export function noAttackAfterMove(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'no_attack_after_move', context);
 }
 
 /** Pass through terrain (flying). */
-export function passThrough(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'pass_through');
+export function passThrough(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'pass', context) ||
+    activeBooleanSkill(unit, 'pass_through', context);
 }
 
 /** Attacker goes second (opposite of vantage). */
@@ -850,8 +861,12 @@ export function damagePreventionSkill(
 }
 
 /** Unit cannot be displaced by shove, swap, warp, rescue, or related item hooks. */
-export function ignoreForcedMovement(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'ignore_forced_movement');
+export function ignoreForcedMovement(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): boolean {
+  return activeBooleanSkill(unit, 'grounded', { game }) ||
+    activeBooleanSkill(unit, 'ignore_forced_movement', { game });
 }
 
 // ============================================================
