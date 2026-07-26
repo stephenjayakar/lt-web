@@ -421,7 +421,16 @@ export class GameState {
             this.actionLog.doAction(new SetSkillDataAction(skill, 'charge', total));
             reset++;
           } else if (
-            (component === 'lost_on_end_chapter' || component === 'lost_on_end_combat2') &&
+            (
+              component === 'time' ||
+              component === 'end_time' ||
+              component === 'combined_time' ||
+              component === 'upkeep_stat_change' ||
+              component === 'lost_on_upkeep' ||
+              component === 'lost_on_endstep' ||
+              component === 'lost_on_end_chapter' ||
+              component === 'lost_on_end_combat2'
+            ) &&
             unit.skills.includes(skill)
           ) {
             this.actionLog.doAction(new RemoveSkillAction(unit, skill));
