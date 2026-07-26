@@ -141,6 +141,7 @@ import {
 } from './engine/states/roam-state';
 import { setQueryEngineGameRef } from './engine/query-engine';
 import { setEquationGameRef } from './combat/combat-calcs';
+import { setSkillSystemGameRef } from './combat/skill-system';
 import { initPersistentSystems } from './engine/records';
 import {
   SaveMenuState,
@@ -605,6 +606,7 @@ async function main(): Promise<void> {
   setRoamGameRef(gameState);
   setQueryEngineGameRef(() => gameState);
   setEquationGameRef(() => gameState);
+  setSkillSystemGameRef(() => gameState);
   setSaveLoadGameRef(gameState);
   setObjectiveDialogGameRef(gameState);
 

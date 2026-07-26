@@ -382,6 +382,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 54 EotF dynamic attack-phase, multi-hit, pre-counter blitz,
   evaluated extra-damage, alternate magic-formula, and encounter-frozen stat
   uses with full Python expression context and combat-order coverage.
+- [x] Activate all 647 EotF evaluated stat, damage, hit/avoid, crit/dodge,
+  resist, true-speed, and dynamic damage-multiplier uses across forecasts,
+  AI scoring, doubling, and strike resolution.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

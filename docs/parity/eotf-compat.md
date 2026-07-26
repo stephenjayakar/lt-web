@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 176 unverified
+- 270 skill-component NIDs; 161 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -222,26 +222,13 @@ focused browser coverage.
 | display_skill_icon_in_combat | 12 | consumed |
 | distant_counter | 19 | hook-and-reference |
 | drain_charge | 540 | consumed |
-| dynamic_accuracy | 31 | hook-and-reference |
-| dynamic_attack_speed | 18 | unreferenced |
-| dynamic_avoid | 32 | hook-and-reference |
-| dynamic_crit_accuracy | 34 | hook-and-reference |
-| dynamic_crit_avoid | 24 | unreferenced |
-| dynamic_damage | 228 | hook-and-reference |
-| dynamic_damage_multiplier | 6 | hook-only |
-| dynamic_defense_speed | 8 | unreferenced |
-| dynamic_resist | 70 | hook-and-reference |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
 | end_time | 43 | reference-only |
 | enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
-| eval_avoid | 10 | hook-only |
 | eval_canter | 3 | project-local-or-unknown |
-| eval_crit | 17 | hook-only |
-| eval_damage | 30 | hook-and-reference |
 | eval_galeforce | 3 | project-local-or-unknown |
-| eval_hit | 21 | hook-and-reference |
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | consumed |
 | eval_range | 3 | unreferenced |
@@ -318,8 +305,6 @@ focused browser coverage.
 | stack | 224 | consumed |
 | start_and_end_event_initiate | 8 | project-local-or-unknown |
 | stat_change | 418 | hook-and-reference |
-| stat_change_expression | 84 | hook-only |
-| stat_multiplier | 34 | hook-only |
 | subtle_stat_change | 3 | hook-only |
 | time | 89 | reference-only |
 | trigger_charge | 1 | project-local-or-unknown |

@@ -415,8 +415,17 @@ export function isMagic(item: ItemObject): boolean {
 // ------------------------------------------------------------------
 
 /** Calculate hit rate for an attacker. */
-export function accuracy(unit: UnitObject, item: ItemObject, db: Database): number {
-  const game = _eqGameRef?.();
+export function accuracy(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
+): number {
+  game ??= _eqGameRef?.();
   // Python precedence: skill override > item override > skill alternate > item alternate > default.
   const eqName = skillSystem.accuracyFormulaOverride(unit) ??
     itemSystem.accuracyFormulaOverride(unit, item) ??
@@ -429,7 +438,9 @@ export function accuracy(unit: UnitObject, item: ItemObject, db: Database): numb
 
   // Add item + skill static modifiers
   const itemMod = itemSystem.modifyAccuracy(unit, item);
-  const skillMod = skillSystem.modifyAccuracy(unit, item);
+  const skillMod = skillSystem.modifyAccuracy(
+    unit, item, game, target, item2, mode, attackInfo,
+  );
 
   return baseHit + itemHit + itemMod + skillMod;
 }
@@ -440,7 +451,12 @@ export function avoid(
   db: Database,
   board?: GameBoard | null,
   itemToAvoid?: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'defense',
+  attackInfo: [number, number] = [0, 0],
 ): number {
+  game ??= _eqGameRef?.();
   // Defensive item formulas come from the attacking item in LT.
   const eqName = skillSystem.avoidFormulaOverride(unit) ??
     (itemToAvoid ? itemSystem.avoidFormulaOverride(unit, itemToAvoid) : undefined) ??
@@ -462,9 +478,11 @@ export function avoid(
 
   // Add skill static modifier
   const itemMod = equippedWeapon
-    ? itemSystem.modifyAvoid(unit, equippedWeapon, _eqGameRef?.())
+    ? itemSystem.modifyAvoid(unit, equippedWeapon, game)
     : 0;
-  const skillMod = skillSystem.modifyAvoid(unit, equippedWeapon);
+  const skillMod = skillSystem.modifyAvoid(
+    unit, equippedWeapon, game, target, itemToAvoid, mode, attackInfo,
+  );
 
   // Add terrain avoid bonus
   const terrainAvo = board ? getTerrainBonusesForUnit(unit, board, db)[1] : 0;
@@ -473,7 +491,16 @@ export function avoid(
 }
 
 /** Calculate damage output. */
-export function damage(unit: UnitObject, item: ItemObject, db: Database): number {
+export function damage(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
+): number {
   // Utility spells without a damage hook are non-damaging in LT; they do not
   // inherit STR/MAG merely because they enter the combat lifecycle.
   if (!item.hasComponent('damage') &&
@@ -481,7 +508,7 @@ export function damage(unit: UnitObject, item: ItemObject, db: Database): number
       !item.hasComponent('eval_damage') &&
       !item.hasComponent('eval_damage_any') &&
       !item.hasComponent('equation_damage')) return 0;
-  const game = _eqGameRef?.();
+  game ??= _eqGameRef?.();
   const eqName = skillSystem.damageFormulaOverride(unit) ??
     itemSystem.damageFormulaOverride(unit, item) ??
     skillSystem.damageFormula(unit) ??
@@ -495,7 +522,9 @@ export function damage(unit: UnitObject, item: ItemObject, db: Database): number
 
   // Add item + skill static modifiers
   const itemMod = itemSystem.modifyDamage(unit, item);
-  const skillMod = skillSystem.modifyDamage(unit, item);
+  const skillMod = skillSystem.modifyDamage(
+    unit, item, game, target, item2, mode, attackInfo,
+  );
 
   return baseDmg + itemDmg + itemMod + skillMod;
 }
@@ -585,6 +614,85 @@ export function defenseSpeed(
     skillSystem.modifyDefenseSpeed(unit, item);
 }
 
+export function critAccuracy(
+  unit: UnitObject,
+  item: ItemObject,
+  db: Database,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
+): number {
+  game ??= _eqGameRef?.();
+  const formula = skillSystem.critAccuracyFormulaOverride(unit) ??
+    itemSystem.critAccuracyFormulaOverride(unit, item) ??
+    skillSystem.critAccuracyFormula(unit) ??
+    itemSystem.critAccuracyFormula(unit, item) ??
+    'CRIT_HIT';
+  const base = resolveEquation(db, formula, 'SKL // 2', unit);
+  return base + (item.getComponent<number>('crit') ?? 0) +
+    itemSystem.modifyCritAccuracy(unit, item) +
+    skillSystem.modifyCritAccuracy(
+      unit, item, game, target, item2, mode, attackInfo,
+    );
+}
+
+export function critAvoid(
+  unit: UnitObject,
+  item: ItemObject | null,
+  itemToAvoid: ItemObject | null,
+  db: Database,
+  game?: any,
+): number {
+  const formula = skillSystem.critAvoidFormulaOverride(unit) ??
+    (itemToAvoid ? itemSystem.critAvoidFormulaOverride(unit, itemToAvoid) : undefined) ??
+    skillSystem.critAvoidFormula(unit) ??
+    (itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined) ??
+    'CRIT_AVOID';
+  return resolveEquation(db, formula, 'LCK', unit) +
+    skillSystem.modifyCritAvoid(unit, item);
+}
+
+function combatExpressionCalcs(
+  db: Database,
+  game: any,
+): Record<string, (...args: any[]) => any> {
+  const rawUnit = (candidate: any): UnitObject => candidate?._raw ?? candidate;
+  const rawItem = (candidate: any): ItemObject | null => candidate?._raw ?? candidate ?? null;
+  return {
+    accuracy: (candidate: any, candidateItem: any) =>
+      accuracy(rawUnit(candidate), rawItem(candidateItem)!, db, game),
+    avoid: (candidate: any, candidateItem: any, itemToAvoid?: any) =>
+      avoid(
+        rawUnit(candidate), db, undefined,
+        rawItem(itemToAvoid) ?? rawItem(candidateItem), game,
+      ),
+    crit_accuracy: (candidate: any, candidateItem: any) =>
+      critAccuracy(rawUnit(candidate), rawItem(candidateItem)!, db, game),
+    crit_avoid: (candidate: any, candidateItem: any, itemToAvoid?: any) =>
+      critAvoid(
+        rawUnit(candidate), rawItem(candidateItem), rawItem(itemToAvoid), db, game,
+      ),
+    attack_speed: (candidate: any, candidateItem: any) =>
+      attackSpeed(rawUnit(candidate), rawItem(candidateItem)!, db),
+    defense_speed: (candidate: any, candidateItem: any, itemToAvoid?: any) =>
+      defenseSpeed(
+        rawUnit(candidate), rawItem(candidateItem)!,
+        db, rawItem(itemToAvoid),
+      ),
+    can_counterattack: (
+      attacker: any,
+      attackItem: any,
+      defender: any,
+      _defenseItem?: any,
+    ) => canCounterattack(
+      rawUnit(attacker), rawItem(attackItem)!,
+      rawUnit(defender), db, game,
+    ),
+  };
+}
+
 // ------------------------------------------------------------------
 // Composite formulas (with dynamic modifiers + multipliers)
 // ------------------------------------------------------------------
@@ -601,15 +709,30 @@ export function computeHit(
   board?: GameBoard | null,
   game?: any,
   mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
 ): number {
-  const acc = accuracy(attacker, attackItem, db);
-  const avo = avoid(defender, db, board, attackItem);
+  game ??= _eqGameRef?.();
+  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const expressionCalcs = combatExpressionCalcs(db, game);
+  const acc = accuracy(
+    attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
+  );
+  const avo = avoid(
+    defender, db, board, attackItem, game, attacker, mode, attackInfo,
+  );
 
   // Dynamic modifiers from items and skills (combat context)
-  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
-  const itemDynAcc = itemSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, mode, null, acc);
-  const skillDynAcc = skillSystem.dynamicAccuracy(attacker, attackItem, defender, defWeapon, mode, null, acc);
-  const skillDynAvo = skillSystem.dynamicAvoid(defender, defWeapon, attacker, attackItem, mode, null, avo);
+  const itemDynAcc = itemSystem.dynamicAccuracy(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, acc,
+  );
+  const skillDynAcc = skillSystem.dynamicAccuracy(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, acc,
+    game, expressionCalcs,
+  );
+  const skillDynAvo = skillSystem.dynamicAvoid(
+    defender, defWeapon, attacker, attackItem, mode, attackInfo, avo,
+    game, expressionCalcs,
+  );
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
@@ -634,11 +757,15 @@ function computeDamageCore(
   assist: boolean = false,
   attackInfo: [number, number] = [0, 0],
 ): number {
-  const atk = damage(attacker, attackItem, db);
+  game ??= _eqGameRef?.();
+  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const expressionCalcs = combatExpressionCalcs(db, game);
+  const atk = damage(
+    attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
+  );
   const def = defense(defender, attackItem, db, board);
 
   // Dynamic modifiers from items and skills
-  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
   const baseDmg = atk - def;
 
   // Attacker-only weapon-triangle damage advantage, folded into the
@@ -648,20 +775,24 @@ function computeDamageCore(
     attackItem, defWeapon, db, attacker, defender,
   ).attackerDamageAdvantage;
   const itemDynDmg = itemSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, baseDmg, db, game, advantageDamage,
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, atk, db, game, advantageDamage,
   );
   const skillDynDmg = skillSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, baseDmg,
-  );
-  const skillDynResist = skillSystem.dynamicResist(
-    defender, defWeapon, attacker, attackItem, mode, attackInfo, def,
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, atk,
+    game, expressionCalcs,
   );
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
   const defSupport = getSupportBonusForCombat(defender, game);
 
-  let finalDmg = baseDmg + itemDynDmg + skillDynDmg - skillDynResist + atkSupport.damage - defSupport.resist;
+  const beforeDynamicResist = baseDmg + itemDynDmg + skillDynDmg +
+    atkSupport.damage - defSupport.resist;
+  const skillDynResist = skillSystem.dynamicResist(
+    defender, defWeapon, attacker, attackItem, mode, attackInfo,
+    beforeDynamicResist, game, expressionCalcs,
+  );
+  let finalDmg = beforeDynamicResist - skillDynResist;
 
   // Attack-stance partners deal half damage after defense, matching LT's
   // compute_assist_damage path. Multipliers are applied after the reduction.
@@ -669,7 +800,7 @@ function computeDamageCore(
 
   // Apply damage multiplier from attacker skills
   const dmgMult = skillSystem.damageMultiplier(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, finalDmg,
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, finalDmg, game,
   );
   finalDmg = Math.floor(finalDmg * dmgMult);
 
@@ -736,6 +867,37 @@ export function computeAssistDamage(
   return computeDamage(attacker, attackItem, defender, db, board, game, mode, true);
 }
 
+export function computeTrueSpeed(
+  attacker: UnitObject,
+  attackItem: ItemObject,
+  defender: UnitObject,
+  defenseItem: ItemObject | null,
+  db: Database,
+  game?: any,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
+): number {
+  game ??= _eqGameRef?.();
+  const expressionCalcs = combatExpressionCalcs(db, game);
+  let speed = attackSpeed(attacker, attackItem, db);
+  speed -= defenseItem
+    ? defenseSpeed(defender, defenseItem, db, attackItem)
+    : defender.getStatValue('SPD') +
+      skillSystem.modifyDefenseSpeed(defender, null);
+  const atkSupport = getSupportBonusForCombat(attacker, game);
+  const defSupport = getSupportBonusForCombat(defender, game);
+  speed += atkSupport.attack_speed - defSupport.defense_speed;
+  speed += skillSystem.dynamicAttackSpeed(
+    attacker, attackItem, defender, defenseItem, mode, attackInfo,
+    speed, game, expressionCalcs,
+  );
+  speed -= skillSystem.dynamicDefenseSpeed(
+    defender, defenseItem, attacker, attackItem, mode, attackInfo,
+    speed, game, expressionCalcs,
+  );
+  return speed;
+}
+
 /**
  * Check if attacker doubles defender.
  * Now checks item canDouble and skill noDouble/defDouble.
@@ -746,6 +908,9 @@ export function canDouble(
   defender: UnitObject,
   defenseItem: ItemObject | null,
   db: Database,
+  game?: any,
+  mode: 'attack' | 'defense' | 'splash' = 'attack',
+  attackInfo: [number, number] = [0, 0],
 ): boolean {
   // Item can't double? (e.g., cannot_double component)
   if (!itemSystem.canDouble(attacker, attackItem)) return false;
@@ -753,18 +918,14 @@ export function canDouble(
   // Skill prevents doubling?
   if (skillSystem.noDouble(attacker)) return false;
 
-  const attackerAS = attackSpeed(attacker, attackItem, db);
-
-  // Use defense speed for the defender's side
-  const defenderWeapon = defenseItem ?? defender.items.find((i) => i.isWeapon()) ?? null;
-  const defenderAS = defenderWeapon
-    ? defenseSpeed(defender, defenderWeapon, db, attackItem)
-    : defender.getStatValue('SPD');
-
   const thresholdExpr = db.getEquation('SPEED_TO_DOUBLE');
   const threshold = thresholdExpr ? evaluateEquation(thresholdExpr, attacker) : 4;
 
-  return attackerAS - defenderAS >= threshold;
+  return computeTrueSpeed(
+    attacker, attackItem, defender,
+    defenseItem ?? defender.items.find((i) => i.isWeapon()) ?? null,
+    db, game, mode, attackInfo,
+  ) >= threshold;
 }
 
 /**
@@ -777,13 +938,19 @@ export function canDefenderDouble(
   defender: UnitObject,
   defenseItem: ItemObject,
   db: Database,
+  game?: any,
+  attackInfo: [number, number] = [0, 0],
 ): boolean {
   // defDouble skill allows the defender to double
   if (skillSystem.defDouble(defender)) {
-    return canDouble(defender, defenseItem, attacker, attackItem, db);
+    return canDouble(
+      defender, defenseItem, attacker, attackItem, db, game, 'defense', attackInfo,
+    );
   }
   // Standard: defender can double if their AS exceeds the attacker's
-  return canDouble(defender, defenseItem, attacker, attackItem, db);
+  return canDouble(
+    defender, defenseItem, attacker, attackItem, db, game, 'defense', attackInfo,
+  );
 }
 
 /**
@@ -936,44 +1103,44 @@ export function computeCrit(
   mode: 'attack' | 'defense' | 'splash' = 'attack',
   attackInfo: [number, number] = [0, 0],
 ): number {
-  const critFormula = skillSystem.critAccuracyFormulaOverride(attacker) ??
-    itemSystem.critAccuracyFormulaOverride(attacker, attackItem) ??
-    skillSystem.critAccuracyFormula(attacker) ??
-    itemSystem.critAccuracyFormula(attacker, attackItem) ??
-    'CRIT_HIT';
-  const avoidFormula = skillSystem.critAvoidFormulaOverride(defender) ??
-    itemSystem.critAvoidFormulaOverride(attacker, attackItem) ??
-    skillSystem.critAvoidFormula(defender) ??
-    itemSystem.critAvoidFormula(attacker, attackItem) ??
-    'CRIT_AVOID';
-  const baseCrit = resolveEquation(db, critFormula, 'SKL // 2', attacker);
-  const itemCrit = attackItem.getComponent<number>('crit') ?? 0;
-  const critAvoid = resolveEquation(db, avoidFormula, 'LCK', defender);
-
-  // Skill modifiers
-  const skillCritAcc = skillSystem.modifyCritAccuracy(attacker, attackItem);
-  const skillCritAvo = skillSystem.modifyCritAvoid(defender, null);
-
-  // Item crit modifier
-  const itemCritMod = itemSystem.modifyCritAccuracy(attacker, attackItem);
+  game ??= _eqGameRef?.();
+  const defWeapon = getEquippedWeapon(defender, db, game);
+  const expressionCalcs = combatExpressionCalcs(db, game);
+  const baseCrit = critAccuracy(
+    attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
+  );
+  const staticCritAvoid = critAvoid(
+    defender, defWeapon, attackItem, db, game,
+  );
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
   const defSupport = getSupportBonusForCombat(defender, game);
 
-  const baseValue = baseCrit + itemCrit + skillCritAcc + itemCritMod + atkSupport.crit
-    - critAvoid - skillCritAvo - defSupport.dodge;
+  const baseValue = baseCrit + atkSupport.crit - staticCritAvoid - defSupport.dodge;
   const dynamicCrit = skillSystem.dynamicCritAccuracy(
     attacker,
     attackItem,
     defender,
-    getEquippedWeapon(defender, db, game),
+    defWeapon,
     mode,
     attackInfo,
     baseValue,
     game,
+    expressionCalcs,
   );
-  const raw = baseValue + dynamicCrit;
+  const dynamicDodge = skillSystem.dynamicCritAvoid(
+    defender,
+    defWeapon,
+    attacker,
+    attackItem,
+    mode,
+    attackInfo,
+    baseValue,
+    game,
+    expressionCalcs,
+  );
+  const raw = baseValue + dynamicCrit - dynamicDodge;
   return Math.max(0, Math.min(100, raw));
 }
 
