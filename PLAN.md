@@ -432,12 +432,16 @@ return to the base without compatibility warnings or silent mechanic loss.
   Ignore Region Status and Gain Terrain precedence.
 - [x] Preserve EotF `bloody_moon` Beast buffs and `ride_the_lightning`
   range-limited status propagation through reversible after-gain hooks.
+- [x] Queue all eight EOtF `start_and_end_event_initiate` event pairs with
+  initiator-only filtering and complete combat local arguments.
+- [x] Preserve EOtF visual counters, forced end-combat charge use, upkeep AoE
+  grants, and booster marker expression access.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
 - [x] Port all 53 used project-local item components with focused value-shape,
   mutation-order, targeting, combat, undo/redo, and save coverage.
-- [ ] Port all 108 used project-local skill components with focused lifecycle,
+- [x] Port all 108 used project-local skill components with focused lifecycle,
   proc-order, charge, tether, status, damage-redirection, and save coverage.
 
 ### P8.3 — Roguelite systems and campaign proof

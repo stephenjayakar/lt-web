@@ -355,6 +355,19 @@ export function queueCombatSkillStartEvents(
         participant.item2,
         participant.mode,
       )) queued++;
+      const initiateEvents = skill.getComponent<unknown>(
+        'start_and_end_event_initiate',
+      );
+      if (participant.mode === 'attack' && triggerSkillEvent(
+        game,
+        componentOption(initiateEvents, 'start_event'),
+        'start_and_end_event_initiate_start',
+        participant.unit,
+        participant.target,
+        participant.item,
+        participant.item2,
+        participant.mode,
+      )) queued++;
     }
   }
   return queued;
@@ -536,6 +549,19 @@ export function queueCombatSkillEvents(
           if (component === 'event_after_kill') triggerSkillCharge(game, skill);
         }
       }
+      const initiateEvents = skill.getComponent<unknown>(
+        'start_and_end_event_initiate',
+      );
+      if (participant.mode === 'attack' && triggerSkillEvent(
+        game,
+        componentOption(initiateEvents, 'end_event'),
+        'start_and_end_event_initiate_end',
+        participant.unit,
+        participant.target,
+        participant.item,
+        participant.item2,
+        participant.mode,
+      )) queued++;
     }
   }
   return queued;
@@ -848,6 +874,12 @@ export function applyCombatSkillEndHooks(
         equippedWeapon(target),
         mode,
       )) continue;
+
+      if (skill.hasComponent('trigger_charge') &&
+          claimGlobalHook(skill, 'trigger_charge')) {
+        triggerSkillCharge(game, skill, unit);
+        applied++;
+      }
 
       const armsthriftAlways = skill.getComponent<unknown>('armsthrift_always');
       if (armsthriftAlways !== undefined &&

@@ -12,6 +12,7 @@ import type { EventManager } from '../events/event-manager';
 import type { Database } from '../data/database';
 import { evaluateEquation } from '../combat/combat-calcs';
 import {
+  checkAlly,
   modifiedHealAmount,
   skillConditionActive,
 } from '../combat/skill-system';
@@ -33,6 +34,14 @@ interface SkillTurnGame {
   gameVars?: Map<string, unknown>;
   levelVars?: Map<string, unknown>;
   eventManager?: EventManager | null;
+  units?: Map<string, UnitObject>;
+}
+
+function componentOption(rawValue: unknown, key: string): unknown {
+  if (!rawValue || typeof rawValue !== 'object') return undefined;
+  return rawValue instanceof Map
+    ? rawValue.get(key)
+    : (rawValue as Record<string, unknown>)[key];
 }
 
 function isConditionActive(
@@ -159,6 +168,45 @@ export function applySkillTurnHooks(
           if (prefab) {
             game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(prefab)));
             effects.push({ unit, skill, component });
+          }
+        } else if (
+          phase === 'upkeep' &&
+          component === 'upkeep_aoe_skill_gain' &&
+          conditional &&
+          unit.position
+        ) {
+          const skillNid = componentOption(rawValue, 'skill');
+          const prefab = typeof skillNid === 'string'
+            ? game.db?.skills.get(skillNid)
+            : null;
+          const configuredRange = Number(componentOption(rawValue, 'range') ?? 1);
+          const range = Number.isFinite(configuredRange)
+            ? Math.max(0, Math.trunc(configuredRange))
+            : 1;
+          const targetKind = String(componentOption(rawValue, 'target') ?? 'ally');
+          let granted = 0;
+          const grant = (recipient: UnitObject): void => {
+            if (!prefab) return;
+            const status = new SkillObject(prefab);
+            status.initiatorNid = unit.nid;
+            game.actionLog.doAction(new AddSkillAction(recipient, status));
+            if (recipient.skills.includes(status)) granted++;
+          };
+          for (const candidate of game.units?.values() ?? []) {
+            if (candidate === unit || !candidate.position || candidate.isDead()) continue;
+            const distance =
+              Math.abs(candidate.position[0] - unit.position[0]) +
+              Math.abs(candidate.position[1] - unit.position[1]);
+            if (distance > range) continue;
+            const allied = !!game.db && checkAlly(unit, candidate, game.db);
+            if ((allied && (targetKind === 'ally' || targetKind === 'any')) ||
+                (!allied && (targetKind === 'enemy' || targetKind === 'any'))) {
+              grant(candidate);
+            }
+          }
+          if (componentOption(rawValue, 'affect_self') === true) grant(unit);
+          if (granted > 0) {
+            effects.push({ unit, skill, component, value: granted });
           }
         } else if (phase === 'upkeep' && component === 'upkeep_charge_increase') {
           const charge = Number(skill.data.get('charge') ?? 0);

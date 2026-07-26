@@ -12,6 +12,7 @@ import {
   onRescue,
   onSeparate,
   isCantoSkill,
+  skillConditionActive,
 } from '../combat/skill-system';
 import { skillCondition } from '../combat/item-system';
 import { autoLevelUnit, levelUpUnit } from './leveling';
@@ -2314,7 +2315,12 @@ export class RescueAction extends Action {
     this.rescuer.traveler = this.target.nid;
     this.rescuer.hasRescued = true;
     if (!this.initialized) {
-      this.penaltySkills = onRescue(this.rescuer, this.target, makeSkillForAction);
+      this.penaltySkills = onRescue(
+        this.rescuer,
+        this.target,
+        makeSkillForAction,
+        _getGame?.(),
+      );
       this.initialized = true;
     } else {
       for (const skill of this.penaltySkills) {
@@ -3989,6 +3995,13 @@ export class RefreshUnitAction extends Action {
   private oldHasMoved: boolean = false;
   private oldHasTraded: boolean = false;
   private oldFinished: boolean = false;
+  private oldHasRescued: boolean = false;
+  private oldHasDropped: boolean = false;
+  private oldHasTaken: boolean = false;
+  private oldHasGiven: boolean = false;
+  private oldMovementLeft: number = 0;
+  private initialized: boolean = false;
+  private blocked: boolean = false;
 
   constructor(unit: UnitObject) {
     super();
@@ -4000,7 +4013,26 @@ export class RefreshUnitAction extends Action {
     this.oldHasMoved = this.unit.hasMoved;
     this.oldHasTraded = this.unit.hasTraded;
     this.oldFinished = this.unit.finished;
+    this.oldHasRescued = this.unit.hasRescued;
+    this.oldHasDropped = this.unit.hasDropped;
+    this.oldHasTaken = this.unit.hasTaken;
+    this.oldHasGiven = this.unit.hasGiven;
+    this.oldMovementLeft = this.unit.movementLeft;
     this.unit.resetTurnState();
+    if (!this.initialized) {
+      const game = _getGame?.();
+      this.blocked = !this.unit.tags.includes('AlwaysRefresh') &&
+        this.unit.skills.some((skill) =>
+          skill.hasComponent('null_refresh') &&
+          skillConditionActive(skill, this.unit, { game }));
+      this.initialized = true;
+    }
+    if (this.blocked) {
+      this.unit.hasAttacked = true;
+      this.unit.hasMoved = true;
+      this.unit.hasTraded = true;
+      this.unit.finished = true;
+    }
   }
 
   reverse(): void {
@@ -4008,6 +4040,11 @@ export class RefreshUnitAction extends Action {
     this.unit.hasMoved = this.oldHasMoved;
     this.unit.hasTraded = this.oldHasTraded;
     this.unit.finished = this.oldFinished;
+    this.unit.hasRescued = this.oldHasRescued;
+    this.unit.hasDropped = this.oldHasDropped;
+    this.unit.hasTaken = this.oldHasTaken;
+    this.unit.hasGiven = this.oldHasGiven;
+    this.unit.movementLeft = this.oldMovementLeft;
   }
 }
 

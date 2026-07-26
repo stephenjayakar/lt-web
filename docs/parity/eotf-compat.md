@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 86 unverified
+- 270 skill-component NIDs; 79 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -152,7 +152,6 @@ focused browser coverage.
 | alternate_resist_formula | 4 | hook-and-reference |
 | armsthrift | 3 | consumed |
 | attack_proc | 10 | reference-only |
-| booster_blocker | 3 | project-local-or-unknown |
 | cannot_trade | 2 | unreferenced |
 | change_ai | 15 | reference-only |
 | change_buy_price | 1 | reference-only |
@@ -200,30 +199,24 @@ focused browser coverage.
 | negate_tags | 13 | consumed |
 | negative | 71 | consumed |
 | no_attack_after_move | 3 | hook-and-reference |
-| null_refresh | 2 | project-local-or-unknown |
 | pairup_bonus | 1 | hook-and-reference |
 | pass | 7 | hook-only |
 | pcc_static | 3 | unreferenced |
 | post_combat_splash | 3 | consumed |
 | post_combat_splash_aoe | 3 | consumed |
 | proc_rate | 12 | consumed |
-| rescue_bonus | 3 | project-local-or-unknown |
 | resist_follow_up | 1 | hook-only |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
 | smart_oversplash | 3 | hook-and-reference |
 | specific_witch_warp | 2 | unreferenced |
 | stack | 224 | consumed |
-| start_and_end_event_initiate | 8 | project-local-or-unknown |
 | subtle_stat_change | 3 | hook-only |
-| trigger_charge | 1 | project-local-or-unknown |
 | TrueMiracle | 19 | reference-only |
 | unit_anim | 54 | unreferenced |
 | unit_flickering_tint | 54 | consumed |
 | unselectable | 15 | hook-and-reference |
-| upkeep_aoe_skill_gain | 6 | project-local-or-unknown |
 | vantage | 10 | hook-and-reference |
-| visual_charge | 2 | project-local-or-unknown |
 | wexp_multiplier | 1 | hook-and-reference |
 | witch_warp | 2 | unreferenced |
 | witch_warp_expression | 6 | consumed |

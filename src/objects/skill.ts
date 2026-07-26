@@ -71,12 +71,16 @@ export class SkillObject {
       this.components.get('drain_charge_all') ??
       this.components.get('limited_charge') ??
       this.components.get('lost_on_charges_depleted');
+    const visualCharge = this.components.get('visual_charge');
     if (typeof buildCharge === 'number') {
       this.data.set('charge', 0);
       this.data.set('total_charge', buildCharge);
     } else if (typeof drainCharge === 'number') {
       this.data.set('charge', drainCharge);
       this.data.set('total_charge', drainCharge);
+    } else if (typeof visualCharge === 'number') {
+      this.data.set('charge', 0);
+      this.data.set('total_charge', visualCharge);
     }
 
     for (const [component, value] of this.components) {

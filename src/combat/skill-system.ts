@@ -64,19 +64,40 @@ export function onRescue(
   rescuer: UnitObject,
   rescuee: UnitObject,
   createSkill?: SkillFactory,
+  game?: any,
 ): SkillObject[] {
-  if (!createSkill || ignoreRescuePenalty(rescuer)) return [];
-  const exists = rescuer.skills.some(skill =>
-    skill.nid === 'Rescue' &&
-    skill.data.get('rescueSource') === rescuee.nid &&
-    skill.data.get('rescueSourceType') === 'traveler');
-  if (exists) return [];
-  const penalty = createSkill('Rescue');
-  if (!penalty) return [];
-  penalty.data.set('rescueSource', rescuee.nid);
-  penalty.data.set('rescueSourceType', 'traveler');
-  rescuer.skills.push(penalty);
-  return [penalty];
+  if (!createSkill) return [];
+  const added: SkillObject[] = [];
+  if (!ignoreRescuePenalty(rescuer)) {
+    const exists = rescuer.skills.some(skill =>
+      skill.nid === 'Rescue' &&
+      skill.data.get('rescueSource') === rescuee.nid &&
+      skill.data.get('rescueSourceType') === 'traveler');
+    if (!exists) {
+      const penalty = createSkill('Rescue');
+      if (penalty) {
+        penalty.data.set('rescueSource', rescuee.nid);
+        penalty.data.set('rescueSourceType', 'traveler');
+        penalty.ownerNid = rescuer.nid;
+        rescuer.skills.push(penalty);
+        added.push(penalty);
+      }
+    }
+  }
+  for (const source of rescuee.skills) {
+    const bonusNid = source.getComponent<unknown>('rescue_bonus');
+    if (typeof bonusNid !== 'string' ||
+        !skillConditionActive(source, rescuee, { game }) ||
+        rescuer.skills.some((skill) => skill.nid === bonusNid)) continue;
+    const bonus = createSkill(bonusNid);
+    if (!bonus) continue;
+    bonus.initiatorNid = rescuee.nid;
+    bonus.data.set('rescueBonusSource', rescuee.nid);
+    bonus.ownerNid = rescuer.nid;
+    rescuer.skills.push(bonus);
+    added.push(bonus);
+  }
+  return added;
 }
 
 /** Remove only the Rescue penalty sourced from this traveler. */
@@ -84,9 +105,12 @@ export function onRemoveRescue(rescuer: UnitObject, rescuee: UnitObject): SkillO
   const removed: SkillObject[] = [];
   for (let index = rescuer.skills.length - 1; index >= 0; index--) {
     const skill = rescuer.skills[index];
-    if (skill.nid === 'Rescue' &&
+    const isPenalty = skill.nid === 'Rescue' &&
         skill.data.get('rescueSource') === rescuee.nid &&
-        skill.data.get('rescueSourceType') === 'traveler') {
+        skill.data.get('rescueSourceType') === 'traveler';
+    const isBonus = rescuee.skills.some((source) =>
+      source.getComponent<unknown>('rescue_bonus') === skill.nid);
+    if (isPenalty || isBonus) {
       rescuer.skills.splice(index, 1);
       removed.unshift(skill);
     }
