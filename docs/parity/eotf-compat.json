@@ -3026,7 +3026,7 @@
         "nid": "growth_change_expression",
         "uses": 3,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "has_affinities",

@@ -166,7 +166,7 @@ function calculateLevel(
     (unit.growths[nid] ?? 0) +
     (klass?.growth_bonus?.[nid] ?? 0) +
     (difficultyBonus[nid] ?? 0) +
-    growthChange(unit, nid)
+    growthChange(unit, nid, game)
   );
 
   if (method === 'Bexp') {

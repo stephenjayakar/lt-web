@@ -207,6 +207,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'give_status_on_take_hit',
   'give_statuses_after_combat',
   'give_statuses_on_take_hit',
+  'growth_change_expression',
   'has_affinities',
   'heal_after_follow_up',
   'heal_on_kill',

@@ -1034,15 +1034,44 @@ export function clearDynamicStatChanges(unit: UnitObject): void {
 /**
  * Get the total growth change bonus from all skills for a given stat.
  */
-export function growthChange(unit: UnitObject, statNid: string): number {
+export function growthChange(
+  unit: UnitObject,
+  statNid: string,
+  game: any = skillGameRef?.(),
+): number {
   let total = 0;
   for (const skill of unit.skills) {
+    if (!evaluatedSkillActive(skill, unit, { game }, new Map([
+      ['skill', skill],
+    ]))) continue;
     const changes = skill.getComponent<any>('growth_change');
     if (Array.isArray(changes)) {
       for (const entry of changes) {
         if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
           total += entry[1];
         }
+      }
+    }
+    const expressions = skill.getComponent<unknown>('growth_change_expression');
+    if (!Array.isArray(expressions)) continue;
+    for (const entry of expressions) {
+      if (!Array.isArray(entry) || entry[0] !== statNid ||
+          typeof entry[1] !== 'string') continue;
+      try {
+        const value = Number(evaluateExpression(entry[1], {
+          game,
+          unit1: unit,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+          localArgs: new Map([['skill', skill]]),
+        }));
+        if (Number.isFinite(value)) total += Math.trunc(value);
+      } catch (error) {
+        console.error(
+          `Could not evaluate growth change for ${skill.nid}: ${entry[1]}`,
+          error,
+        );
       }
     }
   }
