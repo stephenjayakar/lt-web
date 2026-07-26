@@ -7,6 +7,7 @@
  */
 export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'all_units_aoe',
+  'cooldown',
   'damage_any',
   'eval_ally_blast_aoe',
   'eval_damage',
@@ -15,13 +16,18 @@ export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'eval_dragon_magic',
   'eval_extra_damage',
   'eval_hit',
+  'eval_hp_cost',
   'eval_magic',
   'eval_max_range',
   'eval_min_range',
   'eval_smartblast_aoe',
+  'eval_stack_cost',
   'eval_weight',
   'enemy_big_cleave_aoe',
   'magic_weapon_rank',
+  'stack_cost',
+  'stack_cost_multi',
+  'start_cooldown',
   'target_tile_unless_ally',
   'weapon_type_exempt',
 ]);

@@ -1062,7 +1062,7 @@
         "nid": "cooldown",
         "uses": 86,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit",
@@ -1229,8 +1229,8 @@
       {
         "nid": "eval_hp_cost",
         "uses": 4,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_magic",
@@ -1266,7 +1266,7 @@
         "nid": "eval_stack_cost",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_target_restrict",
@@ -1782,13 +1782,13 @@
         "nid": "stack_cost",
         "uses": 9,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stack_cost_multi",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stacks_on_hit",
@@ -1800,7 +1800,7 @@
         "nid": "start_cooldown",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change",

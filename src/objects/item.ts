@@ -86,8 +86,8 @@ export class ItemObject {
 
     const cooldown = this.components.get('cooldown');
     if (typeof cooldown === 'number') {
-      this.data.set('cooldown', 0);
       this.data.set('starting_cooldown', cooldown);
+      this.data.set('cooldown', this.components.has('start_cooldown') ? cooldown : 0);
     }
   }
 
