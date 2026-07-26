@@ -1440,17 +1440,38 @@ export function checkEnemy(unit: UnitObject, target: UnitObject, db: any): boole
   return !db.areAllied(unit.team, target.team);
 }
 
-/** Last inventory-offset component, matching Python UNIQUE dispatch. */
-export function inventoryCapacityOffsets(unit: UnitObject): {
+/**
+ * Python `num_items_offset`/`num_accessories_offset` UNIQUE hooks.
+ * Each hook resolves independently to the last active component value.
+ */
+export function inventoryCapacityOffsets(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): {
   items: number;
   accessories: number;
 } {
-  let amount = 0;
+  let items = 0;
+  let accessories = 0;
   for (const skill of unit.skills) {
-    const value = skill.getComponent<number>('additional_accessories');
-    if (typeof value === 'number') amount = value;
+    if (!evaluatedSkillActive(skill, unit, { game }, new Map([
+      ['skill', skill],
+    ]))) continue;
+    for (const [component, raw] of skill.components) {
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+      const value = Math.trunc(raw);
+      if (component === 'additional_accessories') {
+        items = -value;
+        accessories = value;
+      } else if (component === 'additional_inventory') {
+        items = value;
+        accessories = -value;
+      } else if (component === 'change_item_slots') {
+        items = value;
+      }
+    }
   }
-  return { items: -amount, accessories: amount };
+  return { items, accessories };
 }
 
 /** Product of active target-priority modifiers. */
