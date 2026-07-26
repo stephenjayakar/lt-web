@@ -1424,6 +1424,55 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     };
   }
 
+  function wrapRecordValue(value: any): any {
+    if (Array.isArray(value)) {
+      return new Proxy(value, {
+        get(target, property: string | symbol) {
+          if (property === 'remove') {
+            return (candidate: any) => {
+              const index = target.indexOf(candidate);
+              if (index >= 0) target.splice(index, 1);
+              RECORDS?.persist();
+              return target;
+            };
+          }
+          const result = target[property as keyof typeof target];
+          return typeof result === 'function' ? result.bind(target) : result;
+        },
+      });
+    }
+    if (value && typeof value === 'object') {
+      return new Proxy(value, {
+        get(target, property: string | symbol) {
+          if (property === 'get') {
+            return (key: string, fallback?: any) =>
+              key in target ? wrapRecordValue(target[key]) : fallback;
+          }
+          if (property === 'update') {
+            return (entries: Record<string, any>) => {
+              Object.assign(target, entries);
+              RECORDS?.persist();
+              return target;
+            };
+          }
+          const result = target[property as keyof typeof target];
+          return wrapRecordValue(result);
+        },
+      });
+    }
+    return value;
+  }
+
+  const recordsProxy = {
+    get(nid: string, fallback?: any) {
+      if (!RECORDS?.has(nid)) return fallback ?? null;
+      return wrapRecordValue(RECORDS.get(nid));
+    },
+    has(nid: string) {
+      return RECORDS?.has(nid) ?? false;
+    },
+  };
+
   function componentEntries(candidate: any): [string, any][] {
     const components = candidate?.components;
     if (components instanceof Map) return [...components.entries()];
@@ -2077,6 +2126,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     wrapItem,
     wrapSkill,
     DB: databaseProxy,
+    RECORDS: recordsProxy,
     utils: {
       clamp(value: number, minimum: number, maximum: number) {
         return Math.max(minimum, Math.min(maximum, value));
@@ -2217,6 +2267,12 @@ function evaluateWithJsFallback(
     /((?:'[^']*'|"[^"]*"))\s*%\s*([A-Za-z_]\w*(?:\.\w+)*)/g,
     '__pyFormat($1, $2)',
   );
+  // Python concatenates lists with `+`; JavaScript coerces them to strings.
+  // EOtF uses this form heavily when extending persistent record lists.
+  jsExpr = jsExpr.replace(
+    /(RECORDS\.get\([^)]*\))\s*\+\s*(\[[^\]]*\])/g,
+    '__pyAdd($1, $2)',
+  );
 
   // Build scope
   const evalScope = buildEvalScope(ctx);
@@ -2344,6 +2400,10 @@ function evaluateWithJsFallback(
       return String(candidate?._raw ?? candidate);
     });
   };
+  const pyAdd = (left: any, right: any) =>
+    Array.isArray(left) && Array.isArray(right)
+      ? [...left, ...right]
+      : left + right;
   const range = (start: number, end?: number) => {
     const from = end === undefined ? 0 : start;
     const to = end === undefined ? start : end;
@@ -2445,7 +2505,7 @@ function evaluateWithJsFallback(
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'unit_funcs', 'combat_calcs', 'movement_funcs', 'target_system',
       'max', 'min', 'sum', 'math', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge',
-      '__pyFormat', 'static_random', 'evaluate', '_qf', '_locals',
+      '__pyFormat', '__pyAdd', 'static_random', 'evaluate', '_qf', '_locals',
       '_wrapUnit', '_wrapItem', '_wrapSkill',
       `"use strict";
        ${localDeclarations}
@@ -2485,11 +2545,11 @@ function evaluateWithJsFallback(
     return fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, __sorted__, v, cf,
-      support_rank_nid, mode, stat_changes, evalScope.DB, RECORDS, evalScope.utils,
+      support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.RECORDS, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.unit_funcs,
       evalScope.combat_calcs, evalScope.movement_funcs, evalScope.target_system,
       max, min, sum, math, int, set, str, range, get_stacks, get_charge,
-      pyFormat, { get_random_choice: gameProxy.get_random_choice }, evaluate,
+      pyFormat, pyAdd, { get_random_choice: gameProxy.get_random_choice }, evaluate,
       _queryFuncs, expressionLocals,
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
     );

@@ -15148,12 +15148,14 @@ export class EventState extends State {
           const nid = args[0];
           const value = args[1] ?? 'true';
           if (nid && RECORDS) {
-            let evaluated: any = value;
-            if (value === 'True' || value === 'true') evaluated = true;
-            else if (value === 'False' || value === 'false') evaluated = false;
-            else if (!isNaN(Number(value))) evaluated = Number(value);
             game.actionLog.doAction(
-              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.create(nid, evaluated)),
+              new UpdatePersistentStoreAction(
+                RECORDS,
+                () => RECORDS.create(nid, evaluateExpression(
+                  value,
+                  this.buildConditionContext(),
+                )),
+              ),
             );
           }
         } catch (e) { console.warn('create_record error:', e); }
@@ -15165,12 +15167,14 @@ export class EventState extends State {
           const nid = args[0];
           const value = args[1] ?? 'true';
           if (nid && RECORDS) {
-            let evaluated: any = value;
-            if (value === 'True' || value === 'true') evaluated = true;
-            else if (value === 'False' || value === 'false') evaluated = false;
-            else if (!isNaN(Number(value))) evaluated = Number(value);
             game.actionLog.doAction(
-              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.update(nid, evaluated)),
+              new UpdatePersistentStoreAction(
+                RECORDS,
+                () => RECORDS.update(nid, evaluateExpression(
+                  value,
+                  this.buildConditionContext(),
+                )),
+              ),
             );
           }
         } catch (e) { console.warn('update_record error:', e); }
@@ -15182,12 +15186,14 @@ export class EventState extends State {
           const nid = args[0];
           const value = args[1] ?? 'true';
           if (nid && RECORDS) {
-            let evaluated: any = value;
-            if (value === 'True' || value === 'true') evaluated = true;
-            else if (value === 'False' || value === 'false') evaluated = false;
-            else if (!isNaN(Number(value))) evaluated = Number(value);
             game.actionLog.doAction(
-              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.replace(nid, evaluated)),
+              new UpdatePersistentStoreAction(
+                RECORDS,
+                () => RECORDS.replace(nid, evaluateExpression(
+                  value,
+                  this.buildConditionContext(),
+                )),
+              ),
             );
           }
         } catch (e) { console.warn('replace_record error:', e); }

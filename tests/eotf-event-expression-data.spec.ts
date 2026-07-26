@@ -147,4 +147,92 @@ test.describe('Embrace of the Fog event expression data', () => {
     expect(result.tupleKey).toEqual(result.expected);
     expect(result.highestLevel).toBe(result.expectedHighestLevel);
   });
+
+  test('evaluates authored persistent-record values with fallbacks reversibly', async ({ page }) => {
+    const warnings: string[] = [];
+    page.on('console', (message) => {
+      const text = message.text();
+      if (/EventCondition JS eval failed|record error/i.test(text)) warnings.push(text);
+    });
+    await bootEotf(page);
+    const authoredCounts = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { RECORDS } = await import('/src/engine/records.ts');
+      RECORDS.clear();
+      RECORDS.create('Available_Units', ['Player']);
+      RECORDS.create('Counter', 4);
+      RECORDS.create('skill_inheritance', { Nothing: 'None' });
+      game.actionLog.clear();
+      const counts = { create: 0, update: 0, replace: 0 };
+      for (const event of game.db.events.values()) {
+        for (const line of event._source ?? []) {
+          const command = line.trim().split(';', 1)[0];
+          if (command === 'create_record') counts.create++;
+          if (command === 'update_record') counts.update++;
+          if (command === 'replace_record') counts.replace++;
+        }
+      }
+      const nid = 'TestEotfRecordExpressions';
+      game.db.events.set(nid, {
+        name: nid,
+        nid,
+        trigger: nid,
+        level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True',
+        only_once: false,
+        priority: 0,
+        _source: [
+          "create_record;Created;{'status':'Discovered'}",
+          "update_record;Available_Units;RECORDS.get('Available_Units') + ['Kaku']",
+          "update_record;Counter;RECORDS.get('Counter') + 2",
+          "update_record;skill_inheritance;RECORDS.get('skill_inheritance').update({'Patchwork':'Player'})",
+          "replace_record;Tether;(5 * (RECORDS.get('MissingLevel', 0) + 1))",
+        ],
+      });
+      game.eventManager.triggerSpecific(nid, { type: nid }, true);
+      game.state.change('event');
+      return counts;
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(40, null));
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { RECORDS } = await import('/src/engine/records.ts');
+      const snapshot = () => ({
+        created: RECORDS.get('Created'),
+        units: RECORDS.get('Available_Units'),
+        counter: RECORDS.get('Counter'),
+        inheritance: RECORDS.get('skill_inheritance'),
+        tether: RECORDS.get('Tether'),
+      });
+      const changed = structuredClone(snapshot());
+      const actions = Array.from({ length: 5 }, () => game.actionLog.undo());
+      const undone = structuredClone(snapshot());
+      for (const action of [...actions].reverse()) action?.execute();
+      return {
+        changed,
+        undone,
+        redone: structuredClone(snapshot()),
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(authoredCounts).toEqual({ create: 249, update: 208, replace: 1 });
+    expect(result.changed).toEqual({
+      created: { status: 'Discovered' },
+      units: ['Player', 'Kaku'],
+      counter: 6,
+      inheritance: { Nothing: 'None', Patchwork: 'Player' },
+      tether: 5,
+    });
+    expect(result.undone).toEqual({
+      created: null,
+      units: ['Player'],
+      counter: 4,
+      inheritance: { Nothing: 'None' },
+      tether: null,
+    });
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual(Array(5).fill('UpdatePersistentStoreAction'));
+    expect(warnings).toEqual([]);
+  });
 });
