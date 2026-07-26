@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 185 unverified
-- 270 skill-component NIDs; 202 unverified
+- 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -87,13 +87,13 @@ focused browser coverage.
 | eval_target_restrict_2 | 138 | hook-and-reference |
 | eval_warning | 1 | consumed |
 | eval_weight | 2 | project-local-or-unknown |
-| event_after_combat_even_miss | 126 | reference-only |
-| event_after_combat_on_hit | 67 | reference-only |
-| event_after_use | 8 | reference-only |
+| event_after_combat_even_miss | 126 | consumed |
+| event_after_combat_on_hit | 67 | consumed |
+| event_after_use | 8 | consumed |
 | event_before_combat | 7 | project-local-or-unknown |
 | event_for_each_after_combat_on_hit | 2 | project-local-or-unknown |
 | event_on_break | 2 | project-local-or-unknown |
-| event_on_hit | 218 | reference-only |
+| event_on_hit | 218 | consumed |
 | exp | 5 | consumed |
 | galeforce_on_crit | 1 | project-local-or-unknown |
 | gba_steal | 1 | hook-and-reference |
@@ -215,9 +215,6 @@ focused browser coverage.
 
 | NID | Uses | Engine audit status |
 |---|---|---|
-| ability | 510 | consumed |
-| ability_attack_charge | 11 | project-local-or-unknown |
-| ability_parent | 2 | project-local-or-unknown |
 | additional_accessories | 3 | consumed |
 | additional_inventory | 3 | project-local-or-unknown |
 | all_brave | 5 | hook-only |
@@ -265,7 +262,6 @@ focused browser coverage.
 | Cleave | 1 | hook-and-reference |
 | close_counter | 8 | hook-and-reference |
 | combat_art | 172 | consumed |
-| combat_art_all | 1 | project-local-or-unknown |
 | combat_charge_increase_by_stat | 1 | consumed |
 | combat_condition | 472 | consumed |
 | combined_time | 56 | reference-only |

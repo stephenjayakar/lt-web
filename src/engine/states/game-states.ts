@@ -162,10 +162,12 @@ import {
   queueCombatSkillStartEvents,
   applyCombatItemStartHooks,
   applyCombatItemEndHooks,
+  queueDirectItemUseEvents,
   queueCombatItemEvents,
   applyDroppableItemPickups,
   combatTradePair,
   applyCombatSkillEndHooks,
+  triggerAbilityItemCharge,
   triggerSkillCharge,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
@@ -220,9 +222,11 @@ import {
   enemyWexpMultiplier,
   isCantoSkill,
   canSelect,
+  hasDrainingCharge,
   modifiedMaximumRange,
   movementType,
   priceSkillMultiplier,
+  skillConditionActive,
   empowerHeal,
   unitSpriteTint,
 } from '../../combat/skill-system';
@@ -510,6 +514,56 @@ function getAvailableCombatItems(unit: UnitObject): ItemObject[] {
   return unit.items.filter((item) =>
     (item.isWeapon() || item.isSpell()) && itemAvailable(unit, item, game.db, game),
   );
+}
+
+export interface SkillAbilityOption {
+  skill: SkillObject;
+  item: ItemObject;
+  component: 'ability' | 'ability_attack_charge' | 'ability_parent';
+}
+
+/** Python skill_system.get_extra_abilities, with stable registered item identity. */
+export function getSkillAbilityOptions(game: any, unit: UnitObject): SkillAbilityOption[] {
+  const result: SkillAbilityOption[] = [];
+  const components = [
+    'ability',
+    'ability_attack_charge',
+    'ability_parent',
+  ] as const;
+  const registerTree = (item: ItemObject, key: string): void => {
+    game.items.set(key, item);
+    item.subitems.forEach((child, index) =>
+      registerTree(child, `${key}_sub_${index}_${child.nid}`));
+  };
+  for (const skill of unit.skills) {
+    const total = Number(skill.data.get('total_charge'));
+    const charge = Number(skill.data.get('charge'));
+    if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) {
+      continue;
+    }
+    if (hasDrainingCharge(skill) && Number.isFinite(charge) && charge <= 0) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
+    for (const component of components) {
+      const itemNid = skill.getComponent<string>(component);
+      if (!itemNid) continue;
+      const prefab = game.db.items.get(itemNid);
+      if (!prefab) continue;
+      const dataKey = `abilityItemKey:${component}`;
+      let registryKey = skill.data.get(dataKey);
+      let item = typeof registryKey === 'string'
+        ? game.items.get(registryKey) as ItemObject | undefined
+        : undefined;
+      if (!item || item.nid !== itemNid) {
+        registryKey = `ability_${unit.nid}_${skill.uid}_${component}_${itemNid}`;
+        item = createItemTree(prefab, (nid) => game.db.items.get(nid));
+        registerTree(item, registryKey);
+        skill.data.set(dataKey, registryKey);
+      }
+      item.owner = unit;
+      result.push({ skill, item, component });
+    }
+  }
+  return result;
 }
 
 /** Get all adjacent allied units to a unit at a specific position. */
@@ -2090,7 +2144,7 @@ export class MenuState extends State {
   private menu: ChoiceMenu | null = null;
   private previousPosition: [number, number] | null = null;
   private validRegions: RegionData[] = [];
-  private stealAbilityItem: ItemObject | null = null;
+  private skillAbilities: SkillAbilityOption[] = [];
 
   override begin(): StateResult {
     const game = getGame();
@@ -2127,19 +2181,24 @@ export class MenuState extends State {
       options.push({ label: 'Combat Arts', value: 'combat_arts', enabled: true });
     }
 
-    // Skill abilities are backed by item prefabs in LT. The Steal class skill
-    // resolves to the project's `Steal` item and uses ordinary item targeting.
-    this.stealAbilityItem = null;
-    if (unit.skills.some((skill: SkillObject) => skill.getComponent<string>('ability') === 'Steal')) {
-      const prefab = game.db.items.get('Steal');
-      if (prefab) {
-        const abilityItem = new ItemObjectClass(prefab);
-        abilityItem.owner = unit;
-        if ((game.targetSystem?.getValidTargets(unit, abilityItem).length ?? 0) > 0) {
-          this.stealAbilityItem = abilityItem;
-          options.push({ label: 'Steal', value: 'steal', enabled: true });
-        }
-      }
+    // Skill abilities are persistent item instances filtered through the same
+    // recursive availability/target contract as Python's extra-ability menu.
+    const availableAbilities = getSkillAbilityOptions(game, unit).filter(({ item }) =>
+      itemAvailable(unit, item, game.db, game) &&
+      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
+    );
+    // Python stores uncategorized abilities in an ordered name-keyed dict:
+    // later same-name grants replace the value without adding a duplicate row.
+    this.skillAbilities = [...new Map(
+      availableAbilities.map((ability) => [ability.item.name, ability]),
+    ).values()];
+    for (let index = this.skillAbilities.length - 1; index >= 0; index--) {
+      const ability = this.skillAbilities[index];
+      options.splice(Math.min(options.length, targets.length > 0 ? 1 : 0), 0, {
+        label: ability.item.name,
+        value: `skill_ability_${index}`,
+        enabled: true,
+      });
     }
 
     // Item option — if unit has usable healing/consumable items
@@ -2340,8 +2399,17 @@ export class MenuState extends State {
       } else if (value === 'accessory') {
         this.menu = null;
         game.state.change('accessory_choice');
-      } else if (value === 'steal' && this.stealAbilityItem) {
-        game.memory.set('item_use_item', this.stealAbilityItem);
+      } else if (value.startsWith('skill_ability_')) {
+        const index = Number(value.slice('skill_ability_'.length));
+        const ability = this.skillAbilities[index];
+        if (!ability) return;
+        if (ability.item.hasComponent('multi_item') && ability.item.subitems.length > 0) {
+          game.memory.set('ability_item', ability.item);
+          this.menu = null;
+          game.state.change('item_use');
+          return;
+        }
+        game.memory.set('item_use_item', ability.item);
         this.menu = null;
         game.state.change('item_targeting');
       } else if (value === 'trade') {
@@ -2998,6 +3066,7 @@ function finishCoreItemUse(
       game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
     }
   }
+  triggerAbilityItemCharge(game, unit, item, 'use');
   if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
   else game.actionLog.doAction(new WaitAction(unit));
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
@@ -3090,6 +3159,7 @@ export class ItemUseState extends State {
   private usableItems: ItemObject[] = [];
   private topLevelItems: ItemObject[] = [];
   private parentItem: ItemObject | null = null;
+  private abilityRoot: ItemObject | null = null;
 
   private setItemMenu(items: ItemObject[], unit: UnitObject): void {
     const game = getGame();
@@ -3126,6 +3196,23 @@ export class ItemUseState extends State {
     }
 
     this.parentItem = null;
+    this.abilityRoot = game.memory.get('ability_item') ?? null;
+    game.memory.delete('ability_item');
+    if (this.abilityRoot) {
+      const children = this.abilityRoot.subitems.filter((child) =>
+        itemAvailable(unit, child, game.db, game) &&
+        (game.targetSystem?.getValidTargetsRecursive(unit, child).length ?? 0) > 0,
+      );
+      if (children.length === 0) {
+        this.abilityRoot = null;
+        game.state.back();
+        return;
+      }
+      this.parentItem = this.abilityRoot;
+      this.topLevelItems = [];
+      this.setItemMenu(children, unit);
+      return;
+    }
     this.topLevelItems = unit.getUsableItems().filter((item) =>
       itemAvailable(unit, item, game.db, game) &&
       (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
@@ -3154,6 +3241,13 @@ export class ItemUseState extends State {
     if (!result) return;
 
     if ('back' in result) {
+      if (this.abilityRoot) {
+        this.abilityRoot = null;
+        this.parentItem = null;
+        this.menu = null;
+        game.state.back();
+        return;
+      }
       if (this.parentItem) {
         this.parentItem = null;
         this.setItemMenu(this.topLevelItems, game.selectedUnit);
@@ -3554,6 +3648,32 @@ export class ItemTargetingState extends MapState {
       const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
       const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
       this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      return;
+    }
+
+    if (activeItem === this.item &&
+        (activeItem.isWeapon() ||
+         (activeItem.isSpell() && !activeItem.hasCoreUseEffect()))) {
+      const defender = game.board.getUnit(target[0], target[1]);
+      if (!defender && (activeItem.hasComponent('event_on_use') ||
+          activeItem.hasComponent('event_on_hit') ||
+          activeItem.hasComponent('event_after_use') ||
+          activeItem.hasComponent('event_after_combat') ||
+          activeItem.hasComponent('event_after_combat_on_hit') ||
+          activeItem.hasComponent('event_after_combat_even_miss'))) {
+        queueDirectItemUseEvents(game, unit, activeItem, target);
+        finishCoreItemUse(unit, activeItem);
+        game.memory.delete('item_use_item');
+        game.highlight.clear();
+        if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+        else game.state.back();
+        return;
+      }
+      if (!defender) return;
+      game.memory.set('combat_item', activeItem);
+      game.combatTarget = defender;
+      game.highlight.clear();
+      game.state.change('combat');
       return;
     }
 

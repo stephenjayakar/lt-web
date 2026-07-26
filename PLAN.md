@@ -279,8 +279,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 
 ## Active Next Slice
 
-Embrace of the Fog P8.2: port the next coherent project-local combat hook
-family selected from the generated compatibility inventory. Continue
+Embrace of the Fog P8.2: port the next coherent project-local item or combat
+hook family selected from the generated compatibility inventory. Continue
 count-locking only components whose real EotF value shapes and runtime
 behavior have focused coverage.
 
@@ -331,6 +331,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve full and event-driven miracle survival, target-aware defense
   proc rates, combat/kill charge increments, shared and limited charges, and
   reversible depleted-charge removal.
+- [x] Surface all skill-granted EotF abilities as persistent item trees with
+  condition/charge gating, multi-item choice, combat and empty-tile event
+  routing, aura-parent charges, save identity, and team-wide combat-art use.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
