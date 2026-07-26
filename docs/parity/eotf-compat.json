@@ -2582,7 +2582,7 @@
         "nid": "dynamic_crit_additional",
         "uses": 8,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dynamic_crit_avoid",
@@ -2702,7 +2702,7 @@
         "nid": "eval_crit_additional",
         "uses": 13,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_damage",

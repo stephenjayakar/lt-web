@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 195 unverified
+- 270 skill-component NIDs; 193 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -229,7 +229,6 @@ focused browser coverage.
 | dynamic_avoid | 32 | hook-and-reference |
 | dynamic_blitzes | 6 | project-local-or-unknown |
 | dynamic_crit_accuracy | 34 | hook-and-reference |
-| dynamic_crit_additional | 8 | project-local-or-unknown |
 | dynamic_crit_avoid | 24 | unreferenced |
 | dynamic_damage | 228 | hook-and-reference |
 | dynamic_damage_multiplier | 6 | hook-only |
@@ -246,7 +245,6 @@ focused browser coverage.
 | eval_avoid | 10 | hook-only |
 | eval_canter | 3 | project-local-or-unknown |
 | eval_crit | 17 | hook-only |
-| eval_crit_additional | 13 | project-local-or-unknown |
 | eval_damage | 30 | hook-and-reference |
 | eval_extra_damage | 7 | project-local-or-unknown |
 | eval_galeforce | 3 | project-local-or-unknown |

@@ -1103,6 +1103,97 @@ function translateFloorDivision(expression: string): string {
   return translated;
 }
 
+/**
+ * Translate Python conditional expressions at any parenthesis depth.
+ *
+ * A single regex only handles one top-level `value if condition else other`
+ * form. EotF uses both nested conditionals and conditionals embedded inside
+ * larger arithmetic expressions, so recursively translate balanced groups
+ * before resolving the conditional at the current depth.
+ */
+function translateConditionalExpressions(expression: string): string {
+  let grouped = '';
+  let inString: string | null = null;
+  for (let index = 0; index < expression.length; index++) {
+    const char = expression[index];
+    if (inString) {
+      grouped += char;
+      if (char === inString && expression[index - 1] !== '\\') inString = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      inString = char;
+      grouped += char;
+      continue;
+    }
+    if (char === '(' || char === '[') {
+      const closeChar = char === '(' ? ')' : ']';
+      let depth = 1;
+      let nestedString: string | null = null;
+      let close = index + 1;
+      for (; close < expression.length; close++) {
+        const nestedChar = expression[close];
+        if (nestedString) {
+          if (nestedChar === nestedString && expression[close - 1] !== '\\') {
+            nestedString = null;
+          }
+          continue;
+        }
+        if (nestedChar === "'" || nestedChar === '"') {
+          nestedString = nestedChar;
+          continue;
+        }
+        if (nestedChar === char) depth += 1;
+        if (nestedChar === closeChar) {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      if (depth === 0) {
+        grouped += char +
+          translateConditionalExpressions(expression.slice(index + 1, close)) +
+          closeChar;
+        index = close;
+        continue;
+      }
+    }
+    grouped += char;
+  }
+
+  const findToken = (source: string, token: string, start = 0): number => {
+    let quoted: string | null = null;
+    let depth = 0;
+    for (let index = start; index <= source.length - token.length; index++) {
+      const char = source[index];
+      if (quoted) {
+        if (char === quoted && source[index - 1] !== '\\') quoted = null;
+        continue;
+      }
+      if (char === "'" || char === '"') {
+        quoted = char;
+        continue;
+      }
+      if (char === '(' || char === '[') depth += 1;
+      if (char === ')' || char === ']') depth -= 1;
+      if (depth === 0 && source.slice(index, index + token.length) === token) {
+        return index;
+      }
+    }
+    return -1;
+  };
+
+  const ifIndex = findToken(grouped, ' if ');
+  if (ifIndex < 0) return grouped;
+  const elseIndex = findToken(grouped, ' else ', ifIndex + 4);
+  if (elseIndex < 0) return grouped;
+  const whenTrue = grouped.slice(0, ifIndex).trim();
+  const condition = grouped.slice(ifIndex + 4, elseIndex).trim();
+  const whenFalse = grouped.slice(elseIndex + 6).trim();
+  return `((${translateConditionalExpressions(condition)}) ? ` +
+    `(${translateConditionalExpressions(whenTrue)}) : ` +
+    `(${translateConditionalExpressions(whenFalse)}))`;
+}
+
 // ============================================================
 // JavaScript-based fallback evaluator for complex Python conditions
 // ============================================================
@@ -1676,10 +1767,7 @@ function evaluateWithJsFallback(
     (_whole, needle, negated, values) =>
       `${negated ? '!' : ''}[${values}].includes(${needle})`,
   );
-  jsExpr = jsExpr.replace(
-    /^(.+?)\s+if\s+(.+?)\s+else\s+(.+)$/,
-    '(($2) ? ($1) : ($3))',
-  );
+  jsExpr = translateConditionalExpressions(jsExpr);
   jsExpr = jsExpr.replace(
     /((?:'[^']*'|"[^"]*"))\.join\s*\((.+)\)$/,
     '($2).join($1)',

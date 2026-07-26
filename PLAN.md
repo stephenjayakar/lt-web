@@ -370,6 +370,9 @@ return to the base without compatibility warnings or silent mechanic loss.
   immediate HP boosters and Solomon's signed RES-based damage/Monster healing.
 - [x] Preserve all 30 EotF Savage status, multi-status, and current-HP splash
   hooks with start-combat condition snapshots, enemy shells, and exact replay.
+- [x] Activate all 21 authored EotF evaluated and target-aware additive
+  critical-damage expressions in scripted and RNG combat, including nested
+  Python conditionals and the two dormant Python hook-name mismatches.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
