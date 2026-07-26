@@ -55,8 +55,8 @@ export function onSeparate(unit: UnitObject, leader: UnitObject): SkillObject[] 
 }
 
 /** Python's ignore_rescue_penalty ALL_DEFAULT_FALSE skill hook. */
-export function ignoreRescuePenalty(unit: UnitObject): boolean {
-  return unit.skills.some(skill => skill.hasComponent('ignore_rescue_penalty'));
+export function ignoreRescuePenalty(unit: UnitObject, game?: any): boolean {
+  return hasActiveSkillComponent(unit, 'ignore_rescue_penalty', game);
 }
 
 /** Install the source-specific hidden Rescue penalty skill. */
@@ -68,7 +68,7 @@ export function onRescue(
 ): SkillObject[] {
   if (!createSkill) return [];
   const added: SkillObject[] = [];
-  if (!ignoreRescuePenalty(rescuer)) {
+  if (!ignoreRescuePenalty(rescuer, game)) {
     const exists = rescuer.skills.some(skill =>
       skill.nid === 'Rescue' &&
       skill.data.get('rescueSource') === rescuee.nid &&
@@ -293,10 +293,44 @@ export function skillConditionActive(
 
 /** Python can_select: any active Unselectable component vetoes player control. */
 export function canSelect(unit: UnitObject, game?: any): boolean {
-  return !unit.skills.some((skill) => {
-    if (!skill.hasComponent('unselectable')) return false;
-    return skillConditionActive(skill, unit, { game });
+  return !hasActiveSkillComponent(unit, 'unselectable', game);
+}
+
+/** Whether any condition/charge-active skill on this unit owns a component. */
+export function hasActiveSkillComponent(
+  unit: UnitObject,
+  component: string,
+  game: any = skillGameRef?.(),
+): boolean {
+  return unit.skills.some((skill) => {
+    if (!skill.hasComponent(component)) return false;
+    return evaluatedSkillActive(skill, unit, { game }, new Map([
+      ['skill', skill],
+    ]));
   });
+}
+
+/** Python no_trade ALL_DEFAULT_FALSE skill hook. */
+export function noTrade(unit: UnitObject, game?: any): boolean {
+  return hasActiveSkillComponent(unit, 'cannot_trade', game);
+}
+
+/** Python can_trade default, including both participants' no_trade hooks. */
+export function canTradeWith(
+  unit: UnitObject,
+  target: UnitObject,
+  db: any,
+  game: any = skillGameRef?.(),
+): boolean {
+  return unit.team === target.team &&
+    checkAlly(unit, target, db, game) &&
+    !noTrade(unit, game) &&
+    !noTrade(target, game);
+}
+
+/** Python can_unlock ANY_DEFAULT_FALSE skill hook. */
+export function canUnlock(unit: UnitObject, _region?: any, game?: any): boolean {
+  return hasActiveSkillComponent(unit, 'locktouch', game);
 }
 
 /** Skill-component nids that grant some form of Canto (movement_components.py). */
@@ -1651,15 +1685,25 @@ export function movementType(unit: UnitObject, defaultType: string, game?: any):
 }
 
 /** Python UNIQUE alliance hooks: IgnoreAlliances makes only the bearer itself an ally. */
-export function checkAlly(unit: UnitObject, target: UnitObject, db: any): boolean {
-  if (unit.skills.some((skill) => skill.hasComponent('ignore_alliances'))) {
+export function checkAlly(
+  unit: UnitObject,
+  target: UnitObject,
+  db: any,
+  game: any = skillGameRef?.(),
+): boolean {
+  if (hasActiveSkillComponent(unit, 'ignore_alliances', game)) {
     return unit === target;
   }
   return db.areAllied(unit.team, target.team);
 }
 
-export function checkEnemy(unit: UnitObject, target: UnitObject, db: any): boolean {
-  if (unit.skills.some((skill) => skill.hasComponent('ignore_alliances'))) {
+export function checkEnemy(
+  unit: UnitObject,
+  target: UnitObject,
+  db: any,
+  game: any = skillGameRef?.(),
+): boolean {
+  if (hasActiveSkillComponent(unit, 'ignore_alliances', game)) {
     return unit !== target;
   }
   return !db.areAllied(unit.team, target.team);

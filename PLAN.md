@@ -420,6 +420,8 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 51 EotF fatal-damage, fatal-block, dazzle, blind, berserk,
   sweep-immunity, no-stack, and paragon marker uses across death events,
   combat/item expressions, target gates, and stack-selection scripts.
+- [x] Preserve all 40 EotF unit-selection, alliance, rescue-penalty, locktouch,
+  and no-trade markers with condition/charge gates across map and base flows.
 - [x] Preserve all 50 EotF Canto, Canto+, Canto Sharp, fixed Canter, and
   evaluated Canter uses with Python gating, maximum movement resolution,
   Canto Control, player/AI post-combat routing, and exact turnwheel replay.

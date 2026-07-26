@@ -2299,8 +2299,8 @@
       {
         "nid": "cannot_trade",
         "uses": 2,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_use_items",
@@ -3086,7 +3086,7 @@
         "nid": "ignore_alliances",
         "uses": 9,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_damage",
@@ -3098,7 +3098,7 @@
         "nid": "ignore_rescue_penalty",
         "uses": 8,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_terrain",
@@ -3163,8 +3163,8 @@
       {
         "nid": "locktouch",
         "uses": 6,
-        "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_charges_depleted",
@@ -3578,7 +3578,7 @@
         "nid": "unselectable",
         "uses": 15,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_aoe_skill_gain",
