@@ -3020,7 +3020,7 @@
         "nid": "growth_change",
         "uses": 22,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "growth_change_expression",
@@ -3307,8 +3307,8 @@
       {
         "nid": "pcc_static",
         "uses": 3,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "permanent_damage",
@@ -3464,7 +3464,7 @@
         "nid": "sight_range_bonus",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "skill_before_combat",
@@ -3529,8 +3529,8 @@
       {
         "nid": "subtle_stat_change",
         "uses": 3,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "tether_parameters",

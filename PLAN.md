@@ -432,6 +432,9 @@ return to the base without compatibility warnings or silent mechanic loss.
   evaluated-magic item lockouts across equip, targeting, AI, and use checks.
 - [x] Preserve all 3 EotF expression-driven growth skills across shared
   leveling and growth-rate UI evaluation with active-skill gating.
+- [x] Preserve all 30 EotF ordinary-growth, subtle-stat, sight-range, and
+  follow-up critical-multiplier uses with active gates and movement/combat
+  call-site coverage.
 - [x] Preserve EotF's multi-skill post-combat grant with authored ordering,
   one charge trigger, and exact turnwheel replay.
 - [x] Preserve EotF's Gain Terrain override and generic Ignore Terrain
