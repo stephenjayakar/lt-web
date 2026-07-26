@@ -36,6 +36,24 @@ Current work:
 - keep focused expression tests, the build, parity audit, and clean-boot gate
   green after the final evaluator changes.
 
+Verified baseline:
+
+- all 159 EOtF levels clean-boot without runtime failures;
+- both authored raw-PYEV1 events execute, and persistent item/record mutations
+  preserve identity plus undo/redo;
+- focused EOtF expression, event, combat, item, skill, save, and presentation
+  regressions plus the build and parity audit are green; and
+- the previous full-suite collection failure was checkout-specific: this
+  Codex worktree lacked `lt-maker/rekka.ltproj`, while the main checkout has
+  that fixture. Rerun the full serial suite after moving this work to `eotf`.
+
+The settlement shards currently remain the first engine blocker. With
+`Records_Setup` initialized, they are exposing nested/list-valued substitutions,
+deep comprehensions, and levels that remain in `event` after the diagnostic
+frame budget. Once those are green, the remaining work is campaign proof,
+strict resource classification, release-wide input/audio/visual/save checks,
+and browser packaging.
+
 ## Open work
 
 ### P8.1 — Executable compatibility contract
