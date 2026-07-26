@@ -2873,9 +2873,8 @@ function applyCoreTargetedEffects(
       if (!target) continue;
       const solomonChange = solomonHpChange(unit, item, target, game);
       const amount = solomonChange ??
-        (customHeal
-          ? itemHealAmount(unit, item, target, game) ?? 0
-          : healAmount + empowerHeal(unit, target, game));
+        itemHealAmount(unit, item, target, game) ??
+        healAmount + empowerHeal(unit, target, game);
       if (customHeal || target.currentHp < target.maxHp) {
         game.actionLog.doAction(amount < 0
           ? new DamageAction(target, -amount)
