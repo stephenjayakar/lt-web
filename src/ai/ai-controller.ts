@@ -128,6 +128,48 @@ export class AIController {
   }
 
   /**
+   * Python `AIController.canto_retreat`: choose the reachable tile farthest
+   * from the average enemy position, breaking ties toward the current tile.
+   */
+  getCantoRetreatAction(unit: UnitObject): AIAction | null {
+    if (!unit.position) return null;
+    const validMoves = this.pathSystem.getValidMoves(unit, this.board);
+    const enemies = this.getEnemies(unit).filter((enemy) => enemy.position);
+    if (validMoves.length === 0 || enemies.length === 0) return null;
+    const averageX = enemies.reduce(
+      (total, enemy) => total + enemy.position![0],
+      0,
+    ) / enemies.length;
+    const averageY = enemies.reduce(
+      (total, enemy) => total + enemy.position![1],
+      0,
+    ) / enemies.length;
+    let best = validMoves[0];
+    let bestAverageDistance = -Infinity;
+    let bestOriginDistance = Infinity;
+    for (const move of validMoves) {
+      const averageDistance =
+        Math.abs(move[0] - averageX) + Math.abs(move[1] - averageY);
+      const originDistance = this.distance(move, unit.position);
+      if (averageDistance > bestAverageDistance ||
+          (averageDistance === bestAverageDistance &&
+           originDistance < bestOriginDistance)) {
+        best = move;
+        bestAverageDistance = averageDistance;
+        bestOriginDistance = originDistance;
+      }
+    }
+    if (best[0] === unit.position[0] && best[1] === unit.position[1]) return null;
+    const movePath = this.pathSystem.getPath(unit, best[0], best[1], this.board);
+    return {
+      type: 'move',
+      unit,
+      targetPosition: best,
+      movePath: movePath ?? [unit.position, best],
+    };
+  }
+
+  /**
    * Get valid moves for a unit, accounting for guard mode.
    * Guard mode (view_range -1): unit can only stay in place.
    */

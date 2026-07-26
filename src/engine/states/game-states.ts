@@ -43,6 +43,7 @@ import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
 import {
   MarkActionGroupStart,
   MoveAction,
+  SetMovementLeftAction,
   MarkActionGroupEnd,
   MarkPhase,
   LockTurnwheel,
@@ -237,6 +238,8 @@ import {
   wexpMultiplier,
   enemyWexpMultiplier,
   isCantoSkill,
+  hasCanto as unitHasCanto,
+  cantoMovement,
   canSelect,
   hasDrainingCharge,
   modifiedMaximumRange,
@@ -5759,6 +5762,7 @@ export class CombatState extends State {
             );
           }
           this.results = activeCombat.applyResults(game.actionLog);
+          game.actionLog.doAction(new HasAttackedAction(activeCombat.attacker));
           queueCombatItemBreakEvents(game, activeCombat.strikes);
           applyCombatItemEndHooks(game, activeCombat.strikes);
           queueCombatSkillEvents(
@@ -6075,22 +6079,31 @@ export class CombatState extends State {
         const attacker = activeCombat!.attacker;
         const defender = this.getPrimaryCombatDefender() ?? activeCombat!.defender;
         const combatDefenders = this.getCombatDefenders();
-        const hasCanto = attacker.hasCanto && attacker.team === 'player' && !attacker.isDead();
+        const resetByCombatHook = !attacker.hasAttacked;
+        const hasCanto = !resetByCombatHook && !attacker.isDead() &&
+          unitHasCanto(attacker, defender, game);
         const tradePair = combatTradePair(activeCombat!.strikes);
-        const returnsToMenu = attacker.team === 'player' &&
+        const itemReturnsToMenu = attacker.team === 'player' &&
           menuAfterCombat(attacker, activeCombat!.attackItem);
-        const retainsAttack = returnsToMenu &&
+        const returnsToMenu = attacker.team === 'player' &&
+          (resetByCombatHook || itemReturnsToMenu);
+        const retainsAttack = itemReturnsToMenu &&
           canAttackAfterCombat(attacker, activeCombat!.attackItem);
 
         if (!attacker.isDead()) {
-          game.actionLog.doAction(new HasAttackedAction(attacker));
           if (retainsAttack) {
             game.actionLog.doAction(new HasNotAttackedAction(attacker));
             game.actionLog.doAction(new HasTradedAction(attacker));
           }
+          if (hasCanto) {
+            game.actionLog.doAction(new SetMovementLeftAction(
+              attacker,
+              cantoMovement(attacker, defender, game),
+            ));
+          }
 
           // Canto keeps the unit actionable; all other attacks consume the turn.
-          if (!hasCanto && !returnsToMenu) {
+          if (!hasCanto && !returnsToMenu && !resetByCombatHook) {
             game.actionLog.doAction(new WaitAction(attacker));
           }
         }
@@ -6249,7 +6262,7 @@ export class CombatState extends State {
           game.state.change('menu');
         }
         // If Canto, re-enter move state for remaining movement
-        else if (!wasEventCombat && hasCanto) {
+        else if (!wasEventCombat && attacker.team === 'player' && hasCanto) {
           game.selectedUnit = attacker;
           game.state.change('move');
         }
@@ -7319,12 +7332,43 @@ export class AIState extends MapState {
       // Also check hasAttacked to handle canto units (finished=false but
       // hasAttacked=true).
       const unit = this.aiUnits[this.currentAiIndex];
-      if (unit && (unit.finished || unit.isDead() || unit.hasAttacked)) {
+      if (unit && (unit.finished || unit.isDead())) {
         this.waitingForCombat = false;
-        // AI units with canto should still be marked finished
-        if (unit.hasAttacked && !unit.finished && !unit.isDead()) {
+        this.advanceToNextUnit();
+      } else if (unit?.hasAttacked) {
+        this.waitingForCombat = false;
+        const target = this.pendingCombatTarget;
+        if (unitHasCanto(unit, target, game)) {
+          const retreat = game.aiController.getCantoRetreatAction(unit);
+          if (retreat?.targetPosition) {
+            this.moveWithAction(
+              game,
+              unit,
+              retreat.targetPosition,
+              retreat.movePath,
+            );
+            if (retreat.movePath && retreat.movePath.length > 1) {
+              this.waitingForMovement = true;
+              game.movementSystem.beginMove(
+                unit,
+                retreat.movePath,
+                undefined,
+                () => {
+                  this.waitingForMovement = false;
+                  game.actionLog.doAction(new WaitAction(unit));
+                  this.advanceToNextUnit();
+                },
+              );
+              return;
+            }
+          }
           game.actionLog.doAction(new WaitAction(unit));
         }
+        this.advanceToNextUnit();
+      } else if (unit) {
+        // A combat-end Reset/EvalGaleforce cleared the action flags. Python's
+        // AI controller completes this action without forcing Wait.
+        this.waitingForCombat = false;
         this.advanceToNextUnit();
       }
       return;
@@ -13996,7 +14040,12 @@ export class EventState extends State {
           } else {
             game.actionLog.doAction(new HasTradedAction(hvUnit));
           }
-          if (!hvUnit.hasCanto) {
+          if (unitHasCanto(hvUnit, null, game)) {
+            game.actionLog.doAction(new SetMovementLeftAction(
+              hvUnit,
+              cantoMovement(hvUnit, null, game),
+            ));
+          } else {
             game.actionLog.doAction(new WaitAction(hvUnit));
           }
         }

@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 105 unverified
+- 270 skill-component NIDs; 99 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -162,10 +162,6 @@ focused browser coverage.
 | cannot_use_items_enemy | 1 | project-local-or-unknown |
 | cannot_use_magic_items | 3 | consumed |
 | cannot_use_magic_items_eval | 2 | project-local-or-unknown |
-| canter | 29 | hook-and-reference |
-| canto | 5 | hook-and-reference |
-| canto_plus | 12 | hook-and-reference |
-| canto_sharp | 1 | hook-and-reference |
 | change_ai | 15 | reference-only |
 | change_buy_price | 1 | reference-only |
 | change_item_slots | 1 | project-local-or-unknown |
@@ -181,8 +177,6 @@ focused browser coverage.
 | empower_heal_received | 2 | reference-only |
 | enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
-| eval_canter | 3 | project-local-or-unknown |
-| eval_galeforce | 3 | project-local-or-unknown |
 | eval_max_range | 7 | consumed |
 | eval_min_range | 1 | consumed |
 | eval_range | 3 | unreferenced |

@@ -35,6 +35,7 @@ import {
   empowerSplash,
   inventoryCapacityOffsets,
   hasDrainingCharge,
+  isCantoSkill,
   movementType,
   modifiedHealAmount,
   skillConditionActive,
@@ -2334,7 +2335,7 @@ function addItemSourcedSkill(
   skill.data.set(ITEM_SOURCE_TYPE_KEY, 'item');
   skill.data.set(ITEM_SOURCE_NID_KEY, item.nid);
   unit.skills.push(skill);
-  if (skill.hasComponent('canto')) unit.hasCanto = true;
+  if (isCantoSkill(skill)) unit.hasCanto = true;
 }
 
 /** Remove exactly one item-sourced instance of `skillNid` for `item`. */
@@ -2348,13 +2349,13 @@ function removeOneItemSourcedSkill(unit: UnitObject, item: ItemObject, skillNid:
       break;
     }
   }
-  unit.hasCanto = unit.skills.some((s) => s.hasComponent('canto'));
+  unit.hasCanto = unit.skills.some(isCantoSkill);
 }
 
 /** Remove every item-sourced skill for `item` (used on save-load re-derivation). */
 export function removeAllItemSourcedSkills(unit: UnitObject): void {
   unit.skills = unit.skills.filter((skill) => !isItemSourcedSkill(skill));
-  unit.hasCanto = unit.skills.some((s) => s.hasComponent('canto'));
+  unit.hasCanto = unit.skills.some(isCantoSkill);
 }
 
 
