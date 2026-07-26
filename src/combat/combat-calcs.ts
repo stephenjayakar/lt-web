@@ -632,6 +632,7 @@ export function computeDamage(
   game?: any,
   mode: 'attack' | 'defense' | 'splash' = 'attack',
   assist: boolean = false,
+  attackInfo: [number, number] = [0, 0],
 ): number {
   const atk = damage(attacker, attackItem, db);
   const def = defense(defender, attackItem, db, board);
@@ -647,10 +648,14 @@ export function computeDamage(
     attackItem, defWeapon, db, attacker, defender,
   ).attackerDamageAdvantage;
   const itemDynDmg = itemSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, null, baseDmg, db, game, advantageDamage,
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, baseDmg, db, game, advantageDamage,
   );
-  const skillDynDmg = skillSystem.dynamicDamage(attacker, attackItem, defender, defWeapon, mode, null, baseDmg);
-  const skillDynResist = skillSystem.dynamicResist(defender, defWeapon, attacker, attackItem, mode, null, def);
+  const skillDynDmg = skillSystem.dynamicDamage(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, baseDmg,
+  );
+  const skillDynResist = skillSystem.dynamicResist(
+    defender, defWeapon, attacker, attackItem, mode, attackInfo, def,
+  );
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
@@ -663,14 +668,16 @@ export function computeDamage(
   if (assist) finalDmg = Math.floor(finalDmg / 2);
 
   // Apply damage multiplier from attacker skills
-  const dmgMult = skillSystem.damageMultiplier(attacker, attackItem, defender, defWeapon, mode, null, finalDmg);
+  const dmgMult = skillSystem.damageMultiplier(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, finalDmg,
+  );
   finalDmg = Math.floor(finalDmg * dmgMult);
 
   // Apply resist multiplier from defender skills
-  const resMult = skillSystem.resistMultiplier(defender, defWeapon, attacker, attackItem, mode, null, finalDmg);
-  if (resMult !== 1) {
-    finalDmg = Math.floor(finalDmg / resMult);
-  }
+  const resMult = skillSystem.resistMultiplier(
+    defender, defWeapon, attacker, attackItem, mode, attackInfo, finalDmg, game,
+  );
+  finalDmg = Math.floor(finalDmg * resMult);
 
   return Math.max(0, finalDmg);
 }

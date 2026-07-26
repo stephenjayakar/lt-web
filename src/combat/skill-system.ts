@@ -1161,14 +1161,73 @@ export function damageMultiplier(
 /** Final resist multiplier (product of all). */
 export function resistMultiplier(
   unit: UnitObject,
-  _item: ItemObject | null,
-  _target: UnitObject,
-  _item2: ItemObject | null,
-  _mode: string,
-  _attackInfo: any,
-  _baseValue: number,
+  item: ItemObject | null,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: [number, number],
+  baseValue: number,
+  game?: any,
 ): number {
-  return productSkillValues(unit, 'resist_multiplier');
+  let result = 1;
+  for (const skill of unit.skills) {
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['item2', item2],
+      ['mode', mode],
+      ['skill', skill],
+      ['attack_info', attackInfo],
+      ['base_value', baseValue],
+    ]);
+    if (skill.hasComponent('build_charge')) {
+      const charge = Number(skill.data.get('charge') ?? 0);
+      const total = Number(
+        skill.data.get('total_charge') ??
+        skill.getComponent('build_charge') ??
+        0,
+      );
+      if (charge < total) continue;
+    }
+    if (hasDrainingCharge(skill) &&
+        Number(skill.data.get('charge') ?? 0) <= 0) continue;
+    const combatCondition = skill.getComponent<string>('combat_condition');
+    if (combatCondition) {
+      const snapshot = skill.data.get('_combat_condition');
+      const enabled = typeof snapshot === 'boolean'
+        ? snapshot
+        : evaluateCondition(combatCondition, {
+          game,
+          unit1: unit,
+          unit2: target,
+          item: item ?? undefined,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+          localArgs,
+        });
+      if (!enabled) continue;
+    }
+    if (!skillConditionActive(skill, unit, { game, item, target, localArgs })) {
+      continue;
+    }
+    const fixed = skill.getComponent<number>('resist_multiplier');
+    if (typeof fixed === 'number') result *= fixed;
+    const expression = skill.getComponent<string>('dynamic_resist_multiplier');
+    if (expression) {
+      const value = Number(evaluateExpression(expression, {
+        game,
+        unit1: unit,
+        unit2: target,
+        item: item ?? undefined,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs,
+      }));
+      result *= Number.isFinite(value) ? value : 1;
+    }
+  }
+  return result;
 }
 
 // ============================================================

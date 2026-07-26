@@ -373,6 +373,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Activate all 21 authored EotF evaluated and target-aware additive
   critical-damage expressions in scripted and RNG combat, including nested
   Python conditionals and the two dormant Python hook-name mismatches.
+- [x] Preserve all 32 EotF per-strike gain, removal, event, and damage
+  mitigation uses with immediate/deferred ordering, combat-condition and
+  charge gates, full expression context, and exact turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

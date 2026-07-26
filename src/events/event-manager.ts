@@ -1749,6 +1749,11 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\bNone\b/g, 'null');
   jsExpr = jsExpr.replace(/\bis\s+not\b/g, '!==');
   jsExpr = jsExpr.replace(/\bis\b/g, '===');
+  // Python keyword arguments used by EotF query helpers.
+  jsExpr = jsExpr.replace(
+    /\bteam\s*=\s*(['"][^'"]+['"])/g,
+    '{ team: $1 }',
+  );
 
   // Python `and`/`or`/`not` -> `&&`/`||`/`!`
   jsExpr = jsExpr.replace(/\band\b/g, '&&');

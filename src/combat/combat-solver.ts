@@ -15,7 +15,7 @@ import {
   CombatSkillLifecycle,
   type CombatProcMark,
 } from './combat-skill-lifecycle';
-import { AddSkillAction } from '../engine/action';
+import { AddSkillAction, RemoveSkillAction } from '../engine/action';
 import { evaluateExpression } from '../events/event-manager';
 
 // ============================================================
@@ -60,7 +60,23 @@ export interface CombatStrike {
   selfSkillHpChange?: number;
   /** Ally HP changes from skill after_strike hooks, applied in strike order. */
   allySkillHpChanges?: Array<{ unit: UnitObject; amount: number }>;
+  /** Skill snapshots retained for event dispatch after immediate mutations. */
+  attackHookSkills?: SkillObject[];
+  defenseHookSkills?: SkillObject[];
 }
+
+type DeferredStrikeSkillMutation =
+  | {
+    kind: 'add';
+    unit: UnitObject;
+    sourceSkill: SkillObject;
+    skillNid: string;
+  }
+  | {
+    kind: 'remove';
+    unit: UnitObject;
+    skill: SkillObject;
+  };
 
 /** Valid CombatScript tokens for interact_unit. */
 export type ScriptToken = 'hit1' | 'hit2' | 'crit1' | 'crit2' | 'miss1' | 'miss2' | '--' | 'end';
@@ -235,9 +251,10 @@ export class CombatPhaseSolver {
 
   private grantImmediateSkills(
     recipient: UnitObject,
-    source: UnitObject,
+    source: UnitObject | null,
     sourceSkill: SkillObject,
     skillNids: unknown[],
+    consumeCharge: boolean = true,
   ): void {
     const db = this.game?.db;
     if (!db) return;
@@ -247,11 +264,17 @@ export class CombatPhaseSolver {
       const prefab = db.skills.get(skillNid);
       if (!prefab) continue;
       const granted = new SkillObject(prefab);
-      granted.initiatorNid = source.nid;
+      if (source) granted.initiatorNid = source.nid;
       new AddSkillAction(recipient, granted).execute();
       attempted = true;
     }
-    if (attempted) skillSystem.consumeMiracleCharge(sourceSkill, source, this.game);
+    if (attempted && consumeCharge) {
+      skillSystem.consumeMiracleCharge(
+        sourceSkill,
+        source ?? recipient,
+        this.game,
+      );
+    }
   }
 
   /** Execute item on-hit status actions before the next strike is calculated. */
@@ -404,6 +427,7 @@ export class CombatPhaseSolver {
     target: UnitObject,
     strike: CombatStrike,
   ): void {
+    const deferredMutations: DeferredStrikeSkillMutation[] = [];
     if (strike.hit) {
       const status = strike.item.getComponent<unknown>('status_on_hit');
       const selfStatus = strike.item.getComponent<unknown>('self_status_on_hit');
@@ -444,46 +468,104 @@ export class CombatPhaseSolver {
         );
       }
 
-      for (const sourceSkill of [...strike.attacker.skills]) {
-        if (!this.combatSkillActive(strike.attacker, sourceSkill, strike)) continue;
-        const status = sourceSkill.getComponent<string>('give_status_after_hit');
-        if (status) {
+    }
+
+    const attackHookSkills = [...strike.attacker.skills];
+    strike.attackHookSkills = attackHookSkills;
+    for (const sourceSkill of attackHookSkills) {
+      if (!this.combatSkillActive(strike.attacker, sourceSkill, strike)) continue;
+      for (const [component, value] of sourceSkill.components) {
+        if (component === 'give_status_after_hit' && strike.hit) {
           this.grantImmediateSkills(
             strike.defender,
             strike.attacker,
             sourceSkill,
-            [status],
+            [value],
           );
+        } else if (component === 'gain_on_strike' && typeof value === 'string') {
+          // EotF calls action.do(AddSkill) without an initiator or charge.
+          this.grantImmediateSkills(
+            strike.attacker,
+            null,
+            sourceSkill,
+            [value],
+            false,
+          );
+        } else if (component === 'lost_on_strike') {
+          // Python appends this action until the current strike resolves.
+          deferredMutations.push({
+            kind: 'remove',
+            unit: strike.attacker,
+            skill: sourceSkill,
+          });
+        } else if (
+          typeof value === 'string' &&
+          ((component === 'gain_on_hit' && strike.hit) ||
+            (component === 'gain_on_miss' && !strike.hit))
+        ) {
+          deferredMutations.push({
+            kind: 'add',
+            unit: strike.attacker,
+            sourceSkill,
+            skillNid: value,
+          });
         }
       }
     }
 
-    for (const sourceSkill of [...target.skills]) {
+    const defenseHookSkills = [...target.skills];
+    strike.defenseHookSkills = defenseHookSkills;
+    for (const sourceSkill of defenseHookSkills) {
       if (!this.combatSkillActive(target, sourceSkill, strike)) continue;
-      const missSkill = sourceSkill.getComponent<string>('gain_skill_after_take_miss');
-      const damageSkill = sourceSkill.getComponent<string>('gain_skill_after_take_damage');
-      if (!strike.hit && missSkill) {
-        this.grantImmediateSkills(target, target, sourceSkill, [missSkill]);
+      for (const [component, value] of sourceSkill.components) {
+        if (component === 'gain_skill_after_take_miss' &&
+            !strike.hit && typeof value === 'string') {
+          this.grantImmediateSkills(target, target, sourceSkill, [value]);
+        } else if (component === 'gain_skill_after_take_damage' &&
+            strike.damage > 0 && typeof value === 'string') {
+          this.grantImmediateSkills(target, target, sourceSkill, [value]);
+        } else if (component === 'give_status_on_take_hit' &&
+            typeof value === 'string') {
+          this.grantImmediateSkills(
+            strike.attacker,
+            target,
+            sourceSkill,
+            [value],
+          );
+        } else if (component === 'give_statuses_on_take_hit' &&
+            Array.isArray(value) && value.length > 0) {
+          this.grantImmediateSkills(
+            strike.attacker,
+            target,
+            sourceSkill,
+            value,
+          );
+        } else if (
+          component === 'lost_on_take_hit' &&
+          strike.hit &&
+          !strike.guarded &&
+          this.combatDb &&
+          skillSystem.checkEnemy(target, strike.attacker, this.combatDb)
+        ) {
+          // EotF uses action.do here: later strikes must no longer receive
+          // this skill's defensive contribution.
+          new RemoveSkillAction(target, sourceSkill).do();
+        }
       }
-      if (strike.damage > 0 && damageSkill) {
-        this.grantImmediateSkills(target, target, sourceSkill, [damageSkill]);
-      }
-      const reflected = sourceSkill.getComponent<string>('give_status_on_take_hit');
-      if (reflected) {
+    }
+
+    // Python's appended actions execute after both after_strike and
+    // after_take_strike dispatch, before the solver advances to the next
+    // strike. This is later than action.do hooks but still mid-combat.
+    for (const mutation of deferredMutations) {
+      if (mutation.kind === 'remove') {
+        new RemoveSkillAction(mutation.unit, mutation.skill).do();
+      } else {
         this.grantImmediateSkills(
-          strike.attacker,
-          target,
-          sourceSkill,
-          [reflected],
-        );
-      }
-      const reflectedStatuses = sourceSkill.getComponent<unknown>('give_statuses_on_take_hit');
-      if (Array.isArray(reflectedStatuses) && reflectedStatuses.length > 0) {
-        this.grantImmediateSkills(
-          strike.attacker,
-          target,
-          sourceSkill,
-          reflectedStatuses,
+          mutation.unit,
+          mutation.unit,
+          mutation.sourceSkill,
+          [mutation.skillNid],
         );
       }
     }
@@ -697,7 +779,7 @@ export class CombatPhaseSolver {
     let dmg = 0;
     if (!guarded && (hit || hasDamageOnMiss(item))) {
       const baseDmg = calcs.computeDamage(
-        striker, item, target, db, board, this.game, mode, assist,
+        striker, item, target, db, board, this.game, mode, assist, attackInfo,
       );
       const normalDamage = baseDmg + wt.damageBonus;
       if (!hit) {
@@ -1287,7 +1369,7 @@ export class CombatPhaseSolver {
     let dmg = 0;
     if (!guarded && (hit || hasDamageOnMiss(item))) {
       const baseDmg = calcs.computeDamage(
-        striker, item, target, db, board, this.game, mode, assist,
+        striker, item, target, db, board, this.game, mode, assist, attackInfo,
       );
       const normalDamage = baseDmg + wt.damageBonus;
       if (!hit) {
