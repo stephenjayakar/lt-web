@@ -162,6 +162,7 @@ import {
   queueCombatSkillStartEvents,
   applyCombatItemStartHooks,
   applyCombatItemEndHooks,
+  queueCombatItemBreakEvents,
   queueDirectItemUseEvents,
   queueCombatItemEvents,
   applyDroppableItemPickups,
@@ -530,25 +531,47 @@ function applyCombatParticipantItemStartHooks(
   defenders: UnitObject[],
 ): void {
   const processed = new Set<ItemObject>();
-  const apply = (unit: UnitObject | null, item: ItemObject | null): void => {
+  const apply = (
+    unit: UnitObject | null,
+    item: ItemObject | null,
+    target: UnitObject | null,
+    item2: ItemObject | null,
+    mode: string,
+  ): void => {
     if (!unit || !item || processed.has(item)) return;
     processed.add(item);
-    applyCombatItemStartHooks(game, unit, item);
+    applyCombatItemStartHooks(game, unit, item, target, item2, mode);
   };
 
-  apply(attacker, attackItem);
+  const primaryDefender = defenders[0] ?? null;
+  const primaryDefenseItem = primaryDefender
+    ? getEquippedWeapon(primaryDefender, game.db, game)
+    : null;
+  apply(attacker, attackItem, primaryDefender, primaryDefenseItem, 'attack');
   const attackerPartner = attacker.strikePartner;
   apply(
     attackerPartner,
     attackerPartner ? getEquippedWeapon(attackerPartner, game.db, game) : null,
+    primaryDefender,
+    primaryDefenseItem,
+    'attack',
   );
   for (const defender of defenders) {
     const defenderPartner = defender.strikePartner;
     apply(
       defenderPartner,
       defenderPartner ? getEquippedWeapon(defenderPartner, game.db, game) : null,
+      attacker,
+      attackItem,
+      'defense',
     );
-    apply(defender, getEquippedWeapon(defender, game.db, game));
+    apply(
+      defender,
+      getEquippedWeapon(defender, game.db, game),
+      attacker,
+      attackItem,
+      'defense',
+    );
   }
 }
 
@@ -5690,6 +5713,7 @@ export class CombatState extends State {
             );
           }
           this.results = activeCombat.applyResults(game.actionLog);
+          queueCombatItemBreakEvents(game, activeCombat.strikes);
           applyCombatItemEndHooks(game, activeCombat.strikes);
           queueCombatSkillEvents(
             game,
@@ -14092,6 +14116,7 @@ export class EventState extends State {
               );
             }
             const results = mc.applyResults(game.actionLog);
+            queueCombatItemBreakEvents(game, mc.strikes);
             applyCombatItemEndHooks(game, mc.strikes);
             queueCombatSkillEvents(
               game, mc.strikes, mc.attacker, mc.defender, attackItem, defItem,

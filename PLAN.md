@@ -349,6 +349,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 27 real uses of EotF's strict, flexible, signed,
   initiation-only, self, pivot, draw-back, and collision-event forced-movement
   item hooks with exact blocking rules, payloads, and undo/redo.
+- [x] Preserve all 11 real uses of EotF's pre-combat, per-hit-target
+  post-combat, and item-break event hooks with exact participant context,
+  deduplication, ordering, and local payloads.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

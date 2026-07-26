@@ -1737,13 +1737,56 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
   return applied;
 }
 
-/** Apply item start-combat resource hooks once for the initiating item. */
+/** Apply item start-combat resource and EotF event hooks for one participant. */
 export function applyCombatItemStartHooks(
   game: CombatLifecycleGame,
   unit: UnitObject,
   item: ItemObject,
+  target: UnitObject | null = null,
+  item2: ItemObject | null = null,
+  mode: string = 'attack',
 ): number {
-  return applyItemStartResourceHooks(game, unit, item);
+  let applied = applyItemStartResourceHooks(game, unit, item);
+  const nid = eventNid(item, 'event_before_combat');
+  if (nid && game.eventManager?.triggerSpecific(nid, {
+    type: 'event_before_combat',
+    unit1: unit,
+    unit2: target ?? undefined,
+    unitNid: unit.nid,
+    position: unit.position ? [...unit.position] as [number, number] : undefined,
+    item,
+    localArgs: new Map<string, unknown>([
+      ['item', item],
+      ['item2', item2],
+      ['mode', mode],
+    ]),
+  })) applied++;
+  return applied;
+}
+
+/** Queue on_broken hooks after durability cleanup but before end_combat hooks. */
+export function queueCombatItemBreakEvents(
+  game: CombatLifecycleGame,
+  strikes: CombatStrike[],
+): number {
+  const manager = game.eventManager;
+  if (!manager) return 0;
+  let queued = 0;
+  const processed = new Set<ItemObject>();
+  for (const mark of strikes) {
+    if (processed.has(mark.item)) continue;
+    processed.add(mark.item);
+    const nid = eventNid(mark.item, 'event_on_break');
+    if (!nid || mark.item.maxUses <= 0 || mark.item.uses > 0) continue;
+    if (manager.triggerSpecific(nid, {
+      type: 'event_on_break',
+      unit1: mark.attacker,
+      unitNid: mark.attacker.nid,
+      item: mark.item,
+      localArgs: new Map<string, unknown>([['item', mark.item]]),
+    })) queued++;
+  }
+  return queued;
 }
 
 /**
@@ -1771,6 +1814,7 @@ export function queueCombatItemEvents(game: CombatLifecycleGame, strikes: Combat
   }
   for (const [item, marks] of itemStrikes) {
     const hits = marks.filter((strike) => strike.hit);
+    const firstMark = marks[0];
     const lastMark = marks[marks.length - 1];
     const lastHit = hits[hits.length - 1];
     const hitComponents = [
@@ -1784,6 +1828,17 @@ export function queueCombatItemEvents(game: CombatLifecycleGame, strikes: Combat
         if (nid && manager.triggerSpecific(nid, triggerForStrike(lastHit, marks.indexOf(lastHit)))) {
           queued++;
         }
+      }
+    }
+    const perHitNid = eventNid(item, 'event_for_each_after_combat_on_hit');
+    if (perHitNid && firstMark) {
+      const uniqueTargets = new Set(hits.map((hit) => hit.defender));
+      for (const targetFoe of uniqueTargets) {
+        const trigger = triggerForStrike(firstMark, 0);
+        trigger.type = 'event_for_each_after_combat_on_hit';
+        trigger.localArgs = new Map(trigger.localArgs ?? []);
+        trigger.localArgs.set('target_foe', targetFoe);
+        if (manager.triggerSpecific(perHitNid, trigger)) queued++;
       }
     }
     const evenMissNid = eventNid(item, 'event_after_combat_even_miss');
