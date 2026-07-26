@@ -601,6 +601,20 @@ export function activeUnitAnimations(
   return result;
 }
 
+/** Python UNIQUE ChangeVariant hook, falling back to the unit prefab variant. */
+export function changeVariant(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): string | null {
+  let result = unit.variant;
+  for (const skill of unit.skills) {
+    const variant = skill.getComponent<unknown>('change_variant');
+    if (typeof variant !== 'string' || !isSkillActive(skill, unit, game)) continue;
+    result = variant || null;
+  }
+  return result;
+}
+
 /**
  * Replacement splash component for otherwise single-target items.
  *

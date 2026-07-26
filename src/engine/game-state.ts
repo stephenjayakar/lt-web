@@ -45,7 +45,11 @@ import { AudioManager } from '../audio/audio-manager';
 import { HUD } from '../ui/hud';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
-import { activeUnitAnimations, isCantoSkill } from '../combat/skill-system';
+import {
+  activeUnitAnimations,
+  changeVariant,
+  isCantoSkill,
+} from '../combat/skill-system';
 import { refreshAuras } from '../combat/aura-system';
 import { refreshPositionStatuses } from './position-status-system';
 import { MapSprite } from '../rendering/map-sprite';
@@ -75,6 +79,7 @@ export class GameState {
   state: StateMachine;
   board: GameBoard | null;
   targetSystem: TargetSystem | null;
+  private mapSpriteLoadVersions = new WeakMap<UnitObject, number>();
   camera: Camera;
   cursor: Cursor;
   arrowRenderer: ArrowRenderer;
@@ -1634,46 +1639,54 @@ export class GameState {
     const spriteCache = new Map<string, ReturnType<typeof MapSprite.fromImages>>();
 
     for (const unit of this.units.values()) {
-      const klassDef = this.db.classes.get(unit.klass);
-      if (!klassDef) {
-        console.warn(`GameState.loadAllMapSprites: class "${unit.klass}" not found for unit "${unit.nid}"`);
-        continue;
-      }
-
-      const spriteNid = klassDef.map_sprite_nid;
-      if (!spriteNid) {
-        console.warn(`GameState.loadAllMapSprites: class "${unit.klass}" has no map_sprite_nid for unit "${unit.nid}"`);
-        continue;
-      }
-
-      // Look up team palette for coloring (enemy=red, other=green, etc.)
-      const teamPalette = this.getTeamPalette(unit.team) ?? undefined;
-      const cacheKey = `${spriteNid}__${teamPalette ?? ''}`;
-
-      loadPromises.push(
-        (async () => {
-          // Check cache first
-          if (spriteCache.has(cacheKey)) {
-            unit.sprite = spriteCache.get(cacheKey) ?? null;
-            return;
-          }
-
-          const sprites = await this.resources.tryLoadMapSprite(spriteNid);
-          const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move, teamPalette);
-
-          if (!mapSprite) {
-            console.warn(
-              `GameState.loadAllMapSprites: sprite "${spriteNid}" failed to load for unit "${unit.nid}" — using placeholder`,
-            );
-          }
-
-          spriteCache.set(cacheKey, mapSprite);
-          unit.sprite = mapSprite;
-        })(),
-      );
+      loadPromises.push(this.loadMapSpriteForUnit(unit, spriteCache));
     }
 
     await Promise.all(loadPromises);
+  }
+
+  /** Load one unit's effective variant, falling back to its class base sprite. */
+  async loadMapSpriteForUnit(
+    unit: UnitObject,
+    spriteCache: Map<string, ReturnType<typeof MapSprite.fromImages>> = new Map(),
+  ): Promise<void> {
+    const loadVersion = (this.mapSpriteLoadVersions.get(unit) ?? 0) + 1;
+    this.mapSpriteLoadVersions.set(unit, loadVersion);
+    const klassDef = this.db.classes.get(unit.klass);
+    const baseNid = klassDef?.map_sprite_nid;
+    if (!baseNid) {
+      console.warn(
+        `GameState.loadMapSpriteForUnit: class "${unit.klass}" has no map sprite for "${unit.nid}"`,
+      );
+      return;
+    }
+    const variant = changeVariant(unit, this);
+    const requestedNid = variant ? `${baseNid}${variant}` : baseNid;
+    const teamPalette = this.getTeamPalette(unit.team) ?? undefined;
+    const cacheKey = `${requestedNid}__${teamPalette ?? ''}`;
+    if (spriteCache.has(cacheKey)) {
+      if (this.mapSpriteLoadVersions.get(unit) === loadVersion) {
+        unit.sprite = spriteCache.get(cacheKey) ?? null;
+      }
+      return;
+    }
+    let selectedNid = requestedNid;
+    let sprites = await this.resources.tryLoadMapSprite(requestedNid);
+    if (!sprites.stand && requestedNid !== baseNid) {
+      selectedNid = baseNid;
+      sprites = await this.resources.tryLoadMapSprite(baseNid);
+    }
+    const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move, teamPalette);
+    if (mapSprite) mapSprite.resourceNid = selectedNid;
+    else {
+      console.warn(
+        `GameState.loadMapSpriteForUnit: sprite "${requestedNid}" failed for "${unit.nid}"`,
+      );
+    }
+    spriteCache.set(cacheKey, mapSprite);
+    if (this.mapSpriteLoadVersions.get(unit) === loadVersion) {
+      unit.sprite = mapSprite;
+    }
   }
 }
 

@@ -2371,8 +2371,8 @@
       {
         "nid": "change_variant",
         "uses": 4,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "charges_per_turn",

@@ -27,6 +27,8 @@ const DIRECTION_ROW: Record<Direction, number> = {
  * transparent background color.
  */
 export class MapSprite {
+  /** Resource NID selected by the loader, including any unit/skill variant. */
+  resourceNid: string | null = null;
   private standFrames: Surface[];
   private grayFrames: Surface[];
   private moveFrames: Map<Direction, Surface[]>;

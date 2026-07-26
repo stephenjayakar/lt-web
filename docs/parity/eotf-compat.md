@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 26 unverified
+- 270 skill-component NIDs; 25 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -142,7 +142,6 @@ focused browser coverage.
 | NID | Uses | Engine audit status |
 |---|---|---|
 | armsthrift | 3 | consumed |
-| change_variant | 4 | unreferenced |
 | Cleave | 1 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
 | enemy_oversplash | 2 | hook-and-reference |

@@ -39,7 +39,6 @@ import {
   getCombatArtOptions,
   type CombatArtOption,
 } from '../../combat/combat-art-system';
-import { MapSprite as MapSpriteClass } from '../../rendering/map-sprite';
 import {
   MarkActionGroupStart,
   MoveAction,
@@ -15515,19 +15514,7 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   private loadMapSpriteForUnit(unit: UnitObject, game: any): void {
-    const klassDef = game.db.classes.get(unit.klass);
-    if (!klassDef) return;
-    const spriteNid = klassDef.map_sprite_nid;
-    if (!spriteNid) return;
-
-    const teamDef = game.db.teams.defs.find((t: any) => t.nid === unit.team);
-    const teamPalette = teamDef?.palette ?? undefined;
-
-    // Fire-and-forget async load
-    game.resources.tryLoadMapSprite(spriteNid).then((sprites: any) => {
-      const mapSprite = MapSpriteClass.fromImages(sprites.stand, sprites.move, teamPalette);
-      unit.sprite = mapSprite;
-    }).catch((err: any) => {
+    void game.loadMapSpriteForUnit(unit).catch((err: any) => {
       console.warn(`EventState: failed to load map sprite for unit "${unit.nid}":`, err);
     });
   }
