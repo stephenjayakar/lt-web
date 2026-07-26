@@ -63,6 +63,8 @@ export class Database {
   difficultyModes: DifficultyMode[] = [];
   lore: Map<NID, LoreEntry> = new Map();
   tags: string[] = [];
+  /** Python DB.raw_data values, hydrated from RawDataPrefab.value. */
+  rawData: Map<NID, any> = new Map();
 
   // Chunked data
   items: Map<NID, ItemPrefab> = new Map();
@@ -126,6 +128,7 @@ export class Database {
       this.loadOverworlds(resources),
       this.loadParties(resources),
       this.loadLore(resources),
+      this.loadRawData(resources),
     ]);
 
     for (const result of nonChunkedResults) {
@@ -406,6 +409,46 @@ export class Database {
     if (!data) return;
     for (const party of data) {
       this.parties.set(party.nid, party);
+    }
+  }
+
+  /** Load LT raw-data prefabs as their Python-facing `.value` objects. */
+  private async loadRawData(resources: ResourceManager): Promise<void> {
+    const prefabs = await resources.tryLoadJson<any[]>('game_data/raw_data.json');
+    if (!prefabs) return;
+    for (const prefab of prefabs) {
+      if (!prefab?.nid) continue;
+      let value: any;
+      if (prefab.dtype === 'list') {
+        const entries = Array.isArray(prefab.lovalue)
+          ? prefab.lovalue.map((entry: any) => ({ ...entry }))
+          : [];
+        Object.defineProperty(entries, 'get', {
+          enumerable: false,
+          value(nid: string, fallback?: any) {
+            return entries.find((entry: any) => entry?.nid === nid) ?? fallback;
+          },
+        });
+        value = entries;
+      } else if (prefab.dtype === 'kv') {
+        const entries = Object.fromEntries(
+          Array.isArray(prefab.kvvalue) ? prefab.kvvalue : [],
+        );
+        value = new Proxy(entries, {
+          get(target, property: string | symbol) {
+            if (property === 'get') {
+              return (key: string, fallback?: any) =>
+                Object.prototype.hasOwnProperty.call(target, key)
+                  ? target[key]
+                  : fallback;
+            }
+            return target[property as keyof typeof target];
+          },
+        });
+      } else {
+        value = prefab.svalue ?? '';
+      }
+      this.rawData.set(prefab.nid, value);
     }
   }
 
