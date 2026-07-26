@@ -1044,10 +1044,17 @@ export function canCounterattack(
   const dist = Math.abs(aPos[0] - dPos[0]) + Math.abs(aPos[1] - dPos[1]);
 
   // Check if defender has distant_counter (can counter at any range)
-  if (skillSystem.distantCounter(defender)) return true;
+  const counterContext = {
+    game,
+    item: defWeapon,
+    target: attacker,
+    item2: attackItem,
+    mode: 'defense',
+  };
+  if (skillSystem.distantCounter(defender, counterContext)) return true;
 
   // Check if defender has close_counter (can counter at range 1 with ranged weapon)
-  if (dist === 1 && skillSystem.closeCounter(defender)) return true;
+  if (dist === 1 && skillSystem.closeCounter(defender, counterContext)) return true;
 
   // Standard range check: defender can counter if distance is within their weapon's range
   const minRange = defWeapon.getMinRange(defender, game);

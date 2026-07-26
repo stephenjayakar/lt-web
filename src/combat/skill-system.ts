@@ -557,14 +557,38 @@ export function alternateSplash(unit: UnitObject): AlternateSplash | null {
 // Boolean hooks (ALL_DEFAULT_FALSE)
 // ============================================================
 
+function activeBooleanSkill(
+  unit: UnitObject,
+  componentNid: string,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return unit.skills.some((skill) => {
+    if (!skill.hasComponent(componentNid)) return false;
+    const localArgs = new Map<string, unknown>([
+      ['item', context.item ?? null],
+      ['item2', context.item2 ?? null],
+      ['mode', context.mode ?? null],
+      ['skill', skill],
+      ['attack_info', context.attackInfo ?? null],
+    ]);
+    return evaluatedSkillActive(skill, unit, context, localArgs);
+  });
+}
+
 /** Unit attacks first regardless of speed. */
-export function vantage(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'vantage');
+export function vantage(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'vantage', context);
 }
 
 /** Unit performs all attacks before enemy retaliates. */
-export function desperation(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'desperation');
+export function desperation(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'desperation', context);
 }
 
 /** Unit cannot double. */
@@ -647,13 +671,19 @@ export function ignoreRegionStatus(
 }
 
 /** Unit can counter at any range. */
-export function distantCounter(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'distant_counter');
+export function distantCounter(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'distant_counter', context);
 }
 
 /** Unit can counter at range 1 even with ranged weapon. */
-export function closeCounter(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'close_counter');
+export function closeCounter(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'close_counter', context);
 }
 
 /** Unit should not move after attacking (no canto override). */
@@ -667,8 +697,11 @@ export function passThrough(unit: UnitObject): boolean {
 }
 
 /** Attacker goes second (opposite of vantage). */
-export function disvantage(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'disvantage');
+export function disvantage(
+  unit: UnitObject,
+  context: EvaluatedSkillContext = {},
+): boolean {
+  return activeBooleanSkill(unit, 'disvantage', context);
 }
 
 /** Unit persists at 0 HP during combat (miracle-like). */
@@ -2064,6 +2097,8 @@ export function resistMultiplier(
     }
     const fixed = skill.getComponent<number>('resist_multiplier');
     if (typeof fixed === 'number') result *= fixed;
+    const followUp = skill.getComponent<number>('resist_follow_up');
+    if (typeof followUp === 'number' && attackInfo[0] > 0) result *= followUp;
     const expression = skill.getComponent<string>('dynamic_resist_multiplier');
     if (expression) {
       const value = Number(evaluateExpression(expression, {

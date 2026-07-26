@@ -2396,7 +2396,7 @@
         "nid": "close_counter",
         "uses": 8,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_art",
@@ -2516,7 +2516,7 @@
         "nid": "desperation",
         "uses": 16,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "display_skill_icon_in_combat",
@@ -2528,7 +2528,7 @@
         "nid": "distant_counter",
         "uses": 19,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "drain_charge",
@@ -3403,8 +3403,8 @@
       {
         "nid": "resist_follow_up",
         "uses": 1,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "resist_multiplier",
@@ -3614,7 +3614,7 @@
         "nid": "vantage",
         "uses": 10,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "visual_charge",

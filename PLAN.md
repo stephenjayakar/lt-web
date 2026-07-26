@@ -166,7 +166,8 @@ the Python implementation, including AI and turnwheel behavior where applicable.
 - [x] Combat math: `armsthrift`, `armsthrift_always`, `dynamic_crit_accuracy`,
   all five `all_brave` skills, all 36 used alternate skill formula components
   (including additive critical damage), all 13 generic attack/defense proc
-  parents and 12 authored proc rates, and maximum-range modification.
+  parents and 12 authored proc rates, condition-aware Vantage/Desperation and
+  close/distant counters, follow-up resistance, and maximum-range modification.
 - [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
   movement-type overrides.
 - [x] Targeting/AI/economy: five `witch_warp_expression` uses,
