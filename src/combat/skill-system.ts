@@ -1555,12 +1555,19 @@ export function modifiedMaximumRange(
   item: ItemObject,
   game?: any,
 ): number {
-  let maximum = item.getMaxRange(unit, game);
+  let maximum = Math.max(0, item.getMaxRange(unit, game));
+  let limit = 1000;
   for (const skill of unit.skills) {
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['skill', skill],
+    ]);
+    if (!evaluatedSkillActive(skill, unit, { game, item }, localArgs)) continue;
     const flat = skill.getComponent<number>('modify_maximum_range');
     if (typeof flat === 'number') maximum += flat;
-    const expression = skill.getComponent<string>('eval_max_range');
-    if (expression) {
+    for (const componentNid of ['eval_max_range', 'eval_range']) {
+      const expression = skill.getComponent<string>(componentNid);
+      if (typeof expression !== 'string' || !expression) continue;
       const value = evaluateExpression(expression, {
         game,
         unit1: unit,
@@ -1568,13 +1575,45 @@ export function modifiedMaximumRange(
         position: unit.position ?? undefined,
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
-        localArgs: new Map<string, unknown>([['item', item], ['skill', skill]]),
+        localArgs,
       });
       if (Number.isFinite(Number(value))) maximum += Math.trunc(Number(value));
     }
+    const configuredLimit = skill.getComponent<number>('limit_maximum_range');
+    if (typeof configuredLimit === 'number') limit = configuredLimit;
   }
-  const limit = getSkillValue<number>(unit, 'limit_maximum_range');
-  return Math.max(0, Math.min(maximum, typeof limit === 'number' ? limit : 99));
+  return Math.max(0, Math.min(maximum, limit));
+}
+
+/** Base item minimum range after active flat/evaluated skill additions. */
+export function modifiedMinimumRange(
+  unit: UnitObject,
+  item: ItemObject,
+  game?: any,
+): number {
+  let minimum = Math.max(0, item.getMinRange(unit, game));
+  for (const skill of unit.skills) {
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['skill', skill],
+    ]);
+    if (!evaluatedSkillActive(skill, unit, { game, item }, localArgs)) continue;
+    const flat = skill.getComponent<number>('modify_minimum_range');
+    if (typeof flat === 'number') minimum += flat;
+    const expression = skill.getComponent<string>('eval_min_range');
+    if (typeof expression !== 'string' || !expression) continue;
+    const value = evaluateExpression(expression, {
+      game,
+      unit1: unit,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs,
+    });
+    if (Number.isFinite(Number(value))) minimum += Math.trunc(Number(value));
+  }
+  return minimum;
 }
 
 /** Last active movement-type override, falling back to the unit's class group. */

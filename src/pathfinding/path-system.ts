@@ -8,7 +8,13 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 import { Dijkstra, AStar } from './pathfinding';
-import { movementType, passThrough, witchWarpPositions } from '../combat/skill-system';
+import {
+  modifiedMaximumRange,
+  modifiedMinimumRange,
+  movementType,
+  passThrough,
+  witchWarpPositions,
+} from '../combat/skill-system';
 
 /**
  * High-level pathfinding interface.
@@ -280,7 +286,10 @@ export class PathSystem {
   private getAttackRange(unit: UnitObject): [number, number] {
     for (const item of unit.items) {
       if (item.isWeapon()) {
-        return [item.getMinRange(unit, this.game), item.getMaxRange(unit, this.game)];
+        return [
+          modifiedMinimumRange(unit, item, this.game),
+          modifiedMaximumRange(unit, item, this.game),
+        ];
       }
     }
     return [0, 0];

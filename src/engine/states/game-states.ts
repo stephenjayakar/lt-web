@@ -243,6 +243,7 @@ import {
   canSelect,
   hasDrainingCharge,
   modifiedMaximumRange,
+  modifiedMinimumRange,
   movementType,
   priceSkillMultiplier,
   skillConditionActive,
@@ -4726,7 +4727,7 @@ export class WeaponChoiceState extends State {
   private showWeaponRange(unit: UnitObject, weapon: ItemObject): void {
     const game = getGame();
     game.highlight.clear();
-    const minRange = weapon.getMinRange(unit, game);
+    const minRange = modifiedMinimumRange(unit, weapon, game);
     const maxRange = modifiedMaximumRange(unit, weapon, game);
     const ux = unit.position![0];
     const uy = unit.position![1];
@@ -4878,7 +4879,7 @@ export class TargetingState extends MapState {
     game.highlight.clear();
     const weapon = getEquippedWeapon(unit, game.db, game);
     if (weapon) {
-      const minRange = weapon.getMinRange(unit, game);
+      const minRange = modifiedMinimumRange(unit, weapon, game);
       const maxRange = modifiedMaximumRange(unit, weapon, game);
       const attackTiles: [number, number][] = [];
       const ux = unit.position[0];

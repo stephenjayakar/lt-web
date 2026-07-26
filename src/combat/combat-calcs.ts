@@ -1057,7 +1057,7 @@ export function canCounterattack(
   if (dist === 1 && skillSystem.closeCounter(defender, counterContext)) return true;
 
   // Standard range check: defender can counter if distance is within their weapon's range
-  const minRange = defWeapon.getMinRange(defender, game);
+  const minRange = skillSystem.modifiedMinimumRange(defender, defWeapon, game);
   const maxRange = skillSystem.modifiedMaximumRange(defender, defWeapon, game);
   return dist >= minRange && dist <= maxRange;
 }
