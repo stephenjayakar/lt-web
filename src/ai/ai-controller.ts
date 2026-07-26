@@ -24,7 +24,9 @@ import {
 import {
   available as itemAvailable,
   healAmount as itemHealAmount,
+  isStealItem,
   stealItemRestrict,
+  stealTargetStatRestrict,
 } from '../combat/item-system';
 import {
   aiPriorityMultiplier,
@@ -569,7 +571,7 @@ export class AIController {
 
   private getStealItems(unit: UnitObject): ItemObject[] {
     const items = unit.items.filter((item) =>
-      (item.hasComponent('steal') || item.hasComponent('gba_steal')) &&
+      isStealItem(item) &&
       itemAvailable(unit, item, this.db, this.gameRef),
     );
     if (unit.skills.some((skill) => skill.getComponent<string>('ability') === 'Steal')) {
@@ -592,14 +594,14 @@ export class AIController {
     let best: AIAction | null = null;
     let bestValue = -Infinity;
     const stealItems = this.getStealItems(unit);
-    const atkExpr = this.db.getEquation('STEAL_ATK') ?? 'SPD';
-    const stealAtk = evaluateEquation(atkExpr, unit, { db: this.db });
-
     for (const stealItem of stealItems) {
       for (const enemy of enemies) {
         if (!enemy.position || enemy.isDead()) continue;
+        const atkExpr = this.db.getEquation('STEAL_ATK') ?? 'SPD';
+        const stealAtk = evaluateEquation(atkExpr, unit, { db: this.db, item: stealItem });
         const defExpr = this.db.getEquation('STEAL_DEF') ?? 'SPD';
-        if (stealAtk < evaluateEquation(defExpr, enemy, { db: this.db })) continue;
+        const stealDef = evaluateEquation(defExpr, enemy, { db: this.db, item: stealItem });
+        if (!stealTargetStatRestrict(unit, stealItem, enemy, stealAtk, stealDef)) continue;
         const legal = enemy.items.filter((candidate) =>
           stealItemRestrict(unit, stealItem, enemy, candidate, this.db),
         );

@@ -166,6 +166,7 @@ import {
   queueDirectItemUseEvents,
   queueCombatItemEvents,
   applyDroppableItemPickups,
+  applyStolenItemTransfer,
   combatTradePair,
   applyCombatSkillEndHooks,
   triggerAbilityItemCharge,
@@ -208,6 +209,7 @@ import {
   numTargets,
   allowSameTarget,
   allowLessThanMaxTargets,
+  isStealItem,
   stealItemRestrict,
   traceItemRestrict,
   available as itemAvailable,
@@ -3714,8 +3716,7 @@ export class ItemTargetingState extends MapState {
       return;
     }
 
-    if (activeItem === this.item &&
-        (activeItem.hasComponent('steal') || activeItem.hasComponent('gba_steal'))) {
+    if (activeItem === this.item && isStealItem(activeItem)) {
       const defender = game.board.getUnit(target[0], target[1]);
       this.selectableTargetItems = defender?.items.filter((candidate: ItemObject) =>
         stealItemRestrict(unit, activeItem, defender, candidate, game.db),
@@ -5734,20 +5735,14 @@ export class CombatState extends State {
           if (this.results.stolenItem) {
             const stolenItem = this.results.stolenItem;
             const stealDefender = this.getPrimaryCombatDefender() ?? activeCombat.defender;
-            game.actionLog.doAction(new MoveItemBetweenUnitsAction(
-              stealDefender,
+            const pendingDiscard = applyStolenItemTransfer(
+              game.actionLog,
+              game.db,
               activeCombat.attacker,
+              stealDefender,
               stolenItem,
-            ));
-            if (activeCombat.attacker.team !== 'player') {
-              game.actionLog.doAction(new SetItemDroppableAction(stolenItem, true));
-            }
-            game.actionLog.doAction(new UpdateRecordsAction(
-              'steal',
-              activeCombat.attacker.nid,
-              stealDefender.nid,
-              stolenItem.nid,
-            ));
+            );
+            if (pendingDiscard) this.pendingDiscards.push(pendingDiscard);
           }
           // Droppable item pickup (Python simple_combat.handle_item_gain).
           const pickupResult = applyDroppableItemPickups(

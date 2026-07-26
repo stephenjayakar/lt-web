@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 139 unverified
+- 185 item-component NIDs; 136 unverified
 - 270 skill-component NIDs; 198 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -73,7 +73,6 @@ focused browser coverage.
 | exp | 5 | consumed |
 | galeforce_on_crit | 1 | project-local-or-unknown |
 | gba_steal | 1 | hook-and-reference |
-| gimme_that | 1 | project-local-or-unknown |
 | global_range | 31 | hook-and-reference |
 | heal | 34 | hook-and-reference |
 | hit | 722 | hook-and-reference |
@@ -136,7 +135,6 @@ focused browser coverage.
 | status_on_hit | 180 | consumed |
 | status_on_hold | 106 | consumed |
 | statuses_on_hit | 36 | consumed |
-| steal_con | 3 | project-local-or-unknown |
 | store_unit | 21 | consumed |
 | swap | 7 | reference-only |
 | swap_on_end_combat | 6 | reference-only |
@@ -146,7 +144,6 @@ focused browser coverage.
 | target_tile | 208 | hook-and-reference |
 | target_unit | 72 | hook-and-reference |
 | text_color | 2 | unreferenced |
-| thief_staff | 1 | project-local-or-unknown |
 | trade | 1 | consumed |
 | transform | 37 | hook-and-reference |
 | traversable_tile_target_restrict | 5 | hook-and-reference |
