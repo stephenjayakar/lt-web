@@ -1290,6 +1290,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       previous_position: u.previousPosition ?? u.previous_position ?? null,
       tags: u.tags ?? [],
       klass: u.klass,
+      affinity: u.affinity ?? null,
       traveler: u.traveler ?? u.rescuing ?? null,
       get strike_partner() {
         return wrapUnit(u.strikePartner ?? u.strike_partner ?? null);
@@ -1308,7 +1309,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       max_hp: u.maxHp ?? u.max_hp,
       get_hp: () => u.currentHp ?? u.current_hp ?? 0,
       get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
-      get_stat: (nid: string) => u.getStat?.(nid) ?? u.stats?.[nid] ?? 0,
+      get_stat: (nid: string) =>
+        u.getStat?.(nid) ?? u.getStatValue?.(nid) ?? u.stats?.[nid] ?? 0,
       get_internal_level: () => u.getInternalLevel?.() ?? u.level ?? 1,
       get_field: (nid: string, fallback?: any) =>
         u.fields?.has?.(nid) ? u.fields.get(nid) : fallback,
@@ -1735,6 +1737,10 @@ function evaluateWithJsFallback(
     const to = end === undefined ? start : end;
     return Array.from({ length: Math.max(0, to - from) }, (_, index) => from + index);
   };
+  const get_stacks = (candidate: any, skillNid: string) => {
+    const raw = candidate?._raw ?? candidate;
+    return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
+  };
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
@@ -1773,7 +1779,7 @@ function evaluateWithJsFallback(
       'check_pair', 'check_default', '__len__', '__any__', '__all__', 'v', 'cf',
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'combat_calcs', 'movement_funcs', 'target_system',
-      'max', 'min', 'str', 'range', '_qf', '_locals',
+      'max', 'min', 'str', 'range', 'get_stacks', '_qf', '_locals',
       '_wrapUnit', '_wrapItem', '_wrapSkill',
       `"use strict";
        ${localDeclarations}
@@ -1815,7 +1821,7 @@ function evaluateWithJsFallback(
       check_pair, check_default, __len__, __any__, __all__, v, cf,
       support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.combat_calcs,
-      evalScope.movement_funcs, evalScope.target_system, max, min, str, range,
+      evalScope.movement_funcs, evalScope.target_system, max, min, str, range, get_stacks,
       _queryFuncs, expressionLocals,
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
     );

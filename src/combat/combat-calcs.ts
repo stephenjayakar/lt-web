@@ -416,6 +416,7 @@ export function isMagic(item: ItemObject): boolean {
 
 /** Calculate hit rate for an attacker. */
 export function accuracy(unit: UnitObject, item: ItemObject, db: Database): number {
+  const game = _eqGameRef?.();
   // Python precedence: skill override > item override > skill alternate > item alternate > default.
   const eqName = skillSystem.accuracyFormulaOverride(unit) ??
     itemSystem.accuracyFormulaOverride(unit, item) ??
@@ -424,7 +425,7 @@ export function accuracy(unit: UnitObject, item: ItemObject, db: Database): numb
     'HIT';
 
   const baseHit = resolveEquation(db, eqName, 'SKL * 2 + LCK // 2', unit);
-  const itemHit = item.getHit();
+  const itemHit = itemSystem.hit(unit, item, game) ?? 0;
 
   // Add item + skill static modifiers
   const itemMod = itemSystem.modifyAccuracy(unit, item);
@@ -460,29 +461,37 @@ export function avoid(
   const baseAvoid = evaluateEquation(processed, unit);
 
   // Add skill static modifier
+  const itemMod = equippedWeapon
+    ? itemSystem.modifyAvoid(unit, equippedWeapon, _eqGameRef?.())
+    : 0;
   const skillMod = skillSystem.modifyAvoid(unit, equippedWeapon);
 
   // Add terrain avoid bonus
   const terrainAvo = board ? getTerrainBonusesForUnit(unit, board, db)[1] : 0;
 
-  return baseAvoid + skillMod + terrainAvo;
+  return baseAvoid + itemMod + skillMod + terrainAvo;
 }
 
 /** Calculate damage output. */
 export function damage(unit: UnitObject, item: ItemObject, db: Database): number {
   // Utility spells without a damage hook are non-damaging in LT; they do not
   // inherit STR/MAG merely because they enter the combat lifecycle.
-  if (!item.hasComponent('damage') && !item.hasComponent('equation_damage')) return 0;
+  if (!item.hasComponent('damage') &&
+      !item.hasComponent('damage_any') &&
+      !item.hasComponent('eval_damage') &&
+      !item.hasComponent('eval_damage_any') &&
+      !item.hasComponent('equation_damage')) return 0;
+  const game = _eqGameRef?.();
   const eqName = skillSystem.damageFormulaOverride(unit) ??
     itemSystem.damageFormulaOverride(unit, item) ??
     skillSystem.damageFormula(unit) ??
-    itemSystem.damageFormula(unit, item) ??
+    itemSystem.damageFormula(unit, item, game) ??
     'DAMAGE';
 
   const magic = isMagic(item);
   const defaultExpr = magic ? 'MAG' : 'STR';
   const baseDmg = resolveEquation(db, eqName, defaultExpr, unit);
-  const itemDmg = item.getDamage();
+  const itemDmg = itemSystem.damage(unit, item, game) ?? 0;
 
   // Add item + skill static modifiers
   const itemMod = itemSystem.modifyDamage(unit, item);
@@ -493,12 +502,13 @@ export function damage(unit: UnitObject, item: ItemObject, db: Database): number
 
 /** Calculate defense/resistance against an incoming attack item. */
 export function defense(unit: UnitObject, attackItem: ItemObject, db: Database, board?: GameBoard | null): number {
+  const game = _eqGameRef?.();
   // Python precedence mirrors the other formula hooks: defensive skill
   // override, attacking item override, defensive skill alternate, item alternate.
   const formulaOverride = skillSystem.resistFormulaOverride(unit) ??
     itemSystem.resistFormulaOverride(unit, attackItem) ??
     skillSystem.resistFormula(unit) ??
-    itemSystem.resistFormula(unit, attackItem);
+    itemSystem.resistFormula(unit, attackItem, game);
 
   const magic = isMagic(attackItem);
   const defaultExpr = magic ? 'RES' : 'DEF';
@@ -540,7 +550,7 @@ export function attackSpeed(unit: UnitObject, item: ItemObject, db: Database): n
   }
 
   // Add item + skill static modifiers
-  const itemMod = itemSystem.modifyAttackSpeed(unit, item);
+  const itemMod = itemSystem.modifyAttackSpeed(unit, item, _eqGameRef?.());
   const skillMod = skillSystem.modifyAttackSpeed(unit, item);
 
   return baseAS + itemMod + skillMod;
@@ -570,7 +580,9 @@ export function defenseSpeed(
     const con = unit.getStatValue('CON');
     base = spd - Math.max(0, item.getWeight() - con);
   }
-  return base + skillSystem.modifyDefenseSpeed(unit, item);
+  return base +
+    itemSystem.modifyDefenseSpeed(unit, item, _eqGameRef?.()) +
+    skillSystem.modifyDefenseSpeed(unit, item);
 }
 
 // ------------------------------------------------------------------

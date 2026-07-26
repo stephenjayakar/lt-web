@@ -334,6 +334,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Surface all skill-granted EotF abilities as persistent item trees with
   condition/charge gating, multi-item choice, combat and empty-tile event
   routing, aura-parent charges, save identity, and team-wide combat-art use.
+- [x] Preserve all 123 real uses of EotF's evaluated damage, hit, weight,
+  physical/magic/dragon formula, separate extra-damage, ally-damage, exempt
+  weapon-type, and Magician rank-bypass item components.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

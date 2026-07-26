@@ -1086,7 +1086,7 @@
         "nid": "damage_any",
         "uses": 8,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage_on_miss",
@@ -1188,31 +1188,31 @@
         "nid": "eval_damage",
         "uses": 33,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_damage_any",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_dragon",
         "uses": 23,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_dragon_magic",
         "uses": 13,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_extra_damage",
         "uses": 9,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_heal",
@@ -1224,7 +1224,7 @@
         "nid": "eval_hit",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_hp_cost",
@@ -1236,7 +1236,7 @@
         "nid": "eval_magic",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_max_range",
@@ -1290,7 +1290,7 @@
         "nid": "eval_weight",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_even_miss",
@@ -1446,7 +1446,7 @@
         "nid": "magic_weapon_rank",
         "uses": 5,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_cast_anim",
@@ -2016,7 +2016,7 @@
         "nid": "weapon_type_exempt",
         "uses": 26,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "weight",
@@ -2707,7 +2707,7 @@
       {
         "nid": "eval_damage",
         "uses": 30,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "unverified"
       },
       {
@@ -2731,7 +2731,7 @@
       {
         "nid": "eval_hit",
         "uses": 21,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "unverified"
       },
       {

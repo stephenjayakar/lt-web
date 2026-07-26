@@ -449,6 +449,7 @@ export class MapCombat {
           ? eclipseFe7Damage(targetHp)
           : eclipseDamage(targetHp);
       }
+      damage += strike.extraDamage ?? 0;
       if (strike.defender === this.attacker) {
         const itemHeal = lifelinkHealForStrike(
           strike.attacker,
@@ -845,14 +846,15 @@ export class MapCombat {
         this.defenderDrainStartHps.set(unit, hp);
       }
       if (strike && (strike.hit || hasDamageOnMiss(strike.item))) {
+        const totalDamage = strike.damage + (strike.extraDamage ?? 0);
         // Record drain animation start points
         this.hpDrainStartAttacker = this.attackerTargetHp;
         if (strike.defender === this.attacker) {
-          this.attackerTargetHp = Math.max(0, this.attackerTargetHp - strike.damage);
+          this.attackerTargetHp = Math.max(0, this.attackerTargetHp - totalDamage);
         } else if (this.defenderTargetHps.has(strike.defender)) {
           this.defenderTargetHps.set(
             strike.defender,
-            Math.max(0, (this.defenderTargetHps.get(strike.defender) ?? 0) - strike.damage),
+            Math.max(0, (this.defenderTargetHps.get(strike.defender) ?? 0) - totalDamage),
           );
         }
 
@@ -867,6 +869,16 @@ export class MapCombat {
             elapsed: 0,
             duration: 600,
           });
+          if ((strike.extraDamage ?? 0) > 0) {
+            this.damagePopups.push({
+              x: targetUnit.position[0],
+              y: targetUnit.position[1],
+              value: strike.extraDamage ?? 0,
+              isCrit: false,
+              elapsed: 0,
+              duration: 600,
+            });
+          }
         }
       } else if (strike && !strike.hit) {
         // Miss - still need drain start points for the (no-op) animation
@@ -1054,7 +1066,8 @@ export class MapCombat {
 
     const damagedDefenders = new Set(this.strikes
       .filter((strike) =>
-        strike.attacker === this.attacker && strike.hit && strike.damage > 0 &&
+        strike.attacker === this.attacker && strike.hit &&
+        strike.damage + (strike.extraDamage ?? 0) > 0 &&
         !strike.defender.tags.includes('Tile'),
       )
       .map((strike) => strike.defender));
@@ -1074,7 +1087,8 @@ export class MapCombat {
 
   private calculateExpFor(unit: UnitObject, deadDefenders: Set<UnitObject>): number {
     const damagedDefenders = new Set(this.strikes
-      .filter((strike) => strike.attacker === unit && strike.hit && strike.damage > 0 &&
+      .filter((strike) => strike.attacker === unit && strike.hit &&
+        strike.damage + (strike.extraDamage ?? 0) > 0 &&
         !strike.defender.tags.includes('Tile'))
       .map((strike) => strike.defender));
     let exp = 0;

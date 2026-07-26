@@ -267,8 +267,9 @@ function itemComponentsAvailable(
     if (Number.isFinite(cost) && mana < cost) return false;
   }
 
-  const weaponType = components.get('weapon_type') as string | undefined;
-  if (weaponType) {
+  const exemptWeaponType = components.get('weapon_type_exempt') as string | undefined;
+  const weaponType = (components.get('weapon_type') as string | undefined) ?? exemptWeaponType;
+  if (weaponType && !exemptWeaponType) {
     const klass = db.classes.get(unit.klass);
     const classEntry = klass?.wexp_gain?.[weaponType];
     if (!classEntry) return false;
@@ -285,10 +286,14 @@ function itemComponentsAvailable(
     if (!usableTypes.has(weaponType) || Number(unit.wexp[weaponType] ?? 0) <= 0) return false;
   }
 
-  const rank = components.get('weapon_rank') as string | undefined;
+  const magicRank = components.get('magic_weapon_rank') as string | undefined;
+  const rank = (components.get('weapon_rank') as string | undefined) ?? magicRank;
   if (rank && weaponType) {
     const requirement = db.weaponRanks.find((candidate) => candidate.rank === rank)?.requirement;
-    if (requirement !== undefined && Number(unit.wexp[weaponType] ?? 0) < requirement) return false;
+    const magicianBypass = !!magicRank && unit.tags.includes('Magician');
+    if (!magicianBypass &&
+        requirement !== undefined &&
+        Number(unit.wexp[weaponType] ?? 0) < requirement) return false;
   }
 
   const allowedUnits = components.get('prf_unit');
@@ -1056,6 +1061,11 @@ export function targetRestrict(
     .map((position) => context.board.getUnit(position[0], position[1]))
     .filter((target): target is UnitObject => !!target);
 
+  if ((item.hasComponent('eval_damage') || item.hasComponent('eval_extra_damage')) &&
+      !affectedUnits.some((target) => checkEnemy(unit, target, context.db))) {
+    return false;
+  }
+
   if (item.hasComponent('heal') || item.hasComponent('equation_heal')) {
     if (!affectedUnits.some((target) => target.currentHp < target.maxHp)) return false;
   }
@@ -1316,17 +1326,71 @@ export function sellPrice(
 
 /** Get the weapon type NID, or undefined. */
 export function weaponType(_unit: UnitObject, item: ItemObject): string | undefined {
-  return item.getComponent<string>('weapon_type');
+  return item.getComponent<string>('weapon_type') ??
+    item.getComponent<string>('weapon_type_exempt');
 }
 
-/** Get base damage value from the weapon. */
-export function damage(_unit: UnitObject, item: ItemObject): number | null {
-  return item.getComponent<number>('damage') ?? null;
+function evaluatedItemNumber(
+  expression: unknown,
+  unit: UnitObject,
+  item: ItemObject,
+  game?: any,
+  fallback = 0,
+): number {
+  if (typeof expression === 'number') return Math.trunc(expression);
+  if (typeof expression !== 'string') return fallback;
+  const value = Number(evaluateExpression(expression, {
+    game,
+    unit1: unit,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  }));
+  return Number.isFinite(value) ? Math.trunc(value) : fallback;
 }
 
-/** Get base hit value from the weapon. */
-export function hit(_unit: UnitObject, item: ItemObject): number | null {
+function evaluatedItemCondition(
+  component: string,
+  unit: UnitObject,
+  item: ItemObject,
+  game?: any,
+): boolean {
+  const expression = item.getComponent<unknown>(component);
+  return typeof expression === 'string' && evaluateCondition(expression, {
+    game,
+    unit1: unit,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  });
+}
+
+/** Get base damage value from the weapon, including EotF evaluated hooks. */
+export function damage(unit: UnitObject, item: ItemObject, game?: any): number | null {
+  if (item.hasComponent('eval_damage')) {
+    return evaluatedItemNumber(item.getComponent('eval_damage'), unit, item, game);
+  }
+  if (item.hasComponent('eval_damage_any')) {
+    return evaluatedItemNumber(item.getComponent('eval_damage_any'), unit, item, game);
+  }
+  return item.getComponent<number>('damage') ??
+    item.getComponent<number>('damage_any') ??
+    null;
+}
+
+/** Get base hit value from the weapon, including EotF evaluated hooks. */
+export function hit(unit: UnitObject, item: ItemObject, game?: any): number | null {
+  if (item.hasComponent('eval_hit')) {
+    return evaluatedItemNumber(item.getComponent('eval_hit'), unit, item, game, 80);
+  }
   return item.getComponent<number>('hit') ?? null;
+}
+
+/** EotF's separate non-critical damage instance. */
+export function extraDamage(unit: UnitObject, item: ItemObject, game?: any): number {
+  return evaluatedItemNumber(item.getComponent('eval_extra_damage'), unit, item, game);
 }
 
 /** Get base crit value from the weapon. */
@@ -1346,7 +1410,8 @@ export function maximumRange(_unit: UnitObject, item: ItemObject): number {
 
 /** Get the weapon rank requirement. */
 export function weaponRank(_unit: UnitObject, item: ItemObject): string | undefined {
-  return item.getComponent<string>('weapon_rank');
+  return item.getComponent<string>('weapon_rank') ??
+    item.getComponent<string>('magic_weapon_rank');
 }
 
 /** Get the weight of the item. */
@@ -1396,7 +1461,14 @@ export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
 // Formula hooks (UNIQUE)
 // ============================================================
 
-export function damageFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+export function damageFormula(unit: UnitObject, item: ItemObject, game?: any): string | undefined {
+  if (item.hasComponent('eval_magic')) {
+    return evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE';
+  }
+  if (item.hasComponent('eval_dragon')) {
+    return evaluatedItemCondition('eval_dragon', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE';
+  }
+  if (item.hasComponent('eval_dragon_magic')) return 'MAGIC_DAMAGE';
   return item.getComponent<string>('alternate_damage_formula');
 }
 
@@ -1420,7 +1492,18 @@ export function avoidFormulaOverride(_unit: UnitObject, item: ItemObject): strin
   return item.getComponent<string>('avoid_formula_override');
 }
 
-export function resistFormula(_unit: UnitObject, item: ItemObject): string | undefined {
+export function resistFormula(unit: UnitObject, item: ItemObject, game?: any): string | undefined {
+  if (item.hasComponent('eval_magic')) {
+    return evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DEFENSE' : 'DEFENSE';
+  }
+  if (item.hasComponent('eval_dragon')) {
+    return evaluatedItemCondition('eval_dragon', unit, item, game) ? 'WORSE_DEFENSE' : 'DEFENSE';
+  }
+  if (item.hasComponent('eval_dragon_magic')) {
+    return evaluatedItemCondition('eval_dragon_magic', unit, item, game)
+      ? 'WORSE_DEFENSE'
+      : 'MAGIC_DEFENSE';
+  }
   return item.getComponent<string>('alternate_resist_formula');
 }
 
@@ -1509,10 +1592,14 @@ export function modifyAccuracy(_unit: UnitObject, item: ItemObject): number {
 }
 
 /** Bonus avoid from item components. */
-export function modifyAvoid(_unit: UnitObject, item: ItemObject): number {
+export function modifyAvoid(unit: UnitObject, item: ItemObject, game?: any): number {
   let total = 0;
   const mod = item.getComponent<number>('modify_avoid');
   if (typeof mod === 'number') total += mod;
+  if (item.hasComponent('eval_weight')) {
+    const weight = evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
+    total -= 2 * Math.max(0, weight - unit.getStatValue('CON'));
+  }
   return total;
 }
 
@@ -1533,11 +1620,22 @@ export function modifyCritDamage(_unit: UnitObject, item: ItemObject): number {
 }
 
 /** Attack speed modifier from item components (e.g., from weight). */
-export function modifyAttackSpeed(_unit: UnitObject, item: ItemObject): number {
+export function modifyAttackSpeed(unit: UnitObject, item: ItemObject, game?: any): number {
   let total = 0;
   const mod = item.getComponent<number>('modify_attack_speed');
   if (typeof mod === 'number') total += mod;
+  if (item.hasComponent('eval_weight')) {
+    const weight = evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
+    total -= Math.max(0, weight - unit.getStatValue('CON'));
+  }
   return total;
+}
+
+/** Defense-speed counterpart of EotF's evaluated weight hook. */
+export function modifyDefenseSpeed(unit: UnitObject, item: ItemObject, game?: any): number {
+  if (!item.hasComponent('eval_weight')) return 0;
+  const weight = evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
+  return -Math.max(0, weight - unit.getStatValue('CON'));
 }
 
 // ============================================================

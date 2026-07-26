@@ -5,7 +5,7 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
-import { damageOnMiss, hasDamageOnMiss } from './item-system';
+import { damageOnMiss, extraDamage, hasDamageOnMiss } from './item-system';
 import {
   CombatSkillLifecycle,
   type CombatProcMark,
@@ -30,6 +30,8 @@ export interface CombatStrike {
   hit: boolean;
   crit: boolean;
   damage: number;
+  /** Separate EotF non-critical damage instance applied after normal damage. */
+  extraDamage?: number;
   isCounter: boolean;
   /** True for an attack-stance partner strike (half damage). */
   assist?: boolean;
@@ -141,7 +143,8 @@ export class CombatPhaseSolver {
       return;
     }
     const before = hp.hp;
-    const after = before - strike.damage;
+    const totalDamage = strike.damage + (strike.extraDamage ?? 0);
+    const after = before - totalDamage;
     const proc = skillSystem.damagePreventionSkill(
       target,
       after <= 0,
@@ -149,9 +152,17 @@ export class CombatPhaseSolver {
       this.game,
     );
     if (proc) {
-      strike.damage = proc.component === 'ignore_damage'
-        ? 0
-        : Math.max(0, before - 1);
+      if (proc.component === 'ignore_damage') {
+        strike.damage = 0;
+        strike.extraDamage = 0;
+      } else {
+        const survivableDamage = Math.max(0, before - 1);
+        strike.damage = Math.min(strike.damage, survivableDamage);
+        strike.extraDamage = Math.min(
+          strike.extraDamage ?? 0,
+          Math.max(0, survivableDamage - strike.damage),
+        );
+      }
       strike.survivalProc = proc;
       strike.defenseProcs = [
         ...(strike.defenseProcs ?? []),
@@ -172,6 +183,22 @@ export class CombatPhaseSolver {
       Math.max(0, Math.min(before, strike.damage)),
     );
     this.applyPostStrikeSkillEffects(target, strike);
+  }
+
+  private evaluatedExtraDamage(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    hit: boolean,
+    guarded: boolean,
+    glancing: boolean,
+    grandmasterHit?: number,
+  ): number {
+    if (!hit || guarded || glancing || target.tags.includes('IgnoringDamage') ||
+        !item.hasComponent('eval_extra_damage')) return 0;
+    let value = Math.max(0, extraDamage(striker, item, this.game));
+    if (grandmasterHit !== undefined) value = Math.trunc(value * grandmasterHit / 100);
+    return value;
   }
 
   private combatSkillActive(
@@ -626,6 +653,17 @@ export class CombatPhaseSolver {
       hit,
       crit,
       damage: dmg,
+      extraDamage: this.evaluatedExtraDamage(
+        striker,
+        item,
+        target,
+        hit,
+        guarded,
+        false,
+        this.game?.rngMode === 'grandmaster'
+          ? calcs.computeHit(striker, item, target, db, board, this.game, mode)
+          : undefined,
+      ),
       isCounter,
       assist,
       guarded,
@@ -724,7 +762,7 @@ export class CombatPhaseSolver {
             mainDefender, defenseItem, attacker, db, true, token, board, 'defense', [phase, 0],
           );
           result.push(strike);
-          if (strike.hit) attackerHp -= strike.damage;
+          if (strike.hit) attackerHp -= strike.damage + (strike.extraDamage ?? 0);
           continue;
         }
         const forcedToken = token === '--' ? undefined : token;
@@ -738,7 +776,7 @@ export class CombatPhaseSolver {
               attacker, attackItem, mainDefender, db, rngMode, false, board, 'attack', [phase, 0],
             );
           result.push(strike);
-          if (strike.hit) defenderHp -= strike.damage;
+          if (strike.hit) defenderHp -= strike.damage + (strike.extraDamage ?? 0);
           appendSplash(forcedToken, strike);
         } else {
           appendSplash(forcedToken, undefined, [this.nextPhase(attacker), 0]);
@@ -1207,6 +1245,10 @@ export class CombatPhaseSolver {
       hit,
       crit,
       damage: dmg,
+      extraDamage: this.evaluatedExtraDamage(
+        striker, item, target, hit, guarded, glancing,
+        rngMode === 'grandmaster' ? finalHit : undefined,
+      ),
       isCounter,
       assist,
       guarded,
