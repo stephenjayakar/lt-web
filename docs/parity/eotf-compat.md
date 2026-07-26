@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 113 unverified
+- 270 skill-component NIDs; 105 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -155,8 +155,6 @@ focused browser coverage.
 | armsthrift | 3 | consumed |
 | armsthrift_always | 1 | project-local-or-unknown |
 | attack_proc | 10 | reference-only |
-| berserked | 7 | project-local-or-unknown |
-| blinded | 6 | project-local-or-unknown |
 | bloody_moon | 1 | project-local-or-unknown |
 | booster_blocker | 3 | project-local-or-unknown |
 | cannot_trade | 2 | unreferenced |
@@ -175,7 +173,6 @@ focused browser coverage.
 | Cleave | 1 | hook-and-reference |
 | close_counter | 8 | hook-and-reference |
 | combat_charge_increase_by_stat | 1 | consumed |
-| dazzled | 5 | project-local-or-unknown |
 | defense_proc | 3 | reference-only |
 | desperation | 16 | hook-and-reference |
 | display_skill_icon_in_combat | 12 | consumed |
@@ -192,8 +189,6 @@ focused browser coverage.
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
 | exp_multiplier | 1 | hook-and-reference |
-| fatal_block | 14 | project-local-or-unknown |
-| fatal_damage | 9 | project-local-or-unknown |
 | gain_skills_after_combat | 1 | project-local-or-unknown |
 | gain_terrain | 1 | project-local-or-unknown |
 | galeforce | 6 | consumed |
@@ -223,11 +218,8 @@ focused browser coverage.
 | negate_tags | 13 | consumed |
 | negative | 71 | consumed |
 | no_attack_after_move | 3 | hook-and-reference |
-| no_stackz | 5 | project-local-or-unknown |
 | null_refresh | 2 | project-local-or-unknown |
-| null_sweep | 3 | project-local-or-unknown |
 | pairup_bonus | 1 | hook-and-reference |
-| paragon | 2 | project-local-or-unknown |
 | pass | 7 | hook-only |
 | pcc_static | 3 | unreferenced |
 | post_combat_splash | 3 | consumed |

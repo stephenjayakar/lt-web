@@ -411,6 +411,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 23 EotF timed resistance, negative and specific-status
   blocking, immunity, and upkeep ailment cleansing uses with charge timing
   and exact turnwheel replay.
+- [x] Preserve all 51 EotF fatal-damage, fatal-block, dazzle, blind, berserk,
+  sweep-immunity, no-stack, and paragon marker uses across death events,
+  combat/item expressions, target gates, and stack-selection scripts.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
