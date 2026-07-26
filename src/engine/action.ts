@@ -880,6 +880,29 @@ export class MoveAction extends Action {
   }
 }
 
+/** Set the exact remaining movement budget and restore it on rewind. */
+export class SetMovementLeftAction extends Action {
+  private unit: UnitObject;
+  private value: number;
+  private oldValue: number;
+
+  constructor(unit: UnitObject, value: number) {
+    super();
+    this.unit = unit;
+    this.value = Math.max(0, Math.trunc(value));
+    this.oldValue = unit.movementLeft;
+  }
+
+  execute(): void {
+    this.oldValue = this.unit.movementLeft;
+    this.unit.movementLeft = this.value;
+  }
+
+  reverse(): void {
+    this.unit.movementLeft = this.oldValue;
+  }
+}
+
 /** Script/item-directed warp that preserves the moved unit's turn flags. */
 export class WarpUnitAction extends Action {
   private unit: UnitObject;

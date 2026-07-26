@@ -253,7 +253,13 @@ export function canSelect(unit: UnitObject, game?: any): boolean {
 }
 
 /** Skill-component nids that grant some form of Canto (movement_components.py). */
-const CANTO_COMPONENTS = ['canto', 'canto_plus', 'canto_sharp', 'canter'];
+const CANTO_COMPONENTS = [
+  'canto',
+  'canto_plus',
+  'canto_sharp',
+  'canter',
+  'eval_canter',
+];
 
 /** Does this single skill grant canto (any variant)? Used when (de)equipping a skill. */
 export function isCantoSkill(skill: { hasComponent: (nid: string) => boolean }): boolean {
@@ -748,19 +754,92 @@ export function canCounter(unit: UnitObject): boolean {
 // Boolean hooks (ANY_DEFAULT_FALSE)
 // ============================================================
 
+/** Is one Canto-family skill currently eligible to contribute its hooks? */
+function cantoSkillActive(
+  skill: SkillObject,
+  unit: UnitObject,
+  target: UnitObject | null,
+  game: any,
+): boolean {
+  if (!skillConditionActive(skill, unit, { game, target })) return false;
+  if (skill.hasComponent('build_charge') &&
+      Number(skill.data.get('charge') ?? 0) <
+        Number(skill.data.get('total_charge') ?? 0)) return false;
+  return !hasDrainingCharge(skill) ||
+    Number(skill.data.get('charge') ?? 0) > 0;
+}
+
 /**
- * Does the unit have canto (can move again after acting)?
- * Python recognizes several canto skill-component variants that all expose
- * `has_canto`/`canto_movement` (movement_components.py): `canto`, `canto_plus`
- * (canto even after attacking), `canto_sharp`, and `canter` (fixed-distance
- * canto). We don't yet distinguish their differing `has_canto` gating (e.g.
- * base Canto denies a re-move after attacking an enemy other than self) --
- * only CantoPlus's "always true" semantics are effectively applied here. That
- * gap is filed as out of scope for this movement-parity slice since no
- * shipped skill data uses these variants yet.
+ * Python `skill_system.has_canto` (ANY_DEFAULT_FALSE), preserving each
+ * movement component's distinct post-action gate.
  */
-export function hasCanto(unit: UnitObject): boolean {
-  return unit.skills.some(isCantoSkill);
+export function hasCanto(
+  unit: UnitObject,
+  target: UnitObject | null = null,
+  game: any = skillGameRef?.(),
+): boolean {
+  for (const skill of unit.skills) {
+    if (!isCantoSkill(skill) || !cantoSkillActive(skill, unit, target, game)) continue;
+    if (skill.hasComponent('canto_plus') ||
+        skill.hasComponent('canter') ||
+        skill.hasComponent('eval_canter')) return true;
+    if (skill.hasComponent('canto') &&
+        (!unit.hasAttacked || unit === target)) return true;
+    if (skill.hasComponent('canto_sharp') &&
+        (!unit.hasAttacked || unit.movementLeft >= unit.getStatValue('MOV'))) return true;
+  }
+  return false;
+}
+
+/**
+ * Python `skill_system.canto_movement` (MAXIMUM). Ordinary Canto variants
+ * preserve the remaining budget, Canter supplies a fixed budget, and EOtF's
+ * EvalCanter evaluates its expression with the acting unit and action target.
+ */
+export function cantoMovement(
+  unit: UnitObject,
+  target: UnitObject | null = null,
+  game: any = skillGameRef?.(),
+): number {
+  let maximum = 0;
+  const classTags = game?.db?.classes?.get(unit.klass)?.tags ?? [];
+  const nullCanto = unit.tags.includes('NullCanto') ||
+    classTags.includes('NullCanto') ||
+    additionalTags(unit, game).has('NullCanto');
+  for (const skill of unit.skills) {
+    if (!isCantoSkill(skill) || !cantoSkillActive(skill, unit, target, game)) continue;
+    if (skill.hasComponent('canto') ||
+        skill.hasComponent('canto_plus') ||
+        skill.hasComponent('canto_sharp')) {
+      maximum = Math.max(maximum, Math.trunc(unit.movementLeft));
+    }
+    const canter = skill.getComponent<unknown>('canter');
+    if (typeof canter === 'number' && Number.isFinite(canter)) {
+      maximum = Math.max(maximum, Math.trunc(canter));
+    }
+    const expression = skill.getComponent<unknown>('eval_canter');
+    if (typeof expression === 'string' && expression.length > 0) {
+      try {
+        const evaluated = Number(evaluateExpression(expression, {
+          game,
+          unit1: unit,
+          unit2: target ?? undefined,
+          position: unit.position ?? undefined,
+          gameVars: game?.gameVars,
+          levelVars: game?.levelVars,
+        }));
+        if (Number.isFinite(evaluated)) {
+          maximum = Math.max(
+            maximum,
+            nullCanto ? Math.min(1, Math.trunc(evaluated)) : Math.trunc(evaluated),
+          );
+        }
+      } catch (error) {
+        console.error(`Could not evaluate EvalCanter movement ${expression}`, error);
+      }
+    }
+  }
+  return Math.max(0, maximum);
 }
 
 // ============================================================
