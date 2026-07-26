@@ -435,6 +435,7 @@ function highlightColor(type: string): string {
     case 'spell':    return 'rgba(0,200,80,0.25)';
     case 'splash':   return 'rgba(200,100,255,0.20)';
     case 'selected': return 'rgba(255,255,0,0.30)';
+    case 'aura':     return 'rgba(190,120,255,0.20)';
     default:         return 'rgba(255,255,255,0.15)';
   }
 }

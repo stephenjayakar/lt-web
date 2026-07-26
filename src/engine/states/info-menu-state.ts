@@ -51,6 +51,7 @@ export function skillInfoPresentation(
   game: any,
 ): SkillInfoPresentation {
   if (skill.hasComponent('hidden') ||
+      skill.hasComponent('is_terrain') ||
       skill.data.get('multiSkillSourceType') === 'multi_skill') return 'hidden';
   const parent = skill.data.get('multiSkillSource');
   if (parent && skillInfoPresentation(parent, unit, game) !== 'normal') {
