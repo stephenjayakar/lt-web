@@ -2288,7 +2288,7 @@
         "nid": "build_charge",
         "uses": 7,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_double",
@@ -2378,13 +2378,13 @@
         "nid": "charges_per_turn",
         "uses": 21,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "class_skill",
         "uses": 1651,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "Cleave",
@@ -2534,7 +2534,7 @@
         "nid": "drain_charge",
         "uses": 540,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "drain_charge_all",
@@ -3056,7 +3056,7 @@
         "nid": "hidden",
         "uses": 678,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "hidden_if_inactive",
@@ -3175,8 +3175,8 @@
       {
         "nid": "lost_on_end_chapter",
         "uses": 524,
-        "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_end_combat2",

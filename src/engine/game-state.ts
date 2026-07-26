@@ -28,6 +28,7 @@ import {
   RemoveItemFromConvoy,
   RemoveItemFromUnitAction,
   RemoveSkillAction,
+  SetSkillDataAction,
   type MoveAction,
 } from './action';
 import { GameBoard } from '../objects/game-board';
@@ -399,8 +400,42 @@ export class GameState {
     return removed;
   }
 
+  /**
+   * Run Python skill_system.on_end_chapter hooks in authored component order.
+   * Charge resets and temporary-skill removal remain reversible so forced
+   * cleanup and turnwheel playback observe the same runtime identity.
+   */
+  applySkillEndChapterHooks(): { reset: number; removed: number } {
+    let reset = 0;
+    let removed = 0;
+    for (const unit of this.units.values()) {
+      for (const skill of [...unit.skills]) {
+        for (const [component] of skill.components) {
+          if (component === 'build_charge') {
+            this.actionLog.doAction(new SetSkillDataAction(skill, 'charge', 0));
+            reset++;
+          } else if (component === 'drain_charge' || component === 'charges_per_turn') {
+            const total = Number(
+              skill.data.get('total_charge') ?? skill.getComponent(component) ?? 0,
+            );
+            this.actionLog.doAction(new SetSkillDataAction(skill, 'charge', total));
+            reset++;
+          } else if (
+            (component === 'lost_on_end_chapter' || component === 'lost_on_end_combat2') &&
+            unit.skills.includes(skill)
+          ) {
+            this.actionLog.doAction(new RemoveSkillAction(unit, skill));
+            removed++;
+          }
+        }
+      }
+    }
+    return { reset, removed };
+  }
+
   cleanUpLevel(): void {
     this.applyItemEndChapterHooks();
+    this.applySkillEndChapterHooks();
 
     // Remove all units from the board
     for (const unit of this.units.values()) {
@@ -411,13 +446,6 @@ export class GameState {
 
     // Per-unit cleanup
     for (const unit of this.units.values()) {
-      for (const skill of [...unit.skills]) {
-        if (skill.hasComponent('lost_on_end_chapter') ||
-            skill.hasComponent('lost_on_end_combat2')) {
-          this.actionLog.doAction(new RemoveSkillAction(unit, skill));
-        }
-      }
-
       // Drop rescued units
       if (unit.rescuing) {
         unit.rescuing.rescuedBy = null;

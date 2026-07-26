@@ -385,6 +385,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Activate all 647 EotF evaluated stat, damage, hit/avoid, crit/dodge,
   resist, true-speed, and dynamic damage-multiplier uses across forecasts,
   AI scoring, doubling, and strike resolution.
+- [x] Preserve all 3,421 EotF foundational hidden/class-skill metadata,
+  drain/build/per-turn charge initialization and reversible chapter resets,
+  and end-of-chapter skill expiry uses.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
