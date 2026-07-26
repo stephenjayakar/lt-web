@@ -425,6 +425,9 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 50 EotF Canto, Canto+, Canto Sharp, fixed Canter, and
   evaluated Canter uses with Python gating, maximum movement resolution,
   Canto Control, player/AI post-combat routing, and exact turnwheel replay.
+- [x] Preserve all 10 EotF generic, named-unit, and expression Witch Warp
+  skills with last-active precedence, condition/charge gates, weak traversal,
+  and path-system integration.
 - [x] Preserve all 7 EotF accessory swaps, inventory expansions, and item-slot
   penalties with independent last-active hook resolution across supply,
   theft, reward, and discard capacity checks.

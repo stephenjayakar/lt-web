@@ -3481,8 +3481,8 @@
       {
         "nid": "specific_witch_warp",
         "uses": 2,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "stack",
@@ -3643,14 +3643,14 @@
       {
         "nid": "witch_warp",
         "uses": 2,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "witch_warp_expression",
         "uses": 6,
-        "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       }
     ],
     "custom": [
