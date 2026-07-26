@@ -430,6 +430,8 @@ return to the base without compatibility warnings or silent mechanic loss.
   false-priority resolution for combat terrain bonuses.
 - [x] Apply the four EotF status-region skills on arrival/removal with
   Ignore Region Status and Gain Terrain precedence.
+- [x] Preserve EotF `bloody_moon` Beast buffs and `ride_the_lightning`
+  range-limited status propagation through reversible after-gain hooks.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

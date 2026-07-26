@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 88 unverified
+- 270 skill-component NIDs; 86 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -152,7 +152,6 @@ focused browser coverage.
 | alternate_resist_formula | 4 | hook-and-reference |
 | armsthrift | 3 | consumed |
 | attack_proc | 10 | reference-only |
-| bloody_moon | 1 | project-local-or-unknown |
 | booster_blocker | 3 | project-local-or-unknown |
 | cannot_trade | 2 | unreferenced |
 | change_ai | 15 | reference-only |
@@ -210,7 +209,6 @@ focused browser coverage.
 | proc_rate | 12 | consumed |
 | rescue_bonus | 3 | project-local-or-unknown |
 | resist_follow_up | 1 | hook-only |
-| ride_the_lightning | 1 | project-local-or-unknown |
 | sight_range_bonus | 2 | hook-and-reference |
 | skill_before_combat | 16 | consumed |
 | smart_oversplash | 3 | hook-and-reference |
