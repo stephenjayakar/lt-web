@@ -270,6 +270,15 @@ let _game: any = null;
 export function setGameRef(g: any): void {
   _game = g;
 }
+
+function parsePyevCommandValue(value: string): any {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 function getGame(): any {
   if (!_game) throw new Error('Game reference not set. Call setGameRef() first.');
   return _game;
@@ -10027,10 +10036,12 @@ export class EventState extends State {
     const items: ItemObject[] | undefined = ownerOrConvoy.toLowerCase() === 'convoy'
       ? game.getParty()?.convoy
       : this.findUnit(ownerOrConvoy)?.items;
-    if (!recursive) return items?.find((item) => item.nid === itemNid);
+    const matches = (item: ItemObject) =>
+      item.nid === itemNid || String(item.uid) === String(itemNid);
+    if (!recursive) return items?.find(matches);
     const find = (candidates: ItemObject[]): ItemObject | undefined => {
       for (const item of candidates) {
-        if (item.nid === itemNid) return item;
+        if (matches(item)) return item;
         const nested = find(item.subitems);
         if (nested) return nested;
       }
@@ -11378,13 +11389,18 @@ export class EventState extends State {
         }
         if (cmd.type === 'add_item_component') {
           const value = args[3] !== undefined
-            ? evaluateExpression(args[3], this.buildConditionContext()) : null;
+            ? args.includes('from_python')
+              ? parsePyevCommandValue(args[3])
+              : evaluateExpression(args[3], this.buildConditionContext())
+            : null;
           game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
         } else if (cmd.type === 'modify_item_component') {
           if (!item.components.has(compNid)) {
             console.warn(`modify_item_component: item lacks component ${compNid}`);
           } else {
-            const value = evaluateExpression(args[3] ?? '', this.buildConditionContext());
+            const value = args.includes('from_python')
+              ? parsePyevCommandValue(args[3] ?? '')
+              : evaluateExpression(args[3] ?? '', this.buildConditionContext());
             const property = args[4] && !['additive', 'recursive'].includes(args[4]) ? args[4] : null;
             game.actionLog.doAction(new ModifyObjComponentAction(
               item, compNid, value, property, args.includes('additive'),
@@ -12105,13 +12121,20 @@ export class EventState extends State {
 
       case 'add_item_to_multiitem': {
         const parent = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
-        const childNid = args[2] ?? '';
-        const childPrefab = game.db.items.get(childNid);
-        const duplicate = parent?.subitems.some((child) => child.nid === childNid) ?? false;
-        if (parent?.hasComponent('multi_item') && childPrefab && !(duplicate && args.includes('no_duplicate'))) {
-          const child = createItemTree(childPrefab, (nid) => game.db.items.get(nid));
-          const key = `event_sub_${parent.uid}_${child.uid}_${child.nid}`;
-          game.actionLog.doAction(new RegisterItemTreeAction(game.items, child, key));
+        const childId = args[2] ?? '';
+        const registeredChild = game.getItem(childId);
+        const childPrefab = registeredChild ? null : game.db.items.get(childId);
+        const child = registeredChild ??
+          (childPrefab ? createItemTree(childPrefab, (nid) => game.db.items.get(nid)) : null);
+        const duplicate = !!child && (
+          parent?.subitems.includes(child) ||
+          parent?.subitems.some((candidate) => candidate.nid === child.nid)
+        );
+        if (parent?.hasComponent('multi_item') && child && !(duplicate && args.includes('no_duplicate'))) {
+          if (!registeredChild) {
+            const key = `event_sub_${parent.uid}_${child.uid}_${child.nid}`;
+            game.actionLog.doAction(new RegisterItemTreeAction(game.items, child, key));
+          }
           game.actionLog.doAction(new AddSubItemAction(parent, child));
           if (args.includes('equip')) {
             console.warn('Event add_item_to_multiitem: equip flag awaits multi-item selection UI parity');

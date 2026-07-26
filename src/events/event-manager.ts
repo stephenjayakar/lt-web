@@ -1,6 +1,11 @@
 import type { NID, EventPrefab } from '../data/types';
-import { isPyev1 as _isPyev1, PythonEventProcessor as _PythonEventProcessor } from './python-events';
+import {
+  isPyev1 as _isPyev1,
+  PythonEventProcessor as _PythonEventProcessor,
+  setPyevExpressionEvaluator,
+} from './python-events';
 import { GameQueryEngine } from '../engine/query-engine';
+import { createItemTree } from '../objects/item';
 import type { ActionLog } from '../engine/action';
 import {
   OnlyOnceEventAction,
@@ -1710,6 +1715,20 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     game_vars: wrapVars(game.gameVars),
     level_vars: wrapVars(game.levelVars),
     board: { bounds: game.board?.bounds ?? [0, 0, 0, 0] },
+    boundary: {
+      displaying_units: {
+        discard(nid: string) {
+          game.boundaryDisplayingUnits ??= new Set<string>();
+          game.boundaryDisplayingUnits.delete(nid);
+        },
+        has(nid: string) {
+          return game.boundaryDisplayingUnits?.has?.(nid) ?? false;
+        },
+      },
+      reset_surf() {
+        game.boundaryResetVersion = Number(game.boundaryResetVersion ?? 0) + 1;
+      },
+    },
     path_system: {
       get_valid_moves(candidate: any) {
         const raw = candidate?._raw ?? candidate;
@@ -1917,6 +1936,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
   };
   const itemFuncs = {
+    create_item(_unit: any, itemNid: string) {
+      const prefab = game.db?.items?.get?.(itemNid);
+      if (!prefab) return null;
+      return wrapItem(createItemTree(prefab, (nid) => game.db.items.get(nid)));
+    },
     num_stacks(candidate: any, skillNid: string) {
       const raw = unwrapUnit(candidate);
       return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
@@ -2130,6 +2154,10 @@ function evaluateWithJsFallback(
     (_whole, needle, negated, haystack) =>
       `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
   );
+  jsExpr = jsExpr.replace(/\bf"([^"]*)"/g, (_whole, content) =>
+    `\`${content.replace(/\{/g, '${')}\``);
+  jsExpr = jsExpr.replace(/\bf'([^']*)'/g, (_whole, content) =>
+    `\`${content.replace(/\{/g, '${')}\``);
   jsExpr = translateListComprehensions(jsExpr);
   jsExpr = translateSortedCalls(jsExpr);
   jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
@@ -2143,6 +2171,13 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\bNone\b/g, 'null');
   jsExpr = jsExpr.replace(/\bis\s+not\b/g, '!==');
   jsExpr = jsExpr.replace(/\bis\b/g, '===');
+  // Python gives comparisons higher precedence than `not`; JavaScript gives
+  // unary `!` higher precedence. Preserve `not value == other` as
+  // `!(value == other)` before translating remaining boolean operators.
+  jsExpr = jsExpr.replace(
+    /\bnot\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(===|==|!==|!=)\s*('[^']*'|"[^"]*"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|\d+(?:\.\d+)?)/g,
+    '!($1 $2 $3)',
+  );
   // Python keyword arguments used by EotF query helpers.
   jsExpr = jsExpr.replace(
     /\bteam\s*=\s*(['"][^'"]+['"])/g,
@@ -2177,6 +2212,10 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(
     /((?:'[^']*'|"[^"]*"))\.join\s*\((.+)\)$/,
     '($2).join($1)',
+  );
+  jsExpr = jsExpr.replace(
+    /((?:'[^']*'|"[^"]*"))\s*%\s*([A-Za-z_]\w*(?:\.\w+)*)/g,
+    '__pyFormat($1, $2)',
   );
 
   // Build scope
@@ -2249,7 +2288,10 @@ function evaluateWithJsFallback(
   const cf = { SETTINGS: { debug: false } };
 
   // Wrap unit/region from context
-  const unit = evalScope.wrapUnit?.(unit1) ?? null;
+  const expressionUnit = ctx.localArgs?.has('unit')
+    ? ctx.localArgs.get('unit')
+    : unit1;
+  const unit = evalScope.wrapUnit?.(expressionUnit?._raw ?? expressionUnit) ?? null;
   const target = evalScope.wrapUnit?.(unit2) ?? null;
   const region = ctx.region ? {
     nid: ctx.region.nid, position: ctx.region.position,
@@ -2292,6 +2334,16 @@ function evaluateWithJsFallback(
   const int = (value: any) => Math.trunc(Number(value));
   const set = (values: Iterable<any> | undefined) => new Set(values ?? []);
   const str = (value: any) => String(value);
+  const pyFormat = (template: string, value: any) => {
+    const values = Array.isArray(value) ? [...value] : [value];
+    let index = 0;
+    return String(template).replace(/%[sdr]/g, (token) => {
+      const candidate = values[index++];
+      if (token === '%d') return String(Math.trunc(Number(candidate)));
+      if (token === '%r') return JSON.stringify(candidate?._raw ?? candidate);
+      return String(candidate?._raw ?? candidate);
+    });
+  };
   const range = (start: number, end?: number) => {
     const from = end === undefined ? 0 : start;
     const to = end === undefined ? start : end;
@@ -2329,6 +2381,21 @@ function evaluateWithJsFallback(
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
   const expressionLocals = new Map(ctx.localArgs ?? []);
+  const wrapExpressionLocal = (value: any): any => {
+    if (!value || typeof value !== 'object' || value._raw) return value;
+    if (Array.isArray(value)) return value.map(wrapExpressionLocal);
+    if (value.components instanceof Map && value.data instanceof Map) {
+      if ('uses' in value && 'subitems' in value) return evalScope.wrapItem(value);
+      if ('uid' in value && 'ownerNid' in value) return evalScope.wrapSkill(value);
+    }
+    if ('team' in value && 'items' in value && 'stats' in value) {
+      return evalScope.wrapUnit(value);
+    }
+    return value;
+  };
+  for (const [name, value] of expressionLocals) {
+    expressionLocals.set(name, wrapExpressionLocal(value));
+  }
   if (expressionLocals.has('skill')) {
     expressionLocals.set(
       'skill',
@@ -2378,7 +2445,7 @@ function evaluateWithJsFallback(
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'unit_funcs', 'combat_calcs', 'movement_funcs', 'target_system',
       'max', 'min', 'sum', 'math', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge',
-      'evaluate', '_qf', '_locals',
+      '__pyFormat', 'static_random', 'evaluate', '_qf', '_locals',
       '_wrapUnit', '_wrapItem', '_wrapSkill',
       `"use strict";
        ${localDeclarations}
@@ -2421,7 +2488,8 @@ function evaluateWithJsFallback(
       support_rank_nid, mode, stat_changes, evalScope.DB, RECORDS, evalScope.utils,
       evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.unit_funcs,
       evalScope.combat_calcs, evalScope.movement_funcs, evalScope.target_system,
-      max, min, sum, math, int, set, str, range, get_stacks, get_charge, evaluate,
+      max, min, sum, math, int, set, str, range, get_stacks, get_charge,
+      pyFormat, { get_random_choice: gameProxy.get_random_choice }, evaluate,
       _queryFuncs, expressionLocals,
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
     );
@@ -2433,6 +2501,14 @@ function evaluateWithJsFallback(
     return undefined;
   }
 }
+
+setPyevExpressionEvaluator((expression, game, localVars) =>
+  evaluateExpression(expression, {
+    game,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: localVars,
+  }));
 
 // ============================================================
 // EventManager

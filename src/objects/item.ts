@@ -92,6 +92,20 @@ export class ItemObject {
     this.components = new Map<string, any>();
     for (const [compNid, value] of prefab.components) {
       this.components.set(compNid, value);
+      if (!(compNid in this)) {
+        const item = this;
+        const componentView = {
+          nid: compNid,
+          get value() {
+            return item.components.get(compNid);
+          },
+        };
+        Object.defineProperty(this, compNid, {
+          configurable: true,
+          enumerable: false,
+          get: () => this.components.has(compNid) ? componentView : null,
+        });
+      }
     }
     this.data = new Map<string, any>();
 
