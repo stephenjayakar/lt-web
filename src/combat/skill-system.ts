@@ -1698,8 +1698,22 @@ export function aiPriorityMultiplier(unit: UnitObject, game?: any): number {
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>('modify_ai_priority');
     if (typeof value !== 'number') continue;
-    if (!skillConditionActive(skill, unit, { game })) continue;
+    const localArgs = new Map<string, unknown>([['skill', skill]]);
+    if (!evaluatedSkillActive(skill, unit, { game }, localArgs)) continue;
     result *= value;
+  }
+  return result;
+}
+
+/** Last active AI override, matching Python UNIQUE dispatch. */
+export function changeAi(unit: UnitObject, defaultAi: string, game?: any): string {
+  let result = defaultAi;
+  for (const skill of unit.skills) {
+    const value = skill.getComponent<string>('change_ai');
+    if (typeof value !== 'string' || !value) continue;
+    const localArgs = new Map<string, unknown>([['skill', skill]]);
+    if (!evaluatedSkillActive(skill, unit, { game }, localArgs)) continue;
+    result = value;
   }
   return result;
 }
@@ -1715,7 +1729,11 @@ export function priceSkillMultiplier(
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>(componentNid);
     if (typeof value !== 'number') continue;
-    if (!skillConditionActive(skill, unit, { game, item })) continue;
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['skill', skill],
+    ]);
+    if (!evaluatedSkillActive(skill, unit, { game, item }, localArgs)) continue;
     result = value;
   }
   return result;
@@ -2293,20 +2311,36 @@ export function defenseSpeedFormulaOverride(unit: UnitObject): string | undefine
 // Exp / WExp multipliers (UNIQUE, default 1)
 // ============================================================
 
-export function expMultiplier(unit: UnitObject, _target: UnitObject | null): number {
-  return getSkillValue<number>(unit, 'exp_multiplier') ?? 1;
+export function expMultiplier(unit: UnitObject, target: UnitObject | null): number {
+  return getActiveSkillHookValue<number>(
+    unit,
+    ['exp_multiplier'],
+    { game: skillGameRef?.(), target },
+  ) ?? 1;
 }
 
-export function enemyExpMultiplier(unit: UnitObject, _target: UnitObject | null): number {
-  return getSkillValue<number>(unit, 'enemy_exp_multiplier') ?? 1;
+export function enemyExpMultiplier(unit: UnitObject, target: UnitObject | null): number {
+  return getActiveSkillHookValue<number>(
+    unit,
+    ['enemy_exp_multiplier'],
+    { game: skillGameRef?.(), target },
+  ) ?? 1;
 }
 
-export function wexpMultiplier(unit: UnitObject, _target: UnitObject | null): number {
-  return getSkillValue<number>(unit, 'wexp_multiplier') ?? 1;
+export function wexpMultiplier(unit: UnitObject, target: UnitObject | null): number {
+  return getActiveSkillHookValue<number>(
+    unit,
+    ['wexp_multiplier'],
+    { game: skillGameRef?.(), target },
+  ) ?? 1;
 }
 
-export function enemyWexpMultiplier(unit: UnitObject, _target: UnitObject | null): number {
-  return getSkillValue<number>(unit, 'enemy_wexp_multiplier') ?? 1;
+export function enemyWexpMultiplier(unit: UnitObject, target: UnitObject | null): number {
+  return getActiveSkillHookValue<number>(
+    unit,
+    ['enemy_wexp_multiplier'],
+    { game: skillGameRef?.(), target },
+  ) ?? 1;
 }
 
 // ============================================================

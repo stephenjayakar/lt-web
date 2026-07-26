@@ -30,6 +30,7 @@ import {
 } from '../combat/item-system';
 import {
   aiPriorityMultiplier,
+  changeAi,
   checkAlly,
   checkEnemy,
   modifiedMaximumRange,
@@ -87,7 +88,7 @@ export class AIController {
    * Iterates through behaviours in priority order, trying each until one succeeds.
    */
   getAction(unit: UnitObject): AIAction {
-    const aiDef = this.db.ai.get(unit.ai);
+    const aiDef = this.db.ai.get(changeAi(unit, unit.ai, this.gameRef));
 
     // Default: just wait if no AI definition found
     if (!aiDef) {
