@@ -286,8 +286,8 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 ## Active Next Slice
 
 Embrace of the Fog P8.2: continue the activated event-expression surface with
-the remaining board/target and record-fallback helpers, deep comprehensions,
-and campaign-valid prerequisites for the all-level settlement gate.
+the remaining board/target helpers, deep comprehensions, and campaign-valid
+prerequisites for the all-level settlement gate.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -329,6 +329,10 @@ return to the base without compatibility warnings or silent mechanic loss.
   Python indentation, comprehensions/augmented assignment, item creation and
   component access, deterministic choice, function-style commands, and
   reversible multi-item mutation; Hide Nikume updates boundary display state.
+- [x] Evaluate EotF's 249 `create_record`, 208 `update_record`, and one
+  `replace_record` command values against live persistent records, including
+  absent-key fallbacks, list concatenation, mapping updates, and exact
+  action-backed undo/redo.
 - [x] Preserve Python component-object expression semantics for EotF's
   `blue`, `combat_art_proc`, `copysafe`, `has_affinities`, `shit`, `subskills`,
   and `tether_parameters` skill components.
