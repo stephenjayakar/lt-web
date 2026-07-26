@@ -1344,7 +1344,7 @@
         "nid": "galeforce_on_crit",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gba_steal",
@@ -1578,7 +1578,7 @@
         "nid": "permanent_stat_change_early",
         "uses": 2,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "pivot",
@@ -1770,7 +1770,7 @@
         "nid": "solomon_heal",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "spell",

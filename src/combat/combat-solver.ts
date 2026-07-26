@@ -5,7 +5,12 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
-import { damageOnMiss, extraDamage, hasDamageOnMiss } from './item-system';
+import {
+  damageOnMiss,
+  extraDamage,
+  hasDamageOnMiss,
+  solomonHpChange,
+} from './item-system';
 import {
   CombatSkillLifecycle,
   type CombatProcMark,
@@ -147,12 +152,14 @@ export class CombatPhaseSolver {
     const before = hp.hp;
     const totalDamage = strike.damage + (strike.extraDamage ?? 0);
     const after = before - totalDamage;
-    const proc = skillSystem.damagePreventionSkill(
-      target,
-      after <= 0,
-      this.customSurvivalTriggered,
-      this.game,
-    );
+    const proc = totalDamage > 0
+      ? skillSystem.damagePreventionSkill(
+        target,
+        after <= 0,
+        this.customSurvivalTriggered,
+        this.game,
+      )
+      : null;
     if (proc) {
       if (proc.component === 'ignore_damage') {
         strike.damage = 0;
@@ -179,7 +186,9 @@ export class CombatPhaseSolver {
       this.applyPostStrikeSkillEffects(target, strike);
       return;
     }
-    hp.hp = ignoreDying && after <= 0 ? 1 : after;
+    hp.hp = ignoreDying && after <= 0
+      ? 1
+      : Math.min(target.maxHp, after);
     this.applySelfLifelink(
       strike,
       Math.max(0, Math.min(before, strike.damage)),
@@ -702,7 +711,13 @@ export class CombatPhaseSolver {
         }
         dmg = this.applyCustomHitDamage(item, target, dmg);
       }
-      dmg = Math.max(0, dmg);
+      const solomonChange = solomonHpChange(
+        striker,
+        item,
+        target,
+        this.game,
+      );
+      dmg = solomonChange === null ? Math.max(0, dmg) : -solomonChange;
     }
 
     const strike: CombatStrike = {
