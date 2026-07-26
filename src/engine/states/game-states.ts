@@ -11072,6 +11072,7 @@ export class EventState extends State {
         // per-unit cleanup (heal, off-map, reset turn/rescue state) WITHOUT
         // the registry hand-off cleanUpLevel() does for level transitions
         // (Python keeps units registered here).
+        game.applyItemEndChapterHooks();
         for (const unit of game.units.values()) {
           if (unit.position && game.board) game.board.removeUnit(unit);
           if (unit.rescuing) { unit.rescuing.rescuedBy = null; unit.rescuing = null; }
