@@ -424,6 +424,8 @@ return to the base without compatibility warnings or silent mechanic loss.
   evaluated-magic item lockouts across equip, targeting, AI, and use checks.
 - [x] Preserve all 3 EotF expression-driven growth skills across shared
   leveling and growth-rate UI evaluation with active-skill gating.
+- [x] Preserve EotF's multi-skill post-combat grant with authored ordering,
+  one charge trigger, and exact turnwheel replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

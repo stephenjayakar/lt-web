@@ -2936,7 +2936,7 @@
         "nid": "gain_skills_after_combat",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gain_terrain",
