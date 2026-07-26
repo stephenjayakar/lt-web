@@ -1907,7 +1907,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1788
+          "line": 1873
         },
         {
           "source": "src/objects/item.ts",
@@ -2020,7 +2020,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1784
+          "line": 1869
         },
         {
           "source": "src/objects/item.ts",
@@ -3997,11 +3997,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1852
+          "line": 1937
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1854
+          "line": 1939
         }
       ],
       "directReads": [
@@ -6769,11 +6769,11 @@
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1216
+          "line": 1219
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1218
+          "line": 1221
         },
         {
           "source": "src/main.ts",
@@ -6859,11 +6859,11 @@
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1216
+          "line": 1219
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1218
+          "line": 1221
         },
         {
           "source": "src/objects/item.ts",
@@ -8599,19 +8599,19 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1765
+          "line": 1850
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1853
+          "line": 1938
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1855
+          "line": 1940
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2421
+          "line": 2506
         },
         {
           "source": "src/main.ts",
@@ -8707,7 +8707,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1772
+          "line": 1857
         },
         {
           "source": "src/main.ts",
@@ -8783,11 +8783,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1788
+          "line": 1873
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1798
+          "line": 1883
         },
         {
           "source": "src/main.ts",
@@ -8865,7 +8865,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1799
+          "line": 1884
         },
         {
           "source": "src/main.ts",
@@ -9095,7 +9095,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1768
+          "line": 1853
         },
         {
           "source": "src/objects/item.ts",

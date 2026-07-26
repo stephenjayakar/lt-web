@@ -1601,17 +1601,73 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     return wrapped;
   }
 
-  // Helper: get all alive units of a team
-  function getTeamUnits(team: string) {
-    const units: any[] = [];
-    if (game.units) {
-      for (const [_, u] of game.units) {
-        if ((u as any).team === team && !(u as any).isDead?.()) {
-          units.push(wrapUnit(u));
-        }
-      }
-    }
-    return units;
+  function isDeadOrDying(unit: any): boolean {
+    return !!(unit?.isDead?.() ?? unit?.dead) || !!(unit?.isDying ?? unit?.is_dying);
+  }
+
+  function getAllUnits(onlyOnField: boolean = true): any[] {
+    const units = Array.from(game.units?.values?.() ?? []) as any[];
+    return units
+      .filter((unit) => !onlyOnField || (
+        !!unit.position &&
+        !isDeadOrDying(unit) &&
+        !(unit.tags ?? []).includes('Tile')
+      ))
+      .map(wrapUnit);
+  }
+
+  function getTeamUnits(team: string, onlyOnField: boolean = true): any[] {
+    return getAllUnits(onlyOnField).filter((unit) => unit.team === team);
+  }
+
+  function resolvePartyNid(party?: any): string {
+    return String(party?._raw?.nid ?? party?.nid ?? party ?? game.currentParty ?? '');
+  }
+
+  function getParty(party?: any): any {
+    const raw = game.getParty?.(resolvePartyNid(party));
+    if (!raw) return null;
+    return {
+      _raw: raw,
+      nid: raw.nid,
+      name: raw.name,
+      leader_nid: raw.leaderNid,
+      money: raw.money,
+      bexp: raw.bexp,
+      get items() {
+        return (raw.items ?? raw.convoy ?? []).map(wrapItem);
+      },
+      get party_prep_manage_sort_order() {
+        return raw.partyPrepManageSortOrder ?? [];
+      },
+    };
+  }
+
+  function getAllUnitsInParty(party?: any): any[] {
+    const partyNid = resolvePartyNid(party);
+    return Array.from(game.units?.values?.() ?? [])
+      .filter((unit: any) =>
+        unit.team === 'player' &&
+        !!unit.persistent &&
+        unit.party === partyNid)
+      .map(wrapUnit);
+  }
+
+  function getUnitsInParty(party?: any): any[] {
+    const partyNid = resolvePartyNid(party);
+    const order: string[] = game.parties?.get?.(partyNid)?.partyPrepManageSortOrder ?? [];
+    const orderByNid = new Map<string, number>(
+      order.map((nid: string, index: number) => [nid, index]),
+    );
+    return getAllUnitsInParty(partyNid)
+      .filter((unit) => !isDeadOrDying(unit._raw))
+      .map((unit, index) => ({
+        unit,
+        index,
+        order: orderByNid.get(unit.nid) ?? Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((left, right) => left.order - right.order || left.index - right.index)
+      .map(({ unit }) => unit);
   }
 
   // Build the game proxy object
@@ -1670,30 +1726,59 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
       return wrapUnit(u);
     },
-    get_enemy_units() { return getTeamUnits('enemy'); },
-    get_player_units() { return getTeamUnits('player'); },
-    get_ally_units() {
-      const team = ctx.unit1?.team ?? 'player';
-      const units: any[] = [];
-      for (const candidate of game.units?.values?.() ?? []) {
-        if (!(candidate as any).isDead?.() &&
-            (game.db?.areAllied?.(team, (candidate as any).team) ??
-              team === (candidate as any).team)) {
-          units.push(wrapUnit(candidate));
-        }
-      }
-      return units;
+    get_enemy_units(onlyOnField: boolean = true) {
+      return getAllUnits(onlyOnField).filter((unit) =>
+        !(game.db?.areAllied?.('player', unit.team) ?? unit.team === 'player'));
     },
-    get_units_in_party() { return getTeamUnits('player'); },
-    get_all_units_in_party() { return getTeamUnits('player'); },
-    get_all_units() {
-      const units: any[] = [];
-      if (game.units) {
-        for (const [_, u] of game.units) {
-          units.push(wrapUnit(u));
-        }
-      }
-      return units;
+    get_enemy1_units(onlyOnField: boolean = true) {
+      return getTeamUnits('enemy', onlyOnField);
+    },
+    get_enemy2_units(onlyOnField: boolean = true) {
+      return getTeamUnits('enemy2', onlyOnField);
+    },
+    get_other_units(onlyOnField: boolean = true) {
+      return getTeamUnits('other', onlyOnField);
+    },
+    get_team_units(team: string, onlyOnField: boolean = true) {
+      return getTeamUnits(team, onlyOnField);
+    },
+    get_player_units(onlyOnField: boolean = true) {
+      return getTeamUnits('player', onlyOnField);
+    },
+    get_ally_units(onlyOnField: boolean = true) {
+      const team = ctx.unit1?.team ?? 'player';
+      return getAllUnits(onlyOnField).filter((candidate) =>
+        game.db?.areAllied?.(team, candidate.team) ?? team === candidate.team);
+    },
+    get_travelers() {
+      return getAllUnits().flatMap((unit) => {
+        const travelerNid = unit._raw?.traveler;
+        const traveler = travelerNid
+          ? game.units?.get?.(travelerNid) ?? game.getUnit?.(travelerNid)
+          : null;
+        return traveler ? [wrapUnit(traveler)] : [];
+      });
+    },
+    get_player_units_and_travelers() {
+      return [
+        ...getTeamUnits('player'),
+        ...gameProxy.get_travelers().filter((unit: any) => unit.team === 'player'),
+      ];
+    },
+    get_party(partyNid?: string) {
+      return getParty(partyNid);
+    },
+    get_convoy_inventory(party?: any) {
+      return getParty(party)?.items ?? [];
+    },
+    get_units_in_party(party?: any) {
+      return getUnitsInParty(party);
+    },
+    get_all_units_in_party(party?: any) {
+      return getAllUnitsInParty(party);
+    },
+    get_all_units(onlyOnField: boolean = true) {
+      return getAllUnits(onlyOnField);
     },
     get_money() { return game.getMoney?.() ?? 0; },
     get_data(nid: string) {
@@ -1742,11 +1827,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     check_dead(nid: string) {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
-      if (!u) return true;
-      return u.isDead?.() ?? u.dead ?? false;
+      return !!u && isDeadOrDying(u);
     },
     check_alive(nid: string) {
-      return !gameProxy.check_dead(nid);
+      const u = game.units?.get(nid) ?? game.getUnit?.(nid);
+      return !!u && !isDeadOrDying(u);
     },
   };
 

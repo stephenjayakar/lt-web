@@ -12,6 +12,8 @@ export class PartyObject {
   money: number;
   convoy: ItemObject[];
   bexp: number;
+  /** Stable unit ordering used by preparation/manage screens and party queries. */
+  partyPrepManageSortOrder: NID[];
 
   constructor(nid: NID, name: string, leaderNid: NID, money: number = 0, bexp: number = 0) {
     this.nid = nid;
@@ -20,6 +22,7 @@ export class PartyObject {
     this.money = money;
     this.convoy = [];
     this.bexp = bexp;
+    this.partyPrepManageSortOrder = [];
   }
 
   /** Alias: party.items returns the convoy (matching Python's property). */

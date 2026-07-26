@@ -161,7 +161,7 @@
         },
         {
           "source": "src/engine/save.ts",
-          "line": 1471
+          "line": 1474
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1390,7 +1390,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1819
+          "line": 1904
         },
         {
           "source": "src/native.ts",
@@ -5168,7 +5168,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1768
+          "line": 1853
         },
         {
           "source": "src/objects/item.ts",
@@ -7662,7 +7662,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1951
+          "line": 2036
         }
       ],
       "directReads": [
@@ -8491,7 +8491,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1824
+          "line": 1909
         }
       ],
       "directReads": [

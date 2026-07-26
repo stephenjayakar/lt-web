@@ -286,8 +286,9 @@ outcomes, and save/load plus undo/redo preserves object identity and event state
 ## Active Next Slice
 
 Embrace of the Fog P8.2: continue the activated event-expression surface with
-the remaining game-proxy helpers, deep comprehensions, absent-record fallbacks,
-and campaign-valid prerequisites for the all-level settlement gate.
+the remaining item/registry, board/target, and record-fallback helpers, deep
+comprehensions, and campaign-valid prerequisites for the all-level settlement
+gate.
 
 ## P8 — Embrace of the Fog 2.0
 
@@ -316,6 +317,11 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Load all 17 EotF raw-data catalogs and preserve the 76 `game.get_data`,
   19 keyed/reverse/tuple `sorted`, and 23 live `game.level.units` expression
   uses, including Data-style lookup and tuple-valued comprehensions.
+- [x] Preserve Python field/team/party/traveler query semantics for EotF's 521
+  `game.get_units_in_party`, 153 `game.get_all_units_in_party`, 195
+  `game.get_player_units`, 141 `game.get_enemy_units`, and nine
+  `game.get_team_units` expressions, including preparation order and save
+  compatibility.
 - [x] Preserve Python component-object expression semantics for EotF's
   `blue`, `combat_art_proc`, `copysafe`, `has_affinities`, `shit`, `subskills`,
   and `tether_parameters` skill components.
