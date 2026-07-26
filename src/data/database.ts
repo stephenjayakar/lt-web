@@ -454,8 +454,9 @@ export class Database {
 
     // Insert in order, preserving .orderkeys ordering in the Map
     for (const { key, data } of entries) {
-      if (data && (data as any).nid !== undefined) {
-        target.set((data as any).nid, data);
+      const nid = data ? this.hydrateDerivedNid(type, data) : undefined;
+      if (data && nid !== undefined) {
+        target.set(nid, data);
       } else if (data) {
         // Fallback: use the orderkey as the nid
         target.set(key as NID, data);
@@ -480,11 +481,28 @@ export class Database {
       return;
     }
     for (const entry of data) {
-      if (entry && (entry as any).nid !== undefined) {
-        target.set((entry as any).nid, entry);
+      const nid = entry ? this.hydrateDerivedNid(type, entry) : undefined;
+      if (entry && nid !== undefined) {
+        target.set(nid, entry);
       }
     }
     console.info(`Database: loaded ${data.length} ${type} from non-chunked format`);
+  }
+
+  /**
+   * EventPrefab.nid is a Python property and is omitted from some LT project
+   * exports. Reconstruct it exactly as EventPrefab.nid does before the prefab
+   * enters the database; order keys are filename-safe and are not event NIDs.
+   */
+  private hydrateDerivedNid<T extends { nid: NID }>(
+    type: string,
+    entry: T,
+  ): NID | undefined {
+    const raw = entry as any;
+    if (raw.nid !== undefined) return raw.nid;
+    if (type !== 'events' || !raw.name) return undefined;
+    raw.nid = `${raw.level_nid || 'Global'} ${raw.name}`;
+    return raw.nid;
   }
 
   // -------------------------------------------------------------------
