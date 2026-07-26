@@ -558,9 +558,45 @@ export function critAnyway(unit: UnitObject): boolean {
   return hasAnySkill(unit, 'crit_anyway');
 }
 
-/** Unit ignores terrain costs. */
-export function ignoreTerrain(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'ignore_terrain');
+/**
+ * Python ALL_DEFAULT_FALSE terrain hook. `gain_terrain` contributes False,
+ * so one active override defeats any number of IgnoreTerrain skills.
+ */
+export function ignoreTerrain(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): boolean {
+  const values: boolean[] = [];
+  for (const skill of unit.skills) {
+    if (!skill.hasComponent('ignore_terrain') &&
+        !skill.hasComponent('gain_terrain')) continue;
+    if (!evaluatedSkillActive(skill, unit, { game }, new Map([
+      ['skill', skill],
+    ]))) continue;
+    if (skill.hasComponent('ignore_terrain')) values.push(true);
+    if (skill.hasComponent('gain_terrain')) values.push(false);
+  }
+  return values.length > 0 && values.every(Boolean);
+}
+
+/** Python's matching status-region suppression hook. */
+export function ignoreRegionStatus(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): boolean {
+  const values: boolean[] = [];
+  for (const skill of unit.skills) {
+    if (!skill.hasComponent('ignore_region_status') &&
+        !skill.hasComponent('ignore_terrain') &&
+        !skill.hasComponent('gain_terrain')) continue;
+    if (!evaluatedSkillActive(skill, unit, { game }, new Map([
+      ['skill', skill],
+    ]))) continue;
+    if (skill.hasComponent('ignore_region_status') ||
+        skill.hasComponent('ignore_terrain')) values.push(true);
+    if (skill.hasComponent('gain_terrain')) values.push(false);
+  }
+  return values.length > 0 && values.every(Boolean);
 }
 
 /** Unit can counter at any range. */

@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 90 unverified
+- 270 skill-component NIDs; 89 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -176,7 +176,6 @@ focused browser coverage.
 | event_after_initiated_combat | 35 | consumed |
 | event_on_remove | 14 | consumed |
 | exp_multiplier | 1 | hook-and-reference |
-| gain_terrain | 1 | project-local-or-unknown |
 | galeforce | 6 | consumed |
 | global | 29 | reference-only |
 | grey_if_inactive | 38 | consumed |

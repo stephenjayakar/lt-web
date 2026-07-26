@@ -426,6 +426,10 @@ return to the base without compatibility warnings or silent mechanic loss.
   leveling and growth-rate UI evaluation with active-skill gating.
 - [x] Preserve EotF's multi-skill post-combat grant with authored ordering,
   one charge trigger, and exact turnwheel replay.
+- [x] Preserve EotF's Gain Terrain override and generic Ignore Terrain
+  false-priority resolution for combat terrain bonuses.
+- [ ] Apply the four EotF status-region skills on arrival/removal with
+  Ignore Region Status and Gain Terrain precedence.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
