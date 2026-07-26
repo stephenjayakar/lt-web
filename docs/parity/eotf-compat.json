@@ -2444,7 +2444,7 @@
         "nid": "combined_time",
         "uses": 56,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "condition",
@@ -2654,7 +2654,7 @@
         "nid": "end_time",
         "uses": 43,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "endstep_event",
@@ -3182,7 +3182,7 @@
         "nid": "lost_on_end_combat2",
         "uses": 55,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_end_next_combat",
@@ -3194,7 +3194,7 @@
         "nid": "lost_on_endstep",
         "uses": 61,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_strike",
@@ -3212,7 +3212,7 @@
         "nid": "lost_on_upkeep",
         "uses": 79,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "miracle",
@@ -3542,7 +3542,7 @@
         "nid": "time",
         "uses": 89,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "trigger_charge",
@@ -3608,7 +3608,7 @@
         "nid": "upkeep_stat_change",
         "uses": 9,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "vantage",

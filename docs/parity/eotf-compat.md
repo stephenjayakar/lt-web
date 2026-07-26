@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 131 unverified
-- 270 skill-component NIDs; 138 unverified
+- 270 skill-component NIDs; 131 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -199,7 +199,6 @@ focused browser coverage.
 | close_counter | 8 | hook-and-reference |
 | combat_art | 172 | consumed |
 | combat_charge_increase_by_stat | 1 | consumed |
-| combined_time | 56 | reference-only |
 | dazzled | 5 | project-local-or-unknown |
 | defense_proc | 3 | reference-only |
 | desperation | 16 | hook-and-reference |
@@ -207,7 +206,6 @@ focused browser coverage.
 | distant_counter | 19 | hook-and-reference |
 | empower_heal | 10 | hook-and-reference |
 | empower_heal_received | 2 | reference-only |
-| end_time | 43 | reference-only |
 | enemy_exp_multiplier | 1 | hook-and-reference |
 | enemy_oversplash | 2 | hook-and-reference |
 | eval_canter | 3 | project-local-or-unknown |
@@ -245,9 +243,6 @@ focused browser coverage.
 | limit_maximum_range | 8 | reference-only |
 | live_to_serve | 1 | consumed |
 | locktouch | 6 | consumed |
-| lost_on_end_combat2 | 55 | consumed |
-| lost_on_endstep | 61 | reference-only |
-| lost_on_upkeep | 79 | reference-only |
 | miracle | 1 | consumed |
 | modify_ai_priority | 44 | hook-and-reference |
 | modify_maximum_range | 32 | consumed |
@@ -283,7 +278,6 @@ focused browser coverage.
 | stack | 224 | consumed |
 | start_and_end_event_initiate | 8 | project-local-or-unknown |
 | subtle_stat_change | 3 | hook-only |
-| time | 89 | reference-only |
 | trigger_charge | 1 | project-local-or-unknown |
 | TrueMiracle | 19 | reference-only |
 | unit_anim | 54 | unreferenced |
@@ -291,7 +285,6 @@ focused browser coverage.
 | unselectable | 15 | hook-and-reference |
 | upkeep_aoe_skill_gain | 6 | project-local-or-unknown |
 | upkeep_damage | 2 | reference-only |
-| upkeep_stat_change | 9 | hook-and-reference |
 | vantage | 10 | hook-and-reference |
 | visual_charge | 2 | project-local-or-unknown |
 | wexp_multiplier | 1 | hook-and-reference |

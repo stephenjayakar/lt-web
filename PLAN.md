@@ -394,6 +394,8 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 786 EotF aura child, range, and ally/enemy/unit target uses
   with Python stack limits, stable source replacement, off-board cleanup,
   movement undo, and save/load re-derivation.
+- [x] Preserve all 392 EotF upkeep/endstep/combined timers, growing-stat
+  counters, option-driven combat expiry, and reversible chapter cleanup uses.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.
