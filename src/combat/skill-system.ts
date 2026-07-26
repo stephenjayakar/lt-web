@@ -1847,6 +1847,7 @@ function evaluatedCombatSkillTotal(
   baseValue: number,
   game?: any,
   combatCalcs?: Record<string, unknown>,
+  markerValue: number = 0,
 ): number {
   game ??= skillGameRef?.();
   let total = 0;
@@ -1880,7 +1881,7 @@ function evaluatedCombatSkillTotal(
           levelVars: game?.levelVars,
           localArgs,
         }))
-        : 0;
+        : markerValue;
     if (Number.isFinite(value)) total += Math.trunc(value);
   }
   return total;
@@ -1900,6 +1901,9 @@ export function dynamicMultiattacks(
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_multiattacks', item, target, item2, mode,
     attackInfo, baseValue, game, combatCalcs,
+  ) + evaluatedCombatSkillTotal(
+    unit, 'all_brave', item, target, item2, mode,
+    attackInfo, baseValue, game, combatCalcs, 1,
   );
 }
 

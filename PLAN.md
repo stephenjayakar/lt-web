@@ -164,8 +164,8 @@ the Python implementation, including AI and turnwheel behavior where applicable.
   project-used kill/attack/combat/miss/damage skill-grant hooks, including
   immediate later-strike visibility, charge use, and turnwheel restoration.
 - [x] Combat math: `armsthrift`, `armsthrift_always`, `dynamic_crit_accuracy`,
-  all 36 used alternate skill formula components (including additive critical
-  damage), and maximum-range modification.
+  all five `all_brave` skills, all 36 used alternate skill formula components
+  (including additive critical damage), and maximum-range modification.
 - [x] Turn/map lifecycle: `endstep_damage`, upkeep events, `galeforce`, and
   movement-type overrides.
 - [x] Targeting/AI/economy: five `witch_warp_expression` uses,

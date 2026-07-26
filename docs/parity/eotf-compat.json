@@ -2071,8 +2071,8 @@
       {
         "nid": "all_brave",
         "uses": 5,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "allowed_weapons",
