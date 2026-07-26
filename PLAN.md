@@ -420,6 +420,8 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 7 EotF accessory swaps, inventory expansions, and item-slot
   penalties with independent last-active hook resolution across supply,
   theft, reward, and discard capacity checks.
+- [x] Preserve all 12 EotF total, enemy-targeted, standard-magic, and
+  evaluated-magic item lockouts across equip, targeting, AI, and use checks.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

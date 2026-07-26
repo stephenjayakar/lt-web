@@ -11,7 +11,7 @@ focused browser coverage.
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 111 unverified
-- 270 skill-component NIDs; 96 unverified
+- 270 skill-component NIDs; 92 unverified
 - 165/182 project-local Python components
   are referenced by current data
 - 226 event command NIDs
@@ -156,10 +156,6 @@ focused browser coverage.
 | bloody_moon | 1 | project-local-or-unknown |
 | booster_blocker | 3 | project-local-or-unknown |
 | cannot_trade | 2 | unreferenced |
-| cannot_use_items | 6 | consumed |
-| cannot_use_items_enemy | 1 | project-local-or-unknown |
-| cannot_use_magic_items | 3 | consumed |
-| cannot_use_magic_items_eval | 2 | project-local-or-unknown |
 | change_ai | 15 | reference-only |
 | change_buy_price | 1 | reference-only |
 | change_variant | 4 | unreferenced |
