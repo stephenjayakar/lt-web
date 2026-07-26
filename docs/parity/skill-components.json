@@ -202,7 +202,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 64
+          "line": 65
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -690,6 +690,10 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 1548
+        },
+        {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 296
         },
@@ -703,6 +707,10 @@
         }
       ],
       "directReads": [
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 1548
+        },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 296
@@ -2334,6 +2342,14 @@
           "line": 146
         },
         {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 1556
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 1559
+        },
+        {
           "source": "src/combat/combat-skill-lifecycle.ts",
           "line": 195
         },
@@ -2426,6 +2442,14 @@
         {
           "source": "src/combat/combat-lifecycle.ts",
           "line": 146
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 1556
+        },
+        {
+          "source": "src/combat/combat-lifecycle.ts",
+          "line": 1559
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -3093,7 +3117,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 120
+          "line": 121
         }
       ],
       "directReads": [
@@ -3636,7 +3660,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 111
+          "line": 112
         }
       ],
       "directReads": [
@@ -3671,7 +3695,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 109
+          "line": 110
         }
       ],
       "directReads": [
@@ -3706,7 +3730,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 110
+          "line": 111
         }
       ],
       "directReads": [
@@ -3741,7 +3765,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 112
+          "line": 113
         }
       ],
       "directReads": [
@@ -3776,7 +3800,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 113
+          "line": 114
         }
       ],
       "directReads": [
@@ -3844,7 +3868,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 106
+          "line": 107
         }
       ],
       "directReads": [
@@ -3879,7 +3903,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 103
+          "line": 104
         }
       ],
       "directReads": [
@@ -3914,7 +3938,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 102
+          "line": 103
         }
       ],
       "directReads": [
@@ -3949,7 +3973,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 101
+          "line": 102
         }
       ],
       "directReads": [
@@ -3984,7 +4008,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 108
+          "line": 109
         }
       ],
       "directReads": [
@@ -4019,7 +4043,7 @@
         },
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 107
+          "line": 108
         }
       ],
       "directReads": [
@@ -8310,7 +8334,7 @@
       "webReferences": [
         {
           "source": "src/engine/eotf-component-support.ts",
-          "line": 133
+          "line": 134
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
