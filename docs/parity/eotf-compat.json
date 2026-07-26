@@ -2186,7 +2186,7 @@
         "nid": "attack_speed",
         "uses": 32,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "aura",
@@ -2210,7 +2210,7 @@
         "nid": "avoid",
         "uses": 76,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "berserked",
@@ -2294,7 +2294,7 @@
         "nid": "cannot_double",
         "uses": 39,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_trade",
@@ -2432,7 +2432,7 @@
         "nid": "combat_condition",
         "uses": 472,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "combat_trigger_charge",
@@ -2450,7 +2450,7 @@
         "nid": "condition",
         "uses": 558,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "copysafe",
@@ -2462,13 +2462,13 @@
         "nid": "crit",
         "uses": 81,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit_avoid",
         "uses": 33,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "crit_event",
@@ -2480,13 +2480,13 @@
         "nid": "damage",
         "uses": 49,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage_multiplier",
         "uses": 24,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "dazzled",
@@ -2510,7 +2510,7 @@
         "nid": "defense_speed",
         "uses": 30,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "desperation",
@@ -3080,7 +3080,7 @@
         "nid": "hit",
         "uses": 115,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_alliances",
@@ -3398,7 +3398,7 @@
         "nid": "resist",
         "uses": 37,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "resist_follow_up",
@@ -3410,7 +3410,7 @@
         "nid": "resist_multiplier",
         "uses": 35,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "resist_status",
@@ -3500,7 +3500,7 @@
         "nid": "stat_change",
         "uses": 418,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stat_change_at_apply_expression",

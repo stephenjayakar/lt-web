@@ -219,8 +219,13 @@ export function skillConditionActive(
   context: SkillConditionContext = {},
 ): boolean {
   const parent = skill.data.get('multiSkillSource');
-  if (parent instanceof SkillObject &&
-      !skillConditionActive(parent, unit, context)) return false;
+  if (parent instanceof SkillObject) {
+    const parentArgs = new Map(context.localArgs ?? []);
+    parentArgs.set('skill', parent);
+    if (!skillConditionActive(parent, unit, { ...context, localArgs: parentArgs })) {
+      return false;
+    }
+  }
   if (!selfNihilActive(skill, unit)) return false;
 
   const condition = skill.getComponent<string>('condition');
@@ -510,8 +515,31 @@ export function desperation(unit: UnitObject): boolean {
 }
 
 /** Unit cannot double. */
-export function noDouble(unit: UnitObject): boolean {
-  return hasAnySkill(unit, 'no_double');
+export function noDouble(
+  unit: UnitObject,
+  game?: any,
+  item?: ItemObject | null,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): boolean {
+  game ??= skillGameRef?.();
+  return unit.skills.some((skill) => {
+    if (!skill.hasComponent('no_double') && !skill.hasComponent('cannot_double')) {
+      return false;
+    }
+    const localArgs = new Map<string, unknown>([
+      ['item', item ?? null],
+      ['item2', item2 ?? null],
+      ['mode', mode ?? null],
+      ['skill', skill],
+      ['attack_info', attackInfo ?? null],
+    ]);
+    return evaluatedSkillActive(
+      skill, unit, { game, item, target, item2, mode, attackInfo }, localArgs,
+    );
+  });
 }
 
 /** Defender can double (even though normally only attackers can). */
@@ -755,6 +783,35 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
   }
   let total = 0;
   for (const skill of unit.skills) {
+    const contributesToStat =
+      skill.hasComponent('stat_change') ||
+      skill.hasComponent('upkeep_stat_change') ||
+      skill.hasComponent('stat_change_expression') ||
+      skill.hasComponent('stat_multiplier') ||
+      skill.data.has('stat_changes') ||
+      skill.data.has('_dynamic_stat_changes');
+    if (!contributesToStat) continue;
+    // DynamicStatChange freezes only after all condition/combat/charge gates
+    // pass. Its prepared map is therefore also the active snapshot needed by
+    // subsequent getStatValue calls, which do not carry target context.
+    const hasPreparedDynamic = skill.data.has('_dynamic_stat_changes');
+    const needsActiveGate =
+      skill.hasComponent('condition') ||
+      skill.hasComponent('combat_condition') ||
+      skill.hasComponent('build_charge') ||
+      hasDrainingCharge(skill) ||
+      skill.hasComponent('self_nihil') ||
+      skill.data.get('multiSkillSource') instanceof SkillObject;
+    const active = reentrant || hasPreparedDynamic || !needsActiveGate || evaluatedSkillActive(
+      skill,
+      unit,
+      { game, item: unit.equippedWeapon },
+      new Map<string, unknown>([
+        ['item', unit.equippedWeapon ?? null],
+        ['skill', skill],
+      ]),
+    );
+    if (!active) continue;
     const changes = skill.getComponent<any>('stat_change');
     if (Array.isArray(changes)) {
       for (const entry of changes) {
@@ -934,6 +991,12 @@ function evaluatedSkillActive(
   context: EvaluatedSkillContext,
   localArgs: Map<string, unknown>,
 ): boolean {
+  const parent = skill.data.get('multiSkillSource');
+  if (parent instanceof SkillObject) {
+    const parentArgs = new Map(localArgs);
+    parentArgs.set('skill', parent);
+    if (!evaluatedSkillActive(parent, unit, context, parentArgs)) return false;
+  }
   if (skill.hasComponent('build_charge')) {
     const charge = Number(skill.data.get('charge') ?? 0);
     const maximum = Number(
@@ -946,9 +1009,10 @@ function evaluatedSkillActive(
   const combatCondition = skill.getComponent<string>('combat_condition');
   if (combatCondition) {
     const snapshot = skill.data.get('_combat_condition');
-    const enabled = typeof snapshot === 'boolean'
-      ? snapshot
-      : evaluateCondition(combatCondition, {
+    if (typeof snapshot !== 'boolean' && !context.target) return false;
+    const enabled = typeof snapshot === 'boolean' ? snapshot : evaluateCondition(
+      combatCondition,
+      {
         game: context.game,
         unit1: unit,
         unit2: context.target ?? undefined,
@@ -957,7 +1021,8 @@ function evaluatedSkillActive(
         gameVars: context.game?.gameVars,
         levelVars: context.game?.levelVars,
         localArgs,
-      });
+      },
+    );
     if (!enabled) return false;
   }
   return skillConditionActive(skill, unit, {
@@ -1015,7 +1080,9 @@ export function modifyDamage(
   mode?: string,
   attackInfo?: any,
 ): number {
-  let total = sumSkillValues(unit, 'modify_damage') + sumSkillValues(unit, 'damage');
+  const context = { game, item, target, item2, mode, attackInfo };
+  let total = evaluatedStaticSkillTotal(unit, 'modify_damage', context) +
+    evaluatedStaticSkillTotal(unit, 'damage', context);
   total += evaluatedStaticSkillTotal(unit, 'eval_damage', {
     game, item, target, item2, mode, attackInfo,
   });
@@ -1030,8 +1097,18 @@ export function modifyDamage(
 }
 
 /** Bonus resist from skills. */
-export function modifyResist(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_resist') + sumSkillValues(unit, 'resist');
+export function modifyResist(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_resist', context) +
+    evaluatedStaticSkillTotal(unit, 'resist', context);
 }
 
 /** Bonus accuracy from skills. */
@@ -1044,7 +1121,9 @@ export function modifyAccuracy(
   mode?: string,
   attackInfo?: any,
 ): number {
-  return sumSkillValues(unit, 'modify_accuracy') + sumSkillValues(unit, 'hit') +
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_accuracy', context) +
+    evaluatedStaticSkillTotal(unit, 'hit', context) +
     evaluatedStaticSkillTotal(unit, 'eval_hit', {
       game, item, target, item2, mode, attackInfo,
     });
@@ -1060,7 +1139,9 @@ export function modifyAvoid(
   mode?: string,
   attackInfo?: any,
 ): number {
-  return sumSkillValues(unit, 'modify_avoid') + sumSkillValues(unit, 'avoid') +
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_avoid', context) +
+    evaluatedStaticSkillTotal(unit, 'avoid', context) +
     evaluatedStaticSkillTotal(unit, 'eval_avoid', {
       game, item, target, item2, mode, attackInfo,
     });
@@ -1076,15 +1157,27 @@ export function modifyCritAccuracy(
   mode?: string,
   attackInfo?: any,
 ): number {
-  return sumSkillValues(unit, 'modify_crit_accuracy') + sumSkillValues(unit, 'crit') +
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_crit_accuracy', context) +
+    evaluatedStaticSkillTotal(unit, 'crit', context) +
     evaluatedStaticSkillTotal(unit, 'eval_crit', {
       game, item, target, item2, mode, attackInfo,
     });
 }
 
 /** Bonus crit avoid from skills. */
-export function modifyCritAvoid(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_crit_avoid') + sumSkillValues(unit, 'crit_avoid');
+export function modifyCritAvoid(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_crit_avoid', context) +
+    evaluatedStaticSkillTotal(unit, 'crit_avoid', context);
 }
 
 /**
@@ -1372,13 +1465,33 @@ export function armsthriftRestoration(unit: UnitObject, item: ItemObject): numbe
 }
 
 /** Attack speed modifier from skills. */
-export function modifyAttackSpeed(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_attack_speed') + sumSkillValues(unit, 'attack_speed');
+export function modifyAttackSpeed(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_attack_speed', context) +
+    evaluatedStaticSkillTotal(unit, 'attack_speed', context);
 }
 
 /** Defense speed modifier from skills. */
-export function modifyDefenseSpeed(unit: UnitObject, _item: ItemObject | null): number {
-  return sumSkillValues(unit, 'modify_defense_speed') + sumSkillValues(unit, 'defense_speed');
+export function modifyDefenseSpeed(
+  unit: UnitObject,
+  item: ItemObject | null,
+  game?: any,
+  target?: UnitObject | null,
+  item2?: ItemObject | null,
+  mode?: string,
+  attackInfo?: any,
+): number {
+  const context = { game, item, target, item2, mode, attackInfo };
+  return evaluatedStaticSkillTotal(unit, 'modify_defense_speed', context) +
+    evaluatedStaticSkillTotal(unit, 'defense_speed', context);
 }
 
 // ============================================================
