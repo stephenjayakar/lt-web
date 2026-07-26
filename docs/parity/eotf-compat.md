@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 131 unverified
+- 185 item-component NIDs; 118 unverified
 - 270 skill-component NIDs; 126 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -32,12 +32,6 @@ focused browser coverage.
 | allow_less_than_max_targets | 6 | hook-and-reference |
 | allow_same_target | 1 | hook-and-reference |
 | ally_blast_aoe | 16 | hook-and-reference |
-| alternate_accuracy_formula | 2 | hook-and-reference |
-| alternate_attack_speed_formula | 1 | hook-and-reference |
-| alternate_avoid_formula | 2 | hook-and-reference |
-| alternate_damage_formula | 119 | hook-and-reference |
-| alternate_defense_speed_formula | 1 | hook-and-reference |
-| alternate_resist_formula | 129 | hook-and-reference |
 | attack_after_combat | 248 | hook-and-reference |
 | blast_aoe | 12 | hook-and-reference |
 | brave | 7 | hook-and-reference |
@@ -47,15 +41,11 @@ focused browser coverage.
 | cannot_be_countered | 28 | hook-and-reference |
 | cannot_counter | 40 | hook-and-reference |
 | crit | 701 | hook-and-reference |
-| custom_triangle_multiplier | 3 | hook-and-reference |
 | damage | 739 | hook-and-reference |
 | damage_on_miss | 3 | consumed |
 | draw_back | 2 | reference-only |
 | draw_back_target_restrict | 2 | hook-and-reference |
 | eclipse | 1 | consumed |
-| effective | 7 | consumed |
-| effective_damage | 154 | hook-and-reference |
-| effective_tag | 7 | hook-and-reference |
 | empty_tile_target_restrict | 71 | hook-and-reference |
 | enemy_blast_aoe | 53 | hook-and-reference |
 | enemy_cleave_aoe | 12 | hook-and-reference |
@@ -76,7 +66,6 @@ focused browser coverage.
 | heal | 34 | hook-and-reference |
 | hit | 722 | hook-and-reference |
 | hp_cost | 12 | hook-and-reference |
-| ignore_weapon_advantage | 5 | hook-and-reference |
 | item_icon_flash | 2 | unreferenced |
 | item_tags | 690 | consumed |
 | level_exp | 12 | consumed |
@@ -84,7 +73,6 @@ focused browser coverage.
 | line_aoe | 4 | hook-and-reference |
 | locked | 92 | hook-and-reference |
 | magic | 333 | hook-and-reference |
-| magic_at_range | 4 | hook-and-reference |
 | map_cast_anim | 9 | consumed |
 | map_cast_sfx | 12 | consumed |
 | map_hit_add_blend | 157 | consumed |
@@ -112,7 +100,6 @@ focused browser coverage.
 | prf_tags | 14 | hook-and-reference |
 | prf_unit | 332 | hook-and-reference |
 | promote | 9 | hook-and-reference |
-| reaver | 7 | hook-and-reference |
 | refresh | 11 | hook-and-reference |
 | repair | 1 | hook-and-reference |
 | restore | 5 | hook-and-reference |

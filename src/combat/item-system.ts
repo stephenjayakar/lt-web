@@ -391,6 +391,19 @@ export function effectiveItemComponents(
   ];
 }
 
+function resolvedItemComponents(
+  unit: UnitObject | null,
+  item: ItemObject,
+  db?: Database,
+  game?: any,
+): [string, any][] {
+  const resolvedGame = game ?? itemSystemGameRef?.();
+  const resolvedDb = db ?? resolvedGame?.db as Database | undefined;
+  return resolvedDb
+    ? effectiveItemComponents(unit, item, resolvedDb, resolvedGame)
+    : [...item.components.entries()];
+}
+
 setItemComponentResolver((item, component) => {
   const game = itemSystemGameRef?.();
   const unit = item.owner;
@@ -1939,10 +1952,13 @@ export function weaponTriangleOverride(_unit: UnitObject, item: ItemObject): str
 /** Python's NUMERIC_MULTIPLY item hook, with a default multiplier of one. */
 export function modifyWeaponTriangle(_unit: UnitObject, item: ItemObject): number {
   let result = 1;
-  if (item.hasComponent('reaver')) result *= -2;
-  if (item.hasComponent('double_triangle')) result *= 2;
-  const custom = item.getComponent<number>('custom_triangle_multiplier');
-  if (typeof custom === 'number') result *= custom;
+  for (const [nid, value] of resolvedItemComponents(_unit, item)) {
+    if (nid === 'reaver') result *= -2;
+    else if (nid === 'double_triangle') result *= 2;
+    else if (nid === 'custom_triangle_multiplier' && typeof value === 'number') {
+      result *= value;
+    }
+  }
   return result;
 }
 
@@ -2051,12 +2067,13 @@ export function dynamicDamage(
   advantageDamage?: number,
 ): number {
   let total = 0;
+  const components = resolvedItemComponents(unit, item, db, game);
 
   // Canonical effective_damage component (dict form).
-  const eff = item.getComponent<EffectiveDamageValue>('effective_damage');
-  if (eff) {
+  for (const [, eff] of components.filter(([nid]) => nid === 'effective_damage')) {
+    if (!eff) continue;
     total += effectiveDamageContribution(
-      unit, item, target, eff, db, game, advantageDamage ?? 0,
+      unit, item, target, eff as EffectiveDamageValue, db, game, advantageDamage ?? 0,
     );
   }
 
@@ -2065,8 +2082,8 @@ export function dynamicDamage(
   // the bonus from `effective_multiplier` (multiplier on might) or a flat
   // `effective` integer. Negation mirrors the deprecated `_check_negate`,
   // which does NOT consult `skill_system.condition`.
-  const depTags = item.getComponent<string[]>('effective_tag');
-  if (Array.isArray(depTags) && depTags.length > 0) {
+  for (const [, depTags] of components.filter(([nid]) => nid === 'effective_tag')) {
+    if (!Array.isArray(depTags) || depTags.length === 0) continue;
     if (isEffectiveAgainstTags(target, depTags, db) &&
         !checkEffectiveNegate(target, depTags, game, false)) {
       const mult = item.getComponent<number>('effective_multiplier');
@@ -2082,7 +2099,8 @@ export function dynamicDamage(
   // magic_at_range: swap from physical to magical damage formula at range > 1.
   // Python MagicAtRange.dynamic_damage subtracts DAMAGE (STR) and adds MAGIC_DAMAGE (MAG),
   // subtracts DEFENSE target and adds MAGIC_DEFENSE target, effectively swapping formulas.
-  if (item.hasComponent('magic_at_range')) {
+  const magicAtRangeCount = components.filter(([nid]) => nid === 'magic_at_range').length;
+  if (magicAtRangeCount > 0) {
     const uPos = unit.position;
     const tPos = target.position;
     if (uPos && tPos) {
@@ -2092,7 +2110,9 @@ export function dynamicDamage(
         const newDamage = unit.getStatValue('MAG');
         const normalResist = target.getStatValue('DEF');
         const newResist = target.getStatValue('RES');
-        total += -normalDamage + newDamage + normalResist - newResist;
+        total += (
+          -normalDamage + newDamage + normalResist - newResist
+        ) * magicAtRangeCount;
       }
     }
   }
