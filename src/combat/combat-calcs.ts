@@ -485,7 +485,7 @@ export function avoid(
   );
 
   // Add terrain avoid bonus
-  const terrainAvo = board ? getTerrainBonusesForUnit(unit, board, db)[1] : 0;
+  const terrainAvo = board ? getTerrainBonusesForUnit(unit, board, db, game)[1] : 0;
 
   return baseAvoid + itemMod + skillMod + terrainAvo;
 }
@@ -560,7 +560,9 @@ export function defense(
   );
 
   // Add terrain defense bonus (only for physical attacks)
-  const terrainDef = (!magic && board) ? getTerrainBonusesForUnit(unit, board, db)[0] : 0;
+  const terrainDef = (!magic && board)
+    ? getTerrainBonusesForUnit(unit, board, db, game)[0]
+    : 0;
 
   return baseDef + skillMod + terrainDef;
 }

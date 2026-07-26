@@ -9,6 +9,7 @@
 import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
+import { ignoreTerrain } from './skill-system';
 
 /**
  * Extract terrain defense and avoid bonuses from a terrain definition.
@@ -44,8 +45,9 @@ export function getTerrainBonusesForUnit(
   unit: UnitObject,
   board: GameBoard,
   db: Database,
+  game?: any,
 ): [number, number] {
-  if (!unit.position) return [0, 0];
+  if (!unit.position || ignoreTerrain(unit, game)) return [0, 0];
   const terrainNid = board.getTerrain(unit.position[0], unit.position[1]);
   if (!terrainNid) return [0, 0];
   const terrainDef = (db as any).terrain?.get(terrainNid);

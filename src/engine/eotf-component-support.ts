@@ -197,6 +197,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'gain_skill_after_kill',
   'gain_skill_after_take_damage',
   'gain_skill_after_take_miss',
+  'gain_terrain',
   'gain_on_hit',
   'gain_on_miss',
   'gain_on_strike',

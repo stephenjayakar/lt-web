@@ -2942,7 +2942,7 @@
         "nid": "gain_terrain",
         "uses": 1,
         "structuralStatus": "project-local-or-unknown",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "galeforce",
