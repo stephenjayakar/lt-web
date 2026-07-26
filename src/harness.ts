@@ -45,7 +45,7 @@ export interface HarnessAPI {
   /** Whether the harness is ready (game loaded). */
   ready: boolean;
   /** Run N frames, allowing events/transitions to settle (auto-skips event text). */
-  settle: (maxFrames: number) => void;
+  settle: (maxFrames: number, stopStates?: string[]) => void;
   /** Give an item (by DB NID) to a unit (by NID). Returns true if successful. */
   giveItem: (unitNid: string, itemNid: string) => boolean;
   /** Remove an item (by NID) from a unit's inventory via a reversible action. */
@@ -386,12 +386,11 @@ export function installHarness(
       return true;
     },
 
-    settle(maxFrames: number): void {
+    settle(maxFrames: number, stopStates: string[] = ['free']): void {
       for (let i = 0; i < maxFrames; i++) {
         stepOneFrame(null);
         const current = game.state.getCurrentState();
-        // If we're in the 'free' state, we've settled
-        if (current?.name === 'free') {
+        if (current?.name && stopStates.includes(current.name)) {
           break;
         }
         // Press SELECT to advance through dialog, menus, events, base screens, etc.

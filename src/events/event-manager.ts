@@ -1128,6 +1128,47 @@ function translateListComprehensions(expression: string): string {
   return translated;
 }
 
+function replacePythonWords(
+  expression: string,
+  replacements: Record<string, string>,
+): string {
+  let translated = '';
+  let quote: string | null = null;
+  for (let index = 0; index < expression.length;) {
+    const char = expression[index];
+    if (quote) {
+      translated += char;
+      if (char === quote && expression[index - 1] !== '\\') quote = null;
+      index++;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      translated += char;
+      index++;
+      continue;
+    }
+    const word = /^[A-Za-z_]\w*/.exec(expression.slice(index))?.[0];
+    if (word) {
+      translated += replacements[word] ?? word;
+      index += word.length;
+      continue;
+    }
+    translated += char;
+    index++;
+  }
+  return translated;
+}
+
+function translateTopLevelAdditions(expression: string): string {
+  const parts = splitAtTopLevel(expression, ' + ').map((part) => part.trim());
+  if (parts.length < 2) return expression;
+  return parts.slice(1).reduce(
+    (left, right) => `__pyAdd(${left}, ${right})`,
+    parts[0],
+  );
+}
+
 /** Translate Python sorted(values, key=lambda x: ..., reverse=True). */
 function translateSortedCalls(expression: string): string {
   let translated = expression;
@@ -2199,11 +2240,7 @@ function evaluateWithJsFallback(
   if (!game) return undefined;
 
   // Translate Python idioms to JavaScript
-  let jsExpr = condition.replace(
-    /(?<!for\s)(?!not\b)((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\))|(?:\[[^\]]+\]))*))\s+(not\s+|!\s*)?in\s+(\[[^\]]*\])/g,
-    (_whole, needle, negated, haystack) =>
-      `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
-  );
+  let jsExpr = condition;
   jsExpr = jsExpr.replace(/\bf"([^"]*)"/g, (_whole, content) =>
     `\`${content.replace(/\{/g, '${')}\``);
   jsExpr = jsExpr.replace(/\bf'([^']*)'/g, (_whole, content) =>
@@ -2216,9 +2253,11 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\blen\s*\(/g, '__len__(');
 
   // Python `True`/`False` -> `true`/`false`
-  jsExpr = jsExpr.replace(/\bTrue\b/g, 'true');
-  jsExpr = jsExpr.replace(/\bFalse\b/g, 'false');
-  jsExpr = jsExpr.replace(/\bNone\b/g, 'null');
+  jsExpr = replacePythonWords(jsExpr, {
+    True: 'true',
+    False: 'false',
+    None: 'null',
+  });
   jsExpr = jsExpr.replace(/\bis\s+not\b/g, '!==');
   jsExpr = jsExpr.replace(/\bis\b/g, '===');
   // Python gives comparisons higher precedence than `not`; JavaScript gives
@@ -2242,9 +2281,11 @@ function evaluateWithJsFallback(
   jsExpr = jsExpr.replace(/\.stats\s*\(\s*([^)]*)\)/g, '.stats.get($1)');
 
   // Python `and`/`or`/`not` -> `&&`/`||`/`!`
-  jsExpr = jsExpr.replace(/\band\b/g, '&&');
-  jsExpr = jsExpr.replace(/\bor\b/g, '||');
-  jsExpr = jsExpr.replace(/\bnot\b/g, '!');
+  jsExpr = replacePythonWords(jsExpr, {
+    and: '&&',
+    or: '||',
+    not: '!',
+  });
 
   // Python membership inside translated comprehensions/generators. Direct
   // top-level membership is handled by evaluateCondition before this fallback.
@@ -2273,6 +2314,7 @@ function evaluateWithJsFallback(
     /(RECORDS\.get\([^)]*\))\s*\+\s*(\[[^\]]*\])/g,
     '__pyAdd($1, $2)',
   );
+  jsExpr = translateTopLevelAdditions(jsExpr);
 
   // Build scope
   const evalScope = buildEvalScope(ctx);

@@ -58,6 +58,20 @@ test.describe('Embrace of the Fog event expression data', () => {
           '[u.nid for u in game.level.units]',
           context,
         ),
+        enemyTeamPresent: evaluateExpression(
+          "any([u.team in ['enemy','enemy2'] for u in game.level.units])",
+          context,
+        ),
+        expectedEnemyTeamPresent: [...game.units.values()]
+          .some((unit: any) => ['enemy', 'enemy2'].includes(unit.team)),
+        noneLiteral: evaluateExpression(
+          "{'Nothing':'None','actual':None}",
+          context,
+        ),
+        listAddition: evaluateExpression(
+          "['Agility'] + ['Mending']",
+          context,
+        ),
         warnings,
       };
       console.warn = originalWarn;
@@ -87,6 +101,9 @@ test.describe('Embrace of the Fog event expression data', () => {
       'Discovery',
     ]);
     expect(result.levelUnitNids).toContain('Player');
+    expect(result.enemyTeamPresent).toBe(result.expectedEnemyTeamPresent);
+    expect(result.noneLiteral).toEqual({ Nothing: 'None', actual: null });
+    expect(result.listAddition).toEqual(['Agility', 'Mending']);
     expect(result.warnings).toEqual([]);
   });
 
