@@ -1208,7 +1208,17 @@ export function computeCrit(
     expressionCalcs,
   );
   const raw = baseValue + dynamicCrit - dynamicDodge;
-  return Math.max(0, Math.min(100, raw));
+  const multiplier = skillSystem.critMultiplier(
+    attacker,
+    attackItem,
+    defender,
+    defWeapon,
+    mode,
+    attackInfo,
+    raw,
+    game,
+  );
+  return Math.max(0, Math.min(100, Math.trunc(raw * multiplier)));
 }
 
 /**

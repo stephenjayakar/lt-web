@@ -314,7 +314,9 @@ export class UnitObject {
    * Returns the MOV stat from the stats record.
    */
   getMovement(): number {
-    return this.stats['MOV'] ?? this.stats['movement'] ?? 5;
+    if ('MOV' in this.stats) return this.getStatValue('MOV');
+    if ('movement' in this.stats) return this.getStatValue('movement');
+    return 5;
   }
 
   // ------------------------------------------------------------------

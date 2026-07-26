@@ -1020,7 +1020,7 @@ export function cantoMovement(
 
 /**
  * Get the total stat change bonus from all skills for a given stat.
- * Skills with 'stat_change' component store [[statNid, amount], ...].
+ * Standard and subtle stat components store [[statNid, amount], ...].
  */
 const evaluatingStatChanges = new WeakMap<UnitObject, Set<string>>();
 
@@ -1036,6 +1036,7 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
   for (const skill of unit.skills) {
     const contributesToStat =
       skill.hasComponent('stat_change') ||
+      skill.hasComponent('subtle_stat_change') ||
       skill.hasComponent('upkeep_stat_change') ||
       skill.hasComponent('stat_change_expression') ||
       skill.hasComponent('stat_multiplier') ||
@@ -1066,6 +1067,14 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
     const changes = skill.getComponent<any>('stat_change');
     if (Array.isArray(changes)) {
       for (const entry of changes) {
+        if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
+          total += entry[1];
+        }
+      }
+    }
+    const subtleChanges = skill.getComponent<any>('subtle_stat_change');
+    if (Array.isArray(subtleChanges)) {
+      for (const entry of subtleChanges) {
         if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
           total += entry[1];
         }
@@ -1579,6 +1588,46 @@ export function dynamicCritAvoid(
     unit, 'dynamic_crit_avoid', item, target, item2, mode,
     attackInfo, baseValue, game, combatCalcs,
   );
+}
+
+/** Python NUMERIC_MULTIPLY crit_multiplier hook, including PCC/PCCStatic. */
+export function critMultiplier(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  item2: ItemObject | null,
+  mode: string,
+  attackInfo: [number, number],
+  baseValue: number,
+  game?: any,
+): number {
+  let multiplier = 1;
+  for (const skill of unit.skills) {
+    if (!skill.hasComponent('pcc_static') && !skill.hasComponent('pcc')) continue;
+    const localArgs = new Map<string, unknown>([
+      ['item', item],
+      ['item2', item2],
+      ['mode', mode],
+      ['skill', skill],
+      ['attack_info', attackInfo],
+      ['base_value', baseValue],
+    ]);
+    if (!evaluatedSkillActive(
+      skill,
+      unit,
+      { game, item, target, item2, mode, attackInfo, baseValue },
+      localArgs,
+    )) continue;
+    const staticValue = skill.getComponent<unknown>('pcc_static');
+    if (typeof staticValue === 'number' && attackInfo[0] > 0) {
+      multiplier *= staticValue;
+    }
+    const statNid = skill.getComponent<unknown>('pcc');
+    if (typeof statNid === 'string' && attackInfo[0] > 0) {
+      multiplier *= unit.getStatValue(statNid);
+    }
+  }
+  return multiplier;
 }
 
 /** Last active alternate critical multiplier equation, matching Python UNIQUE. */
@@ -2407,17 +2456,24 @@ export function enemyWexpMultiplier(unit: UnitObject, target: UnitObject | null)
  *
  * Port of LT's sight_range hook in skill_components/base_components.py.
  */
-export function sightRange(unit: UnitObject): number {
+export function sightRange(
+  unit: UnitObject,
+  game: any = skillGameRef?.(),
+): number {
   let total = 0;
   for (const skill of unit.skills) {
-    // Flat sight range bonus
     const flatBonus = skill.getComponent<number>('sight_range_bonus');
+    const decBonus = skill.getComponent<number>('decreasing_sight_range_bonus');
+    if (typeof flatBonus !== 'number' && typeof decBonus !== 'number') continue;
+    if (!evaluatedSkillActive(skill, unit, { game }, new Map([
+      ['skill', skill],
+    ]))) continue;
+    // Flat sight range bonus
     if (typeof flatBonus === 'number') {
       total += flatBonus;
     }
 
     // Decreasing sight range bonus (torch effect)
-    const decBonus = skill.getComponent<number>('decreasing_sight_range_bonus');
     if (typeof decBonus === 'number') {
       const counter = (skill.data.get('torch_counter') as number) ?? 0;
       total += Math.max(0, decBonus - counter);
