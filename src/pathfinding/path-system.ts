@@ -267,7 +267,7 @@ export class PathSystem {
   ): (x: number, y: number) => boolean {
     // Python: `skill_system.pass_through(self.unit)` makes can_move_through
     // always true, ignoring occupants entirely (game_state.py / ai_controller.py).
-    if (passThrough(unit)) {
+    if (passThrough(unit, { game: this.game })) {
       return () => true;
     }
     return (x: number, y: number): boolean => {
