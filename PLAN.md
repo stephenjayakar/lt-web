@@ -431,6 +431,8 @@ return to the base without compatibility warnings or silent mechanic loss.
 - [x] Preserve all 124 EotF looping unit-animation, flickering-tint, and
   combat-icon presentation markers with active gates, deduplication,
   unit-following alignment, and derived save behavior.
+- [x] Load native unit and all 4 skill-driven EotF map-sprite variants with
+  last-active gates, immediate add/remove refresh, restore, and base fallback.
 - [x] Preserve all 7 EotF accessory swaps, inventory expansions, and item-slot
   penalties with independent last-active hook resolution across supply,
   theft, reward, and discard capacity checks.

@@ -26,7 +26,6 @@ import { PathSystem } from '../pathfinding/path-system';
 import { PhaseController } from './phase';
 import { EventManager, GameEvent, type EventTrigger } from '../events/event-manager';
 import { AIController } from '../ai/ai-controller';
-import { MapSprite as MapSpriteCtor } from '../rendering/map-sprite';
 import { RoamInfo } from './roam-info';
 import { InitiativeTracker } from './initiative';
 import { OverworldManager } from './overworld/overworld-manager';
@@ -1804,39 +1803,8 @@ async function restoreLevel(
       game.recalculateAllFow();
     }
 
-    // Load map sprites for each unit
-    const spriteCache = new Map<string, any>();
-    const spriteLoadPromises: Promise<void>[] = [];
-
-    for (const unit of unitsByNid.values()) {
-      const klassDef = game.db?.classes?.get?.(unit.klass);
-      if (!klassDef?.map_sprite_nid) continue;
-
-      const spriteNid = klassDef.map_sprite_nid;
-      const teamDef = game.db?.teams?.defs?.find?.((t: any) => t.nid === unit.team);
-      const teamPalette = teamDef?.palette ?? undefined;
-      const cacheKey = `${spriteNid}__${teamPalette ?? ''}`;
-
-      spriteLoadPromises.push(
-        (async () => {
-          if (spriteCache.has(cacheKey)) {
-            unit.sprite = spriteCache.get(cacheKey) ?? null;
-            return;
-          }
-          try {
-            const sprites = await game.resources?.tryLoadMapSprite?.(spriteNid);
-            if (sprites) {
-              const mapSprite = MapSpriteCtor.fromImages(sprites.stand, sprites.move, teamPalette);
-              spriteCache.set(cacheKey, mapSprite);
-              unit.sprite = mapSprite;
-            }
-          } catch {
-            console.warn(`restoreLevel: failed to load sprite for unit "${unit.nid}"`);
-          }
-        })(),
-      );
-    }
-    await Promise.all(spriteLoadPromises);
+    // Rebuild each effective unit/skill variant after restoring skills.
+    await game.loadAllMapSprites?.();
 
     // Create PathSystem
     game.pathSystem = new PathSystem(game.db, game);

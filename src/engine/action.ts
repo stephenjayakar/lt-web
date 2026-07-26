@@ -3800,6 +3800,7 @@ export class AddSkillAction extends Action {
       }
     }
     for (const action of this.statusReactionActions) action.execute();
+    this.refreshVariantSprite();
   }
 
   reverse(): void {
@@ -3815,6 +3816,16 @@ export class AddSkillAction extends Action {
       for (const action of [...this.statusPreparationActions].reverse()) action.reverse();
     }
     this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
+    this.refreshVariantSprite();
+  }
+
+  private refreshVariantSprite(): void {
+    const game = _getGame?.();
+    if (game?.loadMapSpriteForUnit &&
+        (this.skill.hasComponent('change_variant') ||
+         this.unit.skills.some((skill) => skill.hasComponent('change_variant')))) {
+      void game.loadMapSpriteForUnit(this.unit);
+    }
   }
 }
 
@@ -3863,6 +3874,7 @@ export class RemoveSkillAction extends Action {
       for (const action of this.multiSkillActions) action.execute();
     }
     this.unit.hasCanto = this.unit.skills.some(isCantoSkill);
+    this.refreshVariantSprite();
   }
 
   reverse(): void {
@@ -3872,6 +3884,16 @@ export class RemoveSkillAction extends Action {
     }
     for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
+    this.refreshVariantSprite();
+  }
+
+  private refreshVariantSprite(): void {
+    const game = _getGame?.();
+    if (game?.loadMapSpriteForUnit &&
+        (this.skill.hasComponent('change_variant') ||
+         this.unit.skills.some((skill) => skill.hasComponent('change_variant')))) {
+      void game.loadMapSpriteForUnit(this.unit);
+    }
   }
 }
 

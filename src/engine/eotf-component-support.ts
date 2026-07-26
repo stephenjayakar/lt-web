@@ -150,6 +150,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'combined_time',
   'condition',
   'cannot_trade',
+  'change_variant',
   'copysafe',
   'crit',
   'crit_avoid',
