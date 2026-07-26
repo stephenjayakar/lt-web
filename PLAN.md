@@ -368,6 +368,8 @@ return to the base without compatibility warnings or silent mechanic loss.
   charge gating, multi-crit deduplication, and exact turnwheel replay.
 - [x] Port all 53 used project-local item components, including the final
   immediate HP boosters and Solomon's signed RES-based damage/Monster healing.
+- [x] Preserve all 30 EotF Savage status, multi-status, and current-HP splash
+  hooks with start-combat condition snapshots, enemy shells, and exact replay.
 - [ ] Execute every distinct EotF condition, eval substitution, and loop form.
 - [ ] Verify EotF's high-volume generic-unit/group, record/table, dynamic
   component, and trigger-script event flows with real project payloads.

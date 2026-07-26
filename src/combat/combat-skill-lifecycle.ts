@@ -473,7 +473,9 @@ export class CombatSkillLifecycle {
         }
       }
     }
-    for (const skill of this.combatConditionSkills) skill.data.delete('_combat_condition');
+    // End-combat hooks run after the solver returns. Keep Python's
+    // start-combat condition snapshot alive until that external lifecycle
+    // stage consumes it; applyCombatSkillEndHooks performs the cleanup.
     this.combatConditionSkills.clear();
   }
 }
