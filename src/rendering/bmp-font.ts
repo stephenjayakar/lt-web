@@ -321,27 +321,51 @@ export function areFontsReady(): boolean {
  * Initialize the font system. Loads fonts.json, then loads all font
  * spritesheets and .idx files, creates color variants.
  *
+ * Fonts are engine-level in Lex Talionis, so a project that ships none (EOtF
+ * is one) still has to render text. The project directory is tried first so a
+ * campaign can override the set, then `fallbackBaseUrl` supplies the defaults.
+ *
  * @param baseUrl - Base URL for game data (e.g. '/game-data/default.ltproj')
+ * @param fallbackBaseUrl - Engine default project used when the campaign
+ *   directory has no `resources/fonts/fonts.json`
  */
-export async function initFonts(baseUrl: string): Promise<void> {
-  const fontsUrl = `${baseUrl}/resources/fonts/fonts.json`;
-  let fontDefs: FontDef[];
-  try {
-    const resp = await fetch(fontsUrl);
-    if (!resp.ok) {
-      console.warn(`[BmpFont] Failed to load fonts.json: ${resp.status}`);
-      return;
+export async function initFonts(
+  baseUrl: string,
+  fallbackBaseUrl = '/game-data/default.ltproj',
+): Promise<void> {
+  const candidates = baseUrl === fallbackBaseUrl
+    ? [baseUrl]
+    : [baseUrl, fallbackBaseUrl];
+
+  let fontDefs: FontDef[] | null = null;
+  let fontBaseUrl = baseUrl;
+  for (const candidate of candidates) {
+    try {
+      const resp = await fetch(`${candidate}/resources/fonts/fonts.json`);
+      if (!resp.ok) continue;
+      fontDefs = await resp.json();
+      fontBaseUrl = candidate;
+      break;
+    } catch {
+      // Try the next candidate; a miss here is expected for projects that
+      // rely entirely on the engine defaults.
     }
-    fontDefs = await resp.json();
-  } catch (e) {
-    console.warn('[BmpFont] Failed to fetch fonts.json:', e);
+  }
+
+  if (!fontDefs) {
+    console.warn(
+      `[BmpFont] No fonts.json found under ${candidates.join(' or ')}`,
+    );
     return;
+  }
+  if (fontBaseUrl !== baseUrl) {
+    console.info(`[BmpFont] Using engine default fonts from ${fontBaseUrl}`);
   }
 
   // Load all fonts in parallel
   const loadPromises = fontDefs.map(async (def) => {
     try {
-      await loadFont(def, baseUrl);
+      await loadFont(def, fontBaseUrl);
     } catch (e) {
       console.warn(`[BmpFont] Failed to load font '${def.nid}':`, e);
     }

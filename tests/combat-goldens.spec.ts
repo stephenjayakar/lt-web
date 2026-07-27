@@ -245,7 +245,12 @@ test.describe('combat golden matrix', () => {
       bone: { weaponNid: 'Iron_Sword', str: 8, def: 2, spd: 5, hp: 999 },
     });
     expect(r).not.toBeNull();
-    expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['attacker', 'attacker', 'defender']);
+    // Bone doubles back. Python applies weight through modify_attack_speed:
+    // Eirika AS = SPD 5 - max(0, Brave_Sword 12 - CON 5) = -2, while Bone's
+    // AS = SPD 5 - max(0, Iron_Sword 5 - CON 12) = 5. The gap of 7 clears
+    // SPEED_TO_DOUBLE (4), so the counter comes twice.
+    expect(r.strikeDetails.map((s: any) => s.striker))
+      .toEqual(['attacker', 'attacker', 'defender', 'defender']);
     expect(r.strikeDetails[0].damage).toBe(11);
     expect(r.strikeDetails[1].damage).toBe(11);
     expect(r.strikeDetails[2].isCounter).toBe(true);
@@ -353,7 +358,11 @@ test.describe('combat golden matrix', () => {
       },
     });
     expect(r).not.toBeNull();
-    expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['defender', 'attacker', 'attacker']);
+    // Vantage moves Bone's first counter ahead of the brave strikes; Bone's
+    // weight-driven attack-speed lead (see the brave-weapon case above) then
+    // adds the doubled counter at the end.
+    expect(r.strikeDetails.map((s: any) => s.striker))
+      .toEqual(['defender', 'attacker', 'attacker', 'defender']);
     // Same Brave_Sword-vs-Iron_Sword to-hit (65) as the plain brave-weapon
     // case above: trunc(17 * 65 / 100) = 11 for each attacker strike.
     expect(r.strikeDetails[1].damage).toBe(11);
@@ -536,5 +545,57 @@ test.describe('combat golden matrix', () => {
     expect(r).not.toBeNull();
     expect(r.strikeDetails.map((s: any) => s.striker)).toEqual(['defender', 'attacker']);
     expect(r.strikeDetails.every((s: any) => s.hit)).toBe(true);
+  });
+
+  test('weapon weight lowers attack speed, defense speed, and avoid', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const cc = await import('/src/combat/combat-calcs.ts');
+      const unit = game.units.get('Eirika');
+      const saved = { stats: { ...unit.stats }, items: unit.items.slice() };
+      unit.stats.SPD = 10;
+      unit.stats.CON = 3;
+      unit.stats.LCK = 0;
+
+      const make = (nid: string, weight: number) => new ItemObject({
+        nid,
+        name: '',
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components: [['weapon', null], ['weight', weight]],
+      });
+      // Weight 9 against CON 3 costs 6 attack speed and 12 avoid; weight 2 is
+      // under CON so it costs nothing. Python applies this through the
+      // modify_attack_speed / modify_avoid hooks, not inside ATTACK_SPEED.
+      const heavy = make('_Heavy', 9);
+      const light = make('_Light', 2);
+
+      unit.items = [heavy];
+      const avoidHeavy = cc.avoid(unit, game.db, null, null, game);
+      unit.items = [light];
+      const avoidLight = cc.avoid(unit, game.db, null, null, game);
+
+      const out = {
+        asLight: cc.attackSpeed(unit, light, game.db, game),
+        asHeavy: cc.attackSpeed(unit, heavy, game.db, game),
+        dsHeavy: cc.defenseSpeed(unit, heavy, game.db, null, game),
+        avoidDelta: avoidLight - avoidHeavy,
+      };
+      unit.stats = saved.stats;
+      unit.items = saved.items;
+      return out;
+    });
+
+    expect(result.asLight).toBe(10);
+    expect(result.asHeavy).toBe(4);
+    expect(result.dsHeavy).toBe(4);
+    // AVOID is SPD*2 + LCK, and modify_avoid subtracts twice the penalty.
+    expect(result.avoidDelta).toBe(12);
   });
 });

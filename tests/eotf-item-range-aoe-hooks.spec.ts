@@ -324,4 +324,54 @@ test.describe('Embrace of the Fog dynamic item range and AOE hooks', () => {
       target_tile_unless_ally: 4,
     });
   });
+
+  test('global_range gives authored items an unbounded maximum range', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { maximumRange } = await import('/src/combat/item-system.ts');
+      const unit = game.units.get('Player');
+
+      const make = (nid: string, components: [string, unknown][]) => new ItemObject({
+        nid,
+        name: '',
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components,
+      });
+
+      // Python resolves maximum_range UNIQUE (last definer wins) and
+      // GlobalRange returns 99.
+      const global = maximumRange(unit, make('_Global', [['global_range', null]]), game);
+      const plain = maximumRange(unit, make('_Plain', [['max_range', 2]]), game);
+      // Last definer wins in both orders.
+      const globalThenMax = maximumRange(
+        unit, make('_GM', [['global_range', null], ['max_range', 2]]), game,
+      );
+      const maxThenGlobal = maximumRange(
+        unit, make('_MG', [['max_range', 2], ['global_range', null]]), game,
+      );
+
+      // Every authored global_range item must resolve to 99, not 0: none of
+      // them ship a max_range component of their own.
+      const authored: string[] = [];
+      let authoredCount = 0;
+      for (const dbItem of game.db.items.values()) {
+        if (!dbItem.components.some(([nid]: [string]) => nid === 'global_range')) continue;
+        authoredCount += 1;
+        if (maximumRange(unit, new ItemObject(dbItem), game) !== 99) authored.push(dbItem.nid);
+      }
+
+      return { global, plain, globalThenMax, maxThenGlobal, authoredCount, authored };
+    });
+
+    expect(result.global).toBe(99);
+    expect(result.plain).toBe(2);
+    expect(result.globalThenMax).toBe(2);
+    expect(result.maxThenGlobal).toBe(99);
+    expect(result.authoredCount).toBe(31);
+    expect(result.authored).toEqual([]);
+  });
 });

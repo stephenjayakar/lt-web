@@ -188,15 +188,17 @@ export class RoamPlayerMovementComponent {
       return false;
     }
 
-    // Check terrain traversability
-    const terrain = this.boardRef.getTerrain(tileX, tileY);
-    if (terrain) {
-      const klassNid = this.unit.klass;
-      const klassDef = this.dbRef?.classes?.get(klassNid);
-      const moveGroup = movementType(this.unit, klassDef?.movement_group || 'Infantry');
-      const cost = this.dbRef?.getMovementCost?.(terrain, moveGroup) ?? 1;
-      if (cost >= 99) return false;
-    }
+    // Check terrain traversability. Go through the board helper: it maps the
+    // terrain NID to the terrain's mtype, which is what the mcost grid is
+    // keyed by. Passing the NID straight to db.getMovementCost misses the
+    // lookup and reports every tile as impassable.
+    const klassNid = this.unit.klass;
+    const klassDef = this.dbRef?.classes?.get(klassNid);
+    const moveGroup = movementType(this.unit, klassDef?.movement_group || 'Infantry');
+    const cost = this.boardRef.getMovementCost?.(
+      tileX, tileY, moveGroup, this.dbRef,
+    ) ?? 1;
+    if (cost >= 99) return false;
 
     // Check for enemy units blocking
     const blockingUnit = this.boardRef.getUnit(tileX, tileY);

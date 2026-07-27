@@ -58,12 +58,10 @@ export class TargetSystem {
     if (!origin || !available(unit, item, this.db, this.game)) return [];
 
     const minRange = modifiedMinimumRange(unit, item, this.game);
-    let maxRange = modifiedMaximumRange(unit, item, this.game);
-    const rangeEquation = item.getComponent<string>('max_equation_range');
-    if (rangeEquation) {
-      const expression = this.db.getEquation(rangeEquation) ?? rangeEquation;
-      maxRange = evaluateEquation(expression, unit, { db: this.db, item });
-    }
+    // `max_equation_range` resolves inside item_system.maximum_range, so the
+    // skill range modifiers folded in by modifiedMaximumRange still apply on
+    // top of it -- Python `item_funcs.get_range` adds them after the hook.
+    const maxRange = modifiedMaximumRange(unit, item, this.game);
     const relativeRestriction = rangeRestrict(unit, item, maxRange);
     const targets = this.getComponentTargets(unit, item).filter((position) => {
       const distance = Math.abs(position[0] - origin[0]) + Math.abs(position[1] - origin[1]);

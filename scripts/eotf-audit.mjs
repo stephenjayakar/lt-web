@@ -101,13 +101,41 @@ function eventExpressions(events) {
   };
 }
 
+const intentionalMissingResources = new Map([
+  ['portrait:BloodyTalon',
+    'Stale catalog alias; the active unit references the shipped BloodyTalon_Old portrait.'],
+  ['icons16:TerrariaLuckyHorseshoeSheet',
+    'Unused catalog variant; authored items reference the shipped _4 sheet.'],
+  ['icons16:TerrariaLuckyHorseshoeSheet_1',
+    'Unused catalog variant; authored items reference the shipped _4 sheet.'],
+  ['icons16:TerrariaLuckyHorseshoeSheet_2',
+    'Unused catalog variant; authored items reference the shipped _4 sheet.'],
+  ['icons16:TerrariaLuckyHorseshoeSheet_3',
+    'Unused catalog variant; authored items reference the shipped _4 sheet.'],
+  ['icons16:Twin Revolvers',
+    'Unused catalog alias; authored items reference the shipped Twin Revolvers_1 sheet.'],
+  ['icons16:Rifle',
+    'Unused catalog alias; authored items reference the shipped Rifle_1 sheet.'],
+  ['icons16:type_icons',
+    'Unused catalog alias; no gameplay data references it and last_type_icons is shipped.'],
+]);
+
 function auditResources() {
   const resourceRoot = path.join(projectRoot, 'resources');
   const checks = [];
   const exists = (relativePaths) =>
     relativePaths.some((relativePath) => fs.existsSync(path.join(resourceRoot, relativePath)));
   const add = (category, nid, relativePaths) => {
-    checks.push({ category, nid, found: exists(relativePaths), paths: relativePaths });
+    const found = exists(relativePaths);
+    const reason = intentionalMissingResources.get(`${category}:${nid}`) ?? null;
+    checks.push({
+      category,
+      nid,
+      found,
+      paths: relativePaths,
+      status: found ? 'present' : reason ? 'intentional-missing' : 'unclassified-missing',
+      reason,
+    });
   };
 
   for (const portrait of readProjectJson('resources/portraits/portraits.json')) {
@@ -141,9 +169,11 @@ function auditResources() {
     }
   }
 
+  const missing = checks.filter((check) => !check.found);
   return {
     checks: checks.length,
-    missing: checks.filter((check) => !check.found),
+    missing,
+    unclassifiedMissing: missing.filter((check) => !check.reason),
     categories: countBy(checks.map((check) => check.category)),
   };
 }
@@ -288,6 +318,8 @@ ${table(usedCustom, [
 ${table(resources.missing, [
   { key: 'category', label: 'Category' },
   { key: 'nid', label: 'NID' },
+  { key: 'status', label: 'Status' },
+  { key: 'reason', label: 'Classification' },
   { key: 'paths', label: 'Expected paths' },
 ])}
 
@@ -316,6 +348,10 @@ if (args.has('--check')) {
     console.error(`ERROR: ${path.relative(root, file)} is stale; run npm run audit:eotf:write`);
   }
   if (stale.length > 0) process.exitCode = 1;
+  for (const resource of resources.unclassifiedMissing) {
+    console.error(`ERROR: unclassified missing resource ${resource.category}:${resource.nid}`);
+  }
+  if (resources.unclassifiedMissing.length > 0) process.exitCode = 1;
 }
 
 console.log('# Embrace of the Fog compatibility audit');
@@ -324,4 +360,4 @@ console.log(`- Item/skill component NIDs: ${itemComponents.length}/${skillCompon
 console.log(`- Unverified item/skill NIDs: ${unverifiedItems.length}/${unverifiedSkills.length}`);
 console.log(`- Used custom Python components: ${usedCustom.length}/${customComponents.length}`);
 console.log(`- Conditions/evals/loops: ${expressions.conditions.length}/${expressions.evalSubstitutions.length}/${expressions.loops.length}`);
-console.log(`- Resource checks/missing: ${resources.checks}/${resources.missing.length}`);
+console.log(`- Resource checks/intentional/unclassified missing: ${resources.checks}/${resources.missing.length - resources.unclassifiedMissing.length}/${resources.unclassifiedMissing.length}`);

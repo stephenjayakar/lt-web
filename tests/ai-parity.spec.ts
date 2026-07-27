@@ -206,8 +206,10 @@ test.describe('AI parity', () => {
       // ...but reachable once Eirika has a pass_through-granting skill.
       eirika.skills.push({
         nid: 'test_pass_through',
+        components: new Map([['pass_through', true]]),
+        data: new Map(),
         hasComponent: (name: string) => name === 'pass_through',
-        getComponent: () => true,
+        getComponent: (name: string) => name === 'pass_through' ? true : undefined,
       });
       const passPath = g.pathSystem.getPath(eirika, beyond[0], beyond[1], g.board);
 

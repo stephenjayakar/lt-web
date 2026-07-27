@@ -122,4 +122,72 @@ test.describe('Embrace of the Fog item availability restrictions', () => {
     });
     expect(result.inactive).toBe(true);
   });
+
+  test('no_equip vetoes equipping and auto-equipping authored ability weapons', async ({
+    page,
+  }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Player');
+
+      // Python resolves `equippable` ALL_DEFAULT_FALSE: a component returning
+      // False outranks the `weapon` component returning True.
+      const make = (nid: string, components: [string, unknown][]) => new ItemObject({
+        nid,
+        name: '',
+        desc: '',
+        icon_nid: '',
+        icon_index: [0, 0],
+        components,
+      });
+      const plain = make('_PlainWeapon', [['weapon', null]]);
+      const barred = make('_NoEquipWeapon', [['weapon', null], ['no_equip', null]]);
+
+      const originalItems = unit.items.slice();
+      const originalWeapon = unit.equippedWeapon;
+
+      // Auto-equip must skip the barred weapon and settle on the plain one,
+      // even though the barred weapon comes first in the inventory.
+      unit.items.length = 0;
+      unit.items.push(barred, plain);
+      unit.equippedWeapon = null;
+      unit.autoequip();
+      const autoEquipped = unit.equippedWeapon?.nid ?? null;
+
+      // A barred weapon alone must leave the unit with nothing equipped.
+      unit.items.length = 0;
+      unit.items.push(barred);
+      unit.equippedWeapon = null;
+      unit.autoequip();
+      const aloneEquipped = unit.equippedWeapon?.nid ?? null;
+
+      const canEquip = {
+        plain: unit.canEquip(plain),
+        barred: unit.canEquip(barred),
+      };
+
+      // Every authored EotF item carrying no_equip must be refused.
+      const authoredRefused: string[] = [];
+      let authoredCount = 0;
+      for (const dbItem of game.db.items.values()) {
+        if (!dbItem.components.some(([nid]: [string]) => nid === 'no_equip')) continue;
+        authoredCount += 1;
+        if (unit.canEquip(new ItemObject(dbItem))) authoredRefused.push(dbItem.nid);
+      }
+
+      unit.items.length = 0;
+      unit.items.push(...originalItems);
+      unit.equippedWeapon = originalWeapon;
+
+      return { autoEquipped, aloneEquipped, canEquip, authoredCount, authoredRefused };
+    });
+
+    expect(result.canEquip).toEqual({ plain: true, barred: false });
+    expect(result.autoEquipped).toBe('_PlainWeapon');
+    expect(result.aloneEquipped).toBeNull();
+    expect(result.authoredCount).toBe(37);
+    expect(result.authoredRefused).toEqual([]);
+  });
 });

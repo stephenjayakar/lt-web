@@ -9,12 +9,14 @@ import { createItemTree } from '../objects/item';
 import type { ActionLog } from '../engine/action';
 import {
   OnlyOnceEventAction,
+  RemoveSkillAction,
   RegisterItemTreeAction,
   SetGameVarAction,
 } from '../engine/action';
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS } from '../engine/records';
+import { canCounterattack } from '../combat/combat-calcs';
 
 type ItemAvailabilityEvaluator = (
   unit: any,
@@ -464,6 +466,14 @@ export class GameEvent {
 // Condition Evaluator
 // ============================================================
 
+function pythonTruthy(value: any): boolean {
+  if (value === null || value === undefined || value === false) return false;
+  if (typeof value === 'number') return value !== 0 && !Number.isNaN(value);
+  if (typeof value === 'string' || Array.isArray(value)) return value.length > 0;
+  if (value instanceof Map || value instanceof Set) return value.size > 0;
+  return true;
+}
+
 /**
  * Evaluate a condition string from event data.
  * 
@@ -634,9 +644,13 @@ export function evaluateCondition(
   if (vMatch) {
     const varName = vMatch[1];
     const fallback = vMatch[2] !== undefined ? resolvePath(vMatch[2], context) : undefined;
-    if (context.levelVars?.has(varName)) return context.levelVars.get(varName);
-    if (context.gameVars?.has(varName)) return context.gameVars.get(varName);
-    return fallback ?? 0;
+    if (context.levelVars?.has(varName)) {
+      return pythonTruthy(context.levelVars.get(varName));
+    }
+    if (context.gameVars?.has(varName)) {
+      return pythonTruthy(context.gameVars.get(varName));
+    }
+    return pythonTruthy(fallback ?? 0);
   }
 
   // unit.can_unlock(region) — check if unit has a key/lockpick item
@@ -754,7 +768,7 @@ export function evaluateCondition(
   // Bare variable/path: truthy check
   const value = resolvePath(trimmed, context);
   if (value !== undefined) {
-    return !!value;
+    return pythonTruthy(value);
   }
 
   // Fallback: try JavaScript-based evaluation with Python-compatible scope.
@@ -765,7 +779,7 @@ export function evaluateCondition(
   try {
     const result = evaluateWithJsFallback(trimmed, context);
     if (result !== undefined) {
-      return !!result;
+      return pythonTruthy(result);
     }
   } catch (e) {
     // Fall through to default
@@ -793,7 +807,14 @@ export interface ConditionContext {
 /** Evaluate a non-boolean event expression for {e:...}/{eval:...} arguments. */
 export function evaluateExpression(expression: string, context: ConditionContext): any {
   const direct = resolvePath(expression, context);
-  if (direct !== undefined) return direct;
+  if (direct !== undefined) {
+    if (/^(?:unit|unit1|unit2)\.(?:wexp|stats|growths)$/.test(expression.trim()) &&
+        direct && typeof direct === 'object' &&
+        typeof direct[Symbol.iterator] !== 'function') {
+      return Object.keys(direct);
+    }
+    return direct;
+  }
   const value = evaluateWithJsFallback(expression, context);
   if (value === undefined) {
     reportUnimplemented('expression', expression, 'event expression');
@@ -854,8 +875,8 @@ function resolvePath(path: string, ctx: ConditionContext): any {
     return resolveObject(ctx.item, parts.slice(1));
   }
 
-  // position
-  if (trimmed === 'position') return ctx.position;
+  // Event expressions use both Python's position and target_pos aliases.
+  if (trimmed === 'position' || trimmed === 'target_pos') return ctx.position;
 
   // support_rank_nid (from trigger local args)
   if (ctx.localArgs?.has(trimmed)) {
@@ -1119,7 +1140,18 @@ function translateListComprehensions(expression: string): string {
       const mapped = filter
         ? `(${collection}).filter((${variable}) => (${filter})).map((${variable}) => (${projection}))`
         : `(${collection}).map((${variable}) => (${projection}))`;
-      translated = translated.slice(0, open) + mapped + translated.slice(close + 1);
+      const prefix = translated.slice(0, open);
+      const membership = /((?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s+(not\s+)?in\s*$/
+        .exec(prefix);
+      if (membership?.index !== undefined &&
+          !/\bfor\s+$/.test(prefix.slice(0, membership.index))) {
+        const contains = `(${mapped}).includes(${membership[1]})`;
+        translated = prefix.slice(0, membership.index) +
+          (membership[2] ? `!${contains}` : contains) +
+          translated.slice(close + 1);
+      } else {
+        translated = prefix + mapped + translated.slice(close + 1);
+      }
       changed = true;
       break;
     }
@@ -1161,8 +1193,42 @@ function replacePythonWords(
 }
 
 function translateTopLevelAdditions(expression: string): string {
-  const parts = splitAtTopLevel(expression, ' + ').map((part) => part.trim());
-  if (parts.length < 2) return expression;
+  const arraySource = expression.trim();
+  if (arraySource.startsWith('[') &&
+      findMatchingBracket(arraySource, 0) === arraySource.length - 1) {
+    const elements = splitAtTopLevel(arraySource.slice(1, -1), ',');
+    return `[${elements.map((element) =>
+      translateTopLevelAdditions(element.trim())).join(', ')}]`;
+  }
+  let grouped = '';
+  let quote: string | null = null;
+  for (let index = 0; index < expression.length; index++) {
+    const char = expression[index];
+    if (quote) {
+      grouped += char;
+      if (char === quote && expression[index - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      grouped += char;
+      continue;
+    }
+    if (char === '(') {
+      const close = findMatchingParen(expression, index);
+      if (close > index) {
+        grouped += `(${translateTopLevelAdditions(
+          expression.slice(index + 1, close),
+        )})`;
+        index = close;
+        continue;
+      }
+    }
+    grouped += char;
+  }
+
+  const parts = splitAtTopLevel(grouped, ' + ').map((part) => part.trim());
+  if (parts.length < 2) return grouped;
   return parts.slice(1).reduce(
     (left, right) => `__pyAdd(${left}, ${right})`,
     parts[0],
@@ -1423,13 +1489,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 
   // Regions collection wrapper: adds .get(nid) method
   function wrapRegions(regions: any[]) {
-    return {
-      get(nid: string) {
-        const r = regions.find((reg: any) => reg.nid === nid);
-        return wrapRegion(r);
-      },
-      values() { return regions.map(wrapRegion); },
-    };
+    const wrapped: any = regions.map(wrapRegion);
+    wrapped.get = (nid: string) =>
+      wrapped.find((region: any) => region.nid === nid) ?? wrapRegion(null);
+    wrapped.values = () => wrapped;
+    return wrapped;
   }
 
   function wrapMapping(value: any) {
@@ -1452,6 +1516,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get(key: string, fallback?: any) {
         const result = value?.[key];
         return result === undefined ? fallback : result;
+      },
+      keys() {
+        return entries.map(([key]) => key);
       },
       filter(predicate: (key: string, index: number) => boolean) {
         return entries.map(([key]) => key).filter(predicate);
@@ -1494,6 +1561,31 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
               Object.assign(target, entries);
               RECORDS?.persist();
               return target;
+            };
+          }
+          if (property === 'map') {
+            return (mapper: (key: string, index: number) => unknown) =>
+              Object.keys(target).map(mapper);
+          }
+          if (property === 'filter') {
+            return (predicate: (key: string, index: number) => boolean) =>
+              Object.keys(target).filter(predicate);
+          }
+          if (property === 'some') {
+            return (predicate: (key: string, index: number) => boolean) =>
+              Object.keys(target).some(predicate);
+          }
+          if (property === 'every') {
+            return (predicate: (key: string, index: number) => boolean) =>
+              Object.keys(target).every(predicate);
+          }
+          if (property === 'includes') {
+            return (key: string) => key in target;
+          }
+          if (property === 'length') return Object.keys(target).length;
+          if (property === Symbol.iterator) {
+            return function* iterateKeys() {
+              yield* Object.keys(target);
             };
           }
           const result = target[property as keyof typeof target];
@@ -1545,7 +1637,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         if (value && typeof value === 'object' && typeof property === 'string') {
           return value[property];
         }
-        return undefined;
+        return null;
       },
     });
   }
@@ -1603,7 +1695,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         if (typeof property === 'string' && components.has(property)) {
           return components.get(property);
         }
-        return item[property as keyof typeof item];
+        return item[property as keyof typeof item] ?? null;
       },
     });
     wrappedItems.set(item, wrapped);
@@ -1616,7 +1708,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     if (typeof skill !== 'object') return skill;
     const existing = wrappedSkills.get(skill);
     if (existing) return existing;
-    const components = wrapComponents(skill);
+    // Wrapping every component up front dominated frame time: skill
+    // conditions are evaluated many times per frame, and most expressions
+    // only read plain fields like `s.nid`. Materialize the component map on
+    // first use instead, memoized for the life of this wrapper.
+    let components: ReturnType<typeof wrapComponents> | null = null;
+    const getComponents = () => (components ??= wrapComponents(skill));
     const target = {
       _raw: skill,
       uid: skill.uid,
@@ -1626,11 +1723,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       owner_nid: skill.ownerNid ?? null,
       initiator_nid: skill.initiatorNid ?? null,
       data: wrapMapping(skill.data),
-      components,
     };
     const wrapped = new Proxy(target as Record<string, any>, {
       get(proxyTarget, property: string | symbol) {
         if (property in proxyTarget) return proxyTarget[property as string];
+        if (property === 'components') return getComponents();
         if (property === 'parent_skill') {
           const directParent = skill.data?.get?.('multiSkillSource');
           if (directParent) return wrapSkill(directParent);
@@ -1642,15 +1739,69 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
           );
           return wrapSkill(auraParent);
         }
-        if (typeof property === 'string' && components.has(property)) {
-          return components.get(property);
+        if (typeof property === 'string' && getComponents().has(property)) {
+          return getComponents().get(property);
         }
-        return skill[property as keyof typeof skill];
+        return skill[property as keyof typeof skill] ?? null;
       },
     });
     wrappedSkills.set(skill, wrapped);
     return wrapped;
   }
+
+  function wrapWexpGain(value: unknown): object {
+    const source = value && typeof value === 'object' ? value : {};
+    return {
+      get(nid: string, fallback?: unknown) {
+        const entry = nid in source ? Reflect.get(source, nid) : fallback;
+        return Array.isArray(entry)
+          ? {
+            usable: Boolean(entry[0]),
+            wexp_gain: Number(entry[1] ?? 0),
+            cap: Number(entry[2] ?? 0),
+          }
+          : entry;
+      },
+      map(mapper: (nid: string, index: number) => unknown) {
+        return Object.keys(source).map(mapper);
+      },
+      filter(predicate: (nid: string, index: number) => boolean) {
+        return Object.keys(source).filter(predicate);
+      },
+      some(predicate: (nid: string, index: number) => boolean) {
+        return Object.keys(source).some(predicate);
+      },
+      every(predicate: (nid: string, index: number) => boolean) {
+        return Object.keys(source).every(predicate);
+      },
+      *[Symbol.iterator]() {
+        yield* Object.keys(source);
+      },
+    };
+  }
+
+  const wrappedClasses = new WeakMap<object, object>();
+  function wrapClass(klass: unknown): unknown {
+    if (!klass || typeof klass !== 'object') return klass;
+    const existing = wrappedClasses.get(klass);
+    if (existing) return existing;
+    const wrapped = new Proxy(klass, {
+      get(target, property: string | symbol) {
+        if (property === 'wexp_gain') {
+          return wrapWexpGain(Reflect.get(target, property));
+        }
+        if ([
+          'bases', 'growths', 'growth_bonus', 'promotion', 'max_stats', 'fields',
+        ].includes(String(property))) {
+          return wrapMapping(Reflect.get(target, property));
+        }
+        return Reflect.get(target, property);
+      },
+    });
+    wrappedClasses.set(klass, wrapped);
+    return wrapped;
+  }
+
 
   const wrappedUnits = new WeakMap<object, any>();
   function wrapUnit(u: any): any {
@@ -1680,15 +1831,17 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       klass: u.klass,
       affinity: u.affinity ?? null,
       traveler: u.traveler ?? u.rescuing ?? null,
+      stat_cap_modifiers: wrapMapping(u.statCapModifiers ?? u.stat_cap_modifiers),
       get strike_partner() {
         return wrapUnit(u.strikePartner ?? u.strike_partner ?? null);
       },
       dead: u.isDead?.() ?? u.dead ?? false,
+      _finished: u._finished ?? false,
       is_dying: u.isDying ?? u.is_dying ?? false,
       level: u.level,
       stats: wrapMapping(u.stats),
       wexp: wrapMapping(u.wexp),
-      growths: u.growths ?? {},
+      growths: wrapMapping(u.growths),
       generic: u.generic ?? false,
       skills: (u.skills ?? []).map(wrapSkill),
       items: (u.items ?? []).map(wrapItem),
@@ -1703,7 +1856,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         u.getStat?.(nid) ?? u.getStatValue?.(nid) ?? u.stats?.[nid] ?? 0,
       get_internal_level: () => u.getInternalLevel?.() ?? u.level ?? 1,
       get_field: (nid: string, fallback?: any) =>
-        u.fields?.has?.(nid) ? u.fields.get(nid) : fallback,
+        u.fields?.has?.(nid) ? u.fields.get(nid) : (fallback ?? null),
       get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
       get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
@@ -1786,7 +1939,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   const wrapVars = (variables: Map<string, any> | undefined) => new Proxy(
     {
       get(key: string, fallback?: any) {
-        return variables?.has(key) ? variables.get(key) : fallback;
+        return variables?.has(key) ? variables.get(key) : (fallback ?? null);
       },
     } as Record<string, any>,
     {
@@ -1802,9 +1955,19 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get units() {
       return Array.from(game.units?.values?.() ?? []).map(wrapUnit);
     },
+    get regions() {
+      return regions.map(wrapRegion);
+    },
     game_vars: wrapVars(game.gameVars),
     level_vars: wrapVars(game.levelVars),
-    board: { bounds: game.board?.bounds ?? [0, 0, 0, 0] },
+    board: {
+      bounds: game.board?.bounds ?? [0, 0, 0, 0],
+      get_unit(position: [number, number] | null) {
+        return position
+          ? wrapUnit(game.board?.getUnit?.(position[0], position[1]) ?? null)
+          : null;
+      },
+    },
     boundary: {
       displaying_units: {
         discard(nid: string) {
@@ -1851,10 +2014,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
       return wrapUnit(u);
     },
-    get_item(uid: number | string) {
-      const item = game.getItem?.(uid) ??
+    get_item(uid: number | string | unknown[]) {
+      const requested = Array.isArray(uid) ? uid[0] : uid;
+      const item = game.getItem?.(requested as number | string) ??
         Array.from(new Set(game.items?.values?.() ?? []))
-          .find((candidate: any) => candidate.uid === Number(uid));
+          .find((candidate: any) =>
+            candidate.uid === Number(requested) || candidate.nid === requested);
       return wrapItem(item);
     },
     item_registry: {
@@ -1932,6 +2097,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get_all_units(onlyOnField: boolean = true) {
       return getAllUnits(onlyOnField);
     },
+    get_tile_units() {
+      return getAllUnits(true);
+    },
     get_money() { return game.getMoney?.() ?? 0; },
     get_data(nid: string) {
       return game.db?.rawData?.get?.(String(nid)) ?? null;
@@ -1988,8 +2156,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   };
 
   gameProxy._current_level = gameProxy.level;
-  const unwrapUnit = (candidate: any) =>
-    candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
+  const unwrapUnit = (candidate: any) => {
+    if (typeof candidate === 'string') return game.units?.get(candidate) ?? null;
+    return candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
+  };
   const unwrapItem = (candidate: any) => candidate?._raw ?? candidate;
   const itemSystem = {
     available(candidate: any, candidateItem: any) {
@@ -2066,6 +2236,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         const value = Number(componentValue(entry, 'empower_heal') ?? 0);
         return total + (Number.isFinite(value) ? value : 0);
       }, 0);
+    },
+    has_canto(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      return raw?.hasCanto ?? false;
     },
   };
   const unitFuncs = {
@@ -2158,6 +2332,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get(target, property: string | symbol) {
       if (property === 'skills') return wrapCatalog(target.skills, wrapSkill);
       if (property === 'items') return wrapCatalog(target.items, wrapItem);
+      if (property === 'classes') return wrapCatalog(target.classes, wrapClass);
+      if (property === 'units') return wrapCatalog(target.units, wrapUnit);
       return target[property as keyof typeof target];
     },
   });
@@ -2166,6 +2342,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     wrapUnit,
     wrapItem,
     wrapSkill,
+    wrapClass,
     DB: databaseProxy,
     RECORDS: recordsProxy,
     utils: {
@@ -2183,6 +2360,18 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     unit_funcs: unitFuncs,
     combat_calcs: {
       compute_advantage: computeAdvantage,
+      can_counterattack(
+        attacker: any,
+        attackItem: any,
+        defender: any,
+        _defenseItem?: any,
+      ) {
+        const rawAttacker = unwrapUnit(attacker);
+        const rawDefender = unwrapUnit(defender);
+        const rawAttackItem = unwrapItem(attackItem);
+        return !!rawAttacker && !!rawDefender && !!rawAttackItem &&
+          canCounterattack(rawAttacker, rawAttackItem, rawDefender, game.db, game);
+      },
       ...(ctx.localArgs?.get('combat_calcs') as Record<string, unknown> ?? {}),
     },
     movement_funcs: {
@@ -2231,16 +2420,46 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
  * Translates common Python idioms to JS before eval.
  * Returns the evaluation result, or undefined if it fails.
  */
-function evaluateWithJsFallback(
-  condition: string,
-  ctx: ConditionContext,
-  warnOnFailure = true,
-): any {
-  const game = ctx.game;
-  if (!game) return undefined;
+/**
+ * Compiled expression cache.
+ *
+ * The generated function body depends only on the translated source and the
+ * declared local names — every piece of game state arrives as an argument. So
+ * a given expression compiles once and is reused for the life of the page.
+ * Without this, EotF recompiles the same skill conditions many times per
+ * frame, which measured as the single largest cost in the game loop.
+ */
+const compiledExpressions = new Map<string, Function>();
 
+/** Cache of the Python-to-JavaScript translation, keyed by source text. */
+const translatedExpressions = new Map<string, string>();
+
+/** Lazily-built, reused query-function dictionary (see call site). */
+let queryFuncsCache: Record<string, Function> | null = null;
+function sharedQueryFuncs(): Record<string, Function> {
+  return (queryFuncsCache ??= new GameQueryEngine().getFuncDict());
+}
+
+/**
+ * Translate one Python expression into JavaScript source.
+ *
+ * Pure string rewriting: the result depends only on `condition`, which is
+ * what makes both this and the compiled function safe to cache.
+ */
+function translateExpression(condition: string): string {
   // Translate Python idioms to JavaScript
-  let jsExpr = condition;
+  let jsExpr = condition.trim().replace(/^if\s+/, '');
+  const tupleSource = jsExpr.trim();
+  if (tupleSource.startsWith('(') &&
+      findMatchingParen(tupleSource, 0) === tupleSource.length - 1) {
+    const tupleParts = splitAtTopLevel(tupleSource.slice(1, -1), ',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (tupleParts.length > 1) jsExpr = `[${tupleParts.join(', ')}]`;
+    else if (tupleParts.length === 1) jsExpr = tupleParts[0];
+  }
+  const joinMatch = jsExpr.match(/^('[^']*'|"[^"]*")\.join\(([\s\S]*)\)$/);
+  if (joinMatch) jsExpr = `(${joinMatch[2]}).join(${joinMatch[1]})`;
   jsExpr = jsExpr.replace(/\bf"([^"]*)"/g, (_whole, content) =>
     `\`${content.replace(/\{/g, '${')}\``);
   jsExpr = jsExpr.replace(/\bf'([^']*)'/g, (_whole, content) =>
@@ -2248,9 +2467,15 @@ function evaluateWithJsFallback(
   jsExpr = translateListComprehensions(jsExpr);
   jsExpr = translateSortedCalls(jsExpr);
   jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
+  jsExpr = jsExpr.replace(
+    /(\b[A-Za-z_]\w*(?:\([^)]*\)|(?:\.[A-Za-z_]\w*)|\[[^\]]+\])*)\[-(\d+)\]/g,
+    '$1.at(-$2)',
+  );
 
   // Python `len(x)` -> `x.length`
   jsExpr = jsExpr.replace(/\blen\s*\(/g, '__len__(');
+  jsExpr = jsExpr.replace(/\.startswith\s*\(/g, '.startsWith(');
+  jsExpr = jsExpr.replace(/\.endswith\s*\(/g, '.endsWith(');
 
   // Python `True`/`False` -> `true`/`false`
   jsExpr = replacePythonWords(jsExpr, {
@@ -2277,6 +2502,12 @@ function evaluateWithJsFallback(
     '{ tag: $1 }',
   );
   jsExpr = jsExpr.replace(/\bdist\s*=\s*(\d+)/g, '$1');
+  jsExpr = jsExpr.replace(/\bsource_type\s*=/g, '');
+  jsExpr = jsExpr.replace(/\bsource\s*=/g, '');
+  jsExpr = jsExpr.replace(
+    /v\('unit\.nid \+ '([^']+)''\)/g,
+    "v(unit.nid + '$1')",
+  );
   jsExpr = jsExpr.replace(/\bforce\s*=\s*(true|false)/g, '$1');
   jsExpr = jsExpr.replace(/\.stats\s*\(\s*([^)]*)\)/g, '.stats.get($1)');
 
@@ -2290,7 +2521,12 @@ function evaluateWithJsFallback(
   // Python membership inside translated comprehensions/generators. Direct
   // top-level membership is handled by evaluateCondition before this fallback.
   jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\))|(?:\[[^\]]+\]))*))\s+(!\s*)?in\s+(\[[^\]]*\]|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\)))*)/g,
+    /((?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?|[A-Za-z_]\w*))\s+(!\s*)?in\s+(u\(v\([^)]*\)\)\.[A-Za-z_]\w*)/g,
+    (_whole, needle, negated, haystack) =>
+      `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
+  );
+  jsExpr = jsExpr.replace(
+    /((?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\))|(?:\[[^\]]+\]))*))\s+(!\s*)?in\s+(\[[^\]]*\]|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\)))*)/g,
     (_whole, needle, negated, haystack) =>
       `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
   );
@@ -2315,6 +2551,25 @@ function evaluateWithJsFallback(
     '__pyAdd($1, $2)',
   );
   jsExpr = translateTopLevelAdditions(jsExpr);
+  return jsExpr;
+}
+
+function evaluateWithJsFallback(
+  condition: string,
+  ctx: ConditionContext,
+  warnOnFailure = true,
+): any {
+  const game = ctx.game;
+  if (!game) return undefined;
+
+  const cachedTranslation = translatedExpressions.get(condition);
+  let jsExpr: string;
+  if (cachedTranslation === undefined) {
+    jsExpr = translateExpression(condition);
+    translatedExpressions.set(condition, jsExpr);
+  } else {
+    jsExpr = cachedTranslation;
+  }
 
   // Build scope
   const evalScope = buildEvalScope(ctx);
@@ -2479,6 +2734,29 @@ function evaluateWithJsFallback(
     levelVars: ctx.levelVars,
     localArgs: ctx.localArgs,
   });
+  const action = {
+    RemoveSkill(
+      candidate: any,
+      skillNid: string,
+      source?: any,
+      sourceType?: string,
+    ) {
+      const rawUnit = candidate?._raw ?? candidate;
+      const skill = rawUnit?.skills?.find?.((entry: any) => {
+        if (entry.nid !== skillNid) return false;
+        if (source !== undefined && source !== null &&
+            entry.data?.get?.('sourceNid') !== source) return false;
+        if (sourceType && entry.data?.get?.('sourceType') !== sourceType) return false;
+        return true;
+      });
+      return rawUnit && skill ? new RemoveSkillAction(rawUnit, skill) : null;
+    },
+    do(candidate: RemoveSkillAction | null) {
+      if (candidate) game.actionLog?.doAction?.(candidate);
+      return null;
+    },
+  };
+  const SourceType = { TRAVELER: 'traveler' };
 
   // Also inject support_rank_nid from localArgs
   const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
@@ -2535,32 +2813,43 @@ function evaluateWithJsFallback(
     .map((name) => `var ${name} = _locals.get(${JSON.stringify(name)});`)
     .join('\n');
 
-  // Inject query engine functions (u, v, get_item, has_item, is_dead, etc.)
-  const _queryEngine = new GameQueryEngine();
-  const _queryFuncs = _queryEngine.getFuncDict();
+  // Inject query engine functions (u, v, get_item, has_item, is_dead, etc.).
+  // The engine holds no state — every method resolves the live game when it
+  // runs — so the instance and its function dictionary are built once instead
+  // of on every expression evaluation.
+  const _queryFuncs = sharedQueryFuncs();
+
+  const compileKey = `${localDeclarations} ${jsExpr}`;
+  const alreadyCompiled = compiledExpressions.get(compileKey);
 
   try {
     // eslint-disable-next-line no-new-func
-    const fn = new Function(
+    const fn = alreadyCompiled ?? new Function(
       'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
       'check_pair', 'check_default', '__len__', '__any__', '__all__', '__sorted__', 'v', 'cf',
       'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
       'item_system', 'skill_system', 'unit_funcs', 'combat_calcs', 'movement_funcs', 'target_system',
       'max', 'min', 'sum', 'math', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge',
       '__pyFormat', '__pyAdd', 'static_random', 'evaluate', '_qf', '_locals',
-      '_wrapUnit', '_wrapItem', '_wrapSkill',
+      '_wrapUnit', '_wrapItem', '_wrapSkill', '_wrapClass', 'action', 'SourceType',
       `"use strict";
        ${localDeclarations}
        // Spread query engine functions into local scope
        var _units = values => Array.from(values || []).map(_wrapUnit),
            u = (...args) => _wrapUnit(_qf.u(...args)),
            get_item = (...args) => _wrapItem(_qf.get_item(...args)),
+           find_item = (...args) => _wrapItem(_qf.find_item(...args)),
            has_item = _qf.has_item,
            get_subitem = (...args) => _wrapItem(_qf.get_subitem(...args)),
            get_skill = (...args) => _wrapSkill(_qf.get_skill(...args)),
-           has_skill = _qf.has_skill, get_klass = _qf.get_klass,
-           get_class = _qf.get_class,
+           has_skill = _qf.has_skill,
+           get_klass = (...args) => _wrapClass(_qf.get_klass(...args)),
+           get_class = (...args) => _wrapClass(_qf.get_class(...args)),
            get_closest_allies = (...args) => Array.from(_qf.get_closest_allies(...args) || [])
+             .map(pair => [_wrapUnit(pair[0]), pair[1]]),
+           get_closest_units = (...args) => Array.from(_qf.get_closest_units(...args) || [])
+             .map(pair => [_wrapUnit(pair[0]), pair[1]]),
+           get_closest_enemies = (...args) => Array.from(_qf.get_closest_enemies(...args) || [])
              .map(pair => [_wrapUnit(pair[0]), pair[1]]),
            get_units_within_distance = (...args) => _units(_qf.get_units_within_distance(...args)),
            get_allies_within_distance = (...args) => _units(_qf.get_allies_within_distance(...args)),
@@ -2584,6 +2873,7 @@ function evaluateWithJsFallback(
              Array.from(_qf.get_convoy_inventory(...args) || []).map(_wrapItem);
        return (${jsExpr});`,
     );
+    if (!alreadyCompiled) compiledExpressions.set(compileKey, fn);
     return fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, __sorted__, v, cf,
@@ -2593,12 +2883,16 @@ function evaluateWithJsFallback(
       max, min, sum, math, int, set, str, range, get_stacks, get_charge,
       pyFormat, pyAdd, { get_random_choice: gameProxy.get_random_choice }, evaluate,
       _queryFuncs, expressionLocals,
-      evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill,
+      evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill, evalScope.wrapClass,
+      action, SourceType,
     );
   } catch (e) {
     // Expression evaluation failed — log the error for debugging
     if (warnOnFailure) {
-      console.warn(`EventCondition JS eval failed for "${condition}":`, e);
+      console.warn(
+        `EventCondition JS eval failed for "${condition}" as "${jsExpr}":`,
+        e,
+      );
     }
     return undefined;
   }

@@ -440,6 +440,20 @@ export class InputManager {
     return this.buttonsDown.has(button);
   }
 
+  /**
+   * True while a physical key is held. Free-roam polls this every frame to
+   * drive analog movement, which button state cannot express because a held
+   * key produces only one press event.
+   *
+   * Accepts either a KeyboardEvent code ('ArrowUp', 'Escape') or the bare
+   * character for letter keys ('w'), which callers read more naturally than
+   * 'KeyW'.
+   */
+  isKeyHeld(key: string): boolean {
+    if (this.keysDown.has(key)) return true;
+    return /^[a-zA-Z]$/.test(key) && this.keysDown.has(`Key${key.toUpperCase()}`);
+  }
+
   justPressed(button: GameButton): boolean {
     return this.buttonJustPressed.has(button);
   }

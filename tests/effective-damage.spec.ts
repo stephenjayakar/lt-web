@@ -138,7 +138,9 @@ async function measureEffective(page: Page, cfg: MeasureConfig): Promise<Effecti
       weapon.maxUses = 99;
       const r = h.resolveCombat('Eirika', 'Bone');
       if (!r) return null;
-      return BONE_HP - r.defenderHp;
+      return r.strikeDetails
+        .filter((strike: any) => strike.striker === 'attacker')
+        .reduce((total: number, strike: any) => total + strike.damage, 0);
     }
 
     clearEffective();
@@ -321,9 +323,11 @@ test.describe('effective_damage item component', () => {
         bone.dead = false;
         weapon.uses = 99;
         weapon.maxUses = 99;
-        const r = h.resolveCombat('Eirika', 'Bone');
+        const r = h.resolveCombat('Eirika', 'Bone', undefined, true);
         if (!r) return null;
-        return BONE_HP - r.defenderHp;
+        return r.strikeDetails
+          .filter((strike: any) => strike.striker === 'attacker')
+          .reduce((total: number, strike: any) => total + strike.damage, 0);
       }
 
       // Baseline with no defender weapon: weapon triangle contributes 0.

@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 43,
-    "merged": 70,
+    "exact": 44,
+    "merged": 69,
     "open": 0,
-    "web": 57
+    "web": 61
   },
   "rows": [
     {
@@ -508,8 +508,8 @@
       "name": "prep_formation",
       "className": "PrepFormationState",
       "source": "lt-maker/app/engine/prep.py",
-      "status": "merged",
-      "webState": "prep_map",
+      "status": "exact",
+      "webState": "prep_formation",
       "webSource": "src/engine/states/prep-state.ts"
     },
     {

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { componentUses, skills } from './helpers/project-data';
 
 async function bootEotf(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=eotf.ltproj&level=X&clean=true&bundle=false');
@@ -8,18 +9,10 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog all_brave skills', () => {
-  test('count-locks all five authored marker uses', async ({ page }) => {
-    await bootEotf(page);
-    const uses = await page.evaluate(() => {
-      const game = (window as any).__gameRef;
-      return [...game.db.skills.values()]
-        .filter((skill: any) =>
-          skill.components.some(([nid]: [string, unknown]) => nid === 'all_brave'))
-        .map((skill: any) => [
-          skill.nid,
-          skill.components.find(([nid]: [string, unknown]) => nid === 'all_brave')[1],
-        ]);
-    });
+  // Reads the authored catalog directly: this asserts on project data, not on
+  // engine behaviour, so it does not need a browser or a project boot.
+  test('count-locks all five authored marker uses', () => {
+    const uses = componentUses(skills(), 'all_brave');
     expect(uses).toEqual([
       ['Disco_Inferno', null],
       ['Enchanted_Blade_P', null],

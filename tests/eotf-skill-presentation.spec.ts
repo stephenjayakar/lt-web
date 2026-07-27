@@ -165,4 +165,49 @@ test.describe('Embrace of the Fog skill presentation', () => {
       game.syncSkillMapAnimations();
     });
   });
+
+  test('flickering tint honours the skill condition without evaluating unrelated skills', async ({
+    page,
+  }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { unitSpriteTint } = await import('/src/combat/skill-system.ts');
+      const unit = game.units.get('Player');
+      const saved = unit.skills;
+
+      const make = (nid: string, components: [string, unknown][]) =>
+        new SkillObject({ nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components });
+
+      const tinted = make('_Tinted', [['unit_flickering_tint', [8, 16, 24]]]);
+      const gated = make('_GatedTint', [
+        ['unit_flickering_tint', [1, 2, 3]],
+        ['condition', 'False'],
+      ]);
+      // A skill with no tint component at all must never have its condition
+      // evaluated by the draw path; an unevaluatable condition would surface
+      // as a console warning if it were.
+      const unrelated = make('_Unrelated', [['condition', 'this_is_not_evaluable(']]);
+
+      unit.skills = [unrelated, tinted];
+      // Python's component declares period=900ms, width=300ms.
+      const litPhase = unitSpriteTint(unit, game, 0);
+      const darkPhase = unitSpriteTint(unit, game, 500);
+
+      unit.skills = [unrelated, gated];
+      const gatedTint = unitSpriteTint(unit, game, 0);
+
+      unit.skills = [unrelated];
+      const noTint = unitSpriteTint(unit, game, 0);
+
+      unit.skills = saved;
+      return { litPhase, darkPhase, gatedTint, noTint };
+    });
+
+    expect(result.litPhase).toEqual({ color: [8, 16, 24], alpha: 1 });
+    expect(result.darkPhase).toEqual({ color: [8, 16, 24], alpha: 0 });
+    expect(result.gatedTint).toBeNull();
+    expect(result.noTint).toBeNull();
+  });
 });

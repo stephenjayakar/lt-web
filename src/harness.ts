@@ -45,7 +45,7 @@ export interface HarnessAPI {
   /** Whether the harness is ready (game loaded). */
   ready: boolean;
   /** Run N frames, allowing events/transitions to settle (auto-skips event text). */
-  settle: (maxFrames: number, stopStates?: string[]) => void;
+  settle: (maxFrames: number, stopStates?: string[]) => Promise<void>;
   /** Give an item (by DB NID) to a unit (by NID). Returns true if successful. */
   giveItem: (unitNid: string, itemNid: string) => boolean;
   /** Remove an item (by NID) from a unit's inventory via a reversible action. */
@@ -386,11 +386,14 @@ export function installHarness(
       return true;
     },
 
-    settle(maxFrames: number, stopStates: string[] = ['free']): void {
+    async settle(maxFrames: number, stopStates: string[] = ['free']): Promise<void> {
       for (let i = 0; i < maxFrames; i++) {
         stepOneFrame(null);
         const current = game.state.getCurrentState();
         if (current?.name && stopStates.includes(current.name)) {
+          break;
+        }
+        if (!current && !game.eventManager?.hasActiveEvents()) {
           break;
         }
         // Press SELECT to advance through dialog, menus, events, base screens, etc.
@@ -399,6 +402,12 @@ export function installHarness(
             current?.name === 'title_main' || current?.name === 'phase_change' ||
             current?.name === 'turn_change') {
           stepOneFrame('SELECT');
+        }
+        // Asset-backed event commands resolve through promises. Yield often
+        // enough for those tasks to complete instead of exhausting the frame
+        // budget while the browser event loop is held by this harness call.
+        if (i % 10 === 9) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
         }
       }
     },
