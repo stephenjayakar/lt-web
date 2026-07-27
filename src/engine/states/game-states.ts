@@ -227,6 +227,8 @@ import {
   sellPrice as itemSellPrice,
   menuAfterCombat,
   canAttackAfterCombat,
+  forceMapAnim,
+  tradeable as itemTradeable,
   transforms,
   inventoryFull as itemInventoryFull,
   healAmount as itemHealAmount,
@@ -4302,7 +4304,15 @@ export class TradeState extends State {
       const selectedIndexB = result.selected === 'b_empty'
         ? partner?.items.length ?? 0
         : Number(result.selected.slice(2));
-      if (unit && partner && this.selectedIndexA >= 0 &&
+      // Python `trade.can_trade` refuses a swap across owners when either
+      // item is untradeable, which is how `locked` items stay with their
+      // holder. The menu still lists them; the exchange is what is refused.
+      const offeredA = unit?.items[this.selectedIndexA];
+      const offeredB = partner?.items[selectedIndexB];
+      const tradeRefused = (!!offeredA && !itemTradeable(unit, offeredA)) ||
+        (!!offeredB && !!partner && !itemTradeable(partner, offeredB));
+
+      if (unit && partner && this.selectedIndexA >= 0 && !tradeRefused &&
           (this.selectedIndexA < unit.items.length || selectedIndexB < partner.items.length)) {
         game.actionLog.doAction(new TradeAction(
           unit,
@@ -5457,6 +5467,12 @@ export class CombatState extends State {
     try {
       const db = game.db;
       if (!db.combatAnims || db.combatAnims.size === 0) return false;
+
+      // Python `get_battle_anim` bails before any lookup when either side's
+      // item forces the map animation, dropping the whole exchange to map
+      // combat rather than animating one side only.
+      if (forceMapAnim(attacker, attackItem)) return false;
+      if (defenseItem && forceMapAnim(defender, defenseItem)) return false;
 
       // Look up combat anim NIDs from unit classes.
       // Fallback chain: combat_anim_nid -> class nid (handles projects
@@ -10062,7 +10078,8 @@ export class EventState extends State {
   private resolvePosition(posOrUnit: string, game: any): [number, number] | null {
     if (!posOrUnit) return null;
     // Try parsing as x,y coordinates first
-    const parts = posOrUnit.split(',');
+    const normalized = posOrUnit.trim().replace(/^[[(]\s*|\s*[\])]$/g, '');
+    const parts = normalized.split(',');
     if (parts.length >= 2) {
       const x = parseInt(parts[0].trim(), 10);
       const y = parseInt(parts[1].trim(), 10);
@@ -10149,6 +10166,7 @@ export class EventState extends State {
   /** Evaluate a variable command, preserving the typed result of a whole {e:...} argument. */
   private evaluateVariableCommand(rawSource: string, substitutedSource: string): any {
     const wholeEval = rawSource.match(/^\{(?:e|eval):([\s\S]+)\}$/);
+    if (!wholeEval) return this.evaluateVariableExpression(substitutedSource);
     const context = this.buildConditionContext();
     const typedSource = (wholeEval?.[1] ?? rawSource).replace(
       /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
@@ -10160,9 +10178,6 @@ export class EventState extends State {
         return value === undefined ? 'undefined' : JSON.stringify(value);
       },
     );
-    if (!wholeEval && typedSource === rawSource) {
-      return this.evaluateVariableExpression(substitutedSource);
-    }
     try {
       const evaluated = evaluateExpression(typedSource, context);
       return evaluated === undefined ? substitutedSource : evaluated;
@@ -10300,13 +10315,26 @@ export class EventState extends State {
     const unitNid = trigger?.unitNid ?? trigger?.unit1?.nid ?? '';
     const unit2Nid = trigger?.unitB ?? trigger?.unit2?.nid ?? '';
     const expressionContext = this.buildConditionContext();
-    const eventObjectToString = (result: any): string => {
-      const raw = result?._raw ?? result;
+    const eventObjectToString = (result: unknown, nested = false): string => {
+      const raw = result && typeof result === 'object' && '_raw' in result
+        ? result._raw
+        : result;
       if (raw && typeof raw === 'object') {
-        if (raw.uid !== undefined) return String(raw.uid);
-        if (raw.nid !== undefined) return String(raw.nid);
+        if ('uid' in raw && raw.uid !== undefined) return String(raw.uid);
+        if ('nid' in raw && raw.nid !== undefined) return String(raw.nid);
+        if (Array.isArray(raw)) {
+          return `[${raw.map((entry) => eventObjectToString(entry, true)).join(', ')}]`;
+        }
+        if (raw instanceof Map) {
+          return `{${[...raw.entries()].map(([key, entry]) =>
+            `${JSON.stringify(String(key))}: ${eventObjectToString(entry, true)}`).join(', ')}}`;
+        }
+        return `{${Object.entries(raw).map(([key, entry]) =>
+          `${JSON.stringify(key)}: ${eventObjectToString(entry, true)}`).join(', ')}}`;
       }
-      return result === undefined || result === null ? '' : String(result);
+      if (typeof raw === 'string') return nested ? JSON.stringify(raw) : raw;
+      if (typeof raw === 'boolean') return raw ? 'True' : 'False';
+      return raw === undefined || raw === null ? '' : String(raw);
     };
     let args = rawArgs.map((arg) => {
       let value = arg
@@ -10318,6 +10346,46 @@ export class EventState extends State {
         if (game.gameVars?.has?.(key)) return game.gameVars.get(key);
         return undefined;
       };
+      const replaceDataTags = (source: string): string => source.replace(
+        /\{(?:d|data):([^{}]+)\}/g,
+        (_match, path: string) => {
+          const parts = path.split('.');
+          let resolved = game.db.rawData?.get?.(parts[0]);
+          if (parts.length === 2) {
+            resolved = resolved?.get?.(parts[1]) ?? resolved?.[parts[1]];
+          } else if (parts.length === 3) {
+            let entry: unknown;
+            if (parts[1].startsWith('[') && parts[1].endsWith(']')) {
+              const terms = parts[1].slice(1, -1).split(',')
+                .map((term: string) => term.trim())
+                .filter(Boolean);
+              entry = Array.isArray(resolved)
+                ? resolved.find((candidate: unknown) => {
+                  if (!candidate || typeof candidate !== 'object') return false;
+                  return terms.every((term: string) => {
+                    const [key, expected] = term.split('=').map((part) => part.trim());
+                    if (expected === undefined) {
+                      return Object.values(candidate).some((value) => String(value) === key);
+                    }
+                    return key in candidate && String(Reflect.get(candidate, key)) === expected;
+                  });
+                })
+                : undefined;
+            } else {
+              entry = resolved?.get?.(parts[1]) ??
+                (Array.isArray(resolved)
+                  ? resolved.find((candidate: unknown) =>
+                    !!candidate && typeof candidate === 'object' &&
+                    'nid' in candidate && candidate.nid === parts[1])
+                  : undefined);
+            }
+            resolved = entry && typeof entry === 'object' && parts[2] in entry
+              ? Reflect.get(entry, parts[2])
+              : undefined;
+          }
+          return resolved === undefined ? '??' : eventObjectToString(resolved);
+        },
+      );
       // Resolve typed {v:...} placeholders inside an eval before evaluating the
       // outer expression. JSON literals preserve arrays for indexing and random
       // choice instead of flattening them to comma-delimited text.
@@ -10345,14 +10413,33 @@ export class EventState extends State {
         if (close < 0) break;
         const colon = value.indexOf(':', start);
         const expression = value.slice(colon + 1, close);
-        const typedExpression = expression.replace(
-          /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
-          (_variableMatch, key: string) => {
-            const resolved = variableValue(key);
-            return JSON.stringify(resolved) ?? 'null';
-          },
+        const typedExpression = replaceDataTags(
+          expression
+            .replace(
+              /(['"])\{v:([A-Za-z_][A-Za-z0-9_]*)\}\1/g,
+              (_variableMatch, _quote: string, key: string) => {
+                const resolved = variableValue(key);
+                return JSON.stringify(resolved) ?? 'null';
+              },
+            )
+            .replace(
+              /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+              (_variableMatch, key: string) => {
+                const resolved = variableValue(key);
+                return JSON.stringify(resolved) ?? 'null';
+              },
+            )
+            .replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
+              const resolved = variableValue(key);
+              return resolved === undefined ? match : eventObjectToString(resolved);
+            }),
         );
-        const result = evaluateExpression(typedExpression, expressionContext);
+        const bareName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(typedExpression);
+        const contextName = /^(?:game|unit1?|unit2|target|region|position|target_pos|item)$/
+          .test(typedExpression);
+        const result = bareName && !contextName
+          ? variableValue(typedExpression) ?? ''
+          : evaluateExpression(typedExpression, expressionContext);
         value = value.slice(0, start) +
           eventObjectToString(result) +
           value.slice(close + 1);
@@ -10366,6 +10453,7 @@ export class EventState extends State {
         if (result !== undefined) return eventObjectToString(result);
         return match;
       });
+      value = replaceDataTags(value);
       return value;
     });
 
@@ -11388,10 +11476,12 @@ export class EventState extends State {
           return false;
         }
         if (cmd.type === 'add_item_component') {
-          const value = args[3] !== undefined
+          const rawValue = args[3];
+          const value = rawValue !== undefined &&
+              !['recursive', 'from_python', 'no_warn'].includes(rawValue)
             ? args.includes('from_python')
-              ? parsePyevCommandValue(args[3])
-              : evaluateExpression(args[3], this.buildConditionContext())
+              ? parsePyevCommandValue(rawValue)
+              : evaluateExpression(rawValue, this.buildConditionContext())
             : null;
           game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
         } else if (cmd.type === 'modify_item_component') {
@@ -11431,8 +11521,11 @@ export class EventState extends State {
         }
         for (const skill of targets) {
           if (cmd.type === 'add_skill_component') {
-            const value = args[3] !== undefined
-              ? evaluateExpression(args[3], this.buildConditionContext()) : null;
+            const rawValue = args[3];
+            const value = rawValue !== undefined &&
+                !['stack', 'from_python', 'no_warn'].includes(rawValue)
+              ? evaluateExpression(rawValue, this.buildConditionContext())
+              : null;
             game.actionLog.doAction(new AddObjComponentAction(skill, compNid, value));
           } else if (cmd.type === 'modify_skill_component') {
             if (!skill.components.has(compNid)) {
@@ -11499,12 +11592,22 @@ export class EventState extends State {
           if (unit1) trig.unit1 = unit1;
           if (unit2) trig.unit2 = unit2;
         } else if (args[1]) {
-          trig.localArgs = new Map<string, any>(
-            args[1].split(',').map((pair: string) => {
-              const [k, ...rest] = pair.split('=');
-              return [k.trim(), rest.join('=').trim()] as [string, any];
-            }),
-          );
+          const entries = args[1].split(',').map((part: string) => part.trim());
+          const localArgs = new Map<string, string>();
+          for (let index = 0; index < entries.length;) {
+            const equals = entries[index].indexOf('=');
+            if (equals >= 0) {
+              localArgs.set(
+                entries[index].slice(0, equals).trim(),
+                entries[index].slice(equals + 1).trim(),
+              );
+              index += 1;
+            } else {
+              localArgs.set(entries[index], entries[index + 1] ?? '');
+              index += 2;
+            }
+          }
+          trig.localArgs = localArgs;
         }
         // Match by nid first, then by event name (Python get_by_nid_or_name).
         let targetNid = eventName;
@@ -11515,13 +11618,20 @@ export class EventState extends State {
           );
           if (byName) targetNid = byName.nid;
         }
+        const owner = this.currentEvent;
+        const queue = game.eventManager.eventQueue as GameEvent[];
+        const priorLength = queue.length;
         this.advancePointer();
         const queued = game.eventManager.triggerSpecific(targetNid, trig, true);
-        if (!queued) {
+        if (!queued || !owner || queue.length <= priorLength) {
           console.warn(`trigger_script: no valid event matching "${eventName}"`);
           return false;
         }
-        game.state.change('event');
+        const nestedEvents = queue.splice(priorLength);
+        const ownerIndex = queue.indexOf(owner);
+        if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
+        queue.unshift(...nestedEvents, owner);
+        this.loadNextEvent(game);
         return true;
       }
 
@@ -11992,14 +12102,21 @@ export class EventState extends State {
         const giItemNid = args[1] ?? '';
         const giBannerFlag = !args.includes('no_banner');
         const giItemPrefab = game.db.items.get(giItemNid);
+        const giExistingItem = /^\d+$/.test(giItemNid)
+          ? game.getItem(giItemNid)
+          : null;
         let giBannerText: string | undefined;
-        if (giItemPrefab) {
-          const giItem = createItemTree(giItemPrefab, (nid) => game.db.items.get(nid));
-          game.actionLog.doAction(new RegisterItemTreeAction(
-            game.items,
-            giItem,
-            `event_${giItem.uid}_${giItem.nid}`,
-          ));
+        const giItem = giItemPrefab
+          ? createItemTree(giItemPrefab, (nid) => game.db.items.get(nid))
+          : giExistingItem;
+        if (giItem) {
+          if (giItemPrefab) {
+            game.actionLog.doAction(new RegisterItemTreeAction(
+              game.items,
+              giItem,
+              `event_${giItem.uid}_${giItem.nid}`,
+            ));
+          }
           game.actionLog.doAction(new SetItemDroppableAction(giItem, args.includes('droppable')));
           if (giUnitNid.toLowerCase() === 'convoy') {
             const giParty = game.getParty(args[2] || undefined);
@@ -13585,20 +13702,12 @@ export class EventState extends State {
         // for;varName;Expression — LT accepts Python list/range
         // comprehensions in addition to comma-delimited shorthand.
         const forVar = args[0] ?? '_i';
-        const rawForExpression = rawArgs[1] ?? '';
-        const typedForExpression = rawForExpression.replace(
-          /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
-          (_match, key: string) => {
-            const resolved = game.levelVars?.has?.(key)
-              ? game.levelVars.get(key)
-              : game.gameVars?.get?.(key);
-            return JSON.stringify(resolved) ?? 'null';
-          },
-        );
+        const typedForExpression = args[1] ?? '';
         let forValues: any[] = [];
         if (typedForExpression.trim().startsWith('[') ||
             typedForExpression.includes(' for ') ||
-            typedForExpression.startsWith('range')) {
+            typedForExpression.startsWith('range') ||
+            typedForExpression.includes('(')) {
           const evaluated = evaluateExpression(typedForExpression, this.buildConditionContext());
           if (Array.isArray(evaluated)) forValues = evaluated;
           else if (evaluated && typeof evaluated[Symbol.iterator] === 'function') {

@@ -466,17 +466,14 @@ export function avoid(
     (itemToAvoid ? itemSystem.avoidFormula(unit, itemToAvoid) : undefined) ??
     'AVOID';
 
-  // Avoid uses AS (attack speed), which factors in equipped weapon weight.
+  // Python evaluates the AVOID equation against the unit's raw SPD and then
+  // adds item_system.modify_avoid, which subtracts twice the weight penalty.
+  // Substituting attack speed for SPD instead only matches that when SPD's
+  // coefficient happens to be 2, so formulas like EotF's AVOID_SHACKLED
+  // (SPD + LCK//2) diverged.
   const equippedWeapon = unit.items.find((i) => i.isWeapon()) ?? null;
-  const weaponWeight = equippedWeapon ? equippedWeapon.getWeight() : 0;
-  const spd = unit.getStatValue('SPD');
-  const con = unit.getStatValue('CON');
-  const as = spd - Math.max(0, weaponWeight - con);
-
   const avoidExpr = db.getEquation(eqName) ?? 'SPD * 2 + LCK // 2';
-  // Replace SPD with AS value in the avoid formula
-  const processed = avoidExpr.replace(/\bSPD\b/g, String(as));
-  const baseAvoid = evaluateEquation(processed, unit);
+  const baseAvoid = evaluateEquation(avoidExpr, unit, { db });
 
   // Add skill static modifier
   const itemMod = equippedWeapon
@@ -589,22 +586,13 @@ export function attackSpeed(
     itemSystem.attackSpeedFormula(unit, item) ??
     'ATTACK_SPEED';
 
-  const spd = unit.getStatValue('SPD');
-  const con = unit.getStatValue('CON');
-  const weight = item.getWeight();
-
-  let baseAS: number;
-
-  // Try DB equation first
+  // Python evaluates the ATTACK_SPEED equation on its own and applies weight
+  // through item_system.modify_attack_speed below, so the equation itself is
+  // never rewritten and weight is counted exactly once.
   const asExpr = db.getEquation(formula);
-  if (asExpr) {
-    // Replace 'weight' token if present
-    const processed = asExpr.replace(/\bweight\b/gi, String(weight));
-    baseAS = evaluateEquation(processed, unit, { db, item });
-  } else {
-    // Default: SPD - max(0, weight - CON)
-    baseAS = spd - Math.max(0, weight - con);
-  }
+  const baseAS = asExpr
+    ? evaluateEquation(asExpr, unit, { db, item })
+    : unit.getStatValue('SPD');
 
   // Add item + skill static modifiers
   const itemMod = itemSystem.modifyAttackSpeed(unit, item, game);
@@ -633,17 +621,11 @@ export function defenseSpeed(
     (itemToAvoid ? itemSystem.defenseSpeedFormula(unit, itemToAvoid) : undefined) ??
     'DEFENSE_SPEED';
 
+  // As with attack speed, weight arrives via modify_defense_speed below.
   const speedExpr = db.getEquation(formula);
-  let base: number;
-  if (speedExpr) {
-    const weight = item.getWeight();
-    const processed = speedExpr.replace(/\bweight\b/gi, String(weight));
-    base = evaluateEquation(processed, unit, { db, item });
-  } else {
-    const spd = unit.getStatValue('SPD');
-    const con = unit.getStatValue('CON');
-    base = spd - Math.max(0, item.getWeight() - con);
-  }
+  const base = speedExpr
+    ? evaluateEquation(speedExpr, unit, { db, item })
+    : unit.getStatValue('SPD');
   return base +
     itemSystem.modifyDefenseSpeed(unit, item, game) +
     skillSystem.modifyDefenseSpeed(

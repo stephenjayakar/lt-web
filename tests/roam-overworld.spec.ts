@@ -509,3 +509,50 @@ test.describe('Overworld option menus', () => {
     expect((await getState(page)).currentStateName).toBe('base_main');
   });
 });
+
+test.describe('Roam movement', () => {
+  test('a held direction key walks the roam unit across walkable terrain', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { RoamPlayerMovementComponent } = await import('/src/movement/roam-movement.ts');
+      const unit = [...game.units.values()].find((u: any) => u.position);
+      const [sx, sy] = unit.position;
+
+      // Free-roam polls held keys every frame; a press event alone cannot
+      // express "still walking", so InputManager must expose isKeyHeld.
+      const inputHasHeldQuery = typeof game.input?.isKeyHeld === 'function';
+      game.input.keysDown.add('KeyD');
+      const heldByCode = game.input.isKeyHeld('KeyD');
+      const heldByChar = game.input.isKeyHeld('d');
+      game.input.keysDown.delete('KeyD');
+
+      // Terrain cost must be resolved through the board, which maps the
+      // terrain NID to the mtype the mcost grid is keyed by. Reading it off
+      // the raw NID reports every tile impassable and roaming freezes.
+      const movement = new RoamPlayerMovementComponent(unit, game.board, game.db);
+      movement.setAcceleration(1, 0);
+      for (let i = 0; i < 30; i += 1) movement.update(1 / 60);
+
+      return {
+        inputHasHeldQuery,
+        heldByCode,
+        heldByChar,
+        startX: sx,
+        roamX: movement.roamPosition.x,
+        movedTiles: unit.position[0] - sx,
+        sameRow: unit.position[1] === sy,
+      };
+    });
+
+    expect(result.inputHasHeldQuery).toBe(true);
+    expect(result.heldByCode).toBe(true);
+    expect(result.heldByChar).toBe(true);
+    expect(result.roamX).toBeGreaterThan(result.startX);
+    expect(result.movedTiles).toBeGreaterThan(0);
+    expect(result.sameRow).toBe(true);
+  });
+});

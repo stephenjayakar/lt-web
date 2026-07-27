@@ -10,7 +10,7 @@ focused browser coverage.
 - Project metadata: EotF 2.0.0
 - 159 levels, 2339 events, 1749 items,
   3477 skills, 497 units, and 253 classes
-- 185 item-component NIDs; 111 unverified
+- 185 item-component NIDs; 0 unverified
 - 270 skill-component NIDs; 0 unverified
 - 165/182 project-local Python components
   are referenced by current data
@@ -23,119 +23,7 @@ focused browser coverage.
 
 ## Unverified item components
 
-| NID | Uses | Engine audit status |
-|---|---|---|
-| accessory | 123 | consumed |
-| all_allies_aoe | 5 | hook-and-reference |
-| all_allies_except_self_aoe | 1 | hook-and-reference |
-| all_enemies_aoe | 2 | hook-and-reference |
-| allow_less_than_max_targets | 6 | hook-and-reference |
-| allow_same_target | 1 | hook-and-reference |
-| ally_blast_aoe | 16 | hook-and-reference |
-| blast_aoe | 12 | hook-and-reference |
-| c_uses | 158 | hook-and-reference |
-| can_unlock | 5 | hook-and-reference |
-| crit | 701 | hook-and-reference |
-| damage | 739 | hook-and-reference |
-| draw_back | 2 | reference-only |
-| draw_back_target_restrict | 2 | hook-and-reference |
-| eclipse | 1 | consumed |
-| empty_tile_target_restrict | 71 | hook-and-reference |
-| enemy_blast_aoe | 53 | hook-and-reference |
-| enemy_cleave_aoe | 12 | hook-and-reference |
-| enemy_line_aoe | 20 | hook-and-reference |
-| equation_heal | 3 | hook-and-reference |
-| eval_available | 197 | hook-and-reference |
-| eval_special_range | 37 | hook-and-reference |
-| eval_target_restrict | 10 | hook-only |
-| eval_target_restrict_2 | 138 | hook-and-reference |
-| eval_warning | 1 | consumed |
-| event_after_combat_even_miss | 126 | consumed |
-| event_after_combat_on_hit | 67 | consumed |
-| event_after_use | 8 | consumed |
-| event_on_hit | 218 | consumed |
-| exp | 5 | consumed |
-| gba_steal | 1 | hook-and-reference |
-| global_range | 31 | hook-only |
-| heal | 34 | hook-and-reference |
-| hit | 722 | hook-and-reference |
-| hp_cost | 12 | hook-and-reference |
-| item_icon_flash | 2 | unreferenced |
-| item_tags | 690 | consumed |
-| level_exp | 12 | consumed |
-| lifelink | 5 | consumed |
-| line_aoe | 4 | hook-and-reference |
-| locked | 92 | hook-and-reference |
-| magic | 333 | hook-and-reference |
-| map_cast_anim | 9 | consumed |
-| map_cast_sfx | 12 | consumed |
-| map_hit_add_blend | 157 | consumed |
-| map_hit_sfx | 8 | consumed |
-| max_equation_range | 5 | hook-and-reference |
-| max_range | 1218 | hook-and-reference |
-| menu_after_combat | 1 | hook-and-reference |
-| min_range | 1275 | hook-and-reference |
-| multi_item | 39 | consumed |
-| multi_item_hides_unavailable | 10 | consumed |
-| multi_status_on_equip | 32 | consumed |
-| multi_status_on_hold | 20 | consumed |
-| multi_target | 9 | hook-and-reference |
-| never_use_battle_animation | 3 | unreferenced |
-| no_ai | 32 | consumed |
-| no_attack_after_move | 9 | hook-and-reference |
-| no_equip | 37 | unreferenced |
-| no_map_hp_display | 19 | consumed |
-| permanent_growth_change | 2 | consumed |
-| permanent_stat_change | 22 | hook-and-reference |
-| pivot | 5 | reference-only |
-| pivot_target_restrict | 3 | hook-and-reference |
-| prf_class | 12 | hook-and-reference |
-| prf_tags | 14 | hook-and-reference |
-| prf_unit | 332 | hook-and-reference |
-| promote | 9 | hook-and-reference |
-| refresh | 11 | hook-and-reference |
-| repair | 1 | hook-and-reference |
-| restore | 5 | hook-and-reference |
-| restore_specific | 5 | hook-and-reference |
-| self_status_on_hit | 58 | consumed |
-| sequence_item | 30 | consumed |
-| shove | 7 | reference-only |
-| shove_on_end_combat | 1 | reference-only |
-| shove_target_restrict | 5 | hook-and-reference |
-| siege_weapon | 4 | hook-and-reference |
-| spell | 635 | hook-and-reference |
-| stat_change | 26 | hook-and-reference |
-| status_after_combat_on_hit | 109 | consumed |
-| status_on_equip | 163 | consumed |
-| status_on_hit | 180 | consumed |
-| status_on_hold | 106 | consumed |
-| statuses_on_hit | 36 | consumed |
-| store_unit | 21 | consumed |
-| swap | 7 | reference-only |
-| swap_on_end_combat | 6 | reference-only |
-| target_ally | 390 | hook-and-reference |
-| target_enemy | 785 | hook-and-reference |
-| target_specific_tile | 12 | hook-and-reference |
-| target_tile | 208 | hook-and-reference |
-| target_unit | 72 | hook-and-reference |
-| text_color | 2 | unreferenced |
-| trade | 1 | consumed |
-| transform | 37 | hook-and-reference |
-| traversable_tile_target_restrict | 5 | hook-and-reference |
-| unload_unit | 14 | hook-and-reference |
-| unlock_staff | 2 | hook-and-reference |
-| unstealable | 47 | hook-and-reference |
-| usable | 119 | consumed |
-| usable_in_base | 71 | consumed |
-| uses | 149 | hook-and-reference |
-| uses_options | 307 | hook-and-reference |
-| value | 577 | hook-and-reference |
-| warning | 10 | consumed |
-| weapon | 697 | hook-and-reference |
-| weapon_rank | 352 | hook-and-reference |
-| weapon_type | 674 | hook-and-reference |
-| weight | 687 | hook-and-reference |
-| wexp | 21 | consumed |
+None.
 
 ## Unverified skill components
 
@@ -313,16 +201,16 @@ None.
 
 ## Missing catalog-backed resources
 
-| Category | NID | Expected paths |
-|---|---|---|
-| portrait | BloodyTalon | portraits/BloodyTalon.png |
-| icons16 | TerrariaLuckyHorseshoeSheet | icons16/TerrariaLuckyHorseshoeSheet.png |
-| icons16 | TerrariaLuckyHorseshoeSheet_1 | icons16/TerrariaLuckyHorseshoeSheet_1.png |
-| icons16 | TerrariaLuckyHorseshoeSheet_2 | icons16/TerrariaLuckyHorseshoeSheet_2.png |
-| icons16 | TerrariaLuckyHorseshoeSheet_3 | icons16/TerrariaLuckyHorseshoeSheet_3.png |
-| icons16 | Twin Revolvers | icons16/Twin Revolvers.png |
-| icons16 | Rifle | icons16/Rifle.png |
-| icons16 | type_icons | icons16/type_icons.png |
+| Category | NID | Status | Classification | Expected paths |
+|---|---|---|---|---|
+| portrait | BloodyTalon | intentional-missing | Stale catalog alias; the active unit references the shipped BloodyTalon_Old portrait. | portraits/BloodyTalon.png |
+| icons16 | TerrariaLuckyHorseshoeSheet | intentional-missing | Unused catalog variant; authored items reference the shipped _4 sheet. | icons16/TerrariaLuckyHorseshoeSheet.png |
+| icons16 | TerrariaLuckyHorseshoeSheet_1 | intentional-missing | Unused catalog variant; authored items reference the shipped _4 sheet. | icons16/TerrariaLuckyHorseshoeSheet_1.png |
+| icons16 | TerrariaLuckyHorseshoeSheet_2 | intentional-missing | Unused catalog variant; authored items reference the shipped _4 sheet. | icons16/TerrariaLuckyHorseshoeSheet_2.png |
+| icons16 | TerrariaLuckyHorseshoeSheet_3 | intentional-missing | Unused catalog variant; authored items reference the shipped _4 sheet. | icons16/TerrariaLuckyHorseshoeSheet_3.png |
+| icons16 | Twin Revolvers | intentional-missing | Unused catalog alias; authored items reference the shipped Twin Revolvers_1 sheet. | icons16/Twin Revolvers.png |
+| icons16 | Rifle | intentional-missing | Unused catalog alias; authored items reference the shipped Rifle_1 sheet. | icons16/Rifle.png |
+| icons16 | type_icons | intentional-missing | Unused catalog alias; no gameplay data references it and last_type_icons is shipped. | icons16/type_icons.png |
 
 ## Event commands
 

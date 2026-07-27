@@ -637,6 +637,15 @@ export function canAttackAfterCombat(_unit: UnitObject, item: ItemObject): boole
   return item.hasComponent('attack_after_combat');
 }
 
+/**
+ * Python force_map_anim hook. `get_battle_anim` returns False for an item that
+ * forces the map animation, so combat falls back to map presentation even when
+ * both classes have battle animations available.
+ */
+export function forceMapAnim(_unit: UnitObject, item: ItemObject): boolean {
+  return item.hasComponent('never_use_battle_animation');
+}
+
 /** Python no_attack_after_move hook. */
 export function noAttackAfterMove(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('no_attack_after_move');
@@ -685,6 +694,16 @@ export function inventoryFull(unit: UnitObject, item: ItemObject, db: Database):
 
 export function unstealable(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('locked') || item.hasComponent('unstealable');
+}
+
+/**
+ * Python item_system.tradeable. `Locked` is the only component that defines
+ * the hook, and `trade.can_trade` consults it only when the two items have
+ * different owners -- rearranging a locked item inside its own inventory
+ * stays legal.
+ */
+export function tradeable(_unit: UnitObject, item: ItemObject): boolean {
+  return !item.hasComponent('locked');
 }
 
 /** Whether an item routes through LT's target-inventory Steal flow. */
@@ -991,13 +1010,22 @@ export function splash(
     const allyOnly = !!evaluatedAllyBlast ||
       item.hasComponent('ally_blast_aoe') || item.hasComponent('ally_equation_blast_aoe') ||
       (item.hasComponent('smart_blast_aoe') && item.hasComponent('target_ally'));
-    const result = resolveBlast(
-      unit, item, position, context, radius, enemyOnly ? 'enemy' : allyOnly ? 'ally' : 'all',
-    );
-    return resultOrAlternate(
-      evaluatedAllyBlast ? { mainTarget: null, splash: result.splash } : result,
-      unit, item, position, context,
-    );
+    // Python's AllyBlastAOE overrides BlastAOE.splash outright: it always
+    // returns a null main target and keeps the centre tile's ally in the
+    // splash list, with no spell/non-spell branch. AllyEquationBlastAOE
+    // inherits it, EvalAllyBlastAOE reimplements it, and SmartBlastAOE
+    // delegates to it when the item targets allies -- exactly `allyOnly`.
+    const result = allyOnly
+      ? {
+        mainTarget: null,
+        splash: affectedUnits(
+          positionsInRadius(position, radius, board), unit, context, 'ally',
+        ),
+      }
+      : resolveBlast(
+        unit, item, position, context, radius, enemyOnly ? 'enemy' : 'all',
+      );
+    return resultOrAlternate(result, unit, item, position, context);
   }
 
   if (item.hasComponent('shape_blast_aoe')) {
@@ -1233,7 +1261,7 @@ export function usesConsumedByStrikes(
         ? 0
         : (strike.attackProcs ?? []).reduce((sum, mark) => {
           const value = mark.procSkill.getComponent<number>('armsthrift');
-          return sum + (typeof value === 'number' ? Math.max(0, value) : 0);
+          return sum + (typeof value === 'number' ? Math.min(1, Math.max(0, value)) : 0);
         }, 0);
     return total + persistentRestoration + procRestoration;
   }, 0);
@@ -1466,7 +1494,12 @@ export function targetRestrict(
     .map((position) => context.board.getUnit(position[0], position[1]))
     .filter((target): target is UnitObject => !!target);
 
-  if ((item.hasComponent('eval_damage') || item.hasComponent('eval_extra_damage')) &&
+  // Python `Damage.target_restrict` gates every damage-dealing item on there
+  // being an enemy at the target tile or somewhere in the splash. Items that
+  // also carry `target_enemy` are already constrained, but tile-targeted AOE
+  // weapons rely on this to refuse an area with no enemies in it.
+  if ((item.hasComponent('damage') || item.hasComponent('eval_damage') ||
+      item.hasComponent('eval_extra_damage')) &&
       !affectedUnits.some((target) => checkEnemy(unit, target, context.db))) {
     return false;
   }
@@ -1481,9 +1514,13 @@ export function targetRestrict(
 
   if (item.hasComponent('restore') || item.hasComponent('restore_specific')) {
     const specific = item.getComponent<string>('restore_specific');
-    const canRestore = affectedUnits.some((target) => target.skills.some((skill) =>
-      specific ? skill.nid === specific : skill.hasComponent('negative'),
-    ));
+    // Python `Restore.target_restrict` requires the candidate to be an ally as
+    // well as carrying a restorable status, so a restore staff cannot be
+    // pointed at an afflicted enemy.
+    const canRestore = affectedUnits.some((target) =>
+      checkAlly(unit, target, context.db) && target.skills.some((skill) =>
+        specific ? skill.nid === specific : skill.hasComponent('negative'),
+      ));
     if (!canRestore) return false;
   }
 
@@ -1518,11 +1555,16 @@ export function targetRestrict(
       ? 'permanent_stat_change'
       : null;
   if (permanentStatComponent) {
-    const changes = item.getNumericComponentMap(permanentStatComponent);
-    const canApply = affectedUnits.some((target) => Object.entries(changes).some(([stat, amount]) =>
-      amount <= 0 || target.getStatValue(stat) < target.getStatCap(stat),
-    ));
-    if (!canApply) return false;
+    // Python ignores splash here and permits an empty tile outright: it reads
+    // only the unit standing on def_pos, returning True when there is none.
+    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    if (defender) {
+      const changes = item.getNumericComponentMap(permanentStatComponent);
+      const canApply = Object.entries(changes).some(([stat, amount]) =>
+        amount <= 0 || defender.getStatValue(stat) < defender.getStatCap(stat),
+      );
+      if (!canApply) return false;
+    }
   }
 
   if (item.hasComponent('unlock_staff')) {
@@ -1820,10 +1862,54 @@ export function minimumRange(unit: UnitObject, item: ItemObject, game?: any): nu
   return item.getComponent<number>('min_range') ?? 0;
 }
 
-/** Get the maximum range. */
+/**
+ * Get the maximum range.
+ *
+ * Python resolves `maximum_range` with the UNIQUE policy: the last component
+ * in the item's list that defines the hook wins, defaulting to 0. `max_range`
+ * and the custom `eval_max_range` supply explicit values, `max_equation_range`
+ * resolves an equation against the wielder, and `global_range` defines it as
+ * 99 -- the item has no practical maximum range.
+ *
+ * Callers add skill range modifiers on top of this, matching Python
+ * `item_funcs.get_range`, so every source has to resolve here rather than
+ * being substituted downstream.
+ */
 export function maximumRange(unit: UnitObject, item: ItemObject, game?: any): number {
+  const equationRange = (nid: unknown): number => {
+    const db = game?.db;
+    if (!db || typeof nid !== 'string') return 0;
+    const expression = db.getEquation(nid) ?? nid;
+    return Math.trunc(evaluateEquation(expression, unit, { db, item }));
+  };
+
+  let result = 0;
+  let defined = false;
+  for (const nid of item.components.keys()) {
+    if (nid === 'global_range') {
+      result = 99;
+      defined = true;
+    } else if (nid === 'eval_max_range') {
+      result = evaluatedItemNumber(item.getComponent('eval_max_range'), unit, item, game);
+      defined = true;
+    } else if (nid === 'max_equation_range') {
+      result = equationRange(item.getComponent('max_equation_range'));
+      defined = true;
+    } else if (nid === 'max_range') {
+      result = Number(item.getComponent<number>('max_range') ?? 0);
+      defined = true;
+    }
+  }
+  if (defined) return result;
+
+  // An item override can supply a component the item's own list does not
+  // carry, in which case there is no authored order to honour.
+  if (item.hasComponent('global_range')) return 99;
   if (item.hasComponent('eval_max_range')) {
     return evaluatedItemNumber(item.getComponent('eval_max_range'), unit, item, game);
+  }
+  if (item.hasComponent('max_equation_range')) {
+    return equationRange(item.getComponent('max_equation_range'));
   }
   return item.getComponent<number>('max_range') ?? 0;
 }
@@ -1848,9 +1934,19 @@ export function isWeapon(_unit: UnitObject, item: ItemObject): boolean {
   return item.hasComponent('weapon');
 }
 
-/** Is this a spell/magic weapon? */
+/**
+ * Python item_system.is_spell, used by the AOE splash branches to decide
+ * whether the centre tile is a main target or just more splash.
+ *
+ * It resolves ALL_DEFAULT_FALSE and only `Spell` (True) and `SiegeWeapon`
+ * (False) define it. The `magic` component supplies damage/resist formulas
+ * rather than spell-ness, so a magic *weapon* still takes the regular branch.
+ * `ItemObject.isSpell` stays broader: it drives menu grouping and AI staff
+ * detection, where lt-web treats magic items as spells.
+ */
 export function isSpell(_unit: UnitObject, item: ItemObject): boolean {
-  return item.hasComponent('spell') || item.hasComponent('magic');
+  if (item.hasComponent('siege_weapon')) return false;
+  return item.hasComponent('spell');
 }
 
 /** Can this item counter? */
@@ -2014,14 +2110,41 @@ export function modifyAccuracy(_unit: UnitObject, item: ItemObject): number {
 }
 
 /** Bonus avoid from item components. */
+/**
+ * Python `equations.parser.constitution(unit)` -- the CONSTITUTION equation,
+ * which projects may define as something other than the raw CON stat.
+ */
+function constitution(unit: UnitObject, game?: any): number {
+  const db = game?.db ?? itemSystemGameRef?.()?.db;
+  const expression = db?.getEquation?.('CONSTITUTION');
+  if (expression) return Math.trunc(evaluateEquation(expression, unit, { db }));
+  return unit.getStatValue('CON');
+}
+
+/**
+ * Python `Weight` -- how far the item's weight exceeds the wielder's
+ * constitution, never below zero. Attack and defense speed subtract this once;
+ * avoid subtracts it twice.
+ *
+ * Lex Talionis applies weight through the modify_* hooks rather than inside
+ * the speed equations, so `ATTACK_SPEED = SPD` still yields a weight penalty.
+ */
+function weightPenalty(unit: UnitObject, item: ItemObject, game?: any): number {
+  let weight = 0;
+  const authored = item.getComponent<number>('weight');
+  if (typeof authored === 'number') weight += authored;
+  if (item.hasComponent('eval_weight')) {
+    weight += evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
+  }
+  if (weight === 0) return 0;
+  return Math.max(0, weight - constitution(unit, game));
+}
+
 export function modifyAvoid(unit: UnitObject, item: ItemObject, game?: any): number {
   let total = 0;
   const mod = item.getComponent<number>('modify_avoid');
   if (typeof mod === 'number') total += mod;
-  if (item.hasComponent('eval_weight')) {
-    const weight = evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
-    total -= 2 * Math.max(0, weight - unit.getStatValue('CON'));
-  }
+  total -= 2 * weightPenalty(unit, item, game);
   return total;
 }
 
@@ -2046,18 +2169,17 @@ export function modifyAttackSpeed(unit: UnitObject, item: ItemObject, game?: any
   let total = 0;
   const mod = item.getComponent<number>('modify_attack_speed');
   if (typeof mod === 'number') total += mod;
-  if (item.hasComponent('eval_weight')) {
-    const weight = evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
-    total -= Math.max(0, weight - unit.getStatValue('CON'));
-  }
+  total -= weightPenalty(unit, item, game);
   return total;
 }
 
-/** Defense-speed counterpart of EotF's evaluated weight hook. */
+/** Defense-speed counterpart, covering authored and evaluated weight. */
 export function modifyDefenseSpeed(unit: UnitObject, item: ItemObject, game?: any): number {
-  if (!item.hasComponent('eval_weight')) return 0;
-  const weight = evaluatedItemNumber(item.getComponent('eval_weight'), unit, item, game);
-  return -Math.max(0, weight - unit.getStatValue('CON'));
+  let total = 0;
+  const mod = item.getComponent<number>('modify_defense_speed');
+  if (typeof mod === 'number') total += mod;
+  total -= weightPenalty(unit, item, game);
+  return total;
 }
 
 // ============================================================

@@ -741,7 +741,7 @@ test.describe('Event command batch 3c (roaming + trigger_script)', () => {
     expect(vars.after).toBe('yes');
   });
 
-  test('trigger_script_with_args passes parsed local args to the sub-event', async ({ page }) => {
+  test('trigger_script_with_args accepts Python key,value pairs and resumes the parent', async ({ page }) => {
     await boot(page);
     await page.evaluate(() => {
       const g = (window as any).__gameRef;
@@ -749,15 +749,48 @@ test.describe('Event command batch 3c (roaming + trigger_script)', () => {
         name: 'SubArgs', nid: 'SubArgs', trigger: 'SubArgs',
         level_nid: g.currentLevel?.nid ?? null,
         condition: 'True', only_once: false, priority: 0,
-        _source: ['game_var;got_arg;{e:reward}'],
+        _source: [
+          'lvar;derived_arg;{e:category}',
+          'game_var;got_arg;{e:reward}',
+        ],
       });
     });
     await runEvent(page, 'TestTriggerArgs', [
-      'trigger_script_with_args;SubArgs;reward=Iron_Sword',
+      'trigger_script_with_args;SubArgs;reward,Iron_Sword,category=weapon',
+      'game_var;parent_arg;{v:derived_arg}',
     ]);
     await stepFrames(page, 20);
-    const got = await page.evaluate(() => (window as any).__gameRef.gameVars.get('got_arg'));
-    expect(got).toBe('Iron_Sword');
+    const got = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        reward: game.gameVars.get('got_arg'),
+        derived: game.levelVars.get('derived_arg'),
+        parent: game.gameVars.get('parent_arg'),
+      };
+    });
+    expect(got).toEqual({ reward: 'Iron_Sword', parent: 'weapon', derived: 'weapon' });
+  });
+
+  test('data substitutions preserve Python list literals for expression commands', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const harnessWindow = window as Window & {
+        __gameRef: { db: { rawData: Map<string, unknown> } };
+      };
+      harnessWindow.__gameRef.db.rawData.set('Probe_Data', {
+        Choices: "['Iron_Sword', 'Iron_Lance']",
+      });
+    });
+    await runEvent(page, 'TestDataSubstitution', [
+      'lvar;data_choices;{d:Probe_Data.Choices}',
+    ]);
+    const choices = await page.evaluate(() => {
+      const harnessWindow = window as Window & {
+        __gameRef: { levelVars: Map<string, unknown> };
+      };
+      return harnessWindow.__gameRef.levelVars.get('data_choices');
+    });
+    expect(choices).toEqual(['Iron_Sword', 'Iron_Lance']);
   });
 });
 

@@ -924,25 +924,25 @@
         "nid": "accessory",
         "uses": 123,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_allies_aoe",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_allies_except_self_aoe",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_enemies_aoe",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "all_units_aoe",
@@ -954,19 +954,19 @@
         "nid": "allow_less_than_max_targets",
         "uses": 6,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "allow_same_target",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ally_blast_aoe",
         "uses": 16,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "alternate_accuracy_formula",
@@ -1014,7 +1014,7 @@
         "nid": "blast_aoe",
         "uses": 12,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "brave",
@@ -1038,13 +1038,13 @@
         "nid": "c_uses",
         "uses": 158,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "can_unlock",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "cannot_be_countered",
@@ -1068,7 +1068,7 @@
         "nid": "crit",
         "uses": 701,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "custom_triangle_multiplier",
@@ -1080,7 +1080,7 @@
         "nid": "damage",
         "uses": 739,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "damage_any",
@@ -1098,7 +1098,7 @@
         "nid": "draw_back",
         "uses": 2,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "draw_back_on_end_combat_initiate",
@@ -1110,13 +1110,13 @@
         "nid": "draw_back_target_restrict",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eclipse",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "effective",
@@ -1140,7 +1140,7 @@
         "nid": "empty_tile_target_restrict",
         "uses": 71,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_big_cleave_aoe",
@@ -1152,25 +1152,25 @@
         "nid": "enemy_blast_aoe",
         "uses": 53,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_cleave_aoe",
         "uses": 12,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "enemy_line_aoe",
         "uses": 20,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "equation_heal",
         "uses": 3,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_ally_blast_aoe",
@@ -1182,7 +1182,7 @@
         "nid": "eval_available",
         "uses": 197,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_damage",
@@ -1229,7 +1229,7 @@
       {
         "nid": "eval_hp_cost",
         "uses": 4,
-        "structuralStatus": "hook-and-reference",
+        "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
       {
@@ -1260,7 +1260,7 @@
         "nid": "eval_special_range",
         "uses": 37,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_stack_cost",
@@ -1271,20 +1271,20 @@
       {
         "nid": "eval_target_restrict",
         "uses": 10,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_target_restrict_2",
         "uses": 138,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_warning",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "eval_weight",
@@ -1296,19 +1296,19 @@
         "nid": "event_after_combat_even_miss",
         "uses": 126,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_on_hit",
         "uses": 67,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_after_use",
         "uses": 8,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "event_before_combat",
@@ -1332,13 +1332,13 @@
         "nid": "event_on_hit",
         "uses": 218,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "exp",
         "uses": 5,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "galeforce_on_crit",
@@ -1350,7 +1350,7 @@
         "nid": "gba_steal",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "gimme_that",
@@ -1361,14 +1361,14 @@
       {
         "nid": "global_range",
         "uses": 31,
-        "structuralStatus": "hook-only",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "heal",
         "uses": 34,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "heal_no_target_restrict",
@@ -1380,13 +1380,13 @@
         "nid": "hit",
         "uses": 722,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "hp_cost",
         "uses": 12,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "ignore_weapon_advantage",
@@ -1397,44 +1397,44 @@
       {
         "nid": "item_icon_flash",
         "uses": 2,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "item_tags",
         "uses": 690,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "level_exp",
         "uses": 12,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "lifelink",
         "uses": 5,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "line_aoe",
         "uses": 4,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "locked",
         "uses": 92,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "magic",
         "uses": 333,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "magic_at_range",
@@ -1452,97 +1452,97 @@
         "nid": "map_cast_anim",
         "uses": 9,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_cast_sfx",
         "uses": 12,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_hit_add_blend",
         "uses": 157,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "map_hit_sfx",
         "uses": 8,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "max_equation_range",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "max_range",
         "uses": 1218,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "menu_after_combat",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "min_range",
         "uses": 1275,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_item",
         "uses": 39,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_item_hides_unavailable",
         "uses": 10,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_status_on_equip",
         "uses": 32,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_status_on_hold",
         "uses": 20,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "multi_target",
         "uses": 9,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "never_use_battle_animation",
         "uses": 3,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_ai",
         "uses": 32,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_attack_after_move",
         "uses": 9,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_double",
@@ -1553,26 +1553,26 @@
       {
         "nid": "no_equip",
         "uses": 37,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "no_map_hp_display",
         "uses": 19,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "permanent_growth_change",
         "uses": 2,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "permanent_stat_change",
         "uses": 22,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "permanent_stat_change_early",
@@ -1584,7 +1584,7 @@
         "nid": "pivot",
         "uses": 5,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "pivot_always_on_end_combat_initiate",
@@ -1602,31 +1602,31 @@
         "nid": "pivot_target_restrict",
         "uses": 3,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "prf_class",
         "uses": 12,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "prf_tags",
         "uses": 14,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "prf_unit",
         "uses": 332,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "promote",
         "uses": 9,
-        "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "structuralStatus": "consumed",
+        "semanticStatus": "verified"
       },
       {
         "nid": "reaver",
@@ -1638,7 +1638,7 @@
         "nid": "refresh",
         "uses": 11,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "refresh_no_target_restrict",
@@ -1656,13 +1656,13 @@
         "nid": "repair",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "restore",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "restore_after_combat",
@@ -1680,7 +1680,7 @@
         "nid": "restore_specific",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "self_remove_skill",
@@ -1704,7 +1704,7 @@
         "nid": "self_status_on_hit",
         "uses": 58,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "self_unload_unit",
@@ -1716,13 +1716,13 @@
         "nid": "sequence_item",
         "uses": 30,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove",
         "uses": 7,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_flex_stops",
@@ -1746,7 +1746,7 @@
         "nid": "shove_on_end_combat",
         "uses": 1,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "shove_on_end_combat_initiate",
@@ -1758,13 +1758,13 @@
         "nid": "shove_target_restrict",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "siege_weapon",
         "uses": 4,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "solomon_heal",
@@ -1776,7 +1776,7 @@
         "nid": "spell",
         "uses": 635,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "stack_cost",
@@ -1806,13 +1806,13 @@
         "nid": "stat_change",
         "uses": 26,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_after_combat_on_hit",
         "uses": 109,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_after_combat_on_hit_foe_only",
@@ -1824,19 +1824,19 @@
         "nid": "status_on_equip",
         "uses": 163,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_on_hit",
         "uses": 180,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "status_on_hold",
         "uses": 106,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "statuses_after_combat_on_hit",
@@ -1848,7 +1848,7 @@
         "nid": "statuses_on_hit",
         "uses": 36,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "steal_con",
@@ -1860,43 +1860,43 @@
         "nid": "store_unit",
         "uses": 21,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "swap",
         "uses": 7,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "swap_on_end_combat",
         "uses": 6,
         "structuralStatus": "reference-only",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_ally",
         "uses": 390,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_enemy",
         "uses": 785,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_specific_tile",
         "uses": 12,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_tile",
         "uses": 208,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "target_tile_unless_ally",
@@ -1908,13 +1908,13 @@
         "nid": "target_unit",
         "uses": 72,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "text_color",
         "uses": 2,
-        "structuralStatus": "unreferenced",
-        "semanticStatus": "unverified"
+        "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
       },
       {
         "nid": "thief_staff",
@@ -1926,91 +1926,91 @@
         "nid": "trade",
         "uses": 1,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "transform",
         "uses": 37,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "traversable_tile_target_restrict",
         "uses": 5,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "unload_unit",
         "uses": 14,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "unlock_staff",
         "uses": 2,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "unstealable",
         "uses": 47,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "usable",
         "uses": 119,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "usable_in_base",
         "uses": 71,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "uses",
         "uses": 149,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "uses_options",
         "uses": 307,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "value",
         "uses": 577,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "warning",
         "uses": 10,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon",
         "uses": 697,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon_rank",
         "uses": 352,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon_type",
         "uses": 674,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "weapon_type_exempt",
@@ -2022,13 +2022,13 @@
         "nid": "weight",
         "uses": 687,
         "structuralStatus": "hook-and-reference",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       },
       {
         "nid": "wexp",
         "uses": 21,
         "structuralStatus": "consumed",
-        "semanticStatus": "unverified"
+        "semanticStatus": "verified"
       }
     ],
     "skills": [
@@ -11540,7 +11540,9 @@
         "found": false,
         "paths": [
           "portraits/BloodyTalon.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Stale catalog alias; the active unit references the shipped BloodyTalon_Old portrait."
       },
       {
         "category": "icons16",
@@ -11548,7 +11550,9 @@
         "found": false,
         "paths": [
           "icons16/TerrariaLuckyHorseshoeSheet.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog variant; authored items reference the shipped _4 sheet."
       },
       {
         "category": "icons16",
@@ -11556,7 +11560,9 @@
         "found": false,
         "paths": [
           "icons16/TerrariaLuckyHorseshoeSheet_1.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog variant; authored items reference the shipped _4 sheet."
       },
       {
         "category": "icons16",
@@ -11564,7 +11570,9 @@
         "found": false,
         "paths": [
           "icons16/TerrariaLuckyHorseshoeSheet_2.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog variant; authored items reference the shipped _4 sheet."
       },
       {
         "category": "icons16",
@@ -11572,7 +11580,9 @@
         "found": false,
         "paths": [
           "icons16/TerrariaLuckyHorseshoeSheet_3.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog variant; authored items reference the shipped _4 sheet."
       },
       {
         "category": "icons16",
@@ -11580,7 +11590,9 @@
         "found": false,
         "paths": [
           "icons16/Twin Revolvers.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog alias; authored items reference the shipped Twin Revolvers_1 sheet."
       },
       {
         "category": "icons16",
@@ -11588,7 +11600,9 @@
         "found": false,
         "paths": [
           "icons16/Rifle.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog alias; authored items reference the shipped Rifle_1 sheet."
       },
       {
         "category": "icons16",
@@ -11596,9 +11610,12 @@
         "found": false,
         "paths": [
           "icons16/type_icons.png"
-        ]
+        ],
+        "status": "intentional-missing",
+        "reason": "Unused catalog alias; no gameplay data references it and last_type_icons is shipped."
       }
     ],
+    "unclassifiedMissing": [],
     "categories": [
       {
         "nid": "icons16",

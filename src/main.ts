@@ -23,6 +23,7 @@ import {
   REKKA_SKILL_COMPONENTS,
 } from './engine/rekka-component-support';
 import {
+  assertEotfComponentCounts,
   EOTF_ITEM_COMPONENTS,
   EOTF_SKILL_COMPONENTS,
 } from './engine/eotf-component-support';
@@ -385,6 +386,7 @@ function logUnknownComponents(db: Database, projectPath: string): void {
         if (!EOTF_SKILL_COMPONENTS.has(nid)) missingSkills.add(nid);
       }
     }
+    if (isStrictMode()) assertEotfComponentCounts();
     if (isStrictMode()) {
       for (const nid of missingItems) {
         reportUnimplemented('item-component', nid, 'Embrace of the Fog');
@@ -517,7 +519,17 @@ async function main(): Promise<void> {
   startupStatus?.update('Preparing game data…');
   drawLoadingScreen(ctx, 'Loading...');
   const baseUrl = `/game-data/${projectPath}`;
-  const useBundle = params.get('bundle') !== 'false'; // opt-out with ?bundle=false
+  // A packaged deployment wants the single-zip bundle: it turns thousands of
+  // asset requests into one. A dev server does not — Vite already serves the
+  // project straight from disk, and holding the decompressed archive costs
+  // hundreds of megabytes of heap (EotF measured 273MB with the bundle versus
+  // 73MB without), which shows up as GC pauses while playing.
+  //
+  // So default to the bundle only in production builds. Either mode can be
+  // forced with ?bundle=true / ?bundle=false.
+  const bundleParam = params.get('bundle');
+  const useBundle = bundleParam === 'true' ||
+    (bundleParam !== 'false' && import.meta.env.PROD);
 
   // In harness mode, force zoom so viewport matches GBA resolution (240x160).
   // With tilesAcross=10 and Playwright viewport 480x320:

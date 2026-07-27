@@ -656,9 +656,18 @@ export class Database {
    *    (some serialization versions may differ).
    */
   private async loadTilesets(resources: ResourceManager): Promise<void> {
-    const raw = await resources.tryLoadJson<TilesetData[] | TilesetData>(
+    // Python `_load_manifest_or_prefabs` reads tilesets/tilesets.json when it
+    // exists and otherwise globs every .json in the directory, so projects
+    // saved in the loose-prefab form still load. A browser cannot list a
+    // directory, so probe the alternate manifest name EotF ships instead.
+    let raw = await resources.tryLoadJson<TilesetData[] | TilesetData>(
       'resources/tilesets/tilesets.json',
     );
+    if (!raw) {
+      raw = await resources.tryLoadJson<TilesetData[] | TilesetData>(
+        'resources/tilesets/tileset.json',
+      );
+    }
     if (!raw) return;
 
     // Normalise: ensure we always work with an array

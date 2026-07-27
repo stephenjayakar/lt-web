@@ -67,6 +67,7 @@ export class GameQueryEngine {
       ['u',                           'u',                           this.u],
       ['v',                           'v',                           this.v],
       ['getItem',                     'get_item',                    this.getItem],
+      ['findItem',                    'find_item',                   this.findItem],
       ['hasItem',                     'has_item',                    this.hasItem],
       ['getSubitem',                  'get_subitem',                 this.getSubitem],
       ['getSkill',                    'get_skill',                   this.getSkill],
@@ -74,6 +75,8 @@ export class GameQueryEngine {
       ['getKlass',                    'get_klass',                   this.getKlass],
       ['getClass',                    'get_class',                   this.getClass],
       ['getClosestAllies',            'get_closest_allies',          this.getClosestAllies],
+      ['getClosestUnits',             'get_closest_units',           this.getClosestUnits],
+      ['getClosestEnemies',           'get_closest_enemies',         this.getClosestEnemies],
       ['getUnitsWithinDistance',       'get_units_within_distance',   this.getUnitsWithinDistance],
       ['getAlliesWithinDistance',       'get_allies_within_distance',  this.getAlliesWithinDistance],
       ['getUnitsInArea',              'get_units_in_area',           this.getUnitsInArea],
@@ -153,22 +156,37 @@ export class GameQueryEngine {
    * @param itemNidOrUid  The item NID to search for. If it's a numeric string,
    *                      also tries to look up by key in game.items.
    */
-  getItem(unit: any, itemNidOrUid: string): ItemObject | null {
+  getItem(unit: any, itemNidOrUid: string | unknown[]): ItemObject | null {
     const resolved = this._resolveUnit(unit);
     if (!resolved) return null;
+    const requested = Array.isArray(itemNidOrUid)
+      ? itemNidOrUid[0]
+      : itemNidOrUid;
 
-    // Search the unit's inventory by nid
     for (const item of resolved.items) {
-      if (item.nid === itemNidOrUid) return item;
+      if (item.nid === requested || item.uid === Number(requested)) return item;
     }
 
-    // If the identifier looks numeric, try the global items map
-    if (/^\d+$/.test(itemNidOrUid)) {
+    if (/^\d+$/.test(String(requested))) {
       const game = getGame();
-      const globalItem = game.items?.get(itemNidOrUid);
-      if (globalItem) return globalItem;
+      return game.getItem?.(requested as string) ??
+        [...new Set<ItemObject>(game.items?.values?.() ?? [])]
+          .find((item) => item.uid === Number(requested)) ??
+        null;
     }
 
+    return null;
+  }
+  /** Find a runtime item by NID, optionally constrained by owner or party. */
+  findItem(itemNid: string, ownerOrParty?: string): ItemObject | null {
+    const game = getGame();
+    for (const item of new Set(game.items?.values?.() ?? [])) {
+      const candidate = item as ItemObject;
+      if (candidate.nid !== itemNid) continue;
+      if (!ownerOrParty) return candidate;
+      const owner = candidate.owner;
+      if (owner?.nid === ownerOrParty || owner?.party === ownerOrParty) return candidate;
+    }
     return null;
   }
 
@@ -262,6 +280,29 @@ export class GameQueryEngine {
 
     pairs.sort((a, b) => a[1] - b[1]);
     return pairs.slice(0, num);
+  }
+
+  /** Find the closest on-field units, returned as [unit, distance] pairs. */
+  getClosestUnits(position: any, num: number = 1): [UnitObject, number][] {
+    const pos = this._resolvePos(position);
+    if (!pos) return [];
+
+    const game = getGame();
+    const pairs: [UnitObject, number][] = [];
+    for (const unit of game.units.values()) {
+      const candidate = unit as UnitObject;
+      if (!candidate.position || candidate.isDead()) continue;
+      pairs.push([candidate, this._manhattanDist(pos, candidate.position)]);
+    }
+    pairs.sort((left, right) => left[1] - right[1]);
+    return pairs.slice(0, num);
+  }
+
+  /** Find the closest on-field enemy-team units. */
+  getClosestEnemies(position: any, num: number = 1): [UnitObject, number][] {
+    return this.getClosestUnits(position, Number.MAX_SAFE_INTEGER)
+      .filter(([unit]) => unit.team === 'enemy' || unit.team === 'enemy2')
+      .slice(0, num);
   }
 
   /**
@@ -809,6 +850,9 @@ export class GameQueryEngine {
   private _resolveUnit(unitOrNid: any): UnitObject | null {
     if (!unitOrNid) return null;
     if (typeof unitOrNid === 'string') return this.u(unitOrNid);
+    if (unitOrNid._raw?.nid !== undefined) {
+      return unitOrNid._raw as UnitObject;
+    }
     if (unitOrNid.nid !== undefined) return unitOrNid as UnitObject;
     return null;
   }

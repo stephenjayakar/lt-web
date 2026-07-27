@@ -2612,11 +2612,14 @@ test.describe('Rekka project-local skill components', () => {
       attacker.position = [0, 0];
       defender.position = [6, 0];
       defender.skills = [new SkillObject(game.db.skills.get('Savant'))];
+      const oldDefenseWeaponType = defenseItem.getComponent('weapon_type');
+      defenseItem.components.set('weapon_type', 'Staff');
       const range = {
         base: defenseItem.getMaxRange(),
         modified: modifiedMaximumRange(defender, defenseItem, game),
         countersAtSix: canCounterattack(attacker, attackItem, defender, game.db, game),
       };
+      defenseItem.components.set('weapon_type', oldDefenseWeaponType);
       attacker.position = oldAttackerPosition;
       defender.position = oldDefenderPosition;
       attacker.previousPosition = [7, 8];

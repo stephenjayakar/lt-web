@@ -265,7 +265,7 @@ export function skillConditionActive(
   unit: UnitObject,
   context: SkillConditionContext = {},
 ): boolean {
-  const parent = skill.data.get('multiSkillSource');
+  const parent = skill.data?.get?.('multiSkillSource');
   if (parent instanceof SkillObject) {
     const parentArgs = new Map(context.localArgs ?? []);
     parentArgs.set('skill', parent);
@@ -577,11 +577,17 @@ export function unitSpriteTint(
 ): UnitSpriteTint | null {
   let result: UnitSpriteTint | null = null;
   for (const skill of unit.skills) {
-    if (!isSkillActive(skill, unit, game)) continue;
+    // Test for the component before testing whether the skill is active.
+    // `isSkillActive` evaluates the skill's condition expression, and this
+    // runs for every visible unit on every drawn frame — checking activity
+    // first meant a 56-unit map evaluated thousands of conditions per frame
+    // to decide a tint that almost no skill defines.
     const staticColor = skill.getComponent<[number, number, number]>('unit_tint');
-    if (staticColor) result = { color: staticColor, alpha: 1 };
     const flickerColor =
       skill.getComponent<[number, number, number]>('unit_flickering_tint');
+    if (!staticColor && !flickerColor) continue;
+    if (!isSkillActive(skill, unit, game)) continue;
+    if (staticColor) result = { color: staticColor, alpha: 1 };
     if (flickerColor) {
       // Python's component declares period=900 ms and width=300 ms.
       const phase = ((timeMs % 900) + 900) % 900;
@@ -1330,24 +1336,24 @@ function evaluatedSkillActive(
   context: EvaluatedSkillContext,
   localArgs: Map<string, unknown>,
 ): boolean {
-  const parent = skill.data.get('multiSkillSource');
+  const parent = skill.data?.get?.('multiSkillSource');
   if (parent instanceof SkillObject) {
     const parentArgs = new Map(localArgs);
     parentArgs.set('skill', parent);
     if (!evaluatedSkillActive(parent, unit, context, parentArgs)) return false;
   }
   if (skill.hasComponent('build_charge')) {
-    const charge = Number(skill.data.get('charge') ?? 0);
+    const charge = Number(skill.data?.get?.('charge') ?? 0);
     const maximum = Number(
-      skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0,
+      skill.data?.get?.('total_charge') ?? skill.getComponent('build_charge') ?? 0,
     );
     if (charge < maximum) return false;
   }
   if (hasDrainingCharge(skill) &&
-      Number(skill.data.get('charge') ?? 0) <= 0) return false;
+      Number(skill.data?.get?.('charge') ?? 0) <= 0) return false;
   const combatCondition = skill.getComponent<string>('combat_condition');
   if (combatCondition) {
-    const snapshot = skill.data.get('_combat_condition');
+    const snapshot = skill.data?.get?.('_combat_condition');
     if (typeof snapshot !== 'boolean' && !context.target) return false;
     const enabled = typeof snapshot === 'boolean' ? snapshot : evaluateCondition(
       combatCondition,
@@ -1973,10 +1979,10 @@ export function armsthriftRestoration(unit: UnitObject, item: ItemObject): numbe
   let restored = 0;
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>('armsthrift');
-    // Python queues the ordinary use loss before Armsthrift's SetObjData.
-    // Its authored `value - 1` assignment therefore cancels `value` points
-    // from that already-queued loss in the web's aggregate durability model.
-    if (typeof value === 'number') restored += Math.max(0, value);
+    // Python writes `min(curr_uses + value - 1, max_uses)` after each
+    // ordinary one-point use loss. At the max-uses boundary any positive
+    // value cancels that strike's loss, but cannot restore more than one.
+    if (typeof value === 'number') restored += Math.min(1, Math.max(0, value));
   }
   return restored;
 }

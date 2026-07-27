@@ -410,6 +410,10 @@ export class UnitObject {
     // Python: item_system.equippable(unit, item) and item_funcs.available(unit, item).
     // Only weapons and accessories are equippable; consumables/spells-as-items are not.
     if (!item.isWeapon() && !this.isAccessory(item)) return false;
+    // `equippable` resolves ALL_DEFAULT_FALSE, so a component returning False
+    // wins over the weapon/accessory components that return True. `no_equip`
+    // is the one such veto EotF uses.
+    if (item.hasComponent('no_equip')) return false;
     const game = gameForUnits();
     const db = game?.db;
     if (!db) return true;

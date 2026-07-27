@@ -686,7 +686,7 @@
       {
         "nid": "draw_back",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -752,19 +752,19 @@
       {
         "nid": "event_after_combat_even_miss",
         "uses": 48,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "event_after_combat_on_hit",
         "uses": 5,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "event_on_hit",
         "uses": 33,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -902,7 +902,7 @@
       {
         "nid": "no_ai",
         "uses": 5,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -932,7 +932,7 @@
       {
         "nid": "pivot",
         "uses": 2,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -992,7 +992,7 @@
       {
         "nid": "self_status_on_hit",
         "uses": 23,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -1222,13 +1222,13 @@
       {
         "nid": "additional_accessories",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
         "nid": "all_brave",
         "uses": 9,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1330,7 +1330,7 @@
       {
         "nid": "change_ai",
         "uses": 3,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1480,7 +1480,7 @@
       {
         "nid": "dynamic_damage_multiplier",
         "uses": 7,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1498,7 +1498,7 @@
       {
         "nid": "end_time",
         "uses": 4,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -1612,13 +1612,13 @@
       {
         "nid": "gain_skill_after_take_damage",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
         "nid": "gain_skill_after_take_miss",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -1654,7 +1654,7 @@
       {
         "nid": "grounded",
         "uses": 3,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1672,7 +1672,7 @@
       {
         "nid": "has_tags",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1714,7 +1714,7 @@
       {
         "nid": "immune_status",
         "uses": 4,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -1738,13 +1738,13 @@
       {
         "nid": "locktouch",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_end_chapter",
         "uses": 45,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -1828,7 +1828,7 @@
       {
         "nid": "pass",
         "uses": 1,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1858,7 +1858,7 @@
       {
         "nid": "reflect_status",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -1912,19 +1912,19 @@
       {
         "nid": "stat_change_expression",
         "uses": 2,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "stat_multiplier",
         "uses": 34,
-        "structuralStatus": "hook-only",
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "time",
         "uses": 31,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -1990,7 +1990,7 @@
       {
         "nid": "witch_warp_expression",
         "uses": 5,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       }
     ],

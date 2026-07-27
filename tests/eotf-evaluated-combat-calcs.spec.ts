@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { prefabsWithComponent, skills } from './helpers/project-data';
 
 async function bootEotf(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=eotf.ltproj&level=X&clean=true&bundle=false');
@@ -26,16 +27,14 @@ const COMPONENTS = [
 ];
 
 test.describe('Embrace of the Fog evaluated combat calculations', () => {
-  test('count-locks all 647 authored component uses', async ({ page }) => {
-    await bootEotf(page);
-    const counts = await page.evaluate((componentNids) => {
-      const game = (window as any).__gameRef;
-      return Object.fromEntries(componentNids.map((componentNid) => [
-        componentNid,
-        [...game.db.skills.values()].filter((skill: any) =>
-          skill.components.some(([nid]: [string, unknown]) => nid === componentNid)).length,
-      ]));
-    }, COMPONENTS);
+  // Authored-catalog counts, so this reads the project data directly rather
+  // than booting it in a browser.
+  test('count-locks all 647 authored component uses', () => {
+    const authored = skills();
+    const counts = Object.fromEntries(COMPONENTS.map((componentNid) => [
+      componentNid,
+      new Set(prefabsWithComponent(authored, componentNid)).size,
+    ]));
 
     expect(counts).toEqual({
       stat_change_expression: 84,
