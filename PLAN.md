@@ -89,6 +89,13 @@ Verified baseline:
   literal check only tested that an expression started and ended with a quote,
   so a concatenation had its outer quotes stripped and EotF built persistent
   record NIDs containing raw `' + '` text;
+- `choice` follows the Python `Nid;Title;Choices` signature. lt-web read the
+  title as the option list, ignored the `expression` and `backable` flags and
+  `nid|label` display text, and never published the selection, so authored
+  branches reading `{v:<nid>}` could not match. The hub menu rendered empty;
+- `textbox` is implemented rather than stubbed, and `remove_table` clears
+  textboxes as well as tables (LT has no separate removal command). EotF uses
+  109 textboxes for the currency counters beside the summoning pool and shops;
 - unit-dense maps hold frame rate. `unitSpriteTint` evaluated every skill's
   condition for every visible unit on every drawn frame before checking
   whether the skill defined a tint at all — no authored skill uses `unit_tint`
