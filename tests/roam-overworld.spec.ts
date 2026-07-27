@@ -117,6 +117,55 @@ test.describe('Roam talk interaction', () => {
     expect(result.talkedTo).toBe(setup.nearNid);
     expect(result.talkedTo).not.toBe(setup.farNid);
   });
+
+  test('roam triggers reach level-scoped events, not just global ones', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    // Real projects scope their events to a level; EotF's authored talks all
+    // carry level_nid. findMatchingEvents drops every level-scoped event when
+    // the trigger has no levelNid, so a roam trigger that omits it silently
+    // matches nothing — while a global (level_nid: '') fixture still passes.
+    const setup = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const eirika = game.units.get('Eirika');
+      const near = [...game.units.values()].find((u: any) => u !== eirika && u.position);
+      if (!eirika || !near) return { ok: false, levelNid: null };
+
+      eirika.position = [5, 5];
+      near.position = [6, 5];
+      game.eventManager.addTalkPair('Eirika', near.nid);
+
+      const levelNid = game.currentLevel?.nid;
+      const prefab = {
+        nid: '_test_talk_level_scoped',
+        name: 'Talk Level Scoped',
+        trigger: 'on_talk',
+        level_nid: levelNid,
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: ['set_game_var;_scoped_talk;yes'],
+      };
+      game.eventManager.allEvents.set(prefab.nid, prefab);
+
+      game.roamInfo.roam = true;
+      game.roamInfo.roamUnitNid = 'Eirika';
+      game.state.change('free_roam');
+      return { ok: true, levelNid };
+    });
+
+    expect(setup.ok).toBe(true);
+    expect(setup.levelNid).toBeTruthy();
+    await stepFrames(page, 5);
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 10);
+
+    const talked = await page.evaluate(() =>
+      (window as any).__gameRef.gameVars.get('_scoped_talk') ?? null);
+    expect(talked).toBe('yes');
+  });
 });
 
 test.describe('Roam shop interaction', () => {

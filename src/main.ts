@@ -628,15 +628,6 @@ async function main(): Promise<void> {
   const gameNid = db.getConstant('game_nid', 'default') as string;
   initPersistentSystems(gameNid);
 
-  // Fire on_startup trigger once per boot, after DB and game state are initialized
-  if (gameState.eventManager) {
-    gameState.eventManager.trigger(
-      {
-        type: 'on_startup',
-      },
-      { game: gameState, gameVars: gameState.gameVars, levelVars: new Map() },
-    );
-  }
 
   // --- Register states ---
   const states = [
@@ -710,8 +701,22 @@ async function main(): Promise<void> {
     gameState.state.register(state);
   }
 
+  // Fire on_startup once per boot. This has to happen after the states are
+  // registered: `trigger` only queues the event, and the queue is drained by
+  // the event state. Firing it earlier left the event queued until the title
+  // or level flow cleared it, so a project that initialises its persistent
+  // records here (EotF creates Progress, currencies, and unit lists in an
+  // on_startup event) silently started with none of them.
+  const startupQueued = gameState.eventManager?.trigger(
+    { type: 'on_startup' },
+    { game: gameState, gameVars: gameState.gameVars, levelVars: new Map() },
+  ) ?? false;
+
   // --- Push initial state (level is loaded via LevelSelectState) ---
   gameState.state.change('title');
+  // Stacked above the title so the startup event runs first and pops back to
+  // it, matching Python running on_startup before the player reaches a menu.
+  if (startupQueued) gameState.state.change('event');
 
   // --- Input ---
   canvas.tabIndex = 0;

@@ -826,10 +826,25 @@ export function evaluateExpression(expression: string, context: ConditionContext
 function resolvePath(path: string, ctx: ConditionContext): any {
   const trimmed = path.trim();
 
-  // String literals
-  if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-      (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
-    return trimmed.slice(1, -1);
+  // String literals. The closing quote must be the one that matches the
+  // opening quote, not merely the last character: `'a' + 'b'` also starts and
+  // ends with a quote, and treating it as one literal yielded the raw text
+  // `a' + 'b` instead of concatenating. EotF builds record NIDs this way
+  // (`{e:'Player' + '_skill_slots'}`), so the difference is load-bearing.
+  const quote = trimmed[0];
+  if (quote === "'" || quote === '"') {
+    let closing = -1;
+    for (let index = 1; index < trimmed.length; index += 1) {
+      if (trimmed[index] === '\\') {
+        index += 1;
+        continue;
+      }
+      if (trimmed[index] === quote) {
+        closing = index;
+        break;
+      }
+    }
+    if (closing === trimmed.length - 1) return trimmed.slice(1, -1);
   }
 
   // Numeric literals
