@@ -398,7 +398,9 @@ test.describe('Event table presentation', () => {
         condition: 'True', only_once: false, priority: 0,
         _source: [
           'table;GoldDisplay;[game.get_money()];;;60;top_right;funds_display;expression',
-          'choice;bribe;Spend Gold,End Turn',
+          // choice;Nid;Title;Choices — the blocking menu is what keeps the
+          // table on screen until remove_table runs after the selection.
+          'choice;bribe;Bribe?;Spend Gold,End Turn',
           'remove_table;GoldDisplay',
           'game_var;gold_display_done;yes',
         ],
@@ -2173,5 +2175,111 @@ test.describe('Event command batch 3s (ending cards — dispatch complete)', () 
     await stepFrames(page, 320);
     const done = await page.evaluate(() => (window as any).__gameRef.gameVars.get('ending_done'));
     expect(done).toBe('yes');
+  });
+});
+
+test.describe('choice and textbox commands', () => {
+  test('choice reads Nid/Title/Choices, evaluates expressions, and publishes the pick', async ({
+    page,
+  }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    // Python keywords are ['Nid', 'Title', 'Choices']: the first argument
+    // names the choice, and authored branches read the pick back as
+    // `{v:<nid>}`. `expression` means Choices is a Python list expression.
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('_choice_probe', {
+        name: '_choice_probe', nid: '_choice_probe', trigger: '_choice_probe',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          "lvar;opts;['Depart','Game Length','Help']",
+          'choice;Run_Start;What will you do?;{v:opts};backable;expression',
+        ],
+      });
+      g.eventManager.triggerSpecific('_choice_probe', { type: '_choice_probe' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 20);
+
+    const menu = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st = g.state.stack[g.state.stack.length - 1];
+      return st?.choiceMenu?.options?.map((option: any) => option.label) ?? null;
+    });
+    expect(menu).toEqual(['Depart', 'Game Length', 'Help']);
+
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 10);
+    const stored = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { picked: g.gameVars.get('Run_Start'), last: g.gameVars.get('_last_choice') };
+    });
+    expect(stored).toEqual({ picked: 'Depart', last: 'Depart' });
+  });
+
+  test('choice splits nid|label, and textbox registers until remove_table', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('_choice_label', {
+        name: '_choice_label', nid: '_choice_label', trigger: '_choice_label',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'textbox;funds;Gold: 40;top_left;110',
+          'choice;ClassPick;Choose Class;Armor_Sun|Solar Knight,Armor_Moon|Lunar Knight',
+        ],
+      });
+      g.eventManager.triggerSpecific('_choice_label', { type: '_choice_label' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 20);
+
+    const shown = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st = g.state.stack[g.state.stack.length - 1];
+      return {
+        labels: st?.choiceMenu?.options?.map((option: any) => option.label) ?? null,
+        values: st?.choiceMenu?.options?.map((option: any) => option.value) ?? null,
+        textboxes: st?.eventTextboxes ? [...st.eventTextboxes.keys()] : null,
+      };
+    });
+    // The display half is shown; the NID half is what gets stored.
+    expect(shown.labels).toEqual(['Solar Knight', 'Lunar Knight']);
+    expect(shown.values).toEqual(['Armor_Sun', 'Armor_Moon']);
+    expect(shown.textboxes).toEqual(['funds']);
+
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 10);
+    const picked = await page.evaluate(() =>
+      (window as any).__gameRef.gameVars.get('ClassPick'));
+    expect(picked).toBe('Armor_Sun');
+
+    // LT has no remove_textbox: remove_table clears both, keyed by NID.
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('_textbox_clear', {
+        name: '_textbox_clear', nid: '_textbox_clear', trigger: '_textbox_clear',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['textbox;funds;Gold: 40;top_left;110', 'remove_table;funds'],
+      });
+      g.eventManager.triggerSpecific('_textbox_clear', { type: '_textbox_clear' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 20);
+    const remaining = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st = g.state.stack[g.state.stack.length - 1];
+      return st?.eventTextboxes ? [...st.eventTextboxes.keys()] : [];
+    });
+    expect(remaining).toEqual([]);
   });
 });

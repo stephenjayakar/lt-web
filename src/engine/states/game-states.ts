@@ -8706,6 +8706,18 @@ type EventTable = {
   noBackground: boolean;
 };
 
+/**
+ * A persistent on-screen text box drawn by the `textbox` event command.
+ * Python keywords are ['NID', 'Text'] plus optional BoxPosition and Width.
+ */
+type EventTextbox = {
+  nid: string;
+  text: string;
+  alignment: string;
+  width: number;
+  expression: boolean;
+};
+
 /** Maximum instant commands processed per frame to prevent infinite loops. */
 const MAX_BURST = 100;
 
@@ -8757,6 +8769,10 @@ export class EventState extends State {
   // Choice menu state
   private choiceMenu: ChoiceMenu | null = null;
   private choiceResult: string | null = null;
+  /** NID of the active choice; the selection is published under this name. */
+  private choiceNid: string | null = null;
+  /** Whether the active choice accepts BACK as a 'BACK' selection. */
+  private choiceBackable = false;
 
   // For-loop state: stack of { varName, values[], currentIndex, loopStartPointer }
   private forLoopStack: { varName: string; values: any[]; currentIndex: number; startPointer: number }[] = [];
@@ -8773,6 +8789,7 @@ export class EventState extends State {
   private overlaySprites: Map<string, EventOverlaySprite> = new Map();
   /** Persistent event-created tables, such as Rekka's live GoldDisplay. */
   private eventTables: Map<string, EventTable> = new Map();
+  private eventTextboxes: Map<string, EventTextbox> = new Map();
 
   // Currently speaking portrait (for talk animation)
   private speakingPortrait: EventPortrait | null = null;
@@ -8882,6 +8899,8 @@ export class EventState extends State {
       this.stateAfterTransition = null;
       this.choiceMenu = null;
       this.choiceResult = null;
+      this.choiceNid = null;
+      this.choiceBackable = false;
       this.forLoopStack = [];
       this.skipMode = false;
       this.portraits.clear();
@@ -8890,6 +8909,7 @@ export class EventState extends State {
       this.blockingPortraitLoads = 0;
       this.overlaySprites.clear();
       this.eventTables.clear();
+      this.eventTextboxes.clear();
       this.speakingPortrait = null;
       this.wasDialogTyping = false;
       this.background = null;
@@ -8983,11 +9003,23 @@ export class EventState extends State {
       if (result !== null) {
         if ('selected' in result) {
           this.choiceResult = result.selected;
+        } else if (this.choiceBackable) {
+          // Python stores the literal 'BACK' when a backable choice is exited,
+          // which authored branches test for.
+          this.choiceResult = 'BACK';
         } else {
-          // BACK — pick first option as default
+          // Not backable — BACK keeps the current selection.
           this.choiceResult = this.choiceMenu.options[0]?.value ?? '';
         }
+        // Publish under the choice's own name: authored events read the
+        // selection back as `{v:<nid>}`, plus `_last_choice`. Without this the
+        // branches after a choice never match.
+        const game = getGame();
+        if (game && this.choiceNid) game.gameVars.set(this.choiceNid, this.choiceResult);
+        if (game) game.gameVars.set('_last_choice', this.choiceResult);
         this.choiceMenu = null;
+        this.choiceNid = null;
+        this.choiceBackable = false;
         this.advancePointer();
       }
       return;
@@ -9517,6 +9549,7 @@ export class EventState extends State {
     }
     this.drawEventCreditCards(surf);
     this.drawEventTables(surf);
+    this.drawEventTextboxes(surf);
     if (this.choiceMenu) {
       this.choiceMenu.draw(surf);
     }
@@ -9743,6 +9776,7 @@ export class EventState extends State {
       this.pendingPortraitLoads = 0;
       this.blockingPortraitLoads = 0;
       this.eventTables.clear();
+      this.eventTextboxes.clear();
       this.background = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
@@ -9758,6 +9792,7 @@ export class EventState extends State {
       this.pendingPortraitLoads = 0;
       this.blockingPortraitLoads = 0;
       this.eventTables.clear();
+      this.eventTextboxes.clear();
       this.background = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
@@ -9940,6 +9975,49 @@ export class EventState extends State {
       }
       return value === null || value === undefined ? '' : String(value);
     });
+  }
+
+  /**
+   * Draw persistent event textboxes. Like tables these re-resolve every frame
+   * so an `expression` box tracks the value it displays — EotF uses them for
+   * the currency counters shown beside the summoning pool and shops.
+   */
+  private drawEventTextboxes(surf: Surface): void {
+    for (const box of this.eventTextboxes.values()) {
+      let text = box.text;
+      if (box.expression) {
+        try {
+          const value = evaluateExpression(box.text, this.buildConditionContext());
+          text = value === null || value === undefined ? '' : String(value);
+        } catch (error) {
+          console.warn(`textbox ${box.nid}: failed to evaluate "${box.text}"`, error);
+          continue;
+        }
+      }
+      // Icon tags render as their own sprites in LT; strip the markup so the
+      // label reads correctly rather than showing raw tags.
+      const label = text.replace(/<[^>]*>/g, '').trim();
+      if (!label) continue;
+
+      const panelWidth = Math.min(
+        surf.width - 20,
+        box.width > 0 ? box.width : Math.max(24, label.length * 5 + 8),
+      );
+      const panelHeight = 14;
+      const alignment = box.alignment;
+      const x = alignment.includes('right')
+        ? surf.width - panelWidth - 10
+        : alignment.includes('center')
+          ? Math.floor((surf.width - panelWidth) / 2)
+          : 10;
+      const y = alignment.includes('bottom')
+        ? surf.height - panelHeight - 10
+        : 10;
+
+      surf.fillRect(x, y, panelWidth, panelHeight, 'rgba(18,28,66,0.94)');
+      surf.drawRect(x, y, panelWidth, panelHeight, 'rgba(210,185,104,1)');
+      surf.drawText(label, x + 4, y + 3, 'white', 'small');
+    }
   }
 
   /** Draw persistent event tables in logical game space, matching LT's 10px margins. */
@@ -13371,19 +13449,44 @@ export class EventState extends State {
       // ----- Choice menu -----
 
       case 'choice': {
-        // choice;header;option1,option2,option3
-        const _header = args[0] ?? 'Choose';
-        const optionStrs = (args[1] ?? '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        // choice;Nid;Title;Choices;flags — Python keywords are
+        // ['Nid', 'Title', 'Choices'], so the first argument names the choice
+        // and the selection is read back through that name.
+        const choiceNid = args[0] ?? '_choice';
+        const _title = args[1] ?? 'Choose';
+        const rawChoices = args[2] ?? '';
+        const flags = args.slice(3).map((flag: string) => flag.trim().toLowerCase());
+
+        // The `expression` flag means Choices is a Python expression that
+        // evaluates to a list, rather than a literal comma-separated list.
+        // EotF builds its hub menu that way (`{v:run_choices}`).
+        let optionStrs: string[];
+        if (flags.includes('expression')) {
+          const evaluated = evaluateExpression(rawChoices, this.buildConditionContext());
+          optionStrs = Array.isArray(evaluated)
+            ? evaluated.map((entry: unknown) => String(entry))
+            : String(evaluated ?? '').split(',');
+        } else {
+          optionStrs = rawChoices.split(',');
+        }
+        optionStrs = optionStrs
+          .map((entry: string) => entry.trim())
+          .filter((entry: string) => entry.length > 0);
+
         if (optionStrs.length > 0) {
-          const menuOptions: MenuOption[] = optionStrs.map((s: string) => ({
-            label: s,
-            value: s,
-            enabled: true,
-          }));
-          // Center the menu on screen
+          // `nid|display` hides an unreadable NID behind display text; the
+          // stored result is always the NID half.
+          const menuOptions: MenuOption[] = optionStrs.map((entry: string) => {
+            const bar = entry.indexOf('|');
+            const value = bar >= 0 ? entry.slice(0, bar).trim() : entry;
+            const label = bar >= 0 ? entry.slice(bar + 1).trim() : entry;
+            return { label, value, enabled: true };
+          });
           const menuX = 80;
           const menuY = 40;
           this.choiceMenu = new ChoiceMenu(menuOptions, menuX, menuY);
+          this.choiceNid = choiceNid;
+          this.choiceBackable = flags.includes('backable');
           return true; // block until user picks
         }
         this.advancePointer();
@@ -15080,16 +15183,43 @@ export class EventState extends State {
       }
 
       case 'remove_table': {
-        this.eventTables.delete(args[0] ?? '');
+        // LT has no separate remove_textbox: textboxes and tables share the
+        // same removal command, keyed by NID.
+        const removeNid = args[0] ?? '';
+        this.eventTables.delete(removeNid);
+        this.eventTextboxes.delete(removeNid);
         this.advancePointer();
         return false;
       }
 
       case 'textbox': {
-        console.warn(`${cmd.type}: event UI component is not implemented`);
+        // textbox;NID;Text;BoxPosition;Width;...;flags
+        const flagNames = new Set(['expression']);
+        const flags = new Set(
+          args.map((arg: string) => arg.toLowerCase().trim())
+            .filter((arg: string) => flagNames.has(arg)),
+        );
+        const values = args.filter(
+          (arg: string) => !flagNames.has(arg.toLowerCase().trim()),
+        );
+        const nid = values[0] ?? '';
+        if (!nid) {
+          console.warn('textbox: missing textbox nid');
+          this.advancePointer();
+          return false;
+        }
+        const width = parseInt(values[3] ?? '', 10);
+        this.eventTextboxes.set(nid, {
+          nid,
+          text: values[1] ?? '',
+          alignment: (values[2] || 'top_left').toLowerCase(),
+          width: Number.isFinite(width) && width > 0 ? width : -1,
+          expression: flags.has('expression'),
+        });
         this.advancePointer();
         return false;
       }
+
 
       case 'resurrect': {
         const unit = game.units.get(args[0]);
