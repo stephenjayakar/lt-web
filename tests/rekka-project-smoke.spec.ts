@@ -1131,7 +1131,10 @@ test.describe('Rekka all-level compatibility', () => {
   test('Rekka DEBUG base enables save and Continue resumes its parent event', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=DEBUG&clean=false&bundle=false');
     await waitForHarness(page);
-    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+    // Rekka's on_startup event is a logo cutscene with several seconds of
+    // waits, and it now runs before the base as it does in Python. Settle
+    // through it rather than assuming the base is reachable in a few frames.
+    await page.evaluate(() => (window as any).__harness.settle(8_000, ['base_main']));
     const baseOptions = await page.evaluate(() => {
       const state = (window as any).__gameRef.state.getCurrentState() as any;
       return {

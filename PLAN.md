@@ -77,6 +77,18 @@ Verified baseline:
 - roaming works: `InputManager.isKeyHeld` was called by the free-roam state but
   never defined (optional chaining hid it), and roam terrain cost was read from
   the terrain NID instead of its mtype, so every tile reported impassable;
+- `on_startup` events run. The EventManager only existed from `loadLevel`, so
+  the boot-time trigger was skipped by its own null guard, and a level load
+  discarded anything already queued. EotF creates its 91 persistent records
+  there, including the `Progress` value its hub gates the opening conversation
+  on, so the game replayed that conversation forever and could not advance;
+- free-roam triggers carry `levelNid`. Without it `findMatchingEvents` drops
+  every level-scoped event, which silently disabled all authored talks and the
+  Gacha, Bar, Music, Records, and Skill Swap region services;
+- `'Player' + '_skill_slots'` evaluates to `Player_skill_slots`. The string
+  literal check only tested that an expression started and ended with a quote,
+  so a concatenation had its outer quotes stripped and EotF built persistent
+  record NIDs containing raw `' + '` text;
 - unit-dense maps hold frame rate. `unitSpriteTint` evaluated every skill's
   condition for every visible unit on every drawn frame before checking
   whether the skill defined a tint at all — no authored skill uses `unit_tint`

@@ -391,6 +391,10 @@ export class FreeRoamState extends MapState {
           unit2: closestTalk,
           unitA: this.roamUnit.nid,
           unitB: closestTalk.nid,
+          // findMatchingEvents drops every level-scoped event when the
+          // trigger carries no level, so omitting this silently disables
+          // all authored talks. Python scopes by game.level implicitly.
+          levelNid: game.currentLevel?.nid,
         },
         {
           game,
@@ -429,6 +433,7 @@ export class FreeRoamState extends MapState {
             unitNid: this.roamUnit.nid,
             unit1: this.roamUnit,
             region,
+            levelNid: game.currentLevel?.nid,
           },
           ctx,
         );
@@ -441,6 +446,7 @@ export class FreeRoamState extends MapState {
             unitNid: this.roamUnit.nid,
             unit1: this.roamUnit,
             region,
+            levelNid: game.currentLevel?.nid,
           },
           ctx,
         );
@@ -468,6 +474,7 @@ export class FreeRoamState extends MapState {
           unit2: closestAny,
           unitNid: this.roamUnit.nid,
           localArgs: new Map<string, any>([['units', closestUnits]]),
+          levelNid: game.currentLevel?.nid,
         },
         {
           game,

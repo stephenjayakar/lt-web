@@ -69,6 +69,7 @@ import { TargetSystem } from './target-system';
 import { getStartingClassSkillNids } from './learned-skills';
 import { applyItemEndChapterResourceHooks } from '../combat/item-resource-lifecycle';
 
+
 /**
  * GameState — The god object holding references to every major subsystem
  * and all live game data for the current session.
@@ -240,7 +241,14 @@ export class GameState {
     this.targetSystem = null;
     this.phase = null;
     this.pathSystem = null;
-    this.eventManager = null;
+    // Unlike the other level-scoped subsystems, the EventManager exists from
+    // construction: `on_startup` fires before any level loads, and Python
+    // plays those events (a logo cutscene in Rekka, persistent-record setup
+    // in EotF) before the player reaches the title. loadLevel() replaces this
+    // instance with a level-scoped one.
+    this.eventManager = new EventManager(this.db.events);
+    this.eventManager.actionLog = this.actionLog;
+    this.eventManager.setGameGetter(() => this);
     this.aiController = null;
     this.supports = null;
     this.initiative = null;
@@ -773,9 +781,14 @@ export class GameState {
     this.phase = new PhaseController(teamOrder);
 
     // h. Create EventManager -----------------------------------------------
+    // Carry over anything already queued. `on_startup` is queued before any
+    // level exists, so replacing the manager outright dropped it and the
+    // project's startup events never ran.
+    const pendingEvents = this.eventManager?.eventQueue ?? [];
     this.eventManager = new EventManager(this.db.events);
     this.eventManager.actionLog = this.actionLog;
     this.eventManager.setGameGetter(() => this);
+    if (pendingEvents.length > 0) this.eventManager.eventQueue.push(...pendingEvents);
 
     // h2. Create AIController -----------------------------------------------
     this.aiController = new AIController(this.db, this.board, this.pathSystem);
