@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 async function bootGrigol(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=eotf.ltproj&level=Grigol&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

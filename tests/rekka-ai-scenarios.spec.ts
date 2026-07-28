@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 async function boot(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

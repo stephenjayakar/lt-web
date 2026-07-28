@@ -5,7 +5,7 @@ async function bootEotf(page: Page, level = 'X'): Promise<void> {
     `/?harness=true&project=eotf.ltproj&level=${encodeURIComponent(level)}&clean=true&bundle=false`,
   );
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

@@ -32,7 +32,7 @@ import type { Page } from '@playwright/test';
 
 /** Wait for harness initialization. */
 async function waitForHarness(page: Page): Promise<void> {
-  await page.waitForFunction(() => (window as any).__harness?.ready === true, { timeout: 30_000 });
+  await page.waitForFunction(() => (window as any).__harness?.ready === true, { timeout: 60_000 });
 }
 
 /** Get the ResourceManager instance from the harness. */

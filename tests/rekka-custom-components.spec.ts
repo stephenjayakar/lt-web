@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 async function boot(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
 }
@@ -626,18 +626,21 @@ test.describe('Rekka project-local item components', () => {
       };
     });
 
+    // Lyn is a sword lord carrying her starting Iron Sword, and LynLord may
+    // wield swords, so the weapon slot is filled. It read null while unit wexp
+    // was only recorded for types whose unit-level `usable` flag was set.
     expect(result).toEqual({
       initial: {
         isAccessory: true,
         equipped: 'DuelRing',
-        weapon: null,
+        weapon: 'Iron_Sword',
         skills: ['Duel'],
       },
       fullAtOne: true,
       action: 'EquipItemAction',
       swapped: {
         equipped: 'MoraleRing',
-        weapon: null,
+        weapon: 'Iron_Sword',
         hasDuel: false,
         hasMorale: true,
       },

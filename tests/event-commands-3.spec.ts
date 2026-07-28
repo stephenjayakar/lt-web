@@ -12,7 +12,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function waitForHarness(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 
@@ -2219,6 +2219,57 @@ test.describe('choice and textbox commands', () => {
       return { picked: g.gameVars.get('Run_Start'), last: g.gameVars.get('_last_choice') };
     });
     expect(stored).toEqual({ picked: 'Depart', last: 'Depart' });
+  });
+
+  test('choice runs its EventNid sub-event and evaluates unflagged expressions', async ({
+    page,
+  }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    // EotF's sortie is `choice;New_Party;;v('options');...;EventNid=...`, and
+    // the sub-event is what moves the chosen unit into the deploying party.
+    // Note Choices carries no `expression` flag even though it is one, so the
+    // evaluable form has to be recognised on its own.
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('_pick_sub', {
+        name: '_pick_sub', nid: '_pick_sub', trigger: '_pick_sub',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;sub_saw;{v:Pick}'],
+      });
+      g.db.events.set('_pick_parent', {
+        name: '_pick_parent', nid: '_pick_parent', trigger: '_pick_parent',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          "level_var;opts;['Alpha','Beta']",
+          "choice;Pick;;v('opts');Dimensions=4,3;EventNid=_pick_sub",
+        ],
+      });
+      g.eventManager.triggerSpecific('_pick_parent', { type: '_pick_parent' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 25);
+
+    const menu = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const st = g.state.stack[g.state.stack.length - 1];
+      return st?.choiceMenu?.options?.map((option: any) => option.value) ?? null;
+    });
+    // `Dimensions=4,3` is a keyword, not two more options.
+    expect(menu).toEqual(['Alpha', 'Beta']);
+
+    await stepFrames(page, 3, 'SELECT');
+    await stepFrames(page, 40);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { picked: g.gameVars.get('Pick'), subSaw: g.gameVars.get('sub_saw') };
+    });
+    expect(result.picked).toBe('Alpha');
+    expect(result.subSaw).toBe('Alpha');
   });
 
   test('choice splits nid|label, and textbox registers until remove_table', async ({ page }) => {

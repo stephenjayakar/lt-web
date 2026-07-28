@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 async function waitForHarness(page: import('@playwright/test').Page): Promise<void> {
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

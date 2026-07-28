@@ -8773,6 +8773,8 @@ export class EventState extends State {
   private choiceNid: string | null = null;
   /** Whether the active choice accepts BACK as a 'BACK' selection. */
   private choiceBackable = false;
+  /** Event to run on each selection, from the choice's `EventNid` keyword. */
+  private choiceEventNid: string | null = null;
 
   // For-loop state: stack of { varName, values[], currentIndex, loopStartPointer }
   private forLoopStack: { varName: string; values: any[]; currentIndex: number; startPointer: number }[] = [];
@@ -8901,6 +8903,7 @@ export class EventState extends State {
       this.choiceResult = null;
       this.choiceNid = null;
       this.choiceBackable = false;
+      this.choiceEventNid = null;
       this.forLoopStack = [];
       this.skipMode = false;
       this.portraits.clear();
@@ -9017,10 +9020,30 @@ export class EventState extends State {
         const game = getGame();
         if (game && this.choiceNid) game.gameVars.set(this.choiceNid, this.choiceResult);
         if (game) game.gameVars.set('_last_choice', this.choiceResult);
+        const followUp = this.choiceEventNid;
         this.choiceMenu = null;
         this.choiceNid = null;
         this.choiceBackable = false;
+        this.choiceEventNid = null;
         this.advancePointer();
+        // Queue the selection event after advancing, so it runs before the
+        // rest of this event resumes — matching Python, where the sub-event
+        // inherits the current args and the parent continues afterwards.
+        if (game && followUp && this.choiceResult !== 'BACK') {
+          const prefab = [...game.db.events.values()].find((candidate: any) =>
+            candidate.nid === followUp ||
+            candidate.name === followUp ||
+            `${candidate.level_nid ?? ''} ${candidate.name ?? ''}`.trim() === followUp);
+          if (prefab) {
+            game.eventManager?.triggerSpecific(
+              prefab.nid,
+              { type: 'choice_selection', levelNid: game.currentLevel?.nid },
+              true,
+            );
+          } else {
+            console.warn(`choice: EventNid "${followUp}" not found`);
+          }
+        }
       }
       return;
     }
@@ -13455,20 +13478,37 @@ export class EventState extends State {
         const choiceNid = args[0] ?? '_choice';
         const _title = args[1] ?? 'Choose';
         const rawChoices = args[2] ?? '';
-        const flags = args.slice(3).map((flag: string) => flag.trim().toLowerCase());
-
-        // The `expression` flag means Choices is a Python expression that
-        // evaluates to a list, rather than a literal comma-separated list.
-        // EotF builds its hub menu that way (`{v:run_choices}`).
-        let optionStrs: string[];
-        if (flags.includes('expression')) {
-          const evaluated = evaluateExpression(rawChoices, this.buildConditionContext());
-          optionStrs = Array.isArray(evaluated)
-            ? evaluated.map((entry: unknown) => String(entry))
-            : String(evaluated ?? '').split(',');
-        } else {
-          optionStrs = rawChoices.split(',');
+        // Trailing arguments are either bare flags or `Key=Value` optional
+        // keywords (RowWidth, Dimensions, Alignment, EntryType, EventNid, …).
+        const trailing = args.slice(3).map((entry: string) => entry.trim());
+        const flags = trailing
+          .filter((entry: string) => !entry.includes('='))
+          .map((entry: string) => entry.toLowerCase());
+        const keywords = new Map<string, string>();
+        for (const entry of trailing) {
+          const eq = entry.indexOf('=');
+          if (eq <= 0) continue;
+          keywords.set(entry.slice(0, eq).trim().toLowerCase(), entry.slice(eq + 1).trim());
         }
+
+        // Choices is an EvaluableString: `expression` forces evaluation, but
+        // authored menus also pass expressions such as `v('options')` without
+        // the flag. Try evaluating and keep the result when it yields a list;
+        // otherwise fall back to treating it as a literal comma list.
+        let optionStrs: string[] | null = null;
+        if (flags.includes('expression') || /[([]/.test(rawChoices)) {
+          try {
+            const evaluated = evaluateExpression(rawChoices, this.buildConditionContext());
+            if (Array.isArray(evaluated)) {
+              optionStrs = evaluated.map((entry: unknown) => String(entry));
+            } else if (flags.includes('expression')) {
+              optionStrs = String(evaluated ?? '').split(',');
+            }
+          } catch {
+            // Fall through to the literal reading below.
+          }
+        }
+        optionStrs ??= rawChoices.split(',');
         optionStrs = optionStrs
           .map((entry: string) => entry.trim())
           .filter((entry: string) => entry.length > 0);
@@ -13487,6 +13527,11 @@ export class EventState extends State {
           this.choiceMenu = new ChoiceMenu(menuOptions, menuX, menuY);
           this.choiceNid = choiceNid;
           this.choiceBackable = flags.includes('backable');
+          // `EventNid` runs an event on each selection, inheriting this
+          // event's args. EotF's sortie relies on it: the sub-event is what
+          // moves the chosen unit into the deploying party, so ignoring it
+          // left the next level with an empty party and nothing to deploy.
+          this.choiceEventNid = keywords.get('eventnid') ?? null;
           return true; // block until user picks
         }
         this.advancePointer();
