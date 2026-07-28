@@ -96,6 +96,17 @@ Verified baseline:
 - `textbox` is implemented rather than stubbed, and `remove_table` clears
   textboxes as well as tables (LT has no separate removal command). EotF uses
   109 textboxes for the currency counters beside the summoning pool and shops;
+- `choice` honours its `EventNid` keyword and evaluates an expression list even
+  without the `expression` flag. The sortie menu depends on both: its
+  sub-event is what moves chosen units into the deploying party, so without it
+  the first act loaded with an empty party and deployed nobody;
+- units start with the weapon experience their prefab grants. lt-web recorded
+  it only for types whose unit-level `usable` flag was set, but that flag gates
+  the class, not the unit — so EotF's Yusha and Rekka's Lyn could not wield the
+  weapons they carry, and no combat was reachable;
+- `tests/eotf-journey.spec.ts` walks one continuous play-through — boot,
+  records, roaming, an NPC talk, deployment, and a resolved combat — because
+  every defect above sat between systems that each passed in isolation.
 - unit-dense maps hold frame rate. `unitSpriteTint` evaluated every skill's
   condition for every visible unit on every drawn frame before checking
   whether the skill defined a tint at all — no authored skill uses `unit_tint`

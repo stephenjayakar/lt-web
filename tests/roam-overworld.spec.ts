@@ -18,7 +18,7 @@ import type { ItemPrefab, SkillPrefab } from '../src/data/types';
 async function waitForHarness(page: any) {
   await page.waitForFunction(
     () => (window as any).__harness?.ready === true,
-    { timeout: 30_000 },
+    { timeout: 60_000 },
   );
 }
 

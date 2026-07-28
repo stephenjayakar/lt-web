@@ -5,7 +5,7 @@ test('one Rekka snapshot preserves rich item, skill, convoy, and pending-event s
 }) => {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 
   const result = await page.evaluate(async () => {

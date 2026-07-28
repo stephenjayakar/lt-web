@@ -228,15 +228,17 @@ export class UnitObject {
 
     // --- Weapon experience ---
     // wexp_gain format: { "Sword": [usable, starting_wexp, cap], ... }
-    // We store the starting wexp value for each weapon type the unit can use.
-    // The `usable` flag indicates whether the class allows this weapon type.
-    // The `cap` limits maximum wexp gain (not enforced at construction).
+    //
+    // Python stores the starting wexp for every weapon type and ignores
+    // `usable` here: that flag gates whether the *class* may wield the type,
+    // and item availability checks it against the class separately. Skipping
+    // types whose unit-level flag is false left units with no experience in
+    // weapons they own — EotF's Yusha carries an Iron Sword with
+    // `Sword: [false, 1, 51]`, and could not attack with it at all.
     this.wexp = {};
     for (const [wtype, entry] of Object.entries(prefab.wexp_gain)) {
-      const [usable, startingWexp, _cap] = entry;
-      if (usable) {
-        this.wexp[wtype] = startingWexp;
-      }
+      const [, startingWexp] = entry;
+      this.wexp[wtype] = startingWexp;
     }
 
     this.sprite = null;

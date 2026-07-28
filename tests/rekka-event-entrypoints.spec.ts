@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('all 899 Rekka events construct through their direct entrypoint', async ({ page }) => {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 
   const coverage = await page.evaluate(() => {

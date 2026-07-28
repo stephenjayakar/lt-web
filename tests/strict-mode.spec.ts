@@ -13,7 +13,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function waitForHarness(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

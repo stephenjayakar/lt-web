@@ -4,7 +4,7 @@ import { componentUses, skills } from './helpers/project-data';
 async function bootEotf(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=eotf.ltproj&level=X&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
 

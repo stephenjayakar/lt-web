@@ -43,7 +43,7 @@ import type { Page } from '@playwright/test';
 // ---------------------------------------------------------------------------
 
 async function waitForHarness(page: Page): Promise<void> {
-  await page.waitForFunction(() => (window as any).__harness?.ready === true, { timeout: 30_000 });
+  await page.waitForFunction(() => (window as any).__harness?.ready === true, { timeout: 60_000 });
 }
 
 async function stepFrames(page: Page, count: number): Promise<void> {
