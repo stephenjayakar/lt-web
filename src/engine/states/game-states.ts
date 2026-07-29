@@ -114,6 +114,7 @@ import {
   AddRegionAction,
   RemoveRegionAction,
   CreateUnitAction,
+  UnregisterUnitAction,
   SetLevelVarAction,
   SetGameBoardBoundsAction,
   SetSkillDataAction,
@@ -155,6 +156,7 @@ import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { Banner } from '../../ui/banner';
 import { Dialog } from '../../ui/dialog';
+import { drawStyledText, measureStyledText } from '../../ui/styled-text';
 import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../../ui/exp-display';
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
@@ -1772,8 +1774,12 @@ export class FreeState extends MapState {
     // covers e.g. resuming a save mid-turn where phase_change never ran).
     fadeInPhaseMusic(game);
 
-    // Mark end of previous action group (turnwheel marker)
-    game.actionLog.doAction(new MarkActionGroupEnd('free'));
+    // Preserve Python's initial turnwheel anchor, then close only a real unit
+    // action group. Event/state returns must not append orphan markers that
+    // consume the first turnwheel step.
+    if (game.actionLog.actionIndex < 0 || game.actionLog.hasOpenActionGroup()) {
+      game.actionLog.doAction(new MarkActionGroupEnd('free'));
+    }
 
     // Initiative mode: auto-cursor to the initiative unit
     if (game.initiative) {
@@ -8775,9 +8781,24 @@ export class EventState extends State {
   private choiceBackable = false;
   /** Event to run on each selection, from the choice's `EventNid` keyword. */
   private choiceEventNid: string | null = null;
+  /** Parent choices paused while their EventNid selection event runs. */
+  private suspendedChoiceEvents: Array<{
+    owner: GameEvent;
+    commandPointer: number;
+    eventTables: Map<string, EventTable>;
+    eventTextboxes: Map<string, EventTextbox>;
+    replay: boolean;
+  }> = [];
 
-  // For-loop state: stack of { varName, values[], currentIndex, loopStartPointer }
-  private forLoopStack: { varName: string; values: any[]; currentIndex: number; startPointer: number }[] = [];
+  // For-loop variables are event locals and shadow level/game variables.
+  private forLoopStack: Array<{
+    varName: string;
+    values: unknown[];
+    currentIndex: number;
+    startPointer: number;
+    hadLocal: boolean;
+    oldLocal: unknown;
+  }> = [];
 
   // Skip mode: when true, all speak/narrate commands are auto-advanced
   private skipMode: boolean = false;
@@ -9035,11 +9056,34 @@ export class EventState extends State {
             candidate.name === followUp ||
             `${candidate.level_nid ?? ''} ${candidate.name ?? ''}`.trim() === followUp);
           if (prefab) {
-            game.eventManager?.triggerSpecific(
+            const queue = game.eventManager.eventQueue;
+            const owner = this.currentEvent;
+            const suspendedChoice = owner ? {
+              owner,
+              commandPointer: Math.max(0, owner.commandPointer - 1),
+              eventTables: new Map(this.eventTables),
+              eventTextboxes: new Map(this.eventTextboxes),
+              replay: false,
+            } : null;
+            const priorLength = queue.length;
+            game.eventManager.triggerSpecific(
               prefab.nid,
               { type: 'choice_selection', levelNid: game.currentLevel?.nid },
               true,
             );
+            // triggerSpecific appends by default. Choice sub-events are
+            // interrupts: run them now, then resume the parent at the already
+            // advanced pointer. EOtF's sortie sub-event builds the selected
+            // party before the parent starts the chapter.
+            const interrupts = queue.splice(priorLength);
+            const ownerIndex = owner ? queue.indexOf(owner) : -1;
+            if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
+            if (owner) queue.unshift(...interrupts, owner);
+            else queue.unshift(...interrupts);
+            if (interrupts.length > 0) this.loadNextEvent(game);
+            if (suspendedChoice && interrupts.length > 0) {
+              this.suspendedChoiceEvents.push(suspendedChoice);
+            }
           } else {
             console.warn(`choice: EventNid "${followUp}" not found`);
           }
@@ -9800,6 +9844,19 @@ export class EventState extends State {
       this.blockingPortraitLoads = 0;
       this.eventTables.clear();
       this.eventTextboxes.clear();
+      let suspendedIndex = -1;
+      for (let index = this.suspendedChoiceEvents.length - 1; index >= 0; index -= 1) {
+        if (this.suspendedChoiceEvents[index].owner === next) {
+          suspendedIndex = index;
+          break;
+        }
+      }
+      if (suspendedIndex >= 0) {
+        const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
+        this.eventTables = suspended.eventTables;
+        this.eventTextboxes = suspended.eventTextboxes;
+        if (suspended.replay) next.commandPointer = suspended.commandPointer;
+      }
       this.background = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
@@ -9823,7 +9880,14 @@ export class EventState extends State {
       this.chapterTitleTimer = 0;
       this.chapterTitlePhase = 'none';
       this.locationCard = null;
+      const previousState = game.state.stack[game.state.stack.length - 2];
+      const resumeRoaming = previousState?.name === 'free' &&
+        game.roamInfo?.roam &&
+        !!game.roamInfo.roamUnitNid &&
+        !!game.getUnit(game.roamInfo.roamUnitNid)?.position;
       game.state.back();
+      if (resumeRoaming) game.state.change('free_roam');
+      else if (!previousState) game.state.change('free');
     }
   }
 
@@ -10017,16 +10081,14 @@ export class EventState extends State {
           continue;
         }
       }
-      // Icon tags render as their own sprites in LT; strip the markup so the
-      // label reads correctly rather than showing raw tags.
-      const label = text.replace(/<[^>]*>/g, '').trim();
-      if (!label) continue;
+      const content = text.trim();
+      if (!content || measureStyledText(content, 'small') === 0) continue;
 
       const panelWidth = Math.min(
         surf.width - 20,
-        box.width > 0 ? box.width : Math.max(24, label.length * 5 + 8),
+        box.width > 0 ? box.width : Math.max(24, measureStyledText(content, 'small') + 8),
       );
-      const panelHeight = 14;
+      const panelHeight = 20;
       const alignment = box.alignment;
       const x = alignment.includes('right')
         ? surf.width - panelWidth - 10
@@ -10039,7 +10101,7 @@ export class EventState extends State {
 
       surf.fillRect(x, y, panelWidth, panelHeight, 'rgba(18,28,66,0.94)');
       surf.drawRect(x, y, panelWidth, panelHeight, 'rgba(210,185,104,1)');
-      surf.drawText(label, x + 4, y + 3, 'white', 'small');
+      drawStyledText(surf, content, x + 4, y + 6, 'white', 'small');
     }
   }
 
@@ -10051,10 +10113,11 @@ export class EventState extends State {
       const rows = Math.max(1, table.rows || Math.ceil(values.length / columns));
       const cellWidth = table.rowWidth > 0
         ? table.rowWidth
-        : Math.max(24, ...values.map(value => value.length * 5 + 8));
+        : Math.max(24, ...values.map(value => measureStyledText(value, 'text') + 8));
+      const rowHeight = values.some(value => value.includes('<icon>')) ? 18 : 12;
       const titleHeight = table.title ? 10 : table.background === 'funds_display' ? 7 : 0;
       const panelWidth = Math.min(surf.width - 20, columns * cellWidth + 4);
-      const panelHeight = Math.min(surf.height - 20, titleHeight + rows * 12 + 4);
+      const panelHeight = Math.min(surf.height - 20, titleHeight + rows * rowHeight + 4);
       const alignment = table.alignment.toLowerCase();
       const x = alignment.includes('right')
         ? surf.width - panelWidth - 10
@@ -10084,7 +10147,7 @@ export class EventState extends State {
       }
 
       if (table.title) {
-        surf.drawText(table.title, x + 4, y + 2, 'yellow', 'small');
+        drawStyledText(surf, table.title, x + 4, y + 2, 'yellow', 'small');
       }
       const contentTop = y + titleHeight + 3;
       values.slice(0, rows * columns).forEach((value, index) => {
@@ -10092,16 +10155,17 @@ export class EventState extends State {
         const row = Math.floor(index / columns);
         const left = x + 3 + column * cellWidth;
         const right = x + 1 + (column + 1) * cellWidth;
-        const textY = contentTop + row * 12;
+        const textY = contentTop + row * rowHeight;
         const textAlignment = table.textAlignment.toLowerCase();
+        const textWidth = measureStyledText(value, 'text');
         if (textAlignment === 'right' || table.background === 'funds_display') {
           const rightEdge = table.background === 'funds_display' ? right - 8 : right - 2;
-          surf.drawTextRight(value, rightEdge, textY, 'white', 'text');
+          drawStyledText(surf, value, rightEdge - textWidth, textY, 'white', 'text');
         } else {
           const textX = textAlignment === 'center'
-            ? left + Math.max(0, Math.floor((cellWidth - value.length * 5) / 2))
+            ? left + Math.max(0, Math.floor((cellWidth - textWidth) / 2))
             : left;
-          surf.drawText(value, textX, textY, 'white', 'text');
+          drawStyledText(surf, value, textX, textY, 'white', 'text');
         }
       });
     }
@@ -11929,6 +11993,14 @@ export class EventState extends State {
         return false;
       }
 
+      case 'unload_unit': {
+        const unitNid = args[0] ?? '';
+        const unit = this.findUnit(unitNid);
+        if (unit) game.actionLog.doAction(new UnregisterUnitAction(game, unit));
+        this.advancePointer();
+        return false;
+      }
+
       case 'kill_unit': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
@@ -12509,6 +12581,46 @@ export class EventState extends State {
         const unit = this.findUnit(unitNid);
         if (unit && !isNaN(hpValue)) {
           game.actionLog.doAction(new SetCurrentHpAction(unit, hpValue));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'heal': {
+        const unitNid = args[0] ?? '';
+        const amount = Math.trunc(Number(args[1] ?? 0));
+        const unit = this.findUnit(unitNid);
+        if (unit && Number.isFinite(amount)) {
+          game.actionLog.doAction(new HealAction(unit, amount));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_global_level_cap': {
+        const amount = Math.trunc(Number(args[0] ?? 0));
+        if (Number.isFinite(amount)) {
+          const current = Number(game.gameVars.get('_global_level_cap_bonus') ?? 0);
+          game.actionLog.doAction(new SetGameVarAction(
+            game.gameVars,
+            '_global_level_cap_bonus',
+            current + amount,
+          ));
+        }
+        this.advancePointer();
+        return false;
+      }
+
+      case 'change_unit_level_cap': {
+        const unit = this.findUnit(args[0] ?? '');
+        const amount = Math.trunc(Number(args[1] ?? 0));
+        if (unit && Number.isFinite(amount)) {
+          const current = Number(unit.fields.get('_level_cap_bonus') ?? 0);
+          game.actionLog.doAction(new SetUnitFieldAction(
+            unit,
+            '_level_cap_bonus',
+            current + amount,
+          ));
         }
         this.advancePointer();
         return false;
@@ -13539,6 +13651,8 @@ export class EventState extends State {
       }
 
       case 'unchoice': {
+        const suspended = this.suspendedChoiceEvents.at(-1);
+        if (suspended) suspended.replay = true;
         this.choiceResult = null;
         this.advancePointer();
         return false;
@@ -13851,7 +13965,7 @@ export class EventState extends State {
         // comprehensions in addition to comma-delimited shorthand.
         const forVar = args[0] ?? '_i';
         const typedForExpression = args[1] ?? '';
-        let forValues: any[] = [];
+        let forValues: unknown[] = [];
         if (typedForExpression.trim().startsWith('[') ||
             typedForExpression.includes(' for ') ||
             typedForExpression.startsWith('range') ||
@@ -13883,14 +13997,19 @@ export class EventState extends State {
           this.currentEvent!.commandPointer = this.currentEvent!.commands.length;
           return false;
         }
-        // Push loop context and set first value
+        // Push loop context and publish the first value as an event local.
+        // Authored EOtF loops intentionally reuse level-variable names
+        // (`rooms`), so storing iterators in gameVars breaks shadowing.
+        const localArgs = this.currentEvent!.trigger.localArgs ??= new Map();
         this.forLoopStack.push({
           varName: forVar,
           values: forValues,
           currentIndex: 0,
           startPointer: this.currentEvent!.commandPointer + 1,
+          hadLocal: localArgs.has(forVar),
+          oldLocal: localArgs.get(forVar),
         });
-        game.actionLog.doAction(new SetGameVarAction(game.gameVars, forVar, forValues[0]));
+        localArgs.set(forVar, forValues[0]);
         this.advancePointer();
         return false;
       }
@@ -13899,15 +14018,16 @@ export class EventState extends State {
         const loopCtx = this.forLoopStack[this.forLoopStack.length - 1];
         if (loopCtx) {
           loopCtx.currentIndex++;
+          const localArgs = this.currentEvent!.trigger.localArgs ??= new Map();
           if (loopCtx.currentIndex < loopCtx.values.length) {
             // Set next value and jump back to loop start
-            game.actionLog.doAction(
-              new SetGameVarAction(game.gameVars, loopCtx.varName, loopCtx.values[loopCtx.currentIndex]),
-            );
+            localArgs.set(loopCtx.varName, loopCtx.values[loopCtx.currentIndex]);
             this.currentEvent!.commandPointer = loopCtx.startPointer;
             return false;
           } else {
-            // Loop complete — pop and advance past endf
+            // Loop complete — restore any shadowed outer local.
+            if (loopCtx.hadLocal) localArgs.set(loopCtx.varName, loopCtx.oldLocal);
+            else localArgs.delete(loopCtx.varName);
             this.forLoopStack.pop();
             this.advancePointer();
             return false;
@@ -14548,10 +14668,15 @@ export class EventState extends State {
       case 'load_unit': {
         // load_unit;UniqueUnitNID;Team;AI
         const luNid = args[0] ?? '';
-        const luTeam = args[1] || 'player';
-        const luAi = args[2] || 'None';
+        const luTeamArg = args[1] ?? '';
+        const luHasExplicitTeam = game.db?.teams?.defs?.some(
+          (team: { nid: string }) => team.nid === luTeamArg,
+        ) ?? false;
+        const luTeam = luHasExplicitTeam ? luTeamArg : 'player';
+        const luAi = luHasExplicitTeam ? (args[2] || 'None') : 'None';
+        const luNoWarn = args.some((arg) => arg.toLowerCase() === 'no_warn');
         if (game.units.has(luNid)) {
-          console.warn(`load_unit: Unit "${luNid}" already exists`);
+          if (!luNoWarn) console.warn(`load_unit: Unit "${luNid}" already exists`);
           this.advancePointer();
           return false;
         }
@@ -14561,8 +14686,9 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        // Spawn into memory with no position (doesn't place on map)
-        const luUnit = game.spawnUnit(luPrefab, luTeam, null, luAi);
+        const luUnit = game.buildUnit(luPrefab, luTeam, luAi);
+        luUnit.party = game.currentParty;
+        game.actionLog.doAction(new CreateUnitAction(game, luUnit, null));
         this.loadMapSpriteForUnit(luUnit, game);
         this.advancePointer();
         return false;
@@ -14577,9 +14703,13 @@ export class EventState extends State {
         const mgTeam = args[3] || 'player';
         const mgAi = args[4] || 'None';
         // args[5] = faction (ignored for now)
-        const mgVariant = args[6] || '';
-        // args[7] = comma-separated item list
-        const mgItemStr = args[7] ?? '';
+        const mgFlags = new Set(['no_warn']);
+        const mgVariant = args[6] && !mgFlags.has(args[6].toLowerCase())
+          ? args[6]
+          : '';
+        const mgItemStr = args[7] && !mgFlags.has(args[7].toLowerCase())
+          ? args[7]
+          : '';
         const mgItems: [string, boolean][] = mgItemStr
           ? mgItemStr.split(',').map((s: string) => [s.trim(), false] as [string, boolean])
           : [];

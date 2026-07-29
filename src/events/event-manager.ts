@@ -129,7 +129,7 @@ export type EventCommandType =
   // Regions
   | 'add_region' | 'region_condition' | 'remove_region'
   // Add/remove/interact units
-  | 'load_unit' | 'make_generic' | 'create_unit'
+  | 'load_unit' | 'make_generic' | 'create_unit' | 'unload_unit'
   | 'add_unit' | 'move_unit' | 'remove_unit' | 'kill_unit' | 'remove_all_units' | 'remove_all_enemies'
   | 'interact_unit' | 'resurrect' | 'set_position'
   | 'set_skill_data' | 'set_mode_rng' | 'set_mode_autolevels' | 'show_minimap'
@@ -140,8 +140,9 @@ export type EventCommandType =
   | 'add_skill_component' | 'modify_skill_component' | 'remove_skill_component'
   | 'set_game_board_bounds' | 'remove_game_board_bounds' | 'dump_vars' | 'delete_save'
   // Modify unit properties
-  | 'set_name' | 'set_current_hp' | 'set_current_mana'
+  | 'set_name' | 'set_current_hp' | 'heal' | 'set_current_mana'
   | 'set_variant' | 'set_unit_field' | 'set_unit_note' | 'remove_unit_note'
+  | 'change_global_level_cap' | 'change_unit_level_cap'
   | 'reset' | 'has_attacked' | 'has_traded' | 'has_finished'
   | 'give_item' | 'equip_item' | 'remove_item' | 'move_item' | 'move_item_between_convoys'
   | 'set_item_uses' | 'set_item_data' | 'set_item_droppable' | 'break_item'
@@ -234,7 +235,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   // Regions
   'add_region', 'region_condition', 'remove_region',
   // Add/remove/interact units
-  'load_unit', 'make_generic', 'create_unit',
+  'load_unit', 'make_generic', 'create_unit', 'unload_unit',
   'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
   'interact_unit', 'resurrect', 'set_position',
   'set_skill_data', 'set_mode_rng', 'set_mode_autolevels', 'show_minimap',
@@ -245,8 +246,9 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'add_skill_component', 'modify_skill_component', 'remove_skill_component',
   'set_game_board_bounds', 'remove_game_board_bounds', 'dump_vars', 'delete_save',
   // Modify unit properties
-  'set_name', 'set_variant', 'set_current_hp', 'set_current_mana',
+  'set_name', 'set_variant', 'set_current_hp', 'heal', 'set_current_mana',
   'set_unit_field', 'set_unit_note', 'remove_unit_note',
+  'change_global_level_cap', 'change_unit_level_cap',
   'reset', 'has_attacked', 'has_traded', 'has_finished',
   'give_item', 'equip_item', 'remove_item', 'move_item', 'move_item_between_convoys',
   'set_item_uses', 'set_item_data', 'set_item_droppable', 'break_item',
@@ -2016,6 +2018,15 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     level: {
       regions: wrapRegions(regions),
       nid: game.currentLevel?.nid ?? '',
+      objective: {
+        ...(game.currentLevel?.objective ?? {}),
+        get(key: string, fallback: unknown = null) {
+          const objective = game.currentLevel?.objective ?? {};
+          return Object.prototype.hasOwnProperty.call(objective, key)
+            ? Reflect.get(objective, key)
+            : fallback;
+        },
+      },
       get units() {
         return Array.from(game.units?.values?.() ?? []).map(wrapUnit);
       },
@@ -2028,6 +2039,17 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get_unit(nid: string) {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
       return wrapUnit(u);
+    },
+    is_favorited(candidate: string | { nid?: string; _raw?: { nid?: string; fields?: Map<string, unknown> } }) {
+      const rawCandidate = typeof candidate === 'string'
+        ? game.units?.get(candidate) ?? game.getUnit?.(candidate)
+        : candidate?._raw ?? candidate;
+      const nid = rawCandidate?.nid ?? (typeof candidate === 'string' ? candidate : '');
+      const favoriteUnits = game.favoriteUnits ?? game.favorites;
+      if (favoriteUnits?.has?.(nid)) return true;
+      const fieldValue = rawCandidate?.fields?.get?.('Favorite') ??
+        rawCandidate?.fields?.get?.('favorite');
+      return fieldValue === true || fieldValue === 1 || fieldValue === 'true';
     },
     get_item(uid: number | string | unknown[]) {
       const requested = Array.isArray(uid) ? uid[0] : uid;
@@ -2349,6 +2371,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       if (property === 'items') return wrapCatalog(target.items, wrapItem);
       if (property === 'classes') return wrapCatalog(target.classes, wrapClass);
       if (property === 'units') return wrapCatalog(target.units, wrapUnit);
+      if (property === 'levels') return wrapCatalog(
+        target.levels,
+        (value: unknown) => value,
+      );
       return target[property as keyof typeof target];
     },
   });

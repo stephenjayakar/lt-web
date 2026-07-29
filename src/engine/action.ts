@@ -15,9 +15,10 @@ import {
   skillConditionActive,
 } from '../combat/skill-system';
 import { skillCondition } from '../combat/item-system';
-import { autoLevelUnit, levelUpUnit } from './leveling';
+import { autoLevelUnit, getEffectiveLevelCap, levelUpUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
+import type { GameState } from './game-state';
 import type { SupportPair } from './support-system';
 
 // Forward declare — we need a getter function since game-state has circular deps
@@ -439,6 +440,16 @@ export class ActionLog {
     this.actionIndex -= 1;
     action.reverse();
     return action;
+  }
+
+  /** Whether a start marker still needs its matching group end marker. */
+  hasOpenActionGroup(): boolean {
+    for (let index = this.actions.length - 1; index >= 0; index -= 1) {
+      const action = this.actions[index];
+      if (action instanceof MarkActionGroupEnd || action instanceof MarkPhase) return false;
+      if (action instanceof MarkActionGroupStart) return true;
+    }
+    return false;
   }
 
   /** Clear all recorded actions. */
@@ -1838,6 +1849,53 @@ export class CreateUnitAction extends Action {
 }
 
 /**
+ * Remove a unit from runtime memory while preserving its exact object for
+ * turnwheel restoration. Map and initiative removal are handled here because
+ * unloaded units must not remain addressable by any gameplay registry.
+ */
+export class UnregisterUnitAction extends Action {
+  private game: GameState;
+  private unit: UnitObject;
+  private position: [number, number] | null = null;
+  private initiativeLine: string[] | null = null;
+  private initiativeValues: number[] | null = null;
+  private initiativeIndex = -1;
+
+  constructor(game: GameState, unit: UnitObject) {
+    super();
+    this.game = game;
+    this.unit = unit;
+  }
+
+  execute(): void {
+    this.position = this.unit.position
+      ? [...this.unit.position] as [number, number]
+      : null;
+    if (this.game.initiative) {
+      this.initiativeLine = [...this.game.initiative.unitLine];
+      this.initiativeValues = [...this.game.initiative.initiativeLine];
+      this.initiativeIndex = this.game.initiative.currentIdx;
+      this.game.initiative.removeUnit(this.unit);
+    }
+    if (this.unit.position && this.game.board) this.game.board.removeUnit(this.unit);
+    this.game.units.delete(this.unit.nid);
+  }
+
+  reverse(): void {
+    this.game.units.set(this.unit.nid, this.unit);
+    if (this.position) {
+      this.unit.position = [...this.position];
+      this.game.board?.setUnit(this.position[0], this.position[1], this.unit);
+    }
+    if (this.game.initiative && this.initiativeLine && this.initiativeValues) {
+      this.game.initiative.unitLine = [...this.initiativeLine];
+      this.game.initiative.initiativeLine = [...this.initiativeValues];
+      this.game.initiative.currentIdx = this.initiativeIndex;
+    }
+  }
+}
+
+/**
  * AddRegionAction - Add a region to the current level's region list.
  * Mirrors Python's action.AddRegion.
  */
@@ -2102,14 +2160,18 @@ export class GainExpAction extends Action {
     this.levelUps = [];
 
     this.unit.exp += this.amount;
-    while (this.unit.exp >= 100) {
+    const game = _getGame?.();
+    const levelCap = game
+      ? getEffectiveLevelCap(this.unit, game)
+      : Number.POSITIVE_INFINITY;
+    while (this.unit.exp >= 100 && this.unit.level < levelCap) {
       this.unit.exp -= 100;
-      const game = _getGame?.();
       const gains = game
         ? levelUpUnit(this.unit, this.growthMode, game)
         : this.unit.levelUp(this.growthMode);
       this.levelUps.push(gains);
     }
+    if (this.unit.level >= levelCap && this.unit.exp >= 100) this.unit.exp = 0;
   }
 
   reverse(): void {
@@ -4169,17 +4231,19 @@ export class ChangeUnitRecordAction extends Action {
 export class SetUnitFieldAction extends Action {
   private unit: UnitObject;
   private key: string;
-  private value: any;
+  private value: unknown;
   private increment: boolean;
-  private oldValue: any;
+  private oldValue: unknown;
+  private hadOldValue: boolean;
 
-  constructor(unit: UnitObject, key: string, value: any, increment: boolean = false) {
+  constructor(unit: UnitObject, key: string, value: unknown, increment: boolean = false) {
     super();
     this.unit = unit;
     this.key = key;
     this.value = value;
     this.increment = increment;
-    this.oldValue = unit.fields.get(key) ?? '';
+    this.hadOldValue = unit.fields.has(key);
+    this.oldValue = unit.fields.get(key);
   }
 
   execute(): void {
@@ -4191,7 +4255,8 @@ export class SetUnitFieldAction extends Action {
   }
 
   reverse(): void {
-    this.unit.fields.set(this.key, this.oldValue);
+    if (this.hadOldValue) this.unit.fields.set(this.key, this.oldValue);
+    else this.unit.fields.delete(this.key);
   }
 }
 

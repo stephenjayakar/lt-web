@@ -229,11 +229,19 @@ test.describe('EVNT/PYEV1 nested flow control', () => {
       "for;value;[entry for entry in {v:loop_source} if entry != 'b']",
       'inc_game_var;filtered_count',
       'endf',
+      "level_var;rooms;['Combat', 'Shop']",
+      'game_var;shadow_result;missed',
+      "for;rooms;['Combat']",
+      "if;'{rooms}' == 'Combat'",
+      'game_var;shadow_result;hit',
+      'end',
+      'endf',
       'wait;1',
     ]);
 
     expect(await getGameVar(page, 'flow_count')).toBe(3);
     expect(await getGameVar(page, 'filtered_count')).toBe(3);
+    expect(await getGameVar(page, 'shadow_result')).toBe('hit');
   });
 
   test('PYEV1: 3-deep if/elif/else picks the correct nested branch', async ({ page }) => {

@@ -280,8 +280,15 @@ export class PrepMainState extends State {
       return;
     }
 
-    // Exit prep — go back to event system which will continue processing
-    game.state.back();
+    // Exit prep. Direct level loads may leave prep above a stale roam state
+    // instead of a tactical Free/Event state; revealing it drains the stack.
+    const previous = game.state.stack[game.state.stack.length - 2];
+    if (previous?.name === 'free' || previous?.name === 'event') {
+      game.state.back();
+    } else {
+      game.state.clear();
+      game.state.change('free');
+    }
   }
 }
 

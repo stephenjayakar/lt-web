@@ -21,9 +21,48 @@ const pendingLoads: Map<string, Promise<HTMLImageElement | null>> = new Map();
 /** Base URL for game data (set once at init). */
 let baseUrl: string = '/game-data/default.ltproj';
 
+type IconAlias = { sheetNid: string; index: [number, number] };
+
+let iconAliases: Map<string, IconAlias> = new Map();
+let aliasLoad: Promise<void> | null = null;
+
+async function loadIconAliases(): Promise<void> {
+  if (aliasLoad) return aliasLoad;
+  aliasLoad = fetch(`${baseUrl}/resources/icons16/icons16.json`)
+    .then(async (response) => {
+      if (!response.ok) return;
+      const sheets = await response.json() as Array<{
+        nid?: string;
+        subicon_dict?: Record<string, [number, number]>;
+      }>;
+      for (const sheet of sheets) {
+        if (!sheet.nid) continue;
+        for (const [alias, index] of Object.entries(sheet.subicon_dict ?? {})) {
+          iconAliases.set(alias, { sheetNid: sheet.nid, index });
+        }
+      }
+      await Promise.all(
+        [...new Set([...iconAliases.values()].map((alias) => alias.sheetNid))]
+          .map((nid) => loadIconSheet(nid, '16')),
+      );
+    })
+    .catch(() => {
+      // Missing icon metadata is valid for minimal projects.
+    });
+  return aliasLoad;
+}
+
 /** Initialize the icon system with the base URL for loading resources. */
 export function initIcons(url: string): void {
   baseUrl = url.replace(/\/$/, '');
+  iconAliases = new Map();
+  aliasLoad = null;
+  void loadIconAliases();
+}
+
+/** Wait until alias metadata and every referenced 16px sheet are ready. */
+export async function preloadIconAliases(): Promise<void> {
+  await loadIconAliases();
 }
 
 /**
@@ -99,6 +138,27 @@ export function drawIcon16(
   const sx = iconIndex[0] * ICON_SIZE_16;
   const sy = iconIndex[1] * ICON_SIZE_16;
   surf.blitImage(img, sx, sy, ICON_SIZE_16, ICON_SIZE_16, dx, dy);
+}
+
+/** Draw a 16x16 icon by the alias stored in an icon sheet's subicon_dict. */
+export function drawIconByAlias(
+  surf: Surface,
+  alias: string,
+  dx: number,
+  dy: number,
+): boolean {
+  const resolved = iconAliases.get(alias);
+  if (!resolved) {
+    void loadIconAliases();
+    return false;
+  }
+  drawIcon16(surf, resolved.sheetNid, resolved.index, dx, dy);
+  return true;
+}
+
+/** Exposed for deterministic rendering tests and diagnostics. */
+export function resolveIconAlias(alias: string): IconAlias | null {
+  return iconAliases.get(alias) ?? null;
 }
 
 /**

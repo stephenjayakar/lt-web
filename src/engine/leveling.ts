@@ -9,6 +9,23 @@ export interface AutoLevelResult {
   growthPoints: Record<string, number>;
 }
 
+/** Runtime cap used by ordinary EXP gain and base-training availability. */
+export function getEffectiveLevelCap(
+  unit: UnitObject,
+  game: {
+    db: { classes: Map<string, { max_level?: number }> };
+    gameVars: Map<string, unknown>;
+  },
+): number {
+  const classCap = game.db.classes.get(unit.klass)?.max_level ?? 20;
+  const globalBonus = Number(game.gameVars.get('_global_level_cap_bonus') ?? 0);
+  const unitBonus = Number(unit.fields.get('_level_cap_bonus') ?? 0);
+  const globalCap = 20 +
+    (Number.isFinite(globalBonus) ? globalBonus : 0) +
+    (Number.isFinite(unitBonus) ? unitBonus : 0);
+  return Math.max(1, Math.min(classCap, globalCap));
+}
+
 const MD5_SHIFTS = [
   7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
   5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,

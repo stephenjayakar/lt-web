@@ -21,6 +21,7 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
 import type { LoreEntry } from '../../data/types';
 import { canTradeWith } from '../../combat/skill-system';
+import { getEffectiveLevelCap } from '../leveling';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -1704,7 +1705,7 @@ export class BaseBexpSelectState extends State {
       if (unit.team !== 'player' || unit.dead) continue;
       if (partyNid && unit.party && unit.party !== partyNid) continue;
       const klass = game.db.classes.get(unit.klass);
-      const maxLevel = klass?.max_level ?? 20;
+      const maxLevel = getEffectiveLevelCap(unit, game);
       const autoPromote = (game.db.getConstant('auto_promote', false) || unit.tags?.includes('AutoPromote'))
         && (klass?.turns_into?.length ?? 0) > 0 && !unit.tags?.includes('NoAutoPromote');
       const maxed = unit.level >= maxLevel && !autoPromote;

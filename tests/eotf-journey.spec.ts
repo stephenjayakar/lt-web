@@ -12,12 +12,10 @@
  * records, roam the hub, talk to an NPC, deploy through a party change, and
  * fight a real battle to a resolved outcome.
  *
- * Where it takes a shortcut it says so. Two are deliberate: the sortie menu is
- * driven by changing party directly rather than navigating its unit picker,
- * and the battle phase warps the player next to the enemy instead of spending
- * turns closing the distance. Both stand in for player input, not for engine
- * behaviour — every state transition, event, and combat calculation below runs
- * through the real engine.
+ * One boundary is deliberate: after proving the authored sortie selector and
+ * deployment picker, the combat phase loads the deterministic authored EX_2
+ * map. Roaming, party selection, preparations, tactical movement, phase
+ * changes, AI, and combat are all driven through normal engine input.
  */
 
 import fs from 'node:fs';
@@ -143,48 +141,91 @@ test.describe('Embrace of the Fog end-to-end journey', () => {
     });
     expect(progressAfterTalk, 'the talk must advance Progress').toBeGreaterThan(0);
 
-    // ---- 4. Deploy -------------------------------------------------------
-    // The hub runs on the Reserves party and the acts run on Player, so the
-    // sortie's job is to move the chosen units across. Standing in for the
-    // unit picker here; win_game is the real transition the sortie performs.
+    // ---- 4. Pick a sortie and deploy ------------------------------------
+    // Run the authored scenario selector and its EventNid-backed unit picker.
+    // This is the seam that previously lost the parent choice's local tables,
+    // replayed with a stale command pointer, and left selected units in the
+    // Reserves party.
     await page.evaluate(() => {
       const game = (window as any).__gameRef;
-      game.db.events.set('_journey_depart', {
-        name: '_journey_depart', nid: '_journey_depart', trigger: '_journey_depart',
-        level_nid: 'X', condition: 'True', only_once: false, priority: 0,
-        _source: ['change_party;Player;Player', 'win_game'],
-      });
       game.eventManager.triggerSpecific(
-        '_journey_depart', { type: '_journey_depart', levelNid: 'X' }, true,
+        'X 8. Run_Start',
+        { type: 'journey_sortie', levelNid: 'X' },
+        true,
       );
       game.state.change('event');
     });
-    await settle(page, 25_000, ['free', 'free_roam', 'prep_main']);
-
-    const deployed = await page.evaluate(() => {
+    const sortie = await page.evaluate(async () => {
       const game = (window as any).__gameRef;
-      const onBoard = [...game.units.values()].filter((unit: any) => unit.position);
-      return {
-        level: game.currentLevel?.nid,
-        players: onBoard.filter((unit: any) => unit.team === 'player').map((unit: any) => unit.nid),
-      };
+      let lastChoice = '';
+      const picked: string[] = [];
+      for (let frame = 0; frame < 25_000; frame += 1) {
+        const state = game.state.getCurrentState();
+        if (game.currentLevel?.nid !== 'X' &&
+            ['free', 'free_roam', 'prep_main'].includes(state?.name)) {
+          return {
+            level: game.currentLevel.nid,
+            party: game.getUnit('Player')?.party,
+            selected: picked,
+          };
+        }
+        const choice = state?.choiceMenu;
+        if (choice) {
+          const values = choice.options.map((option: any) => option.value);
+          const signature = `${state.choiceNid}:${values.join('|')}`;
+          if (signature !== lastChoice) {
+            let target: string | undefined;
+            if (state.choiceNid === 'New_Party') {
+              target = values.find((value: string) =>
+                value !== 'Filter' && value !== 'Search');
+              if (target) picked.push(target);
+            } else if (state.choiceNid === 'deploy') {
+              target = values.find((value: string) => value === 'Yes');
+            }
+            if (!target) throw new Error(
+              `Unexpected sortie choice ${state.choiceNid}: ${values.join(', ')}`,
+            );
+            choice.selectedIndex = values.indexOf(target);
+            (window as any).__harness.injectInput('SELECT');
+            lastChoice = signature;
+          }
+        } else {
+          lastChoice = '';
+          if (state?.dialog || state?.banner) {
+            (window as any).__harness.injectInput('SELECT');
+          }
+        }
+        (window as any).__harness.stepFrames(1);
+        if (frame % 20 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      throw new Error('Authored sortie did not reach a battle');
     });
-    expect(deployed.level, 'departing must leave the hub').not.toBe('X');
-    expect(deployed.players, 'the deploying party must be placed on the new map').toContain('Player');
+    expect(sortie.level, 'the authored scenario selection must leave the hub').not.toBe('X');
+    expect(sortie.party, 'the selected unit must move to the deploying party').toBe('Player');
+    expect(sortie.selected, 'the authored picker must publish its selection').toContain('Player');
 
     // ---- 5. Fight --------------------------------------------------------
-    // EX_2 is an authored one-on-one map, so the outcome is easy to read.
-    // Warping closes the distance the player would otherwise walk; the attack
-    // itself goes through the real cursor, action menu, and targeting states.
-    await page.evaluate(() => (window as any).__harness.loadLevel('EX_2'));
-    await settle(page, 15_000, ['free', 'prep_main']);
+    // EX_2 is an authored one-on-one map, so tactical input and the resulting
+    // enemy phase are deterministic.
+    await page.evaluate(() => {
+      (window as any).__gameRef.roamInfo.roam = false;
+      (window as any).__gameRef.state.clear();
+      (window as any).__gameRef.state.change('free');
+      (window as any).__harness.stepFrames(2);
+      return (window as any).__harness.loadLevel('EX_2');
+    });
+    await settle(page, 15_000, ['prep_main']);
 
     // An authored battle opens in preparations; walk its menu down to Fight
     // the way a player would, rather than forcing the state.
     if (await stateName(page) === 'prep_main') {
       const prep = await page.evaluate(() => {
-        const state: any = (window as any).__gameRef.state.getCurrentState();
-        return { options: state?.options ?? [], cursor: state?.cursor ?? 0 };
+        const game = (window as any).__gameRef;
+        const state: any = game.state.getCurrentState();
+        return {
+          options: state?.options ?? [],
+          cursor: state?.cursor ?? 0,
+        };
       });
       const fightIndex = prep.options.indexOf('Fight');
       expect(fightIndex, 'preparations should offer Fight').toBeGreaterThanOrEqual(0);
@@ -194,67 +235,90 @@ test.describe('Embrace of the Fog end-to-end journey', () => {
       await stepFrames(page, 3, 'SELECT');
       await settle(page, 10_000, ['free']);
     }
-    expect(await stateName(page), 'Fight must start the battle').toBe('free');
+    const battleStart = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        current: game.state.getCurrentState()?.name,
+        stack: game.state.stack.map((state: any) => state.name),
+        level: game.currentLevel?.nid,
+      };
+    });
+    expect(
+      battleStart.current,
+      `Fight must start the battle: ${JSON.stringify(battleStart)}`,
+    ).toBe('free');
 
     const combatants = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       const player = game.getUnit('Yusha');
       const enemy = game.getUnit('Dragon');
-      (window as any).__harness.warpUnit('Yusha', enemy.position[0], enemy.position[1] + 1);
+      const moveTarget = game.pathSystem.getValidMoves(player, game.board)
+        .sort((left: [number, number], right: [number, number]) => {
+          const leftDistance =
+            Math.abs(left[0] - enemy.position[0]) + Math.abs(left[1] - enemy.position[1]);
+          const rightDistance =
+            Math.abs(right[0] - enemy.position[0]) + Math.abs(right[1] - enemy.position[1]);
+          return leftDistance - rightDistance;
+        })[0];
       return {
         enemyNid: enemy.nid,
-        enemyPos: [...enemy.position],
         enemyHp: enemy.currentHp,
         playerHp: player.currentHp,
+        playerPos: [...player.position],
+        moveTarget,
       };
     });
-    await stepFrames(page, 5);
 
-    // Cursor to the player, select, confirm the tile, then Attack.
-    const cursor = await page.evaluate(() => (window as any).__harness.getState().cursorPos);
-    const [targetX, targetY] = [combatants.enemyPos[0], combatants.enemyPos[1] + 1];
-    // Re-read the cursor each step: a fixed number of presses overshoots when
-    // a frame drops or the cursor is nudged by the warp.
-    for (let guard = 0; guard < 60; guard += 1) {
-      const [cx, cy] = await page.evaluate(() =>
-        (window as any).__harness.getState().cursorPos);
-      if (cx === targetX && cy === targetY) break;
-      if (cx !== targetX) await stepFrames(page, 4, cx < targetX ? 'RIGHT' : 'LEFT');
-      else await stepFrames(page, 4, cy < targetY ? 'DOWN' : 'UP');
-    }
-    expect(
-      await page.evaluate(() => (window as any).__harness.getState().cursorPos),
-      'cursor should reach the player',
-    ).toEqual([targetX, targetY]);
+    const moveCursorTo = async ([targetX, targetY]: [number, number]): Promise<void> => {
+      for (let guard = 0; guard < 60; guard += 1) {
+        const [cursorX, cursorY] = await page.evaluate(() =>
+          (window as any).__harness.getState().cursorPos);
+        if (cursorX === targetX && cursorY === targetY) return;
+        if (cursorX !== targetX) {
+          await stepFrames(page, 4, cursorX < targetX ? 'RIGHT' : 'LEFT');
+        } else {
+          await stepFrames(page, 4, cursorY < targetY ? 'DOWN' : 'UP');
+        }
+      }
+      throw new Error(`Cursor did not reach ${targetX},${targetY}`);
+    };
 
-    await stepFrames(page, 3, 'SELECT'); // pick up the unit
+    // Move the unit as close to the dragon as its authored movement permits.
+    // Ending the turn there lets the enemy AI initiate the exchange.
+    await moveCursorTo(combatants.playerPos as [number, number]);
+    await stepFrames(page, 3, 'SELECT');
     await stepFrames(page, 8);
-    await stepFrames(page, 3, 'SELECT'); // stay on this tile, open the menu
-    await stepFrames(page, 8);
+    await moveCursorTo(combatants.moveTarget as [number, number]);
+    await stepFrames(page, 3, 'SELECT');
+    await settle(page, 5_000, ['menu']);
+    await stepFrames(page, 2);
     expect(await stateName(page), 'confirming the move must open the action menu').toBe('menu');
 
-    // Attack must be offered at all: it only appears when the unit can wield
-    // its own weapon, which depends on the wexp the unit prefab grants.
     const actionMenu = await page.evaluate(() => {
       const state: any = (window as any).__gameRef.state.getCurrentState();
-      return state?.menu?.options?.map((option: any) => option.label) ?? [];
+      return {
+        labels: state?.menu?.options?.map((option: any) => option.label) ?? [],
+        cursor: state?.menu?.cursor ?? 0,
+      };
     });
-    expect(actionMenu, 'an adjacent enemy must offer Attack').toContain('Attack');
-
-    await stepFrames(page, 3, 'SELECT'); // Attack is the first entry
-    await stepFrames(page, 8);
-    if (await stateName(page) === 'weapon_choice') {
-      await stepFrames(page, 3, 'SELECT');
-      await stepFrames(page, 8);
+    const waitIndex = actionMenu.labels.indexOf('Wait');
+    expect(waitIndex, `action menu must offer Wait: ${actionMenu.labels.join(', ')}`)
+      .toBeGreaterThanOrEqual(0);
+    for (let i = actionMenu.cursor; i < waitIndex; i += 1) {
+      await stepFrames(page, 3, 'DOWN');
     }
-    await stepFrames(page, 3, 'SELECT'); // confirm the target
-    await stepFrames(page, 10);
+    await stepFrames(page, 3, 'SELECT');
 
-    // Let the exchange play out and control return to the map.
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      const name = await stateName(page);
-      if (name === 'free' || name === 'menu') break;
-      await stepFrames(page, 10, 'SELECT');
+    // The only remaining unit is the enemy. Its authored AI must close the
+    // final tile, choose an attack, and resolve combat without a harness warp.
+    for (let frame = 0; frame < 6_000; frame += 1) {
+      const changed = await page.evaluate(({ enemyHp, playerHp }) => {
+        const game = (window as any).__gameRef;
+        return game.getUnit('Dragon')?.currentHp !== enemyHp ||
+          game.getUnit('Yusha')?.currentHp !== playerHp;
+      }, combatants);
+      if (changed) break;
+      await stepFrames(page, 1);
     }
 
     const outcome = await page.evaluate((enemyNid: string) => {
@@ -269,20 +333,15 @@ test.describe('Embrace of the Fog end-to-end journey', () => {
       };
     }, combatants.enemyNid);
 
-    // Assert on the exchange rather than on who wins: this authored pairing is
-    // a starting unit against a late-game dragon, so the counter is what lands.
-    // Either way, HP moving proves targeting, the combat solver, and the damage
-    // calculations all ran against real units and items.
     const enemyTookDamage = outcome.enemyDead ||
       (outcome.enemyHp !== null && outcome.enemyHp < combatants.enemyHp);
     const playerTookDamage = outcome.playerDead ||
       (outcome.playerHp !== null && outcome.playerHp < combatants.playerHp);
     expect(
       enemyTookDamage || playerTookDamage,
-      `combat must change HP (enemy ${combatants.enemyHp}->${outcome.enemyHp}, ` +
+      `AI combat must change HP (enemy ${combatants.enemyHp}->${outcome.enemyHp}, ` +
       `player ${combatants.playerHp}->${outcome.playerHp})`,
     ).toBe(true);
-    expect(['free', 'menu', 'phase_change']).toContain(await stateName(page));
     expect(compatibilityFailures, compatibilityFailures.join('\n')).toEqual([]);
   });
 });

@@ -238,6 +238,128 @@ export interface EventSaveData {
   pyev1State?: any;
 }
 
+type SavedEventReference = {
+  __eventReference: 'unit' | 'item' | 'skill';
+  nid: string;
+  uid?: number;
+};
+
+function serializeEventValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || value === undefined ||
+      typeof value === 'string' || typeof value === 'number' ||
+      typeof value === 'boolean') return value;
+  if (typeof value === 'function' || typeof value !== 'object') return undefined;
+  if (value === globalThis ||
+      (typeof window !== 'undefined' && value === window) ||
+      (typeof OffscreenCanvas !== 'undefined' && value instanceof OffscreenCanvas) ||
+      (typeof HTMLCanvasElement !== 'undefined' && value instanceof HTMLCanvasElement) ||
+      (typeof ImageBitmap !== 'undefined' && value instanceof ImageBitmap)) {
+    return undefined;
+  }
+  if (seen.has(value)) return undefined;
+
+  const nid = Reflect.get(value, 'nid');
+  const uid = Reflect.get(value, 'uid');
+  if (typeof nid === 'string' && 'currentHp' in value) {
+    return { __eventReference: 'unit', nid } satisfies SavedEventReference;
+  }
+  if (typeof nid === 'string' && typeof uid === 'number' && 'components' in value) {
+    const kind = 'owner' in value || 'subitems' in value ? 'item' : 'skill';
+    return {
+      __eventReference: kind,
+      nid,
+      uid,
+    } satisfies SavedEventReference;
+  }
+
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => serializeEventValue(entry, seen));
+  }
+  if (value instanceof Map) {
+    return {
+      __eventMap: [...value.entries()].map(([key, entry]) => [
+        serializeEventValue(key, seen),
+        serializeEventValue(entry, seen),
+      ]),
+    };
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const serialized = serializeEventValue(entry, seen);
+    if (serialized !== undefined) result[key] = serialized;
+  }
+  return result;
+}
+
+function serializeEventTrigger(trigger: EventTrigger): EventTrigger {
+  const serialized = serializeEventValue(trigger);
+  if (!serialized || typeof serialized !== 'object') {
+    throw new Error(`Cannot serialize event trigger "${trigger.type}"`);
+  }
+  // The recursive serializer preserves EventTrigger's keys while replacing
+  // runtime object references with tagged save references.
+  return serialized as unknown as EventTrigger;
+}
+
+function restoreEventValue(
+  value: unknown,
+  game: {
+    units: Map<string, UnitObject>;
+    items: Map<number, ItemObject>;
+  },
+): unknown {
+  if (!value || typeof value !== 'object') return value;
+  if ('__eventReference' in value && 'nid' in value) {
+    const kind = Reflect.get(value, '__eventReference');
+    const nid = String(Reflect.get(value, 'nid'));
+    const uid = Number(Reflect.get(value, 'uid'));
+    if (kind === 'unit') return game.units.get(nid) ?? { nid };
+    if (kind === 'item') return game.items.get(uid) ?? { nid, uid };
+    if (kind === 'skill') {
+      for (const unit of game.units.values()) {
+        const skill = unit.skills.find((candidate) => candidate.uid === uid);
+        if (skill) return skill;
+      }
+      return { nid, uid };
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => restoreEventValue(entry, game));
+  }
+  if ('__eventMap' in value) {
+    const entries = Reflect.get(value, '__eventMap');
+    return new Map((Array.isArray(entries) ? entries : []).map((entry) => [
+      restoreEventValue(entry[0], game),
+      restoreEventValue(entry[1], game),
+    ]));
+  }
+  if (value instanceof Map) {
+    return new Map([...value.entries()].map(([key, entry]) => [
+      restoreEventValue(key, game),
+      restoreEventValue(entry, game),
+    ]));
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      restoreEventValue(entry, game),
+    ]),
+  );
+}
+
+function restoreEventTrigger(
+  trigger: EventTrigger,
+  game: {
+    units: Map<string, UnitObject>;
+    items: Map<number, ItemObject>;
+  },
+): EventTrigger {
+  const restored = restoreEventValue(trigger, game);
+  // Tagged references are fully resolved above; the outer shape is unchanged.
+  return restored as unknown as EventTrigger;
+}
+
 export interface SaveDict {
   units: UnitSaveData[];
   items: ItemSaveData[];
@@ -921,7 +1043,7 @@ export function buildSaveDict(game: any): SaveDict {
   const eventQueue: EventSaveData[] = game.eventManager
     ? (game.eventManager as EventManager).eventQueue.map((event) => ({
         nid: event.nid,
-        trigger: structuredClone(event.trigger),
+        trigger: serializeEventTrigger(event.trigger),
         commandPointer: event.commandPointer,
         state: event.state,
         currentDialog: event.currentDialog ? { ...event.currentDialog } : null,
@@ -1667,7 +1789,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
         console.warn(`Failed to restore event "${savedEvent.nid}": prefab missing`);
         continue;
       }
-      const event = new GameEvent(prefab, structuredClone(savedEvent.trigger), () => game);
+      const event = new GameEvent(prefab, restoreEventTrigger(savedEvent.trigger, game), () => game);
       event.commandPointer = savedEvent.commandPointer;
       event.state = savedEvent.state;
       event.currentDialog = savedEvent.currentDialog ? { ...savedEvent.currentDialog } : null;

@@ -614,7 +614,6 @@ test.describe('Event command parity', () => {
     expect(resumed.newActionTypes).toEqual([
       'SetGameVarAction',
       'SetGameVarAction',
-      'MarkActionGroupEnd',
     ]);
 
     const rewind = await page.evaluate((beforeActionIndex: number) => {
