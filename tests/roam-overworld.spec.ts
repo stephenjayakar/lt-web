@@ -118,6 +118,55 @@ test.describe('Roam talk interaction', () => {
     expect(result.talkedTo).not.toBe(setup.farNid);
   });
 
+  test('SELECT still talks after a turn leaves the roam sprite off-center', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const setup = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const roamUnit = game.units.get('Eirika');
+      const npc = [...game.units.values()].find(
+        (unit: any) => unit !== roamUnit && unit.position,
+      );
+      if (!roamUnit || !npc) return { ok: false };
+
+      roamUnit.position = [14, 7];
+      npc.position = [14, 6];
+      game.eventManager.addTalkPair(roamUnit.nid, npc.nid);
+      game.eventManager.allEvents.set('_test_off_center_talk', {
+        nid: '_test_off_center_talk',
+        name: 'Off-center Talk',
+        trigger: 'on_talk',
+        level_nid: '',
+        condition: `check_pair('${roamUnit.nid}','${npc.nid}')`,
+        only_once: false,
+        priority: 0,
+        _source: ['set_game_var;_off_center_talk;yes'],
+      });
+      game.roamInfo.roam = true;
+      game.roamInfo.roamUnitNid = roamUnit.nid;
+      game.state.change('free_roam');
+      return { ok: true };
+    });
+
+    expect(setup.ok).toBe(true);
+    await stepFrames(page, 5);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const roam = game.state.getCurrentState();
+      // Reproduce the saved EOtF approach: the occupied tile is adjacent, but
+      // cornering inertia leaves the sprite 1.51 taxicab tiles from the NPC.
+      roam.movementComponent.roamPosition = { x: 13.72, y: 7.23 };
+    });
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 10);
+
+    const talked = await page.evaluate(() =>
+      (window as any).__gameRef.gameVars.get('_off_center_talk') ?? null);
+    expect(talked).toBe('yes');
+  });
+
   test('roam triggers reach level-scoped events, not just global ones', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
     await waitForHarness(page);

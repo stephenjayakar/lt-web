@@ -595,23 +595,46 @@ export class FreeRoamState extends MapState {
       }
     }
   }
+  /**
+   * Measure proximity from the live sub-tile position, as Python does.
+   *
+   * The web movement component updates `unit.position` as soon as the player
+   * crosses a half-tile boundary. After turning a corner, inertia can therefore
+   * leave the sprite just outside TALK_RANGE while its occupied tile is already
+   * adjacent to the NPC. Treat that grid adjacency as in range so SELECT cannot
+   * fail from a few residual sub-pixels.
+   */
+  private getInteractionDistance(unit: UnitObject): number {
+    const roamPos = this.movementComponent?.roamPosition;
+    if (!roamPos) return Number.POSITIVE_INFINITY;
+
+    const subTileDistance =
+      Math.abs(unit.position![0] - roamPos.x) +
+      Math.abs(unit.position![1] - roamPos.y);
+    if (!this.roamUnit?.position) return subTileDistance;
+
+    const gridDistance =
+      Math.abs(unit.position![0] - this.roamUnit.position[0]) +
+      Math.abs(unit.position![1] - this.roamUnit.position[1]);
+    return gridDistance < TALK_RANGE
+      ? Math.min(subTileDistance, gridDistance)
+      : subTileDistance;
+  }
 
   /** Find the closest unit within TALK_RANGE of the roam unit. */
   private getClosestUnit(mustHaveTalk: boolean): UnitObject | null {
     const game = getGame();
     if (!game || !this.movementComponent?.roamPosition) return null;
 
-    const roamPos = this.movementComponent.roamPosition;
     let closest: UnitObject | null = null;
     let closestDist = TALK_RANGE;
 
     for (const unit of game.units.values()) {
       if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
 
-      // Taxicab/Manhattan distance, matching Python's utils.calculate_distance
-      // (lt-maker/app/utilities/utils.py:60), which free_roam_state.py uses
-      // for both get_closest_unit() and get_closest_units().
-      const dist = Math.abs(unit.position[0] - roamPos.x) + Math.abs(unit.position[1] - roamPos.y);
+      // Python measures from the sprite's live sub-tile position. The helper
+      // also accounts for the web port's earlier grid-boundary synchronization.
+      const dist = this.getInteractionDistance(unit);
 
       if (dist < closestDist) {
         if (mustHaveTalk) {
@@ -639,14 +662,12 @@ export class FreeRoamState extends MapState {
     const game = getGame();
     if (!game || !this.movementComponent?.roamPosition) return [];
 
-    const roamPos = this.movementComponent.roamPosition;
     const candidates: Array<{ unit: UnitObject; dist: number }> = [];
 
     for (const unit of game.units.values()) {
       if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
 
-      // Taxicab/Manhattan distance — see getClosestUnit() above.
-      const dist = Math.abs(unit.position[0] - roamPos.x) + Math.abs(unit.position[1] - roamPos.y);
+      const dist = this.getInteractionDistance(unit);
       if (dist >= TALK_RANGE) continue;
 
       if (mustHaveTalk && !game.eventManager?.hasTalkPair?.(this.roamUnit!.nid, unit.nid)) {
