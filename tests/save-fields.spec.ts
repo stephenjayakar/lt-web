@@ -303,9 +303,12 @@ test.describe('Save-field parity closeout', () => {
         ],
       };
       g.db.events.set(prefab.nid, prefab);
+      const triggerUnit = [...g.units.values()][0];
       g.eventManager.eventQueue.push(new GameEvent(prefab, {
         type: 'test',
         levelNid: 'DEBUG',
+        unit1: triggerUnit,
+        localArgs: new Map([['nested', { unit: triggerUnit }]]),
       }, () => g));
       g.state.change('event');
     });
@@ -339,12 +342,21 @@ test.describe('Save-field parity closeout', () => {
         pointer: g.eventManager.getCurrentEvent()?.commandPointer,
         state: g.state.getCurrentState()?.name,
         stack: g.state.getStackNames(),
+        triggerIdentity:
+          g.eventManager.getCurrentEvent()?.trigger.unit1 ===
+          g.units.get(g.eventManager.getCurrentEvent()?.trigger.unit1?.nid),
+        nestedTriggerIdentity: (() => {
+          const nested = g.eventManager.getCurrentEvent()?.trigger.localArgs?.get('nested');
+          return nested?.unit === g.units.get(nested?.unit?.nid);
+        })(),
       };
     });
     expect(resumed.before).toBe('done');
     expect(resumed.pointer).toBe(1);
     expect(resumed.state).toBe('event');
     expect(resumed.stack.at(-1)).toBe('event');
+    expect(resumed.triggerIdentity).toBe(true);
+    expect(resumed.nestedTriggerIdentity).toBe(true);
     await stepFrames(page, 80);
     const after = await page.evaluate(() => {
       const g = (window as any).__gameRef;

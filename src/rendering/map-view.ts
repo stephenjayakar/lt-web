@@ -117,7 +117,7 @@ export class MapView {
     if (bgTm) {
       bgTm.updateAutotiles(Date.now());
       const bgImg = bgTm.getFullImage(cullRect);
-      if (bgImg) this.mapSurface.ctx.drawImage(bgImg, offsetX, offsetY);
+      if (bgImg) this.mapSurface.blit(bgImg, offsetX, offsetY);
     }
 
     // 1. Background tilemap layers

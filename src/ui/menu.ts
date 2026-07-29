@@ -1,6 +1,7 @@
 import { Surface } from '../engine/surface';
 import type { InputEvent } from '../engine/input';
 import { getMenuBackgroundSync } from './base-surf';
+import { drawStyledText, measureStyledText } from './styled-text';
 
 /** Optional audio manager reference set by game state for menu sounds. */
 let _menuAudioManager: { playSfx(name: string): void } | null = null;
@@ -19,9 +20,6 @@ export interface MenuOption {
 const PADDING_X = 6;
 const PADDING_Y = 4;
 const ROW_HEIGHT = 16;
-const FONT = '8px monospace';
-/** Approximate width of a single character in the 8px monospace font. */
-const CHAR_WIDTH = 5;
 
 /**
  * Choice menu - vertical list of selectable options.
@@ -42,14 +40,13 @@ export class ChoiceMenu {
     this.x = x;
     this.y = y;
 
-    // Auto-size width to longest label + padding
-    let maxLen = 0;
-    for (const opt of options) {
-      if (opt.label.length > maxLen) {
-        maxLen = opt.label.length;
-      }
+    // Auto-size to rendered content: markup is zero-width and inline icons
+    // occupy one 16px cell, matching Python's TaggedTextChunk contract.
+    let maxWidth = 0;
+    for (const option of options) {
+      maxWidth = Math.max(maxWidth, measureStyledText(option.label, 'text'));
     }
-    this.width = maxLen * CHAR_WIDTH + PADDING_X * 2;
+    this.width = maxWidth + PADDING_X * 2;
 
     // Ensure the first selected option is enabled (skip disabled ones)
     this._skipToNextEnabled(1);
@@ -113,7 +110,7 @@ export class ChoiceMenu {
 
       // Text color: white for enabled, gray for disabled
       const color = opt.enabled ? 'white' : 'rgba(128, 128, 128, 1)';
-      surf.drawText(opt.label, rowX + PADDING_X, rowY + 4, color, FONT);
+      drawStyledText(surf, opt.label, rowX + PADDING_X, rowY + 4, color, 'text');
     }
   }
 

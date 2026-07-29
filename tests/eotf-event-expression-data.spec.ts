@@ -72,6 +72,15 @@ test.describe('Embrace of the Fog event expression data', () => {
           "['Agility'] + ['Mending']",
           context,
         ),
+        actOneMaps: evaluateExpression(
+          "[lvl.nid for lvl in DB.levels if 'Act1_Map' in lvl.tags]",
+          context,
+        ),
+        objectiveSimple: evaluateExpression(
+          "game.level.objective.get('simple')",
+          context,
+        ),
+        expectedObjectiveSimple: game.currentLevel.objective.simple,
         warnings,
       };
       console.warn = originalWarn;
@@ -104,6 +113,8 @@ test.describe('Embrace of the Fog event expression data', () => {
     expect(result.enemyTeamPresent).toBe(result.expectedEnemyTeamPresent);
     expect(result.noneLiteral).toEqual({ Nothing: 'None', actual: null });
     expect(result.listAddition).toEqual(['Agility', 'Mending']);
+    expect(result.actOneMaps.length).toBeGreaterThan(0);
+    expect(result.objectiveSimple).toBe(result.expectedObjectiveSimple);
     expect(result.warnings).toEqual([]);
   });
 

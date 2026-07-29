@@ -2,13 +2,11 @@ import { Surface } from '../engine/surface';
 import { viewport } from '../engine/viewport';
 import type { InputEvent } from '../engine/input';
 import type { EventPortrait } from '../events/event-portrait';
-import { FONT as BMP_FONTS, areFontsReady } from '../rendering/bmp-font';
+import { drawStyledText, measureStyledText, styledTextHeight } from './styled-text';
 
 export type DialogState = 'transition_in' | 'typing' | 'waiting' | 'done';
 
-const FONT = '8px monospace';
 const SPEAKER_FONT = '8px monospace';
-const BOX_HEIGHT = 40;
 const BOX_MARGIN = 2;
 const INNER_PAD = 4;
 const LINE_HEIGHT = 10;
@@ -25,36 +23,12 @@ const BORDER_COLOR = 'rgba(160, 160, 200, 0.5)';
 const SPEAKER_COLOR = 'rgba(255, 220, 80, 1)';
 const TEXT_COLOR = 'white';
 
-/**
- * Shared offscreen canvas for measuring text width.
- * Created lazily on first use.
- */
-let _measureCtx: OffscreenCanvasRenderingContext2D | null = null;
-function getMeasureCtx(): OffscreenCanvasRenderingContext2D {
-  if (!_measureCtx) {
-    const c = new OffscreenCanvas(1, 1);
-    _measureCtx = c.getContext('2d')!;
-  }
-  return _measureCtx;
-}
-
-/** Measure text pixel width using BMP fonts when available, else Canvas. */
-function measureTextWidth(text: string, font: string): number {
-  // Try BMP font width measurement first
-  if (areFontsReady()) {
-    const bmpFont = BMP_FONTS['text'];
-    if (bmpFont) return bmpFont.width(text);
-  }
-  const ctx = getMeasureCtx();
-  ctx.font = font;
-  return ctx.measureText(text).width;
-}
 
 /**
  * Word-wrap a string to fit within `maxWidth` pixels using `font`.
  * Returns an array of lines. Preserves existing newlines.
  */
-function wordWrap(text: string, maxWidth: number, font: string): string[] {
+function wordWrap(text: string, maxWidth: number): string[] {
   const result: string[] = [];
   // First split on explicit newlines
   const paragraphs = text.split('\n');
@@ -71,7 +45,7 @@ function wordWrap(text: string, maxWidth: number, font: string): string[] {
         currentLine = word;
       } else {
         const testLine = currentLine + ' ' + word;
-        if (measureTextWidth(testLine, font) <= maxWidth) {
+        if (measureStyledText(testLine, 'text') <= maxWidth) {
           currentLine = testLine;
         } else {
           result.push(currentLine);
@@ -345,18 +319,20 @@ export class Dialog {
     // We need a preliminary wrap at max width to know the actual text extent.
     const maxBoxW = viewport.width - 8;
     const prelimAvailW = maxBoxW - INNER_PAD * 2;
-    const wrappedLines = wordWrap(this.displayedText, prelimAvailW, FONT);
+    const wrappedLines = wordWrap(this.displayedText, prelimAvailW);
 
-    // Count how many lines we need (speaker + text lines)
-    const speakerLines = this.speaker ? 1 : 0;
-    const totalLines = speakerLines + wrappedLines.length;
-    const boxH = Math.max(MIN_BOX_HEIGHT, totalLines * LINE_HEIGHT + INNER_PAD * 2);
+    const speakerHeight = this.speaker ? LINE_HEIGHT : 0;
+    const textHeight = wrappedLines.reduce(
+      (height, line) => height + styledTextHeight(line, LINE_HEIGHT),
+      0,
+    );
+    const boxH = Math.max(MIN_BOX_HEIGHT, speakerHeight + textHeight + INNER_PAD * 2);
 
     if (this.portrait) {
       // Auto-size width to text content (matching Python's determine_size())
-      const speakerW = this.speaker ? measureTextWidth(this.speaker, SPEAKER_FONT) : 0;
+      const speakerW = this.speaker ? measureStyledText(this.speaker, 'text') : 0;
       const maxLineW = wrappedLines.reduce(
-        (max, line) => Math.max(max, measureTextWidth(line, FONT)),
+        (max, line) => Math.max(max, measureStyledText(line, 'text')),
         0,
       );
       const contentW = Math.max(speakerW, maxLineW) + INNER_PAD * 2 + 8;
@@ -381,7 +357,7 @@ export class Dialog {
     // Re-wrap at actual box width if it differs from preliminary width
     const availableTextW = boxW - INNER_PAD * 2;
     const finalLines = (availableTextW < prelimAvailW)
-      ? wordWrap(this.displayedText, availableTextW, FONT)
+      ? wordWrap(this.displayedText, availableTextW)
       : wrappedLines;
 
     // Compute Y position (depends on box height)
@@ -441,8 +417,8 @@ export class Dialog {
 
     // Render word-wrapped text lines
     for (const line of finalLines) {
-      surf.drawText(line, textX, textY, TEXT_COLOR, FONT);
-      textY += LINE_HEIGHT;
+      drawStyledText(surf, line, textX, textY, TEXT_COLOR, 'text');
+      textY += styledTextHeight(line, LINE_HEIGHT);
     }
 
     // Waiting indicator — a small blinking triangle

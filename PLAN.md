@@ -34,6 +34,9 @@ Verified baseline:
   regressions plus the build and parity audit are green;
 - all four campaign-valid settlement shards cover all 159 authored levels and
   settle green in one browser session using a restored per-level baseline;
+- the continuous EOtF journey runs authored startup, hub roaming and talk,
+  EventNid-backed scenario and unit choices, preparations, tactical movement,
+  enemy AI, and combat without modeled gameplay state;
 - all eight missing catalog-backed resources are classified as intentional,
   unreferenced aliases, with zero unclassified missing resources;
 - strict mode count-locks 74 verified item and 270 verified skill component

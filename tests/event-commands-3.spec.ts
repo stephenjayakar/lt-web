@@ -158,6 +158,76 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
     ]);
   });
 
+  test('heal, level caps, and unloading are reversible gameplay mutations', async ({ page }) => {
+    await boot(page);
+    const before = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      (window as any).__testUnloadUnit = unit;
+      unit.currentHp = 1;
+      g.gameVars.delete('_global_level_cap_bonus');
+      unit.fields.delete('_level_cap_bonus');
+      return {
+        unit,
+        hp: unit.currentHp,
+        position: unit.position ? [...unit.position] : null,
+      };
+    });
+
+    await runEvent(page, 'TestHealCapsAndUnload', [
+      'heal;Eirika;5',
+      'change_global_level_cap;5',
+      'change_unit_level_cap;Eirika;2',
+      'unload_unit;Eirika',
+    ]);
+
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const original = (window as any).__testUnloadUnit =
+        (window as any).__testUnloadUnit ?? null;
+      const changed = {
+        present: g.units.has('Eirika'),
+        globalBonus: g.gameVars.get('_global_level_cap_bonus'),
+      };
+      const actions = Array.from({ length: 4 }, () => g.actionLog.undo());
+      const restored = g.units.get('Eirika');
+      const undone = {
+        sameIdentity: restored === original,
+        hp: restored?.currentHp,
+        globalBonus: g.gameVars.get('_global_level_cap_bonus'),
+        unitBonus: restored?.fields.get('_level_cap_bonus'),
+        position: restored?.position ? [...restored.position] : null,
+      };
+      for (const action of [...actions].reverse()) action?.execute();
+      const redone = {
+        present: g.units.has('Eirika'),
+        globalBonus: g.gameVars.get('_global_level_cap_bonus'),
+      };
+      return {
+        changed,
+        undone,
+        redone,
+        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
+      };
+    });
+
+    expect(result.changed).toEqual({ present: false, globalBonus: 5 });
+    expect(result.undone).toEqual({
+      sameIdentity: true,
+      hp: before.hp,
+      globalBonus: undefined,
+      unitBonus: undefined,
+      position: before.position,
+    });
+    expect(result.redone).toEqual(result.changed);
+    expect(result.actionNames).toEqual([
+      'UnregisterUnitAction',
+      'SetUnitFieldAction',
+      'SetGameVarAction',
+      'HealAction',
+    ]);
+  });
+
   test('event variables, visited state, and map removal undo and redo through actions', async ({ page }) => {
     await boot(page);
     const before = await page.evaluate(() => {
@@ -881,7 +951,7 @@ test.describe('Action-backed event unit creation', () => {
       return g.units.get('Eirika').klass;
     });
     await runEvent(page, 'TestMakeGenericAction', [
-      `make_generic;__ActionGeneric;${klassNid};1;enemy;None`,
+      `make_generic;__ActionGeneric;${klassNid};1;enemy;None;Phantom;no_warn`,
     ]);
 
     const result = await page.evaluate(() => {
@@ -894,6 +964,8 @@ test.describe('Action-backed event unit creation', () => {
       action?.reverse();
       return {
         created: !!created,
+        variant: created?.variant,
+        faction: created?.faction,
         absent,
         sameObject: redone === created,
         actionName: action?.constructor?.name ?? null,
@@ -902,6 +974,8 @@ test.describe('Action-backed event unit creation', () => {
 
     expect(result).toEqual({
       created: true,
+      variant: null,
+      faction: 'Phantom',
       absent: true,
       sameObject: true,
       actionName: 'CreateUnitAction',
@@ -2247,6 +2321,7 @@ test.describe('choice and textbox commands', () => {
         _source: [
           "level_var;opts;['Alpha','Beta']",
           "choice;Pick;;v('opts');Dimensions=4,3;EventNid=_pick_sub",
+          'game_var;parent_saw;{v:sub_saw}',
         ],
       });
       g.eventManager.triggerSpecific('_pick_parent', { type: '_pick_parent' }, true);
@@ -2266,10 +2341,13 @@ test.describe('choice and textbox commands', () => {
     await stepFrames(page, 40);
     const result = await page.evaluate(() => {
       const g = (window as any).__gameRef;
-      return { picked: g.gameVars.get('Pick'), subSaw: g.gameVars.get('sub_saw') };
+      return {
+        picked: g.gameVars.get('Pick'),
+        subSaw: g.gameVars.get('sub_saw'),
+        parentSaw: g.gameVars.get('parent_saw'),
+      };
     });
-    expect(result.picked).toBe('Alpha');
-    expect(result.subSaw).toBe('Alpha');
+    expect(result).toEqual({ picked: 'Alpha', subSaw: 'Alpha', parentSaw: 'Alpha' });
   });
 
   test('choice splits nid|label, and textbox registers until remove_table', async ({ page }) => {
@@ -2332,5 +2410,45 @@ test.describe('choice and textbox commands', () => {
       return st?.eventTextboxes ? [...st.eventTextboxes.keys()] : [];
     });
     expect(remaining).toEqual([]);
+  });
+
+  test('styled event text resolves icon aliases instead of rendering placeholders', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const rendered = await page.evaluate(async () => {
+      // Browser-side module imports are intentional: these modules use DOM
+      // image and OffscreenCanvas APIs unavailable to Playwright's Node realm.
+      const icons = await import('/src/ui/icons.ts');
+      const styled = await import('/src/ui/styled-text.ts');
+      const { Surface } = await import('/src/engine/surface.ts');
+      icons.initIcons('/game-data/eotf.ltproj');
+      await icons.preloadIconAliases();
+
+      const alias = icons.resolveIconAlias('event_fragments');
+      const text = '<icon>event_fragments</>Fragments: 300';
+      const surface = new Surface(96, 20);
+      styled.drawStyledText(surface, text, 0, 4, 'white', 'text');
+      const pixels = surface.getImageData().data;
+      let iconPixels = 0;
+      for (let y = 0; y < 16; y += 1) {
+        for (let x = 0; x < 16; x += 1) {
+          if (pixels[(y * 96 + x) * 4 + 3] > 0) iconPixels += 1;
+        }
+      }
+
+      return {
+        alias,
+        tokens: styled.parseStyledText(text),
+        plainWidth: styled.measureStyledText('Fragments: 300'),
+        styledWidth: styled.measureStyledText(text),
+        iconPixels,
+      };
+    });
+
+    expect(rendered.alias).toEqual({ sheetNid: 'event_icons', index: [16, 0] });
+    expect(rendered.tokens[0]).toEqual({ kind: 'icon', alias: 'event_fragments' });
+    expect(rendered.styledWidth).toBe(rendered.plainWidth + 16);
+    expect(rendered.iconPixels, 'the alias cell should draw actual sprite pixels').toBeGreaterThan(0);
   });
 });
