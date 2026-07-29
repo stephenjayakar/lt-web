@@ -173,7 +173,7 @@ async function selectMenuOption(page: any, label: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 test.describe('Sacred Stones Campaign Chain', () => {
-  test('Prologue -> Ch.1 -> Ch.2 -> Ch.3 -> Ch.4 -> Ch.5 sequential chain', async ({ page }) => {
+  test('Prologue -> Ch.1 -> Ch.2 -> Ch.3 -> Ch.4 -> Ch.5 sequential chain @milestone', async ({ page }) => {
     test.setTimeout(900_000);
 
     // ---- Prologue -----------------------------------------------------

@@ -59,7 +59,7 @@ async function waitForHarness(page: Page): Promise<void> {
 }
 
 test.describe('Rekka all-level compatibility', () => {
-  test('all levels clean boot without runtime failures', async ({ page }) => {
+  test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
     test.setTimeout(10 * 60_000);
     const failures: string[] = [];
     let currentLevel = 'startup';
@@ -90,7 +90,7 @@ test.describe('Rekka all-level compatibility', () => {
     expect(failures, failures.join('\n')).toEqual([]);
   });
 
-  test('all playable level-start event queues settle', async ({ page }) => {
+  test('all playable level-start event queues settle @milestone', async ({ page }) => {
     test.setTimeout(8 * 60_000);
     const failures: string[] = [];
     let currentLevel = 'startup';

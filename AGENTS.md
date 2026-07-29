@@ -127,18 +127,19 @@ required milestone/final coverage. Do not run it in the normal edit loop:
 focused expression tests should take seconds, targeted level shards should
 diagnose campaign failures, the full settlement gate should run only at
 milestones/final verification, and the full serial suite should run only at the
-release gate. Keep the comprehensive coverage, but preserve campaign
-prerequisites across in-process level transitions instead of paying for a full
-browser reload per level.
+release gate. Tests tagged `@milestone` are excluded from `npm test`; run them
+with `npm run test:milestone`, or include everything with `npm run test:release`.
+Keep comprehensive campaign coverage without putting it in the ordinary edit
+loop.
 
 | Change scope | Required verification |
 |---|---|
 | Docs only (`AGENTS.md`, prose-only `PLAN.md`) | `git diff --check` |
-| Local TypeScript behavior | `npm run build` + one focused Playwright spec/test |
-| Event parser/dispatcher or item/skill hook surface | focused spec + `npm run audit:parity:write` + `npm run audit:parity` + build |
-| Save, action log, RNG, state-machine, combat sequencing | focused spec(s) + build + one full serial Playwright run at the end |
+| Local TypeScript behavior | build + the narrowest unit-style Playwright test |
+| Event parser/dispatcher or item/skill hook surface | focused test + `npm run audit:parity:write` + `npm run audit:parity` + build |
+| Save, action log, RNG, state-machine, combat sequencing | focused unit-style contract tests + build; add one narrow browser smoke only for a cross-state seam |
 | Rendering/layout | focused spec + inspect the produced screenshot/render, then build |
-| Release/large cross-system task | build + audit + full serial Playwright suite + `git diff --check` |
+| Release/large cross-system task | build + audit + `npm run test:release` + `git diff --check` |
 
 Compact commands:
 
@@ -150,10 +151,13 @@ rg -n "test\(|test\.describe" tests/<area>.spec.ts
 npx playwright test tests/<area>.spec.ts --workers=1 --reporter=dot
 npx playwright test -g "<exact title>" --workers=1 --reporter=dot
 
-# Final cross-system gate (run once, not after every edit)
+# Fast broad gate (parallel; excludes campaign-scale @milestone cases)
+npm test
+
+# Release gate only
 npm run build
 npm run audit:parity
-npx playwright test --workers=1 --reporter=dot
+npm run test:release
 git diff --check
 ```
 
