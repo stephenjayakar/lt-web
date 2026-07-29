@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function bootEotf(page: Page): Promise<void> {
-  await page.goto('/?harness=true&project=eotf.ltproj&level=X&clean=true&bundle=false');
+async function bootEotf(page: Page, level = 'X'): Promise<void> {
+  await page.goto(`/?harness=true&project=eotf.ltproj&level=${level}&clean=true&bundle=false`);
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
     timeout: 60_000,
   });
@@ -118,12 +118,13 @@ test.describe('Embrace of the Fog event expression data', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  test('preserves raw-data list literals for music choices', async ({ page }) => {
+  test('applies raw-data music choices to reversible EOtF phase slots', async ({ page }) => {
     await bootEotf(page);
-    const musicNid = await page.evaluate(async () => {
+    const result = await page.evaluate(async () => {
       const game = (window as any).__gameRef;
       const { GameEvent } = await import('/src/events/event-manager.ts');
-      game.audioManager.calls.length = 0;
+      game.audioManager.clearCalls();
+      const oldEnemyPhase = game.currentLevel.music.enemy_phase;
       const prefab = {
         nid: '_EotfMusicLiteral',
         name: 'EotF Music Literal',
@@ -133,8 +134,11 @@ test.describe('Embrace of the Fog event expression data', () => {
         only_once: false,
         priority: 0,
         _source: [
-          "lvar;hub_songs;['Lounge_with_Talks_of_Tomorrow','Cityscape_Where_the_Light_Shines']",
-          'change_music;player_phase;{e:game.get_random_choice({v:hub_songs})}',
+          "lvar;battle_songs;['Lounge_with_Talks_of_Tomorrow','Cityscape_Where_the_Light_Shines']",
+          'lvar;song_choice;game.get_random_choice({v:battle_songs})',
+          "change_music;player_phase;{e:v('song_choice')}",
+          "change_music;enemy_phase;{e:v('song_choice')}",
+          "music;{e:v('song_choice')}",
         ],
       };
       game.db.events.set(prefab.nid, prefab);
@@ -144,16 +148,74 @@ test.describe('Embrace of the Fog event expression data', () => {
         () => game,
       ));
       game.state.change('event');
-      for (let frame = 0; frame < 30; frame += 1) {
-        (window as any).__harness.stepFrames(1);
+      for (let frame = 0; frame < 60; frame += 1) {
+        await (window as any).__harness.stepFrames(1);
       }
-      return game.audioManager.calls.find((call: any) => call.op === 'play')?.nid;
+
+      const chosen = game.currentLevel.music.player_phase;
+      const calls = [...game.audioManager.calls];
+      const undone = game.actionLog.undo();
+      return {
+        chosen,
+        enemyPhase: game.currentLevel.music.enemy_phase,
+        oldEnemyPhase,
+        undoneAction: undone?.constructor.name,
+        directPlayNids: calls
+          .filter((call: any) => call.op === 'play')
+          .map((call: any) => call.nid),
+      };
     });
 
     expect([
       'Lounge_with_Talks_of_Tomorrow',
       'Cityscape_Where_the_Light_Shines',
-    ]).toContain(musicNid);
+    ]).toContain(result.chosen);
+    expect(result.directPlayNids).toEqual([result.chosen]);
+    expect(result.undoneAction).toBe('ChangePhaseMusicAction');
+    expect(result.enemyPhase).toBe(result.oldEnemyPhase);
+  });
+
+  test('keeps authored EOtF phase music active through enemy-initiated combat', async ({ page }) => {
+    await bootEotf(page, 'EX_2');
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      game.gameVars.set('battle_songs', ['For_the_Dawn']);
+      game.gameVars.set('played_tracks_battle', []);
+      const prefab = [...game.db.events.values()]
+        .find((event: any) => event.name === 'Music_Battle_Start');
+      game.eventManager.eventQueue.push(new GameEvent(
+        prefab,
+        { type: 'script', levelNid: 'EX_2' },
+        () => game,
+      ));
+      game.state.change('event');
+      await (window as any).__harness.settle(3_000, ['free']);
+
+      game.audioManager.init();
+      await game.audioManager.playMusic(game.currentLevel.music.player_phase, 0);
+      const attacker = game.getUnit('Dragon');
+      const defender = game.getUnit('Yusha');
+      game.selectedUnit = attacker;
+      game.combatTarget = defender;
+      game.combatScript = ['hit1'];
+      game.memory.set('combat_item', attacker.items[0]);
+      game.audioManager.clearCalls();
+      game.state.change('combat');
+      await (window as any).__harness.stepFrames(2);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return {
+        state: game.state.getCurrentState()?.name,
+        phaseTrack: game.currentLevel.music.player_phase,
+        currentTrack: game.audioManager.getCurrentMusicNid(),
+        combatMusicCalls: [...game.audioManager.calls],
+      };
+    });
+
+    expect(result.state).toBe('combat');
+    expect(result.phaseTrack).toBe('For_the_Dawn');
+    expect(result.currentTrack).toBe('For_the_Dawn');
+    expect(result.combatMusicCalls).toEqual([]);
   });
 
   test('generates visible gray frames for finished EOtF units', async ({ page }) => {

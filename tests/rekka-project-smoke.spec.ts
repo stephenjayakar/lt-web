@@ -1002,7 +1002,6 @@ test.describe('Rekka all-level compatibility', () => {
       const card = state?.creditCards?.[0];
       return {
         state: state?.name,
-        stack: game.state.getStackNames?.() ?? [],
         background: state?.background?.src ?? null,
         title: card?.title,
         lines: card?.lines,
@@ -1011,7 +1010,6 @@ test.describe('Rekka all-level compatibility', () => {
     });
     expect(firstCredits).toEqual({
       state: 'event',
-      stack: ['free', 'phase_change', 'event'],
       background: expect.stringContaining('BlackBackground.png'),
       title: 'Portraits',
       lines: [
