@@ -118,6 +118,70 @@ test.describe('Embrace of the Fog event expression data', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  test('preserves raw-data list literals for music choices', async ({ page }) => {
+    await bootEotf(page);
+    const musicNid = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      game.audioManager.calls.length = 0;
+      const prefab = {
+        nid: '_EotfMusicLiteral',
+        name: 'EotF Music Literal',
+        trigger: 'test',
+        level_nid: 'X',
+        condition: '',
+        only_once: false,
+        priority: 0,
+        _source: [
+          "lvar;hub_songs;['Lounge_with_Talks_of_Tomorrow','Cityscape_Where_the_Light_Shines']",
+          'change_music;player_phase;{e:game.get_random_choice({v:hub_songs})}',
+        ],
+      };
+      game.db.events.set(prefab.nid, prefab);
+      game.eventManager.eventQueue.push(new GameEvent(
+        prefab,
+        { type: 'test', levelNid: 'X' },
+        () => game,
+      ));
+      game.state.change('event');
+      for (let frame = 0; frame < 30; frame += 1) {
+        (window as any).__harness.stepFrames(1);
+      }
+      return game.audioManager.calls.find((call: any) => call.op === 'play')?.nid;
+    });
+
+    expect([
+      'Lounge_with_Talks_of_Tomorrow',
+      'Cityscape_Where_the_Light_Shines',
+    ]).toContain(musicNid);
+  });
+
+  test('generates visible gray frames for finished EOtF units', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const sprite = game.getUnit('Player')?.sprite;
+      sprite.state = 'standing';
+      const standing = sprite.getCurrentFrame().getImageData().data;
+      sprite.state = 'gray';
+      const gray = sprite.getCurrentFrame().getImageData().data;
+      const opaquePixels = (data: Uint8ClampedArray) => {
+        let count = 0;
+        for (let index = 3; index < data.length; index += 4) {
+          if (data[index] > 0) count += 1;
+        }
+        return count;
+      };
+      return {
+        standingOpaque: opaquePixels(standing),
+        grayOpaque: opaquePixels(gray),
+      };
+    });
+
+    expect(result.standingOpaque).toBeGreaterThan(0);
+    expect(result.grayOpaque).toBe(result.standingOpaque);
+  });
+
   test('sorts real EotF lambda and tuple-key expressions stably', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(async () => {

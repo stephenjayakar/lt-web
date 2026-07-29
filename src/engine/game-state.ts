@@ -1727,7 +1727,8 @@ export class GameState {
     const variant = changeVariant(unit, this);
     const requestedNid = variant ? `${baseNid}${variant}` : baseNid;
     const teamPalette = this.getTeamPalette(unit.team) ?? undefined;
-    const cacheKey = `${requestedNid}__${teamPalette ?? ''}`;
+    const autogenerateGray = this.db.getConstant('autogenerate_grey_map_sprites', false);
+    const cacheKey = `${requestedNid}__${teamPalette ?? ''}__${autogenerateGray}`;
     if (spriteCache.has(cacheKey)) {
       if (this.mapSpriteLoadVersions.get(unit) === loadVersion) {
         unit.sprite = spriteCache.get(cacheKey) ?? null;
@@ -1740,7 +1741,12 @@ export class GameState {
       selectedNid = baseNid;
       sprites = await this.resources.tryLoadMapSprite(baseNid);
     }
-    const mapSprite = MapSprite.fromImages(sprites.stand, sprites.move, teamPalette);
+    const mapSprite = MapSprite.fromImages(
+      sprites.stand,
+      sprites.move,
+      teamPalette,
+      autogenerateGray,
+    );
     if (mapSprite) mapSprite.resourceNid = selectedNid;
     else {
       console.warn(

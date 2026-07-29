@@ -169,6 +169,24 @@ test.describe('Web player shell', () => {
     expect(dimensions.height).toBeGreaterThanOrEqual(160);
   });
 
+  test('choice-menu background and selection share an 8px-aligned width', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const dimensions = await page.evaluate(async () => {
+      const { ChoiceMenu } = await import('/src/ui/menu.ts');
+      const menu = new ChoiceMenu(
+        [{ label: 'Strategies', value: 'strategies', enabled: true }],
+        0,
+        0,
+      );
+      return { width: menu.width, aligned: menu.width % 8 === 0 };
+    });
+
+    expect(dimensions.aligned).toBe(true);
+    expect(dimensions.width).toBeGreaterThan(12);
+  });
+
   test('touch controls occupy a dock outside the game canvas', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false&controls=true');
