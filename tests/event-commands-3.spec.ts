@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Each command case boots an isolated page; no case consumes another's state.
+test.describe.configure({ mode: 'parallel' });
+
 /**
  * Zero-usage command batch 1 (P1 completeness): set_skill_data, set_mode_rng,
  * set_mode_autolevels, show_minimap, set_game_board_bounds,

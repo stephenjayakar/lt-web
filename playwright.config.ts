@@ -10,10 +10,10 @@ export default defineConfig({
   // enough total time to finish under sustained release-gate load.
   timeout: 120_000,
   retries: 0,
-  // Workers default to half the cores, which runs spec files concurrently
-  // while keeping tests inside a file ordered (fullyParallel stays off, since
-  // several specs build state across their cases). `npm test` uses this;
-  // `npm run test:serial` forces one worker for the release gate.
+  // Workers default to half the cores, which runs spec files concurrently.
+  // Files with independent cases opt into parallel mode themselves; files that
+  // build state across cases remain ordered. `npm test` excludes @milestone
+  // campaign sweeps; `npm run test:release` is the full single-worker gate.
   //
   // Anything sensitive to wall-clock pacing must wait on observable state
   // rather than a fixed sleep — under concurrency a frame can arrive far

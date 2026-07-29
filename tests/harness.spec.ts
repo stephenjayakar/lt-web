@@ -16,6 +16,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
+// Every case owns a fresh Playwright page and explicitly boots its level.
+// Let routine runs distribute this large compatibility corpus across workers.
+test.describe.configure({ mode: 'parallel' });
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCREENSHOT_DIR = path.resolve(__dirname, '..', 'test-screenshots');

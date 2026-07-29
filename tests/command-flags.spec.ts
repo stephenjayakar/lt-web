@@ -27,6 +27,9 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+// Injected events and databases are page-local, so these cases are independent.
+test.describe.configure({ mode: 'parallel' });
+
 async function waitForHarness(page: Page): Promise<void> {
   await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
 }

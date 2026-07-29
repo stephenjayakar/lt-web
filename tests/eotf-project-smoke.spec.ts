@@ -1297,7 +1297,7 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(result.skillCount).toBe(result.expectedSkillCount);
   });
 
-  test('all levels clean boot without runtime failures', async ({ page }) => {
+  test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
     test.setTimeout(12 * 60_000);
     const failures: string[] = [];
     let currentLevel = 'startup';
@@ -1329,7 +1329,7 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(failures, failures.join('\n')).toEqual([]);
   });
 
-  test.describe('all level-start event queues settle without compatibility failures', () => {
+  test.describe('all level-start event queues settle without compatibility failures @milestone', () => {
     test.describe.configure({ mode: 'parallel' });
     const shardCount = 4;
     for (let shard = 0; shard < shardCount; shard++) {
