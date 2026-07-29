@@ -161,6 +161,24 @@ npm run test:release
 git diff --check
 ```
 
+### Programmatic EOtF control
+
+Use Playwright against
+`/?harness=true&project=eotf.ltproj&level=X&clean=false&bundle=false`, wait for
+`window.__harness.ready`, and drive deterministic frames through
+`stepFrames(count, input)`. Inspect `getState()` after each transition; use
+bounded `settle(maxFrames, stopStates)` for authored events and async assets.
+Inputs are engine buttons such as `SELECT`, `BACK`, `UP`, `DOWN`, `LEFT`, and
+`RIGHT`. Free-roam movement needs a held key: add the physical key (for example
+`KeyS`) to `window.__gameRef.input.keysDown`, step frames, then remove it;
+repeated browser key taps may be too brief. Prefer normal menus and events for
+seams under test; use `loadLevel` only when a focused scenario deliberately
+starts at a known authored map. The fast progression/combat proof is:
+
+```bash
+npx playwright test tests/eotf-journey.spec.ts --workers=1 --reporter=dot
+```
+
 On failure, rerun only the failing spec/title with a verbose reporter or trace.
 Do not rerun the full suite merely to obtain a readable error. Use the shell's
 configured Node/npm; do not prepend a hard-coded NVM path unless `command -v
