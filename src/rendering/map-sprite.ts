@@ -65,6 +65,7 @@ export class MapSprite {
     standImg: HTMLImageElement | null,
     moveImg: HTMLImageElement | null,
     teamPalette?: string,
+    autogenerateGray: boolean = false,
   ): MapSprite | null {
     if (!standImg) return null;
 
@@ -75,23 +76,27 @@ export class MapSprite {
     if (paletteMap) standSurf = colorConvert(standSurf, paletteMap);
     applyColorkey(standSurf);
 
-    // Extract 3 passive stand frames (row 0) and 3 gray frames (row 1)
+    // Extract passive frames. Python generates inactive sprites from the
+    // passive row when autogenerate_grey_map_sprites is enabled; EOtF's
+    // authored second row is blank, so treating it as gray makes acted units
+    // disappear.
     for (let col = 0; col < 3; col++) {
-      sprite.standFrames.push(
-        standSurf.subsurface(
-          col * sprite.standFrameWidth,
-          0,
-          sprite.standFrameWidth,
-          sprite.standFrameHeight,
-        ),
+      const standFrame = standSurf.subsurface(
+        col * sprite.standFrameWidth,
+        0,
+        sprite.standFrameWidth,
+        sprite.standFrameHeight,
       );
+      sprite.standFrames.push(standFrame);
       sprite.grayFrames.push(
-        standSurf.subsurface(
-          col * sprite.standFrameWidth,
-          sprite.standFrameHeight,
-          sprite.standFrameWidth,
-          sprite.standFrameHeight,
-        ),
+        autogenerateGray
+          ? standFrame.makeGray()
+          : standSurf.subsurface(
+              col * sprite.standFrameWidth,
+              sprite.standFrameHeight,
+              sprite.standFrameWidth,
+              sprite.standFrameHeight,
+            ),
       );
     }
 

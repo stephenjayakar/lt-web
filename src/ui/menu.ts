@@ -46,7 +46,10 @@ export class ChoiceMenu {
     for (const option of options) {
       maxWidth = Math.max(maxWidth, measureStyledText(option.label, 'text'));
     }
-    this.width = maxWidth + PADDING_X * 2;
+    // Nine-slice backgrounds render in 8px cells. Keep the menu, highlight,
+    // and hitbox on the same rounded width instead of letting the background
+    // floor independently and leave the selection rectangle hanging outside.
+    this.width = Math.ceil((maxWidth + PADDING_X * 2) / 8) * 8;
 
     // Ensure the first selected option is enabled (skip disabled ones)
     this._skipToNextEnabled(1);

@@ -37,6 +37,9 @@ Verified baseline:
 - the continuous EOtF journey runs authored startup, hub roaming and talk,
   EventNid-backed scenario and unit choices, preparations, tactical movement,
   enemy AI, and combat without modeled gameplay state;
+- authored hub music-list substitutions resolve valid track NIDs, generated
+  inactive map sprites keep finished units visible, and choice-menu highlights
+  remain inside their 8px-aligned backgrounds;
 - all eight missing catalog-backed resources are classified as intentional,
   unreferenced aliases, with zero unclassified missing resources;
 - strict mode count-locks 74 verified item and 270 verified skill component

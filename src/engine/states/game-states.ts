@@ -10551,6 +10551,21 @@ export class EventState extends State {
           return resolved === undefined ? '??' : eventObjectToString(resolved);
         },
       );
+      const typedVariableLiteral = (resolved: unknown): string => {
+        if (typeof resolved === 'string') {
+          const trimmed = resolved.trim();
+          // Raw-data list/dict fields are stored as Python literal strings.
+          // Inside {e:...}, Python substitutes those literals as expressions,
+          // rather than quoting the entire value into a scalar string.
+          if ((trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+              (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+              (trimmed.startsWith('(') && trimmed.endsWith(')'))) {
+            return trimmed;
+          }
+        }
+        return JSON.stringify(resolved) ?? 'null';
+      };
+
       // Resolve typed {v:...} placeholders inside an eval before evaluating the
       // outer expression. JSON literals preserve arrays for indexing and random
       // choice instead of flattening them to comma-delimited text.
@@ -10584,14 +10599,14 @@ export class EventState extends State {
               /(['"])\{v:([A-Za-z_][A-Za-z0-9_]*)\}\1/g,
               (_variableMatch, _quote: string, key: string) => {
                 const resolved = variableValue(key);
-                return JSON.stringify(resolved) ?? 'null';
+                return typedVariableLiteral(resolved);
               },
             )
             .replace(
               /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
               (_variableMatch, key: string) => {
                 const resolved = variableValue(key);
-                return JSON.stringify(resolved) ?? 'null';
+                return typedVariableLiteral(resolved);
               },
             )
             .replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
