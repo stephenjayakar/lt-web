@@ -176,6 +176,34 @@ export class SetGameVarAction extends Action {
   }
 }
 
+/** Python ChangePhaseMusic: reversibly replace one level music slot. */
+export class ChangePhaseMusicAction extends Action {
+  private music: Record<string, string | null | undefined>;
+  private phase: string;
+  private value: string | null;
+  private oldValue: string | null | undefined;
+
+  constructor(
+    music: Record<string, string | null | undefined>,
+    phase: string,
+    value: string | null,
+  ) {
+    super();
+    this.music = music;
+    this.phase = phase;
+    this.value = value;
+    this.oldValue = music[phase];
+  }
+
+  execute(): void {
+    this.music[this.phase] = this.value;
+  }
+
+  reverse(): void {
+    this.music[this.phase] = this.oldValue;
+  }
+}
+
 export class DeleteMapValueAction extends Action {
   private values: Map<string, any>;
   private nid: string;

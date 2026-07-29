@@ -49,6 +49,7 @@ import {
   LockTurnwheel,
   MessageAction,
   SetGameVarAction,
+  ChangePhaseMusicAction,
   PromoteAction,
   ClassChangeAction,
   GainWexpAction,
@@ -12923,29 +12924,31 @@ export class EventState extends State {
 
       // ----- Audio commands -----
 
-      case 'music':
-      case 'change_music': {
-        // change_music can be called two ways:
-        // 1. music;musicNid (direct play)
-        // 2. change_music;phase_type;musicNid (change phase music)
-        // Phase types: player_phase, enemy_phase, other_phase, player_battle, enemy_battle
-        const phaseTypes = ['player_phase', 'enemy_phase', 'other_phase', 'player_battle', 'enemy_battle'];
-        let musicNid: string;
-        if (args.length >= 2 && phaseTypes.includes(args[0])) {
-          // Phase variant: args[0] is phase type, args[1] is music NID
-          // TODO: actually store the phase music override for the level
-          musicNid = args[1];
-        } else {
-          musicNid = args[0] ?? '';
-        }
+      case 'music': {
+        const musicNid = args[0] ?? '';
         if (musicNid && game.audioManager) {
-          game.audioManager.playMusic(musicNid);
+          void game.audioManager.playMusic(musicNid);
         }
         this.advancePointer();
-        // Music is treated as blocking briefly to let the transition feel natural
+        // Music is treated as blocking briefly to let the transition feel natural.
         this.waiting = true;
         this.waitTimer = 100;
         return true;
+      }
+
+      case 'change_music': {
+        const phase = args[0] ?? '';
+        const rawMusicNid = args[1] ?? '';
+        const levelMusic = game.currentLevel?.music;
+        if (phase && rawMusicNid && levelMusic) {
+          game.actionLog.doAction(new ChangePhaseMusicAction(
+            levelMusic,
+            phase,
+            rawMusicNid === 'None' ? null : rawMusicNid,
+          ));
+        }
+        this.advancePointer();
+        return false;
       }
 
       case 'sound': {
