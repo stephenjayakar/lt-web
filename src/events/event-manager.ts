@@ -756,6 +756,25 @@ export function evaluateCondition(
     return false;
   }
 
+  // Common authored existence query. Handle it against raw runtime units
+  // instead of constructing the complete Python-compatible eval scope for
+  // every item_override lookup. EOtF's Gift of Magic evaluates this while
+  // drawing each affected weapon, so the generic wrapper path can otherwise
+  // dominate the renderer.
+  const anyLivingClassMatch = trimmed.match(
+    /^any\(\[\s*\w+\.position\s+for\s+(\w+)\s+in\s+game\.units\s+if\s+\1\.klass\s*==\s*['"]([^'"]+)['"]\s+and\s+not\s+is_dead\(\1\.nid\)\s*\]\)$/,
+  );
+  if (anyLivingClassMatch) {
+    const klass = anyLivingClassMatch[2];
+    const units = context.game?.units?.values?.() ?? [];
+    for (const unit of units) {
+      if ((unit as any).klass !== klass) continue;
+      if ((unit as any).isDead?.() ?? (unit as any).dead ?? false) continue;
+      if ((unit as any).position) return true;
+    }
+    return false;
+  }
+
   // Comparison operators: resolve dotted paths
   const comparisonOps = ['==', '!=', '>=', '<=', '>', '<'] as const;
   for (const op of comparisonOps) {
@@ -1691,7 +1710,14 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       nid: item.nid,
       name: item.name,
       desc: item.desc,
-      tags: componentValue(item, 'item_tags') ?? item.tags ?? [],
+      // Python ItemObject.tags reads the instance's own component bag
+      // directly. Going through getComponent()/hasComponent() here would
+      // re-enter skill item_override resolution while evaluating an
+      // item_override condition such as Gift_of_Magic_Child.
+      tags: item.components instanceof Map
+        ? (item.components.get('item_tags') ?? item.tags ?? [])
+        : (componentEntries(item).find(([nid]) => nid === 'item_tags')?.[1] ??
+          item.tags ?? []),
       components,
       data: wrapMapping(item.data),
       uses: item.uses,
@@ -1862,9 +1888,15 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       generic: u.generic ?? false,
       skills: (u.skills ?? []).map(wrapSkill),
       items: (u.items ?? []).map(wrapItem),
-      accessories: u.items?.filter((candidate: any) =>
-        candidate.hasComponent?.('accessory') ||
-        candidate.hasComponent?.('equippable_accessory')) ?? [],
+      // UnitObject.accessories is a property in Python, so do not resolve
+      // every item's skill overrides merely to wrap a unit. Besides wasting
+      // work for expressions that never read accessories, eager resolution
+      // can recursively rebuild the entire game.units expression scope.
+      get accessories() {
+        return (u.items ?? []).filter((candidate: any) =>
+          candidate.hasComponent?.('accessory') ||
+          candidate.hasComponent?.('equippable_accessory')).map(wrapItem);
+      },
       current_hp: u.currentHp ?? u.current_hp,
       max_hp: u.maxHp ?? u.max_hp,
       get_hp: () => u.currentHp ?? u.current_hp ?? 0,
@@ -3157,6 +3189,21 @@ export class EventManager {
   hasTalkPair(unit1Nid: string, unit2Nid: string): boolean {
     return this.talkPairs.has(`${unit1Nid}|${unit2Nid}`) ||
            this.talkPairs.has(`${unit2Nid}|${unit1Nid}`);
+  }
+
+  /** Get dynamic talk pairs in the save format used by Python game state. */
+  getTalkPairs(): [string, string][] {
+    return Array.from(this.talkPairs, pair => {
+      const separator = pair.indexOf('|');
+      return [pair.slice(0, separator), pair.slice(separator + 1)];
+    });
+  }
+
+  /** Restore dynamic talk pairs added by add_talk event commands. */
+  restoreTalkPairs(pairs: [string, string][] | undefined): void {
+    this.talkPairs = new Set(
+      (pairs ?? []).map(([unit1Nid, unit2Nid]) => `${unit1Nid}|${unit2Nid}`),
+    );
   }
 
   /** Hide a talk option from map/menu display (hide_talk event command). */

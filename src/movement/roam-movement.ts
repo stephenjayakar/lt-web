@@ -188,6 +188,13 @@ export class RoamPlayerMovementComponent {
       return false;
     }
 
+    // Python permits sub-tile movement while the rounded destination is still
+    // the unit's current grid position. This lets authored spawns on normally
+    // impassable tiles move far enough to cross onto an adjacent valid tile.
+    if (this.unit.position?.[0] === tileX && this.unit.position?.[1] === tileY) {
+      return true;
+    }
+
     // Check terrain traversability. Go through the board helper: it maps the
     // terrain NID to the terrain's mtype, which is what the mcost grid is
     // keyed by. Passing the NID straight to db.getMovementCost misses the

@@ -260,10 +260,10 @@ export class FreeRoamState extends MapState {
     let dx = 0;
     let dy = 0;
     if (inputMgr) {
-      if (inputMgr.isKeyHeld?.('ArrowUp') || inputMgr.isKeyHeld?.('w')) dy -= 1;
-      if (inputMgr.isKeyHeld?.('ArrowDown') || inputMgr.isKeyHeld?.('s')) dy += 1;
-      if (inputMgr.isKeyHeld?.('ArrowLeft') || inputMgr.isKeyHeld?.('a')) dx -= 1;
-      if (inputMgr.isKeyHeld?.('ArrowRight') || inputMgr.isKeyHeld?.('d')) dx += 1;
+      if (inputMgr.isPressed?.('UP') || inputMgr.isKeyHeld?.('ArrowUp') || inputMgr.isKeyHeld?.('w')) dy -= 1;
+      if (inputMgr.isPressed?.('DOWN') || inputMgr.isKeyHeld?.('ArrowDown') || inputMgr.isKeyHeld?.('s')) dy += 1;
+      if (inputMgr.isPressed?.('LEFT') || inputMgr.isKeyHeld?.('ArrowLeft') || inputMgr.isKeyHeld?.('a')) dx -= 1;
+      if (inputMgr.isPressed?.('RIGHT') || inputMgr.isKeyHeld?.('ArrowRight') || inputMgr.isKeyHeld?.('d')) dx += 1;
     }
     // Also handle discrete events for this frame
     if (event === 'UP') dy -= 1;

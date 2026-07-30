@@ -692,6 +692,7 @@ function getRegionUnderPos(x: number, y: number): RegionData | null {
   const game = getGame();
   const regions: RegionData[] = game.currentLevel?.regions ?? [];
   for (const region of regions) {
+    if (!region.position) continue;
     const [rx, ry] = region.position;
     const [rw, rh] = region.size ?? [1, 1];
     if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) {
@@ -1666,7 +1667,15 @@ export class OptionMenuState extends State {
         const evName = cEvents[cIdx];
         const game = getGame();
         game.state.back();
-        if (evName && game.eventManager.triggerSpecific(evName, { type: evName }, true)) {
+        let eventNid = evName;
+        if (evName && !game.db.events.has(eventNid)) {
+          const byName = [...game.db.events.values()].find(
+            (candidate: any) => candidate.name === evName &&
+              (!candidate.level_nid || candidate.level_nid === game.currentLevel?.nid),
+          );
+          if (byName) eventNid = byName.nid;
+        }
+        if (eventNid && game.eventManager.triggerSpecific(eventNid, { type: evName }, true)) {
           game.state.change('event');
         }
         return;
@@ -2367,6 +2376,7 @@ export class MenuState extends State {
     if (game.currentLevel?.regions) {
       for (const region of game.currentLevel.regions) {
         if (region.region_type.toLowerCase() !== 'event') continue;
+        if (!region.position || !region.size) continue;
         const [rx, ry] = region.position;
         const [rw, rh] = region.size;
         if (ux >= rx && ux < rx + rw && uy >= ry && uy < ry + rh) {
@@ -3580,6 +3590,24 @@ export class BaseUseState extends State {
         this.unit,
       ));
       finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
+    } else if (item.hasComponent('event_on_use') || item.hasComponent('event_on_hit') ||
+        item.hasComponent('event_after_use') || item.hasComponent('event_after_combat') ||
+        item.hasComponent('event_after_combat_on_hit') ||
+        item.hasComponent('event_after_combat_even_miss')) {
+      game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
+      applyItemStartResourceHooks(game, this.unit, item);
+      queueDirectItemUseEvents(
+        game,
+        this.unit,
+        item,
+        this.unit.position ?? [0, 0],
+        this.unit,
+      );
+      finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+        return;
+      }
     }
     this.buildMenu();
   }
@@ -4626,6 +4654,14 @@ export class CombatArtChoiceState extends State {
     deactivateCombatArts(unit);
     game.memory.delete('combat_art_parent');
     game.memory.delete('combat_art_weapons');
+    // Targeting and weapon choice unwind themselves after combat. Combat art
+    // choice must do the same or a finished unit is dropped back into the art
+    // menu and the phase cannot advance without an extra cancel input.
+    if (unit.finished || !unit.canStillAct()) {
+      this.menu = null;
+      game.state.back();
+      return 'repeat';
+    }
     this.options = getCombatArtOptions(game, unit);
     if (this.options.length === 0) {
       game.state.back();
@@ -6240,7 +6276,8 @@ export class CombatState extends State {
         // Note: In the original Python engine, loss conditions are handled
         // through the event system (combat_death triggers → lose_game command).
         // This auto-detect is a fallback for cases where events don't fire.
-        if (game.checkLossCondition()) {
+        const didMeetLossCondition = game.checkLossCondition();
+        if (didMeetLossCondition) {
           console.warn('GAME OVER — loss condition met');
           game.state.clear();
           game.state.change('game_over');
@@ -6275,12 +6312,16 @@ export class CombatState extends State {
         const wasEventCombat = game.eventCombat;
         game.eventCombat = false;
 
-        // Pop combat state
-        game.state.back();
+        // Pop combat unless loss handling is replacing the entire stack.
+        // State transitions are deferred, so back() after clear/change would
+        // otherwise pop the newly queued game_over state.
+        if (!didMeetLossCondition) {
+          game.state.back();
+        }
 
         // A full player killer force-given a droppable item must resolve the
         // 'item_discard' state (Python GiveItem force_give -> item_discard).
-        if (this.pendingDiscards.length > 0) {
+        if (!didMeetLossCondition && this.pendingDiscards.length > 0) {
           const queue = (game.memory.get('item_discard_queue') as any[] | undefined) ?? [];
           queue.push(...this.pendingDiscards);
           game.memory.set('item_discard_queue', queue);
@@ -6288,7 +6329,7 @@ export class CombatState extends State {
           game.state.change('item_discard');
         }
 
-        if (!wasEventCombat) {
+        if (!wasEventCombat && !didMeetLossCondition) {
           // Queue the post-combat continuation before EventState so the event
           // is layered above it and pops back to the correct state. Python's
           // stack preserves menu/Canto/trade while combat events run.
@@ -9789,7 +9830,15 @@ export class EventState extends State {
 
       // Check if LevelEnd event was already triggered
       if (game.levelVars.get('_level_end_triggered')) {
-        // LevelEnd event has run — proceed with actual level transition
+        // A level end trigger may queue a level-specific outro, the global
+        // level-end event, and nested helper scripts. The web port processes
+        // them in one EventState, so drain that queue before transitioning.
+        // Otherwise the first nested helper to finish skips the remaining
+        // cleanup (including EOtF's floor increment).
+        if (game.eventManager?.getCurrentEvent()) {
+          this.loadNextEvent(game);
+          return;
+        }
         this.levelEnd(game);
         return;
       }

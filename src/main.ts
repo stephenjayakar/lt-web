@@ -143,8 +143,8 @@ import {
 import { setQueryEngineGameRef } from './engine/query-engine';
 import { setEquationGameRef } from './combat/combat-calcs';
 import { setSkillSystemGameRef } from './combat/skill-system';
-import { setItemSystemGameRef } from './combat/item-system';
-import { initPersistentSystems } from './engine/records';
+import { beginItemSystemFrame, setItemSystemGameRef } from './combat/item-system';
+import { initPersistentSystems, RECORDS } from './engine/records';
 import {
   SaveMenuState,
   LoadMenuState,
@@ -493,6 +493,7 @@ async function main(): Promise<void> {
   // --- Determine project URL ---
   const params = new URLSearchParams(window.location.search);
   const harnessMode = params.get('harness') === 'true';
+  const controlTelemetry = params.get('control') === 'true';
   const harnessLevel = params.get('level') ?? 'DEBUG';
   const harnessClean = params.get('clean') !== 'false'; // default: skip events
   let projectPath = params.get('project');
@@ -730,6 +731,29 @@ async function main(): Promise<void> {
     applySize(display);
     inputManager.setDisplayScale(viewport.cssScale);
   }
+  if (controlTelemetry) {
+    const controls = document.createElement('div');
+    controls.id = 'programmatic-game-controls';
+    controls.setAttribute('aria-label', 'Programmatic game controls');
+    controls.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:1000;display:flex;gap:2px;opacity:.12';
+    for (const [label, button] of [
+      ['Move up', 'UP'],
+      ['Move left', 'LEFT'],
+      ['Move down', 'DOWN'],
+      ['Move right', 'RIGHT'],
+    ] as const) {
+      const control = document.createElement('button');
+      control.type = 'button';
+      control.textContent = label;
+      control.dataset.controlMove = button;
+      control.addEventListener('click', () => {
+        inputManager.pressVirtual(button);
+        window.setTimeout(() => inputManager.releaseVirtual(button), 750);
+      });
+      controls.appendChild(control);
+    }
+    document.body.appendChild(controls);
+  }
   canvas.focus({ preventScroll: true });
 
   // --- Game surface (dynamic size) ---
@@ -816,6 +840,14 @@ async function main(): Promise<void> {
 
   // F3 toggles performance overlay, F4 toggles profiling session
   let profilingSession = false;
+  let lastControlFrameAt = -Infinity;
+  let lastControlTelemetryAt = -Infinity;
+  const controlTelemetryCache = new Map<string, string>();
+  const setControlTelemetry = (key: string, value: string): void => {
+    if (controlTelemetryCache.get(key) === value) return;
+    controlTelemetryCache.set(key, value);
+    display.canvas.dataset[key] = value;
+  };
   window.addEventListener('keydown', (e) => {
     if (e.key === 'F3') {
       e.preventDefault();
@@ -845,6 +877,16 @@ async function main(): Promise<void> {
   });
 
   function gameLoop(timestamp: number): void {
+    // Browser-controlled campaign runs do not benefit from redrawing a
+    // software-rendered canvas at display refresh rate. Capping only the
+    // opt-in control surface keeps long playthroughs responsive and cool
+    // without changing the normal game's timing or presentation.
+    if (controlTelemetry && timestamp - lastControlFrameAt < 50) {
+      requestAnimationFrame(gameLoop);
+      return;
+    }
+    lastControlFrameAt = timestamp;
+    beginItemSystemFrame();
     PerfMonitor.beginFrame();
 
     const rawDelta = lastTimestamp === 0 ? FRAMETIME : timestamp - lastTimestamp;
@@ -903,6 +945,41 @@ async function main(): Promise<void> {
     // --- Movement ---
     game.movementSystem.update(deltaMs);
 
+    // Read-only live-control telemetry. Browser-control clients run in an
+    // isolated JS world, so window.__gameRef is intentionally unavailable to
+    // them. Keep the observable surface tiny and opt-in: gameplay still
+    // receives only normal keyboard/pointer input.
+    if (controlTelemetry && timestamp - lastControlTelemetryAt >= 100) {
+      lastControlTelemetryAt = timestamp;
+      const currentState = game.state.getCurrentState();
+      const roamPosition = (currentState as any)?.movementComponent?.roamPosition;
+      setControlTelemetry('controlState', currentState?.name ?? '');
+      setControlTelemetry('controlLevel', game.currentLevel?.nid ?? '');
+      setControlTelemetry('controlPosition', roamPosition
+        ? `${roamPosition.x.toFixed(2)},${roamPosition.y.toFixed(2)}`
+        : game.cursor.getPosition().join(','));
+      setControlTelemetry('controlTurn', String(game.turnCount));
+      setControlTelemetry('controlPhase', game.phase?.getCurrent?.() ?? '');
+      setControlTelemetry('controlFloor', String(game.gameVars.get('Floor') ?? ''));
+      setControlTelemetry('controlGameSpeed', String(RECORDS.get('Game_Speed') ?? ''));
+      setControlTelemetry('controlInCombat', String(game.gameVars.get('in_combat') ?? ''));
+      setControlTelemetry('controlGameOver', String(game.gameVars.get('game_over') ?? ''));
+      setControlTelemetry('controlUnits', JSON.stringify(
+        [...game.units.values()]
+          .filter(unit => unit.position && !unit.dead)
+          .map(unit => ({
+            nid: unit.nid,
+            team: unit.team,
+            position: unit.position,
+            hp: unit.currentHp,
+            finished: unit.finished,
+            tags: unit.tags,
+            items: unit.items.map(item => item.nid),
+            weapon: unit.equippedWeapon?.nid ?? null,
+          })),
+      ));
+    }
+
     // --- Blit to display ---
     PerfMonitor.beginDraw();
     display.ctx.imageSmoothingEnabled = false;
@@ -953,16 +1030,26 @@ async function main(): Promise<void> {
     game.gameVars.set('_pwa_update_available', true);
     game.gameVars.set('_pwa_apply_update', apply as any);
   });
-  registerServiceWorker().then((reg) => {
-    if (reg) {
-      // Request persistent storage so the browser won't evict cached game data
-      requestPersistentStorage().then((granted) => {
-        if (granted) {
-          console.info('[PWA] Persistent storage granted');
-        }
-      });
+  if (controlTelemetry) {
+    // Programmatic campaign runs must load the just-built module, not a
+    // previously precached app shell. Unregistering takes effect for the next
+    // navigation; control runs intentionally do not install a replacement.
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker.getRegistrations().then((registrations) =>
+        Promise.all(registrations.map((registration) => registration.unregister())));
     }
-  });
+  } else {
+    registerServiceWorker().then((reg) => {
+      if (reg) {
+        // Request persistent storage so the browser won't evict cached game data
+        requestPersistentStorage().then((granted) => {
+          if (granted) {
+            console.info('[PWA] Persistent storage granted');
+          }
+        });
+      }
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

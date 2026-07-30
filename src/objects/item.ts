@@ -140,6 +140,14 @@ export class ItemObject {
   // Generic component access
   // ------------------------------------------------------------------
 
+  /** Python ItemObject.tags reads only the item's own item_tags component. */
+  get tags(): string[] {
+    const value = this.components.get('item_tags');
+    return Array.isArray(value)
+      ? value.filter((tag): tag is string => typeof tag === 'string')
+      : [];
+  }
+
   hasComponent(name: string): boolean {
     const override = itemComponentResolver?.(this, name);
     return override?.found === true || this.components.has(name);

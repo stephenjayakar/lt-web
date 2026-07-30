@@ -280,11 +280,37 @@ export class PrepMainState extends State {
       return;
     }
 
+    // Older prep saves and direct prep entry can predate the initial
+    // TurnChangeState-equivalent dispatch. Ensure authored turn-one setup is
+    // queued exactly once before resuming the level-start event.
+    if (game.turnCount === 1 &&
+        !game.levelVars.get('_initial_turn_events_after_level_start') &&
+        game.eventManager) {
+      game.levelVars.set('_initial_turn_events_after_level_start', true);
+      const levelNid = game.currentLevel?.nid;
+      const context = { game, gameVars: game.gameVars, levelVars: game.levelVars };
+      game.eventManager.trigger(
+        { type: 'phase_change', team: game.phase?.getCurrent(), levelNid },
+        context,
+      );
+      game.eventManager.trigger(
+        { type: 'turn_change', turnCount: game.turnCount, levelNid },
+        context,
+      );
+    }
+
     // Exit prep. Direct level loads may leave prep above a stale roam state
     // instead of a tactical Free/Event state; revealing it drains the stack.
     const previous = game.state.stack[game.state.stack.length - 2];
-    if (previous?.name === 'free' || previous?.name === 'event') {
+    if (previous?.name === 'free') {
       game.state.back();
+    } else if (previous?.name === 'event') {
+      // Prep commonly blocks the level-start event. Rebuild the tactical
+      // base underneath it before resuming so the event cannot finish by
+      // popping the last state and leaving a black, empty stack.
+      game.state.clear();
+      game.state.change('free');
+      game.state.change('event');
     } else {
       game.state.clear();
       game.state.change('free');

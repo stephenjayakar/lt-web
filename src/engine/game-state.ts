@@ -830,11 +830,30 @@ export class GameState {
       (levelPrefab as any).roam_unit ?? null,
     );
 
-    // k. Trigger 'level_start' event ---------------------------------------
+    // k. Queue the initial player-phase events -----------------------------
+    // Python calls phase_change, turn_change, then level_start from
+    // TurnChangeState, but its event stack executes the last trigger first.
+    // Our event queue is FIFO, so enqueue level_start first to preserve the
+    // authored execution order. EOtF's level_start removes stale Deployed
+    // tags and turn_change then restores them for the actual sortie.
     if (this.eventManager) {
+      this.levelVars.set('_initial_turn_events_after_level_start', true);
+      const eventContext = {
+        game: this,
+        gameVars: this.gameVars,
+        levelVars: this.levelVars,
+      };
       this.eventManager.trigger(
         { type: 'level_start', levelNid },
-        { game: this, gameVars: this.gameVars, levelVars: this.levelVars },
+        eventContext,
+      );
+      this.eventManager.trigger(
+        { type: 'phase_change', team: this.phase.getCurrent(), levelNid },
+        eventContext,
+      );
+      this.eventManager.trigger(
+        { type: 'turn_change', turnCount: this.turnCount, levelNid },
+        eventContext,
       );
     }
   }
@@ -1058,7 +1077,8 @@ export class GameState {
     }
 
     // All player units dead
-    if (loss.includes('all') && loss.includes('die')) {
+    if (loss.includes('all') &&
+        (loss.includes('die') || loss.includes('dead') || loss.includes('defeated'))) {
       const playerUnits = this.board?.getTeamUnits('player') ?? [];
       const living = playerUnits.filter((u) => !u.isDead());
       return living.length === 0;
