@@ -26,6 +26,7 @@ import { Recordkeeper, type RecordkeeperSaveData } from './records';
 import type { SupportPair } from './support-system';
 import { SupportController } from './support-system';
 import { GameBoard } from '../objects/game-board';
+import { TargetSystem } from './target-system';
 import { PathSystem } from '../pathfinding/path-system';
 import { PhaseController } from './phase';
 import { EventManager, GameEvent, type EventTrigger } from '../events/event-manager';
@@ -995,13 +996,9 @@ export function buildSaveDict(game: any): SaveDict {
   // Playtime: check if game tracks it; default to 0
   const playtime: number = (game as any).playtime ?? 0;
 
-  // Talk options: may not exist on GameState yet
-  const talkOptions: [string, string][] = [];
-  if ((game as any).talkOptions) {
-    for (const [k, v] of (game as any).talkOptions as Map<string, string>) {
-      talkOptions.push([k, v]);
-    }
-  }
+  const talkOptions: [string, string][] = game.eventManager
+    ? (game.eventManager as EventManager).getTalkPairs()
+    : [];
 
   const initiative: InitiativeSaveData | null = game.initiative
     ? {
@@ -1682,11 +1679,6 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   game.baseConvos = new Map(s.baseConvos);
   game.unlockedLore = [...(s.unlockedLore ?? [])];
 
-  // 9b. Restore talk options if game supports them
-  if ((game as any).talkOptions !== undefined) {
-    (game as any).talkOptions = new Map(s.talkOptions);
-  }
-
   // 10. Restore records
   if (s.records) {
     try {
@@ -1735,7 +1727,14 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
 
   // 15. Restore level (if present)
   if (s.level) {
-    await restoreLevel(game, s.level, unitsByNid, s.alreadyTriggeredEvents, s.talkHidden);
+    await restoreLevel(
+      game,
+      s.level,
+      unitsByNid,
+      s.alreadyTriggeredEvents,
+      s.talkOptions,
+      s.talkHidden,
+    );
   }
 
   // Restore movement bounds after the board exists (legacy saves: natural bounds).
@@ -1826,6 +1825,7 @@ async function restoreLevel(
   levelData: LevelSaveData,
   unitsByNid: Map<string, UnitObject>,
   alreadyTriggeredEvents: string[] | undefined,
+  talkOptions: [string, string][] | undefined,
   talkHidden?: string[],
 ): Promise<void> {
   try {
@@ -1914,6 +1914,7 @@ async function restoreLevel(
     // Create GameBoard
     game.board = new GameBoard(game.tilemap.width, game.tilemap.height);
     game.board.onUnitPositionChanged = () => game.refreshPositionSkills();
+    game.targetSystem = new TargetSystem(game.db, game.board, game);
     game.board.initFromTilemap(game.tilemap);
 
     // Initialize fog grids and opacity
@@ -1962,6 +1963,7 @@ async function restoreLevel(
     game.eventManager.actionLog = game.actionLog ?? null;
     game.eventManager.setGameGetter(() => game);
     game.eventManager.restoreOnceTriggered(alreadyTriggeredEvents);
+    game.eventManager.restoreTalkPairs(talkOptions);
     game.eventManager.restoreTalkHidden(talkHidden);
 
     // Create AIController

@@ -388,7 +388,8 @@ export function installBundleFetchInterceptor(
 
     // Check if this request is for a bundled asset
     if (url.startsWith(normalizedBase)) {
-      const relativePath = url.substring(normalizedBase.length);
+      const encodedPath = url.substring(normalizedBase.length);
+      const relativePath = decodeBundlePath(encodedPath);
       const raw = bundle.getRaw(relativePath);
 
       if (raw) {
@@ -449,7 +450,8 @@ export function installBundleImageInterceptor(
     },
     set(value: string) {
       if (typeof value === 'string' && value.startsWith(normalizedBase)) {
-        const relativePath = value.substring(normalizedBase.length);
+        const encodedPath = value.substring(normalizedBase.length);
+        const relativePath = decodeBundlePath(encodedPath);
         const blobUrl = bundle.getBlobUrl(relativePath);
         if (blobUrl) {
           blobToOriginal.set(this, value);
@@ -471,6 +473,15 @@ export function installBundleImageInterceptor(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** ResourceManager URI-encodes path segments; zip entry names remain decoded. */
+function decodeBundlePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
 
 function getMimeType(path: string): string {
   const ext = path.slice(path.lastIndexOf('.')).toLowerCase();

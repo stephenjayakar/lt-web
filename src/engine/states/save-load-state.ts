@@ -104,13 +104,7 @@ export class SaveMenuState extends State {
 
     const game = getGame();
 
-    if (this.messageTimer > 0) {
-      this.messageTimer -= game.frameDeltaMs ?? 16;
-      if (this.messageTimer <= 0) {
-        game.state.back();
-      }
-      return undefined;
-    }
+    if (this.messageTimer > 0) return undefined;
 
     const result = this.menu.handleInput(event);
     if (result && 'back' in result) {
@@ -135,6 +129,16 @@ export class SaveMenuState extends State {
       }
     }
 
+    return undefined;
+  }
+
+  override update(): StateResult {
+    if (this.messageTimer <= 0) return undefined;
+
+    this.messageTimer -= getGame().frameDeltaMs ?? 16;
+    if (this.messageTimer <= 0) {
+      getGame().state.back();
+    }
     return undefined;
   }
 
@@ -252,16 +256,7 @@ export class LoadMenuState extends State {
 
     const game = getGame();
 
-    if (this.messageTimer > 0) {
-      this.messageTimer -= game.frameDeltaMs ?? 16;
-      if (this.messageTimer <= 0) {
-        if (this.message.startsWith('Load failed')) {
-          // Stay on load menu
-          this.message = '';
-        }
-      }
-      return undefined;
-    }
+    if (this.messageTimer > 0) return undefined;
 
     const result = this.menu.handleInput(event);
     if (result && 'back' in result) {
@@ -311,6 +306,16 @@ export class LoadMenuState extends State {
       }
     }
 
+    return undefined;
+  }
+
+  override update(): StateResult {
+    if (this.messageTimer <= 0) return undefined;
+
+    this.messageTimer -= getGame().frameDeltaMs ?? 16;
+    if (this.messageTimer <= 0 && this.message.startsWith('Load failed')) {
+      this.message = '';
+    }
     return undefined;
   }
 

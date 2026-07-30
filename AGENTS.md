@@ -163,21 +163,26 @@ git diff --check
 
 ### Programmatic EOtF control
 
-Use Playwright against
-`/?harness=true&project=eotf.ltproj&level=X&clean=false&bundle=false`, wait for
-`window.__harness.ready`, and drive deterministic frames through
-`stepFrames(count, input)`. Inspect `getState()` after each transition; use
-bounded `settle(maxFrames, stopStates)` for authored events and async assets.
-Inputs are engine buttons such as `SELECT`, `BACK`, `UP`, `DOWN`, `LEFT`, and
-`RIGHT`. Free-roam movement needs a held key: add the physical key (for example
-`KeyS`) to `window.__gameRef.input.keysDown`, step frames, then remove it;
-repeated browser key taps may be too brief. Prefer normal menus and events for
-seams under test; use `loadLevel` only when a focused scenario deliberately
-starts at a known authored map. The fast progression/combat proof is:
+For a real playthrough, build once, run one static server, and keep one browser
+tab:
 
 ```bash
-npx playwright test tests/eotf-journey.spec.ts --workers=1 --reporter=dot
+npm run build
+python3 -m http.server 5174 --bind 127.0.0.1 -d dist
 ```
+
+Open
+`/?bundle=/bundles/eotf.ltproj.zip&project=eotf.ltproj&control=true&rev=N`.
+Change `rev` after rebuilding; control mode unregisters stale service workers.
+Read the canvas `data-control-state`, `-phase`, `-turn`, `-floor`, `-level`,
+`-position`, and JSON `-units` attributes after every action. Drive Enter,
+X/Back, arrows/WASD, and Space (map menu/end turn) through the browser.
+Cursor taps can occasionally double-step, so query `data-control-position`
+after each tap and continue toward the target instead of sending a fixed key
+burst. Typical waits are 170 ms per cursor tap, 250–700 ms for menus, about
+11 seconds for combat, and up to 30 seconds for an enemy phase. Save in-game
+before risky branches. At handoff, finalize the task-owned tab and stop the
+exact static-server PID; never kill unrelated Chrome processes.
 
 On failure, rerun only the failing spec/title with a verbose reporter or trace.
 Do not rerun the full suite merely to obtain a readable error. Use the shell's

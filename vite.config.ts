@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve, join, extname } from 'path';
-import { createReadStream, stat, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { createReadStream, stat, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { createHash } from 'crypto';
 import type { Plugin, ResolvedConfig } from 'vite';
 
 /**
@@ -94,10 +95,17 @@ function swPrecacheManifest(): Plugin {
 
       walk(outDir, '');
 
-      writeFileSync(
-        join(outDir, 'precache-manifest.json'),
-        JSON.stringify(manifest, null, 2),
-      );
+      const manifestJson = JSON.stringify(manifest, null, 2);
+      writeFileSync(join(outDir, 'precache-manifest.json'), manifestJson);
+
+      // A changed external manifest alone does not trigger the browser's
+      // service-worker update algorithm. Stamp its digest into the copied
+      // worker so every changed app shell installs a fresh cache.
+      const swPath = join(outDir, 'sw.js');
+      if (existsSync(swPath)) {
+        const revision = createHash('sha256').update(manifestJson).digest('hex').slice(0, 16);
+        writeFileSync(swPath, `${readFileSync(swPath, 'utf8')}\n// precache-revision:${revision}\n`);
+      }
       console.log(`[sw-precache-manifest] Generated ${manifest.length} entries`);
     },
   };
