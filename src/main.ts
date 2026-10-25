@@ -806,14 +806,14 @@ async function main(): Promise<void> {
   canvas.focus({ preventScroll: true });
 
   // --- Game surface (dynamic size) ---
-  let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);
+  let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale, false);
   let lastViewW = viewport.width;
   let lastViewH = viewport.height;
 
   /** Recreate surface if viewport changed. */
   function refreshSurface(): void {
     if (viewport.width !== lastViewW || viewport.height !== lastViewH) {
-      gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale);
+      gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale, false);
       lastViewW = viewport.width;
       lastViewH = viewport.height;
     }

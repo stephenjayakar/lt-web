@@ -18,7 +18,14 @@ export class Surface {
   private _ctx: OffscreenCanvasRenderingContext2D;
   private _alpha: number = 1.0;
 
-  constructor(width: number, height: number, scale: number = 1) {
+  /**
+   * @param readback  Keep the default `true` for surfaces that are read back
+   *   with getImageData (palette swaps, tinting, masks): Chrome then keeps the
+   *   canvas in CPU memory. Pass `false` for large per-frame compositing
+   *   targets (the screen and map surfaces), which are never read back and
+   *   are much cheaper to rasterize and present when GPU-accelerated.
+   */
+  constructor(width: number, height: number, scale: number = 1, readback: boolean = true) {
     this.width = width;
     this.height = height;
     this.scale = scale;
@@ -26,7 +33,7 @@ export class Surface {
       Math.round(width * scale),
       Math.round(height * scale),
     );
-    const ctx = this._canvas.getContext('2d', { willReadFrequently: true });
+    const ctx = this._canvas.getContext('2d', { willReadFrequently: readback });
     if (!ctx) throw new Error('Failed to get 2d context');
     this._ctx = ctx;
     this._ctx.imageSmoothingEnabled = false;

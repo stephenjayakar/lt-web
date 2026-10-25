@@ -58,14 +58,14 @@ export class MapView {
 
   constructor() {
     this.currentScale = 1;
-    this.mapSurface = new Surface(viewport.width, viewport.height, 1);
+    this.mapSurface = new Surface(viewport.width, viewport.height, 1, false);
   }
 
   /** Ensure the internal surface matches the target scale. */
   private ensureSurface(targetScale: number): void {
     if (this.currentScale !== targetScale) {
       this.currentScale = targetScale;
-      this.mapSurface = new Surface(viewport.width, viewport.height, targetScale);
+      this.mapSurface = new Surface(viewport.width, viewport.height, targetScale, false);
     }
   }
 
