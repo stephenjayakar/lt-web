@@ -117,6 +117,7 @@ import {
   AddRegionAction,
   RemoveRegionAction,
   DecrementTimeRegionAction,
+  UnequipItemAction,
   CreateUnitAction,
   UnregisterUnitAction,
   SetLevelVarAction,
@@ -341,6 +342,38 @@ function parseEventBool(value: string | undefined): boolean | null {
   if (['t', 'true', '1', 'y', 'yes'].includes(normalized)) return true;
   if (['f', 'false', '0', 'n', 'no'].includes(normalized)) return false;
   return null;
+}
+
+/**
+ * Python event_commands._parse_command for one command signature: flags are
+ * recognised anywhere, `Keyword=value` fills its named slot, and a
+ * positional argument's slot is its raw index (flags included), exactly as
+ * Python counts it.
+ */
+function parsePythonEventArgs(
+  args: string[],
+  keywords: string[],
+  optionalKeywords: string[],
+  flagNames: string[] = [],
+): { value: (keyword: string) => string | undefined; flags: Set<string> } {
+  const allKeywords = [...keywords, ...optionalKeywords];
+  const values = new Map<string, string>();
+  const flags = new Set<string>();
+  args.forEach((arg, index) => {
+    if (flagNames.includes(arg)) {
+      flags.add(arg);
+      return;
+    }
+    const equals = arg.indexOf('=');
+    if (equals > 0 && allKeywords.includes(arg.slice(0, equals))) {
+      values.set(arg.slice(0, equals), arg.slice(equals + 1));
+      return;
+    }
+    if (index < allKeywords.length && !values.has(allKeywords[index])) {
+      values.set(allKeywords[index], arg);
+    }
+  });
+  return { value: (keyword: string) => values.get(keyword), flags };
 }
 
 // ---------------------------------------------------------------------------
@@ -13154,14 +13187,45 @@ export class EventState extends State {
       }
 
       case 'kill_unit': {
+        // kill_unit;Unit;[immediate] (Python event_functions.kill_unit):
+        // the unit dies, then UnitDeath fires with no killer and pauses this
+        // event, so the unit_death events (EOtF: 49 `not unit2` reward and
+        // cleanup scripts) run before the rest of this one.
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
         const wasOnMap = !!unit?.position;
-        if (unit) {
-          game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
-          game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
-        }
         const immediate = args.some(arg => arg.toLowerCase().trim() === 'immediate');
+        if (!unit) {
+          console.warn(`kill_unit: couldn't find unit ${unitNid}`);
+          this.advancePointer();
+          return false;
+        }
+        const deathPosition = unit.position
+          ? [unit.position[0], unit.position[1]] as [number, number]
+          : undefined;
+        game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
+        game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
+        const queue = game.eventManager.eventQueue as GameEvent[];
+        const priorLength = queue.length;
+        game.eventManager.trigger(
+          {
+            type: 'unit_death', unit1: unit, unitNid: unit.nid,
+            // An immediate death has already left the map in Python.
+            position: immediate ? undefined : deathPosition,
+            levelNid: game.currentLevel?.nid,
+          },
+          { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
+        );
+        if (queue.length > priorLength && this.currentEvent) {
+          const owner = this.currentEvent;
+          this.advancePointer();
+          const deathEvents = queue.splice(priorLength);
+          const ownerIndex = queue.indexOf(owner);
+          if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
+          queue.unshift(...deathEvents, owner);
+          this.loadNextEvent(game);
+          return true;
+        }
         if (this.skipMode || immediate || !wasOnMap) {
           this.advancePointer();
           return false;
@@ -13423,9 +13487,16 @@ export class EventState extends State {
       case 'give_item': {
         // give_item;unit_nid;item_nid — give an item to a unit
         // If unit_nid is 'convoy', put it directly in the convoy
-        const giUnitNid = args[0] ?? '';
-        const giItemNid = args[1] ?? '';
-        const giBannerFlag = !args.includes('no_banner');
+        const giArgs = parsePythonEventArgs(
+          args,
+          ['GlobalUnitOrConvoy', 'Item'],
+          ['Party'],
+          ['no_banner', 'no_choice', 'force_give', 'droppable'],
+        );
+        const giUnitNid = giArgs.value('GlobalUnitOrConvoy') ?? '';
+        const giItemNid = giArgs.value('Item') ?? '';
+        const giBannerFlag = !giArgs.flags.has('no_banner');
+        let giDiscard = false;
         const giItemPrefab = game.db.items.get(giItemNid);
         const giExistingItem = /^\d+$/.test(giItemNid)
           ? game.getItem(giItemNid)
@@ -13442,44 +13513,61 @@ export class EventState extends State {
               `event_${giItem.uid}_${giItem.nid}`,
             ));
           }
-          game.actionLog.doAction(new SetItemDroppableAction(giItem, args.includes('droppable')));
+          game.actionLog.doAction(new SetItemDroppableAction(giItem, giArgs.flags.has('droppable')));
           if (giUnitNid.toLowerCase() === 'convoy') {
-            const giParty = game.getParty(args[2] || undefined);
+            const giParty = game.getParty(giArgs.value('Party') || undefined);
             if (giParty) {
               game.actionLog.doAction(new PutItemInConvoy(giItem, giParty.nid));
               giBannerText = `${colored(giItem.name)} sent to convoy.`;
             }
           } else {
             const giUnit = this.findUnit(giUnitNid);
-            if (giUnit) {
+            if (giUnit && this.inventoryFull(giUnit, giItem) && giArgs.flags.has('no_choice')) {
+              // Python: a full inventory with no_choice sends it to the convoy.
+              game.actionLog.doAction(new PutItemInConvoy(giItem, game.getParty()?.nid));
+              giBannerText = `${colored(giItem.name)} sent to convoy.`;
+            } else if (giUnit) {
+              const giFull = this.inventoryFull(giUnit, giItem);
               game.actionLog.doAction(new GiveItemAction(giUnit, giItem));
               giBannerText = acquiredItemText(giUnit.name, giItem.name);
+              if (giFull) {
+                // Python: otherwise the unit must discard down to capacity.
+                game.memory.set('item_discard_current_unit', giUnit);
+                game.memory.set('item_discard_new_item', giItem);
+                game.memory.set('item_discard_force_give', giArgs.flags.has('force_give'));
+                giDiscard = true;
+              }
             }
           }
         }
+        if (giDiscard) game.state.change('item_discard');
         if (giBannerFlag && giBannerText && !this.skipMode) {
           this.banner = new Banner(giBannerText, itemIcon(giItem), 3000, { sound: 'Item' });
           this.bannerIsAlert = true;
           return true;
         }
         this.advancePointer();
-        return false;
+        return giDiscard;
       }
 
       case 'remove_item': {
-        const ownerNid = args[0] ?? '';
-        const itemNid = args[1] ?? '';
-        const riBannerFlag = !args.includes('no_banner');
+        // remove_item;GlobalUnitOrConvoy;Item;Party? — items match by nid or
+        // uid (Python Event._get_item_in_inventory); flags may sit anywhere.
+        const riArgs = parsePythonEventArgs(args, ['GlobalUnitOrConvoy', 'Item'], ['Party'], ['no_banner']);
+        const ownerNid = riArgs.value('GlobalUnitOrConvoy') ?? '';
+        const itemNid = riArgs.value('Item') ?? '';
+        const riBannerFlag = !riArgs.flags.has('no_banner');
         let riBannerText: string | undefined;
         let riIcon: ReturnType<typeof itemIcon> = null;
         if (ownerNid.toLowerCase() === 'convoy') {
-          const partyArg = args.slice(2).find((arg) => arg !== 'no_banner');
-          const party = game.getParty(partyArg || undefined);
-          const item = party?.convoy.find((candidate: ItemObject) => candidate.nid === itemNid);
-          if (item) game.actionLog.doAction(new RemoveItemFromConvoy(item, party?.nid));
+          // Python looks the item up in the current convoy, then removes it
+          // from the named party's convoy (default: current).
+          const item = this.findInventoryItem('convoy', itemNid);
+          const partyNid = riArgs.value('Party') || undefined;
+          if (item) game.actionLog.doAction(new RemoveItemFromConvoy(item, game.getParty(partyNid)?.nid));
         } else {
           const unit = this.findUnit(ownerNid);
-          const item = unit?.items.find((candidate: ItemObject) => candidate.nid === itemNid);
+          const item = unit ? this.findInventoryItem(ownerNid, itemNid) : undefined;
           if (unit && item) {
             game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
             riBannerText = `${colored(unit.name)} lost ${colored(item.name)}.`;
@@ -13505,7 +13593,7 @@ export class EventState extends State {
           ? game.getParty()?.convoy
           : giverUnit?.items;
         const item = args[2]
-          ? sourceItems?.find((candidate) => candidate.nid === args[2])
+          ? this.findInventoryItem(giverNid, args[2])
           : sourceItems?.at(-1);
 
         if (!item || (!giverIsConvoy && !giverUnit)) {
@@ -13592,10 +13680,17 @@ export class EventState extends State {
       case 'remove_item_from_multiitem': {
         const parent = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
         if (parent?.hasComponent('multi_item')) {
-          const children = args[2]
-            ? parent.subitems.filter((child) => child.nid === args[2]).slice(0, 1)
+          // Python matches the child by uid first, then nid, and unequips a
+          // unit-owned child before removing it.
+          const childId = args[2];
+          const byUid = childId ? parent.subitems.find((child) => String(child.uid) === String(childId)) : undefined;
+          const byNid = childId && !byUid ? parent.subitems.find((child) => child.nid === childId) : undefined;
+          const children = childId
+            ? [byUid ?? byNid].filter((child): child is ItemObject => !!child)
             : [...parent.subitems];
+          const owner = (args[0] ?? '').toLowerCase() === 'convoy' ? undefined : this.findUnit(args[0] ?? '');
           for (const child of children) {
+            if (owner) game.actionLog.doAction(new UnequipItemAction(owner, child));
             game.actionLog.doAction(new RemoveSubItemAction(parent, child));
           }
         } else {
@@ -14315,9 +14410,12 @@ export class EventState extends State {
 
       case 'give_money': {
         // give_money;amount[;party_nid]
-        const amount = parseInt(args[0], 10) || 0;
-        const moneyPartyNid = args[1] || undefined;
-        const gmBannerFlag = !args.includes('no_banner');
+        // give_money;Money;Party? with the no_banner flag anywhere (Python
+        // :1984). `give_money;-300;no_banner` targets the current party.
+        const gmArgs = parsePythonEventArgs(args, ['Money'], ['Party'], ['no_banner']);
+        const amount = parseInt(gmArgs.value('Money') ?? '', 10) || 0;
+        const moneyPartyNid = gmArgs.value('Party') || undefined;
+        const gmBannerFlag = !gmArgs.flags.has('no_banner');
         const party = game.getParty(moneyPartyNid);
         if (party) {
           game.actionLog.doAction(new GainMoneyAction(amount, party.nid));
@@ -14496,12 +14594,21 @@ export class EventState extends State {
 
       case 'equip_item': {
         // equip_item;unit_nid;item_nid — move item to front of inventory
-        const unitNid2 = args[0] ?? '';
-        const itemNid = args[1] ?? '';
+        // equip_item;GlobalUnit;Item;[recursive] (Python :1594): nid or uid,
+        // optionally inside multi-items; a multi-item equips its first
+        // equippable child.
+        const eqArgs = parsePythonEventArgs(args, ['GlobalUnit', 'Item'], [], ['recursive']);
+        const unitNid2 = eqArgs.value('GlobalUnit') ?? '';
         const unit2 = this.findUnit(unitNid2);
-        if (unit2) {
-          const item = unit2.items.find((candidate: ItemObject) => candidate.nid === itemNid);
-          if (item && unit2.canEquip(item)) {
+        const item = unit2
+          ? this.findInventoryItem(unitNid2, eqArgs.value('Item') ?? '', eqArgs.flags.has('recursive'))
+          : undefined;
+        if (unit2 && item) {
+          if (item.hasComponent('multi_item')) {
+            const child = item.subitems.find((subitem) => unit2.canEquip(subitem));
+            if (child) game.actionLog.doAction(new EquipItemAction(unit2, child));
+            else console.warn(`equip_item: no valid subitem to equip in ${item.nid}`);
+          } else if (unit2.canEquip(item)) {
             game.actionLog.doAction(new EquipItemAction(unit2, item));
           }
         }

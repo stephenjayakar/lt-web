@@ -916,6 +916,25 @@ test.describe('Event command flag matching: unit death', () => {
     ], 2);
     expect(await getGameVar(page, 'kill_unit_immediate')).toBe('done');
   });
+
+  test('kill_unit fires killer-less unit_death events before the rest of its event', async ({ page }) => {
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('QaEventDeath', {
+        name: 'QaEventDeath', nid: 'QaEventDeath', trigger: 'unit_death', level_nid: null,
+        // EOtF's event-kill rewards only match deaths without a killer.
+        condition: "not unit2 and unit.nid == 'Seth'", only_once: false, priority: 20,
+        _source: ['game_var;qa_death_unit;{unit}', 'game_var;qa_death_ran;1'],
+      });
+    });
+    await installAndRunEvent(page, 'test_kill_unit_trigger', [
+      'kill_unit;Seth;immediate',
+      "game_var;qa_after_kill;{e:game.game_vars.get('qa_death_ran', 0)}",
+    ], 2);
+    await stepFrames(page, 20);
+    expect(await getGameVar(page, 'qa_death_unit')).toBe('Seth');
+    expect(String(await getGameVar(page, 'qa_after_kill'))).toBe('1');
+  });
 });
 
 test.describe('Event command flag matching: progression', () => {
