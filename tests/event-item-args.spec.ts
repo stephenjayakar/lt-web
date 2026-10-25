@@ -58,6 +58,38 @@ test.describe('Event item and money argument parity', () => {
     expect(remaining).toBe(false);
   });
 
+  test('unlock spends the key whose can_unlock accepts the region', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const eirika = g.units.get('Eirika');
+      const make = (nid: string, expression: string) => {
+        const item = new ItemObject({
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['uses', 3], ['can_unlock', expression]],
+        });
+        item.owner = eirika;
+        return item;
+      };
+      const chestKey = make('QaChestKey', "region.nid.startswith('Chest')");
+      const doorKey = make('QaDoorKey', "region.nid.startswith('Door')");
+      eirika.items = [chestKey, doorKey, ...eirika.items];
+      g.db.events.set('QaUnlock', {
+        name: 'QaUnlock', nid: 'QaUnlock', trigger: 'QaUnlock', level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0, _source: ['unlock;Eirika'],
+      });
+      g.eventManager.triggerSpecific('QaUnlock', {
+        type: 'QaUnlock', unit1: eirika, region: { nid: 'Door3', region_type: 'event' },
+      }, true);
+      g.state.change('event');
+      (window as any).__harness.stepFrames(20, null);
+      return { chest: chestKey.uses, door: doorKey.uses };
+    });
+    // The chest key would have been "first"; Python spends the door key.
+    expect(result).toEqual({ chest: 3, door: 2 });
+  });
+
   test('remove_item and move_item accept item uids', async ({ page }) => {
     await boot(page);
     const setup = await page.evaluate(() => {

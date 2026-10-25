@@ -274,6 +274,7 @@ import {
   inventoryFull as itemInventoryFull,
   healAmount as itemHealAmount,
   solomonHpChange,
+  canUnlock as itemCanUnlock,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -294,6 +295,7 @@ import {
   skillConditionActive,
   empowerHeal,
   unitSpriteTint,
+  canUnlock as skillCanUnlock,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -16015,28 +16017,40 @@ export class EventState extends State {
       case 'unlock':
       case 'find_unlock':
       case 'spend_unlock': {
-        // unlock;UnitNid — in the full Python engine, this is a complex macro.
-        // Simplified: find the first item with 'unlock' component, decrement its uses.
-        const unlockUnitNid = args[0]?.trim() ?? '';
-        const unlockUnit = this.findUnit(unlockUnitNid);
-        if (unlockUnit) {
-          // Find first item that can unlock (has 'unlock' or 'key' component)
-          const keyItem = unlockUnit.items.find(item => {
-            for (const [compName] of item.components) {
-              if (compName === 'unlock' || compName === 'Unlock' ||
-                  compName === 'keys' || compName === 'Keys' ||
-                  compName === 'can_unlock') return true;
-            }
-            return false;
-          });
-          if (keyItem && keyItem.uses !== undefined && keyItem.uses > 0) {
-            game.actionLog.doAction(new WeaponUsesAction(keyItem, unlockUnit));
-            if ((keyItem.uses ?? 0) <= 0) {
-              game.actionLog.doAction(new RemoveItemFromUnitAction(unlockUnit, keyItem));
-            }
+        // Python unlock = find_unlock + spend_unlock: a Locktouch-style skill
+        // opens the region for free; otherwise the unlocking item is one
+        // that is available and whose can_unlock condition accepts this
+        // region (chest keys only open chests). Spending procs its uses and
+        // breaks it at zero; the unit cannot die from it.
+        // Deviation: with several valid player items Python opens an item
+        // choice (unlock_select); the web uses the first.
+        const unlockUnit = this.findUnit(args[0]?.trim() ?? '');
+        const region = this.currentEvent?.trigger?.region ?? null;
+        if (cmd.type !== 'spend_unlock') game.memory.delete('unlock_item');
+        if (unlockUnit && cmd.type !== 'spend_unlock') {
+          if (!region) {
+            console.warn('find_unlock: can only find_unlock within a region event');
+          } else if (!skillCanUnlock(unlockUnit, region, game)) {
+            const allItems: ItemObject[] = [];
+            const walk = (items: ItemObject[]) => {
+              for (const item of items) {
+                allItems.push(item);
+                walk(item.subitems ?? []);
+              }
+            };
+            walk(unlockUnit.items);
+            const valid = allItems.find((item) =>
+              itemAvailable(unlockUnit, item, game.db, game) && itemCanUnlock(unlockUnit, item, region, game));
+            if (valid) game.memory.set('unlock_item', valid);
           }
-          // If no key item, check for Locktouch skill (no item consumed)
-          // Already handled implicitly — if no key found, nothing happens
+        }
+        if (unlockUnit && cmd.type !== 'find_unlock') {
+          const chosen = game.memory.get('unlock_item') as ItemObject | undefined;
+          game.memory.delete('unlock_item');
+          if (chosen && (chosen.hasComponent('uses') || chosen.hasComponent('c_uses'))) {
+            const owner = chosen.owner ?? unlockUnit;
+            game.actionLog.doAction(new WeaponUsesAction(chosen, owner));
+          }
         }
         this.advancePointer();
         return false;
