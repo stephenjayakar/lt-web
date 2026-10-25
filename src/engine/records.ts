@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { NID } from '../data/types';
+import { getSyncStore } from '../storage/storage';
 
 // ------------------------------------------------------------------
 // Record Interfaces (data objects)
@@ -570,7 +571,7 @@ export interface RecordkeeperSaveData {
 // ------------------------------------------------------------------
 // PersistentRecordManager — cross-save key-value records
 // Mirrors app/engine/persistent_records.py
-// Backed by localStorage
+// Backed by the sync store (localStorage locally, Convex when signed in)
 // ------------------------------------------------------------------
 
 interface PersistentRecordEntry {
@@ -691,30 +692,30 @@ export class PersistentRecordManager {
   }
 
   /**
-   * Immediately writes current state to localStorage.
+   * Immediately writes current state to the sync store (src/storage/storage.ts).
    */
   persist(): void {
     try {
       const json = JSON.stringify(this.save());
-      localStorage.setItem(this.storageKey, json);
+      getSyncStore().setItem(this.storageKey, json);
     } catch {
-      // localStorage may be unavailable (SSR, quota exceeded, etc.)
+      // storage may be unavailable (SSR, quota exceeded, etc.)
     }
   }
 
   /**
-   * Load from localStorage and return a new PersistentRecordManager instance.
+   * Load from the sync store and return a new PersistentRecordManager instance.
    */
   static load(gameNid: string): PersistentRecordManager {
     const manager = new PersistentRecordManager(gameNid);
     try {
-      const raw = localStorage.getItem(`lt-persistent-records-${gameNid}`);
+      const raw = getSyncStore().getItem(`lt-persistent-records-${gameNid}`);
       if (raw) {
         const data = JSON.parse(raw) as PersistentRecordEntry[];
         manager.restore(data);
       }
     } catch {
-      // localStorage may be unavailable or data corrupted
+      // storage may be unavailable or data corrupted
     }
     return manager;
   }
@@ -723,7 +724,7 @@ export class PersistentRecordManager {
 // ------------------------------------------------------------------
 // AchievementManager — cross-save achievements
 // Mirrors app/engine/achievements.py
-// Backed by localStorage
+// Backed by the sync store (localStorage locally, Convex when signed in)
 // ------------------------------------------------------------------
 
 export interface AchievementEntry {
@@ -860,30 +861,30 @@ export class AchievementManager {
   }
 
   /**
-   * Immediately writes current state to localStorage.
+   * Immediately writes current state to the sync store (src/storage/storage.ts).
    */
   persist(): void {
     try {
       const json = JSON.stringify(this.save());
-      localStorage.setItem(this.storageKey, json);
+      getSyncStore().setItem(this.storageKey, json);
     } catch {
-      // localStorage may be unavailable
+      // storage may be unavailable
     }
   }
 
   /**
-   * Load from localStorage and return a new AchievementManager instance.
+   * Load from the sync store and return a new AchievementManager instance.
    */
   static load(gameNid: string): AchievementManager {
     const manager = new AchievementManager(gameNid);
     try {
-      const raw = localStorage.getItem(`lt-achievements-${gameNid}`);
+      const raw = getSyncStore().getItem(`lt-achievements-${gameNid}`);
       if (raw) {
         const data = JSON.parse(raw) as AchievementEntry[];
         manager.restore(data);
       }
     } catch {
-      // localStorage may be unavailable or data corrupted
+      // storage may be unavailable or data corrupted
     }
     return manager;
   }
@@ -898,7 +899,7 @@ export let ACHIEVEMENTS: AchievementManager;
 
 /**
  * Initialize the persistent systems (persistent records + achievements)
- * from localStorage. Call once at engine startup after the game NID is known.
+ * from the sync store. Call once at engine startup after the game NID is known.
  */
 export function initPersistentSystems(gameNid: string): void {
   RECORDS = PersistentRecordManager.load(gameNid);
@@ -907,7 +908,7 @@ export function initPersistentSystems(gameNid: string): void {
 
 /**
  * Reset the persistent systems — clears existing data and re-loads
- * from localStorage with the given game NID. Useful when switching
+ * from the sync store with the given game NID. Useful when switching
  * game projects.
  */
 export function resetPersistentSystems(gameNid: string): void {

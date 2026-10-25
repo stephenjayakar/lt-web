@@ -145,6 +145,7 @@ import { setEquationGameRef } from './combat/combat-calcs';
 import { setSkillSystemGameRef } from './combat/skill-system';
 import { beginItemSystemFrame, setItemSystemGameRef } from './combat/item-system';
 import { initPersistentSystems, RECORDS } from './engine/records';
+import { convexUrl, resolveStorageMode } from './storage/storage';
 import {
   SaveMenuState,
   LoadMenuState,
@@ -497,6 +498,14 @@ async function main(): Promise<void> {
   const harnessLevel = params.get('level') ?? 'DEBUG';
   const harnessClean = params.get('clean') !== 'false'; // default: skip events
   let projectPath = params.get('project');
+
+  // Cloud saves: with a Convex deployment configured (and outside test/
+  // automation contexts), the owner must sign in and saves/records hydrate
+  // from Convex before anything else boots. See src/storage/storage.ts.
+  if (resolveStorageMode(params) === 'convex') {
+    const { bootCloud } = await import('./storage/cloud-boot');
+    if (!(await bootCloud(convexUrl()!))) return;
+  }
 
   // If no project specified:
   // - Harness mode defaults to default.ltproj for deterministic tests.

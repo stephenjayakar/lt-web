@@ -34,6 +34,7 @@ import { AIController } from '../ai/ai-controller';
 import { RoamInfo } from './roam-info';
 import { InitiativeTracker } from './initiative';
 import { OverworldManager } from './overworld/overworld-manager';
+import { getSaveStore } from '../storage/storage';
 
 // ============================================================================
 // Save Data Interfaces
@@ -428,12 +429,15 @@ export interface SaveSlot {
 }
 
 // ============================================================================
-// IndexedDB Helpers
+// Storage: local IndexedDB (tests/offline) or Convex (signed-in owner). The
+// backend is chosen at boot; see src/storage/storage.ts.
 // ============================================================================
 
-const DB_NAME = 'lt-web-saves';
-const STORE_NAME = 'saves';
-const DB_VERSION = 1;
+const idbGet = (key: string): Promise<any> => getSaveStore().get(key);
+const idbSet = (key: string, value: unknown): Promise<void> => getSaveStore().set(key, value);
+const idbDelete = (key: string): Promise<void> => getSaveStore().delete(key);
+const idbKeys = (): Promise<string[]> => getSaveStore().keys();
+
 const CURRENT_SAVE_VERSION = '1.0.0';
 let lastLoadError: string | null = null;
 
@@ -475,154 +479,7 @@ function validateSaveState(game: any, save: SaveDict): void {
   }
 }
 
-/** Cached database connection. */
-let _dbInstance: IDBDatabase | null = null;
-
-async function openDB(): Promise<IDBDatabase> {
-  if (_dbInstance) return _dbInstance;
-
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    try {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-
-      request.onsuccess = () => {
-        _dbInstance = request.result;
-        // Clear cached handle if the connection closes unexpectedly
-        _dbInstance.onclose = () => { _dbInstance = null; };
-        _dbInstance.onversionchange = () => {
-          _dbInstance?.close();
-          _dbInstance = null;
-        };
-        resolve(_dbInstance);
-      };
-
-      request.onerror = () => {
-        console.warn('IndexedDB open failed:', request.error);
-        reject(request.error);
-      };
-    } catch (err) {
-      console.warn('IndexedDB not available:', err);
-      reject(err);
-    }
-  });
-}
-
-async function idbGet(key: string): Promise<any> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.get(key);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (err) {
-    console.warn(`idbGet("${key}") failed, trying localStorage fallback:`, err);
-    return localStorageGet(key);
-  }
-}
-
-async function idbSet(key: string, value: any): Promise<void> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.put(value, key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  } catch (err) {
-    console.warn(`idbSet("${key}") failed, trying localStorage fallback:`, err);
-    localStorageSet(key, value);
-  }
-}
-
-async function idbDelete(key: string): Promise<void> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.delete(key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  } catch (err) {
-    console.warn(`idbDelete("${key}") failed, trying localStorage fallback:`, err);
-    localStorageDelete(key);
-  }
-}
-
-async function idbKeys(): Promise<string[]> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.getAllKeys();
-      request.onsuccess = () => resolve(request.result as string[]);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (err) {
-    console.warn('idbKeys() failed, trying localStorage fallback:', err);
-    return localStorageKeys();
-  }
-}
-
 // ============================================================================
-// localStorage Fallback
-// ============================================================================
-
-const LS_PREFIX = 'lt-save:';
-
-function localStorageGet(key: string): any {
-  try {
-    const raw = localStorage.getItem(LS_PREFIX + key);
-    return raw ? JSON.parse(raw) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function localStorageSet(key: string, value: any): void {
-  try {
-    localStorage.setItem(LS_PREFIX + key, JSON.stringify(value));
-  } catch {
-    console.warn('localStorage save failed (quota exceeded?)');
-  }
-}
-
-function localStorageDelete(key: string): void {
-  try {
-    localStorage.removeItem(LS_PREFIX + key);
-  } catch {
-    // ignore
-  }
-}
-
-function localStorageKeys(): string[] {
-  const keys: string[] = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(LS_PREFIX)) {
-        keys.push(k.slice(LS_PREFIX.length));
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return keys;
-}
 // Serialization Functions
 // ============================================================================
 

@@ -253,7 +253,7 @@ interface PersistentStore<T> {
   persist(): void;
 }
 
-/** Reversible mutation of a localStorage-backed records or achievement store. */
+/** Reversible mutation of the persisted records or achievement store. */
 export class UpdatePersistentStoreAction<T, R = void> extends Action {
   private store: PersistentStore<T>;
   private mutate: () => R;

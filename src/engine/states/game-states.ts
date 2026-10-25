@@ -261,6 +261,7 @@ import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWea
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
 import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots } from '../save';
+import { getSyncStore } from '../../storage/storage';
 import { getStartingClassSkillNids } from '../learned-skills';
 import { reportUnimplemented } from '../strict-mode';
 
@@ -11331,7 +11332,7 @@ export class EventState extends State {
         const kind = args[0] ?? '';
         const music = args[1] ?? '';
         if (kind === 'title_screen') {
-          try { localStorage.setItem('_music_title_screen', music); } catch { /* private mode */ }
+          getSyncStore().setItem('_music_title_screen', music);
         } else if (kind) {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, `_music_${kind}`, music));
         }

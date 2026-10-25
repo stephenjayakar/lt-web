@@ -46,13 +46,56 @@ gitignored.
 
 ### Saves and upgrades
 
-Campaign save slots and suspend data are scoped by game NID in the
-`lt-web-saves` IndexedDB database. Browsers without IndexedDB use
-`localStorage` keys prefixed with `lt-save:`. Persistent records and
-achievements use `lt-persistent-records-<game-nid>` and
-`lt-achievements-<game-nid>`. Clearing site data or changing the deployment
-origin removes or isolates these saves; back up browser storage before either
-operation. Save payloads carry a version and are migrated during load.
+When the build has a Convex deployment URL (`VITE_CONVEX_URL`), **Convex is the
+source of truth** for save slots, suspend data, persistent records, and
+achievements, and only the allowlisted owner can use the game (see
+[Cloud saves](#cloud-saves-convex)). Without it, or in test/automation mode, saves
+stay on the device: save slots and suspend data in the `lt-web-saves`
+IndexedDB database (with a `localStorage` fallback using the `lt-save:` prefix),
+and persistent records/achievements in `lt-persistent-records-<game-nid>` and
+`lt-achievements-<game-nid>`. Save payloads carry a version and are migrated
+during load.
+
+### Cloud saves (Convex)
+
+| | Dev | Prod |
+|---|---|---|
+| Deployment | `dev:<dev-deployment>` | `prod:<prod-deployment>` |
+| `VITE_CONVEX_URL` | `https://<dev-deployment>.convex.cloud` | `https://<prod-deployment>.convex.cloud` |
+| Google OAuth redirect URI | `https://<dev-deployment>.convex.site/api/auth/callback/google` | `https://<prod-deployment>.convex.site/api/auth/callback/google` |
+
+`.env.local` (gitignored, written by `npx convex dev`) points `npm run dev` at
+dev. To run or build against prod, override the URL:
+`VITE_CONVEX_URL=https://<prod-deployment>.convex.cloud npm run dev` (or `npm
+run build`). Leave `VITE_CONVEX_URL` unset for a local-only build.
+
+- **Auth**: Convex Auth with Google sign-in. Only verified Google emails in the
+  deployment's `ALLOWED_EMAILS` env var (currently `aj12ay@gmail.com`) can
+  sign in, and every function and HTTP route checks the allowlist again
+  (`convex/lib/access.ts`). `SITE_URL` is a comma-separated list of origins
+  the game is served from. It controls the OAuth return allowlist and CORS.
+  Other deployment env vars are `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET`,
+  `JWT_PRIVATE_KEY`, and `JWKS` (see the Convex Auth manual setup docs). Dev
+  also has `AUTH_FAKE_LOGIN=true` and `AUTH_FAKE_LOGIN_SECRET`, a test sign-in
+  for automated E2E. Never set those on prod.
+- **Flow**: the sign-in gate appears before the game boots. After sign-in the
+  client hydrates every key from Convex into memory, uploads any on-device
+  saves/records once (only keys the cloud lacks), then boots. A save
+  (`saveGame`/`suspendGame`) resolves only once Convex has committed it.
+  Record and achievement writes are debounced, sent latest-wins per key, and
+  flushed when the page is hidden. Pending small writes are mirrored to a
+  `localStorage` outbox and replayed on the next boot. Failures show in the
+  top-left cloud pill and retry with backoff. The pill also has the sign-out
+  button. Values over 256 KiB, such as large save dicts, are gzipped into
+  Convex file storage through the authenticated `/kv/blob` HTTP route.
+- **Deploy functions**: `npx convex dev --once` (dev) and `npx convex deploy`
+  (prod).
+- **Test/automation mode**: `?harness=true`, `?control=true`, a
+  WebDriver-controlled browser (Playwright), or `?storage=local` use the
+  on-device backend with no sign-in. `?storage=convex` forces cloud mode, e.g.
+  for `node scripts/cloud-e2e.mjs`, the dev E2E. That script needs a dev
+  server on port 5180 and reads the fake-login secret from the gitignored
+  `.e2e-fake-login.local`.
 
 ### Licensing, credits, and deviations
 

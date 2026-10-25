@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "typecheck:convex": "tsc -p convex",
+    "test:cloud-e2e": "node scripts/cloud-e2e.mjs",
     "test": "playwright test --grep-invert @milestone",
     "test:fast": "playwright test --grep-invert @milestone",
     "test:fast:serial": "playwright test --workers=1 --grep-invert @milestone",

@@ -522,3 +522,154 @@
     transform: none;
   }
 }
+
+/* ---- Cloud saves: sign-in gate and account pill (src/storage/cloud-ui.ts) ---- */
+
+.cloud-signin {
+  z-index: 10000;
+}
+
+.cloud-signin__google,
+.cloud-signin__fake button {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1px solid rgba(231, 189, 105, 0.55);
+  background: rgba(231, 189, 105, 0.12);
+  color: var(--web-text);
+  font: 650 14px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.cloud-signin__google:hover,
+.cloud-signin__google:focus-visible,
+.cloud-signin__fake button:hover,
+.cloud-signin__fake button:focus-visible {
+  background: rgba(231, 189, 105, 0.22);
+  outline: none;
+}
+
+.cloud-signin__google:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.cloud-signin__error {
+  margin-top: 16px;
+  color: #ff9d8a;
+  font: 500 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+
+.cloud-signin__error[hidden] {
+  display: none;
+}
+
+.cloud-signin__fake {
+  display: grid;
+  gap: 8px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--web-line);
+  user-select: text;
+}
+
+.cloud-signin__fake-title {
+  color: var(--web-muted);
+  font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.cloud-signin__fake input {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--web-line);
+  background: var(--web-panel-soft);
+  color: var(--web-text);
+  font: 500 14px/1 ui-sans-serif, system-ui, sans-serif;
+  user-select: text;
+}
+
+.cloud-account {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 9100;
+  color: var(--web-text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.cloud-account__pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--web-line);
+  border-radius: 999px;
+  background: rgba(9, 13, 27, 0.72);
+  color: var(--web-muted);
+  font: 650 11px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 160ms ease;
+}
+
+.cloud-account__pill:hover,
+.cloud-account__pill:focus-visible,
+.cloud-account[data-state="syncing"] .cloud-account__pill,
+.cloud-account[data-state="error"] .cloud-account__pill {
+  opacity: 1;
+}
+
+.cloud-account__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6fd39b;
+}
+
+.cloud-account[data-state="syncing"] .cloud-account__dot {
+  background: var(--web-gold);
+}
+
+.cloud-account[data-state="error"] .cloud-account__pill {
+  border-color: rgba(255, 120, 100, 0.7);
+  color: #ffb4a6;
+}
+
+.cloud-account[data-state="error"] .cloud-account__dot {
+  background: #ff6b55;
+}
+
+.cloud-account__menu {
+  width: min(280px, calc(100vw - 24px));
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid var(--web-line);
+  background: var(--web-panel);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cloud-account__menu[hidden] {
+  display: none;
+}
+
+.cloud-account__status {
+  margin: 6px 0 12px;
+  color: var(--web-muted);
+}
+
+.cloud-account__menu button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--web-line);
+  background: var(--web-panel-soft);
+  color: var(--web-text);
+  font: 650 12px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
