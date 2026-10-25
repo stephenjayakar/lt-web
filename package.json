@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:site": "node scripts/build-site.mjs",
     "preview": "vite preview",
     "typecheck:convex": "tsc -p convex",
     "test:cloud-e2e": "node scripts/cloud-e2e.mjs",

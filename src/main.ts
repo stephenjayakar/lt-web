@@ -159,6 +159,8 @@ import {
   onUpdateAvailable,
 } from './pwa';
 import { AssetBundle, installBundleFetchInterceptor, installBundleImageInterceptor } from './data/asset-bundle';
+import { bootHostedPacks, isHostedBuild, loadPackManifest } from './packs/hosted';
+import type { PackManifest } from './packs/manifest';
 import { initNativePlatform, onAppPause, onAppResume } from './native';
 import { PerfMonitor } from './engine/perf-monitor';
 import { SurfacePool } from './engine/surface-pool';
@@ -507,11 +509,28 @@ async function main(): Promise<void> {
     if (!(await bootCloud(convexUrl()!))) return;
   }
 
+  // Hosted site (npm run build:site): game data comes from the content-hashed
+  // packs under /packs/ instead of /game-data and /bundles (src/packs/).
+  let hostedPacks: PackManifest | null = null;
+  if (isHostedBuild() && !harnessMode) {
+    try {
+      hostedPacks = await loadPackManifest();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      installStartupStatus(projectPath ?? 'eotf.ltproj').fail(msg);
+      drawErrorScreen(ctx, msg);
+      return;
+    }
+  }
+
   // If no project specified:
   // - Harness mode defaults to default.ltproj for deterministic tests.
+  // - The hosted site opens the project its packs hold.
   // - Normal mode shows the project picker and redirects with ?project= param.
   if (!projectPath) {
-    if (harnessMode) {
+    if (hostedPacks?.project) {
+      projectPath = hostedPacks.project;
+    } else if (harnessMode) {
       const projects: string[] = __AVAILABLE_PROJECTS__;
       const hasDefault = projects.includes('default.ltproj');
       projectPath = hasDefault ? 'default.ltproj' : (projects[0] ?? 'default.ltproj');
@@ -538,8 +557,8 @@ async function main(): Promise<void> {
   // So default to the bundle only in production builds. Either mode can be
   // forced with ?bundle=true / ?bundle=false.
   const bundleParam = params.get('bundle');
-  const useBundle = bundleParam === 'true' ||
-    (bundleParam !== 'false' && import.meta.env.PROD);
+  const useBundle = !hostedPacks && (bundleParam === 'true' ||
+    (bundleParam !== 'false' && import.meta.env.PROD));
 
   // In harness mode, force zoom so viewport matches GBA resolution (240x160).
   // With tilesAcross=10 and Playwright viewport 480x320:
@@ -547,6 +566,27 @@ async function main(): Promise<void> {
   if (harnessMode) {
     viewport.setZoom(10);
     applySize(display);
+  }
+
+  // --- Hosted: asset packs, cached in the browser by content hash ---
+  if (hostedPacks) {
+    try {
+      await bootHostedPacks(hostedPacks, {
+        ui: {
+          update: (message) => {
+            startupStatus?.update(message);
+            drawLoadingScreen(ctx, message);
+          },
+          progress: (fraction) => startupStatus?.progress(fraction),
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Packs] Could not load game data:', err);
+      startupStatus?.fail(msg);
+      drawErrorScreen(ctx, msg);
+      return;
+    }
   }
 
   // --- Try loading asset bundle (single zip instead of hundreds of requests) ---

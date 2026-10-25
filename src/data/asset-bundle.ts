@@ -97,18 +97,19 @@ function parseZipDirectory(buffer: ArrayBuffer): ZipEntry[] {
 }
 
 /**
- * Decompress a DEFLATE-compressed buffer using the browser's DecompressionStream.
- * Falls back to raw copy for stored (method=0) entries.
+ * Decompress a DEFLATE-compressed entry using the browser's DecompressionStream.
+ * STORED (method 0) entries are returned as a view into `buffer` — no copy —
+ * so callers must treat the result as read-only and keep `buffer` alive.
  */
 async function decompressEntry(
   buffer: ArrayBuffer,
   entry: ZipEntry,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const compressed = new Uint8Array(buffer, entry.dataOffset, entry.compressedSize);
 
   if (entry.compressionMethod === 0) {
     // Stored (no compression)
-    return compressed.slice();
+    return compressed;
   }
 
   if (entry.compressionMethod === 8) {
@@ -119,8 +120,8 @@ async function decompressEntry(
       const reader = stream.readable.getReader();
 
       // Write compressed data
-      writer.write(compressed);
-      writer.close();
+      writer.write(compressed).catch(() => {});
+      writer.close().catch(() => {});
 
       // Read decompressed output
       const chunks: Uint8Array[] = [];
@@ -165,11 +166,20 @@ export interface BundleProgress {
 
 export type ProgressCallback = (progress: BundleProgress) => void;
 
+export interface AddZipOptions {
+  /**
+   * Strip a directory prefix shared by every entry (e.g. "default.ltproj/"),
+   * as the single-project bundle does. Asset packs keep full paths.
+   */
+  stripCommonPrefix?: boolean;
+  onProgress?: ProgressCallback;
+}
+
 export class AssetBundle {
-  /** Map from relative path (e.g. "game_data/items/Iron_Sword.json") to blob URL */
-  private files: Map<string, string> = new Map();
-  /** Map from relative path to raw data (for JSON parsing without re-fetching) */
-  private rawData: Map<string, Uint8Array> = new Map();
+  /** Map from relative path (e.g. "game_data/items/Iron_Sword.json") to raw bytes */
+  private rawData: Map<string, Uint8Array<ArrayBuffer>> = new Map();
+  /** Blob URLs created so far (made on first request: most files never need one) */
+  private blobUrls: Map<string, string> = new Map();
   /** The project prefix stripped from filenames (e.g. "default.ltproj/") */
   private prefix: string = '';
 
@@ -227,7 +237,16 @@ export class AssetBundle {
       buffer = await response.arrayBuffer();
     }
 
-    // --- Parse zip ---
+    await this.addZip(buffer, { stripCommonPrefix: true, onProgress });
+  }
+
+  /**
+   * Extract every file of a zip archive into the bundle. Later archives
+   * override earlier ones on path collisions. Returns the number of files.
+   * The bundle keeps views into `buffer`; do not modify it afterwards.
+   */
+  async addZip(buffer: ArrayBuffer, options: AddZipOptions = {}): Promise<number> {
+    const { onProgress } = options;
     onProgress?.({
       phase: 'extracting',
       loaded: 0,
@@ -238,11 +257,13 @@ export class AssetBundle {
     const entries = parseZipDirectory(buffer);
 
     // Detect common prefix (e.g. "default.ltproj/")
-    if (entries.length > 0) {
+    let prefix = '';
+    if (options.stripCommonPrefix && entries.length > 0) {
       const firstSlash = entries[0].filename.indexOf('/');
       if (firstSlash > 0) {
         const candidate = entries[0].filename.substring(0, firstSlash + 1);
         if (entries.every((e) => e.filename.startsWith(candidate))) {
+          prefix = candidate;
           this.prefix = candidate;
         }
       }
@@ -256,18 +277,16 @@ export class AssetBundle {
 
       // Strip the common prefix to get the relative path
       let relPath = entry.filename;
-      if (this.prefix && relPath.startsWith(this.prefix)) {
-        relPath = relPath.substring(this.prefix.length);
+      if (prefix && relPath.startsWith(prefix)) {
+        relPath = relPath.substring(prefix.length);
       }
 
-      // Store raw data
       this.rawData.set(relPath, data);
-
-      // Create blob URL for image/audio access
-      const mimeType = getMimeType(relPath);
-      const blob = new Blob([data.buffer as ArrayBuffer], { type: mimeType });
-      const blobUrl = URL.createObjectURL(blob);
-      this.files.set(relPath, blobUrl);
+      const stale = this.blobUrls.get(relPath);
+      if (stale) {
+        URL.revokeObjectURL(stale);
+        this.blobUrls.delete(relPath);
+      }
 
       if (i % 50 === 0 || i === total - 1) {
         onProgress?.({
@@ -285,13 +304,14 @@ export class AssetBundle {
       total,
       message: `Bundle loaded: ${total} files`,
     });
+    return total;
   }
 
   /**
    * Check if a file exists in the bundle.
    */
   has(path: string): boolean {
-    return this.files.has(path);
+    return this.rawData.has(path);
   }
 
   /**
@@ -299,14 +319,21 @@ export class AssetBundle {
    * Used for image/audio loading (can be assigned to img.src).
    */
   getBlobUrl(path: string): string | null {
-    return this.files.get(path) ?? null;
+    const existing = this.blobUrls.get(path);
+    if (existing) return existing;
+    const raw = this.rawData.get(path);
+    if (!raw) return null;
+    const url = URL.createObjectURL(new Blob([raw], { type: getMimeType(path) }));
+    this.blobUrls.set(path, url);
+    return url;
   }
 
   /**
-   * Get the raw bytes of a file in the bundle.
+   * Get the raw bytes of a file in the bundle (read-only: may be a view into
+   * the archive buffer).
    * Used for JSON parsing, text reading, etc.
    */
-  getRaw(path: string): Uint8Array | null {
+  getRaw(path: string): Uint8Array<ArrayBuffer> | null {
     return this.rawData.get(path) ?? null;
   }
 
@@ -336,24 +363,24 @@ export class AssetBundle {
    * List all files in the bundle.
    */
   listFiles(): string[] {
-    return Array.from(this.files.keys());
+    return Array.from(this.rawData.keys());
   }
 
   /**
    * Get the total number of files.
    */
   get fileCount(): number {
-    return this.files.size;
+    return this.rawData.size;
   }
 
   /**
    * Release all blob URLs and clear memory.
    */
   dispose(): void {
-    for (const url of this.files.values()) {
+    for (const url of this.blobUrls.values()) {
       URL.revokeObjectURL(url);
     }
-    this.files.clear();
+    this.blobUrls.clear();
     this.rawData.clear();
   }
 }
@@ -361,6 +388,21 @@ export class AssetBundle {
 // ---------------------------------------------------------------------------
 // BundledResourceManager — wraps ResourceManager to serve from bundle
 // ---------------------------------------------------------------------------
+
+export interface BundleInterceptOptions {
+  /**
+   * Called for a path the bundle does not hold yet. Returning a promise holds
+   * the request until it settles (a lazily downloaded asset pack), then the
+   * bundle is consulted again.
+   */
+  waitFor?: (relativePath: string) => Promise<unknown> | null;
+  /**
+   * Answer requests the bundle cannot satisfy with 404 instead of falling
+   * through to the network. The hosted site has no files under the base URL,
+   * and its static host may answer unknown paths with index.html.
+   */
+  notFoundLocally?: boolean;
+}
 
 /**
  * Create a fetch override that intercepts requests and serves from the bundle.
@@ -375,9 +417,24 @@ export class AssetBundle {
 export function installBundleFetchInterceptor(
   bundle: AssetBundle,
   baseUrl: string,
+  options: BundleInterceptOptions = {},
 ): () => void {
   const normalizedBase = baseUrl.replace(/\/$/, '') + '/';
   const originalFetch = window.fetch;
+
+  const serve = (relativePath: string): Response | null => {
+    const raw = bundle.getRaw(relativePath);
+    if (!raw) return null;
+    return new Response(raw, {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': getMimeType(relativePath),
+        'Content-Length': String(raw.length),
+        'X-Served-From': 'asset-bundle',
+      },
+    });
+  };
 
   window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = typeof input === 'string'
@@ -388,34 +445,41 @@ export function installBundleFetchInterceptor(
 
     // Check if this request is for a bundled asset
     if (url.startsWith(normalizedBase)) {
-      const encodedPath = url.substring(normalizedBase.length);
+      const encodedPath = url.substring(normalizedBase.length).split(/[?#]/)[0];
       const relativePath = decodeBundlePath(encodedPath);
-      const raw = bundle.getRaw(relativePath);
+      const hit = serve(relativePath);
+      if (hit) return Promise.resolve(hit);
 
-      if (raw) {
-        const mimeType = getMimeType(relativePath);
-        return Promise.resolve(
-          new Response(raw.buffer as ArrayBuffer, {
-            status: 200,
-            statusText: 'OK',
-            headers: {
-              'Content-Type': mimeType,
-              'Content-Length': String(raw.length),
-              'X-Served-From': 'asset-bundle',
-            },
-          })
+      const pending = options.waitFor?.(relativePath) ?? null;
+      if (pending) {
+        return pending.then(
+          () => serve(relativePath) ?? miss(relativePath),
+          () => miss(relativePath),
         );
       }
+      if (options.notFoundLocally) return Promise.resolve(notFound(relativePath));
       // File not in bundle — fall through to network
     }
 
     return originalFetch.call(window, input, init);
+
+    function miss(relativePath: string): Response | Promise<Response> {
+      return options.notFoundLocally ? notFound(relativePath) : originalFetch.call(window, input, init);
+    }
   } as typeof window.fetch;
 
   // Return a cleanup function to restore original fetch
   return () => {
     window.fetch = originalFetch;
   };
+}
+
+function notFound(relativePath: string): Response {
+  return new Response(`missing asset ${relativePath}`, {
+    status: 404,
+    statusText: 'Not Found',
+    headers: { 'Content-Type': 'text/plain', 'X-Served-From': 'asset-bundle' },
+  });
 }
 
 /**
@@ -450,7 +514,7 @@ export function installBundleImageInterceptor(
     },
     set(value: string) {
       if (typeof value === 'string' && value.startsWith(normalizedBase)) {
-        const encodedPath = value.substring(normalizedBase.length);
+        const encodedPath = value.substring(normalizedBase.length).split(/[?#]/)[0];
         const relativePath = decodeBundlePath(encodedPath);
         const blobUrl = bundle.getBlobUrl(relativePath);
         if (blobUrl) {
@@ -459,6 +523,7 @@ export function installBundleImageInterceptor(
           return;
         }
       }
+      blobToOriginal.delete(this);
       origSrcSetter.call(this, value);
     },
     configurable: true,

@@ -86,7 +86,9 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter((key) => key !== APP_CACHE && key !== ASSET_CACHE)
+          // lt-packs-*: the hosted site's asset-pack cache (src/packs/chunk-cache.ts),
+          // hundreds of MB keyed by content hash — never drop it on an app update.
+          .filter((key) => key !== APP_CACHE && key !== ASSET_CACHE && !key.startsWith('lt-packs'))
           .map((key) => caches.delete(key))
       );
     }).then(() => self.clients.claim())
@@ -105,6 +107,11 @@ self.addEventListener('fetch', (event) => {
 
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
+
+  // Hosted asset packs (/packs/<sha256>.bin + manifest.json) are cached by
+  // the page itself (src/packs/chunk-cache.ts); caching them here too would
+  // store hundreds of MB twice.
+  if (url.pathname.startsWith('/packs/')) return;
 
   // Navigation requests (HTML pages) — serve index.html from cache for SPA
   if (event.request.mode === 'navigate') {

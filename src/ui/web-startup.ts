@@ -1,5 +1,7 @@
 export interface StartupStatus {
   update(message: string): void;
+  /** Show determinate progress (0..1), or null for the indeterminate bar. */
+  progress(fraction: number | null): void;
   fail(message: string): void;
   remove(): void;
 }
@@ -36,6 +38,7 @@ export function installStartupStatus(projectPath: string): StartupStatus {
   const eyebrow = root.querySelector<HTMLElement>('.startup-status__eyebrow')!;
   const message = root.querySelector<HTMLElement>('.startup-status__message')!;
   const actions = root.querySelector<HTMLElement>('.startup-status__actions')!;
+  const bar = root.querySelector<HTMLElement>('.startup-status__progress span')!;
   const retry = root.querySelector<HTMLButtonElement>('[data-retry]')!;
   const campaigns = root.querySelector<HTMLButtonElement>('[data-campaigns]')!;
 
@@ -53,6 +56,12 @@ export function installStartupStatus(projectPath: string): StartupStatus {
   return {
     update(nextMessage: string): void {
       if (!removed) message.textContent = nextMessage;
+    },
+    progress(fraction: number | null): void {
+      if (removed) return;
+      const determinate = fraction !== null && Number.isFinite(fraction);
+      root.classList.toggle('startup-status--determinate', determinate);
+      bar.style.width = determinate ? `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%` : '';
     },
     fail(error: string): void {
       if (removed) return;
