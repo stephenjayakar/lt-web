@@ -62,6 +62,8 @@ export class Database {
   factions: Map<NID, FactionDef> = new Map();
   difficultyModes: DifficultyMode[] = [];
   lore: Map<NID, LoreEntry> = new Map();
+  /** translations.json (Python DB.translations): nid -> replacement text. */
+  translations: Map<string, string> = new Map();
   tags: string[] = [];
   /** Python DB.raw_data values, hydrated from RawDataPrefab.value. */
   rawData: Map<NID, any> = new Map();
@@ -128,6 +130,7 @@ export class Database {
       this.loadOverworlds(resources),
       this.loadParties(resources),
       this.loadLore(resources),
+      this.loadTranslations(resources),
       this.loadRawData(resources),
     ]);
 
@@ -348,6 +351,19 @@ export class Database {
     for (const entry of data) {
       this.lore.set(entry.nid, entry);
     }
+  }
+
+  private async loadTranslations(resources: ResourceManager): Promise<void> {
+    const data = await resources.tryLoadJson<{ nid: string; text: string }[]>('game_data/translations.json');
+    if (!Array.isArray(data)) return;
+    for (const entry of data) {
+      if (entry && typeof entry.nid === 'string') this.translations.set(entry.nid, String(entry.text ?? ''));
+    }
+  }
+
+  /** Python text_funcs.translate: project translation when present, else the input. */
+  translate(text: string): string {
+    return this.translations.get(text) ?? text;
   }
 
   /**

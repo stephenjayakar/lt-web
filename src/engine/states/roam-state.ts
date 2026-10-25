@@ -28,6 +28,7 @@ import {
 import type { UnitObject } from '../../objects/unit';
 import { unitSpriteTint } from '../../combat/skill-system';
 import type { FogRenderConfig } from '../../rendering/map-view';
+import { shouldDrawMapHp } from '../../rendering/map-view';
 import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,7 @@ function collectVisibleUnits(
   maxHp: number;
   tintColor: [number, number, number] | null;
   tintAlpha: number;
+  showHp: boolean;
 }[] {
   const game = getGame();
   if (!game.board) return [];
@@ -82,6 +84,7 @@ function collectVisibleUnits(
     maxHp: number;
     tintColor: [number, number, number] | null;
     tintAlpha: number;
+    showHp: boolean;
   }[] = [];
 
   for (const u of allUnits) {
@@ -121,6 +124,7 @@ function collectVisibleUnits(
       finished: false, // In roam mode, no units are "finished"
       currentHp: u.currentHp,
       maxHp: u.maxHp,
+      showHp: shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: (u as any).isDying, dead: u.dead }),
       ...(() => {
         const tint = unitSpriteTint(u, game, performance.now());
         return { tintColor: tint?.color ?? null, tintAlpha: tint?.alpha ?? 0 };

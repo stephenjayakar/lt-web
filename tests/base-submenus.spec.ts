@@ -280,13 +280,15 @@ test.describe('Difficulty/mode selection (title new-game flow)', () => {
         state: game.state.getCurrentState()?.name ?? null,
         modeNid: game.currentMode?.nid ?? null,
         modeCount: game.db.difficultyModes.length,
+        stack: game.state.getStackNames(),
       };
     });
     // default.ltproj ships exactly one ("Normal") difficulty mode, so Python's
     // TitleModeState.difficulty_choice() is false and the picker is skipped —
-    // we land straight on level_select with currentMode already set.
+    // we land straight on title_new (save-slot pick) with currentMode set.
     expect(result.modeCount).toBe(1);
-    expect(result.state).toBe('level_select');
+    expect(result.state).toBe('title_new');
+    expect(result.stack.filter((name: string) => name === 'title_new')).toHaveLength(1);
     expect(result.modeNid).toBe('Normal');
 
     // Back out to a known state for hygiene.
@@ -334,7 +336,7 @@ test.describe('Difficulty/mode selection (title new-game flow)', () => {
         modeNid: game.currentMode?.nid ?? null,
       };
     });
-    expect(chosen.state).toBe('level_select');
+    expect(chosen.state).toBe('title_new');
     expect(chosen.modeNid).toBe('Hard');
 
     // Restore db state and go back to a known state for hygiene.

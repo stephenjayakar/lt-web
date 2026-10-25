@@ -23,6 +23,36 @@ export interface MapViewUnit {
   droppable?: boolean;
   tintColor?: [number, number, number] | null;
   tintAlpha?: number;
+  /** Python UnitSprite.check_draw_hp(); undefined keeps the bar visible. */
+  showHp?: boolean;
+}
+
+/**
+ * Port of Python UnitSprite.check_draw_hp: roam levels hide bars when the
+ * `roam_hide_hp` constant is on; dying/dead units never show one; otherwise
+ * the hp_map_team ('All'|'Ally'|'Enemy') and hp_map_cull
+ * ('All'|'Wounded'|'None') settings decide (Python defaults: All/All).
+ */
+export function shouldDrawMapHp(
+  game: {
+    roamInfo?: { roam?: boolean } | null;
+    db: { getConstant(nid: string, fallback?: unknown): unknown; areAllied?(a: string, b: string): boolean };
+    gameVars: Map<string, any>;
+  },
+  unit: { team: string; currentHp: number; maxHp: number; isDying?: boolean; dead?: boolean },
+): boolean {
+  if (game.roamInfo?.roam && game.db.getConstant('roam_hide_hp', false)) return false;
+  if (unit.isDying || unit.dead) return false;
+  const teamSetting = String(game.gameVars.get('_setting_hp_map_team') ?? 'All');
+  const cullSetting = String(game.gameVars.get('_setting_hp_map_cull') ?? 'All');
+  const allied = game.db.areAllied ? game.db.areAllied('player', unit.team) : unit.team === 'player';
+  const teamOk = teamSetting === 'All' ||
+    (teamSetting === 'Ally' && allied) ||
+    (teamSetting === 'Enemy' && !allied);
+  if (!teamOk) return false;
+  if (cullSetting === 'All') return true;
+  if (cullSetting === 'Wounded') return unit.currentHp < unit.maxHp;
+  return false;
 }
 
 /**
@@ -302,7 +332,7 @@ export class MapView {
 
       // Draw HP bar below the unit tile
       const maxHp = unit.maxHp;
-      if (maxHp > 0) {
+      if (maxHp > 0 && unit.showHp !== false) {
         const barWidth = TILEWIDTH - 2;
         const barHeight = 2;
         const barX = px + 1;

@@ -15,8 +15,39 @@ const ICON_SIZE_32 = 32;
 // Icon sheet cache
 // ============================================================
 
-const iconSheets: Map<string, HTMLImageElement> = new Map();
-const pendingLoads: Map<string, Promise<HTMLImageElement | null>> = new Map();
+type IconSheetImage = HTMLImageElement | HTMLCanvasElement;
+const iconSheets: Map<string, IconSheetImage> = new Map();
+const pendingLoads: Map<string, Promise<IconSheetImage | null>> = new Map();
+
+/**
+ * Python icons.py blits every icon after `set_colorkey(image, COLORKEY)`.
+ * Most project icon sheets are RGB PNGs on the (128, 160, 128) key, so the
+ * key colour must become transparent or each icon shows a green square.
+ */
+function applyIconColorkey(img: HTMLImageElement): IconSheetImage {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx || canvas.width === 0 || canvas.height === 0) return img;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    let keyed = false;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] === 128 && data[i + 1] === 160 && data[i + 2] === 128 && data[i + 3] !== 0) {
+        data[i + 3] = 0;
+        keyed = true;
+      }
+    }
+    if (!keyed) return img;
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  } catch {
+    return img;
+  }
+}
 
 /** Base URL for game data (set once at init). */
 let baseUrl: string = '/game-data/default.ltproj';
@@ -72,7 +103,7 @@ export async function preloadIconAliases(): Promise<void> {
 export async function loadIconSheet(
   nid: string,
   size: '16' | '32' = '16',
-): Promise<HTMLImageElement | null> {
+): Promise<IconSheetImage | null> {
   const key = `${size}:${nid}`;
   const cached = iconSheets.get(key);
   if (cached) return cached;
@@ -83,13 +114,14 @@ export async function loadIconSheet(
   const folder = `icons${size}`;
   const url = `${baseUrl}/resources/${folder}/${encodeURIComponent(nid)}.png`;
 
-  const promise = new Promise<HTMLImageElement | null>((resolve) => {
+  const promise = new Promise<IconSheetImage | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      iconSheets.set(key, img);
+      const sheet = applyIconColorkey(img);
+      iconSheets.set(key, sheet);
       pendingLoads.delete(key);
-      resolve(img);
+      resolve(sheet);
     };
     img.onerror = () => {
       pendingLoads.delete(key);
@@ -106,7 +138,7 @@ export async function loadIconSheet(
  * Get the icon sheet image synchronously (returns null if not loaded yet).
  * Kicks off async load if needed.
  */
-export function getIconSheet(nid: string, size: '16' | '32' = '16'): HTMLImageElement | null {
+export function getIconSheet(nid: string, size: '16' | '32' = '16'): IconSheetImage | null {
   const key = `${size}:${nid}`;
   const cached = iconSheets.get(key);
   if (cached) return cached;

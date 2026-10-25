@@ -139,7 +139,7 @@ const CONFIG_SETTINGS: SettingDef[] = [
     label: 'HP Map Cull',
     type: 'choice',
     values: ['None', 'Wounded', 'All'],
-    defaultIndex: 0, // None
+    defaultIndex: 2, // All (Python config default)
     description: 'When to hide map HP bars.',
   },
   {

@@ -191,6 +191,7 @@ import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
 import type { FogRenderConfig } from '../../rendering/map-view';
+import { shouldDrawMapHp } from '../../rendering/map-view';
 import { drawIcon16, drawItemIcon } from '../../ui/icons';
 import {
   AnimationCombat,
@@ -261,7 +262,7 @@ import {
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
-import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots } from '../save';
+import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots, deleteSuspend, formatPlaytime } from '../save';
 import { getSyncStore } from '../../storage/storage';
 import { getStartingClassSkillNids } from '../learned-skills';
 import { reportUnimplemented } from '../strict-mode';
@@ -356,6 +357,7 @@ function collectVisibleUnits(): {
   droppable: boolean;
   tintColor: [number, number, number] | null;
   tintAlpha: number;
+  showHp: boolean;
 }[] {
   const game = getGame();
   if (!game.board) return [];
@@ -376,6 +378,7 @@ function collectVisibleUnits(): {
     droppable: boolean;
     tintColor: [number, number, number] | null;
     tintAlpha: number;
+    showHp: boolean;
   }[] = [];
 
   for (const u of allUnits) {
@@ -459,6 +462,9 @@ function collectVisibleUnits(): {
       // map view only needs it for units that survive its viewport cull
       // (Python's map_view likewise draws HP only for culled units).
       get maxHp() { return u.maxHp; },
+      get showHp() {
+        return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: (u as any).isDying, dead: u.dead });
+      },
       specialTag,
       travelerCombatColor,
       droppable,
@@ -839,32 +845,25 @@ function imageHasVisiblePixels(image: HTMLImageElement): boolean {
   }
 }
 
-function drawCenteredTitleAsset(
+function drawTitleAssetFrame(
   surf: Surface,
   image: HTMLImageElement,
-  centerX: number,
-  centerY: number,
-  maxWidth: number,
-  maxHeight: number,
-  alpha: number = 1,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+  dx: number,
+  dy: number,
 ): void {
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
-  if (width <= 0 || height <= 0) return;
-  const fit = Math.min(1, maxWidth / width, maxHeight / height);
-  const drawWidth = Math.max(1, Math.round(width * fit));
-  const drawHeight = Math.max(1, Math.round(height * fit));
-  const x = Math.round(centerX - drawWidth / 2);
-  const y = Math.round(centerY - drawHeight / 2);
+  if (sw <= 0 || sh <= 0) return;
   const scale = surf.scale;
   surf.ctx.save();
-  surf.ctx.globalAlpha = alpha;
   surf.ctx.imageSmoothingEnabled = false;
   surf.ctx.drawImage(
     image,
-    0, 0, width, height,
-    Math.round(x * scale), Math.round(y * scale),
-    Math.round(drawWidth * scale), Math.round(drawHeight * scale),
+    sx, sy, sw, sh,
+    Math.round(dx * scale), Math.round(dy * scale),
+    Math.round(sw * scale), Math.round(sh * scale),
   );
   surf.ctx.restore();
 }
@@ -964,14 +963,13 @@ export class TitleState extends State {
     drawTitleBackground(surf, this.bgImage);
 
     if (this.logoImage) {
-      drawCenteredTitleAsset(
-        surf,
-        this.logoImage,
-        scene.x + scene.width / 2,
-        scene.y + Math.floor(scene.height / 3),
-        scene.width - 24,
-        Math.floor(scene.height / 2),
-      );
+      // Python TitleStartState: gui.Logo(logo, (WINWIDTH//2, clamp(WINHEIGHT//2 - 40,
+      // logo_h//2, WINHEIGHT//2)), num_frames=1) blitted 1:1, centered.
+      const logoW = this.logoImage.naturalWidth || this.logoImage.width;
+      const logoH = this.logoImage.naturalHeight || this.logoImage.height;
+      const centerY = Math.max(80 - 40, Math.min(Math.floor(logoH / 2), 80));
+      drawTitleAssetFrame(surf, this.logoImage, 0, 0, logoW, logoH,
+        scene.x + 120 - Math.floor(logoW / 2), scene.y + centerY - Math.floor(logoH / 2));
     } else {
       const title = String(getGame().db.getConstant('title', 'Lex Talionis'));
       const titleW = title.length * 8;
@@ -987,19 +985,19 @@ export class TitleState extends State {
       );
     }
 
-    // "Press Start" — pulsing alpha
-    const alpha = 0.5 + 0.5 * Math.sin(this.pulseTimer / 500 * Math.PI);
     if (this.pressStartImage) {
-      drawCenteredTitleAsset(
-        surf,
-        this.pressStartImage,
-        scene.x + scene.width / 2,
-        scene.y + Math.floor(scene.height * 4 / 5),
-        Math.floor(scene.width * 2 / 3),
-        28,
-        alpha,
-      );
+      // Python gui.Logo(press_start, (WINWIDTH//2, 4*WINHEIGHT//5)): an
+      // 8-frame vertical strip played 0,0,1..6,7,7,6..1 at 64ms per frame.
+      const sheetW = this.pressStartImage.naturalWidth || this.pressStartImage.width;
+      const sheetH = this.pressStartImage.naturalHeight || this.pressStartImage.height;
+      const numFrames = 8;
+      const frameH = Math.floor(sheetH / numFrames);
+      const anim = [0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1];
+      const frame = anim[Math.floor(this.pulseTimer / 64) % anim.length];
+      drawTitleAssetFrame(surf, this.pressStartImage, 0, frame * frameH, sheetW, frameH,
+        scene.x + 120 - Math.floor(sheetW / 2), scene.y + 128 - Math.floor(frameH / 2));
     } else {
+      const alpha = 0.5 + 0.5 * Math.sin(this.pulseTimer / 500 * Math.PI);
       const prompt = 'Press Start';
       const promptW = prompt.length * 5;
       const promptX = scene.x + Math.floor((scene.width - promptW) / 2);
@@ -1013,6 +1011,9 @@ export class TitleState extends State {
         '8px monospace',
       );
     }
+
+    // Python: FONT['text'].blit(translate('_attribution'), surf, (4, WINHEIGHT - 16))
+    surf.drawText(getGame().db.translate?.('_attribution') ?? '_attribution', scene.x + 4, scene.y + 160 - 16, 'white', 'text');
 
     return surf;
   }
@@ -1214,8 +1215,8 @@ export class TitleModeState extends State {
     this.requiresPermadeathChoice = false;
     this.requiresGrowthChoice = false;
     this.menuOptions = [];
-
-    this.beginCurrentPhase();
+    // begin() runs right after start() on the first push; running the phase
+    // setup in both pushed the next state twice.
   }
 
   override begin(): StateResult {
@@ -1258,7 +1259,7 @@ export class TitleModeState extends State {
       this.cursor = 0;
       this.startGrowthSelection();
     } else {
-      game.state.change('level_select');
+      game.state.change('title_new');
     }
   }
 
@@ -1298,7 +1299,7 @@ export class TitleModeState extends State {
       return;
     }
 
-    game.state.change('level_select');
+    game.state.change('title_new');
   }
 
   private applyDeathChoice(): void {
@@ -1309,14 +1310,14 @@ export class TitleModeState extends State {
       this.cursor = 0;
       this.startGrowthSelection();
     } else {
-      game.state.change('level_select');
+      game.state.change('title_new');
     }
   }
 
   private applyGrowthChoice(): void {
     const game = getGame();
     game.currentMode.growths = this.menuOptions[this.cursor];
-    game.state.change('level_select');
+    game.state.change('title_new');
   }
 
   private handleBack(): void {
@@ -1404,6 +1405,162 @@ export class TitleModeState extends State {
     }
   }
 }
+
+// ============================================================================
+// 1a1b. TitleNewState — choose a save slot and build a new game.
+// Port of lt-maker/app/engine/title_screen.py TitleNewState /
+// TitleNewChildState / build_new_game: selecting an empty slot (or confirming
+// "Overwrite" on a used one) resets the game (GameState.buildNew), keeps the
+// chosen difficulty, starts the first level (skipping DEBUG), and writes a
+// 'start' save into the slot while removing any suspend.
+// ============================================================================
+
+export class TitleNewState extends State {
+  readonly name = 'title_new';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private bgImage: HTMLImageElement | null = null;
+  private slots: { idx: number; label: string; used: boolean }[] = [];
+  private cursor = 0;
+  private loaded = false;
+  private confirming = false;
+  private confirmCursor = 0;
+  private building = false;
+
+  override start(): StateResult {
+    const game = getGame();
+    this.cursor = 0;
+    this.loaded = false;
+    this.confirming = false;
+    this.building = false;
+    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
+      this.bgImage = img;
+    });
+    const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
+    const numSlots = Number(game.db?.getConstant?.('num_save_slots', 3) ?? 3) || 1;
+    loadSaveSlots(gameNid as string, numSlots).then((slots) => {
+      this.slots = slots.map((slot) => {
+        const used = slot.name !== '--NO DATA--';
+        const label = used
+          ? `${slot.displayName ?? slot.name}${slot.playtime ? ` - ${formatPlaytime(slot.playtime)}` : ''}`
+          : '--NO DATA--';
+        return { idx: slot.idx, label, used };
+      });
+      this.loaded = true;
+    }).catch(() => {
+      this.slots = Array.from({ length: numSlots }, (_, idx) => ({ idx, label: '--NO DATA--', used: false }));
+      this.loaded = true;
+    });
+  }
+
+  override draw(surf: Surface): Surface {
+    const scene = titleSceneBounds();
+    drawTitleBackground(surf, this.bgImage);
+    const rowH = 18;
+    const width = Math.min(scene.width - 32, 176);
+    const x = scene.x + Math.floor((scene.width - width) / 2);
+    const top = scene.y + Math.floor((scene.height - Math.max(1, this.slots.length) * rowH) / 2);
+    for (let i = 0; i < this.slots.length; i++) {
+      const y = top + i * rowH;
+      const selected = i === this.cursor;
+      surf.fillRect(x, y, width, rowH - 2, selected ? 'rgba(64,64,160,0.9)' : 'rgba(16,16,48,0.85)');
+      surf.drawRect(x, y, width, rowH - 2, 'rgba(160,160,220,0.8)');
+      surf.drawText(this.slots[i].label, x + 8, y, selected ? 'white' : 'rgb(200,200,220)', '8px monospace');
+    }
+    if (this.confirming) {
+      const options = ['Overwrite', 'Back'];
+      const by = scene.y + scene.height - 24;
+      for (let i = 0; i < options.length; i++) {
+        const bx = scene.x + 8 + i * 64;
+        const sel = i === this.confirmCursor;
+        surf.fillRect(bx, by, 60, 16, sel ? 'rgba(64,64,160,0.95)' : 'rgba(16,16,48,0.9)');
+        surf.drawRect(bx, by, 60, 16, 'rgba(160,160,220,0.8)');
+        surf.drawText(options[i], bx + 6, by, 'white', '8px monospace');
+      }
+    }
+    return surf;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (!this.loaded || this.building) return;
+    if (this.confirming) {
+      if (event === 'LEFT' || event === 'RIGHT') {
+        this.confirmCursor = 1 - this.confirmCursor;
+        game.audioManager.playSfx('Select 6');
+      } else if (event === 'BACK') {
+        game.audioManager.playSfx('Select 4');
+        this.confirming = false;
+      } else if (event === 'SELECT') {
+        if (this.confirmCursor === 0) {
+          void this.buildNewGame(this.slots[this.cursor].idx);
+        } else {
+          game.audioManager.playSfx('Select 4');
+          this.confirming = false;
+        }
+      }
+      return;
+    }
+    if (event === 'UP' && this.slots.length > 0) {
+      this.cursor = (this.cursor - 1 + this.slots.length) % this.slots.length;
+      game.audioManager.playSfx('Select 6');
+    } else if (event === 'DOWN' && this.slots.length > 0) {
+      this.cursor = (this.cursor + 1) % this.slots.length;
+      game.audioManager.playSfx('Select 6');
+    } else if (event === 'BACK') {
+      game.audioManager.playSfx('Select 4');
+      // Python TitleNewState.back(): also pop an auto-advanced title_mode.
+      const stack: string[] = game.state.getStackNames?.() ?? [];
+      if (stack[stack.length - 2] === 'title_mode') game.state.back();
+      game.state.back();
+    } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
+      const slot = this.slots[this.cursor];
+      if (!slot) return;
+      if (slot.used) {
+        game.audioManager.playSfx('Select 1');
+        this.confirming = true;
+        this.confirmCursor = 0;
+      } else {
+        void this.buildNewGame(slot.idx);
+      }
+    }
+  }
+
+  private async buildNewGame(slot: number): Promise<void> {
+    const game = getGame();
+    this.building = true;
+    game.audioManager.playSfx('Save');
+    const oldMode = game.currentMode;
+    game.buildNew();
+    game.currentMode = oldMode;
+    game.currentSaveSlot = slot;
+    const levels: string[] = [...game.db.levels.keys()];
+    let firstLevel = levels[0];
+    if (firstLevel === 'DEBUG' && levels.length > 1) firstLevel = levels[1];
+    try {
+      await game.loadLevel(firstLevel);
+    } catch (err) {
+      console.error('TitleNewState: failed to start first level', err);
+      this.building = false;
+      return;
+    }
+    game.gameVars.set('_next_level_nid', firstLevel);
+    try {
+      const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
+      await doSaveGame(game, slot, 'start');
+      await deleteSuspend(gameNid as string);
+    } catch (err) {
+      console.warn('TitleNewState: failed to write start save', err);
+    }
+    game.state.clear();
+    game.state.change('free');
+    if (game.eventManager?.hasActiveEvents()) {
+      game.state.change('event');
+    }
+  }
+}
+
 
 // ============================================================================
 // 1a2. LevelSelectState (chapter / scenario picker)
@@ -9604,15 +9761,21 @@ export class EventState extends State {
   override draw(surf: Surface): Surface {
     // Background panorama (drawn on top of map, behind portraits)
     if (this.background) {
-      // Center the background image on the 240x160 surface
-      const bx = Math.floor((surf.width - this.background.width) / 2);
-      const by = Math.floor((surf.height - this.background.height) / 2);
-      surf.blitImage(this.background, 0, 0, this.background.width, this.background.height, bx, by);
-    }
-
-    // Transition fade overlay
-    if (this.transitionAlpha > 0) {
-      surf.fillRect(0, 0, surf.width, surf.height, `rgba(${this.transitionColor},${this.transitionAlpha})`);
+      // Python PanoramaBackground fills the whole 240x160 window. The web
+      // viewport can be larger than the authored scene, so scale the panorama
+      // to cover it (centered) instead of leaving the map visible around it.
+      const bw = this.background.width;
+      const bh = this.background.height;
+      const coverScale = Math.max(1, surf.width / Math.max(1, bw), surf.height / Math.max(1, bh));
+      const dw = bw * coverScale;
+      const dh = bh * coverScale;
+      const ps = surf.scale;
+      surf.ctx.imageSmoothingEnabled = false;
+      surf.ctx.drawImage(
+        this.background, 0, 0, bw, bh,
+        Math.round(((surf.width - dw) / 2) * ps), Math.round(((surf.height - dh) / 2) * ps),
+        Math.round(dw * ps), Math.round(dh * ps),
+      );
     }
 
     // Update and draw portraits (sorted by priority, ascending)
@@ -9672,6 +9835,13 @@ export class EventState extends State {
     this.drawEventCreditCards(surf);
     this.drawEventTables(surf);
     this.drawEventTextboxes(surf);
+
+    // Transition fade overlay. Python Event.draw blits the fade after the
+    // portraits and text boxes, so a closed transition hides them too.
+    if (this.transitionAlpha > 0) {
+      surf.fillRect(0, 0, surf.width, surf.height, `rgba(${this.transitionColor},${this.transitionAlpha})`);
+    }
+
     if (this.choiceMenu) {
       this.choiceMenu.draw(surf);
     }
@@ -10941,14 +11111,19 @@ export class EventState extends State {
       case 'transition': {
         // transition;open[;duration[;r,g,b]] — fade FROM color (reveal)
         // transition;close[;duration[;r,g,b]] — fade TO color (hide)
-        // transition (no args) — same as close
+        // transition (no direction) — toggles like Python event_functions.transition:
+        // 'open' when the screen is currently closed, otherwise 'close'.
         // Parse optional duration (ms) and color
         const durationArg = parseInt(args[1], 10);
         if (!isNaN(durationArg) && durationArg > 0) {
-          this.transitionDurationMs = durationArg;
+          this.transitionDurationMs = Math.max(1, durationArg);
         } else {
-          this.transitionDurationMs = 133; // default (Python: transitions.py:14)
+          this.transitionDurationMs = 250; // Python Event._transition_speed
         }
+        const explicitDirection = (args[0] ?? '').trim().toLowerCase();
+        const screenClosed = this.transitionFadingIn || this.transitionHoldBlack ||
+          (this.transitionAlpha >= 1 && !this.transitionFadingOut);
+        const direction = explicitDirection || (screenClosed ? 'open' : 'close');
         // Parse optional color (r,g,b)
         if (args[2]) {
           const colorParts = args[2].split(',');
@@ -10961,15 +11136,13 @@ export class EventState extends State {
 
         if (this.skipMode) {
           // In skip mode, apply transitions instantly
-          const dir = (args[0] ?? 'close').toLowerCase();
-          this.transitionAlpha = dir === 'open' ? 0 : 1;
+          this.transitionAlpha = direction === 'open' ? 0 : 1;
           this.transitionFadingIn = false;
           this.transitionFadingOut = false;
-          this.transitionHoldBlack = dir !== 'open';
+          this.transitionHoldBlack = direction !== 'open';
           this.advancePointer();
           return false;
         }
-        const direction = (args[0] ?? 'close').toLowerCase();
         this.transitionBlocksCommands = !args.some(arg => arg.toLowerCase() === 'no_block');
         if (direction === 'open') {
           this.transitionFadingIn = false;
@@ -12987,19 +13160,18 @@ export class EventState extends State {
       // ----- Audio commands -----
 
       case 'music': {
-        // Python event_functions.music: 'None' fades to pause, else fade_in.
+        // Python event_functions.music: 'None' fades to pause, else fade_in
+        // (fade 0 while the event is being skipped).
         const musicNid = args[0] ?? '';
-        const fade = args[1] !== undefined && args[1] !== '' && Number.isFinite(Number(args[1])) ? Number(args[1]) : 400;
+        const parsedFade = args[1] !== undefined && args[1] !== '' && Number.isFinite(Number(args[1])) ? Number(args[1]) : 400;
+        const fade = this.skipMode ? 0 : parsedFade;
         if (musicNid === 'None') {
           game.audioManager?.fadeToPause(fade);
         } else if (musicNid && game.audioManager) {
           void game.audioManager.playMusic(musicNid, fade);
         }
         this.advancePointer();
-        // Music is treated as blocking briefly to let the transition feel natural.
-        this.waiting = true;
-        this.waitTimer = 100;
-        return true;
+        return false;
       }
 
       case 'change_music': {

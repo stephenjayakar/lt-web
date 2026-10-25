@@ -316,6 +316,77 @@ export class GameState {
   }
 
   // ========================================================================
+  // New game (Python GameState.build_new)
+  // ========================================================================
+
+  /**
+   * Reset every save-scoped container for a brand new game, mirroring
+   * Python's GameState.build_new()/sweep(). Without this a second New Game
+   * in the same browser session inherited the previous save's game vars,
+   * parties, persistent units and only-once events. Also rolls the save's
+   * `_random_seed` (Python: random.randint(0, 1023)) which seeds the
+   * persistent combat/growth streams; leaving it unset made every new game
+   * share seed 0.
+   */
+  buildNew(): void {
+    this.playtime = 0;
+    this.units.clear();
+    this.items.clear();
+    this.persistentUnits.clear();
+    this.persistentItems.clear();
+    this.carriedOnceTriggered = [];
+    this.currentMode = null;
+    this.parties = new Map();
+    this.currentParty = '';
+    this.currentLevel = null;
+    this.tilemap = null;
+    this.bgTilemap = null;
+    this.board = null;
+    this.targetSystem = null;
+    this.pathSystem = null;
+    this.phase = null;
+    this.aiController = null;
+    this.initiative = null;
+    this.roamInfo = new RoamInfo();
+    this.gameVars = new Map();
+    this.gameVars.set('_random_seed', Math.floor(Math.random() * 1024));
+    this.teamPaletteOverrides.clear();
+    this.initParties();
+    this.overworldRegistry = new Map();
+    this.overworldController = null;
+    this.overworldMovement = null;
+    this.supports = null;
+    this.records = new Recordkeeper();
+    this.marketItems = new Map();
+    this.unlockedLore = [];
+    this.dialogLogEntries = [];
+    // sweep()
+    this.levelVars = new Map();
+    this.turnCount = 1;
+    this.baseConvos = new Map();
+    this.activeAiGroups.clear();
+    this.highlight.clear();
+    this.actionLog.clear();
+    this.selectedUnit = null;
+    this.infoMenuUnit = null;
+    this.combatTarget = null;
+    this.combatScript = null;
+    this.eventCombat = false;
+    this.shopUnit = null;
+    this.shopItems = null;
+    this.shopStock = null;
+    this.shopId = null;
+    this.shopFlavor = null;
+    this.currentEvent = null;
+    this._moveOrigin = null;
+    this._moveAction = null;
+    this._pendingAfterMovement = null;
+    this.eventManager = new EventManager(this.db.events);
+    this.eventManager.actionLog = this.actionLog;
+    this.eventManager.setGameGetter(() => this);
+  }
+
+  // ========================================================================
   // Level cleanup (between chapters)
   // ========================================================================
 
@@ -325,6 +396,8 @@ export class GameState {
    */
   private persistentUnits: Map<string, UnitObject> = new Map();
   private persistentItems: Map<string, ItemObject> = new Map();
+  /** only_once event NIDs carried across cleanUpLevel() (Python game.already_triggered_events). */
+  private carriedOnceTriggered: string[] = [];
 
   /**
    * Clean up the current level in preparation for the next one.
@@ -551,6 +624,7 @@ export class GameState {
     this.board = null;
     this.targetSystem = null;
     this.pathSystem = null;
+    if (this.eventManager) this.carriedOnceTriggered = [...this.eventManager.getOnceTriggered()];
     this.eventManager = null;
     this.aiController = null;
     this.supports = null;
@@ -785,9 +859,17 @@ export class GameState {
     // level exists, so replacing the manager outright dropped it and the
     // project's startup events never ran.
     const pendingEvents = this.eventManager?.eventQueue ?? [];
+    // Python keeps `already_triggered_events` on the game object for the
+    // whole save (only build_new clears it), so only_once events must stay
+    // spent across level loads.
+    const alreadyTriggered = this.eventManager
+      ? [...this.eventManager.getOnceTriggered()]
+      : this.carriedOnceTriggered;
+    this.carriedOnceTriggered = [];
     this.eventManager = new EventManager(this.db.events);
     this.eventManager.actionLog = this.actionLog;
     this.eventManager.setGameGetter(() => this);
+    this.eventManager.restoreOnceTriggered(alreadyTriggered);
     if (pendingEvents.length > 0) this.eventManager.eventQueue.push(...pendingEvents);
 
     // h2. Create AIController -----------------------------------------------
