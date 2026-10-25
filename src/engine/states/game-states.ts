@@ -7346,20 +7346,9 @@ export class CombatState extends State {
             );
           }
 
-          // combat_end fires after every combat
-          game.eventManager.trigger(
-            {
-              type: 'combat_end', unit1: attacker, unit2: defender, levelNid,
-              position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
-              item: activeCombat!.attackItem,
-              isAnimationCombat: this.isAnimationCombat,
-              playback: activeCombat!.strikes,
-            },
-            { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
-          );
-
-          // Python fires unit_death after combat_end, once the encounter's
-          // end-combat hooks and records have completed.
+          // Python's clean_up2 triggers CombatEnd and then UnitDeath, but
+          // every trigger pushes an EventState and the stack runs the last
+          // one first: unit_death events run before combat_end events.
           for (const deadDefender of this.getDefenderDeaths()) {
             const killer = this.getCombatKiller(deadDefender) ?? attacker;
             game.eventManager.trigger(
@@ -7384,6 +7373,18 @@ export class CombatState extends State {
               { ...ctx, unit1: attacker, unit2: killer },
             );
           }
+
+          // combat_end fires after every combat
+          game.eventManager.trigger(
+            {
+              type: 'combat_end', unit1: attacker, unit2: defender, levelNid,
+              position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
+              item: activeCombat!.attackItem,
+              isAnimationCombat: this.isAnimationCombat,
+              playback: activeCombat!.strikes,
+            },
+            { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
+          );
         }
 
         // Activate AI groups if an enemy was involved in combat

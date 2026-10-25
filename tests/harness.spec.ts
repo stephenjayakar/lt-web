@@ -4294,7 +4294,9 @@ test.describe('Event command parity', () => {
     });
     expect(result.redone).toEqual(result.applied);
     expect(result.eventData).toEqual({
-      order: '>combat_death>combat_end>unit_death',
+      // CombatDeath runs mid-combat. clean_up2 then triggers CombatEnd and
+      // UnitDeath; Python's event stack runs the later UnitDeath first.
+      order: '>combat_death>unit_death>combat_end',
       killer: '_OrderedAttacker',
       position: [setup!.origin[0] + 1, setup!.origin[1]],
     });
