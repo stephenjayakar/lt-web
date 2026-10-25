@@ -3481,7 +3481,12 @@ export class EventManager {
   /**
    * Find events matching a trigger.
    * Matches on trigger type and optionally level_nid.
-   * Results are sorted by priority (higher first).
+   *
+   * Results are returned in Python execution order. Python's
+   * EventManager.trigger sorts matches ascending by priority (stable, so ties
+   * keep database order) and pushes each onto a stack that EventState pops
+   * from the end. The highest priority therefore runs first and, among equal
+   * priorities, the event defined LAST in the database runs first.
    */
   private findMatchingEvents(trigger: EventTrigger): EventPrefab[] {
     const matches: EventPrefab[] = [];
@@ -3507,7 +3512,8 @@ export class EventManager {
       matches.push(prefab);
     }
 
-    // Sort by priority descending (higher priority first)
+    // Higher priority first; equal priorities in reverse database order.
+    matches.reverse();
     matches.sort((a, b) => b.priority - a.priority);
 
     return matches;

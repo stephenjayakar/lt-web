@@ -915,9 +915,9 @@ export class GameState {
     // k. Queue the initial player-phase events -----------------------------
     // Python calls phase_change, turn_change, then level_start from
     // TurnChangeState, but its event stack executes the last trigger first.
-    // Our event queue is FIFO, so enqueue level_start first to preserve the
-    // authored execution order. EOtF's level_start removes stale Deployed
-    // tags and turn_change then restores them for the actual sortie.
+    // Our event queue is FIFO, so enqueue in reverse: level_start, then
+    // turn_change, then phase_change. EOtF's level_start removes stale
+    // Deployed tags and turn_change then restores them for the actual sortie.
     if (this.eventManager) {
       this.levelVars.set('_initial_turn_events_after_level_start', true);
       const eventContext = {
@@ -930,11 +930,11 @@ export class GameState {
         eventContext,
       );
       this.eventManager.trigger(
-        { type: 'phase_change', team: this.phase.getCurrent(), levelNid },
+        { type: 'turn_change', turnCount: this.turnCount, levelNid },
         eventContext,
       );
       this.eventManager.trigger(
-        { type: 'turn_change', turnCount: this.turnCount, levelNid },
+        { type: 'phase_change', team: this.phase.getCurrent(), levelNid },
         eventContext,
       );
     }

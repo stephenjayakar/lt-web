@@ -371,8 +371,16 @@ export class PrepMainState extends State {
       game.levelVars.set('_initial_turn_events_after_level_start', true);
       const levelNid = game.currentLevel?.nid;
       const context = { game, gameVars: game.gameVars, levelVars: game.levelVars };
-      game.eventManager.trigger({ type: 'phase_change', team: game.phase?.getCurrent(), levelNid }, context);
-      game.eventManager.trigger({ type: 'turn_change', turnCount: game.turnCount, levelNid }, context);
+      // Same order as GameState.loadLevel: Python's stack runs turn_change
+      // before the phase_change that was triggered ahead of it.
+      game.eventManager.trigger(
+        { type: 'turn_change', turnCount: game.turnCount, levelNid },
+        context,
+      );
+      game.eventManager.trigger(
+        { type: 'phase_change', team: game.phase?.getCurrent(), levelNid },
+        context,
+      );
     }
 
     const previous = game.state.stack[game.state.stack.length - 2];

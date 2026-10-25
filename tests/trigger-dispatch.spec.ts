@@ -242,4 +242,45 @@ test.describe('Trigger dispatch parity', () => {
     const events = captured.filter((c) => c.type === 'on_base_start');
     expect(events.length).toBe(1);
   });
+
+  test('queue order matches Python stack order for ties and turn-one triggers', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const order = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const define = (nid: string, trigger: string, priority: number) => {
+        g.db.events.set(nid, {
+          name: nid, nid, trigger, level_nid: null, condition: 'True',
+          only_once: false, priority, _source: ['wait;1'],
+        });
+      };
+      // Python sorts ascending (stable) and pops from the end of a stack:
+      // highest priority first, and equal priorities in reverse DB order.
+      define('TieA', '_qa_tie', 20);
+      define('TieB', '_qa_tie', 20);
+      define('TieHigh', '_qa_tie', 99);
+      define('TieLow', '_qa_tie', 10);
+      define('TieC', '_qa_tie', 20);
+      g.eventManager.eventQueue.length = 0;
+      g.eventManager.trigger({ type: '_qa_tie' }, { game: g });
+      const ties = g.eventManager.eventQueue.map((event: any) => event.nid);
+
+      // TurnChangeState triggers PhaseChange, TurnChange, then LevelStart;
+      // the stack runs them in reverse.
+      define('QaPhase', 'phase_change', 20);
+      define('QaTurn', 'turn_change', 20);
+      define('QaStart', 'level_start', 20);
+      g.eventManager.eventQueue.length = 0;
+      await g.loadLevel('DEBUG');
+      const turnOne = g.eventManager.eventQueue
+        .map((event: any) => event.nid)
+        .filter((nid: string) => nid.startsWith('Qa'));
+      return { ties, turnOne };
+    });
+
+    expect(order.ties).toEqual(['TieHigh', 'TieC', 'TieB', 'TieA', 'TieLow']);
+    expect(order.turnOne).toEqual(['QaStart', 'QaTurn', 'QaPhase']);
+  });
 });

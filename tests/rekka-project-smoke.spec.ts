@@ -1460,10 +1460,23 @@ test.describe('Rekka all-level compatibility', () => {
       const state = (window as any).__gameRef.state.getCurrentState() as any;
       state.cursor = state.options.indexOf('Fight');
       (window as any).__harness.stepFrames(1, 'SELECT');
-      (window as any).__harness.stepFrames(2, null);
     });
-    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
-      .toBe('free');
+    // Python queues PhaseChange/TurnChange alongside LevelStart, so after the
+    // prep command returns the remaining turn-one events (Rekka's global
+    // ability upkeep scripts) still run before control reaches FreeState.
+    const afterFight = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const seen = new Set<string>();
+      for (let frame = 0; frame < 120; frame += 1) {
+        const name = game.state.getCurrentState()?.name;
+        seen.add(name);
+        if (name === 'free' && !game.eventManager.hasActiveEvents()) break;
+        (window as any).__harness.stepFrames(1, null);
+      }
+      return { state: game.state.getCurrentState()?.name, seen: [...seen] };
+    });
+    expect(afterFight.state).toBe('free');
+    expect(afterFight.seen).not.toContain('prep_main');
 
     const talkReady = await page.evaluate(() => {
       const game = (window as any).__gameRef;
