@@ -854,11 +854,17 @@ export function evaluateExpression(expression: string, context: ConditionContext
     return direct;
   }
   const value = evaluateWithJsFallback(expression, context);
-  if (value === undefined) {
+  // A Python call that returns None (game.register_item(...),
+  // set.discard(...)) legitimately yields undefined; only a failed
+  // evaluation is unimplemented.
+  if (value === undefined && lastJsEvaluationFailed) {
     reportUnimplemented('expression', expression, 'event expression');
   }
   return value;
 }
+
+/** Whether the most recent evaluateWithJsFallback call failed to evaluate. */
+let lastJsEvaluationFailed = false;
 
 /** Resolve a dotted path like "game.turncount", "unit.nid", "region.nid" to a value. */
 function resolvePath(path: string, ctx: ConditionContext): any {
@@ -2917,6 +2923,7 @@ function evaluateWithJsFallback(
   warnOnFailure = true,
 ): any {
   const game = ctx.game;
+  lastJsEvaluationFailed = true;
   if (!game) return undefined;
 
   const cachedTranslation = translatedExpressions.get(condition);
@@ -3245,7 +3252,7 @@ function evaluateWithJsFallback(
        return (${jsExpr});`,
     );
     if (!alreadyCompiled) compiledExpressions.set(compileKey, fn);
-    return fn(
+    const result = fn(
       gameProxy, unit, unit, target, target, region, position, target_pos, item,
       check_pair, check_default, __len__, __any__, __all__, __sorted__, v, cf,
       support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.RECORDS, evalScope.utils,
@@ -3257,6 +3264,8 @@ function evaluateWithJsFallback(
       evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill, evalScope.wrapClass,
       action, SourceType,
     );
+    lastJsEvaluationFailed = false;
+    return result;
   } catch (e) {
     // Expression evaluation failed — log the error for debugging
     if (warnOnFailure) {

@@ -256,6 +256,28 @@ test.describe('Event data command parity', () => {
     expect(result.party).toBe(result.currentParty);
   });
 
+  test('strict mode accepts Python calls that return None', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false&strict=true');
+    await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
+      timeout: 60_000,
+    });
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { evaluateExpression } = await import('/src/events/event-manager.ts');
+      const item = g.units.get('Eirika').items[0];
+      try {
+        const value = evaluateExpression('game.register_item(copied_item)', {
+          game: g, gameVars: g.gameVars, levelVars: g.levelVars,
+          localArgs: new Map([['copied_item', item]]),
+        } as any);
+        return { threw: false, value: value ?? null };
+      } catch (error: any) {
+        return { threw: true, message: String(error?.message ?? error) };
+      }
+    });
+    expect(result).toEqual({ threw: false, value: null });
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);
