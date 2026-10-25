@@ -5,9 +5,16 @@
 // ---------------------------------------------------------------------------
 
 import type { UnitObject } from '../objects/unit';
+import { getSetting } from '../engine/states/settings-state';
 
-/** Default movement speed in tiles per second. */
+/** Fallback movement speed in tiles per second. */
 const DEFAULT_SPEED = 10;
+
+/** Python MovementSystem: cf.SETTINGS['unit_speed'] milliseconds per tile. */
+function defaultUnitSpeed(): number {
+  const msPerTile = Number(getSetting('unit_speed'));
+  return Number.isFinite(msPerTile) && msPerTile > 0 ? 1000 / msPerTile : DEFAULT_SPEED;
+}
 
 interface MovementComponent {
   unit: UnitObject;
@@ -43,7 +50,7 @@ export class MovementSystem {
   beginMove(
     unit: UnitObject,
     path: [number, number][],
-    speed: number = DEFAULT_SPEED,
+    speed: number = defaultUnitSpeed(),
     onComplete?: () => void,
   ): void {
     // If the path has 0 or 1 entries there is nothing to animate.

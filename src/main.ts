@@ -49,6 +49,9 @@ import {
   MoveState,
   MenuState,
   ItemUseState,
+  ItemMenuState,
+  TravelerTransferState,
+  CantoWaitState,
   BaseUseState,
   AccessoryChoiceState,
   CombatArtChoiceState,
@@ -106,6 +109,8 @@ import {
 import {
   SettingsMenuState,
   setSettingsGameRef,
+  getSetting,
+  applyStoredSettings,
 } from './engine/states/settings-state';
 import {
   MinimapState,
@@ -666,6 +671,7 @@ async function main(): Promise<void> {
   setSupplyGameRef(gameState);
   setBaseGameRef(gameState);
   setSettingsGameRef(gameState);
+  applyStoredSettings(gameState);
   setTextEntryGameRef(gameState);
   setMinimapGameRef(gameState);
   setVictoryGameRef(gameState);
@@ -701,6 +707,9 @@ async function main(): Promise<void> {
     new MoveState(),
     new MenuState(),
     new ItemUseState(),
+    new ItemMenuState(),
+    new TravelerTransferState(),
+    new CantoWaitState(),
     new BaseUseState(),
     new AccessoryChoiceState(),
     new CombatArtChoiceState(),
@@ -1091,10 +1100,8 @@ async function main(): Promise<void> {
 
     // --- Performance overlay (screen-space, on top of everything) ---
     // Sync perf overlay with the in-game settings (display_fps)
-    const fpsSettingVal = game.gameVars?.get('_setting_display_fps');
-    if (fpsSettingVal !== undefined) {
-      PerfMonitor.setEnabled(fpsSettingVal === 1 || fpsSettingVal === true);
-    }
+    const fpsSettingVal = getSetting('display_fps');
+    PerfMonitor.setEnabled(fpsSettingVal === 'ON' || fpsSettingVal === 1 || fpsSettingVal === true);
     PerfMonitor.draw(display.ctx, display.canvas.width, display.canvas.height);
 
     // --- End of frame ---

@@ -8735,13 +8735,15 @@ test.describe('Level Progression', () => {
       });
 
       if (!probe) continue;
-      if (probe.dialogState !== 'typing') continue;
+      // Dialog states follow Python dialog.py ('process' while typing).
+      if (probe.dialogState !== 'process') continue;
 
       sawTypingDialog = true;
 
-      // Force this line to finish typing, then allow one update tick.
+      // Force this line to finish typing, then allow Python's 9-frame
+      // pause-before-wait to elapse.
       await stepFrames(page, 1, 'SELECT');
-      await stepFrames(page, 1);
+      await stepFrames(page, 12);
 
       const after = await page.evaluate(() => {
         const g = (window as any).__gameRef;
@@ -8756,7 +8758,7 @@ test.describe('Level Progression', () => {
         };
       });
 
-      if (after && after.dialogState === 'waiting' && after.talkOn === false) {
+      if (after && after.dialogState === 'wait' && after.talkOn === false) {
         stoppedOnWait = true;
         break;
       }

@@ -1,3 +1,4 @@
+import { getSetting } from '../engine/states/settings-state';
 import { Surface } from '../engine/surface';
 import type { TileMapObject } from './tilemap';
 import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
@@ -43,8 +44,8 @@ export function shouldDrawMapHp(
 ): boolean {
   if (game.roamInfo?.roam && game.db.getConstant('roam_hide_hp', false)) return false;
   if (unit.isDying || unit.dead) return false;
-  const teamSetting = String(game.gameVars.get('_setting_hp_map_team') ?? 'All');
-  const cullSetting = String(game.gameVars.get('_setting_hp_map_cull') ?? 'All');
+  const teamSetting = String(getSetting('hp_map_team') ?? 'All');
+  const cullSetting = String(getSetting('hp_map_cull') ?? 'All');
   const allied = game.db.areAllied ? game.db.areAllied('player', unit.team) : unit.team === 'player';
   const teamOk = teamSetting === 'All' ||
     (teamSetting === 'Ally' && allied) ||

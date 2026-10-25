@@ -234,3 +234,16 @@ export function getMenuBackgroundSync(
   fallback.fillRect(0, 0, width, height, 'rgba(16,16,32,0.9)');
   return fallback;
 }
+
+let highlightImg: HTMLImageElement | null = null;
+let handImg: HTMLImageElement | null = null;
+/** Python SPRITES['menu_highlight'] (loaded lazily; null until ready). */
+export function getMenuHighlight(): HTMLImageElement | null {
+  if (!highlightImg) void loadMenuBgSprite('menu_highlight').then((img) => { highlightImg = img; });
+  return highlightImg;
+}
+/** Python SPRITES['menu_hand'] (loaded lazily; null until ready). */
+export function getMenuHand(): HTMLImageElement | null {
+  if (!handImg) void loadMenuBgSprite('menu_hand').then((img) => { handImg = img; });
+  return handImg;
+}

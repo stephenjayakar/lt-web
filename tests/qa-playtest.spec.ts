@@ -355,3 +355,257 @@ test('speak honours speak styles and runs inline {c:} commands mid-line', async 
   const text = await page.evaluate(() => ((window as any).__gameRef.state.getCurrentState() as any).dialog?.displayedText ?? '');
   expect(text.startsWith('Hello there.')).toBe(true);
 });
+
+// ---------------------------------------------------------------------------
+// Tactical menus (Python general_states MenuState / ItemChildState /
+// OptionMenuState / TradeState / CantoWaitState)
+// ---------------------------------------------------------------------------
+
+const stackNames = (page: Page) =>
+  page.evaluate(() => (window as any).__gameRef.state.getStackNames() as string[]);
+const topMenuLabels = (page: Page) => page.evaluate(() => {
+  const s = (window as any).__gameRef.state.getCurrentState() as any;
+  return (s?.menu?.options ?? []).map((o: any) => o.label) as string[];
+});
+
+async function openUnitMenu(page: Page, nid: string): Promise<void> {
+  await page.evaluate((unitNid) => {
+    const g = (window as any).__gameRef;
+    const u = g.getUnit(unitNid);
+    g.cursor.setPos(u.position[0], u.position[1]);
+  }, nid);
+  await press(page, 'SELECT');
+  await stepFrames(page, 2);
+  await press(page, 'SELECT');
+  await stepFrames(page, 3);
+}
+
+async function chooseMenuLabel(page: Page, label: string): Promise<void> {
+  const ok = await page.evaluate((wanted) => {
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    const menu = s.confirm ?? s.child ?? s.menu;
+    const index = menu.options.findIndex((o: any) => o.label === wanted);
+    if (index < 0) return false;
+    menu.selectedIndex = index;
+    return true;
+  }, label);
+  expect(ok, `menu option ${label}`).toBe(true);
+  await press(page, 'SELECT');
+  await stepFrames(page, 3);
+}
+
+test('trading returns to the action menu; BACK then commits and waits', async ({ page }) => {
+  await boot(page);
+  await openUnitMenu(page, 'Vanessa');
+  expect(await topMenuLabels(page)).toEqual(['Item', 'Trade', 'Wait']);
+  await chooseMenuLabel(page, 'Trade');
+  expect((await stackNames(page)).at(-1)).toBe('trade');
+  const before = await page.evaluate(() => (window as any).__gameRef.getUnit('Vanessa').items.map((i: any) => i.nid));
+  await press(page, 'SELECT');
+  await press(page, 'SELECT');
+  await stepFrames(page, 2);
+  const after = await page.evaluate(() => (window as any).__gameRef.getUnit('Vanessa').items.map((i: any) => i.nid));
+  expect(after).not.toEqual(before);
+  await press(page, 'BACK');
+  await stepFrames(page, 3);
+  // Python TradeState.back -> MenuState; trading again is still offered.
+  expect((await stackNames(page)).at(-1)).toBe('menu');
+  expect(await topMenuLabels(page)).toContain('Trade');
+  let flags = await page.evaluate(() => {
+    const u = (window as any).__gameRef.getUnit('Vanessa');
+    return { finished: u.finished, traded: u.hasTraded };
+  });
+  expect(flags).toEqual({ finished: false, traded: true });
+  await press(page, 'BACK');
+  await stepFrames(page, 3);
+  flags = await page.evaluate(() => {
+    const u = (window as any).__gameRef.getUnit('Vanessa');
+    return { finished: u.finished, traded: u.hasTraded };
+  });
+  expect(flags.finished).toBe(true);
+  expect(await stackNames(page)).toEqual(['free']);
+});
+
+test('Canto after a trade moves again and offers only canto_wait', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    g.getUnit('Vanessa').skills.push(new SkillObject(g.db.skills.get('Canto')));
+  });
+  await openUnitMenu(page, 'Vanessa');
+  await chooseMenuLabel(page, 'Trade');
+  await press(page, 'SELECT');
+  await press(page, 'SELECT');
+  await press(page, 'BACK');
+  await stepFrames(page, 3);
+  await press(page, 'BACK');
+  await stepFrames(page, 3);
+  expect((await stackNames(page)).at(-1)).toBe('move');
+  // A Canto unit cannot cancel its committed action.
+  await press(page, 'BACK');
+  await stepFrames(page, 2);
+  expect((await stackNames(page)).at(-1)).toBe('move');
+  const target = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const u = g.getUnit('Vanessa');
+    const moves = g.state.getCurrentState().validMoves as [number, number][];
+    const dest = moves.find(([x, y]) => (x !== u.position[0] || y !== u.position[1]) && !g.board.getUnit(x, y))!;
+    g.cursor.setPos(dest[0], dest[1]);
+    return dest;
+  });
+  await press(page, 'SELECT');
+  for (let i = 0; i < 40 && (await stackNames(page)).at(-1) !== 'canto_wait'; i++) await stepFrames(page, 3);
+  expect((await stackNames(page)).at(-1)).toBe('canto_wait');
+  expect(await topMenuLabels(page)).toEqual(['Wait']);
+  await press(page, 'SELECT');
+  await stepFrames(page, 3);
+  const unit = await page.evaluate(() => {
+    const u = (window as any).__gameRef.getUnit('Vanessa');
+    return { finished: u.finished, position: u.position };
+  });
+  expect(unit).toEqual({ finished: true, position: target });
+});
+
+test('action menu offers Spells for staff users and routes them to item targeting', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const v = g.getUnit('Vanessa');
+    v.currentHp = Math.max(1, v.currentHp - 5);
+  });
+  await openUnitMenu(page, 'Moulder');
+  const labels = await topMenuLabels(page);
+  expect(labels[0]).toBe('Spells');
+  expect(labels).not.toContain('Attack');
+  await chooseMenuLabel(page, 'Spells');
+  expect((await stackNames(page)).at(-1)).toBe('weapon_choice');
+  expect(await topMenuLabels(page)).toEqual(['Heal']);
+  await press(page, 'SELECT');
+  await stepFrames(page, 3);
+  expect((await stackNames(page)).at(-1)).toBe('item_targeting');
+});
+
+test('item menu: Python item rows, child options, discard confirm', async ({ page }) => {
+  await boot(page);
+  await openUnitMenu(page, 'Vanessa');
+  await chooseMenuLabel(page, 'Item');
+  expect((await stackNames(page)).at(-1)).toBe('item');
+  const rows = await page.evaluate(() => {
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    return { width: s.menu.width, rows: s.menu.options.map((o: any) => [o.label, !!o.itemRow]) };
+  });
+  expect(rows.width).toBe(104);
+  expect(rows.rows).toEqual([['Slim Lance', true], ['Javelin', true], ['Vulnerary', true]]);
+  await page.evaluate(() => { ((window as any).__gameRef.state.getCurrentState() as any).menu.selectedIndex = 1; });
+  await press(page, 'SELECT');
+  await stepFrames(page, 2);
+  const child = await page.evaluate(() => {
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    return { labels: s.child.options.map((o: any) => o.label), y: s.child.y, px: s.menu.x, py: s.menu.y };
+  });
+  expect(child.labels).toEqual(['Equip', 'Trade', 'Discard']);
+  // Python Simple.get_topleft beside the parent's current row.
+  expect(child.y).toBe(child.py + 16 + (child.px < 120 ? 4 : 8));
+  await chooseMenuLabel(page, 'Discard');
+  await chooseMenuLabel(page, 'Yes');
+  const items = await page.evaluate(() => (window as any).__gameRef.getUnit('Vanessa').items.map((i: any) => i.nid));
+  expect(items).toEqual(['Slim_Lance', 'Vulnerary']);
+});
+
+test('free state: BACK does nothing, START opens the minimap', async ({ page }) => {
+  await boot(page);
+  await press(page, 'BACK');
+  await stepFrames(page, 2);
+  expect(await stackNames(page)).toEqual(['free']);
+  await press(page, 'START');
+  await stepFrames(page, 2);
+  expect((await stackNames(page)).at(-1)).toBe('minimap');
+});
+
+test('option menu follows Python order and confirms End', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => (window as any).__gameRef.state.change('option_menu'));
+  await stepFrames(page, 2);
+  const labels = await topMenuLabels(page);
+  // Permadeath mode: Suspend instead of Save; End last; no Minimap entry.
+  expect(labels.slice(-3)).toEqual(['Options', 'Suspend', 'End']);
+  expect(labels[0]).toBe('Objective');
+  expect(labels).not.toContain('Minimap');
+  await chooseMenuLabel(page, 'End');
+  const confirm = await page.evaluate(() =>
+    ((window as any).__gameRef.state.getCurrentState() as any).confirm?.options.map((o: any) => o.label));
+  expect(confirm).toEqual(['Yes', 'No']);
+  await chooseMenuLabel(page, 'No');
+  expect((await stackNames(page)).at(-1)).toBe('option_menu');
+  expect(await page.evaluate(() => (window as any).__gameRef.phase.getCurrent())).toBe('player');
+  await chooseMenuLabel(page, 'End');
+  await chooseMenuLabel(page, 'Yes');
+  await stepFrames(page, 5);
+  expect(await stackNames(page)).not.toContain('option_menu');
+  expect(await page.evaluate(() => (window as any).__gameRef.phase.getCurrent())).not.toBe('player');
+});
+
+test('prep Fight resumes the level-start stack so the player phase change runs', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.levelVars.delete('_turn1_upkeep_done');
+    g.cursor.setPos(0, 0);
+    g.db.events.set('qa_prep', {
+      name: 'qa_prep', nid: 'qa_prep', trigger: 'qa_prep', level_nid: null,
+      condition: 'True', only_once: false, priority: 0, _source: ['prep', 'game_var;after_prep;1'],
+    });
+    g.eventManager.triggerSpecific('qa_prep', { type: 'qa_prep' }, true);
+    g.state.clear();
+    g.state.change('free');
+    g.state.change('phase_change');
+    g.state.change('event');
+  });
+  for (let i = 0; i < 40 && (await stackNames(page)).at(-1) !== 'prep_main'; i++) await stepFrames(page, 3);
+  expect(await stackNames(page)).toEqual(['free', 'phase_change', 'event', 'prep_main']);
+  await page.evaluate(() => ((window as any).__gameRef.state.getCurrentState() as any).fight());
+  for (let i = 0; i < 100 && (await stackNames(page)).join() !== 'free'; i++) await stepFrames(page, 5);
+  expect(await stackNames(page)).toEqual(['free']);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return {
+      after: g.gameVars.get('after_prep'),
+      upkeep: g.levelVars.get('_turn1_upkeep_done'),
+      cursor: g.cursor.getPosition(),
+      lord: g.getUnit('Eirika').position,
+    };
+  });
+  expect(result.after).toBe(1);
+  expect(result.upkeep).toBe(true);
+  // PhaseIn autocursor: the Lord-tagged unit.
+  expect(result.cursor).toEqual(result.lord);
+});
+
+test('settings persist globally', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(async () => {
+    const settings = await import('/src/engine/states/settings-state.ts');
+    settings.setSetting('unit_speed', 50);
+    return {
+      stored: JSON.parse(localStorage.getItem('lt-web-settings') ?? '{}').unit_speed,
+      read: settings.getSetting('unit_speed'),
+    };
+  });
+  expect(result).toEqual({ stored: 50, read: 50 });
+});
+
+test('choice menus use Python Simple sizing (text + 24, floored to 8)', async ({ page }) => {
+  await boot(page);
+  const sizes = await page.evaluate(async () => {
+    const { ChoiceMenu } = await import('/src/ui/menu.ts');
+    const { measureStyledText } = await import('/src/ui/styled-text.ts');
+    const menu = new ChoiceMenu([
+      { label: 'Rescue', value: 'r', enabled: true },
+      { label: 'Wait', value: 'w', enabled: true },
+    ], 0, 0);
+    const w = measureStyledText('Rescue', 'text') + 24;
+    return { width: menu.width, expected: w - (w % 8) };
+  });
+  expect(sizes.width).toBe(sizes.expected);
+});

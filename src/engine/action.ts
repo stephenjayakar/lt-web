@@ -2951,6 +2951,72 @@ export class DropAction extends Action {
   }
 }
 
+/**
+ * Python action.Take / action.Give: hand a carried traveler from `holder`
+ * to `receiver` (who must not be carrying anyone). `mode` records which side
+ * acted: 'take' marks receiver.has_taken, 'give' marks holder.has_given.
+ * The Rescue penalty (and rescue bonuses) follow the traveler.
+ */
+export class TransferTravelerAction extends Action {
+  private holder: UnitObject;
+  private receiver: UnitObject;
+  private traveler: UnitObject;
+  private mode: 'take' | 'give';
+  private oldFlag = false;
+  private removed: IndexedSkill[] = [];
+  private added: SkillObject[] = [];
+  private initialized = false;
+
+  constructor(holder: UnitObject, receiver: UnitObject, traveler: UnitObject, mode: 'take' | 'give') {
+    super();
+    this.holder = holder;
+    this.receiver = receiver;
+    this.traveler = traveler;
+    this.mode = mode;
+  }
+
+  execute(): void {
+    if (!this.initialized) {
+      this.oldFlag = this.mode === 'take' ? this.receiver.hasTaken : this.holder.hasGiven;
+      const indices = new Map(this.holder.skills.map((skill, index) => [skill, index]));
+      this.removed = onRemoveRescue(this.holder, this.traveler)
+        .map(skill => ({ skill, index: indices.get(skill) ?? this.holder.skills.length }));
+      this.added = onRescue(this.receiver, this.traveler, makeSkillForAction, _getGame?.());
+      this.initialized = true;
+    } else {
+      for (const { skill } of this.removed) {
+        const index = this.holder.skills.indexOf(skill);
+        if (index >= 0) this.holder.skills.splice(index, 1);
+      }
+      for (const skill of this.added) {
+        if (!this.receiver.skills.includes(skill)) this.receiver.skills.push(skill);
+      }
+    }
+    this.holder.rescuing = null;
+    this.holder.traveler = null;
+    this.receiver.rescuing = this.traveler;
+    this.receiver.traveler = this.traveler.nid;
+    this.traveler.rescuedBy = this.receiver;
+    if (this.mode === 'take') this.receiver.hasTaken = true;
+    else this.holder.hasGiven = true;
+  }
+
+  reverse(): void {
+    for (const skill of this.added) {
+      const index = this.receiver.skills.indexOf(skill);
+      if (index >= 0) this.receiver.skills.splice(index, 1);
+    }
+    restoreIndexedSkills(this.holder, this.removed);
+    this.receiver.rescuing = null;
+    this.receiver.traveler = null;
+    this.holder.rescuing = this.traveler;
+    this.holder.traveler = this.traveler.nid;
+    this.traveler.rescuedBy = this.holder;
+    if (this.mode === 'take') this.receiver.hasTaken = this.oldFlag;
+    else this.holder.hasGiven = this.oldFlag;
+  }
+}
+
 /** DeathAction - Handle unit death and preserve placement for rewind. */
 export class DeathAction extends Action {
   private unit: UnitObject;

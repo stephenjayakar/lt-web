@@ -12,7 +12,7 @@
 import { Surface } from '../engine/surface';
 import type { InputEvent } from '../engine/input';
 import type { MenuOption } from './menu';
-import { getMenuBackgroundSync, loadMenuBgSprite } from './base-surf';
+import { getMenuBackgroundSync, getMenuHand, getMenuHighlight, loadMenuBgSprite } from './base-surf';
 import { drawStyledText, measureStyledText } from './styled-text';
 import { drawIcon16 } from './icons';
 
@@ -309,13 +309,3 @@ export class EventChoiceMenu {
   }
 }
 
-let highlightImg: HTMLImageElement | null = null;
-let handImg: HTMLImageElement | null = null;
-function getMenuHighlight(): HTMLImageElement | null {
-  if (!highlightImg) void loadMenuBgSprite('menu_highlight').then((img) => { highlightImg = img; });
-  return highlightImg;
-}
-function getMenuHand(): HTMLImageElement | null {
-  if (!handImg) void loadMenuBgSprite('menu_hand').then((img) => { handImg = img; });
-  return handImg;
-}

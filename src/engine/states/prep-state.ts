@@ -302,7 +302,11 @@ export class PrepMainState extends State {
     // Exit prep. Direct level loads may leave prep above a stale roam state
     // instead of a tactical Free/Event state; revealing it drains the stack.
     const previous = game.state.stack[game.state.stack.length - 2];
-    if (previous?.name === 'free') {
+    const hasTacticalBase = game.state.stack[0]?.name === 'free';
+    if (previous?.name === 'free' || (previous?.name === 'event' && hasTacticalBase)) {
+      // Python PrepMainState Fight: just back() — the level-start
+      // free/phase_change/event stack underneath resumes intact (the
+      // player phase_change then runs its banner and autocursor).
       game.state.back();
     } else if (previous?.name === 'event') {
       // Prep commonly blocks the level-start event. Rebuild the tactical
@@ -310,10 +314,12 @@ export class PrepMainState extends State {
       // popping the last state and leaving a black, empty stack.
       game.state.clear();
       game.state.change('free');
+      game.state.change('phase_change');
       game.state.change('event');
     } else {
       game.state.clear();
       game.state.change('free');
+      game.state.change('phase_change');
     }
   }
 }

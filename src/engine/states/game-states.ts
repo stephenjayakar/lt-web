@@ -151,13 +151,15 @@ import {
   SetOverworldMenuOptionAction,
   UpdatePersistentStoreAction,
   SetRoamInfoAction,
+  TransferTravelerAction,
 } from '../action';
 
-import { ChoiceMenu, type MenuOption } from '../../ui/menu';
+import { ChoiceMenu, type MenuItemRow, type MenuOption } from '../../ui/menu';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { Banner } from '../../ui/banner';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
+import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
 import { Dialog } from '../../ui/dialog';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
@@ -205,6 +207,8 @@ import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from 
 import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentation';
 import {
   accuracy as combatAccuracy,
+  critAccuracy as combatCritAccuracy,
+  damage as combatDamage,
   attackSpeed,
   canCounterattack,
   canDefenderDouble,
@@ -683,6 +687,43 @@ function getAdjacentAllies(unit: UnitObject, x: number, y: number): UnitObject[]
   return allies;
 }
 
+/**
+ * Python TradeAbility.targets: adjacent allies that can trade, plus the
+ * unit's own traveler. No has_traded / has_attacked gate — trading again
+ * is allowed; the trade constant disables it entirely.
+ */
+function getTradePartners(unit: UnitObject): UnitObject[] {
+  const game = getGame();
+  if (!game.db.getConstant('trade', true) || !unit.position) return [];
+  const partners = getAdjacentAllies(unit, unit.position[0], unit.position[1])
+    .filter((ally) => canTradeWith(unit, ally, game.db, game));
+  const traveler: UnitObject | null = unit.traveler ? game.getUnit(unit.traveler) ?? null : null;
+  if (traveler && canTradeWith(unit, traveler, game.db, game)) partners.push(traveler);
+  return partners;
+}
+
+/**
+ * Python unit_funcs.wait: fire unit_wait (actively_chosen local arg), then
+ * mark the unit finished.
+ */
+function waitUnit(game: any, unit: UnitObject, activelyChosen: boolean): void {
+  if (unit.position && game.eventManager) {
+    const levelNid = game.currentLevel?.nid ?? '';
+    const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+    const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
+    game.eventManager.trigger(
+      {
+        type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
+        position: [unit.position[0], unit.position[1]],
+        region: region ?? undefined,
+        localArgs: new Map<string, any>([['actively_chosen', activelyChosen]]),
+      },
+      ctx,
+    );
+  }
+  game.actionLog.doAction(new WaitAction(unit));
+}
+
 /** Get all adjacent units (any team) at a specific position. */
 function getAdjacentUnits(x: number, y: number): UnitObject[] {
   const board = getBoard();
@@ -737,6 +778,59 @@ function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | nul
     }
   }
   return tiles;
+}
+
+/**
+ * Enter a freshly loaded level the way Python's TurnChangeState.end does at
+ * level start: free, then the player phase_change (banner, unit reset,
+ * status upkeep, autocursor), with the level_start events on top.
+ */
+export function enterStartedLevel(game: any): void {
+  game.state.clear();
+  game.state.change('free');
+  game.state.change('phase_change');
+  if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+}
+
+/**
+ * Python Simple.get_topleft with a parent menu: child menus open beside the
+ * parent's current row.
+ */
+export function placeChildMenu(child: ChoiceMenu, parent: ChoiceMenu): void {
+  const row = parent.selectedIndex;
+  if (parent.x < viewport.width / 2) {
+    child.x = parent.x - 20 + parent.width;
+    child.y = parent.y + row * 16 + 4;
+  } else {
+    child.x = viewport.width - 40 - parent.width;
+    child.y = parent.y + row * 16 + 8;
+  }
+}
+
+/** Python equations RESCUE_AID(carrier) >= RESCUE_WEIGHT(carried). */
+function canCarry(carrier: UnitObject, carried: UnitObject, game: any): boolean {
+  const aidExpr = game.db.getEquation?.('RESCUE_AID');
+  const weightExpr = game.db.getEquation?.('RESCUE_WEIGHT');
+  if (!aidExpr || !weightExpr) return true;
+  try {
+    return evaluateEquation(aidExpr, carrier, { db: game.db }) >=
+      evaluateEquation(weightExpr, carried, { db: game.db });
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Python menus.Choice placement with no explicit topleft: (14, 8) when the
+ * cursor is right of the screen's middle column, else flush right at
+ * WINWIDTH - width - 14.
+ */
+function placeAutoMenu(menu: { x: number; y: number; width: number }, game: any): void {
+  const cursorX = game.cursor?.getPosition?.()?.[0] ?? 0;
+  const cameraX = Math.floor((game.camera?.getOffset?.()?.[0] ?? 0) / TILEWIDTH);
+  const tilesAcross = Math.floor(viewport.width / TILEWIDTH);
+  menu.y = 8;
+  menu.x = cursorX > Math.floor(tilesAcross / 2) + cameraX ? 14 : viewport.width - menu.width - 14;
 }
 
 function canUnitStandAt(unit: UnitObject, x: number, y: number): boolean {
@@ -1669,11 +1763,7 @@ export class TitleNewState extends State {
     } catch (err) {
       console.warn('TitleNewState: failed to write start save', err);
     }
-    game.state.clear();
-    game.state.change('free');
-    if (game.eventManager?.hasActiveEvents()) {
-      game.state.change('event');
-    }
+    enterStartedLevel(game);
   }
 }
 
@@ -1877,42 +1967,66 @@ export class OptionMenuState extends State {
   override readonly transparent = true;
 
   private menu: ChoiceMenu | null = null;
+  /** Python OptionChildState Yes/No for End / Suspend / Save. */
+  private confirm: ChoiceMenu | null = null;
+  private confirmOwner: string | null = null;
 
   override begin(): StateResult {
     const game = getGame();
-    const hasMinimap = !!(game.board && game.tilemap);
-
-    // Check if turnwheel is enabled (constant + game var)
-    const turnwheelConstant = game.db?.getConstant?.('turnwheel', null) ?? null;
-    const turnwheelEnabled = !!turnwheelConstant && !!game.gameVars.get('_turnwheel');
-
-    const options: MenuOption[] = [];
-    options.push({ label: 'End Turn', value: 'end_turn', enabled: true });
-    if (turnwheelEnabled) {
-      options.push({ label: 'Turnwheel', value: 'turnwheel', enabled: true });
+    // Python OptionMenuState._populate_options: Objective, Options, then
+    // Suspend (permadeath) or Save, then End (not in roam); Guide at index 2
+    // when guide lore is unlocked; Turnwheel at index 1 when enabled; custom
+    // options inserted before Options.
+    // TODO(qa): Python lists 'Unit' first (unit_menu); not ported yet.
+    const options: MenuOption[] = [
+      { label: 'Objective', value: 'objective', enabled: !!game.currentLevel },
+      { label: 'Options', value: 'options', enabled: true },
+    ];
+    if (game.currentMode?.permadeath) {
+      options.push({ label: 'Suspend', value: 'suspend', enabled: true });
+    } else {
+      options.push({ label: 'Save', value: 'save', enabled: true });
     }
-    options.push({ label: 'Minimap', value: 'minimap', enabled: hasMinimap });
-    options.push({ label: 'Objective', value: 'objective', enabled: !!game.currentLevel });
-    options.push({ label: 'Save', value: 'save', enabled: true });
-    options.push({ label: 'Suspend', value: 'suspend', enabled: true });
+    const roam = !!game.roamInfo?.roam;
+    if (!roam) options.push({ label: 'End', value: 'end_turn', enabled: true });
+    const guideUnlocked = [...(game.db.lore?.values?.() ?? [])].some((lore: any) =>
+      lore.category === 'Guide' && (game.unlockedLore ?? []).includes(lore.nid));
+    if (guideUnlocked && game.state.hasState?.('base_guide')) {
+      options.splice(Math.min(2, options.length), 0, { label: 'Guide', value: 'guide', enabled: true });
+    }
+    const turnwheelConstant = game.db?.getConstant?.('turnwheel', null) ?? null;
+    if (turnwheelConstant && game.gameVars.get('_turnwheel') && !roam) {
+      options.splice(1, 0, { label: 'Turnwheel', value: 'turnwheel', enabled: true });
+    }
     // Custom options from set_custom_options (Python general_states.py:463):
     // inserted before 'Options', disabled per _custom_options_disabled.
     const customOpts: string[] = game.gameVars.get('_custom_additional_options') ?? [];
     const customDisabled: boolean[] = game.gameVars.get('_custom_options_disabled') ?? [];
-    customOpts.forEach((label: string, idx: number) => {
-      options.push({ label, value: `custom:${idx}`, enabled: !customDisabled[idx] });
-    });
-    options.push({ label: 'Options', value: 'options', enabled: true });
+    const optionsIndex = options.findIndex((o) => o.value === 'options');
+    options.splice(optionsIndex, 0, ...customOpts.map((label: string, idx: number) => ({
+      label, value: `custom:${idx}`, enabled: !customDisabled[idx],
+    })));
 
-    // Centre the menu on screen
-    const menuX = Math.floor(viewport.width / 2) - 30;
-    const menuY = Math.floor(viewport.height / 2) - (options.length * 8 + 4);
-    this.menu = new ChoiceMenu(options, menuX, menuY);
+    this.menu = new ChoiceMenu(options, 0, 8);
+    placeAutoMenu(this.menu, game);
+    this.confirm = null;
+    this.confirmOwner = null;
   }
 
   override takeInput(event: InputEvent): StateResult {
     if (!this.menu) return;
     const game = getGame();
+
+    if (this.confirm) {
+      const answer = event !== null ? this.confirm.handleInput(event) : null;
+      if (!answer) return;
+      const owner = this.confirmOwner;
+      this.confirm = null;
+      this.confirmOwner = null;
+      if ('back' in answer || answer.selected !== 'Yes' || !owner) return;
+      this.executeOption(owner);
+      return;
+    }
 
     // Handle mouse click on menu options
     let result: { selected: string } | { back: true } | null = null;
@@ -1958,7 +2072,32 @@ export class OptionMenuState extends State {
         }
         return;
       }
-      switch (result.selected) {
+      const selected = result.selected;
+      if ((selected === 'end_turn' || selected === 'suspend' || selected === 'save') &&
+          getSetting('confirm_end') !== 'OFF') {
+        // Python: confirm_end routes these through OptionChildState (Yes/No).
+        this.confirmOwner = selected;
+        this.confirm = new ChoiceMenu([
+          { label: 'Yes', value: 'Yes', enabled: true },
+          { label: 'No', value: 'No', enabled: true },
+        ], 0, 0);
+        placeChildMenu(this.confirm, this.menu);
+        return;
+      }
+      this.executeOption(selected);
+    }
+  }
+
+  private executeOption(selected: string): void {
+    const game = getGame();
+    {
+      switch (selected) {
+        case 'guide': {
+          this.menu = null;
+          game.state.back();
+          game.state.change('base_guide');
+          break;
+        }
         case 'end_turn': {
           // Mark all player units as finished and trigger turn change
           const playerUnits: UnitObject[] = game.board?.getTeamUnits('player') ?? [];
@@ -2026,6 +2165,7 @@ export class OptionMenuState extends State {
     if (this.menu) {
       this.menu.draw(surf);
     }
+    this.confirm?.draw(surf);
     return surf;
   }
 }
@@ -2079,15 +2219,9 @@ export class FreeState extends MapState {
           game.camera.focusTile(unit.position[0], unit.position[1]);
         }
       }
-    } else {
-      // Standard mode: auto-cursor to first available player unit
-      const playerUnits: UnitObject[] = board.getTeamUnits('player');
-      const available = playerUnits.find((u) => u.canStillAct() && u.position);
-      if (available && available.position) {
-        game.cursor.setPos(available.position[0], available.position[1]);
-        game.camera.focusTile(available.position[0], available.position[1]);
-      }
     }
+    // Python FreeState.begin leaves the cursor where it is; the player-phase
+    // start applies the autocursor setting instead (PhaseChangeState).
   }
 
   override end(): StateResult {
@@ -2178,8 +2312,7 @@ export class FreeState extends MapState {
       }
 
       case 'BACK': {
-        // Right-click on map: open option menu (same as START)
-        game.state.change('option_menu');
+        // Python FreeState: BACK does nothing (holding it speeds the cursor).
         break;
       }
 
@@ -2227,11 +2360,14 @@ export class FreeState extends MapState {
       }
 
       case 'START':
-        // In initiative mode, START toggles the initiative bar display
+        // Python FreeState: START toggles the initiative bar, else opens the
+        // minimap (minimap constant + _minimap game var), else errors.
         if (game.initiative) {
           game.initiative.toggleDraw();
+        } else if (game.db.getConstant('minimap', true) && game.gameVars.get('_minimap') !== false) {
+          game.state.change('minimap');
         } else {
-          game.state.change('option_menu');
+          game.audioManager?.playSfx?.('Error');
         }
         break;
     }
@@ -2273,10 +2409,11 @@ export class FreeState extends MapState {
         }
       }
     } else {
-      // Standard mode: if all player units are finished, advance
+      // Standard mode: Python auto-ends when the autoend_turn setting is on
+      // and every selectable player unit has finished.
       const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
-      if (playerUnits.length > 0) {
-        const allFinished = playerUnits.every((u) => u.finished || u.isDead());
+      if (playerUnits.length > 0 && getSetting('autoend_turn') !== 'OFF') {
+        const allFinished = playerUnits.every((u) => u.finished || u.isDead() || u.tags.includes('Tile'));
         if (allFinished) {
           game.state.change('turn_change');
           return;
@@ -2359,8 +2496,11 @@ export class MoveState extends MapState {
     }
 
     // If the unit already finished (e.g. returned from menu after Wait/Attack),
-    // pop back to FreeState by clearing the selection and returning.
-    if (unit.finished || !unit.canStillAct()) {
+    // pop back to FreeState by clearing the selection and returning. A unit
+    // that attacked or traded but is not finished is in Canto (Python
+    // MoveState with has_attacked / has_traded).
+    const canto = !unit.finished && (unit.hasAttacked || unit.hasTraded);
+    if (unit.finished || (!unit.canStillAct() && !canto)) {
       game.selectedUnit = null;
       game._moveOrigin = null;
       game.highlight.clear();
@@ -2372,9 +2512,10 @@ export class MoveState extends MapState {
     // Save origin so MenuState can undo the move
     game._moveOrigin = [unit.position[0], unit.position[1]];
 
-    // Compute valid moves + attack positions
+    // Compute valid moves + attack positions (Python: a unit that traded
+    // only shows its remaining moves).
     this.validMoves = game.pathSystem.getValidMoves(unit, game.board);
-    this.attackPositions = game.pathSystem.getAttackPositions(
+    this.attackPositions = unit.hasTraded ? [] : game.pathSystem.getAttackPositions(
       unit,
       game.board,
       this.validMoves,
@@ -2445,17 +2586,19 @@ export class MoveState extends MapState {
             game.aiController.checkGroupActivation([pos.x, pos.y], game);
           }
 
+          // Python: a Canto move (after attacking/trading) goes to
+          // canto_wait instead of the full action menu.
+          const nextState = unit.hasAttacked || unit.hasTraded ? 'canto_wait' : 'menu';
           // If we have a path with length > 1, animate movement
           if (path && path.length > 1) {
             game.movementSystem.beginMove(unit, path, undefined, () => {
-              // After movement animation completes, push menu
+              // After movement animation completes, push the next state
             });
             game.state.change('movement');
-            // After movement, push menu
-            game._pendingAfterMovement = 'menu';
+            game._pendingAfterMovement = nextState;
           } else {
-            // Already at destination or single tile, push menu directly
-            game.state.change('menu');
+            // Already at destination or single tile, push directly
+            game.state.change(nextState);
           }
         }
         break;
@@ -2463,6 +2606,11 @@ export class MoveState extends MapState {
 
       case 'BACK': {
         const deselectedUnit: UnitObject | null = game.selectedUnit;
+        // Python MoveState: a Canto unit cannot cancel its committed action.
+        if (deselectedUnit && (deselectedUnit.hasAttacked || deselectedUnit.hasTraded)) {
+          game.audioManager?.playSfx?.('Error');
+          break;
+        }
         game.highlight.clear();
         game._moveOrigin = null;
         game.state.back();
@@ -2526,6 +2674,77 @@ export class MoveState extends MapState {
 // 4. MenuState
 // ============================================================================
 
+/**
+ * Python CantoWaitState: after a Canto move the unit may only Supply or Wait;
+ * BACK undoes the Canto move.
+ */
+export class CantoWaitState extends State {
+  readonly name = 'canto_wait';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+
+  override start(): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    game.audioManager?.playSfx?.('Select 2');
+    const options: MenuOption[] = [{ label: 'Wait', value: 'wait', enabled: true }];
+    if (unit && supplyAvailableOnMap(unit, game)) {
+      options.unshift({ label: 'Supply', value: 'supply', enabled: true });
+    }
+    this.menu = new ChoiceMenu(options, 0, 8);
+    placeAutoMenu(this.menu, game);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    }
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result) return;
+    const unit: UnitObject | null = game.selectedUnit;
+
+    if ('back' in result) {
+      if (game._moveAction) {
+        game.actionLog.reverseMoveToActionGroupStart(game._moveAction);
+        game._moveAction = null;
+      }
+      if (unit?.position) game.cursor.setPos(unit.position[0], unit.position[1]);
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    game.highlight.clear();
+    if (result.selected === 'supply') {
+      if (unit) game.memory.set('supply_unit', unit);
+      game.state.change('supply_items');
+      return;
+    }
+    this.menu = null;
+    game._moveAction = null;
+    game.state.clear();
+    game.state.change('free');
+    if (unit) {
+      game.actionLog.doAction(new MarkActionGroupEnd('menu'));
+      waitUnit(game, unit, true);
+    }
+    if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
 export class MenuState extends State {
   readonly name = 'menu';
   override readonly transparent = true;
@@ -2534,6 +2753,7 @@ export class MenuState extends State {
   private previousPosition: [number, number] | null = null;
   private validRegions: RegionData[] = [];
   private skillAbilities: SkillAbilityOption[] = [];
+  private combatArts: CombatArtOption[] = [];
 
   override begin(): StateResult {
     const game = getGame();
@@ -2556,100 +2776,52 @@ export class MenuState extends State {
 
     this.previousPosition = game._moveOrigin ?? null;
 
-    const options: MenuOption[] = [];
     const ux = unit.position[0];
     const uy = unit.position[1];
 
-    // Attack option — only if enemies are in weapon range from current position
-    const targets = unit.hasAttacked ? [] : [...new Set(getAvailableCombatItems(unit)
+    // --- Python MenuState.start option order ---------------------------
+    // PRIMARY_ABILITIES (Attack, Spells, Talk), then event regions, then
+    // OTHER_ABILITIES (Support, Drop, Rescue, Take, Give, Pair Up, Separate,
+    // Switch, Transfer, Item, Supply, Trade), then Wait. Extra (skill)
+    // abilities go after Spells/Attack and combat arts after Attack.
+    const options: MenuOption[] = [];
+    const ts = game.targetSystem;
+    const hasTargets = (item: ItemObject): boolean =>
+      itemAvailable(unit, item, game.db, game) &&
+      (ts?.getValidTargetsRecursive(unit, item).length ?? 0) > 0;
+
+    // Attack: weapons with a valid target (Python AttackAbility).
+    const weaponTargets = unit.hasAttacked ? [] : [...new Set(unit.items
+      .filter((item) => item.isWeapon() && itemAvailable(unit, item, game.db, game))
       .flatMap((item) => getTargetsInRange(unit, ux, uy, item)))];
-    if (targets.length > 0) {
+    if (weaponTargets.length > 0) {
       options.push({ label: 'Attack', value: 'attack', enabled: true });
     }
-    if (!unit.hasAttacked && getCombatArtOptions(game, unit).length > 0) {
-      options.push({ label: 'Combat Arts', value: 'combat_arts', enabled: true });
+    // Spells: spells (incl. staves) with a valid target (Python SpellAbility).
+    const spellOptions = unit.hasAttacked ? [] : unit.items.filter((item) =>
+      item.isSpell() && !item.isWeapon() && hasTargets(item));
+    if (spellOptions.length > 0) {
+      options.push({ label: 'Spells', value: 'spells', enabled: true });
     }
-
-    // Skill abilities are persistent item instances filtered through the same
-    // recursive availability/target contract as Python's extra-ability menu.
-    const availableAbilities = getSkillAbilityOptions(game, unit).filter(({ item }) =>
-      itemAvailable(unit, item, game.db, game) &&
-      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
-    );
-    // Python stores uncategorized abilities in an ordered name-keyed dict:
-    // later same-name grants replace the value without adding a duplicate row.
-    this.skillAbilities = [...new Map(
-      availableAbilities.map((ability) => [ability.item.name, ability]),
-    ).values()];
-    for (let index = this.skillAbilities.length - 1; index >= 0; index--) {
-      const ability = this.skillAbilities[index];
-      options.splice(Math.min(options.length, targets.length > 0 ? 1 : 0), 0, {
-        label: ability.item.name,
-        value: `skill_ability_${index}`,
-        enabled: true,
-      });
-    }
-
-    // Item option — if unit has usable healing/consumable items
-    const hasUsableItem = unit.getUsableItems().some((item) =>
-      itemAvailable(unit, item, game.db, game) &&
-      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0,
-    );
-    if (hasUsableItem) {
-      options.push({ label: 'Item', value: 'item', enabled: true });
-    }
-    const accessories = unit.items.filter((item) =>
-      item.isAccessory() && unit.canEquip(item),
-    );
-    if (accessories.length > 0) {
-      options.push({ label: 'Accessory', value: 'accessory', enabled: true });
-    }
-
-    // Trade option — if adjacent allied unit exists and unit hasn't traded/attacked
-    if (unit.canTrade()) {
-      const adjacentAllies = getAdjacentAllies(unit, ux, uy).filter((ally) =>
-        canTradeWith(unit, ally, game.db, game));
-      if (adjacentAllies.length > 0) {
-        options.push({ label: 'Trade', value: 'trade', enabled: true });
-      }
-    }
-
-    const pairUpEnabled = game.db.getConstant('pairup', false);
-    const pairUpAllowed = pairUpEnabled && !game.db.getConstant('attack_stance_only', false);
-    const rescuableUnits = getAdjacentAllies(unit, ux, uy).filter((ally) =>
-      !ally.isRescued() && !ally.isRescuing() &&
-      (!pairUpEnabled || ally.team === unit.team),
-    );
-    if (!unit.isRescuing() && !unit.isRescued() && rescuableUnits.length > 0) {
-      if (pairUpAllowed) options.push({ label: 'Pair Up', value: 'pair_up', enabled: true });
-      else if (!pairUpEnabled) options.push({ label: 'Rescue', value: 'rescue', enabled: true });
-    }
-
-    if (unit.isRescuing()) {
-      const dropTiles = getAdjacentEmptyTiles(ux, uy, unit.rescuing);
-      if (dropTiles.length > 0) {
-        if (pairUpEnabled && unit.leadUnit && !unit.hasAttacked) {
-          options.push({ label: 'Separate', value: 'separate', enabled: true });
-        } else if (!pairUpEnabled) {
-          options.push({ label: 'Drop', value: 'drop', enabled: true });
-        }
-      }
-    }
-
-    if (pairUpEnabled && unit.traveler && unit.rescuing &&
-        canUnitStandAt(unit.rescuing, ux, uy)) {
-      options.push({ label: 'Switch', value: 'switch', enabled: true });
-    }
-
-    const transferTargets = pairUpEnabled && !unit.hasGiven
-      ? getAdjacentAllies(unit, ux, uy).filter((ally) => !!ally.traveler || !!unit.traveler)
-      : [];
-    if (transferTargets.length > 0) {
-      options.push({ label: 'Transfer', value: 'transfer', enabled: true });
+    // Talk
+    const talkTargets = getAdjacentUnits(ux, uy).filter((other) => {
+      if (other === unit || !game.eventManager) return false;
+      const ctx = { game, unit1: unit, unit2: other, gameVars: game.gameVars, levelVars: game.levelVars };
+      const events = game.eventManager.getEventsForTrigger({
+        type: 'on_talk',
+        levelNid: game.currentLevel?.nid ?? '',
+        unitA: unit.nid,
+        unitB: other.nid,
+        unit1: unit,
+        unit2: other,
+      }, ctx);
+      return events.length > 0 && !game.eventManager.isTalkHidden(unit.nid, other.nid);
+    });
+    if (talkTargets.length > 0) {
+      options.push({ label: 'Talk', value: 'talk', enabled: true });
     }
 
     // Region interactions (Visit, Seize, Shop, Armory, Chest, etc.)
-    // Regions with region_type === 'event' show their sub_nid as the menu label.
     this.validRegions = [];
     if (game.currentLevel?.regions) {
       for (const region of game.currentLevel.regions) {
@@ -2658,15 +2830,12 @@ export class MenuState extends State {
         const [rx, ry] = region.position;
         const [rw, rh] = region.size;
         if (ux >= rx && ux < rx + rw && uy >= ry && uy < ry + rh) {
-          // Evaluate region condition
           const condCtx: ConditionContext = {
             game, unit1: unit, region,
             gameVars: game.gameVars, levelVars: game.levelVars,
           };
-          const conditionStr = region.condition ?? 'True';
-          const conditionMet = evaluateCondition(conditionStr, condCtx);
+          const conditionMet = evaluateCondition(region.condition ?? 'True', condCtx);
           if (!conditionMet) continue;
-          // No duplicate sub_nid labels
           const subNid = region.sub_nid || 'Visit';
           if (options.some(o => o.label === subNid)) continue;
           options.push({ label: subNid, value: `region_${region.nid}`, enabled: true });
@@ -2675,38 +2844,11 @@ export class MenuState extends State {
       }
     }
 
-    // Talk option — check if adjacent unit has a talk event
-    const adjacentTalkTargets = getAdjacentUnits(ux, uy).filter((other) => {
-      if (other === unit) return false;
-      // Check if there's a talk event between these two units
-      if (game.eventManager) {
-        const ctx = { game, unit1: unit, unit2: other, gameVars: game.gameVars, levelVars: game.levelVars };
-        const levelNid = game.currentLevel?.nid ?? '';
-        const events = game.eventManager.getEventsForTrigger({
-          type: 'on_talk',
-          levelNid,
-          unitA: unit.nid,
-          unitB: other.nid,
-          unit1: unit,
-          unit2: other,
-        }, ctx);
-        if (events.length === 0) return false;
-        if (game.eventManager.isTalkHidden(unit.nid, other.nid)) return false;
-        return true;
-      }
-      return false;
-    });
-    if (adjacentTalkTargets.length > 0) {
-      options.push({ label: 'Talk', value: 'talk', enabled: true });
-    }
-
-    // Support option — check if adjacent unit has an unlocked-but-unviewed support rank
-    // Gate: _supports enabled AND support_constants.combat_convos enabled
+    // Support
     const supportAvailable = game.gameVars.get('_supports') &&
       game.db.supportConstants.get('combat_convos');
     const adjacentSupportTargets = supportAvailable ? getAdjacentUnits(ux, uy).filter((other) => {
       if (other === unit) return false;
-      // Check if there's a support pair with can_support (unlocked-but-unviewed rank)
       const pair = game.supports?.getPair(unit.nid, other.nid);
       if (!pair) return false;
       return game.supports.canSupport(pair, game);
@@ -2715,25 +2857,113 @@ export class MenuState extends State {
       options.push({ label: 'Support', value: 'support', enabled: true });
     }
 
-    // Supply — Python SupplyAbility: _convoy enabled and unit has 'Convoy'
-    // tag or an adjacent same-team ally has 'AdjConvoy'.
+    const pairUpEnabled = !!game.db.getConstant('pairup', false);
+    const pairUpAllowed = pairUpEnabled && !game.db.getConstant('attack_stance_only', false);
+    // Drop
+    if (!pairUpEnabled && unit.isRescuing() && !unit.hasAttacked && !unit.hasRescued) {
+      if (getAdjacentEmptyTiles(ux, uy, unit.rescuing).length > 0) {
+        options.push({ label: 'Drop', value: 'drop', enabled: true });
+      }
+    }
+    // Rescue (Python: aid >= the target's rescue weight)
+    if (!pairUpEnabled && !unit.isRescuing() && !unit.hasAttacked && !unit.hasGiven && !unit.hasDropped &&
+        getAdjacentAllies(unit, ux, uy).some((ally) =>
+          !ally.isRescuing() && !ally.isRescued() && canCarry(unit, ally, game))) {
+      options.push({ label: 'Rescue', value: 'rescue', enabled: true });
+    }
+    // Take
+    if (!pairUpEnabled && !unit.isRescuing() && !unit.hasAttacked && !unit.hasGiven && !unit.hasDropped &&
+        getAdjacentAllies(unit, ux, uy).some((ally) =>
+          ally.isRescuing() && !!ally.rescuing && canCarry(unit, ally.rescuing, game))) {
+      options.push({ label: 'Take', value: 'take', enabled: true });
+    }
+    // Give
+    if (!pairUpEnabled && unit.isRescuing() && !!unit.rescuing && !unit.hasAttacked &&
+        (!unit.hasTaken || game.db.getConstant('give_and_take', false)) && !unit.hasRescued &&
+        getAdjacentAllies(unit, ux, uy).some((ally) =>
+          !ally.isRescuing() && !ally.isRescued() && canCarry(ally, unit.rescuing!, game))) {
+      options.push({ label: 'Give', value: 'give', enabled: true });
+    }
+    // Pair Up / Separate / Switch / Transfer
+    if (pairUpAllowed && !unit.isRescuing() && !unit.isRescued() &&
+        getAdjacentAllies(unit, ux, uy).some((ally) =>
+          !ally.isRescued() && !ally.isRescuing() && ally.team === unit.team)) {
+      options.push({ label: 'Pair Up', value: 'pair_up', enabled: true });
+    }
+    if (pairUpEnabled && unit.isRescuing() && unit.leadUnit && !unit.hasAttacked &&
+        getAdjacentEmptyTiles(ux, uy, unit.rescuing).length > 0) {
+      options.push({ label: 'Separate', value: 'separate', enabled: true });
+    }
+    if (pairUpEnabled && unit.traveler && unit.rescuing &&
+        canUnitStandAt(unit.rescuing, ux, uy)) {
+      options.push({ label: 'Switch', value: 'switch', enabled: true });
+    }
+    const transferTargets = pairUpEnabled && !unit.hasGiven
+      ? getAdjacentAllies(unit, ux, uy).filter((ally) => !!ally.traveler || !!unit.traveler)
+      : [];
+    if (transferTargets.length > 0) {
+      options.push({ label: 'Transfer', value: 'transfer', enabled: true });
+    }
+    // Item: any item in the inventory (Python ItemAbility).
+    if (unit.items.length > 0) {
+      options.push({ label: 'Item', value: 'item', enabled: true });
+    }
+    // Supply — Python SupplyAbility.
     if (supplyAvailableOnMap(unit, game)) {
       options.push({ label: 'Supply', value: 'supply', enabled: true });
+    }
+    // Trade
+    if (getTradePartners(unit).length > 0) {
+      options.push({ label: 'Trade', value: 'trade', enabled: true });
     }
 
     // Wait is always available
     options.push({ label: 'Wait', value: 'wait', enabled: true });
 
-    // Position the menu near the unit
-    const cameraOffset = game.camera.getOffset();
-    const menuX = ux * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4;
-    const menuY = uy * TILEHEIGHT - cameraOffset[1];
+    // Extra abilities after Spells/Attack (else after the region options).
+    const availableAbilities = getSkillAbilityOptions(game, unit).filter(({ item }) => hasTargets(item));
+    // Python stores uncategorized abilities in an ordered name-keyed dict:
+    // later same-name grants replace the value without adding a duplicate row.
+    this.skillAbilities = [...new Map(
+      availableAbilities.map((ability) => [ability.item.name, ability]),
+    ).values()];
+    const abilityStart = options.findIndex((o) => o.value === 'spells') >= 0
+      ? options.findIndex((o) => o.value === 'spells') + 1
+      : options.findIndex((o) => o.value === 'attack') >= 0
+        ? options.findIndex((o) => o.value === 'attack') + 1
+        : this.validRegions.length;
+    for (let index = this.skillAbilities.length - 1; index >= 0; index--) {
+      options.splice(Math.min(options.length, abilityStart), 0, {
+        label: this.skillAbilities[index].item.name,
+        value: `skill_ability_${index}`,
+        enabled: true,
+      });
+    }
 
-    // Clamp menu to screen
-    const clampedX = Math.min(menuX, viewport.width - 60);
-    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
+    // Combat arts after Attack (else after the region options). With the
+    // combat_art_category constant off (EotF) each art is listed by name.
+    this.combatArts = unit.hasAttacked ? [] : getCombatArtOptions(game, unit);
+    if (this.combatArts.length > 0) {
+      const artStart = options.findIndex((o) => o.value === 'attack') >= 0
+        ? options.findIndex((o) => o.value === 'attack') + 1
+        : this.validRegions.length;
+      if (game.db.getConstant('combat_art_category', false)) {
+        options.splice(artStart, 0, { label: 'Combat Arts', value: 'combat_arts', enabled: true });
+      } else {
+        for (let index = this.combatArts.length - 1; index >= 0; index--) {
+          options.splice(artStart, 0, {
+            label: this.combatArts[index].skill.name,
+            value: `combat_art_${index}`,
+            enabled: true,
+          });
+        }
+      }
+    }
 
-    this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
+    // Python menus.Choice 'auto' placement: top-right when the cursor is on
+    // the left half of the screen, top-left otherwise.
+    this.menu = new ChoiceMenu(options, 0, 8);
+    placeAutoMenu(this.menu, game);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -2758,9 +2988,26 @@ export class MenuState extends State {
     if (!result) return;
 
     if ('back' in result) {
+      const unit: UnitObject = game.selectedUnit;
+      // Python MenuState BACK after a trade/give/take: the move is committed.
+      // Canto units may keep moving; everyone else waits.
+      if (unit?.hasTraded) {
+        this.menu = null;
+        if (unitHasCanto(unit, unit, game)) {
+          game.actionLog.doAction(new SetMovementLeftAction(unit, cantoMovement(unit, unit, game)));
+          if (unit.position) game.cursor.setPos(unit.position[0], unit.position[1]);
+          game.state.change('move');
+        } else {
+          game._moveAction = null;
+          game.state.clear();
+          game.state.change('free');
+          waitUnit(game, unit, false);
+          if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+        }
+        return;
+      }
       // Remove the uncommitted move and its action-group marker. The fallback
       // supports harness-created menu states that did not originate in MoveState.
-      const unit: UnitObject = game.selectedUnit;
       if (game._moveAction) {
         game.actionLog.reverseMoveToActionGroupStart(game._moveAction);
         game._moveAction = null;
@@ -2784,9 +3031,24 @@ export class MenuState extends State {
       } else if (value === 'combat_arts') {
         this.menu = null;
         game.state.change('combat_art_choice');
+      } else if (value.startsWith('combat_art_')) {
+        const option = this.combatArts[Number(value.slice('combat_art_'.length))];
+        deactivateCombatArts(unit);
+        if (option && activateCombatArt(game, unit, option)) {
+          this.menu = null;
+          game.state.change('weapon_choice');
+        }
+      } else if (value === 'spells') {
+        this.menu = null;
+        game.memory.set('weapon_choice_mode', 'spells');
+        game.state.change('weapon_choice');
+      } else if (value === 'take' || value === 'give') {
+        this.menu = null;
+        game.memory.set('traveler_transfer_mode', value);
+        game.state.change('traveler_transfer');
       } else if (value === 'item') {
         this.menu = null;
-        game.state.change('item_use');
+        game.state.change('item');
       } else if (value === 'accessory') {
         this.menu = null;
         game.state.change('accessory_choice');
@@ -3587,6 +3849,387 @@ export function applyCoreSequenceItem(
   return true;
 }
 
+// ============================================================================
+// 4a2. ItemMenuState / item child — Python general_states.ItemState and
+// ItemChildState: the full inventory with an Equip / Expand / Use / Trade /
+// Storage / Discard child menu (and a Yes/No confirm for Storage/Discard).
+// ============================================================================
+
+export class ItemMenuState extends State {
+  readonly name = 'item';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private child: ChoiceMenu | null = null;
+  private confirm: ChoiceMenu | null = null;
+  private items: ItemObject[] = [];
+  private childItem: ItemObject | null = null;
+  private confirmAction: 'Storage' | 'Discard' | null = null;
+  private selectedIndex = 0;
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    if (!unit || !unit.position || unit.finished) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.child = null;
+    this.confirm = null;
+    this.childItem = null;
+    this.items = [...unit.items];
+    if (this.items.length === 0) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.buildMenu(unit);
+  }
+
+  private buildMenu(unit: UnitObject): void {
+    const game = getGame();
+    const options: MenuOption[] = this.items.map((item, index) => ({
+      label: item.name,
+      value: String(index),
+      enabled: true,
+      itemRow: itemMenuRow(unit, item, game),
+    }));
+    this.menu = new ChoiceMenu(options, 0, 8);
+    this.menu.selectedIndex = Math.min(this.selectedIndex, options.length - 1);
+    placeAutoMenu(this.menu, game);
+  }
+
+  private childOptions(unit: UnitObject, item: ItemObject): string[] {
+    const game = getGame();
+    const options: string[] = [];
+    if (unit.items.includes(item) && unit.canEquip(item)) options.push('Equip');
+    if (item.hasComponent('multi_item') && item.subitems.length > 0 && unit.items.includes(item)) options.push('Expand');
+    const usable = (unit.getUsableItems().includes(item) || item.hasCoreUseEffect?.()) &&
+      itemAvailable(unit, item, game.db, game) &&
+      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0;
+    if (usable && !unit.hasAttacked) options.push('Use');
+    if (getTradePartners(unit).length > 0 && !item.hasComponent('untradeable')) {
+      options.push('Trade');
+    }
+    if (unit.items.includes(item)) {
+      const locked = item.hasComponent('locked');
+      if (!locked && game.gameVars.get('_convoy') &&
+          (game.db.getConstant('long_range_storage', false) || supplyAvailableOnMap(unit, game))) {
+        options.push('Storage');
+      } else if (!locked && !item.hasComponent('undiscardable')) {
+        options.push('Discard');
+      }
+    }
+    if (options.length === 0) options.push('Nothing');
+    return options;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    if (!unit) return;
+    const active = this.confirm ?? this.child ?? this.menu;
+    if (!active) return;
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick) {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = active.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+    } else if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      active.handleMouseHover(gx, gy);
+    }
+    if (!result && event !== null) result = active.handleInput(event);
+    if (!result) return;
+
+    if (active === this.confirm) {
+      if ('back' in result || result.selected === 'No') {
+        this.confirm = null;
+        return;
+      }
+      const item = this.childItem;
+      if (item && unit.items.includes(item)) {
+        if (this.confirmAction === 'Discard') {
+          game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+        } else if (this.confirmAction === 'Storage') {
+          game.actionLog.doAction(new StoreItemAction(unit, item));
+        }
+      }
+      this.confirm = null;
+      this.child = null;
+      this.items = [...unit.items];
+      if (this.items.length === 0) {
+        this.menu = null;
+        game.state.back();
+        return;
+      }
+      this.selectedIndex = Math.min(this.selectedIndex, this.items.length - 1);
+      this.buildMenu(unit);
+      return;
+    }
+
+    if (active === this.child) {
+      if ('back' in result) {
+        this.child = null;
+        return;
+      }
+      const item = this.childItem;
+      if (!item) return;
+      const choice = result.selected;
+      if (choice === 'Equip') {
+        game.actionLog.doAction(new EquipItemAction(unit, item));
+        if (unit.items.includes(item)) game.actionLog.doAction(new BringToTopItemAction(unit, item));
+        this.child = null;
+        this.items = [...unit.items];
+        this.selectedIndex = Math.max(0, this.items.indexOf(item));
+        this.buildMenu(unit);
+      } else if (choice === 'Use' || choice === 'Expand') {
+        // Reuse the item-use flow (self-target shortcut, promotions,
+        // multi-item children, item targeting).
+        this.child = null;
+        this.menu = null;
+        game.memory.set('item_menu_use_item', item);
+        game.state.change('item_use');
+      } else if (choice === 'Trade') {
+        this.child = null;
+        this.menu = null;
+        game.state.change('trade');
+      } else if (choice === 'Storage' || choice === 'Discard') {
+        this.confirmAction = choice;
+        this.confirm = new ChoiceMenu([
+          { label: 'Yes', value: 'Yes', enabled: true },
+          { label: 'No', value: 'No', enabled: true },
+        ], 0, 0);
+        placeChildMenu(this.confirm, this.child);
+      }
+      return;
+    }
+
+    // Inventory list
+    if ('back' in result) {
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    const index = Number(result.selected);
+    const item = this.items[index];
+    if (!item) return;
+    this.selectedIndex = index;
+    this.childItem = item;
+    const opts = this.childOptions(unit, item).map((label) => ({
+      label, value: label, enabled: label !== 'Nothing',
+    }));
+    this.child = new ChoiceMenu(opts, 0, 0);
+    placeChildMenu(this.child, this.menu!);
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
+    const game = getGame();
+    const current = this.items[this.menu?.selectedIndex ?? -1];
+    if (current && !this.child) drawItemDescriptionPanel(surf, game, game.selectedUnit, current);
+    this.child?.draw(surf);
+    this.confirm?.draw(surf);
+    return surf;
+  }
+}
+
+/** Python menu_options.ItemOption colours and uses string for a unit's item. */
+function itemMenuRow(unit: UnitObject, item: ItemObject, game: any): MenuItemRow {
+  const available = itemAvailable(unit, item, game.db, game);
+  let mainColor = 'grey';
+  let usesColor = 'grey';
+  if (item.droppable) {
+    mainColor = 'green';
+    usesColor = 'green';
+  } else if (available) {
+    mainColor = 'white';
+    usesColor = 'blue';
+  }
+  const index = item.iconIndex ?? [0, 0];
+  return {
+    iconNid: item.iconNid || null,
+    iconIndex: [Number(index[0]) || 0, Number(index[1]) || 0],
+    uses: item.maxUses > 0 ? String(item.uses) : '--',
+    mainColor,
+    usesColor,
+  };
+}
+
+/** Python icons.get_portrait: the 96x80 face crop, optionally flipped. */
+const panelPortraits = new Map<string, HTMLCanvasElement>();
+function getPanelPortrait(game: any, nid: string, flip: boolean): HTMLCanvasElement | null {
+  const key = `${nid}|${flip ? 1 : 0}`;
+  const cached = panelPortraits.get(key);
+  if (cached) return cached;
+  const sheet = getColorkeyedPortrait(game, nid);
+  if (!sheet) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 80;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  if (flip) {
+    ctx.translate(96, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(sheet, 0, 0, 96, 80, 0, 0, 96, 80);
+  panelPortraits.set(key, canvas);
+  return canvas;
+}
+
+/**
+ * Python ui_view.ItemDescriptionPanel (weapon/spell choice and the item
+ * menu): the unit's portrait above a 96x56 panel opposite the cursor, with
+ * Affin/Atk/Hit/Crit/Avo for usable weapons, otherwise the description.
+ */
+function drawItemDescriptionPanel(surf: Surface, game: any, unit: UnitObject | null, item: ItemObject): void {
+  if (!unit) return;
+  const width = 96;
+  const height = 56;
+  const cursorX = game.cursor?.getPosition?.()?.[0] ?? 0;
+  const cameraX = Math.floor((game.camera?.getOffset?.()?.[0] ?? 0) / TILEWIDTH);
+  const cursorLeft = !(cursorX > Math.floor(viewport.width / TILEWIDTH / 2) + cameraX);
+  const left = cursorLeft ? 8 : viewport.width - 8 - (width + 2);
+  const top = viewport.height - 8 - (height + 4);
+
+  const portraitNid = (unit as any).portraitNid ?? game.db.units.get(unit.nid)?.portrait_nid ?? '';
+  const portrait = portraitNid ? getPanelPortrait(game, portraitNid, cursorLeft) : null;
+  if (portrait) surf.blitImage(portrait, 0, 0, 96, 80, left + 2, top - 76);
+
+  const bx = left + 2;
+  const by = top + 4;
+  surf.blit(getMenuBackgroundSync(width, height), bx, by);
+  const available = itemAvailable(unit, item, game.db, game);
+  if (item.isWeapon() && available) {
+    const t = top + 4;
+    const l = left + 2;
+    const affinWidth = measureStyledText('Affin', 'text');
+    surf.drawText('Affin', l + Math.floor(width / 2) - 8 - Math.floor(affinWidth / 2), t + 4, 'white', 'text');
+    surf.drawText('Atk', l + 5, t + 20, 'white', 'text');
+    surf.drawText('Hit', l + 5, t + 36, 'white', 'text');
+    const showCrit = !!game.db.getConstant('crit', true);
+    surf.drawText(showCrit ? 'Crit' : 'AS', l + Math.floor(width / 2) + 5, t + 20, 'white', 'text');
+    surf.drawText('Avo', l + Math.floor(width / 2) + 5, t + 36, 'white', 'text');
+    let damage = '--';
+    let hit = '--';
+    let crit = '--';
+    let avo = '--';
+    let speed = '--';
+    try {
+      damage = String(combatDamage(unit, item, game.db, game));
+      hit = String(combatAccuracy(unit, item, game.db, game));
+      crit = String(combatCritAccuracy(unit, item, game.db, game));
+      avo = String(combatAvoid(unit, game.db, game.board, null, game));
+      speed = String(attackSpeed(unit, item, game.db, game));
+    } catch {
+      // Leave '--' for values the formulas cannot evaluate.
+    }
+    surf.drawTextRight(damage, l + Math.floor(width / 2) - 3, t + 20, 'blue', 'text');
+    surf.drawTextRight(hit, l + Math.floor(width / 2) - 3, t + 36, 'blue', 'text');
+    surf.drawTextRight(showCrit ? crit : speed, l + width - 10, t + 20, 'blue', 'text');
+    surf.drawTextRight(avo, l + width - 10, t + 36, 'blue', 'text');
+    const weaponType = item.getComponent<string>('weapon_type');
+    const wtype = weaponType ? (game.db.weapons ?? []).find((w: any) => w.nid === weaponType) : null;
+    const iconX = l + Math.floor(width / 2) - 8 + Math.floor(affinWidth / 2) + 8;
+    if (wtype?.icon_nid) {
+      drawIcon16(surf, wtype.icon_nid, [Number(wtype.icon_index?.[0]) || 0, Number(wtype.icon_index?.[1]) || 0], iconX, t + 4);
+    } else {
+      surf.drawText('--', l + Math.floor(width / 2) - 8 + affinWidth + 8, t + 4, 'blue', 'text');
+    }
+  } else {
+    let desc = String(item.desc ?? '');
+    if (!desc && !available) desc = 'Cannot wield.';
+    const words = desc.replace(/\{br\}/g, '\n').split('\n');
+    const lines: string[] = [];
+    for (const paragraph of words) {
+      let line = '';
+      for (const word of paragraph.split(' ')) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && measureStyledText(next, 'text') > width - 8) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = next;
+        }
+      }
+      lines.push(line);
+    }
+    lines.slice(0, 3).forEach((line, index) => {
+      drawStyledText(surf, line, left + 6, top + 8 + index * 16, 'white', 'text');
+    });
+  }
+}
+
+// ============================================================================
+// 4a3. TravelerTransferState — Python TakeAbility / GiveAbility targeting.
+// ============================================================================
+
+export class TravelerTransferState extends State {
+  readonly name = 'traveler_transfer';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private mode: 'take' | 'give' = 'take';
+  private candidates: UnitObject[] = [];
+
+  override start(): StateResult {
+    const game = getGame();
+    this.mode = game.memory.get('traveler_transfer_mode') === 'give' ? 'give' : 'take';
+    game.memory.delete('traveler_transfer_mode');
+  }
+
+  override begin(): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    if (!unit || !unit.position) {
+      game.state.back();
+      return 'repeat';
+    }
+    const allies = getAdjacentAllies(unit, unit.position[0], unit.position[1]);
+    this.candidates = this.mode === 'take'
+      ? allies.filter((ally) => ally.isRescuing() && !!ally.rescuing && canCarry(unit, ally.rescuing, game))
+      : allies.filter((ally) => !ally.isRescuing() && !ally.isRescued() &&
+        !!unit.rescuing && canCarry(ally, unit.rescuing, game));
+    if (this.candidates.length === 0) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.menu = new ChoiceMenu(this.candidates.map((ally, index) => ({
+      label: ally.name, value: String(index), enabled: true,
+    })), 0, 8);
+    placeAutoMenu(this.menu, game);
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu || event === null) return;
+    const game = getGame();
+    const result = this.menu.handleInput(event);
+    if (!result) return;
+    if ('back' in result) {
+      this.menu = null;
+      game.state.back();
+      return;
+    }
+    const unit: UnitObject = game.selectedUnit;
+    const other = this.candidates[Number(result.selected)];
+    if (!unit || !other) return;
+    // Python: HasTraded + Take/Give; neither counts as the major action, so
+    // the unit returns to its action menu.
+    game.actionLog.doAction(new HasTradedAction(unit));
+    if (this.mode === 'take' && other.rescuing) {
+      game.actionLog.doAction(new TransferTravelerAction(other, unit, other.rescuing, 'take'));
+    } else if (this.mode === 'give' && unit.rescuing) {
+      game.actionLog.doAction(new TransferTravelerAction(unit, other, unit.rescuing, 'give'));
+    }
+    this.menu = null;
+    game.state.back();
+  }
+
+  override draw(surf: Surface): Surface {
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
 export class ItemUseState extends State {
   readonly name = 'item_use';
   override readonly transparent = true;
@@ -3596,6 +4239,7 @@ export class ItemUseState extends State {
   private topLevelItems: ItemObject[] = [];
   private parentItem: ItemObject | null = null;
   private abilityRoot: ItemObject | null = null;
+  private directUse = false;
 
   private setItemMenu(items: ItemObject[], unit: UnitObject): void {
     const game = getGame();
@@ -3648,6 +4292,21 @@ export class ItemUseState extends State {
       this.topLevelItems = [];
       this.setItemMenu(children, unit);
       return;
+    }
+    const directItem = game.memory.get('item_menu_use_item') as ItemObject | undefined;
+    if (directItem) {
+      // Python ItemChildState 'Use'/'Expand' on one inventory item.
+      game.memory.delete('item_menu_use_item');
+      this.topLevelItems = [directItem];
+      this.setItemMenu(this.topLevelItems, unit);
+      this.directUse = true;
+      return this.takeInput('SELECT');
+    }
+    if (this.directUse) {
+      // Came back from targeting/children of a direct use: return to the item menu.
+      this.directUse = false;
+      game.state.back();
+      return 'repeat';
     }
     this.topLevelItems = unit.getUsableItems().filter((item) =>
       itemAvailable(unit, item, game.db, game) &&
@@ -4503,11 +5162,7 @@ export class TradeState extends State {
       return;
     }
 
-    this.adjacentAllies = getAdjacentAllies(
-      unit,
-      unit.position[0],
-      unit.position[1],
-    ).filter((ally) => canTradeWith(unit, ally, game.db, game));
+    this.adjacentAllies = getTradePartners(unit);
     if (this.adjacentAllies.length === 0) {
       game.state.back();
       return;
@@ -4595,11 +5250,8 @@ export class TradeState extends State {
           this.activeTradeSide = 'a';
           return;
         }
-        const unit: UnitObject = game.selectedUnit;
-        if (unit) {
-          game.actionLog.doAction(new HasTradedAction(unit));
-          game.actionLog.doAction(new WaitAction(unit));
-        }
+        // Python TradeState.back: return to the unit's action menu. The
+        // turn is not consumed; HasTraded was recorded per completed swap.
         game.state.back();
         return;
       }
@@ -4633,6 +5285,9 @@ export class TradeState extends State {
           partner,
           selectedIndexB,
         ));
+        // Python TradeState.do_trade -> has_traded (open_trade from events
+        // and prep trades go through other states).
+        game.actionLog.doAction(new HasTradedAction(unit));
       }
       this.buildItemMenus(unit);
     }
@@ -4696,9 +5351,10 @@ export class RescueState extends State {
       return;
     }
 
+    const pairUp = !!game.db.getConstant('pairup', false);
     this.rescuableUnits = getAdjacentAllies(unit, unit.position[0], unit.position[1])
       .filter((ally) => !ally.isRescued() && !ally.isRescuing() &&
-        (!game.db.getConstant('pairup', false) || ally.team === unit.team));
+        (pairUp ? ally.team === unit.team : canCarry(unit, ally, game)));
 
     if (this.rescuableUnits.length === 0) {
       game.state.back();
@@ -5002,6 +5658,14 @@ export class WeaponChoiceState extends State {
   private menu: ChoiceMenu | null = null;
   private weapons: ItemObject[] = [];
   private previousEquipped: ItemObject | null = null;
+  /** Python SpellChoiceState: same menu over the unit's spells. */
+  private spellMode = false;
+
+  override start(): StateResult {
+    const game = getGame();
+    this.spellMode = game.memory.get('weapon_choice_mode') === 'spells';
+    game.memory.delete('weapon_choice_mode');
+  }
 
   override begin(): StateResult {
     const game = getGame();
@@ -5020,20 +5684,18 @@ export class WeaponChoiceState extends State {
 
     const combatArtWeapons = game.memory.get('combat_art_weapons') as ItemObject[] | undefined;
     const combatArtMode = !!game.memory.get('combat_art_parent');
+    // Python WeaponChoiceState / SpellChoiceState.get_options: weapons (or
+    // spells) that have a valid target, in inventory order.
+    const hasTargets = (item: ItemObject): boolean =>
+      itemAvailable(unit, item, game.db, game) &&
+      (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0;
     if (combatArtMode && combatArtWeapons) {
       this.weapons = combatArtWeapons.filter((item) =>
         unit.items.includes(item) && itemAvailable(unit, item, game.db, game));
+    } else if (this.spellMode) {
+      this.weapons = unit.items.filter((item) => item.isSpell() && !item.isWeapon() && hasTargets(item));
     } else {
-      // Gather all usable weapons (has uses remaining, is a weapon)
-      this.weapons = unit.items.filter(
-        (item) => item.isWeapon() && itemAvailable(unit, item, game.db, game),
-      );
-
-      // Also include spells
-      const spells = unit.items.filter(
-        (item) => item.isSpell() && !item.isWeapon() && itemAvailable(unit, item, game.db, game),
-      );
-      this.weapons.push(...spells);
+      this.weapons = unit.items.filter((item) => item.isWeapon() && hasTargets(item));
     }
 
     if (this.weapons.length === 0) {
@@ -5041,31 +5703,19 @@ export class WeaponChoiceState extends State {
       return;
     }
 
-    // If only one weapon, auto-select it
-    if (this.weapons.length === 1 && !combatArtMode) {
-      this.equipWeapon(unit, this.weapons[0]);
-      game.state.change('targeting');
-      return;
-    }
-
     // Remember current equipped weapon for undo
     this.previousEquipped = getEquippedWeapon(unit, game.db, game);
 
-    // Build menu options
-    const options: MenuOption[] = this.weapons.map((w) => ({
+    // Build menu options (Python always shows the menu, even for one item).
+    const options: MenuOption[] = this.weapons.map((w, index) => ({
       label: w.name,
-      value: w.nid,
+      value: String(index),
       enabled: true,
+      itemRow: itemMenuRow(unit, w, game),
     }));
 
-    // Position menu near unit
-    const cameraOffset = game.camera.getOffset();
-    const menuX = unit.position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH + 4;
-    const menuY = unit.position[1] * TILEHEIGHT - cameraOffset[1];
-    const clampedX = Math.min(menuX, viewport.width - 80);
-    const clampedY = Math.min(menuY, viewport.height - options.length * 16 - 8);
-
-    this.menu = new ChoiceMenu(options, clampedX, Math.max(0, clampedY));
+    this.menu = new ChoiceMenu(options, 0, 8);
+    placeAutoMenu(this.menu, game);
 
     // Equip the first weapon and show its attack range
     this.equipWeapon(unit, this.weapons[0]);
@@ -5151,7 +5801,15 @@ export class WeaponChoiceState extends State {
     }
 
     if ('selected' in result) {
-      const weapon = this.weapons.find((w) => w.nid === result.selected);
+      const weapon = this.weapons[Number(result.selected)];
+      if (weapon && this.spellMode) {
+        // Spells target through the chosen item, not the equipped weapon.
+        game.highlight.clear();
+        this.menu = null;
+        game.memory.set('item_use_item', weapon);
+        game.state.change('item_targeting');
+        return;
+      }
       if (weapon) {
         const unit: UnitObject = game.selectedUnit;
         this.equipWeapon(unit, weapon);
@@ -5174,14 +5832,14 @@ export class WeaponChoiceState extends State {
   }
 
   override draw(surf: Surface): Surface {
+    // Python WeaponChoiceState.draw: item description panel, then the menu.
     const game = getGame();
-    game.highlight.update();
-    surf = drawMap(surf, true);
-    if (this.menu) {
-      this.menu.draw(surf);
-    }
+    const current = this.weapons[this.menu?.selectedIndex ?? -1];
+    if (current && this.menu) drawItemDescriptionPanel(surf, game, game.selectedUnit, current);
+    this.menu?.draw(surf);
     return surf;
   }
+
 
   override end(): StateResult {
     const game = getGame();
@@ -5677,7 +6335,14 @@ export class CombatState extends State {
     // Dual-strike mechanics currently use the map presentation so every
     // partner phase has an on-map actor and independent lunge/HP target.
     const hasAttackStance = !!attacker.strikePartner || !!primaryDefender?.strikePartner;
-    const canAnimate = !groupedCombat && !hasAttackStance && !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
+    // Python interaction.has_animation: the 'animation' setting (Always /
+    // Your Turn / Combat Only / Never), inverted while START is held.
+    const animSetting = String(getSetting('animation') ?? 'Always');
+    const animWanted = animSetting === 'Always' ||
+      (animSetting === 'Your Turn' && attacker.team === 'player') ||
+      (animSetting === 'Combat Only' && !!primaryDefender && !game.db.areAllied(attacker.team, primaryDefender.team));
+    const wantAnimation = animWanted !== !!game.input?.isPressed?.('START');
+    const canAnimate = wantAnimation && !groupedCombat && !hasAttackStance && !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
       attacker, attackItem, defender, defenseItem, rngMode, game, script,
     );
 
@@ -8206,7 +8871,10 @@ export class TurnChangeState extends State {
         game.actionLog.doAction(new IncrementSupportPointsAction(pair, points));
       }
     }
-    game.memory.set('previous_cursor_position', game.cursor.getPosition());
+    // Python stores the cursor only when the player phase ends.
+    if (game.phase?.getCurrent() === 'player') {
+      game.memory.set('previous_cursor_position', game.cursor.getPosition());
+    }
 
     const endingTeam = game.phase?.getCurrent();
     if (endingTeam) {
@@ -8438,23 +9106,46 @@ export class PhaseChangeState extends State {
 
   private banner: Banner | null = null;
   private fadedIn = false;
+  private roamSkip = false;
 
   override begin(): StateResult {
     const game = getGame();
     const currentTeam = game.phase.getCurrent();
     const turnCount = game.phase.turnCount;
+    // States are singletons: re-arm the end-of-banner music fade per phase.
+    this.fadedIn = false;
+    // Python PhaseChangeState.is_roam: free roam skips the banner and music.
+    this.roamSkip = !!(game.roamInfo?.roam && game.roamInfo.roamUnitNid &&
+      game.getUnit(game.roamInfo.roamUnitNid)?.position);
 
-    // Phase music: fade out whatever's playing before showing the banner
-    // (matches Python: phase.fade_out_phase_music() at PhaseChangeState.begin()).
-    fadeOutPhaseMusic(game);
-    // Play this team's phase-change stinger (Python: PhaseIn.begin() plays
-    // team.phase_change_sound_effect or 'Next Turn'; team-level overrides
-    // aren't modeled in the web team data yet, so this always uses the default).
-    game.audioManager?.playSfx?.('Next Turn');
+    if (!this.roamSkip) {
+      // Phase music: fade out whatever's playing before showing the banner
+      // (matches Python: phase.fade_out_phase_music() at PhaseChangeState.begin()).
+      fadeOutPhaseMusic(game);
+      // Play this team's phase-change stinger (Python: PhaseIn.begin() plays
+      // team.phase_change_sound_effect or 'Next Turn'; team-level overrides
+      // aren't modeled in the web team data yet, so this always uses the default).
+      game.audioManager?.playSfx?.('Next Turn');
+    }
 
     // Turnwheel markers: lock during non-player phases, mark phase change
     game.actionLog.doAction(new LockTurnwheel(currentTeam !== 'player'));
     game.actionLog.doAction(new MarkPhase(currentTeam));
+
+    // Python PhaseIn.begin (player): autocursor setting -> first 'Lord'
+    // tagged player unit (else first player unit); otherwise return to the
+    // cursor position remembered from the previous player phase.
+    if (currentTeam === 'player') {
+      const playerUnits = (game.getAllUnits() as UnitObject[]).filter((u) =>
+        u.team === 'player' && !!u.position && !u.isDead());
+      const lord = playerUnits.find((u) => u.tags.includes('Lord')) ?? playerUnits[0];
+      const remembered = game.memory.get('previous_cursor_position') as [number, number] | undefined;
+      const target = getSetting('autocursor') !== 'OFF' || !remembered ? lord?.position : remembered;
+      if (target) {
+        game.cursor.setPos(target[0], target[1]);
+        game.camera.focusTile(target[0], target[1]);
+      }
+    }
 
     if (currentTeam === 'player' && game.db.getConstant('pairup', false)) {
       for (const leader of game.getAllUnits() as UnitObject[]) {
@@ -8483,7 +9174,21 @@ export class PhaseChangeState extends State {
         break;
     }
 
-    this.banner = new Banner(bannerText, subText);
+    this.banner = this.roamSkip ? null : new Banner(bannerText, subText);
+
+    // Python TurnChangeState.end -> status_upkeep also runs for the player
+    // on turn 1 (the level start never passes through the web turn_change).
+    if (currentTeam === 'player' && turnCount === 1 && !game.levelVars.get('_turn1_upkeep_done')) {
+      game.levelVars.set('_turn1_upkeep_done', true);
+      for (const unit of game.getTeamUnits('player').filter((candidate: UnitObject) => candidate.position)) {
+        applySkillTurnHooks(game, [unit], 'upkeep');
+        applyItemUpkeepResourceHooks(
+          game,
+          unit,
+          getSkillAbilityOptions(game, unit).map((ability) => ability.item),
+        );
+      }
+    }
 
     // Reset units for the new phase and process status effects
     if (game.initiative) {
@@ -8508,10 +9213,12 @@ export class PhaseChangeState extends State {
         }
       }
     } else {
-      // Standard mode: reset all units of the team
+      // Python PhaseChangeState.begin: ResetAll for every living unit, then
+      // status upkeep for the phase's team.
+      const living = (game.getAllUnits() as UnitObject[]).filter((unit) => !unit.isDead());
+      game.actionLog.doAction(new ResetAllAction(living));
       const teamUnits: UnitObject[] = game.board.getTeamUnits(currentTeam);
       for (const unit of teamUnits) {
-        game.actionLog.doAction(new ResetAllAction([unit]));
         const statusAction = new ProcessStatusEffectsAction(unit);
         game.actionLog.doAction(statusAction);
         if (statusAction.damage > 0 && unit.currentHp <= 0) {
@@ -8530,7 +9237,7 @@ export class PhaseChangeState extends State {
     const game = getGame();
     // Phase music: fade back in on the way out (Python: phase.fade_in_phase_music
     // (at_turn_change=True) at PhaseChangeState.end()).
-    if (!this.fadedIn) {
+    if (!this.fadedIn && !this.roamSkip) {
       this.fadedIn = true;
       fadeInPhaseMusic(game, true);
     }
@@ -8540,8 +9247,12 @@ export class PhaseChangeState extends State {
   }
 
   override update(): StateResult {
-    if (!this.banner) return;
     const game = getGame();
+    if (this.roamSkip) {
+      game.state.back();
+      return;
+    }
+    if (!this.banner) return;
 
     const done = this.banner.update(FRAMETIME);
     if (done) {
@@ -9268,7 +9979,8 @@ export class EventState extends State {
   /** Effective dialog text speed in milliseconds per character. */
   private getDialogTextSpeedMs(): number {
     const game = getGame();
-    const raw = game.gameVars?.get('_setting_text_speed');
+    void game;
+    const raw = getSetting('text_speed');
     if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
       return raw;
     }
@@ -10502,15 +11214,10 @@ export class EventState extends State {
       // If we clear it now, update() would run the burst loop with stale
       // state before processTempState flushes the clear/change ops.
       const enterNextLevel = (): void => {
-        game.state.clear();
-        game.state.change('free');
-        // If level_start triggered events, push EventState
-        if (game.eventManager?.hasActiveEvents()) {
-          // Start the new level's events with a black screen so that
-          // chapter_title + transition;Open work as expected
-          this.startWithBlackScreen = true;
-          game.state.change('event');
-        }
+        // Start the new level's events with a black screen so that
+        // chapter_title + transition;Open work as expected
+        if (game.eventManager?.hasActiveEvents()) this.startWithBlackScreen = true;
+        enterStartedLevel(game);
       };
       if (skipSave) {
         enterNextLevel();

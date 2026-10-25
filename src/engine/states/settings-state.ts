@@ -200,6 +200,58 @@ const COLOR_SCROLL_IND = 'rgba(180,180,220,0.5)';
 const COLOR_CONTROLS_KEY = 'rgba(180,200,255,1)';
 
 // ============================================================================
+// Global settings store (Python cf.SETTINGS / saves/config.ini)
+// ============================================================================
+
+const SETTINGS_STORAGE_KEY = 'lt-web-settings';
+let settingsCache: Record<string, unknown> | null = null;
+
+function loadSettingsCache(): Record<string, unknown> {
+  if (settingsCache) return settingsCache;
+  settingsCache = {};
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SETTINGS_STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') settingsCache = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Unavailable or corrupt storage falls back to the defaults.
+  }
+  return settingsCache;
+}
+
+/**
+ * Current value of a config setting. Python keeps these in a global config
+ * (not in the save), so they persist across reloads and new games; the web
+ * used to keep them in gameVars, where most were never read and all reset.
+ */
+export function getSetting(name: string): any {
+  const cache = loadSettingsCache();
+  if (name in cache) return cache[name];
+  const def = CONFIG_SETTINGS.find((d) => d.name === name);
+  return def ? def.values[def.defaultIndex] : undefined;
+}
+
+export function setSetting(name: string, value: unknown): void {
+  const cache = loadSettingsCache();
+  cache[name] = value;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cache));
+  } catch {
+    // Storage may be full or unavailable; keep the in-memory value.
+  }
+}
+
+/** Apply settings with engine-wide side effects (volumes) at boot. */
+export function applyStoredSettings(game: any): void {
+  const music = getSetting('music_volume');
+  const sound = getSetting('sound_volume');
+  if (typeof music === 'number') game.audioManager?.setMusicVolume?.(music);
+  if (typeof sound === 'number') game.audioManager?.setSfxVolume?.(sound);
+}
+
+// ============================================================================
 // SettingsMenuState
 // ============================================================================
 
@@ -244,9 +296,9 @@ export class SettingsMenuState extends State {
   /** Load current values from game.gameVars or use defaults. */
   private loadSettings(): void {
     const game = getGame();
+    void game;
     this.configValues = CONFIG_SETTINGS.map((def) => {
-      const key = `_setting_${def.name}`;
-      const stored = game.gameVars.get(key);
+      const stored = getSetting(def.name);
       if (stored !== undefined) {
         // Find the index of the stored value
         const idx = def.values.indexOf(stored);
@@ -271,11 +323,9 @@ export class SettingsMenuState extends State {
 
   /** Save all settings to game.gameVars. */
   private saveSettings(): void {
-    const game = getGame();
     for (let i = 0; i < CONFIG_SETTINGS.length; i++) {
       const def = CONFIG_SETTINGS[i];
-      const val = def.values[this.configValues[i]];
-      game.gameVars.set(`_setting_${def.name}`, val);
+      setSetting(def.name, def.values[this.configValues[i]]);
     }
   }
 
@@ -289,12 +339,12 @@ export class SettingsMenuState extends State {
       if (game.audioManager && typeof game.audioManager.setMusicVolume === 'function') {
         game.audioManager.setMusicVolume(val);
       }
-      game.gameVars.set('_setting_music_volume', val);
+      setSetting('music_volume', val);
     } else if (def.name === 'sound_volume' && typeof val === 'number') {
       if (game.audioManager && typeof game.audioManager.setSfxVolume === 'function') {
         game.audioManager.setSfxVolume(val);
       }
-      game.gameVars.set('_setting_sound_volume', val);
+      setSetting('sound_volume', val);
     }
   }
 

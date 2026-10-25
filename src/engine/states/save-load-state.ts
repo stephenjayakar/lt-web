@@ -361,8 +361,10 @@ export async function resumeLoadedGame(game: any, kind: string | null | undefine
     if (nextLevel && game.db.levels.has(nextLevel)) {
       game.cleanUpLevel();
       await game.loadLevel(nextLevel);
+      // Python start_level -> turn_change: free, player phase_change, events.
       game.state.clear();
       game.state.change('free');
+      game.state.change('phase_change');
       if (game.eventManager?.hasActiveEvents()) game.state.change('event');
       return;
     }

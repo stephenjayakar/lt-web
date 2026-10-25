@@ -182,8 +182,9 @@ Open
 `/?bundle=/bundles/eotf.ltproj.zip&project=eotf.ltproj&control=true&rev=N`.
 Change `rev` after rebuilding; control mode unregisters stale service workers.
 Read the canvas `data-control-state`, `-phase`, `-turn`, `-floor`, `-level`,
-`-position`, and JSON `-units` attributes after every action. Drive Enter,
-X/Back, arrows/WASD, and Space (map menu/end turn) through the browser.
+`-position`, and JSON `-units` attributes after every action. Drive Enter
+(on an empty tile it opens the map menu, as in Python), X/Back, arrows/WASD,
+and Space (START: minimap on the map, skip in events) through the browser.
 Cursor taps can occasionally double-step, so query `data-control-position`
 after each tap and continue toward the target instead of sending a fixed key
 burst. Typical waits are 170 ms per cursor tap, 250–700 ms for menus, about
