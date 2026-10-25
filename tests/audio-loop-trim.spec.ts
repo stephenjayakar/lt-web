@@ -83,8 +83,8 @@ test.describe('music loop trim', () => {
         const am = new AudioManager('/__audio-test');
         am.init();
         await am.playMusic(nid, 0);
-        const src = (am as unknown as { currentMusic: AudioBufferSourceNode | null }).currentMusic!;
-        const buf = src.buffer!;
+        const src = am.getMusicController()!.currentChannel.describe().sources.find((x) => x.channel === 'music')!;
+        const buf = src.buffer;
         const ch = buf.getChannelData(0);
         let firstSound = -1;
         for (let i = 0; i < ch.length; i++) if (Math.abs(ch[i]) > 0.05) { firstSound = i; break; }

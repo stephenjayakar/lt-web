@@ -7,6 +7,7 @@
  * units, tilemap, mapView, etc.) without creating circular imports.
  */
 
+import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import type { GameState } from '../game-state';
 import { Surface } from '../surface';
@@ -5264,7 +5265,8 @@ export class CombatState extends State {
   private eventCombat: boolean = false;
 
   /** Whether we successfully pushed battle music (guards popMusic). */
-  private didPushBattleMusic: boolean = false;
+  /** Python AnimationCombat.battle_music: what battle_fade_in returned (null: nothing to undo) */
+  private battleMusic: Promise<SongObject | null> | null = null;
 
   // EXP state machine (faithful port of Python ExpState)
   private expBar: ExpBarClass | null = null;
@@ -5457,16 +5459,19 @@ export class CombatState extends State {
     game.cursor.visible = false;
     game.hud.visible = false;
 
-    // Play battle music (push current phase music onto the stack)
-    this.didPushBattleMusic = false;
-    const levelMusic = game.currentLevel?.music;
-    if (levelMusic) {
-      const battleTrack = attacker.team === 'player'
-        ? levelMusic.player_battle
-        : levelMusic.enemy_battle;
+    // Python AnimationCombat.start_battle_music: only animated combat changes
+    // the music. A song with a -battle variant crossfades to it in place;
+    // otherwise the battle song fades in over the phase music.
+    this.battleMusic = null;
+    if (this.isAnimationCombat) {
+      const levelMusic = (game.currentLevel?.music ?? {}) as unknown as Record<string, string | null | undefined>;
+      const attackerBattle = attacker.tags.includes('Boss') ? levelMusic.boss_battle : null;
+      const defenderBattle = defender?.tags?.includes('Boss') ? levelMusic.boss_battle : null;
+      const teamBattle = levelMusic[`${attacker.team}_battle`];
+      const battleTrack = attackerBattle || defenderBattle || teamBattle;
       if (battleTrack) {
-        this.didPushBattleMusic = true;
-        void game.audioManager.pushMusic(battleTrack);
+        const fromStart = !!game.db.getConstant?.('restart_battle_music', true);
+        this.battleMusic = game.audioManager.battleFadeIn(battleTrack, 400, fromStart);
       }
     }
 
@@ -6287,10 +6292,14 @@ export class CombatState extends State {
           // TODO: push a VictoryState / trigger level_end event
         }
 
-        // Restore phase music (pop battle music from the stack)
-        if (this.didPushBattleMusic) {
-          void game.audioManager.popMusic();
-          this.didPushBattleMusic = false;
+        // Python AnimationCombat.finish: fade back if and only if it was faded in
+        if (this.battleMusic) {
+          const fromStart = !!game.db.getConstant?.('restart_battle_music', true);
+          const pending = this.battleMusic;
+          this.battleMusic = null;
+          void pending.then((song) => {
+            if (song) void game.audioManager.battleFadeBack(song, fromStart);
+          });
         }
 
         // Restore cursor and HUD visibility (hidden at combat start)
@@ -12975,9 +12984,13 @@ export class EventState extends State {
       // ----- Audio commands -----
 
       case 'music': {
+        // Python event_functions.music: 'None' fades to pause, else fade_in.
         const musicNid = args[0] ?? '';
-        if (musicNid && game.audioManager) {
-          void game.audioManager.playMusic(musicNid);
+        const fade = args[1] !== undefined && args[1] !== '' && Number.isFinite(Number(args[1])) ? Number(args[1]) : 400;
+        if (musicNid === 'None') {
+          game.audioManager?.fadeToPause(fade);
+        } else if (musicNid && game.audioManager) {
+          void game.audioManager.playMusic(musicNid, fade);
         }
         this.advancePointer();
         // Music is treated as blocking briefly to let the transition feel natural.
@@ -13056,17 +13069,20 @@ export class EventState extends State {
       // ----- Audio extended -----
 
       case 'music_fade_back': {
-        // Restore the previous music (pop the stack)
+        // Python event_functions.music_fade_back(fade_out=400)
         if (game.audioManager) {
-          void game.audioManager.popMusic();
+          const fade = args[0] !== undefined && args[0] !== '' && Number.isFinite(Number(args[0])) ? Number(args[0]) : 400;
+          void game.audioManager.popMusic(fade);
         }
         this.advancePointer();
         return false;
       }
 
       case 'music_clear': {
+        // Python event_functions.music_clear(fade_out=0): clear, or fade_clear when fading
         if (game.audioManager) {
-          game.audioManager.stopMusic();
+          const fade = args[0] !== undefined && args[0] !== '' && Number.isFinite(Number(args[0])) ? Number(args[0]) : 0;
+          game.audioManager.stopMusic(fade);
         }
         this.advancePointer();
         return false;

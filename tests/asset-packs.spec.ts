@@ -452,8 +452,12 @@ test.describe('re-encoded music', () => {
       expect(r.data.subarray(0, 4).toString('latin1')).toBe('OggS');
 
       const rel = 'demo.ltproj/resources/music/Theme.ogg';
-      const built = build(fx, new Map([[rel, r.data]]));
-      await servePacks(page, built);
+      // music.json flags Theme's intro: it ships in a demand-only pack
+      const intro = makeToneOgg(fx.root, 22050);
+      const built = build(fx, new Map([[rel, r.data], ['demo.ltproj/resources/music/Theme-intro.ogg', intro]]));
+      const served = await servePacks(page, built);
+      const introPack = built.packs.find((p) => p.name === 'music/Theme-intro.ogg')!;
+      expect(introPack.load).toBe('demand');
       const played = await page.evaluate(async (base) => {
         await caches.delete('lt-packs-v1');
         const { bootHostedPacks, loadPackManifest } = await import('/src/packs/hosted.ts');
@@ -462,8 +466,8 @@ test.describe('re-encoded music', () => {
         const am = new AudioManager('/game-data/demo.ltproj');
         am.init();
         await am.playMusic('Theme', 0);
-        const internal = am as unknown as { currentMusic: AudioBufferSourceNode | null; currentMusicNid: string };
-        const src = internal.currentMusic;
+        const music = am.getMusicController()?.currentChannel.describe().sources.filter((x) => x.channel === 'music') ?? [];
+        const src = music.find((x) => x.loop) ?? null;
         const buf = src?.buffer ?? null;
         let rms = 0;
         if (buf) {
@@ -472,13 +476,18 @@ test.describe('re-encoded music', () => {
           rms = Math.sqrt(rms / ch.length);
         }
         return {
-          nid: internal.currentMusicNid,
+          nid: am.getCurrentMusicNid(),
           loop: src?.loop ?? null,
           duration: buf?.duration ?? null,
           channels: buf?.numberOfChannels ?? null,
           rms,
+          introFrames: music.find((x) => !x.loop)?.buffer.length ?? null,
+          introRate: music.find((x) => !x.loop)?.buffer.sampleRate ?? null,
         };
       }, BASE);
+      // the intro was fetched from its demand pack (once) and plays before the loop
+      expect(totalHits(served, introPack.chunks.map((c) => c.hash))).toBe(introPack.chunks.length);
+      expect(played.introFrames).toBe(Math.round(22050 * played.introRate! / 44100));
       const lengths = await page.evaluate(async ([a, b]) => {
         const decode = async (b64: string) => {
           const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));

@@ -5,37 +5,49 @@
 /**
  * AudioManager - Handles music and sound effect playback using Web Audio API.
  *
- * Music:  loaded from resources/music/{nid}.{ogg,mp3,wav}, loops, crossfades.
+ * Music:  loaded from resources/music/{nid}.{ogg,mp3,wav} (+ -intro/-battle
+ *         variants flagged in music.json); played by MusicController, a port
+ *         of Python's sound thread (channel pairs, song stack, fades).
  * SFX:    loaded from resources/sfx/{nid}.{ogg,wav}, plays once.
  *
  * Like pygame in Python LT, a looping track restarts at sample 0 once its
  * whole file has played (no loop points); Ogg Vorbis buffers are trimmed to
  * the stream's true length first (ogg-length.ts).
  */
+import { DEFAULT_FADE_TIME_MS, MusicController } from './music-controller';
+import type { SongObject } from './music-controller';
 import { oggVorbisLength, trimToTrueLength } from './ogg-length';
 
 export class AudioManager {
   private audioContext: AudioContext | null;
   private musicGain: GainNode | null;
   private sfxGain: GainNode | null;
-  private currentMusic: AudioBufferSourceNode | null;
-  private currentMusicNid: string;
   private musicVolume: number;
   private sfxVolume: number;
   private audioBufferCache: Map<string, AudioBuffer>;
   private baseUrl: string;
-  private musicStack: string[];
-  private pendingMusic: { nid: string; fadeMs: number; requestId: number } | null;
-  private musicRequestId: number;
-  /** Active looping SFX sources, keyed by NID. */
+  /** Python's sound thread (music half): channel pairs, song stack, fades */
+  private music: MusicController | null = null;
+  private musicTicker: ReturnType<typeof setInterval> | null = null;
+  /** Python MUSIC dict: decoded songs (song + intro; battle joins when loaded) */
+  private songs: Map<string, SongObject> = new Map();
+  private songLoads: Map<string, Promise<SongObject | null>> = new Map();
+  private musicFlags: Promise<Map<string, { intro: boolean; battle: boolean }> | null> | null = null;
+  /** Music operations run in call order (each may wait for its song to load) */
+  private musicQueue: Promise<void> = Promise.resolve();
+  /** Latest play request made before the browser unlocked audio */
+  private pendingMusic: { nid: string; fadeMs: number; fromStart: boolean } | null;
+
+  /** Map of currently looping SFX sources, keyed by NID */
   private loopingSfx: Map<string, AudioBufferSourceNode> = new Map();
+
   /**
-   * Call-recording log for verification/tests. Mirrors the Python
-   * SongStack/Channel semantics (play/push/pop/fade) so specs can assert
-   * on music-stack behavior without asserting real audio playback.
+   * Call log for test assertions (mirrors Python's `get_sound_thread()`
+   * observable calls). Always populated; not used for actual playback.
    */
   readonly calls: Array<{
-    op: 'play' | 'push' | 'pop' | 'stop' | 'fadeIn' | 'fadeToPause' | 'sfx' | 'sfxLoop' | 'sfxStop';
+    op: 'play' | 'push' | 'pop' | 'stop' | 'fadeIn' | 'fadeToPause' | 'battleFadeIn' | 'battleFadeBack'
+      | 'sfx' | 'sfxLoop' | 'sfxStop';
     nid?: string;
     fadeMs?: number;
   }> = [];
@@ -44,15 +56,11 @@ export class AudioManager {
     this.audioContext = null;
     this.musicGain = null;
     this.sfxGain = null;
-    this.currentMusic = null;
-    this.currentMusicNid = '';
     this.musicVolume = 0.7;
     this.sfxVolume = 1.0;
     this.audioBufferCache = new Map();
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    this.musicStack = [];
     this.pendingMusic = null;
-    this.musicRequestId = 0;
   }
 
   /**
@@ -76,173 +84,207 @@ export class AudioManager {
     this.sfxGain.gain.value = this.sfxVolume;
     this.sfxGain.connect(this.audioContext.destination);
 
+    this.music = new MusicController(this.audioContext, this.musicGain, (nid) => this.songs.get(nid) ?? null);
+    // Python updates the sound thread every frame.
+    this.musicTicker = setInterval(() => this.music?.update(), 16);
+
     // Title/level setup can request music before the browser permits an
     // AudioContext. Start the most recent request now that a user gesture has
     // unlocked audio instead of leaving the screen permanently silent.
     const pendingMusic = this.pendingMusic;
     this.pendingMusic = null;
     if (pendingMusic) {
-      void this.playMusicWithFade(
-        pendingMusic.nid,
-        pendingMusic.fadeMs,
-        pendingMusic.requestId,
-      );
+      this.enqueueFadeIn(pendingMusic.nid, pendingMusic.fadeMs, pendingMusic.fromStart);
     }
   }
 
+  // ------------------------------------------------------------------
+  // Music — Python get_sound_thread() semantics (src/audio/music-controller.ts)
+  // ------------------------------------------------------------------
+
   /**
-   * Play background music with crossfade.
-   * If the same track is already playing, this is a no-op.
-   * Fades out the current track over 500ms, then starts the new one.
+   * Python fade_in: fade the current song out and the given one in over
+   * `fadeMs`, pushing it onto the song stack. A song still held by a channel
+   * resumes where it paused. Plays `<nid>-intro` first when music.json
+   * flags one. Same song already current: no-op.
    */
-  async playMusic(nid: string, fadeMs: number = 500): Promise<void> {
+  async playMusic(nid: string, fadeMs: number = DEFAULT_FADE_TIME_MS): Promise<void> {
     this.calls.push({ op: 'play', nid });
-    await this.playMusicWithFade(nid, fadeMs, ++this.musicRequestId);
+    await this.requestFadeIn(nid, fadeMs, false);
   }
 
-  /** Shared implementation behind playMusic/fadeIn — does not itself record a call. */
-  private async playMusicWithFade(
-    nid: string,
-    fadeMs: number,
-    requestId: number,
-  ): Promise<void> {
-    if (!this.audioContext || !this.musicGain) {
-      this.pendingMusic = { nid, fadeMs, requestId };
-      return;
-    }
-
-    // Don't restart the same track
-    if (nid === this.currentMusicNid && this.currentMusic) {
-      return;
-    }
-
-    // Try loading the buffer (ogg -> mp3 -> wav)
-    const buffer = await this.loadMusicBuffer(nid);
-    if (requestId !== this.musicRequestId ||
-        !buffer || !this.audioContext || !this.musicGain) {
-      return;
-    }
-
-    const fadeSec = fadeMs / 1000;
-
-    // Fade out current music
-    if (this.currentMusic) {
-      this.fadeOutAndStop(this.currentMusic, this.musicGain, fadeMs);
-
-      // Create a new gain node for the incoming track so the fade-out
-      // of the old track doesn't interfere.
-      this.musicGain = this.audioContext.createGain();
-      this.musicGain.gain.value = this.musicVolume;
-      this.musicGain.connect(this.audioContext.destination);
-    }
-
-    // Create new source
-    const source = this.audioContext.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(this.musicGain);
-
-    // Fade in from 0 over fadeMs
-    this.musicGain.gain.setValueAtTime(0, this.audioContext.currentTime);
-    this.musicGain.gain.linearRampToValueAtTime(
-      this.musicVolume,
-      this.audioContext.currentTime + fadeSec,
-    );
-
-    source.start(0);
-    this.currentMusic = source;
-    this.currentMusicNid = nid;
-  }
-
-  /**
-   * Stop music with an optional fade-out duration.
-   * @param fadeMs Fade-out duration in milliseconds (default 500).
-   */
-  stopMusic(fadeMs: number = 500): void {
-    this.calls.push({ op: 'stop', fadeMs });
-    this.stopMusicWithFade(fadeMs);
-  }
-
-  /** Shared implementation behind stopMusic/fadeToPause — does not itself record a call. */
-  private stopMusicWithFade(fadeMs: number): void {
-    this.musicRequestId++;
-    this.pendingMusic = null;
-    if (!this.currentMusic || !this.musicGain || !this.audioContext) {
-      return;
-    }
-
-    this.fadeOutAndStop(this.currentMusic, this.musicGain, fadeMs);
-    this.currentMusic = null;
-    this.currentMusicNid = '';
-
-    // Prepare a fresh gain node for future music
-    this.musicGain = this.audioContext.createGain();
-    this.musicGain.gain.value = this.musicVolume;
-    this.musicGain.connect(this.audioContext.destination);
-  }
-
-  /**
-   * Push the current music onto a stack and play a new track.
-   * Use popMusic() to restore the previous track.
-   */
-  async pushMusic(nid: string): Promise<void> {
+  /** Python fade_in (the song stack makes every fade_in a push). */
+  async pushMusic(nid: string, fadeMs: number = DEFAULT_FADE_TIME_MS): Promise<void> {
     this.calls.push({ op: 'push', nid });
-    if (this.currentMusicNid) {
-      this.musicStack.push(this.currentMusicNid);
-    }
-    await this.playMusic(nid);
+    await this.requestFadeIn(nid, fadeMs, false);
   }
 
-  /**
-   * Pop the music stack and resume the previous track.
-   * If the stack is empty, stops music.
-   */
-  async popMusic(): Promise<void> {
+  /** Python fade_back (music_fade_back): back to the previous song on the stack, or stop. */
+  async popMusic(fadeMs: number = DEFAULT_FADE_TIME_MS): Promise<void> {
     this.calls.push({ op: 'pop' });
-    const previousNid = this.musicStack.pop();
-    if (previousNid) {
-      await this.playMusic(previousNid);
-    } else {
-      this.stopMusic();
-    }
+    await this.enqueue(() => this.music?.fadeBack(fadeMs));
   }
 
   /**
-   * Port of Python's phase.fade_in_phase_music / Channel.fade_in: fade in
-   * (or start) the given track over `fadeMs` (default matches Python's
-   * DEFAULT_FADE_TIME_MS / `_phase_music_fade_ms` game var, 400ms).
-   * `fromStart` restarts playback from the beginning (Python passes
-   * from_start=True only when restart_phase_music is on at a turn change);
-   * the web port has no seek-resume, so this is a no-op distinction here
-   * beyond documenting intent for parity.
+   * Port of Python's phase.fade_in_phase_music / sound fade_in: `fromStart`
+   * rewinds a song that would otherwise resume (restart_phase_music).
    */
-  async fadeIn(nid: string, fadeMs: number = 400, _fromStart: boolean = false): Promise<void> {
+  async fadeIn(nid: string, fadeMs: number = DEFAULT_FADE_TIME_MS, fromStart: boolean = false): Promise<void> {
     this.calls.push({ op: 'fadeIn', nid, fadeMs });
-    const requestId = ++this.musicRequestId;
-    if (nid === this.currentMusicNid && this.currentMusic) {
-      return;
-    }
-    await this.playMusicWithFade(nid, fadeMs, requestId);
+    await this.requestFadeIn(nid, fadeMs, fromStart);
+  }
+
+  /** Python fade_to_pause: fade the current song out and pause it (it can resume). */
+  fadeToPause(fadeMs: number = DEFAULT_FADE_TIME_MS): void {
+    this.calls.push({ op: 'fadeToPause', fadeMs });
+    this.pendingMusic = null;
+    void this.enqueue(() => this.music?.fadeToPause(fadeMs));
   }
 
   /**
-   * Port of Python's Channel.fade_to_pause / phase.fade_out_phase_music:
-   * fade the current track out (and effectively stop it — the web port
-   * has no pause/resume for buffer sources) over `fadeMs`.
+   * Python music_clear: fade_clear(fadeMs) when fading, else clear() —
+   * stops the music and empties the song stack.
    */
-  fadeToPause(fadeMs: number = 400): void {
-    this.calls.push({ op: 'fadeToPause', fadeMs });
-    this.stopMusicWithFade(fadeMs);
+  stopMusic(fadeMs: number = DEFAULT_FADE_TIME_MS): void {
+    this.calls.push({ op: 'stop', fadeMs });
+    this.pendingMusic = null;
+    void this.enqueue(() => {
+      if (fadeMs > 0) this.music?.fadeClear(fadeMs);
+      else this.music?.clear();
+    });
+  }
+
+  /**
+   * Python battle_fade_in at combat start: a song with a `-battle` variant
+   * crossfades the current channel pair to it (same position); otherwise a
+   * plain fade_in. Resolves to the song to hand back to battleFadeBack, or
+   * null when nothing changed.
+   */
+  async battleFadeIn(nid: string, fadeMs: number = DEFAULT_FADE_TIME_MS, fromStart: boolean = true): Promise<SongObject | null> {
+    this.calls.push({ op: 'battleFadeIn', nid, fadeMs });
+    if (!this.audioContext) return null;
+    this.loadSong(nid);
+    let result: SongObject | null = null;
+    await this.enqueue(async () => {
+      await this.loadSong(nid);
+      result = this.music?.battleFadeIn(nid, fadeMs, fromStart) ?? null;
+    });
+    return result;
+  }
+
+  /** Python battle_fade_back at combat end: crossfade back, or fade_back when restarting battle music. */
+  async battleFadeBack(song: SongObject, fromStart: boolean = true): Promise<void> {
+    this.calls.push({ op: 'battleFadeBack', nid: song.nid });
+    await this.enqueue(() => this.music?.battleFadeBack(song, fromStart));
   }
 
   /** Currently-playing music track nid, or '' if none (Python: get_current_song().nid). */
   getCurrentMusicNid(): string {
-    return this.currentMusicNid;
+    return this.music?.getCurrentSong()?.nid ?? '';
+  }
+
+  /** Read by the sound room (kept for compatibility). */
+  get currentMusicNid(): string {
+    return this.getCurrentMusicNid();
+  }
+
+  /** The controller (tests and debugging). */
+  getMusicController(): MusicController | null {
+    return this.music;
+  }
+
+  /** Resolves once every queued music operation has been applied. */
+  async settleMusic(): Promise<void> {
+    await this.musicQueue;
   }
 
   /** Clear the recorded call log (test helper). */
   clearCalls(): void {
     this.calls.length = 0;
+  }
+
+  private requestFadeIn(nid: string, fadeMs: number, fromStart: boolean): Promise<void> {
+    if (!this.audioContext) {
+      this.pendingMusic = { nid, fadeMs, fromStart };
+      return Promise.resolve();
+    }
+    return this.enqueueFadeIn(nid, fadeMs, fromStart);
+  }
+
+  private enqueueFadeIn(nid: string, fadeMs: number, fromStart: boolean): Promise<void> {
+    this.loadSong(nid); // start loading now, in parallel with earlier queued operations
+    return this.enqueue(async () => {
+      await this.loadSong(nid);
+      this.music?.fadeIn(nid, fadeMs, fromStart);
+    });
+  }
+
+  private enqueue(op: () => void | Promise<void>): Promise<void> {
+    const run = this.musicQueue.then(op).catch((err) => console.warn('[AudioManager] music operation failed', err));
+    this.musicQueue = run;
+    return run;
+  }
+
+  /** music.json: nid -> intro/battle flags (Python SongPrefab). */
+  private loadMusicFlags(): Promise<Map<string, { intro: boolean; battle: boolean }> | null> {
+    this.musicFlags ??= (async () => {
+      try {
+        const res = await fetch(`${this.baseUrl}/resources/music/music.json`);
+        if (!res.ok) return null;
+        const entries = await res.json() as unknown;
+        if (!Array.isArray(entries)) return null;
+        const flags = new Map<string, { intro: boolean; battle: boolean }>();
+        for (const e of entries) {
+          if (Array.isArray(e) && typeof e[0] === 'string') flags.set(e[0], { intro: !!e[1], battle: !!e[2] });
+        }
+        return flags;
+      } catch {
+        return null;
+      }
+    })();
+    return this.musicFlags;
+  }
+
+  /**
+   * Python MusicDict.get: the song and its intro, decoded. The battle
+   * variant is fetched alongside (so combat never waits on its download)
+   * and joins the playing pair when it arrives.
+   */
+  private loadSong(nid: string): Promise<SongObject | null> {
+    const existing = this.songLoads.get(nid);
+    if (existing) return existing;
+    const load = (async (): Promise<SongObject | null> => {
+      const flags = (await this.loadMusicFlags())?.get(nid) ?? { intro: false, battle: false };
+      const variant = (suffix: string) =>
+        this.loadAudioBuffer(`${this.baseUrl}/resources/music/${encodeURIComponent(nid + suffix)}.ogg`);
+      const battleLoad = flags.battle ? variant('-battle') : null;
+      const [song, intro] = await Promise.all([
+        this.loadMusicBuffer(nid),
+        flags.intro ? variant('-intro') : Promise.resolve(null),
+      ]);
+      if (!song) {
+        this.songLoads.delete(nid); // allow a later retry
+        return null;
+      }
+      if (flags.intro && !intro) console.warn(`[AudioManager] Could not load intro for ${nid}`);
+      const obj: SongObject = {
+        nid, song, intro, battle: null, hasIntro: !!intro, hasBattle: flags.battle, channel: null,
+      };
+      this.songs.set(nid, obj);
+      if (battleLoad) {
+        void battleLoad.then((battle) => {
+          if (!battle) {
+            console.warn(`[AudioManager] Could not load battle variant for ${nid}`);
+            return;
+          }
+          obj.battle = battle;
+          this.music?.battleLoaded(obj);
+        });
+      }
+      return obj;
+    })();
+    this.songLoads.set(nid, load);
+    return load;
   }
 
   /**
@@ -433,33 +475,6 @@ export class AudioManager {
       // Fetch or decode failed — silently return null so callers can try
       // the next extension.
       return null;
-    }
-  }
-
-  /**
-   * Fade out a source node via its gain node and stop it after the fade.
-   */
-  private fadeOutAndStop(
-    source: AudioBufferSourceNode,
-    gain: GainNode,
-    fadeMs: number,
-  ): void {
-    if (!this.audioContext) {
-      return;
-    }
-
-    const fadeSec = fadeMs / 1000;
-    const now = this.audioContext.currentTime;
-
-    // Ramp gain to 0
-    gain.gain.setValueAtTime(gain.gain.value, now);
-    gain.gain.linearRampToValueAtTime(0, now + fadeSec);
-
-    // Schedule the source to stop after the fade completes
-    try {
-      source.stop(now + fadeSec);
-    } catch {
-      // Source may already be stopped; ignore.
     }
   }
 }

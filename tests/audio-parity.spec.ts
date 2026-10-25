@@ -107,29 +107,29 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
       await am.pushMusic('Defense');
       await am.popMusic();
       await am.popMusic();
+      const stackAfterPops = am.getMusicController().songStack.map((s: any) => s.nid);
       am.stopMusic(250);
+      await am.settleMusic();
 
       return {
+        stackAfterPops,
         calls: am.calls,
         finalNid: am.getCurrentMusicNid(),
       };
     });
 
-    // play, then push(Attack) -> [play Attack], push(Defense) -> [play Defense],
-    // pop -> [play Attack] (from stack), pop -> [play Distant Roads] (from stack), stop.
+    // Python sound thread: every fade_in pushes onto the song stack, fade_back
+    // pops back to the previous song, music_clear empties it.
     const ops = result.calls.map((c: any) => `${c.op}:${c.nid ?? ''}`);
     expect(ops).toEqual([
       'play:Distant Roads',
       'push:Attack',
-      'play:Attack',
       'push:Defense',
-      'play:Defense',
       'pop:',
-      'play:Attack',
       'pop:',
-      'play:Distant Roads',
       'stop:',
     ]);
+    expect(result.stackAfterPops).toEqual(['Distant Roads']);
     // Stop recorded the requested fade duration.
     expect(result.calls[result.calls.length - 1].fadeMs).toBe(250);
     // After both pops, the stack is fully unwound and stop() clears current music.
@@ -246,7 +246,7 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
     expect(cancelled).toBe('');
   });
 
-  test('battle music pushes on combat entry and restores phase music on exit', async ({ page }) => {
+  test('map combat leaves the phase music alone (Python changes music only in animation combat)', async ({ page }) => {
     // Prologue (level 0): player_battle = "Attack", enemy_battle = "Defense".
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
@@ -317,8 +317,9 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
       const game = (window as any).__gameRef;
       return game.audioManager.getCurrentMusicNid();
     });
-    // Attacker is player team -> level.music.player_battle == "Attack".
-    expect(musicDuringCombat).toBe('Attack');
+    // A spell resolves as map combat: Python's MapCombat never calls
+    // battle_fade_in, so the phase music keeps playing.
+    expect(musicDuringCombat).toBe('Distant Roads');
 
     await settle(page, 1500);
 
@@ -327,14 +328,10 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
       const calls = game.audioManager.calls;
       return {
         nid: game.audioManager.getCurrentMusicNid(),
-        pushed: calls.some((c: any) => c.op === 'push' && c.nid === 'Attack'),
-        popped: calls.filter((c: any) => c.op === 'pop').length,
+        battle: calls.filter((c: any) => c.op === 'battleFadeIn' || c.op === 'battleFadeBack' || c.op === 'push' || c.op === 'pop').length,
       };
     });
-    expect(after.pushed).toBe(true);
-    expect(after.popped).toBeGreaterThanOrEqual(1);
-    // Restored to the current phase's music after combat ends (player phase
-    // track, since the whole exchange happens on the player's turn).
+    expect(after.battle).toBe(0);
     expect(after.nid).toBe('Distant Roads');
   });
 
