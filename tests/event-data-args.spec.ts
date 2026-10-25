@@ -108,6 +108,40 @@ test.describe('Event data command parity', () => {
     expect(result).toEqual({ uses: 3, starting: 3, itemUses: 3, turns: 2, startingTurns: 2 });
   });
 
+  test('expressions read Python UnitObject attributes EOtF uses', async ({ page }) => {
+    await boot(page);
+    const skillNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const nid = [...g.db.skills.keys()][0];
+      (window as any).__harness.addSkill('Eirika', nid);
+      const skill = g.units.get('Eirika').skills.find((s: any) => s.nid === nid);
+      skill.data.set('charge', 4);
+      return nid;
+    });
+    await runEvent(page, 'QaUnitAttrs', [
+      "game_var;qa_portrait;u('Eirika').portrait_nid",
+      "game_var;qa_party;u('Eirika').party",
+      `game_var;qa_charge;u('Eirika').get_skill('${skillNid}').data['charge'] + 1`,
+      "game_var;qa_attacked;u('Eirika')._has_attacked",
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      return {
+        portrait: g.gameVars.get('qa_portrait'),
+        expectedPortrait: eirika.portraitNid,
+        party: g.gameVars.get('qa_party'),
+        expectedParty: eirika.party,
+        charge: g.gameVars.get('qa_charge'),
+        attacked: g.gameVars.get('qa_attacked'),
+      };
+    });
+    expect(result.portrait).toBe(result.expectedPortrait);
+    expect(result.party).toBe(result.expectedParty);
+    expect(result.charge).toBe(5);
+    expect(result.attacked).toBe(false);
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);

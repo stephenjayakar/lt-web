@@ -2092,6 +2092,26 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_internal_level: () => u.getInternalLevel?.() ?? u.level ?? 1,
       get_field: (nid: string, fallback?: any) =>
         u.fields?.has?.(nid) ? u.fields.get(nid) : (fallback ?? null),
+      // Python UnitObject attributes EOtF reads in event expressions
+      // (e.g. `table;portrait;u('Ophie').portrait_nid;...;expression`).
+      get portrait_nid() {
+        return u.generic ? null : (u.portraitNid ?? u.portrait_nid ?? null);
+      },
+      get party() { return u.party ?? null; },
+      get ai() { return u.ai ?? null; },
+      get faction() { return u.faction ?? null; },
+      get persistent() { return !!u.persistent; },
+      get exp() { return u.exp ?? 0; },
+      get _has_attacked() { return !!(u.hasAttacked ?? u._has_attacked); },
+      get _has_traded() { return !!(u.hasTraded ?? u._has_traded); },
+      get _has_moved() { return !!(u.hasMoved ?? u._has_moved); },
+      get_mana: () => u.currentMana ?? u.current_mana ?? 0,
+      // Python get_skill: the most recently added skill matching nid or uid.
+      get_skill: (nid: any) => {
+        const skills = [...(u.skills ?? [])].reverse();
+        return wrapSkill(skills.find((skill: any) =>
+          skill.nid === nid || String(skill.uid) === String(nid)) ?? null);
+      },
       get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
       get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
