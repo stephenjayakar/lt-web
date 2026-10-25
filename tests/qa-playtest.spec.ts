@@ -217,3 +217,102 @@ test('chapter end shows the between-chapter save unless _skip_save is set', asyn
   expect(after).not.toContain('title_save');
   expect(after[0]).toBe('free');
 });
+
+const press = (page: Page, input: string) =>
+  page.evaluate((key) => (window as any).__harness.stepFrames(1, key), input);
+const choiceState = (page: Page) => page.evaluate(() => {
+  const s = (window as any).__gameRef.state.getCurrentState() as any;
+  return { open: !!s?.choiceMenu, index: s?.choiceMenu?.selectedIndex ?? null };
+});
+
+test('choice: BACK is refused unless backable/persist; backable stores BACK only', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_choice_back', [
+    'game_var;_last_choice;prev',
+    'choice;pick;Pick one;A,B',
+    'game_var;after_pick;1',
+    'choice;pick2;Pick again;C,D;backable',
+    'game_var;after_pick2;1',
+  ], 5);
+  await press(page, 'BACK');
+  await stepFrames(page, 2);
+  expect((await choiceState(page)).open).toBe(true);
+  expect(await gameVar(page, 'after_pick')).toBeUndefined();
+  await press(page, 'DOWN');
+  await press(page, 'SELECT');
+  await stepFrames(page, 3);
+  expect(await gameVar(page, 'pick')).toBe('B');
+  expect(await gameVar(page, '_last_choice')).toBe('B');
+  expect(await gameVar(page, 'after_pick')).toBe(1);
+  await press(page, 'BACK');
+  await stepFrames(page, 3);
+  expect(await gameVar(page, 'pick2')).toBe('BACK');
+  expect(await gameVar(page, '_last_choice')).toBe('B');
+  expect(await gameVar(page, 'after_pick2')).toBe(1);
+});
+
+test('choice: positional EventNid runs, hover var tracks the cursor, persist re-opens', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.db.events.set('qa_sub', {
+      name: 'qa_sub', nid: 'qa_sub', trigger: null, level_nid: null,
+      condition: 'True', only_once: false, priority: 0, _source: ['inc_game_var;sub_runs'],
+    });
+  });
+  await runEvent(page, 'qa_choice_persist', [
+    'choice;menu;Menu;X,Y,Z;;;left;;qa_sub;;;;persist',
+    'game_var;menu_done;1',
+  ], 5);
+  expect(await gameVar(page, 'menu_choice_hover')).toBe('X');
+  await press(page, 'DOWN');
+  await stepFrames(page, 1);
+  expect(await gameVar(page, 'menu_choice_hover')).toBe('Y');
+  await press(page, 'SELECT');
+  await stepFrames(page, 8);
+  expect(await gameVar(page, 'menu')).toBe('Y');
+  expect(await gameVar(page, 'sub_runs')).toBe(1);
+  // Persistent: the menu is back, cursor kept, parent not yet resumed.
+  const reopened = await choiceState(page);
+  expect(reopened.open).toBe(true);
+  expect(reopened.index).toBe(1);
+  expect(await gameVar(page, 'menu_done')).toBeUndefined();
+  await press(page, 'BACK');
+  await stepFrames(page, 3);
+  expect(await gameVar(page, 'menu_done')).toBe(1);
+});
+
+test('styled text colours reach bitmap fonts drawn by nid', async ({ page }) => {
+  await boot(page);
+  const colors = await page.evaluate(async () => {
+    const { Surface } = await import('/src/engine/surface.ts');
+    const { drawStyledText } = await import('/src/ui/styled-text.ts');
+    const sample = (markup: string) => {
+      const surf = new Surface(64, 16, 1);
+      drawStyledText(surf, markup, 0, 0, 'white', 'text');
+      const data = surf.ctx.getImageData(0, 0, 64, 16).data;
+      let red = 0;
+      let white = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] === 0) continue;
+        if (data[i] > 180 && data[i + 1] < 120) red++;
+        if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) white++;
+      }
+      return { red, white };
+    };
+    return { plain: sample('HHHH'), red: sample('<red>HHHH</>') };
+  });
+  expect(colors.plain.red).toBe(0);
+  expect(colors.red.red).toBeGreaterThan(0);
+});
+
+test('expression unit proxy falls back to prefab fields like portrait_nid', async ({ page }) => {
+  await boot(page);
+  const value = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { evaluateExpression } = await import('/src/events/event-manager.ts');
+    const unit = [...g.units.values()].find((u: any) => u.portraitNid);
+    return { expected: unit.portraitNid, got: evaluateExpression(`u('${unit.nid}').portrait_nid`, { game: g, gameVars: g.gameVars, levelVars: g.levelVars }) };
+  });
+  expect(value.got).toBe(value.expected);
+});

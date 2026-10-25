@@ -8647,8 +8647,12 @@ test.describe('Level Progression', () => {
     let chapterTitleSeen = false;
 
     for (let batch = 0; batch < 600; batch++) {
-      // Don't press SELECT after reaching level 1 — let the cutscene play naturally
-      const input = (!reachedLevel1WithEvents && batch % 3 === 0) ? 'SELECT' : null;
+      // Don't press SELECT after reaching level 1 — let the cutscene play naturally.
+      // Python's between-chapter save prompt (title_save) continues on BACK.
+      const onSavePrompt = await page.evaluate(() =>
+        (window as any).__gameRef.state.getCurrentState()?.name === 'title_save');
+      const input = onSavePrompt ? 'BACK'
+        : (!reachedLevel1WithEvents && batch % 3 === 0) ? 'SELECT' : null;
       await stepFrames(page, 5, input);
       // Crucial: yield to the browser event loop so async loadLevel() 
       // promises can resolve

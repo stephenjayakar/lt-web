@@ -157,6 +157,8 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { Banner } from '../../ui/banner';
+import { getMenuBackgroundSync } from '../../ui/base-surf';
+import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
 import { Dialog } from '../../ui/dialog';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
 import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../../ui/exp-display';
@@ -9023,9 +9025,35 @@ type EventOverlaySprite = {
   foreground: boolean;
 };
 
+const colorkeyedPortraits: Map<string, HTMLCanvasElement | null> = new Map();
+/** Portrait sheet with the LT colorkey removed, loaded on first use. */
+function getColorkeyedPortrait(game: any, nid: string): HTMLCanvasElement | null {
+  if (!nid) return null;
+  if (colorkeyedPortraits.has(nid)) return colorkeyedPortraits.get(nid) ?? null;
+  colorkeyedPortraits.set(nid, null);
+  void game.resources.tryLoadImage(`resources/portraits/${nid}.png`).then((img: HTMLImageElement | null) => {
+    if (!img) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < data.data.length; i += 4) {
+      if (data.data[i] === 128 && data.data[i + 1] === 160 && data.data[i + 2] === 128) data.data[i + 3] = 0;
+    }
+    ctx.putImageData(data, 0, 0);
+    colorkeyedPortraits.set(nid, canvas);
+  });
+  return null;
+}
+
 type EventTable = {
   nid: string;
   data: string;
+  /** Unsubstituted TableData: expressions re-run text tags every frame. */
+  rawData: string;
   title: string | null;
   rows: number;
   columns: number;
@@ -9045,8 +9073,12 @@ type EventTable = {
 type EventTextbox = {
   nid: string;
   text: string;
+  /** Unsubstituted text: Python re-runs text tags every frame for expressions. */
+  rawText: string;
   alignment: string;
   width: number;
+  numLines: number;
+  bg: string;
   expression: boolean;
 };
 
@@ -9099,7 +9131,11 @@ export class EventState extends State {
 
   private stateAfterTransition: string | null = null;
   // Choice menu state
-  private choiceMenu: ChoiceMenu | null = null;
+  private choiceMenu: EventChoiceMenu | null = null;
+  /** Python PlayerChoiceState.should_persist: menu stays open after a pick. */
+  private choicePersist: boolean = false;
+  /** Cursor kept across a persistent choice's EventNid replays. */
+  private choiceCursorMemory: Map<string, number> = new Map();
   private choiceResult: string | null = null;
   /** NID of the active choice; the selection is published under this name. */
   private choiceNid: string | null = null;
@@ -9113,6 +9149,7 @@ export class EventState extends State {
     commandPointer: number;
     eventTables: Map<string, EventTable>;
     eventTextboxes: Map<string, EventTextbox>;
+    portraits?: Map<string, EventPortrait>;
     replay: boolean;
   }> = [];
 
@@ -9352,72 +9389,109 @@ export class EventState extends State {
       return;
     }
 
-    // Forward input to choice menu if active
+    // Forward input to choice menu if active (Python PlayerChoiceState).
     if (this.choiceMenu) {
-      const result = this.choiceMenu.handleInput(effective);
-      if (result !== null) {
-        if ('selected' in result) {
-          this.choiceResult = result.selected;
-        } else if (this.choiceBackable) {
-          // Python stores the literal 'BACK' when a backable choice is exited,
-          // which authored branches test for.
-          this.choiceResult = 'BACK';
-        } else {
-          // Not backable — BACK keeps the current selection.
-          this.choiceResult = this.choiceMenu.options[0]?.value ?? '';
+      let result: { selected: string } | { back: true } | null = null;
+      if (game.input?.mouseClick) {
+        const [gx, gy] = game.input.getGameMousePos();
+        result = this.choiceMenu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
+      } else if (game.input?.mouseMoved) {
+        const [gx, gy] = game.input.getGameMousePos();
+        this.choiceMenu.handleMouseHover(gx, gy);
+      }
+      if (!result && effective !== null) {
+        result = this.choiceMenu.handleInput(effective);
+      }
+      if (result === null) {
+        if (this.choiceNid) {
+          game.gameVars.set(`${this.choiceNid}_choice_hover`, this.choiceMenu.getCurrentOption()?.value ?? '');
         }
-        // Publish under the choice's own name: authored events read the
-        // selection back as `{v:<nid>}`, plus `_last_choice`. Without this the
-        // branches after a choice never match.
-        const game = getGame();
-        if (game && this.choiceNid) game.gameVars.set(this.choiceNid, this.choiceResult);
-        if (game) game.gameVars.set('_last_choice', this.choiceResult);
-        const followUp = this.choiceEventNid;
+        return;
+      }
+      if ('back' in result) {
+        if (!this.choicePersist && !this.choiceBackable) {
+          // Python: non-backable, non-persistent choices refuse BACK.
+          game.audioManager?.playSfx?.('Error');
+          return;
+        }
+        game.audioManager?.playSfx?.('Select 4');
+        // Backable: the choice's own var becomes 'BACK'; _last_choice keeps
+        // its previous value (Python choice docs).
+        if (this.choiceBackable && this.choiceNid) {
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, this.choiceNid, 'BACK'));
+          this.choiceResult = 'BACK';
+        }
         this.choiceMenu = null;
         this.choiceNid = null;
         this.choiceBackable = false;
+        this.choicePersist = false;
         this.choiceEventNid = null;
         this.advancePointer();
-        // Queue the selection event after advancing, so it runs before the
-        // rest of this event resumes — matching Python, where the sub-event
-        // inherits the current args and the parent continues afterwards.
-        if (game && followUp && this.choiceResult !== 'BACK') {
-          const prefab = [...game.db.events.values()].find((candidate: any) =>
-            candidate.nid === followUp ||
-            candidate.name === followUp ||
-            `${candidate.level_nid ?? ''} ${candidate.name ?? ''}`.trim() === followUp);
-          if (prefab) {
-            const queue = game.eventManager.eventQueue;
-            const owner = this.currentEvent;
-            const suspendedChoice = owner ? {
-              owner,
-              commandPointer: Math.max(0, owner.commandPointer - 1),
-              eventTables: new Map(this.eventTables),
-              eventTextboxes: new Map(this.eventTextboxes),
-              replay: false,
-            } : null;
-            const priorLength = queue.length;
-            game.eventManager.triggerSpecific(
-              prefab.nid,
-              { type: 'choice_selection', levelNid: game.currentLevel?.nid },
-              true,
-            );
-            // triggerSpecific appends by default. Choice sub-events are
-            // interrupts: run them now, then resume the parent at the already
-            // advanced pointer. EOtF's sortie sub-event builds the selected
-            // party before the parent starts the chapter.
-            const interrupts = queue.splice(priorLength);
-            const ownerIndex = owner ? queue.indexOf(owner) : -1;
-            if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
-            if (owner) queue.unshift(...interrupts, owner);
-            else queue.unshift(...interrupts);
-            if (interrupts.length > 0) this.loadNextEvent(game);
-            if (suspendedChoice && interrupts.length > 0) {
-              this.suspendedChoiceEvents.push(suspendedChoice);
-            }
-          } else {
-            console.warn(`choice: EventNid "${followUp}" not found`);
+        return;
+      }
+      this.choiceResult = result.selected;
+      // Publish under the choice's own name: authored events read the
+      // selection back as `{v:<nid>}`, plus `_last_choice`.
+      if (this.choiceNid) {
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, this.choiceNid, this.choiceResult));
+      }
+      game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_last_choice', this.choiceResult));
+      const followUp = this.choiceEventNid;
+      const persist = this.choicePersist;
+      if (persist && !followUp) {
+        // Persistent menus stay open; only BACK leaves them.
+        return;
+      }
+      if (persist && this.choiceNid) {
+        this.choiceCursorMemory.set(this.choiceNid, this.choiceMenu.selectedIndex);
+      }
+      this.choiceMenu = null;
+      this.choiceNid = null;
+      this.choiceBackable = false;
+      this.choicePersist = false;
+      this.choiceEventNid = null;
+      this.advancePointer();
+      // Queue the selection event after advancing, so it runs before the
+      // rest of this event resumes — matching Python, where the sub-event
+      // inherits the current args and the parent continues afterwards.
+      if (followUp) {
+        const prefab = [...game.db.events.values()].find((candidate: any) =>
+          candidate.nid === followUp ||
+          candidate.name === followUp ||
+          `${candidate.level_nid ?? ''} ${candidate.name ?? ''}`.trim() === followUp);
+        if (prefab) {
+          const queue = game.eventManager.eventQueue;
+          const owner = this.currentEvent;
+          const suspendedChoice = owner ? {
+            owner,
+            commandPointer: Math.max(0, owner.commandPointer - 1),
+            eventTables: new Map(this.eventTables),
+            eventTextboxes: new Map(this.eventTextboxes),
+            portraits: new Map(this.portraits),
+            // A persistent choice re-opens once its selection event ends.
+            replay: persist,
+          } : null;
+          const priorLength = queue.length;
+          game.eventManager.triggerSpecific(
+            prefab.nid,
+            { type: 'choice_selection', levelNid: game.currentLevel?.nid },
+            true,
+          );
+          // triggerSpecific appends by default. Choice sub-events are
+          // interrupts: run them now, then resume the parent at the already
+          // advanced pointer. EOtF's sortie sub-event builds the selected
+          // party before the parent starts the chapter.
+          const interrupts = queue.splice(priorLength);
+          const ownerIndex = owner ? queue.indexOf(owner) : -1;
+          if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
+          if (owner) queue.unshift(...interrupts, owner);
+          else queue.unshift(...interrupts);
+          if (interrupts.length > 0) this.loadNextEvent(game);
+          if (suspendedChoice && interrupts.length > 0) {
+            this.suspendedChoiceEvents.push(suspendedChoice);
           }
+        } else {
+          console.warn(`choice: EventNid "${followUp}" not found`);
         }
       }
       return;
@@ -10208,6 +10282,9 @@ export class EventState extends State {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
         this.eventTables = suspended.eventTables;
         this.eventTextboxes = suspended.eventTextboxes;
+        // The parent's portraits belong to its own Python Event object and
+        // survive the selection event.
+        if (suspended.portraits) this.portraits = suspended.portraits;
         if (suspended.replay) next.commandPointer = suspended.commandPointer;
       }
       this.background = null;
@@ -10411,7 +10488,8 @@ export class EventState extends State {
     let raw: any = table.data;
     if (table.expression) {
       try {
-        raw = evaluateExpression(table.data, this.buildConditionContext());
+        const source = this.substituteEventArgs([table.rawData || table.data], getGame())[0] ?? table.data;
+        raw = evaluateExpression(source, this.buildConditionContext());
       } catch (error) {
         console.warn(`table ${table.nid}: failed to evaluate "${table.data}"`, error);
         return [];
@@ -10438,38 +10516,65 @@ export class EventState extends State {
    * the currency counters shown beside the summoning pool and shops.
    */
   private drawEventTextboxes(surf: Surface): void {
+    const game = getGame();
     for (const box of this.eventTextboxes.values()) {
       let text = box.text;
       if (box.expression) {
         try {
-          const value = evaluateExpression(box.text, this.buildConditionContext());
+          // Python DynamicDialogWrapper: substitute text tags, then eval,
+          // every frame so hover-driven descriptions stay current.
+          const source = this.substituteEventArgs([box.rawText], game)[0] ?? box.rawText;
+          const value = evaluateExpression(source, this.buildConditionContext());
           text = value === null || value === undefined ? '' : String(value);
         } catch (error) {
-          console.warn(`textbox ${box.nid}: failed to evaluate "${box.text}"`, error);
+          console.warn(`textbox ${box.nid}: failed to evaluate "${box.rawText}"`, error);
           continue;
         }
       }
       const content = text.trim();
-      if (!content || measureStyledText(content, 'small') === 0) continue;
+      if (!content) continue;
 
+      // Python textbox uses the '__default_text' speak style: 'text' font on
+      // a menu_bg_base window (the 'small' font only has lowercase glyphs).
+      const paragraphs = content.split(/\{br\}|\n/);
+      const maxTextWidth = box.width > 0 ? box.width - 16 : surf.width - 36;
+      const lines: string[] = [];
+      for (const paragraph of paragraphs) {
+        const words = paragraph.split(' ');
+        let line = '';
+        for (const word of words) {
+          const candidate = line ? `${line} ${word}` : word;
+          if (line && measureStyledText(candidate, 'text') > maxTextWidth) {
+            lines.push(line);
+            line = word;
+          } else {
+            line = candidate;
+          }
+        }
+        lines.push(line);
+      }
+      const shown = lines.slice(0, Math.max(box.numLines, 1) > 1 ? box.numLines : lines.length);
       const panelWidth = Math.min(
         surf.width - 20,
-        box.width > 0 ? box.width : Math.max(24, measureStyledText(content, 'small') + 8),
+        box.width > 0 ? box.width : Math.max(24, ...shown.map(line => measureStyledText(line, 'text'))) + 16,
       );
-      const panelHeight = 20;
+      const panelHeight = Math.max(box.numLines, shown.length) * 16 + 8;
       const alignment = box.alignment;
       const x = alignment.includes('right')
         ? surf.width - panelWidth - 10
-        : alignment.includes('center')
-          ? Math.floor((surf.width - panelWidth) / 2)
-          : 10;
+        : alignment.includes('left')
+          ? 10
+          : Math.floor((surf.width - panelWidth) / 2);
       const y = alignment.includes('bottom')
         ? surf.height - panelHeight - 10
-        : 10;
+        : alignment.includes('top')
+          ? 10
+          : Math.floor((surf.height - panelHeight) / 2);
 
-      surf.fillRect(x, y, panelWidth, panelHeight, 'rgba(18,28,66,0.94)');
-      surf.drawRect(x, y, panelWidth, panelHeight, 'rgba(210,185,104,1)');
-      drawStyledText(surf, content, x + 4, y + 6, 'white', 'small');
+      surf.blit(getMenuBackgroundSync(panelWidth, panelHeight, box.bg || 'menu_bg_base'), x, y);
+      shown.forEach((line, index) => {
+        drawStyledText(surf, line, x + 8, y + 4 + index * 16, 'white', 'text');
+      });
     }
   }
 
@@ -10479,24 +10584,33 @@ export class EventState extends State {
       const values = this.getEventTableRows(table);
       const columns = Math.max(1, table.columns);
       const rows = Math.max(1, table.rows || Math.ceil(values.length / columns));
+      // Python SimpleMenuUI row heights by entry type (portrait 80, chibi 32,
+      // icon/text 16) and option widths (portrait 96, chibi 32).
+      const entryType = table.entryType;
+      const isImage = entryType === 'type_portrait' || entryType === 'type_chibi';
+      const hasIcon = ['type_base_item', 'type_game_item', 'type_skill'].includes(entryType);
       const cellWidth = table.rowWidth > 0
         ? table.rowWidth
-        : Math.max(24, ...values.map(value => measureStyledText(value, 'text') + 8));
-      const rowHeight = values.some(value => value.includes('<icon>')) ? 18 : 12;
-      const titleHeight = table.title ? 10 : table.background === 'funds_display' ? 7 : 0;
-      const panelWidth = Math.min(surf.width - 20, columns * cellWidth + 4);
-      const panelHeight = Math.min(surf.height - 20, titleHeight + rows * rowHeight + 4);
+        : entryType === 'type_portrait' ? 96
+          : entryType === 'type_chibi' ? 32
+            : Math.max(24, ...values.map(value => measureStyledText(value, 'text') + 8 + (hasIcon ? 18 : 0)));
+      const rowHeight = entryType === 'type_portrait' ? 80
+        : entryType === 'type_chibi' ? 32
+          : values.some(value => value.includes('<icon>')) ? 18 : 16;
+      const titleHeight = table.title ? 16 : table.background === 'funds_display' ? 7 : 0;
+      const panelWidth = Math.min(surf.width - 20, columns * cellWidth + (isImage ? 6 : 8));
+      const panelHeight = Math.min(surf.height - 20, titleHeight + rows * rowHeight + 6);
       const alignment = table.alignment.toLowerCase();
       const x = alignment.includes('right')
         ? surf.width - panelWidth - 10
-        : alignment.includes('center')
-          ? Math.floor((surf.width - panelWidth) / 2)
-          : 10;
+        : alignment.includes('left')
+          ? 10
+          : Math.floor((surf.width - panelWidth) / 2);
       const y = alignment.includes('bottom')
         ? surf.height - panelHeight - 10
-        : alignment === 'left' || alignment === 'right' || alignment === 'center'
-          ? Math.floor((surf.height - panelHeight) / 2)
-          : 10;
+        : alignment.includes('top')
+          ? 10
+          : Math.floor((surf.height - panelHeight) / 2);
 
       if (!table.noBackground) {
         if (table.background === 'funds_display') {
@@ -10508,14 +10622,12 @@ export class EventState extends State {
           surf.drawText('FUNDS', x + 4, y + 1, 'rgba(240,224,158,1)', 'small');
           surf.drawText('G', x + panelWidth - 8, y + panelHeight - 10, 'yellow', 'small');
         } else {
-          surf.fillRect(x, y, panelWidth, panelHeight, 'rgba(18,28,66,0.94)');
-          surf.drawRect(x, y, panelWidth, panelHeight, 'rgba(210,185,104,1)');
-          surf.drawRect(x + 2, y + 2, panelWidth - 4, panelHeight - 4, 'rgba(86,105,166,1)');
+          surf.blit(getMenuBackgroundSync(panelWidth, panelHeight, table.background), x, y);
         }
       }
 
       if (table.title) {
-        drawStyledText(surf, table.title, x + 4, y + 2, 'yellow', 'small');
+        drawStyledText(surf, table.title, x + 5, y + 3, 'white', 'text');
       }
       const contentTop = y + titleHeight + 3;
       values.slice(0, rows * columns).forEach((value, index) => {
@@ -10524,16 +10636,49 @@ export class EventState extends State {
         const left = x + 3 + column * cellWidth;
         const right = x + 1 + (column + 1) * cellWidth;
         const textY = contentTop + row * rowHeight;
+        const entryType = table.entryType;
+        if (entryType === 'type_portrait' || entryType === 'type_chibi') {
+          // Python BasicPortraitOption (96x80 main frame) / BasicChibiOption
+          // (32x32 chibi at the sheet's right edge).
+          const sheet = getColorkeyedPortrait(getGame(), value);
+          if (sheet) {
+            const ps = surf.scale;
+            surf.ctx.imageSmoothingEnabled = false;
+            if (entryType === 'type_portrait') {
+              surf.ctx.drawImage(sheet, 0, 0, 96, 80, Math.round(left * ps), Math.round(textY * ps), 96 * ps, 80 * ps);
+            } else {
+              surf.ctx.drawImage(sheet, sheet.width - 32, 16, 32, 32, Math.round(left * ps), Math.round(textY * ps), 32 * ps, 32 * ps);
+            }
+          }
+          return;
+        }
+        let label = value;
+        let icon: { sheet: string; index: [number, number] } | null = null;
+        if (entryType === 'type_base_item' || entryType === 'type_skill') {
+          const prefab = entryType === 'type_skill' ? getGame().db.skills.get(value) : getGame().db.items.get(value);
+          label = prefab?.name ?? value;
+          if (prefab?.icon_nid && Array.isArray(prefab.icon_index)) icon = { sheet: prefab.icon_nid, index: prefab.icon_index };
+        } else if (entryType === 'type_game_item') {
+          const item = getGame().getItem?.(value);
+          label = item?.name ?? value;
+          if (item?.iconNid) icon = { sheet: item.iconNid, index: item.iconIndex };
+        } else if (entryType === 'type_unit') {
+          label = getGame().units.get(value)?.name ?? getGame().db.units.get(value)?.name ?? value;
+        } else if (entryType === 'type_class') {
+          label = getGame().db.classes.get(value)?.name ?? value;
+        }
+        const textX0 = icon ? left + 18 : left;
+        if (icon) drawIcon16(surf, icon.sheet, icon.index, left, textY);
         const textAlignment = table.textAlignment.toLowerCase();
-        const textWidth = measureStyledText(value, 'text');
+        const textWidth = measureStyledText(label, 'text');
         if (textAlignment === 'right' || table.background === 'funds_display') {
           const rightEdge = table.background === 'funds_display' ? right - 8 : right - 2;
-          drawStyledText(surf, value, rightEdge - textWidth, textY, 'white', 'text');
+          drawStyledText(surf, label, rightEdge - textWidth, textY, 'white', 'text');
         } else {
           const textX = textAlignment === 'center'
-            ? left + Math.max(0, Math.floor((cellWidth - textWidth) / 2))
-            : left;
-          drawStyledText(surf, value, textX, textY, 'white', 'text');
+            ? textX0 + Math.max(0, Math.floor((cellWidth - textWidth) / 2))
+            : textX0;
+          drawStyledText(surf, label, textX, textY, 'white', 'text');
         }
       });
     }
@@ -10838,9 +10983,61 @@ export class EventState extends State {
   // Command execution — returns true if command is blocking
   // -----------------------------------------------------------------------
 
-  private executeCommand(cmd: EventCommand, game: any): boolean {
-    const rawArgs = cmd.args ?? [];
+  /**
+   * Build one `choice` entry the way Python's GridChoiceMenu option classes
+   * render it: items/skills with their icon and name, units with their map
+   * sprite and name, classes by name, `type_icon` as `sheet-x-y-text`.
+   */
+  private buildChoiceEntry(value: string, display: string | null, entryType: string, game: any): EventChoiceEntry {
+    const iconOf = (obj: any): EventChoiceEntry['icon'] => {
+      const sheet = obj?.icon_nid ?? obj?.iconNid;
+      const index = obj?.icon_index ?? obj?.iconIndex;
+      return sheet && Array.isArray(index) ? { sheet, index: [Number(index[0]) || 0, Number(index[1]) || 0] } : null;
+    };
+    switch (entryType) {
+      case 'type_base_item': {
+        const prefab = game.db.items.get(value);
+        return { value, kind: 'icon', text: display ?? prefab?.name ?? value, icon: iconOf(prefab) };
+      }
+      case 'type_game_item': {
+        const item = game.getItem?.(value) ?? game.getItem?.(Number(value)) ?? null;
+        const uses = item && item.maxUses > 0 ? String(item.uses) : null;
+        return { value, kind: 'icon', text: display ?? item?.name ?? value, icon: iconOf(item), uses };
+      }
+      case 'type_skill': {
+        const prefab = game.db.skills.get(value);
+        return { value, kind: 'icon', text: display ?? prefab?.name ?? value, icon: iconOf(prefab) };
+      }
+      case 'type_unit': {
+        const unit = game.units.get(value) ?? null;
+        const prefab = unit ?? game.db.units.get(value);
+        const sprite = unit?.sprite && typeof unit.sprite.draw === 'function' ? unit.sprite : null;
+        return { value, kind: 'sprite', text: display ?? prefab?.name ?? value, sprite };
+      }
+      case 'type_class': {
+        const klass = game.db.classes.get(value);
+        return { value, kind: 'sprite', text: display ?? klass?.name ?? value, sprite: null };
+      }
+      case 'type_icon': {
+        const parts = value.split('-');
+        if (parts.length >= 4) {
+          const [sheet, x, y, ...rest] = parts;
+          return { value, kind: 'icon', text: display ?? rest.join('-'), icon: { sheet, index: [Number(x) || 0, Number(y) || 0] } };
+        }
+        return { value, kind: 'text', text: display ?? value };
+      }
+      default:
+        return { value, kind: 'text', text: display ?? value };
+    }
+  }
 
+  /**
+   * Substitute LT text tags ({unit}, {v:}, {e:}, {d:}, bare {var}) in event
+   * command arguments, as Python's text_evaluator does when a command runs.
+   * Also used every frame for `textbox ... expression`, which Python
+   * re-evaluates continuously (e.g. `{v:<choice>_choice_hover}` descriptions).
+   */
+  private substituteEventArgs(rawArgs: string[], game: any): string[] {
     // Substitute template variables in all args:
     // {unit}/{unit1} -> the primary unit (from trigger.unitNid or unit1.nid)
     // {unit2} -> the secondary unit (from trigger.unit2.nid)
@@ -10869,7 +11066,7 @@ export class EventState extends State {
       if (typeof raw === 'boolean') return raw ? 'True' : 'False';
       return raw === undefined || raw === null ? '' : String(raw);
     };
-    let args = rawArgs.map((arg) => {
+    const args = rawArgs.map((arg) => {
       let value = arg
         .replace(/\{unit1?\}/g, unitNid)
         .replace(/\{unit2\}/g, unit2Nid);
@@ -11004,6 +11201,13 @@ export class EventState extends State {
       value = replaceDataTags(value);
       return value;
     });
+    return args;
+  }
+
+  private executeCommand(cmd: EventCommand, game: any): boolean {
+    const rawArgs = cmd.args ?? [];
+
+    let args = this.substituteEventArgs(rawArgs, game);
 
     switch (cmd.type) {
       // ----- Flow control -----
@@ -13979,23 +14183,37 @@ export class EventState extends State {
       // ----- Choice menu -----
 
       case 'choice': {
-        // choice;Nid;Title;Choices;flags — Python keywords are
-        // ['Nid', 'Title', 'Choices'], so the first argument names the choice
-        // and the selection is read back through that name.
+        // choice;Nid;Title;Choices;RowWidth;Orientation;Alignment;BG;
+        // EventNid;EntryType;Dimensions;TextAlign;flags — Python
+        // event_commands.Choice. Optional arguments may be positional (in
+        // that order) or `Key=Value`; bare words in _flags are flags.
         const choiceNid = args[0] ?? '_choice';
-        const _title = args[1] ?? 'Choose';
+        const title = (args[1] ?? '').trim();
         const rawChoices = args[2] ?? '';
-        // Trailing arguments are either bare flags or `Key=Value` optional
-        // keywords (RowWidth, Dimensions, Alignment, EntryType, EventNid, …).
-        const trailing = args.slice(3).map((entry: string) => entry.trim());
-        const flags = trailing
-          .filter((entry: string) => !entry.includes('='))
-          .map((entry: string) => entry.toLowerCase());
+        const choiceFlagNames = new Set(['persist', 'expression', 'no_bg', 'no_cursor', 'arrows',
+          'no_arrows', 'scroll_bar', 'no_scroll_bar', 'backable']);
+        const optionalNames = ['rowwidth', 'orientation', 'alignment', 'bg', 'eventnid',
+          'entrytype', 'dimensions', 'textalign'];
+        const flags = new Set<string>();
         const keywords = new Map<string, string>();
-        for (const entry of trailing) {
+        let positional = 0;
+        for (const raw of args.slice(3)) {
+          const entry = raw.trim();
+          const lower = entry.toLowerCase();
+          if (choiceFlagNames.has(lower)) {
+            flags.add(lower);
+            continue;
+          }
           const eq = entry.indexOf('=');
-          if (eq <= 0) continue;
-          keywords.set(entry.slice(0, eq).trim().toLowerCase(), entry.slice(eq + 1).trim());
+          const key = eq > 0 ? entry.slice(0, eq).trim().toLowerCase() : '';
+          if (eq > 0 && optionalNames.includes(key)) {
+            keywords.set(key, entry.slice(eq + 1).trim());
+            continue;
+          }
+          if (positional < optionalNames.length) {
+            if (entry) keywords.set(optionalNames[positional], entry);
+            positional += 1;
+          }
         }
 
         // Choices is an EvaluableString: `expression` forces evaluation, but
@@ -14003,12 +14221,12 @@ export class EventState extends State {
         // the flag. Try evaluating and keep the result when it yields a list;
         // otherwise fall back to treating it as a literal comma list.
         let optionStrs: string[] | null = null;
-        if (flags.includes('expression') || /[([]/.test(rawChoices)) {
+        if (flags.has('expression') || /[([]/.test(rawChoices)) {
           try {
             const evaluated = evaluateExpression(rawChoices, this.buildConditionContext());
             if (Array.isArray(evaluated)) {
               optionStrs = evaluated.map((entry: unknown) => String(entry));
-            } else if (flags.includes('expression')) {
+            } else if (flags.has('expression')) {
               optionStrs = String(evaluated ?? '').split(',');
             }
           } catch {
@@ -14021,19 +14239,55 @@ export class EventState extends State {
           .filter((entry: string) => entry.length > 0);
 
         if (optionStrs.length > 0) {
-          // `nid|display` hides an unreadable NID behind display text; the
-          // stored result is always the NID half.
-          const menuOptions: MenuOption[] = optionStrs.map((entry: string) => {
+          const entryType = (keywords.get('entrytype') ?? 'str').toLowerCase();
+          const entries = optionStrs.map((entry: string) => {
+            // `nid|display` hides an unreadable NID behind display text; the
+            // stored result is always the NID half.
             const bar = entry.indexOf('|');
             const value = bar >= 0 ? entry.slice(0, bar).trim() : entry;
-            const label = bar >= 0 ? entry.slice(bar + 1).trim() : entry;
-            return { label, value, enabled: true };
+            const display = bar >= 0 ? entry.slice(bar + 1).replace(/\|/g, '').trim() : null;
+            return this.buildChoiceEntry(value, display, entryType, game);
           });
-          const menuX = 80;
-          const menuY = 40;
-          this.choiceMenu = new ChoiceMenu(menuOptions, menuX, menuY);
+          let size: [number, number] | null = null;
+          const dims = keywords.get('dimensions');
+          if (dims) {
+            const [rows, cols] = dims.split(',').map((part: string) => parseInt(part.trim(), 10));
+            if (Number.isFinite(rows) && Number.isFinite(cols)) size = [cols, rows];
+          }
+          const orientationRaw = (keywords.get('orientation') ?? 'vertical').toLowerCase();
+          const orientation: 'vertical' | 'horizontal' =
+            ['h', 'horiz', 'horizontal'].includes(orientationRaw) ? 'horizontal' : 'vertical';
+          const alignRaw = (keywords.get('alignment') ?? 'center').trim();
+          const alignPos = alignRaw.match(/^\s*(-?\d+)\s*,\s*(-?\d+)\s*$/);
+          const alignment: string | [number, number] = alignPos
+            ? [parseInt(alignPos[1], 10), parseInt(alignPos[2], 10)]
+            : alignRaw.toLowerCase();
+          const rowWidth = parseInt(keywords.get('rowwidth') ?? '', 10);
+          const textAlignRaw = (keywords.get('textalign') ?? 'left').toLowerCase();
+          this.choiceMenu = new EventChoiceMenu({
+            entries,
+            title: title || null,
+            size,
+            rowWidth: Number.isFinite(rowWidth) && rowWidth > 0 ? rowWidth : 0,
+            alignment,
+            orientation,
+            bg: flags.has('no_bg') ? null : (keywords.get('bg') || 'menu_bg_base'),
+            textAlign: textAlignRaw === 'center' || textAlignRaw === 'right' ? textAlignRaw : 'left',
+            noCursor: flags.has('no_cursor'),
+            screenWidth: viewport.width,
+            screenHeight: viewport.height,
+          });
           this.choiceNid = choiceNid;
-          this.choiceBackable = flags.includes('backable');
+          this.choiceBackable = flags.has('backable');
+          this.choicePersist = flags.has('persist');
+          const remembered = this.choiceCursorMemory.get(choiceNid);
+          if (remembered !== undefined) {
+            this.choiceMenu.setCursor(remembered);
+            this.choiceCursorMemory.delete(choiceNid);
+          }
+          // Python sets `<nid>_choice_hover` to the highlighted value every
+          // frame; descriptions in EotF's hub menus read it.
+          game.gameVars.set(`${choiceNid}_choice_hover`, this.choiceMenu.getCurrentOption()?.value ?? '');
           // `EventNid` runs an event on each selection, inheriting this
           // event's args. EotF's sortie relies on it: the sub-event is what
           // moves the chosen unit into the deploying party, so ignoring it
@@ -15715,14 +15969,38 @@ export class EventState extends State {
       }
 
       case 'table': {
+        // table;NID;TableData;Title;Dimensions;RowWidth;Alignment;BG;
+        // EntryType;TextAlign;flags (Python event_commands.Table). Optional
+        // arguments may be positional or `Key=Value`.
         const flagNames = new Set(['expression', 'no_bg']);
-        const flags = new Set(
-          args
-            .map(arg => arg.toLowerCase().trim())
-            .filter(arg => flagNames.has(arg)),
-        );
-        const values = args.filter(arg => !flagNames.has(arg.toLowerCase().trim()));
-        const nid = values[0] ?? '';
+        const optionalNames = ['tabledata', 'title', 'dimensions', 'rowwidth', 'alignment',
+          'bg', 'entrytype', 'textalign'];
+        const parseTableArgs = (list: string[]): { nid: string; kw: Map<string, string>; flags: Set<string> } => {
+          const kw = new Map<string, string>();
+          const flags = new Set<string>();
+          let position = 0;
+          for (const entry of list.slice(1)) {
+            const lower = entry.toLowerCase().trim();
+            if (flagNames.has(lower)) {
+              flags.add(lower);
+              continue;
+            }
+            const eq = entry.indexOf('=');
+            const key = eq > 0 ? entry.slice(0, eq).trim().toLowerCase() : '';
+            if (eq > 0 && optionalNames.includes(key) && key !== 'tabledata') {
+              kw.set(key, entry.slice(eq + 1).trim());
+              continue;
+            }
+            if (position < optionalNames.length) {
+              if (entry.trim() || optionalNames[position] === 'tabledata') kw.set(optionalNames[position], entry);
+              position += 1;
+            }
+          }
+          return { nid: (list[0] ?? '').trim(), kw, flags };
+        };
+        const parsed = parseTableArgs(args);
+        const rawParsed = parseTableArgs(cmd.args ?? []);
+        const nid = parsed.nid;
         if (!nid) {
           console.warn('table: missing table nid');
           this.advancePointer();
@@ -15733,20 +16011,22 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        const dimensions = (values[3] ?? '').split(',').map(value => parseInt(value.trim(), 10));
+        const dimensions = (parsed.kw.get('dimensions') ?? '').split(',').map(value => parseInt(value.trim(), 10));
+        const rowWidth = parseInt(parsed.kw.get('rowwidth') ?? '', 10);
         this.eventTables.set(nid, {
           nid,
-          data: values[1] ?? '',
-          title: values[2] || null,
+          data: parsed.kw.get('tabledata') ?? '',
+          rawData: rawParsed.kw.get('tabledata') ?? parsed.kw.get('tabledata') ?? '',
+          title: parsed.kw.get('title') || null,
           rows: Number.isFinite(dimensions[0]) ? Math.max(0, dimensions[0]) : 0,
           columns: Number.isFinite(dimensions[1]) ? Math.max(1, dimensions[1]) : 1,
-          rowWidth: parseInt(values[4] ?? '-1', 10) || -1,
-          alignment: values[5] || 'top_left',
-          background: values[6] || 'menu_bg_base',
-          entryType: values[7] || 'str',
-          textAlignment: values[8] || 'left',
-          expression: flags.has('expression'),
-          noBackground: flags.has('no_bg'),
+          rowWidth: Number.isFinite(rowWidth) && rowWidth > 0 ? rowWidth : -1,
+          alignment: parsed.kw.get('alignment') || 'top_left',
+          background: parsed.kw.get('bg') || 'menu_bg_base',
+          entryType: (parsed.kw.get('entrytype') || 'str').toLowerCase(),
+          textAlignment: parsed.kw.get('textalign') || 'left',
+          expression: parsed.flags.has('expression'),
+          noBackground: parsed.flags.has('no_bg'),
         });
         this.advancePointer();
         return false;
@@ -15763,27 +16043,47 @@ export class EventState extends State {
       }
 
       case 'textbox': {
-        // textbox;NID;Text;BoxPosition;Width;...;flags
-        const flagNames = new Set(['expression']);
-        const flags = new Set(
-          args.map((arg: string) => arg.toLowerCase().trim())
-            .filter((arg: string) => flagNames.has(arg)),
-        );
-        const values = args.filter(
-          (arg: string) => !flagNames.has(arg.toLowerCase().trim()),
-        );
-        const nid = values[0] ?? '';
+        // textbox;NID;Text;BoxPosition;Width;NumLines;StyleNid;TextSpeed;
+        // FontColor;FontType;BG;flags (Python event_commands.Textbox).
+        const flagNames = new Set(['expression', 'from_python']);
+        const isFlag = (arg: string): boolean => flagNames.has(arg.toLowerCase().trim());
+        const flags = new Set(args.filter(isFlag).map((arg: string) => arg.toLowerCase().trim()));
+        const positionalNames = ['nid', 'text', 'boxposition', 'width', 'numlines', 'stylenid',
+          'textspeed', 'fontcolor', 'fonttype', 'bg'];
+        const parseTextboxArgs = (list: string[]): Map<string, string> => {
+          const out = new Map<string, string>();
+          let index = 0;
+          for (const entry of list) {
+            if (isFlag(entry)) continue;
+            const eq = entry.indexOf('=');
+            const key = eq > 0 ? entry.slice(0, eq).trim().toLowerCase() : '';
+            if (eq > 0 && positionalNames.includes(key) && index >= 2) {
+              out.set(key, entry.slice(eq + 1));
+            } else {
+              if (index < positionalNames.length) out.set(positionalNames[index], entry);
+              index += 1;
+            }
+          }
+          return out;
+        };
+        const values = parseTextboxArgs(args);
+        const rawValues = parseTextboxArgs(cmd.args ?? []);
+        const nid = values.get('nid') ?? '';
         if (!nid) {
           console.warn('textbox: missing textbox nid');
           this.advancePointer();
           return false;
         }
-        const width = parseInt(values[3] ?? '', 10);
+        const width = parseInt(values.get('width') ?? '', 10);
+        const numLines = parseInt(values.get('numlines') ?? '', 10);
         this.eventTextboxes.set(nid, {
           nid,
-          text: values[1] ?? '',
-          alignment: (values[2] || 'top_left').toLowerCase(),
+          text: values.get('text') ?? '',
+          rawText: rawValues.get('text') ?? values.get('text') ?? '',
+          alignment: (values.get('boxposition') || 'top_left').toLowerCase(),
           width: Number.isFinite(width) && width > 0 ? width : -1,
+          numLines: Number.isFinite(numLines) && numLines > 0 ? numLines : 1,
+          bg: (values.get('bg') || 'menu_bg_base').trim(),
           expression: flags.has('expression'),
         });
         this.advancePointer();

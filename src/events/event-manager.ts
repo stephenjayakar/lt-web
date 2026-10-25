@@ -1922,9 +1922,30 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
       get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
+      portrait_nid: u.portraitNid ?? u.portrait_nid ?? null,
+      party: u.party ?? null,
+      persistent: u.persistent ?? false,
+      variant: u.variant ?? null,
+      desc: u.desc ?? null,
     };
-    wrappedUnits.set(u, wrapped);
-    return wrapped;
+    // Python UnitObject.__getattr__ falls back to the unit prefab, so authored
+    // expressions read arbitrary data fields. Mirror that for plain values:
+    // snake_case -> camelCase runtime field, then the DB prefab.
+    const proxied = new Proxy(wrapped as Record<string, any>, {
+      get(target, property: string | symbol) {
+        if (typeof property !== 'string' || property in target) return target[property as string];
+        const camel = property.replace(/_([a-z0-9])/g, (_m: string, c: string) => c.toUpperCase());
+        for (const key of [camel, property]) {
+          const value = u[key];
+          if (value !== undefined && typeof value !== 'function') return value;
+        }
+        const prefab = game.db?.units?.get?.(u.nid);
+        const fromPrefab = prefab?.[property];
+        return typeof fromPrefab === 'function' ? undefined : fromPrefab;
+      },
+    });
+    wrappedUnits.set(u, proxied);
+    return proxied;
   }
 
   function isDeadOrDying(unit: any): boolean {

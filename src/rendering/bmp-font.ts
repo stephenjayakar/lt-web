@@ -89,6 +89,11 @@ export class BmpFont {
     this.surfaces.set(defaultColor || 'default', baseSurface);
   }
 
+  /** True when this font has a palette variant with the given name. */
+  hasColor(colorName: string): boolean {
+    return this.surfaces.has(colorName);
+  }
+
   /** Add a color variant surface */
   addColorVariant(colorName: string, surface: Surface): void {
     this.surfaces.set(colorName, surface);
@@ -493,6 +498,19 @@ function surfaceFromImg(img: HTMLImageElement): Surface {
  * Map CSS color strings to BMP font palette color names.
  * Covers all colors currently used in the codebase.
  */
+/**
+ * Resolve the palette for a draw call on an explicit BMP font nid. Styled
+ * text passes LT palette names (`<red>` -> 'red'); other callers pass CSS
+ * colours. 'white' is the Surface.drawText default, so it never overrides a
+ * font's own default (e.g. black 'convo' or the 'text-blue' shortcut).
+ */
+function resolveNidFontColor(font: BmpFont, color: string): string | undefined {
+  if (!color || color === 'white') return undefined;
+  if (font.hasColor(color)) return color;
+  const mapped = CSS_TO_FONT_COLOR[color];
+  return mapped && mapped !== 'white' && font.hasColor(mapped) ? mapped : undefined;
+}
+
 const CSS_TO_FONT_COLOR: Record<string, string> = {
   'white': 'white',
   '#FFD700': 'yellow',
@@ -525,7 +543,7 @@ function bmpDrawText(surf: Surface, text: string, x: number, y: number, color: s
 
   // Check if fontStr is already a BMP font NID (e.g. 'text', 'text-blue', 'convo')
   if (FONT[fontStr]) {
-    FONT[fontStr].blit(surf, text, x, y);
+    FONT[fontStr].blit(surf, text, x, y, resolveNidFontColor(FONT[fontStr], color));
     return true;
   }
 
@@ -561,7 +579,7 @@ function bmpDrawTextRight(surf: Surface, text: string, x: number, y: number, col
   if (!fontsReady) return false;
 
   if (FONT[fontStr]) {
-    FONT[fontStr].blitRight(surf, text, x, y);
+    FONT[fontStr].blitRight(surf, text, x, y, resolveNidFontColor(FONT[fontStr], color));
     return true;
   }
 
