@@ -207,6 +207,19 @@ export class AnimationCombat implements AnimationCombatOwner {
   activeProcCue: CombatProcCue | null = null;
   private pendingProcCues: CombatProcCue[] = [];
   currentStrikeIndex: number = 0;
+  /**
+   * HUD stats (max HP, hit, damage, crit) snapshot. Python computes these in
+   * AnimationCombat._set_stats at fixed points rather than every frame; each
+   * evaluation walks every skill condition, so recomputing per frame cost
+   * tens of milliseconds. Recomputed whenever the combat phase, strike, HP or
+   * item uses change, which is when the inputs can change.
+   */
+  private hudStatsKey: string | null = null;
+  private hudStats: {
+    leftMax: number; rightMax: number;
+    leftHit: number | null; leftDamage: number | null; leftCrit: number | null;
+    rightHit: number | null; rightDamage: number | null; rightCrit: number | null;
+  } | null = null;
 
   // -- State machine ---------------------------------------------------------
   state: AnimCombatState = 'init';
@@ -1582,6 +1595,31 @@ export class AnimationCombat implements AnimationCombatOwner {
       screenBlendData = { color: this.blendColor, alpha };
     }
 
+    const hudKey = `${this.state}|${this.currentStrikeIndex}|${leftUnit.currentHp}|${rightUnit.currentHp}|` +
+      `${leftItem?.uses ?? ''}|${rightItem?.uses ?? ''}|${leftItem?.nid ?? ''}|${rightItem?.nid ?? ''}`;
+    if (this.hudStatsKey !== hudKey || !this.hudStats) {
+      this.hudStatsKey = hudKey;
+      this.hudStats = {
+        leftMax: leftUnit.maxHp,
+        rightMax: rightUnit.maxHp,
+        leftHit: leftItem ? Math.min(100, Math.max(0, computeHit(leftUnit, leftItem, rightUnit, this.db))) : null,
+        leftDamage: leftItem
+          ? Math.max(0, computeDamage(
+            leftUnit, leftItem, rightUnit, this.db, undefined, this.game,
+          ))
+          : null,
+        leftCrit: leftItem ? Math.min(100, Math.max(0, computeCrit(leftUnit, leftItem, rightUnit, this.db))) : null,
+        rightHit: rightItem ? Math.min(100, Math.max(0, computeHit(rightUnit, rightItem, leftUnit, this.db))) : null,
+        rightDamage: rightItem
+          ? Math.max(0, computeDamage(
+            rightUnit, rightItem, leftUnit, this.db, undefined, this.game, 'defense',
+          ))
+          : null,
+        rightCrit: rightItem ? Math.min(100, Math.max(0, computeCrit(rightUnit, rightItem, leftUnit, this.db))) : null,
+      };
+    }
+    const hud = this.hudStats;
+
     return {
       state: this.state,
       viewbox,
@@ -1595,29 +1633,21 @@ export class AnimationCombat implements AnimationCombatOwner {
       screenBlend: screenBlendData,
       leftHp: {
         current: Math.max(0, Math.round(this.leftDisplayHp)),
-        max: leftUnit.maxHp,
+        max: hud.leftMax,
         name: leftUnit.name,
         weapon: leftItem?.name ?? '',
-        hit: leftItem ? Math.min(100, Math.max(0, computeHit(leftUnit, leftItem, rightUnit, this.db))) : null,
-        damage: leftItem
-          ? Math.max(0, computeDamage(
-            leftUnit, leftItem, rightUnit, this.db, undefined, this.game,
-          ))
-          : null,
-        crit: leftItem ? Math.min(100, Math.max(0, computeCrit(leftUnit, leftItem, rightUnit, this.db))) : null,
+        hit: hud.leftHit,
+        damage: hud.leftDamage,
+        crit: hud.leftCrit,
       },
       rightHp: {
         current: Math.max(0, Math.round(this.rightDisplayHp)),
-        max: rightUnit.maxHp,
+        max: hud.rightMax,
         name: rightUnit.name,
         weapon: rightItem?.name ?? '',
-        hit: rightItem ? Math.min(100, Math.max(0, computeHit(rightUnit, rightItem, leftUnit, this.db))) : null,
-        damage: rightItem
-          ? Math.max(0, computeDamage(
-            rightUnit, rightItem, leftUnit, this.db, undefined, this.game, 'defense',
-          ))
-          : null,
-        crit: rightItem ? Math.min(100, Math.max(0, computeCrit(rightUnit, rightItem, leftUnit, this.db))) : null,
+        hit: hud.rightHit,
+        damage: hud.rightDamage,
+        crit: hud.rightCrit,
       },
       damagePopups: this.damagePopups,
       sparks: this.sparks.map(s => ({ type: s.type, elapsed: s.elapsed, duration: s.duration, isLeft: s.isLeft })),

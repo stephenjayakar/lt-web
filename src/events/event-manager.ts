@@ -1863,6 +1863,15 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         !!other && !(game.db?.areAllied?.(u.team, other.team) ?? u.team === other.team);
       return (enemy(up) && enemy(down)) || (enemy(left) && enemy(right));
     };
+    // Expensive fields are materialized on first read and memoized for the
+    // life of this wrapper (one expression scope), like wrapSkill's
+    // components. Expressions read only a few fields, while units are wrapped
+    // wholesale (game.units, unit lists, the evaluated unit itself).
+    const memoValues = new Map<string, unknown>();
+    const memo = <T>(key: string, compute: () => T): T => {
+      if (!memoValues.has(key)) memoValues.set(key, compute());
+      return memoValues.get(key) as T;
+    };
     const wrapped = {
       _raw: u,
       nid: u.nid,
@@ -1874,7 +1883,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       klass: u.klass,
       affinity: u.affinity ?? null,
       traveler: u.traveler ?? u.rescuing ?? null,
-      stat_cap_modifiers: wrapMapping(u.statCapModifiers ?? u.stat_cap_modifiers),
+      get stat_cap_modifiers() {
+        return memo('stat_cap_modifiers', () => wrapMapping(u.statCapModifiers ?? u.stat_cap_modifiers));
+      },
       get strike_partner() {
         return wrapUnit(u.strikePartner ?? u.strike_partner ?? null);
       },
@@ -1882,12 +1893,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       _finished: u._finished ?? false,
       is_dying: u.isDying ?? u.is_dying ?? false,
       level: u.level,
-      stats: wrapMapping(u.stats),
-      wexp: wrapMapping(u.wexp),
-      growths: wrapMapping(u.growths),
+      get stats() { return memo('stats', () => wrapMapping(u.stats)); },
+      get wexp() { return memo('wexp', () => wrapMapping(u.wexp)); },
+      get growths() { return memo('growths', () => wrapMapping(u.growths)); },
       generic: u.generic ?? false,
-      skills: (u.skills ?? []).map(wrapSkill),
-      items: (u.items ?? []).map(wrapItem),
+      get skills() { return memo('skills', () => (u.skills ?? []).map(wrapSkill)); },
+      get items() { return memo('items', () => (u.items ?? []).map(wrapItem)); },
       // UnitObject.accessories is a property in Python, so do not resolve
       // every item's skill overrides merely to wrap a unit. Besides wasting
       // work for expressions that never read accessories, eager resolution
@@ -1898,7 +1909,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
           candidate.hasComponent?.('equippable_accessory')).map(wrapItem);
       },
       current_hp: u.currentHp ?? u.current_hp,
-      max_hp: u.maxHp ?? u.max_hp,
+      // Max HP runs every stat skill's condition; most expressions never
+      // read it, so resolve it (once) on first access.
+      get max_hp() { return memo('max_hp', () => u.maxHp ?? u.max_hp); },
       get_hp: () => u.currentHp ?? u.current_hp ?? 0,
       get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
       get_stat: (nid: string) =>

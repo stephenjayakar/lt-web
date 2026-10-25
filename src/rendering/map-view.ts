@@ -301,12 +301,13 @@ export class MapView {
       }
 
       // Draw HP bar below the unit tile
-      if (unit.maxHp > 0) {
+      const maxHp = unit.maxHp;
+      if (maxHp > 0) {
         const barWidth = TILEWIDTH - 2;
         const barHeight = 2;
         const barX = px + 1;
         const barY = py + TILEHEIGHT - 1;
-        const hpRatio = Math.max(0, Math.min(1, unit.currentHp / unit.maxHp));
+        const hpRatio = Math.max(0, Math.min(1, unit.currentHp / maxHp));
 
         // Background (dark)
         surf.fillRect(barX, barY, barWidth, barHeight, 'rgba(0,0,0,0.7)');

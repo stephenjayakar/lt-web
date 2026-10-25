@@ -455,7 +455,10 @@ function collectVisibleUnits(): {
       team: u.team,
       finished: u.finished && u.team === currentTeam,
       currentHp: u.currentHp,
-      maxHp: u.maxHp,
+      // Evaluated lazily: max HP runs every stat-skill condition, and the
+      // map view only needs it for units that survive its viewport cull
+      // (Python's map_view likewise draws HP only for culled units).
+      get maxHp() { return u.maxHp; },
       specialTag,
       travelerCombatColor,
       droppable,

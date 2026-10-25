@@ -1079,6 +1079,37 @@ export function cantoMovement(
  */
 const evaluatingStatChanges = new WeakMap<UnitObject, Set<string>>();
 
+function statEntriesMention(entries: unknown, statNid: string): boolean {
+  if (!Array.isArray(entries)) return false;
+  for (const entry of entries) {
+    if (Array.isArray(entry) && entry[0] === statNid) return true;
+  }
+  return false;
+}
+
+function statMapMentions(changes: unknown, statNid: string): boolean {
+  if (changes instanceof Map) return changes.has(statNid);
+  return !!changes && typeof changes === 'object' &&
+    Object.prototype.hasOwnProperty.call(changes, statNid);
+}
+
+/**
+ * Whether any of a skill's stat sources is keyed by `statNid`. Every
+ * contribution statChange adds is looked up by stat nid, so a skill that
+ * mentions no entry for the stat adds 0 whether or not it is active; its
+ * (side-effect-free) condition need not be evaluated. This matters because
+ * maxHp is read for every drawn unit every frame.
+ */
+function skillMayChangeStat(skill: SkillObject, statNid: string): boolean {
+  return statEntriesMention(skill.getComponent<unknown>('stat_change'), statNid) ||
+    statEntriesMention(skill.getComponent<unknown>('subtle_stat_change'), statNid) ||
+    statEntriesMention(skill.getComponent<unknown>('upkeep_stat_change'), statNid) ||
+    statEntriesMention(skill.getComponent<unknown>('stat_change_expression'), statNid) ||
+    statEntriesMention(skill.getComponent<unknown>('stat_multiplier'), statNid) ||
+    statMapMentions(skill.data.get('stat_changes'), statNid) ||
+    statMapMentions(skill.data.get('_dynamic_stat_changes'), statNid);
+}
+
 export function statChange(unit: UnitObject, statNid: string, game?: any): number {
   game ??= skillGameRef?.();
   const activeStats = evaluatingStatChanges.get(unit) ?? new Set<string>();
@@ -1097,7 +1128,7 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
       skill.hasComponent('stat_multiplier') ||
       skill.data.has('stat_changes') ||
       skill.data.has('_dynamic_stat_changes');
-    if (!contributesToStat) continue;
+    if (!contributesToStat || !skillMayChangeStat(skill, statNid)) continue;
     // DynamicStatChange freezes only after all condition/combat/charge gates
     // pass. Its prepared map is therefore also the active snapshot needed by
     // subsequent getStatValue calls, which do not carry target context.
