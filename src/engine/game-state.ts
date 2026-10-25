@@ -1648,13 +1648,12 @@ export class GameState {
       return;
     }
 
-    // Resolve display name from faction (Python: GenericUnit.name -> DB.factions.get(self.faction).name)
-    let displayName = data.variant || data.nid;
+    // Python GenericUnit.name is always the faction's name; `variant` is the
+    // animation variant (e.g. "Female"), never a display name.
+    let displayName = data.nid;
     if (data.faction) {
       const faction = this.db.factions.get(data.faction);
-      if (faction) {
-        displayName = data.variant || faction.name;
-      }
+      if (faction) displayName = faction.name;
     }
 
     // Convert generic starting_skills (NID[]) to learned_skills format ([level, NID][])

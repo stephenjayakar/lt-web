@@ -236,6 +236,26 @@ test.describe('Event data command parity', () => {
     expect(result).toEqual({ phase: 'enemy', after: null, queued: null });
   });
 
+  test('make_generic names units after their faction and joins the party', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'QaGeneric', [
+      'make_generic;QaGen;Soldier;1;player;None;;Female',
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('QaGen');
+      const firstFaction = g.db.factions.values().next().value;
+      return {
+        name: unit?.name, faction: unit?.faction, party: unit?.party,
+        expectedName: firstFaction?.name, expectedFaction: firstFaction?.nid, currentParty: g.currentParty,
+      };
+    });
+    // Python: a blank faction defaults to the first; variant is not a name.
+    expect(result.faction).toBe(result.expectedFaction);
+    expect(result.name).toBe(result.expectedName);
+    expect(result.party).toBe(result.currentParty);
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);

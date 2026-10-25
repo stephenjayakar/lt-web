@@ -12399,7 +12399,8 @@ export class EventState extends State {
         // then overwrites .stats with the template's own stats afterward.
         const syntheticPrefab: any = {
           nid: newNid,
-          name: baseVariant || newNid,
+          // Python GenericUnit.name: the faction's name.
+          name: (baseFaction ? game.db.factions?.get?.(baseFaction)?.name : null) ?? newNid,
           desc: '',
           variant: baseVariant,
           level: baseLevel,
@@ -14235,7 +14236,9 @@ export class EventState extends State {
         const unit = this.findUnit(unitNid);
         if (unit) {
           game.actionLog.doAction(new ChangeTeamAction(unit, team));
-          // Re-palette the sprite (would need async reload in full implementation)
+          // Python ChangeTeam reloads the sprite so the unit takes its new
+          // team's palette.
+          this.loadMapSpriteForUnit(unit, game);
         }
         this.advancePointer();
         return false;
@@ -16300,7 +16303,8 @@ export class EventState extends State {
           variant: mgVariant || null,
           level: mgLevel,
           klass: mgKlass,
-          faction: args[5] || '',
+          // Python: a blank faction defaults to the first faction.
+          faction: args[5] || ((game.db.factions?.values?.().next?.().value as any)?.nid ?? ''),
           starting_items: mgItems,
           starting_skills: [],
           team: mgTeam,
@@ -16312,6 +16316,7 @@ export class EventState extends State {
         game.spawnGenericUnit(mgData);
         const mgUnit = game.units.get(mgNid);
         if (mgUnit) {
+          if (game.currentParty) mgUnit.party = game.currentParty;
           game.actionLog.doAction(new CreateUnitAction(game, mgUnit, null));
           this.loadMapSpriteForUnit(mgUnit, game);
           if (assignCreatedUnit && this.currentEvent) {
