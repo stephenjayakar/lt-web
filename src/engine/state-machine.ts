@@ -183,6 +183,16 @@ export class StateMachine {
   }
 
   /**
+   * Apply queued transitions immediately, outside update(). For callers that
+   * replace the whole stack between frames (a level load): otherwise the
+   * next update() would first begin() the stale top state, whose own
+   * transitions are appended after the queued clear and can undo it.
+   */
+  flushTransitions(): void {
+    this.processTempState();
+  }
+
+  /**
    * Flush the deferred transition queue.
    *
    * Note: Unlike Python's process_temp_state, this calls end() on each

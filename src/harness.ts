@@ -309,6 +309,11 @@ export function installHarness(
       await game.loadLevel(levelNid);
       game.state.clear();
       game.state.change('free');
+      // Replace the stack now. A restored snapshot leaves unstarted states
+      // on it; stepping first would begin() the stale top (e.g. free_roam
+      // popping itself on a non-roam level) after the queued clear and
+      // drain the stack the level load just built.
+      game.state.flushTransitions();
 
       // Process deferred transitions. FreeState itself will push EventState
       // when level_start events are queued; avoid manually pushing 'event' here
@@ -333,6 +338,7 @@ export function installHarness(
       }
       game.state.clear();
       game.state.change('free');
+      game.state.flushTransitions();
 
       // Step frames to process the state transition and render
       for (let i = 0; i < 3; i++) {

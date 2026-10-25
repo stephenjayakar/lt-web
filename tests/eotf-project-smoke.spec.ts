@@ -32,7 +32,7 @@ function expectedAssetNoise(text: string): boolean {
 }
 
 function compatibilityFailure(text: string): boolean {
-  return /EventCondition(?: JS eval failed|: cannot evaluate)|unknown (?:state|command|component)|event UI component is not implemented|failed to load level|Unhandled|PAGEERROR/i.test(text);
+  return /EventCondition(?: JS eval failed|: cannot evaluate)|unknown (?:state|command|component)|event UI component is not implemented|failed to load level|Unhandled|PAGEERROR|empty stack with no pending transitions/i.test(text);
 }
 
 async function waitForHarness(page: Page): Promise<void> {
@@ -1329,6 +1329,28 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(failures, failures.join('\n')).toEqual([]);
   });
 
+  test('loading a level over a restored roam snapshot keeps a live state stack', async ({ page }) => {
+    // A restored snapshot leaves unstarted states on the stack. harness
+    // loadLevel queued clear+change('free') but stepped before applying
+    // them, so the stale free_roam began, popped itself after the clear, and
+    // drained the stack: every settlement level then "settled" empty.
+    await page.goto('/?harness=true&project=eotf.ltproj&level=X&clean=true&bundle=false');
+    await waitForHarness(page);
+    const stacks = await page.evaluate(async () => {
+      const harness = (window as any).__harness;
+      const game = (window as any).__gameRef;
+      harness.stepFrames(3, null);
+      const before = game.state.stack.map((state: any) => state.name);
+      const snapshot = harness.saveSnapshot();
+      await harness.loadSnapshot(snapshot);
+      await harness.loadLevel('Act_1');
+      return { before, after: game.state.stack.map((state: any) => state.name) };
+    });
+    expect(stacks.before).toContain('free_roam');
+    expect(stacks.after[0]).toBe('free');
+    expect(stacks.after).not.toContain('free_roam');
+  });
+
   test.describe('all level-start event queues settle without compatibility failures @milestone', () => {
     test.describe.configure({ mode: 'parallel' });
     const shardCount = 4;
@@ -1357,16 +1379,21 @@ test.describe('Embrace of the Fog project compatibility', () => {
           if (index % shardCount !== shard) continue;
           if (requestedLevelNids.size > 0 && !requestedLevelNids.has(level.nid)) continue;
           currentLevel = level.nid;
-          await page.evaluate(async (levelNid) => {
+          await page.evaluate(async ({ levelNid, party }) => {
             const harnessWindow = window as any;
             const restored = await harnessWindow.__harness.loadSnapshot(
               harnessWindow.__eotfCampaignBaseline,
             );
             if (!restored) throw new Error('Failed to restore EOtF campaign baseline');
+            // The authored sortie (X 8. Run_Start) moves the chosen unit out
+            // of Reserves into the party the battle level deploys.
+            if (party) harnessWindow.__gameRef.getUnit('Player').party = party;
             await harnessWindow.__harness.loadLevel(levelNid);
-          }, level.nid);
+          }, { levelNid: level.nid, party: (level as any).party ?? null });
+          // Act intros run several seconds of authored waits and title
+          // cards; give every level_start queue room to finish for real.
           await page.evaluate(
-            (states) => (window as any).__harness.settle(300, states),
+            (states) => (window as any).__harness.settle(3_000, states),
             [...settledStates],
           );
           const state = await page.evaluate(() => {
@@ -1379,10 +1406,9 @@ test.describe('Embrace of the Fog project compatibility', () => {
           if (state.levelNid !== level.nid) {
             failures.push(`${level.nid}: loaded level ${String(state.levelNid)}`);
           }
-          const terminal = !state.currentStateName &&
-            state.stateStack.length === 0 &&
-            !state.activeEvents;
-          if (!settledStates.has(state.currentStateName) && !terminal) {
+          // An empty state stack is never a settled game: Python cannot
+          // update with no state, and the web loop just spins.
+          if (!settledStates.has(state.currentStateName)) {
             failures.push(
               `${level.nid}: level_start ended in ${String(state.currentStateName)} [${state.stateStack.join(', ')}]`,
             );
