@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:site": "node scripts/build-site.mjs",
     "preview": "vite preview",
     "test": "playwright test --grep-invert @milestone",
     "test:fast": "playwright test --grep-invert @milestone",

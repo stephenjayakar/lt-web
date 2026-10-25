@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve, join, extname } from 'path';
-import { createReadStream, stat, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { cpSync, createReadStream, stat, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { createHash } from 'crypto';
 import type { Plugin, ResolvedConfig } from 'vite';
 
@@ -75,8 +75,8 @@ function swPrecacheManifest(): Plugin {
           const fullPath = join(dir, entry.name);
           const urlPath = prefix + entry.name;
           if (entry.isDirectory()) {
-            // Skip game-data and bundles (too large, cached separately)
-            if (entry.name === 'game-data' || entry.name === 'bundles') continue;
+            // Skip game-data, bundles and packs (too large, cached separately)
+            if (entry.name === 'game-data' || entry.name === 'bundles' || entry.name === 'packs') continue;
             walk(fullPath, urlPath + '/');
           } else if (entry.isFile()) {
             // Skip the manifest itself and the SW
@@ -107,6 +107,36 @@ function swPrecacheManifest(): Plugin {
         writeFileSync(swPath, `${readFileSync(swPath, 'utf8')}\n// precache-revision:${revision}\n`);
       }
       console.log(`[sw-precache-manifest] Generated ${manifest.length} entries`);
+    },
+  };
+}
+
+/**
+ * `npm run build:site` (scripts/build-site.mjs) sets LT_SITE_BUILD=1: the
+ * hosted static site. Game assets ship as content-hashed packs under
+ * dist/packs/ (written by build-site after Vite), so public/ is copied
+ * without game-data/, bundles/ or test hooks, and __LT_HOSTED__ switches the
+ * client to src/packs/.
+ */
+const siteBuild = process.env.LT_SITE_BUILD === '1';
+const SITE_EXCLUDED_PUBLIC = new Set(['game-data', 'bundles', 'soak-seed.json']);
+
+function copyPublicShell(): Plugin {
+  let config: ResolvedConfig;
+  return {
+    name: 'copy-public-shell',
+    apply: 'build',
+    configResolved(resolvedConfig) {
+      config = resolvedConfig;
+    },
+    writeBundle() {
+      const outDir = resolve(config.root, config.build.outDir);
+      const publicDir = config.publicDir;
+      if (!publicDir || !existsSync(publicDir)) return;
+      for (const entry of readdirSync(publicDir)) {
+        if (SITE_EXCLUDED_PUBLIC.has(entry)) continue;
+        cpSync(join(publicDir, entry), join(outDir, entry), { recursive: true, dereference: true });
+      }
     },
   };
 }
@@ -163,13 +193,17 @@ export default defineConfig({
         });
       },
     },
+    // Hosted site: copy public/ minus the game assets (runs before closeBundle)
+    ...(siteBuild ? [copyPublicShell()] : []),
     // Generate precache manifest for the service worker
     swPrecacheManifest(),
   ],
   define: {
-    __AVAILABLE_PROJECTS__: JSON.stringify(discoverProjects()),
+    __AVAILABLE_PROJECTS__: JSON.stringify(siteBuild ? [] : discoverProjects()),
+    __LT_HOSTED__: JSON.stringify(siteBuild),
   },
   build: {
     target: 'es2022',
+    copyPublicDir: !siteBuild,
   },
 });

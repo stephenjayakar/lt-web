@@ -44,6 +44,28 @@ a packaged deployment boots the campaign with no fonts, menu sprites, or combat
 platforms. Both `public/game-data/` and `public/bundles/` are generated and
 gitignored.
 
+### Hosted site build
+
+The hosted static site (25 MiB per file)
+cannot serve the single 387 MB bundle. `npm run build:site` builds `dist/` for
+it instead, straight from `lt-maker/eotf.ltproj` and the engine assets (no
+staging or bundle step needed):
+
+```bash
+npm run build:site            # bakes VITE_CONVEX_URL = production Convex
+CONVEX_URL=https://<dev>.convex.cloud npm run build:site   # another deployment
+```
+
+Game data ships as content-hashed packs, `dist/packs/<sha256>.bin` plus
+`dist/packs/manifest.json` (`scripts/lib/asset-packs.mjs`). The client
+(`src/packs/`) downloads the ~30 MB the title needs, then music in the
+background; music intro/battle variants, which the web engine never plays,
+load only on request. Chunks are verified and kept in Cache Storage by hash,
+so returning visits and redeploys download only changed packs. Files Lex
+Talionis can never load (music not in `music.json`, Python sources) are
+dropped and PNGs are re-encoded losslessly. The build fails if any file
+reaches 25 MiB or raw game assets leak outside `dist/packs/`.
+
 ### Saves and upgrades
 
 Campaign save slots and suspend data are scoped by game NID in the
