@@ -7,7 +7,13 @@
  *
  * Music:  loaded from resources/music/{nid}.{ogg,mp3,wav}, loops, crossfades.
  * SFX:    loaded from resources/sfx/{nid}.{ogg,wav}, plays once.
+ *
+ * Like pygame in Python LT, a looping track restarts at sample 0 once its
+ * whole file has played (no loop points); Ogg Vorbis buffers are trimmed to
+ * the stream's true length first (ogg-length.ts).
  */
+import { oggVorbisLength, trimToTrueLength } from './ogg-length';
+
 export class AudioManager {
   private audioContext: AudioContext | null;
   private musicGain: GainNode | null;
@@ -412,7 +418,15 @@ export class AudioManager {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      // Read the true length before decodeAudioData detaches the bytes.
+      const trueLength = oggVorbisLength(new Uint8Array(arrayBuffer));
+      const decoded = await this.audioContext.decodeAudioData(arrayBuffer);
+      // Chrome keeps the Vorbis block padding past the stream's end; pygame
+      // (Python LT) does not. Trim it so loops restart exactly at the end.
+      const ctx = this.audioContext;
+      const audioBuffer = trueLength
+        ? trimToTrueLength(decoded, trueLength, (ch, frames, rate) => ctx.createBuffer(ch, frames, rate))
+        : decoded;
       this.audioBufferCache.set(path, audioBuffer);
       return audioBuffer;
     } catch {

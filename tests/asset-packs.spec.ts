@@ -490,13 +490,13 @@ test.describe('re-encoded music', () => {
       expect(played.nid).toBe('Theme');
       expect(played.loop).toBe(true);
       expect(played.channels).toBe(2);
-      // Chrome's Vorbis decoder ignores the end-of-stream trim, so it pads to
-      // the last block for the original and the re-encode alike: the loop the
-      // engine plays must be exactly as long as the original's.
-      expect(lengths.reencoded).toBe(lengths.source);
-      expect(Math.abs(lengths.reencoded - FRAMES)).toBeLessThan(2048);
+      // Chrome's raw decode pads past the stream end (both files alike); the
+      // engine trims to the true length, so the loop is exactly FRAMES long
+      // (tests/audio-loop-trim.spec.ts covers the trim itself).
+      expect(lengths.reencoded).toBeGreaterThanOrEqual(FRAMES);
+      expect(lengths.source).toBeGreaterThanOrEqual(FRAMES);
       // decodeAudioData resamples to the context rate; duration is preserved
-      expect(Math.abs(played.duration! - lengths.source / 44100)).toBeLessThan(0.001);
+      expect(Math.abs(played.duration! - FRAMES / 44100)).toBeLessThan(1 / 44100);
       expect(played.rms).toBeGreaterThan(0.03); // ffmpeg sine (amplitude 1/8): audible, not silence
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
