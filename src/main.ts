@@ -886,6 +886,12 @@ async function main(): Promise<void> {
 
   // --- Game loop ---
   let lastTimestamp = 0;
+  // Update pacing (see gameLoop): smoothed display refresh period, rAF time
+  // not yet spent on an update, and the tolerance that absorbs rAF jitter.
+  let lastRafTimestamp = 0;
+  let averageRafDeltaMs = FRAMETIME;
+  let updateBudgetMs = 0;
+  const UPDATE_PACING_SLACK_MS = FRAMETIME / 4;
 
   // F3 toggles performance overlay, F4 toggles profiling session
   let profilingSession = false;
@@ -933,6 +939,31 @@ async function main(): Promise<void> {
     if (controlTelemetry && timestamp - lastControlFrameAt < 50) {
       requestAnimationFrame(gameLoop);
       return;
+    }
+    // The engine is frame-stepped like Python's fixed 60 FPS clock: event
+    // waits, dialog, banners, and sprite cycles advance once per update. On
+    // a 120/144 Hz display one update per rAF ran the game 2x+ fast and did
+    // 2x+ the work, so updates are paced to at most 60 per second; the
+    // canvas keeps showing the last frame in between. Like clock.tick there
+    // is no catch-up: a display slower than 60 Hz (or a slow frame) slows the
+    // game rather than running several updates back to back. The control
+    // surface above already paces itself more coarsely.
+    // Displays at or below ~60 Hz keep exactly one update per rAF.
+    if (!controlTelemetry) {
+      const rafDelta = lastRafTimestamp === 0 ? FRAMETIME : timestamp - lastRafTimestamp;
+      lastRafTimestamp = timestamp;
+      // Ignore gaps such as a hidden tab when estimating the refresh period.
+      if (rafDelta < 100) averageRafDeltaMs += (rafDelta - averageRafDeltaMs) * 0.1;
+      if (averageRafDeltaMs < FRAMETIME * 0.9) {
+        updateBudgetMs = Math.min(updateBudgetMs + rafDelta, FRAMETIME * 2);
+        if (updateBudgetMs < FRAMETIME - UPDATE_PACING_SLACK_MS) {
+          requestAnimationFrame(gameLoop);
+          return;
+        }
+        updateBudgetMs = Math.max(-UPDATE_PACING_SLACK_MS, updateBudgetMs - FRAMETIME);
+      } else {
+        updateBudgetMs = 0;
+      }
     }
     lastControlFrameAt = timestamp;
     beginItemSystemFrame();
