@@ -1893,7 +1893,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
           item.tags ?? []),
       components,
       data: wrapMapping(item.data),
-      uses: item.uses,
+      // Python ItemObject.uses is the `uses` component (truthy when the item
+      // has one, `.value` its maximum); remaining uses live in data['uses'].
+      get uses() {
+        return components.get('uses');
+      },
       max_uses: item.maxUses,
       get owner_nid() {
         return item.owner?.nid ?? item.ownerNid ?? item.owner_nid ?? null;
@@ -2432,6 +2436,34 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     get_region(nid: string) {
       return wrapRegion(regions.find((candidate: any) => candidate.nid === nid));
+    },
+    // Python get_all_formation_spots / get_open_formation_spots.
+    get_all_formation_spots(): [number, number][] {
+      const spots = new Map<string, [number, number]>();
+      for (const region of regions) {
+        if (String(region.region_type).toLowerCase() !== 'formation' || !region.position) continue;
+        const [width, height] = region.size ?? [1, 1];
+        for (let x = 0; x < width; x += 1) {
+          for (let y = 0; y < height; y += 1) {
+            const spot: [number, number] = [region.position[0] + x, region.position[1] + y];
+            spots.set(spot.join(','), spot);
+          }
+        }
+      }
+      return [...spots.values()];
+    },
+    get_open_formation_spots() {
+      const all: [number, number][] = [];
+      for (const region of regions) {
+        if (String(region.region_type).toLowerCase() !== 'formation' || !region.position) continue;
+        const [width, height] = region.size ?? [1, 1];
+        for (let x = 0; x < width; x += 1) {
+          for (let y = 0; y < height; y += 1) all.push([region.position[0] + x, region.position[1] + y]);
+        }
+      }
+      return [...new Map(all.map((spot) => [spot.join(','), spot] as const)).values()]
+        .filter(([x, y]: [number, number]) => !game.board?.getUnit(x, y))
+        .sort((a: [number, number], b: [number, number]) => a[0] - b[0] || a[1] - b[1]);
     },
     get_region_under_pos(pos: [number, number] | null, regionType?: string) {
       if (!pos) return null;
