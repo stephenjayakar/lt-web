@@ -1,0 +1,145 @@
+import { test, expect, type Page } from '@playwright/test';
+
+/**
+ * Event data commands follow Python evaluation and action semantics:
+ * set_skill_data/game_var evaluate their expression, runtime-added
+ * components run their init(), and tag edits are turnwheel actions.
+ */
+
+test.describe.configure({ mode: 'parallel' });
+
+async function boot(page: Page): Promise<void> {
+  await page.goto('/?harness=true&level=DEBUG&bundle=false');
+  await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, {
+    timeout: 60_000,
+  });
+  await page.evaluate(() => (window as any).__harness.stepFrames(5, null));
+}
+
+async function runEvent(
+  page: Page,
+  nid: string,
+  source: string[],
+  localArgs: Record<string, unknown> = {},
+): Promise<void> {
+  await page.evaluate(({ nid, source, localArgs }) => {
+    const g = (window as any).__gameRef;
+    g.db.events.set(nid, {
+      name: nid, nid, trigger: nid, level_nid: g.currentLevel?.nid ?? null,
+      condition: 'True', only_once: false, priority: 0, _source: source,
+    });
+    g.eventManager.triggerSpecific(nid, {
+      type: nid,
+      localArgs: new Map(Object.entries(localArgs)),
+    }, true);
+    g.state.change('event');
+  }, { nid, source, localArgs });
+  await page.evaluate(() => (window as any).__harness.stepFrames(30, null));
+}
+
+test.describe('Event data command parity', () => {
+  test('set_skill_data evaluates its expression', async ({ page }) => {
+    await boot(page);
+    const skillNid = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const nid = [...g.db.skills.keys()][0];
+      (window as any).__harness.addSkill('Eirika', nid);
+      return nid;
+    });
+    await runEvent(page, 'QaSkillData', [
+      `set_skill_data;Eirika;${skillNid};charge;2`,
+      `set_skill_data;Eirika;${skillNid};charge;get_skill(game.get_unit('Eirika'), '${skillNid}').data['charge'] + 1`,
+      // Unevaluable expressions are skipped rather than stored as text.
+      `set_skill_data;Eirika;${skillNid};charge;no_such_name + 1`,
+    ]);
+    const charge = await page.evaluate((nid: string) =>
+      (window as any).__gameRef.units.get('Eirika').skills.find((s: any) => s.nid === nid).data.get('charge'),
+    skillNid);
+    expect(charge).toBe(3);
+  });
+
+  test('variables store evaluated locals and reject objects', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'QaVars', [
+      'level_var;qa_pos;target_pos',
+      'game_var;qa_word;SomeWord',
+      'game_var;qa_unit;True',
+      "game_var;qa_unit;game.get_unit('Eirika')",
+    ], { target_pos: [3, 4] });
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { pos: g.levelVars.get('qa_pos'), word: g.gameVars.get('qa_word'), unit: g.gameVars.get('qa_unit') };
+    });
+    expect(vars.pos).toEqual([3, 4]);
+    expect(vars.word).toBe('SomeWord');
+    // Python's is_primitive_or_primitive_collection rejects the unit.
+    expect(vars.unit).toBe(true);
+  });
+
+  test('runtime-added uses and end_time components run their init', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const item = g.units.get('Eirika').items.find((candidate: any) => !candidate.components.has('uses'))
+        ?? g.units.get('Eirika').items[0];
+      if (item.components.has('uses')) item.components.delete('uses');
+      const skillNid = [...g.db.skills.values()].find((skill: any) =>
+        !skill.components.some(([nid]: [string]) => ['end_time', 'time', 'combined_time'].includes(nid)))?.nid;
+      (window as any).__harness.addSkill('Eirika', skillNid);
+      return { itemUid: item.uid, skillNid };
+    });
+    await runEvent(page, 'QaComponents', [
+      `add_item_component;Eirika;${setup.itemUid};uses;3`,
+      `add_skill_component;Eirika;${setup.skillNid};end_time;2`,
+    ]);
+    const result = await page.evaluate(({ itemUid, skillNid }) => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      const item = unit.items.find((candidate: any) => candidate.uid === itemUid);
+      const skill = unit.skills.find((candidate: any) => candidate.nid === skillNid);
+      return {
+        uses: item.data.get('uses'),
+        starting: item.data.get('starting_uses'),
+        itemUses: item.uses,
+        turns: skill.data.get('turns'),
+        startingTurns: skill.data.get('starting_turns'),
+      };
+    }, setup);
+    expect(result).toEqual({ uses: 3, starting: 3, itemUses: 3, turns: 2, startingTurns: 2 });
+  });
+
+  test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      const tagged = eirika.tags.includes('QaDeployed');
+      (window as any).__harness.turnwheelUndo();
+      return { tagged, afterUndo: eirika.tags.includes('QaDeployed') };
+    });
+    expect(result).toEqual({ tagged: true, afterUndo: false });
+  });
+
+  test('move_unit treats no_block in the movement slot as a flag and walks', async ({ page }) => {
+    await boot(page);
+    const target = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const seth = g.units.get('Seth');
+      const moves = g.pathSystem.getValidMoves(seth, g.board)
+        .filter((pos: [number, number]) => pos[0] !== seth.position[0] || pos[1] !== seth.position[1]);
+      return moves[0];
+    });
+    await runEvent(page, 'QaMove', [
+      `move_unit;Seth;${target[0]},${target[1]};no_block`,
+      'game_var;qa_after_move;1',
+    ]);
+    await page.evaluate(() => (window as any).__harness.stepFrames(120, null));
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { position: g.units.get('Seth').position, after: g.gameVars.get('qa_after_move') };
+    });
+    expect(result.position).toEqual(target);
+    expect(result.after).toBe(1);
+  });
+});

@@ -117,6 +117,8 @@ import {
   AddRegionAction,
   RemoveRegionAction,
   DecrementTimeRegionAction,
+  AddTagAction,
+  RemoveTagAction,
   UnequipItemAction,
   CreateUnitAction,
   UnregisterUnitAction,
@@ -342,6 +344,23 @@ function parseEventBool(value: string | undefined): boolean | null {
   if (['t', 'true', '1', 'y', 'yes'].includes(normalized)) return true;
   if (['f', 'false', '0', 'n', 'no'].includes(normalized)) return false;
   return null;
+}
+
+/** Python utilities.type_checking.is_primitive_or_primitive_collection. */
+function isPrimitiveOrPrimitiveCollection(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (['number', 'string', 'boolean'].includes(typeof value)) return true;
+  if (Array.isArray(value)) return value.every(isPrimitiveOrPrimitiveCollection);
+  if (value instanceof Set) return [...value].every(isPrimitiveOrPrimitiveCollection);
+  if (value instanceof Map) {
+    return [...value.keys()].every(isPrimitiveOrPrimitiveCollection) &&
+      [...value.values()].every(isPrimitiveOrPrimitiveCollection);
+  }
+  if (typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype &&
+      !('_raw' in (value as object))) {
+    return Object.values(value as object).every(isPrimitiveOrPrimitiveCollection);
+  }
+  return false;
 }
 
 /**
@@ -11245,6 +11264,22 @@ export class EventState extends State {
     }
     if (/^[A-Za-z_][A-Za-z0-9_ -]*$/.test(trimmed) &&
         !['True', 'False', 'None'].includes(trimmed)) {
+      // Python evaluates the argument, so a bare local such as EOtF's
+      // `level_var;flashing_pos;target_pos` stores the position, not the
+      // word. Other bare words keep the web's lenient literal fallback.
+      const context = this.buildConditionContext();
+      const isLocal = /^[A-Za-z_]\w*$/.test(trimmed) && (
+        context.localArgs?.has(trimmed) ||
+        ['unit', 'unit1', 'unit2', 'target', 'position', 'region', 'item', 'target_pos'].includes(trimmed)
+      );
+      if (isLocal) {
+        try {
+          const evaluated = evaluateExpression(trimmed, context);
+          if (evaluated !== undefined && evaluated !== null) return evaluated;
+        } catch {
+          // fall through to the literal
+        }
+      }
       return source;
     }
     try {
@@ -12068,9 +12103,19 @@ export class EventState extends State {
       // ----- Unit commands (instant) -----
 
       case 'move_unit': {
-        const unitNid = args[0] ?? '';
+        // move_unit;Unit;Position?;MovementType?;Placement?;Speed? with the
+        // no_block/no_follow/silent flags anywhere (Python :1052). EOtF's
+        // `move_unit;Loreia_F;5,4;no_block` walks the unit; it is not a
+        // movement type.
+        const muArgs = parsePythonEventArgs(
+          args,
+          ['Unit'],
+          ['Position', 'MovementType', 'Placement', 'Speed'],
+          ['no_block', 'no_follow', 'silent'],
+        );
+        const unitNid = muArgs.value('Unit') ?? '';
         const unit = this.findUnit(unitNid);
-        const posStr = args[1] ?? '';
+        const posStr = muArgs.value('Position') ?? '';
         let targetPos = this.resolvePosition(posStr, game);
         if (!targetPos && unit?.startingPosition) {
           targetPos = [unit.startingPosition[0], unit.startingPosition[1]];
@@ -12080,11 +12125,11 @@ export class EventState extends State {
           return false;
         }
 
-        const movementType = (args[2] || 'normal').toLowerCase();
-        const placement = (args[3] || 'giveup').toLowerCase().trim();
-        const noBlock = args.some(arg => arg.toLowerCase().trim() === 'no_block');
-        const noFollow = args.some(arg => arg.toLowerCase().trim() === 'no_follow');
-        const parsedSpeed = parseInt(args[4] ?? '', 10);
+        const movementType = (muArgs.value('MovementType') || 'normal').toLowerCase();
+        const placement = (muArgs.value('Placement') || 'giveup').toLowerCase().trim();
+        const noBlock = muArgs.flags.has('no_block');
+        const noFollow = muArgs.flags.has('no_follow');
+        const parsedSpeed = parseInt(muArgs.value('Speed') ?? '', 10);
         const speedMs = Number.isFinite(parsedSpeed) && parsedSpeed > 0 ? parsedSpeed : 120;
         targetPos = this._checkPlacement(targetPos, placement, game);
         if (!targetPos) {
@@ -13051,18 +13096,29 @@ export class EventState extends State {
         const skillNid = args[1] ?? '';
         const dataKey = args[2] ?? '';
         const rawExpr = args[3] ?? '';
-        const unit = game.units.get(unitNid);
-        const skill = unit?.skills?.find((candidate: SkillObject) => candidate.nid === skillNid);
+        // Python Event._get_skill: the first skill matching by nid or uid.
+        const unit = this.findUnit(unitNid);
+        const skill = unit?.skills?.find((candidate: SkillObject) =>
+          candidate.nid === skillNid || String(candidate.uid) === skillNid);
         if (!unit || !skill || !dataKey) {
           console.warn(`set_skill_data: invalid unit/skill/key (${unitNid}/${skillNid}/${dataKey})`);
           this.advancePointer();
           return false;
         }
-        let value: unknown = rawExpr;
-        if (/^-?\d+(\.\d+)?$/.test(rawExpr)) value = Number(rawExpr);
-        else if (rawExpr === 'True' || rawExpr === 'true') value = true;
-        else if (rawExpr === 'False' || rawExpr === 'false') value = false;
-        game.actionLog.doAction(new SetSkillDataAction(skill, dataKey, value));
+        // Python evaluates the Expression (e.g. EOtF's
+        // `get_skill(unit, 'KnightsTour').data['charge'] + 1`) and skips the
+        // command when it cannot be evaluated.
+        let value: unknown;
+        try {
+          value = evaluateExpression(rawExpr.trim(), this.buildConditionContext());
+        } catch {
+          value = undefined;
+        }
+        if (value === undefined) {
+          console.warn(`set_skill_data: could not evaluate ${rawExpr}`);
+        } else {
+          game.actionLog.doAction(new SetSkillDataAction(skill, dataKey, value));
+        }
         this.advancePointer();
         return false;
       }
@@ -14069,9 +14125,8 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const tag = args[1] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit && tag && !unit.tags.includes(tag)) {
-          unit.tags.push(tag);
-        }
+        // Python AddTag is an action, so the turnwheel rewinds it.
+        if (unit && tag) game.actionLog.doAction(new AddTagAction(unit, tag));
         this.advancePointer();
         return false;
       }
@@ -14080,10 +14135,7 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const tag = args[1] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit && tag) {
-          const idx = unit.tags.indexOf(tag);
-          if (idx !== -1) unit.tags.splice(idx, 1);
-        }
+        if (unit && tag) game.actionLog.doAction(new RemoveTagAction(unit, tag));
         this.advancePointer();
         return false;
       }
@@ -14097,7 +14149,10 @@ export class EventState extends State {
           rawArgs[1] ?? 'True',
           args[1] ?? 'True',
         );
-        if (varName && game.gameVars) {
+        if (!isPrimitiveOrPrimitiveCollection(value)) {
+          // Python rejects units/items and keeps the previous value.
+          console.warn(`game_var: ${args[1]} is not a valid variable`);
+        } else if (varName && game.gameVars) {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, varName, value));
         }
         this.advancePointer();
@@ -14142,7 +14197,10 @@ export class EventState extends State {
           rawArgs[1] ?? 'True',
           args[1] ?? 'True',
         );
-        if (varName && game.levelVars) {
+        if (!isPrimitiveOrPrimitiveCollection(value)) {
+          // Python rejects units/items and keeps the previous value.
+          console.warn(`level_var: ${args[1]} is not a valid variable`);
+        } else if (varName && game.levelVars) {
           game.actionLog.doAction(new SetLevelVarAction(game.levelVars, varName, value));
         }
         this.advancePointer();

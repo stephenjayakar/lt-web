@@ -1267,12 +1267,36 @@ export class SetSkillDataAction extends Action {
  * both. Values are raw component values (Python wraps them in component
  * instances; the web reads values directly).
  */
+/**
+ * Python component init() hooks that AddItemComponent/AddSkillComponent run
+ * when a component is added at runtime: the data keys each one seeds.
+ */
+function addedComponentData(obj: any, nid: string, value: any): [string, any][] {
+  const isItem = typeof obj?.setData === 'function';
+  const number = Number(value);
+  if (isItem) {
+    if (nid === 'uses') return [['uses', number], ['starting_uses', number]];
+    if (nid === 'c_uses') return [['c_uses', number], ['starting_c_uses', number]];
+    if (nid === 'cooldown') return [['cooldown', 0], ['starting_cooldown', number]];
+    return [];
+  }
+  if (!(obj?.data instanceof Map)) return [];
+  if (nid === 'build_charge') return [['charge', 0], ['total_charge', number]];
+  if (nid === 'drain_charge') return [['charge', number], ['total_charge', number]];
+  if (nid === 'time' || nid === 'end_time') return [['turns', number], ['starting_turns', number]];
+  if (nid === 'combined_time') return [['turns', number * 2], ['starting_turns', number * 2]];
+  if (nid === 'upkeep_stat_change') return [['counter', 0]];
+  if (nid === 'combat_art') return [['active', false]];
+  return [];
+}
+
 export class AddObjComponentAction extends Action {
   private hadKey = false;
   private oldValue: any;
   private obj: { components: Map<string, any> };
   private nid: string;
   private value: any;
+  private oldData: [string, boolean, any][] = [];
   constructor(obj: { components: Map<string, any> }, nid: string, value: any) {
     super();
     this.obj = obj;
@@ -1283,10 +1307,31 @@ export class AddObjComponentAction extends Action {
     this.hadKey = this.obj.components.has(this.nid);
     this.oldValue = this.obj.components.get(this.nid);
     this.obj.components.set(this.nid, this.value ?? true);
+    // Run the component's init (e.g. `uses` seeds uses/starting_uses,
+    // `end_time` seeds turns) so EOtF's runtime-added Trace uses and
+    // Starstruck durations behave like authored components.
+    const target = this.obj as any;
+    this.oldData = [];
+    for (const [key, seeded] of addedComponentData(target, this.nid, this.value)) {
+      this.oldData.push([key, target.data.has(key), target.data.get(key)]);
+      if (typeof target.setData === 'function') target.setData(key, seeded);
+      else target.data.set(key, seeded);
+    }
   }
   reverse(): void {
     if (this.hadKey) this.obj.components.set(this.nid, this.oldValue);
     else this.obj.components.delete(this.nid);
+    const target = this.obj as any;
+    for (const [key, had, old] of [...this.oldData].reverse()) {
+      if (had) {
+        if (typeof target.setData === 'function') target.setData(key, old);
+        else target.data.set(key, old);
+      } else {
+        target.data.delete(key);
+        if (key === 'uses' || key === 'c_uses') target.uses = 0;
+        if (key === 'starting_uses' || key === 'starting_c_uses') target.maxUses = 0;
+      }
+    }
   }
 }
 
@@ -2014,6 +2059,53 @@ export class RemoveRegionAction extends Action {
     const idx = Math.min(this.removedIndex, this.regions.length);
     this.regions.splice(idx, 0, this.removed);
     refreshRegionEffects(this.removed);
+  }
+}
+
+/** Python action.AddTag: add a unit tag once, reversibly. */
+export class AddTagAction extends Action {
+  private unit: UnitObject;
+  private tag: string;
+  private didAdd = false;
+
+  constructor(unit: UnitObject, tag: string) {
+    super();
+    this.unit = unit;
+    this.tag = tag;
+  }
+
+  execute(): void {
+    this.didAdd = !this.unit.tags.includes(this.tag);
+    if (this.didAdd) this.unit.tags.push(this.tag);
+  }
+
+  reverse(): void {
+    if (!this.didAdd) return;
+    const index = this.unit.tags.lastIndexOf(this.tag);
+    if (index >= 0) this.unit.tags.splice(index, 1);
+  }
+}
+
+/** Python action.RemoveTag: remove a unit tag, reversibly. */
+export class RemoveTagAction extends Action {
+  private unit: UnitObject;
+  private tag: string;
+  private removedIndex = -1;
+
+  constructor(unit: UnitObject, tag: string) {
+    super();
+    this.unit = unit;
+    this.tag = tag;
+  }
+
+  execute(): void {
+    this.removedIndex = this.unit.tags.indexOf(this.tag);
+    if (this.removedIndex >= 0) this.unit.tags.splice(this.removedIndex, 1);
+  }
+
+  reverse(): void {
+    if (this.removedIndex < 0) return;
+    this.unit.tags.splice(Math.min(this.removedIndex, this.unit.tags.length), 0, this.tag);
   }
 }
 
