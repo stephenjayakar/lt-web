@@ -232,6 +232,13 @@
   animation: startup-progress 1.15s ease-in-out infinite;
 }
 
+.startup-status--determinate .startup-status__progress span {
+  width: 0;
+  background: var(--web-gold);
+  animation: none;
+  transition: width 0.2s ease-out;
+}
+
 .startup-status__message {
   min-height: 20px;
   color: var(--web-muted);
