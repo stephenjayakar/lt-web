@@ -110,16 +110,17 @@ export class HUD {
     ctx: CanvasRenderingContext2D, screenW: number, screenH: number, _db: Database,
     initiative?: InitiativeTracker | null,
     units?: Map<string, UnitObject> | null,
+    showHoverInfo: boolean = true,
   ): void {
     if (!this.visible) return;
 
     const dpr = window.devicePixelRatio || 1;
     const hs = hudScale(screenW, screenH);
 
-    if (this.hoveredUnit) {
+    if (this.hoveredUnit && showHoverInfo) {
       this.drawUnitInfo(ctx, this.hoveredUnit, dpr, hs, screenW, screenH, _db);
     }
-    if (this.terrainName) {
+    if (this.terrainName && showHoverInfo) {
       this.drawTerrainInfo(ctx, dpr, hs, screenW, screenH);
     }
     if (initiative && units && initiative.drawMe && initiative.unitLine.length > 0) {

@@ -9204,6 +9204,14 @@ export class EventState extends State {
   /** Event to run on each selection, from the choice's `EventNid` keyword. */
   private choiceEventNid: string | null = null;
   /** Parent choices paused while their EventNid selection event runs. */
+  /** Presentation of events paused by a nested trigger_script/choice event. */
+  private parkedEventPresentation: WeakMap<GameEvent, {
+    eventTables: Map<string, EventTable>;
+    eventTextboxes: Map<string, EventTextbox>;
+    portraits: Map<string, EventPortrait>;
+    portraitPriorityCounter: number;
+    background: HTMLImageElement | null;
+  }> = new WeakMap();
   private suspendedChoiceEvents: Array<{
     owner: GameEvent;
     commandPointer: number;
@@ -10325,6 +10333,23 @@ export class EventState extends State {
    */
   private loadNextEvent(game: any): void {
     const next = game.eventManager?.getCurrentEvent() ?? null;
+    // Python keeps portraits, tables/textboxes and the background on each
+    // Event object, so a parent paused by trigger_script (or a choice's
+    // EventNid) gets them back when it resumes. Park the outgoing event's
+    // presentation while it is still pending.
+    const previous = this.currentEvent;
+    if (previous && previous !== next && !previous.isDone()) {
+      this.parkedEventPresentation.set(previous, {
+        eventTables: this.eventTables,
+        eventTextboxes: this.eventTextboxes,
+        portraits: this.portraits,
+        portraitPriorityCounter: this.portraitPriorityCounter,
+        background: this.background,
+      });
+      this.eventTables = new Map();
+      this.eventTextboxes = new Map();
+      this.portraits = new Map();
+    }
     if (next) {
       this.currentEvent = next;
       this.dialog = null;
@@ -10346,6 +10371,16 @@ export class EventState extends State {
           break;
         }
       }
+      const parked = this.parkedEventPresentation.get(next);
+      let restoredBackground: HTMLImageElement | null = null;
+      if (parked) {
+        this.parkedEventPresentation.delete(next);
+        this.eventTables = parked.eventTables;
+        this.eventTextboxes = parked.eventTextboxes;
+        this.portraits = parked.portraits;
+        this.portraitPriorityCounter = parked.portraitPriorityCounter;
+        restoredBackground = parked.background;
+      }
       if (suspendedIndex >= 0) {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
         this.eventTables = suspended.eventTables;
@@ -10355,7 +10390,7 @@ export class EventState extends State {
         if (suspended.portraits) this.portraits = suspended.portraits;
         if (suspended.replay) next.commandPointer = suspended.commandPointer;
       }
-      this.background = null;
+      this.background = restoredBackground;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;

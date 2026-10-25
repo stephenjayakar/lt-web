@@ -1080,7 +1080,12 @@ async function main(): Promise<void> {
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
     // --- HUD overlay (fixed screen-space, not affected by zoom) ---
-    game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db, game.initiative, game.units);
+    // Python ui_view only shows the unit/terrain/objective panels while the
+    // top state is one of its legal_states; otherwise they slide away (they
+    // used to linger over menus, targeting and event choice windows).
+    const hudTop = game.state.getCurrentState()?.name ?? '';
+    game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db, game.initiative, game.units,
+      ['free', 'prep_formation', 'prep_formation_select'].includes(hudTop));
     startupStatus?.remove();
     PerfMonitor.endDraw();
 
