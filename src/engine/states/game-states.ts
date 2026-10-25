@@ -12502,7 +12502,7 @@ export class EventState extends State {
         const parseList = (s: string | undefined) =>
           (s ?? '').split(',').map((x: string) => x.trim()).filter(Boolean);
         const optionsList = parseList(args[0]);
-        const enabledList = parseList(args[1]).map((v: string) => v.toLowerCase() !== 'false');
+        const enabledList = parseList(args[1]).map((v: string) => parseEventBool(v) ?? false);
         const descList = parseList(args[2]);
         const eventsListRaw = parseList(args[3]);
         if (enabledList.length > optionsList.length || descList.length > optionsList.length
@@ -12578,7 +12578,7 @@ export class EventState extends State {
 
       case 'enable_repair_shop': {
         // enable_repair_shop;bool (Python :694) — plain game-var toggle
-        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_repair_shop', (args[0] ?? '').toLowerCase() === 'true'));
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_repair_shop', parseEventBool(args[0]) ?? false));
         this.advancePointer();
         return false;
       }
@@ -12865,7 +12865,7 @@ export class EventState extends State {
       case 'change_roaming': {
         // change_roaming;bool (Python event_functions.py:3774): toggles free
         // roam and resets the turnwheel's first free action like Python.
-        const enabled = (args[0] ?? '').toLowerCase() === 'true';
+        const enabled = parseEventBool(args[0]) ?? false;
         game.actionLog.setFirstFreeAction();
         game.roamInfo.roam = enabled;
         this.advancePointer();
@@ -13609,7 +13609,7 @@ export class EventState extends State {
         const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '');
         const value = (args[2] ?? '').toLowerCase();
         if (item) {
-          game.actionLog.doAction(new SetItemDroppableAction(item, ['true', '1', 'yes'].includes(value)));
+          game.actionLog.doAction(new SetItemDroppableAction(item, parseEventBool(value) ?? false));
         }
         this.advancePointer();
         return false;
@@ -14361,9 +14361,8 @@ export class EventState extends State {
       // ----- Convoy / Party commands -----
 
       case 'enable_convoy': {
-        // enable_convoy — enables or disables convoy access
-        // Sets the _convoy game variable
-        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_convoy', true));
+        // enable_convoy;Activated (Python :691) sets the _convoy game var.
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_convoy', parseEventBool(args[0] ?? 'true') ?? false));
         this.advancePointer();
         return false;
       }
@@ -14930,7 +14929,7 @@ export class EventState extends State {
         const subNid = optional.get('string') ?? '';
         const parsedTime = parseInt(optional.get('timeleft') ?? '', 10);
         const timeLeft: number | null = Number.isNaN(parsedTime) ? null : parsedTime;
-        const hideTime = (optional.get('hidetime') ?? '').toLowerCase() === 'true';
+        const hideTime = parseEventBool(optional.get('hidetime')) ?? false;
 
         // Parse position
         const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));
@@ -16435,8 +16434,8 @@ export class EventState extends State {
       // ----- Support system event commands -----
 
       case 'enable_supports': {
-        // Sets the _supports game var to enable supports
-        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_supports', true));
+        // enable_supports;Activated (Python :697) sets the _supports game var.
+        game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_supports', parseEventBool(args[0] ?? 'true') ?? false));
         this.advancePointer();
         return false;
       }
@@ -16488,7 +16487,7 @@ export class EventState extends State {
 
       case 'enable_turnwheel': {
         // enable_turnwheel;true/false
-        const activated = args[0]?.toLowerCase() !== 'false';
+        const activated = parseEventBool(args[0] ?? 'true') ?? false;
         game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_turnwheel', activated));
         this.advancePointer();
         return false;
@@ -16498,7 +16497,7 @@ export class EventState extends State {
         // activate_turnwheel;force
         // Opens the turnwheel UI. If 'force' is specified, the player
         // must use the turnwheel (cannot cancel).
-        const force = args[0]?.toLowerCase() !== 'false';
+        const force = parseEventBool(args[0] ?? 'true') ?? false;
         if (!game.memory) game.memory = new Map();
         game.memory.set('force_turnwheel', force);
         game.memory.set('event_turnwheel', true);
@@ -16776,8 +16775,8 @@ export class EventState extends State {
       }
 
       case 'enable_fog_of_war': {
-        const fogEnableStr = args[0]?.toLowerCase?.() ?? 'true';
-        const fogEnable = fogEnableStr === 'true' || fogEnableStr === '1';
+        // Python Bool validator: t/true/1/y/yes are true. EOtF writes `t`.
+        const fogEnable = parseEventBool(args[0] ?? 'true') ?? false;
         game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_fog_of_war', fogEnable));
         console.log(`Event: enable_fog_of_war -> ${fogEnable}`);
         this.advancePointer();
@@ -17055,12 +17054,12 @@ export class EventState extends State {
         return true; // blocking until save menu exits
       }
       case 'skip_save': {
-        // Python event_functions.skip_save: SetLevelVar('_skip_save', bool).
-        // It only suppresses the between-chapter save screen; it never
-        // writes a save (the web used to overwrite the slot mid-event).
-        const raw = (args[0] ?? '').trim().toLowerCase();
-        const value = ['t', 'true', '1', 'yes', 'y'].includes(raw);
-        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_skip_save', value));
+        // skip_save;Bool (Python event_functions.skip_save) only records
+        // the level var that tells the end-of-chapter save screen to skip
+        // itself. It never writes a save; EOtF issues skip_save;t before
+        // every win_game precisely so no save prompt (or save) happens.
+        const skip = parseEventBool(args[0]) ?? false;
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_skip_save', skip));
         this.advancePointer();
         return false;
       }

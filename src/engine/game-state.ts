@@ -1369,24 +1369,27 @@ export class GameState {
     }
   }
 
-  /** Get all living units in a party. */
+  /**
+   * Python get_units_in_party: living persistent party members, sorted by
+   * the party's prep/manage order (unlisted units last, registry order).
+   */
   getUnitsInParty(partyNid?: string): UnitObject[] {
     const nid = partyNid || this.currentParty;
-    const result: UnitObject[] = [];
-    for (const unit of this.units.values()) {
-      if (unit.team === 'player' && unit.party === nid && !unit.isDead()) {
-        result.push(unit);
-      }
-    }
-    return result;
+    const order = this.parties.get(nid)?.partyPrepManageSortOrder ?? [];
+    const rank = new Map(order.map((unitNid, index) => [unitNid, index]));
+    return this.getAllUnitsInParty(nid)
+      .filter((unit) => !unit.isDead())
+      .map((unit, index) => ({ unit, index, order: rank.get(unit.nid) ?? Number.MAX_SAFE_INTEGER }))
+      .sort((left, right) => left.order - right.order || left.index - right.index)
+      .map(({ unit }) => unit);
   }
 
-  /** Get all units in a party including dead ones. */
+  /** Python get_all_units_in_party: persistent player units in the party, dead or alive. */
   getAllUnitsInParty(partyNid?: string): UnitObject[] {
     const nid = partyNid || this.currentParty;
     const result: UnitObject[] = [];
     for (const unit of this.units.values()) {
-      if (unit.team === 'player' && unit.party === nid) {
+      if (unit.team === 'player' && unit.persistent && unit.party === nid) {
         result.push(unit);
       }
     }
@@ -1858,7 +1861,10 @@ export class GameState {
         `GameState.loadMapSpriteForUnit: sprite "${requestedNid}" failed for "${unit.nid}"`,
       );
     }
-    spriteCache.set(cacheKey, mapSprite);
+    // Only cache successes: a transient fetch failure (network hiccup,
+    // overloaded server) must not blank every unit of this class for the
+    // rest of the session; the next load for the class retries.
+    if (mapSprite) spriteCache.set(cacheKey, mapSprite);
     if (this.mapSpriteLoadVersions.get(unit) === loadVersion) {
       unit.sprite = mapSprite;
     }
