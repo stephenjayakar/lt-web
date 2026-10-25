@@ -14,14 +14,23 @@ test.describe('Rekka title presentation', () => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
-    const title = await page.evaluate(async () => {
+    await page.evaluate(() => {
       const game = (window as any).__gameRef;
       game.audioManager.stopMusic();
       game.audioManager.clearCalls();
       game.state.clear();
       game.state.change('title');
       (window as any).__harness.stepFrames(3, null);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    // Title art loads asynchronously; wait for it instead of a fixed sleep
+    // that loses the race under parallel load.
+    await page.waitForFunction(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state?.name === 'title' && !!state.bgImage &&
+        state.logoAssetLoaded && state.pressStartAssetLoaded;
+    }, undefined, { timeout: 15_000 });
+    const title = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
       (window as any).__harness.stepFrames(1, null);
       const state = game.state.getCurrentState() as any;
       return {
@@ -79,9 +88,14 @@ test.describe('Rekka title presentation', () => {
       game.state.clear();
       game.state.change('title');
       (window as any).__harness.stepFrames(3, null);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      (window as any).__harness.stepFrames(1, null);
     });
+    // The title panorama loads asynchronously; a fixed 100ms sleep raced it
+    // under parallel load and screenshotted a bare background.
+    await page.waitForFunction(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state?.name === 'title' && !!state.bgImage;
+    }, undefined, { timeout: 15_000 });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
 
     const geometry = await page.locator('#game-canvas').evaluate(async (canvas: HTMLCanvasElement) => {
       const rect = canvas.getBoundingClientRect();

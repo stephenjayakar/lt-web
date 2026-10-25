@@ -10,11 +10,16 @@ test.describe('Rekka visual baselines', () => {
   test('representative chapter map renders project tiles, units, and HUD', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=true&bundle=false');
     await waitForHarness(page);
-    await page.evaluate(async () => {
-      (window as any).__harness.stepFrames(5, null);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      (window as any).__harness.stepFrames(1, null);
-    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(5, null));
+    // Map sprites load asynchronously; wait for every placed unit's sprite
+    // rather than a fixed sleep that loses the race under parallel load.
+    await page.waitForFunction(() => {
+      const game = (window as any).__gameRef;
+      return [...game.units.values()]
+        .filter((unit: any) => unit.position && !unit.dead)
+        .every((unit: any) => !!unit.sprite);
+    }, undefined, { timeout: 15_000 });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
     await expect(page.locator('#game-canvas')).toHaveScreenshot('rekka-chapter-7-map.png', {
       maxDiffPixelRatio: 0.01,
     });
@@ -63,8 +68,14 @@ test.describe('Rekka visual baselines', () => {
         (window as any).__harness.stepFrames(1, null);
       }
     });
-    // Portrait fades run on real time; render once more after they settle.
-    await page.waitForTimeout(300);
+    // Wait for both portraits to load and finish their (wall-clock) fade-in.
+    await page.waitForFunction(() => {
+      (window as any).__harness.stepFrames(1, null);
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      const portraits = [...(state?.portraits?.values?.() ?? [])];
+      return state?.name === 'event' && state.pendingPortraitLoads === 0 &&
+        portraits.length >= 2 && portraits.every((portrait: any) => !portrait.isTransitioning);
+    }, undefined, { timeout: 15_000 });
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
     expect(await page.evaluate(
       () => (window as any).__gameRef.state.getCurrentState()?.dialog?.isWaiting(),
@@ -82,7 +93,11 @@ test.describe('Rekka visual baselines', () => {
       game.state.change('save_menu');
       (window as any).__harness.stepFrames(2, null);
     });
-    await page.waitForTimeout(100);
+    // Save slots load asynchronously from storage.
+    await page.waitForFunction(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return state?.name === 'save_menu' && state.loading === false;
+    }, undefined, { timeout: 15_000 });
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
     expect(await page.evaluate(
       () => (window as any).__gameRef.state.getCurrentState()?.name,
@@ -144,7 +159,11 @@ test.describe('Rekka visual baselines', () => {
       if (!render) await page.waitForTimeout(10);
     }
     expect(render).toEqual({ left: true, right: true });
-    await page.waitForTimeout(250);
+    // Battle platforms load asynchronously after the combat starts.
+    await page.waitForFunction(() => {
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      return !!state?.leftPlatformImg && !!state?.rightPlatformImg;
+    }, undefined, { timeout: 15_000 });
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
     await expect(page.locator('#game-canvas')).toHaveScreenshot(
       'rekka-full-battle-animation.png',
