@@ -224,9 +224,46 @@ export class ResourceManager {
     return this.loadImage(`resources/portraits/${nid}.png`);
   }
 
-  /** Load a system sprite by name (e.g. "cursor", "menus"). */
+  /**
+   * Load a SPRITES entry by name (e.g. an event overlay sprite).
+   *
+   * Python's SPRITES dict holds the engine sprites with the project's
+   * resources/custom_sprites/*.png layered over them by basename, so a
+   * project sprite wins. Engine sprites are staged at /game-data/sprites/,
+   * beside — not inside — the .ltproj directory.
+   */
   async loadSystemSprite(name: string): Promise<HTMLImageElement> {
-    return this.loadImage(`sprites/${name}.png`);
+    try {
+      return await this.loadImage(`resources/custom_sprites/${name}.png`);
+    } catch {
+      const encoded = encodeURIComponent(name);
+      const engineUrl = `${this.baseUrl.replace(/\/[^/]*$/, '')}/sprites/${encoded}.png`;
+      return this.loadAbsoluteImage(engineUrl);
+    }
+  }
+
+  /** Load and cache an image by absolute URL. */
+  private loadAbsoluteImage(url: string): Promise<HTMLImageElement> {
+    const cached = this.images.get(url);
+    if (cached) return Promise.resolve(cached);
+    const pending = this.pendingImages.get(url);
+    if (pending) return pending;
+    const promise = new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        this.images.set(url, img);
+        this.pendingImages.delete(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        this.pendingImages.delete(url);
+        reject(new Error(`Failed to load image: ${url}`));
+      };
+      img.src = url;
+    });
+    this.pendingImages.set(url, promise);
+    return promise;
   }
 
   /**

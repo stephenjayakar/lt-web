@@ -1060,6 +1060,32 @@ test.describe('Event command flag matching: overlay sprites', () => {
     ], 2);
     expect(await getGameVar(page, 'overlay_no_block')).toBe('done');
   });
+
+  test('overlay sprites resolve project custom sprites over engine sprites', async ({ page }) => {
+    // Python SPRITES: engine sprites with resources/custom_sprites layered
+    // on top by basename. EOtF's act title cards live in custom_sprites.
+    await installAndRunEvent(page, 'test_overlay_sources', [
+      'draw_overlay_sprite;custom_overlay;logo;0,0;0',
+      'draw_overlay_sprite;engine_overlay;cursor;0,0;0',
+      'wait;5000',
+    ], 2);
+    await page.waitForFunction(() => {
+      const g = (window as any).__gameRef;
+      const event = g.state.stack.find((state: any) => state.name === 'event');
+      const overlays = event?.overlaySprites;
+      return !!overlays?.get('custom_overlay')?.image && !!overlays?.get('engine_overlay')?.image;
+    }, undefined, { timeout: 10_000 });
+    const sources = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const event = g.state.stack.find((state: any) => state.name === 'event');
+      return {
+        custom: event.overlaySprites.get('custom_overlay').image.src,
+        engine: event.overlaySprites.get('engine_overlay').image.src,
+      };
+    });
+    expect(sources.custom).toContain('/default.ltproj/resources/custom_sprites/logo.png');
+    expect(sources.engine).toMatch(/\/game-data\/sprites\/cursor\.png$/);
+  });
 });
 test.describe('Event command flag matching: overworld presentation', () => {
   test.beforeEach(async ({ page }) => {
