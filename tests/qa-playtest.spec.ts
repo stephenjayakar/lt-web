@@ -728,3 +728,17 @@ test('phase change shows the Python turnbanner (PhaseIn)', async ({ page }) => {
   });
   expect(info).toEqual({ name: 'phase_change', banner: 'PhaseIn' });
 });
+
+test('a missing {v:} becomes ?? and an un-evaluable if is False (EOtF gacha Recall)', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_missing_var', [
+    'if;len({v:qa_never_set}) > 0',
+    '    game_var;qa_branch;then',
+    'else',
+    '    game_var;qa_branch;else',
+    'end',
+    'game_var;qa_text;x{v:qa_never_set}y',
+  ], 10);
+  expect(await gameVar(page, 'qa_branch')).toBe('else');
+  expect(await gameVar(page, 'qa_text')).toBe('x??y');
+});

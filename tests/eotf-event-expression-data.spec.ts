@@ -171,7 +171,9 @@ test.describe('Embrace of the Fog event expression data', () => {
       'Lounge_with_Talks_of_Tomorrow',
       'Cityscape_Where_the_Light_Shines',
     ]).toContain(result.chosen);
-    expect(result.directPlayNids).toEqual([result.chosen]);
+    // Free roam re-fades the (same) phase song when the event ends, as
+    // Python FreeRoamState.begin does; a repeat fade_in of the current song is a no-op.
+    expect([...new Set(result.directPlayNids)]).toEqual([result.chosen]);
     expect(result.undoneAction).toBe('ChangePhaseMusicAction');
     expect(result.enemyPhase).toBe(result.oldEnemyPhase);
   });

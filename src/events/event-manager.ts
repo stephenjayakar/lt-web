@@ -1008,6 +1008,13 @@ function evaluateComparison(
   };
   const lhsValue = resolveOperand(lhsStr);
   const rhsValue = resolveOperand(rhsStr);
+  // Python evaluates the whole expression; an operand that cannot be
+  // evaluated raises, and a failing `if` condition is False. Comparing the
+  // raw operand text instead made e.g. `len(??) > 0` (a missing {v:}) true.
+  if (lhsValue === undefined || rhsValue === undefined) {
+    const whole = evaluateWithJsFallback(`${lhsStr} ${op} ${rhsStr}`, ctx, false);
+    return whole === undefined ? false : !!whole;
+  }
 
   // If both resolve to numbers, compare numerically
   const lhsNum = typeof lhsValue === 'number' ? lhsValue : Number(lhsValue);

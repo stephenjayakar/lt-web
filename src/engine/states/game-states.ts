@@ -11548,9 +11548,11 @@ export class EventState extends State {
           eventObjectToString(result) +
           value.slice(close + 1);
       }
-      value = value.replace(/\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
+      // Python TextEvaluator._evaluate_vars: a missing variable becomes '??'
+      // (so `if;len({v:missing}) > 0` fails to evaluate and is False).
+      value = value.replace(/\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
         const result = variableValue(key);
-        return result === undefined ? match : eventObjectToString(result);
+        return result === undefined ? '??' : eventObjectToString(result);
       });
       value = value.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
         const result = variableValue(key);
