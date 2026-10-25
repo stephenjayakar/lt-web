@@ -91,6 +91,8 @@ function makeFixture(): { root: string; projectDir: string; engineDir: string } 
   put(`${proj}/game_data/items/Iron_Sword.json`, JSON.stringify({ nid: 'Iron_Sword', pad: 'x'.repeat(4000) }));
   put(`${proj}/resources/portraits/portraits.json`, '[{"nid":"Eirika"}]');
   put(`${proj}/resources/portraits/Eirika.png`, rgbaPng(64, 64));
+  put(`${proj}/resources/tilesets/tilesets.json`, '[{"nid":"Plains"}]'); // boot index pack
+  put(`${proj}/resources/tilesets/Plains.png`, rgbaPng(32, 16));          // deferred to background
   put(`${proj}/resources/music/music.json`, JSON.stringify([['Theme', true, false], ['Battle Song', false, false]]));
   put(`${proj}/resources/music/Theme.ogg`, noise(10000, 1));         // background, 3 chunks at 4 KiB
   put(`${proj}/resources/music/Theme-intro.ogg`, noise(1200, 2));    // demand (intro flag set)
@@ -126,8 +128,14 @@ test.describe('asset pack builder', () => {
       const byName = Object.fromEntries(packs.map((p) => [p.name, p]));
       expect(Object.keys(byName).sort()).toEqual([
         'data', 'engine', 'music/Battle Song.ogg', 'music/Theme-intro.ogg', 'music/Theme.ogg',
-        'resources/music', 'resources/portraits',
+        'resources/music', 'resources/portraits', 'resources/tilesets', 'resources/tilesets-index',
       ]);
+      // title-irrelevant resource media loads after boot; its manifest does not
+      expect(byName['resources/tilesets'].load).toBe('background');
+      expect(byName['resources/tilesets'].files).toEqual(['demo.ltproj/resources/tilesets/Plains.png']);
+      expect(byName['resources/tilesets-index'].load).toBe('boot');
+      expect(byName['resources/tilesets-index'].files).toEqual(['demo.ltproj/resources/tilesets/tilesets.json']);
+      expect(byName['resources/portraits'].load).toBe('boot');
       expect(byName['music/Theme.ogg'].load).toBe('background');
       expect(byName['music/Theme-intro.ogg'].load).toBe('demand');
       expect(byName.data.load).toBe('boot');
@@ -335,6 +343,16 @@ test.describe('hosted asset pack loader', () => {
       await caches.delete('lt-packs-v1');
       const { bootHostedPacks, loadPackManifest } = await import('/src/packs/hosted.ts');
       const loader = await bootHostedPacks(await loadPackManifest(base), { base });
+      // an image requested right away waits for its background pack too
+      const tileset = new Image();
+      const tilesetLoaded = new Promise<number[]>((resolve, reject) => {
+        tileset.onload = () => resolve([tileset.naturalWidth, tileset.naturalHeight]);
+        tileset.onerror = () => reject(new Error('tileset failed'));
+      });
+      const tilesetPackBefore = loader.isLoaded('resources/tilesets');
+      tileset.src = '/game-data/demo.ltproj/resources/tilesets/Plains.png';
+      const tilesetSrc = tileset.src;
+      const tilesetSize = await tilesetLoaded;
       // requested right away: waits for its background pack instead of 404ing
       const theme = await fetch('/game-data/demo.ltproj/resources/music/Theme.ogg');
       const themeLen = (await theme.arrayBuffer()).byteLength;
@@ -344,11 +362,15 @@ test.describe('hosted asset pack loader', () => {
       const introLen = (await intro.arrayBuffer()).byteLength;
       const dropped = await fetch('/game-data/demo.ltproj/resources/music/Orphan.ogg');
       return {
+        tilesetPackBefore, tilesetSrc, tilesetSize,
         themeStatus: theme.status, themeLen, spaced: spaced.status, introBefore,
         introStatus: intro.status, introLen, dropped: dropped.status,
       };
     }, BASE);
 
+    expect(result.tilesetPackBefore).toBe(false);
+    expect(result.tilesetSrc).toBe('/game-data/demo.ltproj/resources/tilesets/Plains.png');
+    expect(result.tilesetSize).toEqual([32, 16]);
     expect(result.themeStatus).toBe(200);
     expect(result.themeLen).toBe(10000);
     expect(result.spaced).toBe(200);

@@ -112,10 +112,15 @@ export class PackLoader {
   /**
    * Load background packs two at a time, then drop cached chunks the manifest
    * no longer names. Resolves when done; failures are logged, not thrown (the
-   * game copes with missing optional assets).
+   * game copes with missing optional assets). Resource packs deferred out of
+   * boot (sound effects, tilesets, battle art) go before the music, which is
+   * most of the bytes and only needed as each track first plays.
    */
   async startBackground(): Promise<void> {
-    const queue = this.manifest.packs.filter((p) => p.load === 'background');
+    const isMusic = (p: PackInfo) => p.name.startsWith('music/');
+    const queue = this.manifest.packs
+      .filter((p) => p.load === 'background')
+      .sort((a, b) => Number(isMusic(a)) - Number(isMusic(b)));
     const worker = async () => {
       while (queue.length) {
         const pack = queue.shift()!;

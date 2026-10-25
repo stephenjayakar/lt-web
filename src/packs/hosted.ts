@@ -100,7 +100,9 @@ export async function bootHostedPacks(manifest: PackManifest, options: HostedBoo
       waitFor: (path) => loader.waitFor(path),
       notFoundLocally: true,
     });
-    installBundleImageInterceptor(loader.bundle, GAME_DATA_BASE);
+    installBundleImageInterceptor(loader.bundle, GAME_DATA_BASE, {
+      waitFor: (path) => loader.waitFor(path),
+    });
   }
 
   console.info(`[Packs] ${loader.bundle.fileCount} files ready (${mb(loader.downloadedBytes)} MB downloaded, `

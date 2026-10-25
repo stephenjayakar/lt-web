@@ -22,8 +22,9 @@
  *
  * Load classes (manifest `load`):
  *   boot        needed before the title screen.
- *   background  fetched after boot (music); a request for one of its files
- *               waits for that pack.
+ *   background  fetched after boot (resource media the title does not use —
+ *               DEFERRED_RESOURCE_MEDIA — first, then music); a request for
+ *               one of its files waits for that pack.
  *   demand      fetched only when one of its files is first requested: the
  *               music intro/battle variants. Lex Talionis plays them, the web
  *               port does not yet, so they cost nothing until it does.
@@ -63,6 +64,13 @@ export const ENGINE_ASSETS = [
 ];
 
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+/**
+ * Project resource folders whose media (not their JSON manifests) moves from
+ * boot to background: needed on the first map or in combat, never by the
+ * title screen. For EotF this is ~20 of the ~30 MB that used to gate the
+ * title (sfx 9 MB, tilesets 8 MB, battle animations/effects 3 MB).
+ */
+export const DEFERRED_RESOURCE_MEDIA = new Set(['sfx', 'tilesets', 'combat_anims', 'combat_effects', 'combat_palettes']);
 const COMPRESSIBLE = new Set(['.json', '.txt', '.orderkeys', '.idx', '.csv', '.xml', '.tmx', '.tsx']);
 
 export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -190,6 +198,15 @@ export function classify(rel, project, musicLoad = 'background') {
     return { name: `music/${parts[2]}`, load: variant ? 'demand' : musicLoad };
   }
   if (parts[0] === 'resources' && parts.length >= 3) {
+    // Media the title screen never touches loads right after boot instead of
+    // before it; the folder's manifests (read while the database loads) stay
+    // in a boot pack. A request for a file not yet loaded waits for its pack.
+    if (DEFERRED_RESOURCE_MEDIA.has(parts[1]) && !COMPRESSIBLE.has(extOf(parts[parts.length - 1]))) {
+      return { name: `resources/${parts[1]}`, load: 'background', bucket: `resources/${parts[1]}` };
+    }
+    if (DEFERRED_RESOURCE_MEDIA.has(parts[1])) {
+      return { name: `resources/${parts[1]}-index`, load: 'boot', bucket: `resources/${parts[1]}-index` };
+    }
     return { name: `resources/${parts[1]}`, load: 'boot', bucket: `resources/${parts[1]}` };
   }
   // game_data/, top-level project files, the music manifest

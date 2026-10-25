@@ -492,6 +492,7 @@ function notFound(relativePath: string): Response {
 export function installBundleImageInterceptor(
   bundle: AssetBundle,
   baseUrl: string,
+  options: Pick<BundleInterceptOptions, 'waitFor'> = {},
 ): () => void {
   const normalizedBase = baseUrl.replace(/\/$/, '') + '/';
 
@@ -507,12 +508,16 @@ export function installBundleImageInterceptor(
 
   // Store blob URL mappings so the getter returns the original URL
   const blobToOriginal = new WeakMap<HTMLImageElement, string>();
+  // The latest src assigned while its pack was still loading; a later
+  // assignment supersedes it.
+  const pendingSrc = new WeakMap<HTMLImageElement, string>();
 
   Object.defineProperty(HTMLImageElement.prototype, 'src', {
     get() {
       return blobToOriginal.get(this) ?? origSrcGetter.call(this);
     },
     set(value: string) {
+      pendingSrc.delete(this);
       if (typeof value === 'string' && value.startsWith(normalizedBase)) {
         const encodedPath = value.substring(normalizedBase.length).split(/[?#]/)[0];
         const relativePath = decodeBundlePath(encodedPath);
@@ -520,6 +525,27 @@ export function installBundleImageInterceptor(
         if (blobUrl) {
           blobToOriginal.set(this, value);
           origSrcSetter.call(this, blobUrl);
+          return;
+        }
+        // A file whose (lazily loaded) pack has not arrived yet: hold the
+        // assignment until it has. Image loading is asynchronous anyway, so
+        // callers awaiting onload/onerror see no difference.
+        const pending = options.waitFor?.(relativePath) ?? null;
+        if (pending) {
+          blobToOriginal.set(this, value);
+          pendingSrc.set(this, value);
+          const settle = () => {
+            if (pendingSrc.get(this) !== value) return; // src reassigned meanwhile
+            pendingSrc.delete(this);
+            const url = bundle.getBlobUrl(relativePath);
+            if (url) {
+              origSrcSetter.call(this, url);
+            } else {
+              blobToOriginal.delete(this);
+              origSrcSetter.call(this, value);
+            }
+          };
+          pending.then(settle, settle);
           return;
         }
       }
