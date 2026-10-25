@@ -6462,7 +6462,11 @@ export class CombatState extends State {
       (animSetting === 'Your Turn' && attacker.team === 'player') ||
       (animSetting === 'Combat Only' && !!primaryDefender && !game.db.areAllied(attacker.team, primaryDefender.team));
     const wantAnimation = animWanted !== !!game.input?.isPressed?.('START');
-    const canAnimate = wantAnimation && !groupedCombat && !hasAttackStance && !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
+    // interact_unit;...;force_no_animation always uses the map presentation.
+    const forceNoAnimation = !!game.memory.get('combat_force_no_animation');
+    game.memory.delete('combat_force_no_animation');
+    const canAnimate = wantAnimation && !forceNoAnimation && !groupedCombat && !hasAttackStance &&
+      !attackItem.hasComponent('spell') && this.tryCreateAnimationCombat(
       attacker, attackItem, defender, defenseItem, rngMode, game, script,
     );
 
@@ -12181,14 +12185,21 @@ export class EventState extends State {
         // Creates a new unit instance from a template (either an already-
         // spawned unit or a UnitPrefab in the database) and optionally
         // places it on the map. Mirrors event_functions.create_unit().
-        const templateNid = args[0] ?? '';
-        const explicitNid = (args[1] ?? '').trim();
-        const levelStr = (args[2] ?? '').trim();
-        const posArg = (args[3] ?? '').trim();
-        const entryType = (args[4] || 'fade').trim();
-        const placement = (args[5] || 'giveup').trim().toLowerCase();
-        const flagArgs = args.slice(6).map((s) => s.toLowerCase());
-        const copyStats = flagArgs.includes('copy_stats');
+        // Python parses Keyword=value arguments and flags in any slot; EOtF's
+        // reinforcements are `create_unit;112;Position=2,4;copy_stats`.
+        const cuArgs = parsePythonEventArgs(
+          args,
+          ['Unit'],
+          ['Nid', 'Level', 'Position', 'EntryType', 'Placement'],
+          ['copy_stats'],
+        );
+        const templateNid = cuArgs.value('Unit') ?? '';
+        const explicitNid = (cuArgs.value('Nid') ?? '').trim();
+        const levelStr = (cuArgs.value('Level') ?? '').trim();
+        const posArg = (cuArgs.value('Position') ?? '').trim();
+        const entryType = (cuArgs.value('EntryType') || 'fade').trim();
+        const placement = (cuArgs.value('Placement') || 'giveup').trim().toLowerCase();
+        const copyStats = cuArgs.flags.has('copy_stats');
 
         const templateUnit = this.findUnit(templateNid);
         const templatePrefab = templateUnit ? undefined : game.db?.units?.get(templateNid);
@@ -12266,14 +12277,15 @@ export class EventState extends State {
         // Resolve target position (if any), applying placement rules
         let targetPos: [number, number] | null = null;
         if (posArg) {
-          const parts = posArg.split(',').map((s: string) => parseInt(s.trim(), 10));
-          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            targetPos = this._checkPlacement([parts[0], parts[1]], placement, game);
-          }
+          // Python _parse_pos: "x,y", a bracketed tuple from {e:...}, or a
+          // unit/region name.
+          const parsed = this.resolvePosition(posArg, game);
+          if (parsed) targetPos = this._checkPlacement(parsed, placement, game);
         }
         void entryType; // Placement animation type is cosmetic-only in this port.
 
         game.actionLog.doAction(new CreateUnitAction(game, newUnit, targetPos));
+        this.loadMapSpriteForUnit(newUnit, game);
 
         // Mirror Python's {created_unit} substitution when Nid was left blank:
         // subsequent {e:created_unit} lookups in this event resolve to the
@@ -15836,80 +15848,100 @@ export class EventState extends State {
 
       // ----- Interact Unit (scripted combat) -----
       case 'interact_unit': {
-        // interact_unit;AttackerNid;TargetNidOrPos;CombatScript;Ability;flags
-        // e.g. interact_unit;Eirika;Boss;hit1,crit1,end;Rapier
-        // CombatScript: comma-separated tokens (hit1,hit2,crit1,crit2,miss1,miss2,--,end)
-        // flags: immediate, force_animation, force_no_animation
-        const iuAttackerNid = args[0] ?? '';
-        const iuTargetArg = args[1] ?? '';
-        const iuScriptStr = args[2] ?? '';
-        const iuAbilityNid = args[3] ?? '';
-        const iuFlagsStr = args.slice(4).join(';').toLowerCase();
-        const iuImmediate = iuFlagsStr.includes('immediate');
+        // interact_unit;Unit;Position;CombatScript?;Ability?;Rounds? with
+        // Python's flags (arena, force_animation, force_no_animation,
+        // immediate) anywhere and Keyword=value arguments, e.g. EOtF's
+        // `interact_unit;{charging_ally};{unit2};Ability=Flag_of_Hope`.
+        const iuArgs = parsePythonEventArgs(
+          args,
+          ['Unit', 'Position'],
+          ['CombatScript', 'Ability', 'Rounds'],
+          ['arena', 'force_animation', 'force_no_animation', 'immediate', 'no_warn'],
+        );
+        const iuAttackerNid = iuArgs.value('Unit') ?? '';
+        const iuTargetArg = iuArgs.value('Position') ?? '';
+        const iuScriptStr = iuArgs.value('CombatScript') ?? '';
+        const iuAbilityNid = iuArgs.value('Ability') ?? '';
+        const iuImmediate = iuArgs.flags.has('immediate');
 
-        // Resolve attacker
-        const iuAttacker = game.units.get(iuAttackerNid) ?? null;
-        if (!iuAttacker) {
+        const iuAttacker = this.findUnit(iuAttackerNid) ?? null;
+        if (!iuAttacker || !iuAttacker.position) {
           console.warn(`interact_unit: attacker "${iuAttackerNid}" not found`);
           this.advancePointer();
           return false;
         }
-
-        // Resolve defender - try unit NID first, then position
-        let iuDefender: UnitObject | null = null;
-        iuDefender = game.units.get(iuTargetArg) ?? null;
-        if (!iuDefender) {
-          // Try parsing as position (x,y)
-          const posMatch = iuTargetArg.match(/\(?(\d+),\s*(\d+)\)?/);
-          if (posMatch && game.board) {
-            const tx = parseInt(posMatch[1], 10);
-            const ty = parseInt(posMatch[2], 10);
-            iuDefender = game.board.getUnit(tx, ty);
-          }
-        }
-        if (!iuDefender) {
+        // Python _parse_pos: a unit, region, "x,y", or a bracketed tuple.
+        const iuTargetPos = this.resolvePosition(iuTargetArg, game);
+        if (!iuTargetPos) {
           console.warn(`interact_unit: target "${iuTargetArg}" not found`);
           this.advancePointer();
           return false;
         }
 
-        // Parse combat script
         const iuScript = iuScriptStr
           ? iuScriptStr.split(',').map((t: string) => t.trim().toLowerCase())
           : null;
 
-        // Resolve ability/item — equip specified weapon if provided
+        // Python: an Ability already carried (including multi-item
+        // children) is used as is; otherwise a temporary item is created
+        // and registered for this combat only, never added to inventory.
         let iuAbilityItem: ItemObject | null = null;
         if (iuAbilityNid) {
-          let abilityItem = iuAttacker.items.find(
-            (i: ItemObject) => i.nid === iuAbilityNid || i.name === iuAbilityNid,
-          );
-          if (!abilityItem && game.db) {
-            // Create a temporary item from the DB
+          const carried = (items: ItemObject[]): ItemObject | undefined => {
+            for (const candidate of items) {
+              if (candidate.nid === iuAbilityNid) return candidate;
+              const nested = carried(candidate.subitems ?? []);
+              if (nested) return nested;
+            }
+            return undefined;
+          };
+          let abilityItem = carried(iuAttacker.items) ?? null;
+          if (!abilityItem) {
             const itemPrefab = game.db.items?.get(iuAbilityNid);
-            if (itemPrefab) {
-              abilityItem = new ItemObjectClass(itemPrefab);
-              game.actionLog.doAction(new GiveItemAction(iuAttacker, abilityItem));
+            if (!itemPrefab) {
+              console.warn(`interact_unit: couldn't find item "${iuAbilityNid}"`);
+              this.advancePointer();
+              return false;
             }
+            abilityItem = createItemTree(itemPrefab, (nid) => game.db.items.get(nid));
+            abilityItem.owner = iuAttacker;
+            game.actionLog.doAction(new RegisterItemTreeAction(
+              game.items,
+              abilityItem,
+              `interact_${abilityItem.uid}_${abilityItem.nid}`,
+            ));
           }
-          if (abilityItem) {
-            iuAbilityItem = abilityItem;
-            // Move to front of inventory (equip)
-            game.actionLog.doAction(new BringToTopItemAction(iuAttacker, abilityItem));
-            if (iuAttacker.canEquip(abilityItem)) {
-              game.actionLog.doAction(new EquipItemAction(iuAttacker, abilityItem));
-            }
+          iuAbilityItem = abilityItem;
+        }
+
+        // Resolve who is struck at the target position, including area
+        // abilities aimed at an empty tile or the user's own tile.
+        const iuItemForTargeting = iuAbilityItem ?? getEquippedWeapon(iuAttacker, game.db, game) ?? null;
+        let iuDefender: UnitObject | null = game.board?.getUnit(iuTargetPos[0], iuTargetPos[1]) ?? null;
+        if (iuItemForTargeting && game.targetSystem) {
+          const resolved = game.targetSystem.getTargetFromPosition(iuAttacker, iuItemForTargeting, iuTargetPos);
+          const struck = [resolved.mainTarget, ...resolved.splash]
+            .filter((position: [number, number] | null): position is [number, number] => !!position)
+            .map((position: [number, number]) => game.board.getUnit(position[0], position[1]))
+            .filter((unit: UnitObject | null): unit is UnitObject => !!unit);
+          if (!iuDefender || (iuDefender === iuAttacker && struck.some((unit: UnitObject) => unit !== iuAttacker))) {
+            iuDefender = struck.find((unit: UnitObject) => unit !== iuAttacker) ?? struck[0] ?? iuDefender;
           }
         }
+        if (!iuDefender) {
+          console.warn(`interact_unit: nobody to strike at "${iuTargetArg}"`);
+          this.advancePointer();
+          return false;
+        }
+        game.memory.set('combat_target_position', [iuTargetPos[0], iuTargetPos[1]]);
+        if (iuArgs.flags.has('force_no_animation')) game.memory.set('combat_force_no_animation', true);
 
         // Set up combat through CombatState
         game.selectedUnit = iuAttacker;
         game.combatTarget = iuDefender;
         game.combatScript = iuScript;
         game.eventCombat = true;  // Flag so CombatState doesn't double-push EventState
-        if (iuAbilityItem && !iuAbilityItem.isWeapon()) {
-          game.memory.set('combat_item', iuAbilityItem);
-        }
+        if (iuAbilityItem) game.memory.set('combat_item', iuAbilityItem);
 
         if (iuImmediate) {
           // Immediate mode: resolve combat without visual animation
@@ -15987,6 +16019,8 @@ export class EventState extends State {
             }
           }
           game.memory.delete('combat_item');
+          game.memory.delete('combat_target_position');
+          game.memory.delete('combat_force_no_animation');
           game.combatScript = null;
           game.eventCombat = false;
           this.advancePointer();
