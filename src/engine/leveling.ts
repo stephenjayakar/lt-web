@@ -269,6 +269,29 @@ function calculateLevel(
 }
 
 /** Faithful port of unit_funcs.auto_level, including level-down behavior. */
+/**
+ * Python UnitObject.get_internal_level: tier 0 counts below 1 by its max
+ * level, tier 1 is the plain level, and higher tiers add the max level of
+ * every class they promote from (stopping after a tier <= 0 class).
+ */
+export function getInternalLevel(unit: UnitObject, db: any): number {
+  let klass = db?.classes?.get?.(unit.klass);
+  if (!klass) return unit.level;
+  const tier = Number(klass.tier ?? 1);
+  if (tier === 0) return unit.level - Number(klass.max_level ?? 0);
+  if (tier === 1) return unit.level;
+  let runningTotal = unit.level;
+  for (let counter = 5; counter > 0; counter -= 1) {
+    const promotesFrom = klass.promotes_from;
+    if (!promotesFrom) return runningTotal;
+    klass = db.classes.get(promotesFrom);
+    if (!klass) return runningTotal;
+    runningTotal += Number(klass.max_level ?? 0);
+    if (Number(klass.tier ?? 1) <= 0) return runningTotal;
+  }
+  return runningTotal;
+}
+
 export function autoLevelUnit(
   unit: UnitObject,
   levelDifference: number,
@@ -281,14 +304,17 @@ export function autoLevelUnit(
     game.db.stats.map((stat: { nid: string }) => [stat.nid, 0]),
   );
 
+  // Python AutoLevel/ExpState feed the growth formulas (and the random
+  // seed) the internal level, not the displayed one.
+  const baseLevel = getInternalLevel(unit, game.db);
   if (levelDifference > 0) {
     for (let offset = 0; offset < levelDifference; offset++) {
-      const changes = calculateLevel(unit, unit.level + offset, method, growthPoints, game);
+      const changes = calculateLevel(unit, baseLevel + offset, method, growthPoints, game);
       for (const nid of Object.keys(statChanges)) statChanges[nid] += changes[nid] ?? 0;
     }
   } else if (levelDifference < 0) {
-    const endingLevel = unit.level + levelDifference;
-    for (let level = unit.level - 1; level >= endingLevel; level--) {
+    const endingLevel = baseLevel + levelDifference;
+    for (let level = baseLevel - 1; level >= endingLevel; level--) {
       const changes = calculateLevel(unit, level, method, growthPoints, game);
       for (const nid of Object.keys(statChanges)) statChanges[nid] -= changes[nid] ?? 0;
     }

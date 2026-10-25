@@ -10,6 +10,7 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { SkillObject } from '../objects/skill';
 import { ACHIEVEMENTS } from './records';
+import { getInternalLevel } from './leveling';
 import { movementType } from '../combat/skill-system';
 
 // ---------------------------------------------------------------------------
@@ -690,18 +691,7 @@ export class GameQueryEngine {
     const resolved = this._resolveUnit(unit);
     if (!resolved) return 0;
 
-    const game = getGame();
-    const klassDef = game.db?.classes?.get(resolved.klass);
-    if (!klassDef) return resolved.level;
-
-    if (klassDef.tier > 0 && klassDef.promotes_from) {
-      const baseClass = game.db?.classes?.get(klassDef.promotes_from);
-      if (baseClass) {
-        return resolved.level + (baseClass.max_level ?? 20);
-      }
-    }
-
-    return resolved.level;
+    return getInternalLevel(resolved, getGame().db);
   }
 
   // ========================================================================

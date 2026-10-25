@@ -5,6 +5,7 @@ import {
   setPyevExpressionEvaluator,
 } from './python-events';
 import { GameQueryEngine } from '../engine/query-engine';
+import { getInternalLevel } from '../engine/leveling';
 import { createItemTree } from '../objects/item';
 import type { ActionLog } from '../engine/action';
 import {
@@ -2093,7 +2094,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
       get_stat: (nid: string) =>
         u.getStat?.(nid) ?? u.getStatValue?.(nid) ?? u.stats?.[nid] ?? 0,
-      get_internal_level: () => u.getInternalLevel?.() ?? u.level ?? 1,
+      get_internal_level: () => getInternalLevel(u, game.db),
       get_field: (nid: string, fallback?: any) =>
         u.fields?.has?.(nid) ? u.fields.get(nid) : (fallback ?? null),
       // Python UnitObject attributes EOtF reads in event expressions

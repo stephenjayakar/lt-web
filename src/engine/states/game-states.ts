@@ -3600,6 +3600,7 @@ export function performPromotionOrClassChange(
   newKlass: string,
   game: any,
   kind: 'promote' | 'change_class' = 'promote',
+  skillMode?: 'exact' | 'all' | 'none',
 ): { statChanges: Record<string, number> } {
   const action = kind === 'promote'
     ? new PromoteAction(unit, newKlass)
@@ -3613,10 +3614,19 @@ export function performPromotionOrClassChange(
     }
   }
 
+  // Python: a silent event promote/change_class learns only the class
+  // skills listed at exactly the unit's level; the promotion screen learns
+  // every skill up to the level when learn_skills_on_promote/_on_reclass is
+  // set (ExpState.give_all_class_skills) and none otherwise.
+  const mode = skillMode ?? (game.db.getConstant(
+    kind === 'promote' ? 'learn_skills_on_promote' : 'learn_skills_on_reclass',
+    false,
+  ) ? 'all' : 'none');
   const unitKlass = game.db.classes.get(unit.klass);
-  if (unitKlass?.learned_skills) {
+  if (unitKlass?.learned_skills && mode !== 'none') {
     for (const [levelNeeded, classSkillNid] of unitKlass.learned_skills) {
-      if (unit.level >= levelNeeded && !unit.skills.some((s: SkillObject) => s.nid === classSkillNid)) {
+      const learns = mode === 'exact' ? unit.level === levelNeeded : unit.level >= levelNeeded;
+      if (learns && !unit.skills.some((s: SkillObject) => s.nid === classSkillNid)) {
         const skillPrefab = game.db.skills.get(classSkillNid);
         if (skillPrefab) {
           game.actionLog.doAction(new AddSkillAction(unit, new SkillObject(skillPrefab)));
@@ -10701,6 +10711,25 @@ export class EventState extends State {
   }
 
   /**
+   * Python pauses an event after a command whose trigger queued new events
+   * (kill_unit's UnitDeath, autolevel_to's UnitLevelUp): their EventStates
+   * sit above it and run first. Move events queued since `priorLength`
+   * ahead of the current one and start them. The caller must already have
+   * advanced past its command. Returns whether it switched events.
+   */
+  private runEventsQueuedSince(priorLength: number, game: any): boolean {
+    const queue = game.eventManager?.eventQueue as GameEvent[] | undefined;
+    const owner = this.currentEvent;
+    if (!queue || !owner || queue.length <= priorLength) return false;
+    const triggered = queue.splice(priorLength);
+    const ownerIndex = queue.indexOf(owner);
+    if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
+    queue.unshift(...triggered, owner);
+    this.loadNextEvent(game);
+    return true;
+  }
+
+  /**
    * Find the unit by NID — first try the game unit registry, then the board.
    */
   private findUnit(nid: string): UnitObject | undefined {
@@ -13286,14 +13315,8 @@ export class EventState extends State {
           { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
         );
         if (queue.length > priorLength && this.currentEvent) {
-          const owner = this.currentEvent;
           this.advancePointer();
-          const deathEvents = queue.splice(priorLength);
-          const ownerIndex = queue.indexOf(owner);
-          if (ownerIndex >= 0) queue.splice(ownerIndex, 1);
-          queue.unshift(...deathEvents, owner);
-          this.loadNextEvent(game);
-          return true;
+          return this.runEventsQueuedSince(priorLength, game);
         }
         if (this.skipMode || immediate || !wasOnMap) {
           this.advancePointer();
@@ -14755,6 +14778,7 @@ export class EventState extends State {
 
         const autoLevel = new AutoLevelAction(unit, difference, growthMethod);
         game.actionLog.doAction(autoLevel);
+        const levelUpQueueLength = game.eventManager?.eventQueue.length ?? 0;
         if (!hidden) {
           game.actionLog.doAction(new SetUnitLevelAction(unit, Math.max(1, finalLevel)));
           game.eventManager?.trigger(
@@ -14771,7 +14795,9 @@ export class EventState extends State {
         }
         this.grantAutolevelSkills(unit, currentLevel, game);
         this.advancePointer();
-        return false;
+        // Python: a triggered UnitLevelUp pauses this event (after the skill
+        // grants above) so e.g. EOtF's Ability_Feat runs before it resumes.
+        return this.runEventsQueuedSince(levelUpQueueLength, game);
       }
 
       case 'set_stats': {
@@ -14853,6 +14879,7 @@ export class EventState extends State {
               newKlass,
               game,
               'promote',
+              isSilent ? 'exact' : undefined,
             );
             this.loadMapSpriteForUnit(promoUnit, game);
             if (!isSilent && this.startEventLevelUpPresentation(
@@ -14901,6 +14928,7 @@ export class EventState extends State {
                 newKlass,
                 game,
                 'change_class',
+                ccIsSilent ? 'exact' : undefined,
               );
               this.loadMapSpriteForUnit(ccUnit, game);
               if (!ccIsSilent && this.startEventLevelUpPresentation(
