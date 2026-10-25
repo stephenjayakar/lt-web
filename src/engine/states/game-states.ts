@@ -12774,13 +12774,13 @@ export class EventState extends State {
             for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) spots.push([x, y]);
             return spots;
           });
-        const openSpots = formationSpots.filter(([x, y]) => !game.board?.getUnit(x, y));
-        const onFormation = (pos: [number, number] | null) =>
-          !!pos && formationSpots.some(([x, y]) => x === pos[0] && y === pos[1]);
-        const partyNid = game.currentParty;
-        let candidates = [...game.units.values()].filter((u: any) =>
-          u.team === 'player' && (!partyNid || u.party === partyNid) &&
-          !u.dead && !u.position && !u.tags?.includes('Blacklist') &&
+        // Python get_open_formation_spots: unique, unoccupied, sorted (x, y).
+        const openSpots = [...new Map(formationSpots.map((spot) => [spot.join(','), spot] as const)).values()]
+          .filter(([x, y]) => !game.board?.getUnit(x, y))
+          .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        // Python get_units_in_party: persistent members in prep sort order.
+        let candidates = (game.getUnitsInParty() as UnitObject[]).filter((u: any) =>
+          !u.position && !u.tags?.includes('Blacklist') &&
           ![...game.units.values()].some((o: any) => o.traveler === u.nid),
         );
         const fatigueOn = game.db.getConstant('fatigue', false) && game.gameVars.get('_fatigue') === 1;

@@ -142,6 +142,33 @@ test.describe('Event data command parity', () => {
     expect(result.attacked).toBe(false);
   });
 
+  test('arrange_formation deploys persistent party units to sorted open spots', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.currentLevel.regions.push(
+        { nid: 'QaFormA', region_type: 'formation', position: [5, 1], size: [1, 2], sub_nid: '', condition: 'True' },
+        { nid: 'QaFormB', region_type: 'formation', position: [2, 3], size: [1, 1], sub_nid: '', condition: 'True' },
+      );
+      for (const nid of ['Eirika', 'Seth']) {
+        const unit = g.units.get(nid);
+        if (unit.position) g.board.removeUnit(unit);
+        unit.position = null;
+      }
+      // Prep order puts Seth first; a non-persistent unit is never deployed.
+      g.getParty().partyPrepManageSortOrder = ['Seth', 'Eirika'];
+      g.units.get('Eirika').persistent = true;
+      g.units.get('Seth').persistent = true;
+    });
+    await runEvent(page, 'QaArrange', ['arrange_formation']);
+    const placed = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { seth: g.units.get('Seth').position, eirika: g.units.get('Eirika').position };
+    });
+    // Python sorts open spots by (x, y): (2,3) then (5,1).
+    expect(placed).toEqual({ seth: [2, 3], eirika: [5, 1] });
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);
