@@ -167,7 +167,7 @@ import {
 import { setQueryEngineGameRef } from './engine/query-engine';
 import { setEquationGameRef } from './combat/combat-calcs';
 import { setSkillSystemGameRef } from './combat/skill-system';
-import { beginItemSystemFrame, setItemSystemGameRef } from './combat/item-system';
+import { setItemSystemGameRef } from './combat/item-system';
 import { initPersistentSystems, RECORDS } from './engine/records';
 import { convexUrl, resolveStorageMode } from './storage/storage';
 import {
@@ -1017,7 +1017,6 @@ async function main(): Promise<void> {
       }
     }
     lastControlFrameAt = timestamp;
-    beginItemSystemFrame();
     PerfMonitor.beginFrame();
 
     const rawDelta = lastTimestamp === 0 ? FRAMETIME : timestamp - lastTimestamp;

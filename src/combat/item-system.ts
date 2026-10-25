@@ -9,6 +9,7 @@
  * NID determines behaviour; the value is the stored data.
  */
 
+import { drawCacheGeneration } from '../engine/draw-cache';
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
 import {
@@ -349,16 +350,12 @@ function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][n
 }
 
 const itemOverrideRecursion = new Set<number>();
-let itemOverrideFrame = 0;
-const itemOverrideFrameCache = new WeakMap<
+// Read-only draw passes share override resolution (see draw-cache.ts).
+// Outside a draw pass every lookup is recomputed, as in Python.
+const itemOverrideDrawCache = new WeakMap<
   ItemObject,
-  WeakMap<UnitObject, { frame: number; components: [string, any][] }>
+  WeakMap<UnitObject, { generation: number; components: [string, any][] }>
 >();
-
-/** Start a new engine frame so repeated render queries share override work. */
-export function beginItemSystemFrame(): void {
-  itemOverrideFrame += 1;
-}
 
 /**
  * Python skill_system.item_override: reverse-scan active skills, with the
@@ -372,9 +369,10 @@ export function itemOverrideComponents(
   game?: any,
 ): [string, any][] {
   if (!unit || !item) return [];
-  if (itemOverrideRecursion.size === 0) {
-    const cached = itemOverrideFrameCache.get(item)?.get(unit);
-    if (cached?.frame === itemOverrideFrame) return cached.components;
+  const generation = itemOverrideRecursion.size === 0 ? drawCacheGeneration() : null;
+  if (generation !== null) {
+    const cached = itemOverrideDrawCache.get(item)?.get(unit);
+    if (cached?.generation === generation) return cached.components;
   }
   const result: [string, any][] = [];
   const seen = new Set<string>();
@@ -398,13 +396,13 @@ export function itemOverrideComponents(
       result.push([component, value]);
     }
   }
-  if (itemOverrideRecursion.size === 0) {
-    let byUnit = itemOverrideFrameCache.get(item);
+  if (generation !== null) {
+    let byUnit = itemOverrideDrawCache.get(item);
     if (!byUnit) {
       byUnit = new WeakMap();
-      itemOverrideFrameCache.set(item, byUnit);
+      itemOverrideDrawCache.set(item, byUnit);
     }
-    byUnit.set(unit, { frame: itemOverrideFrame, components: result });
+    byUnit.set(unit, { generation, components: result });
   }
   return result;
 }

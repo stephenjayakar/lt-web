@@ -14,6 +14,7 @@
 import { State, type StateResult } from './state';
 import type { Surface } from './surface';
 import type { InputEvent } from './input';
+import { withDrawCache } from './draw-cache';
 
 type TempOp =
   | { kind: 'change'; name: string }
@@ -142,7 +143,8 @@ export class StateMachine {
     }
 
     // --- draw (with transparency walk) ---
-    surf = this.drawStack(surf);
+    // Drawing is read-only, so repeated component queries may share results.
+    surf = withDrawCache(() => this.drawStack(surf));
 
     // --- process deferred transitions ---
     this.processTempState();
