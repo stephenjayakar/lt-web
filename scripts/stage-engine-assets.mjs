@@ -18,6 +18,7 @@
 
 import { cpSync, existsSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
+import { ENGINE_ASSETS } from './lib/asset-packs.mjs';
 
 const ltMakerDir = resolve(process.argv[2] ?? 'lt-maker');
 const outDir = resolve('public/game-data');
@@ -27,11 +28,7 @@ const outDir = resolve('public/game-data');
 //   base-surf.ts      -> /game-data/sprites/menus/<nid>.png
 //   sprite-loader.ts  -> /game-data/resources/platforms/<nid>.png
 //   bmp-font.ts       -> /game-data/default.ltproj/resources/fonts/fonts.json
-const ENGINE_ASSETS = [
-  'sprites',
-  'resources/platforms',
-  'default.ltproj/resources/fonts',
-];
+// The hosted asset packs (scripts/lib/asset-packs.mjs) ship the same list.
 
 if (!existsSync(ltMakerDir)) {
   console.error(`ERROR: ${ltMakerDir} not found. Install lt-maker first.`);
