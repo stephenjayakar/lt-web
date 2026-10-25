@@ -1147,6 +1147,14 @@ test.describe('Rekka all-level compatibility', () => {
     // waits, and it now runs before the base as it does in Python. Settle
     // through it rather than assuming the base is reachable in a few frames.
     await page.evaluate(() => (window as any).__harness.settle(8_000, ['base_main']));
+    // settle() returns as soon as base_main is pushed; its menu is built when
+    // the state begins on the following frame (Python BaseMainState.start).
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      for (let frame = 0; frame < 5 && !game.state.getCurrentState()?.menu; frame += 1) {
+        (window as any).__harness.stepFrames(1, null);
+      }
+    });
     const baseOptions = await page.evaluate(() => {
       const state = (window as any).__gameRef.state.getCurrentState() as any;
       return {
