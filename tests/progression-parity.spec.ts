@@ -47,6 +47,34 @@ test.describe('Progression parity', () => {
     expect(String(after)).toBe('1');
   });
 
+  test('silent give_exp levels through autolevel_to and keeps current HP', async ({ page }) => {
+    await boot(page);
+    const before = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('QaExpLevelUp', {
+        name: 'QaExpLevelUp', nid: 'QaExpLevelUp', trigger: 'unit_level_up', level_nid: null,
+        condition: "unit.nid == 'Eirika'", only_once: false, priority: 20,
+        _source: ['game_var;qa_exp_level_up;1'],
+      });
+      const eirika = g.units.get('Eirika');
+      eirika.exp = 70;
+      eirika.currentHp = 3;
+      return { level: eirika.level };
+    });
+    await runEvent(page, 'QaGiveExp', ['give_exp;Eirika;50;silent']);
+    const after = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      return {
+        level: eirika.level,
+        exp: eirika.exp,
+        hp: eirika.currentHp,
+        fired: g.gameVars.get('qa_exp_level_up'),
+      };
+    });
+    expect(after).toEqual({ level: before.level + 1, exp: 20, hp: 3, fired: 1 });
+  });
+
   test('silent promotion learns only class skills at the exact level', async ({ page }) => {
     await boot(page);
     await page.evaluate(() => {

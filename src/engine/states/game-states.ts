@@ -10730,6 +10730,43 @@ export class EventState extends State {
   }
 
   /**
+   * Python event_functions.autolevel_to body: AutoLevel, then (unless
+   * hidden) SetLevel and the UnitLevelUp trigger, then personal and class
+   * skills. Returns the event-queue length before the trigger so callers can
+   * run the triggered events first, or -1 when the unit is already there.
+   */
+  private autolevelUnitTo(
+    unit: UnitObject,
+    finalLevel: number,
+    growthMethod: string | undefined,
+    hidden: boolean,
+    game: any,
+  ): number {
+    const currentLevel = unit.level;
+    const difference = finalLevel - currentLevel;
+    if (difference === 0) return -1;
+    const autoLevel = new AutoLevelAction(unit, difference, growthMethod);
+    game.actionLog.doAction(autoLevel);
+    const levelUpQueueLength = game.eventManager?.eventQueue.length ?? 0;
+    if (!hidden) {
+      game.actionLog.doAction(new SetUnitLevelAction(unit, Math.max(1, finalLevel)));
+      game.eventManager?.trigger(
+        {
+          type: 'unit_level_up',
+          levelNid: game.currentLevel?.nid ?? '',
+          unitNid: unit.nid,
+          unit1: unit,
+          statChanges: { ...autoLevel.statChanges },
+          source: 'event',
+        },
+        this.buildConditionContext(),
+      );
+    }
+    this.grantAutolevelSkills(unit, currentLevel, game);
+    return levelUpQueueLength;
+  }
+
+  /**
    * Find the unit by NID — first try the game unit registry, then the board.
    */
   private findUnit(nid: string): UnitObject | undefined {
@@ -13968,14 +14005,51 @@ export class EventState extends State {
 
       case 'give_exp': {
         const unitNid = args[0] ?? '';
-        const amount = parseInt(args[1], 10) || 0;
         const unit = this.findUnit(unitNid);
+        const silent = args.some(arg => arg.toLowerCase().trim() === 'silent');
+        if (unit && silent) {
+          // Python event_functions.give_exp silent branch: clamp, cap at the
+          // class max level, and level through autolevel_to so the unit
+          // fires unit_level_up and learns skills, keeping its current HP.
+          const klass = game.db.classes.get(unit.klass);
+          const maxLevel = Number(klass?.max_level ?? 20);
+          const autoPromote = (game.db.getConstant('auto_promote', false) ||
+            unit.tags.includes('AutoPromote')) && (klass?.turns_into?.length ?? 0) > 0 &&
+            !unit.tags.includes('NoAutoPromote');
+          let exp = Math.max(-100, Math.min(100, parseInt(args[1], 10) || 0));
+          const canGive = unit.level < maxLevel || exp < 0 || autoPromote;
+          const cap = 100 * ((canGive ? maxLevel + 1 : maxLevel) - unit.level) - unit.exp;
+          exp = Math.min(exp, cap);
+          const oldExp = unit.exp;
+          let queueMarker = -1;
+          if (oldExp + exp >= 100) {
+            if (canGive) {
+              game.actionLog.doAction(new SetUnitExpAction(unit, (oldExp + exp) % 100));
+              // AutoLevel refills HP (mana is untouched by the web action).
+              const oldHp = unit.currentHp;
+              queueMarker = this.autolevelUnitTo(unit, unit.level + 1, undefined, false, game);
+              game.actionLog.doAction(new SetCurrentHpAction(unit, oldHp));
+            }
+          } else if (oldExp + exp < 0) {
+            if (unit.level > 1) {
+              game.actionLog.doAction(new SetUnitExpAction(unit, 100 + oldExp + exp));
+              queueMarker = this.autolevelUnitTo(unit, unit.level - 1, undefined, false, game);
+            } else {
+              game.actionLog.doAction(new SetUnitExpAction(unit, 0));
+            }
+          } else if (exp > 0) {
+            if (canGive) game.actionLog.doAction(new SetUnitExpAction(unit, oldExp + exp));
+          } else {
+            game.actionLog.doAction(new SetUnitExpAction(unit, oldExp + exp));
+          }
+          this.advancePointer();
+          return queueMarker >= 0 && this.runEventsQueuedSince(queueMarker, game);
+        }
         if (unit) {
           game.actionLog.doAction(
-            new GainExpAction(unit, amount, game.currentMode?.growths ?? 'random'),
+            new GainExpAction(unit, parseInt(args[1], 10) || 0, game.currentMode?.growths ?? 'random'),
           );
         }
-        const silent = args.some(arg => arg.toLowerCase().trim() === 'silent');
         if (!silent && !this.skipMode) {
           this.waiting = true;
           this.waitTimer = 750;
@@ -14769,35 +14843,11 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        const currentLevel = unit.level;
-        const difference = finalLevel - currentLevel;
-        if (difference === 0) {
-          this.advancePointer();
-          return false;
-        }
-
-        const autoLevel = new AutoLevelAction(unit, difference, growthMethod);
-        game.actionLog.doAction(autoLevel);
-        const levelUpQueueLength = game.eventManager?.eventQueue.length ?? 0;
-        if (!hidden) {
-          game.actionLog.doAction(new SetUnitLevelAction(unit, Math.max(1, finalLevel)));
-          game.eventManager?.trigger(
-            {
-              type: 'unit_level_up',
-              levelNid: game.currentLevel?.nid ?? '',
-              unitNid: unit.nid,
-              unit1: unit,
-              statChanges: { ...autoLevel.statChanges },
-              source: 'event',
-            },
-            this.buildConditionContext(),
-          );
-        }
-        this.grantAutolevelSkills(unit, currentLevel, game);
+        const levelUpQueueLength = this.autolevelUnitTo(unit, finalLevel, growthMethod, hidden, game);
         this.advancePointer();
         // Python: a triggered UnitLevelUp pauses this event (after the skill
-        // grants above) so e.g. EOtF's Ability_Feat runs before it resumes.
-        return this.runEventsQueuedSince(levelUpQueueLength, game);
+        // grants) so e.g. EOtF's Ability_Feat runs before it resumes.
+        return levelUpQueueLength >= 0 && this.runEventsQueuedSince(levelUpQueueLength, game);
       }
 
       case 'set_stats': {

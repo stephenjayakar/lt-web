@@ -155,7 +155,8 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
       'WaitAction',
       'HasAttackedAction',
       'SetUnitAttributeAction',
-      'GainExpAction',
+      // Python's silent give_exp below a level-up is action.SetExp.
+      'SetUnitExpAction',
       'SetCurrentManaAction',
       'SetCurrentHpAction',
     ]);
