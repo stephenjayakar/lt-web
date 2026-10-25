@@ -12198,7 +12198,7 @@ export class EventState extends State {
         const noFollow = muArgs.flags.has('no_follow');
         const parsedSpeed = parseInt(muArgs.value('Speed') ?? '', 10);
         const speedMs = Number.isFinite(parsedSpeed) && parsedSpeed > 0 ? parsedSpeed : 120;
-        targetPos = this._checkPlacement(targetPos, placement, game);
+        targetPos = this._checkPlacement(targetPos, placement, game, unit);
         if (!targetPos) {
           this.advancePointer();
           return false;
@@ -12257,7 +12257,7 @@ export class EventState extends State {
             ? [existing.startingPosition[0], existing.startingPosition[1]]
             : null;
           const finalPosition = requestedPosition
-            ? this._checkPlacement(requestedPosition, placement, game)
+            ? this._checkPlacement(requestedPosition, placement, game, existing)
             : null;
           if (finalPosition && game.board) {
             game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPosition, true));
@@ -12392,7 +12392,7 @@ export class EventState extends State {
           // Python _parse_pos: "x,y", a bracketed tuple from {e:...}, or a
           // unit/region name.
           const parsed = this.resolvePosition(posArg, game);
-          if (parsed) targetPos = this._checkPlacement(parsed, placement, game);
+          if (parsed) targetPos = this._checkPlacement(parsed, placement, game, newUnit);
         }
         void entryType; // Placement animation type is cosmetic-only in this port.
 
@@ -13391,7 +13391,7 @@ export class EventState extends State {
           const position = this._getGroupPosition(startingGroup, uNid, group, groups, game);
           if (!position) continue;
 
-          const finalPos = this._checkPlacement(position, placement, game);
+          const finalPos = this._checkPlacement(position, placement, game, existing ?? null);
           if (!finalPos) continue;
 
           // Need to spawn the unit first if not yet in registry
@@ -13446,7 +13446,7 @@ export class EventState extends State {
             game,
           );
           if (!destination) continue;
-          const finalDestination = this._checkPlacement(destination, placement, game);
+          const finalDestination = this._checkPlacement(destination, placement, game, existing ?? null);
           if (!finalDestination) continue;
 
           let edgePosition: [number, number];
@@ -13565,7 +13565,7 @@ export class EventState extends State {
             game,
           );
           if (!destination) continue;
-          const finalPosition = this._checkPlacement(destination, placement, game);
+          const finalPosition = this._checkPlacement(destination, placement, game, unit);
           if (!finalPosition) continue;
           if (this.skipMode || movementType !== 'normal') {
             game.actionLog.doAction(new WarpUnitAction(unit, finalPosition, game.board));
@@ -17439,10 +17439,55 @@ export class EventState extends State {
    * @param game      GameState reference
    * @returns The final position, or null if placement fails
    */
+  /**
+   * Python TargetSystem.get_nearest_open_tile: rings of radius 0..9, each
+   * scanned x = -r..r checking (x, +dy) before (x, -dy), accepting a tile the
+   * unit can weakly traverse (mcost <= 5 or <= its movement) that is empty
+   * (or holds the unit itself) and, when asked, that it can path to.
+   */
+  private nearestOpenTile(
+    unit: UnitObject | null,
+    position: [number, number],
+    checkForValidPath: boolean,
+    game: any,
+  ): [number, number] | null {
+    const board = game.board;
+    if (!board) return null;
+    const firstClass = game.db.classes.values().next().value;
+    const klass = unit ? game.db.classes.get(unit.klass) : firstClass;
+    const group = unit
+      ? movementType(unit, klass?.movement_group ?? 'Infantry', game)
+      : (firstClass?.movement_group ?? 'Infantry');
+    const movement = unit ? unit.getMovement() : 0;
+    const acceptable = (x: number, y: number): boolean => {
+      if (!board.inBounds(x, y)) return false;
+      const mcost = board.getMovementCost(x, y, group, game.db);
+      if (!(mcost <= 5 || mcost <= movement)) return false;
+      const occupant = board.getUnit(x, y);
+      if (occupant && occupant !== unit) return false;
+      if (checkForValidPath && unit?.position) {
+        const path = game.pathSystem?.getPath(unit, x, y, board);
+        if (!path) return false;
+      }
+      return true;
+    };
+    for (let r = 0; r < 10; r += 1) {
+      for (let x = -r; x <= r; x += 1) {
+        const magnitude = Math.abs(x);
+        const n1: [number, number] = [position[0] + x, position[1] + r - magnitude];
+        const n2: [number, number] = [position[0] + x, position[1] - r + magnitude];
+        if (acceptable(n1[0], n1[1])) return n1;
+        if (acceptable(n2[0], n2[1])) return n2;
+      }
+    }
+    return null;
+  }
+
   private _checkPlacement(
     position: [number, number],
     placement: string,
     game: any,
+    unit: UnitObject | null = null,
   ): [number, number] | null {
     // Check bounds
     if (game.tilemap && !game.tilemap.checkBounds(position[0], position[1])) {
@@ -17460,24 +17505,10 @@ export class EventState extends State {
         return null; // skip this unit
       case 'stack':
         return position; // place on top (units overlap)
-      case 'closest': {
-        // Find nearest unoccupied tile
-        const maxRange = 10;
-        for (let r = 1; r <= maxRange; r++) {
-          for (let dx = -r; dx <= r; dx++) {
-            for (let dy = -r; dy <= r; dy++) {
-              if (Math.abs(dx) + Math.abs(dy) !== r) continue;
-              const nx = position[0] + dx;
-              const ny = position[1] + dy;
-              if (game.tilemap && !game.tilemap.checkBounds(nx, ny)) continue;
-              if (!game.board?.getUnit(nx, ny)) {
-                return [nx, ny];
-              }
-            }
-          }
-        }
-        return null;
-      }
+      case 'closest':
+        // Python get_closest_reachable_tile: nearest open tile the placed
+        // unit can stand on (and reach, when it is already on the map).
+        return this.nearestOpenTile(unit, position, true, game);
       case 'push': {
         // Push the occupant to a nearby tile, then use this position
         const maxRange = 5;

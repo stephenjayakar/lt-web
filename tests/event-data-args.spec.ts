@@ -169,6 +169,30 @@ test.describe('Event data command parity', () => {
     expect(placed).toEqual({ seth: [2, 3], eirika: [5, 1] });
   });
 
+  test('closest placement scans like Python and skips untraversable tiles', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      const [x, y] = eirika.position;
+      const seth = g.units.get('Seth');
+      if (seth.position) g.board.removeUnit(seth);
+      seth.position = null;
+      // Ring 1 is scanned left, down, up, right. Wall off the left tile and
+      // make sure the tile below is open plain ground.
+      g.board.setTerrain(x - 1, y, '9');
+      g.board.setTerrain(x, y + 1, '1');
+      const below = g.board.getUnit(x, y + 1);
+      if (below) { g.board.removeUnit(below); below.position = null; }
+      return { target: [x, y] };
+    });
+    await runEvent(page, 'QaClosest', [
+      `add_unit;Seth;${setup.target[0]},${setup.target[1]};immediate;closest`,
+    ]);
+    const position = await page.evaluate(() => (window as any).__gameRef.units.get('Seth').position);
+    expect(position).toEqual([setup.target[0], setup.target[1] + 1]);
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);
