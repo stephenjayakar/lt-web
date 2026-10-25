@@ -174,3 +174,46 @@ test('icon sheets drop the LT colorkey background', async ({ page }) => {
   expect(alpha.corner).toBe(0);
   expect(alpha.center).toBe(255);
 });
+
+test('skip_save only sets the level var and never writes a save', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_skip_save', ['skip_save;t', 'game_var;after_skip;1'], 10);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const save = await import('/src/engine/save.ts');
+    const slots = await save.loadSaveSlots(g.db.getConstant('game_nid', 'default'), 3);
+    return { skip: g.levelVars.get('_skip_save'), saved: slots.some((s: any) => s.name !== '--NO DATA--') };
+  });
+  expect(await gameVar(page, 'after_skip')).toBe(1);
+  expect(result.skip).toBe(true);
+  expect(result.saved).toBe(false);
+});
+
+test('chapter end shows the between-chapter save unless _skip_save is set', async ({ page }) => {
+  await boot(page, '0');
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.db.events.set('qa_end', {
+      name: 'qa_end', nid: 'qa_end', trigger: 'qa_end', level_nid: null,
+      condition: 'True', only_once: false, priority: 0, _source: ['win_game'],
+    });
+    g.eventManager.triggerSpecific('qa_end', { type: 'qa_end' }, true);
+    if (g.state.getCurrentState()?.name !== 'event') g.state.change('event');
+  });
+  let stack: string[] = [];
+  for (let i = 0; i < 300; i++) {
+    stack = await page.evaluate(() => (window as any).__gameRef.state.getStackNames());
+    if (stack.includes('title_save')) break;
+    await page.waitForTimeout(30);
+    // Advance any authored level_end dialog.
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, 'SELECT'));
+  }
+  expect(stack).toContain('title_save');
+  // BACK proceeds into the next chapter without saving.
+  await page.waitForFunction(() => ((window as any).__gameRef.state.getCurrentState() as any)?.loading === false);
+  await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
+  await stepFrames(page, 5);
+  const after = await page.evaluate(() => (window as any).__gameRef.state.getStackNames());
+  expect(after).not.toContain('title_save');
+  expect(after[0]).toBe('free');
+});

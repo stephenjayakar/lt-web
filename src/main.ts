@@ -41,6 +41,7 @@ import {
   TitleMainState,
   TitleModeState,
   TitleNewState,
+  TitleExtrasState,
   LevelSelectState,
   OptionMenuState,
   FreeState,
@@ -150,6 +151,7 @@ import { convexUrl, resolveStorageMode } from './storage/storage';
 import {
   SaveMenuState,
   LoadMenuState,
+  TitleSaveState,
   setSaveLoadGameRef,
 } from './engine/states/save-load-state';
 import {
@@ -688,6 +690,7 @@ async function main(): Promise<void> {
     new TitleMainState(),
     new TitleModeState(),
     new TitleNewState(),
+    new TitleExtrasState(),
     new LevelSelectState(),
     new OptionMenuState(),
     new ObjectiveMenuState(),
@@ -750,6 +753,7 @@ async function main(): Promise<void> {
     new FreeRoamRationalizeState(),
     new SaveMenuState(),
     new LoadMenuState(),
+    new TitleSaveState(),
   ];
   for (const state of states) {
     gameState.state.register(state);

@@ -193,6 +193,9 @@ test.describe('Embrace of the Fog end-to-end journey', () => {
           lastChoice = '';
           if (state?.dialog || state?.banner) {
             (window as any).__harness.injectInput('SELECT');
+          } else if (state?.name === 'title_save' && !state.loading) {
+            // Python level_end shows the between-chapter save; BACK continues.
+            (window as any).__harness.injectInput('BACK');
           }
         }
         (window as any).__harness.stepFrames(1);

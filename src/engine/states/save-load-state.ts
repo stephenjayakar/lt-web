@@ -15,10 +15,12 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import {
   saveGame,
   loadGame,
+  loadRestart,
   loadSuspend,
   loadSaveSlots,
   getLastLoadError,
   hasSuspend,
+  deleteSuspend,
   formatPlaytime,
   type SaveSlot,
 } from '../save';
@@ -143,27 +145,21 @@ export class SaveMenuState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    const ctx = surf.ctx;
     const w = viewport.width;
     const h = viewport.height;
 
-    // Dark overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, w, h);
-
-    // Title
-    ctx.fillStyle = '#ddddff';
-    ctx.font = '10px monospace';
-    ctx.textBaseline = 'top';
-    ctx.fillText('-- Save Game --', 16, 4);
+    // Dark overlay. Draw through the Surface helpers: the raw canvas context
+    // is in physical pixels, so ctx.fillRect(0, 0, w, h) only darkened the
+    // top-left corner and the title text rendered at 1/scale size.
+    surf.fillRect(0, 0, w, h, 'rgba(0, 0, 0, 0.7)');
+    surf.drawText('-- Save Game --', 16, 0, 'white', 'text');
 
     if (this.loading) {
-      ctx.fillText('Loading...', 16, 24);
+      surf.drawText('Loading...', 16, 24, 'white', 'text');
     } else if (this.message) {
-      ctx.fillStyle = '#88ff88';
-      ctx.fillText(this.message, 16, 60);
+      surf.drawText(this.message, 16, 60, 'green', 'text');
     } else if (this.saving) {
-      ctx.fillText('Saving...', 16, 24);
+      surf.drawText('Saving...', 16, 24, 'white', 'text');
     } else if (this.menu) {
       this.menu.draw(surf);
     }
@@ -185,6 +181,7 @@ export class LoadMenuState extends State {
   private loading: boolean = true;
   private restoring: boolean = false;
   private hasSuspendSave: boolean = false;
+  private mode: 'load' | 'restart' | null = null;
   private message: string = '';
   private messageTimer: number = 0;
 
@@ -198,14 +195,18 @@ export class LoadMenuState extends State {
     const game = getGame();
     const gameNid = game.db.getConstant('game_nid', 'default') as string;
     const numSlots = game.db.getConstant('num_save_slots', 3) as number;
+    // Title 'Load Game'/'Restart Level' (Python title_load / title_restart)
+    // list only the save slots; the suspend is reached through 'Continue'.
+    this.mode = (game.memory?.get?.('load_menu_mode') as 'load' | 'restart' | undefined) ?? null;
+    game.memory?.delete?.('load_menu_mode');
 
     Promise.all([
       loadSaveSlots(gameNid, numSlots),
       hasSuspend(gameNid),
     ]).then(([slots, hasSusp]) => {
       this.slots = slots;
-      this.hasSuspendSave = hasSusp;
-      this.buildMenu(slots, hasSusp);
+      this.hasSuspendSave = hasSusp && this.mode === null;
+      this.buildMenu(slots, this.hasSuspendSave);
       this.loading = false;
     }).catch((err) => {
       console.error('LoadMenuState: failed to load slots', err);
@@ -287,13 +288,17 @@ export class LoadMenuState extends State {
         });
       } else {
         const slotIdx = parseInt(result.selected, 10);
-        loadGame(game, slotIdx).then((success: boolean) => {
-          this.restoring = false;
+        const restart = this.mode === 'restart';
+        const slotKind = restart ? 'start' : (this.slots.find((slot) => slot.idx === slotIdx)?.kind ?? null);
+        (restart ? loadRestart(game, slotIdx) : loadGame(game, slotIdx)).then(async (success: boolean) => {
           if (success) {
             game.currentSaveSlot = slotIdx;
-            game.state.clear();
-            game.state.change('free');
+            // Python removes the suspend whenever a slot is loaded.
+            await deleteSuspend(game.db.getConstant('game_nid', 'default') as string);
+            await resumeLoadedGame(game, slotKind);
+            this.restoring = false;
           } else {
+            this.restoring = false;
             this.message = `Load failed: ${getLastLoadError() ?? 'unknown save error'}`;
             this.messageTimer = 1500;
           }
@@ -320,31 +325,166 @@ export class LoadMenuState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    const ctx = surf.ctx;
     const w = viewport.width;
     const h = viewport.height;
 
-    // Dark overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, w, h);
-
-    // Title
-    ctx.fillStyle = '#ddddff';
-    ctx.font = '10px monospace';
-    ctx.textBaseline = 'top';
-    ctx.fillText('-- Load Game --', 16, 4);
+    surf.fillRect(0, 0, w, h, 'rgba(0, 0, 0, 0.7)');
+    surf.drawText('-- Load Game --', 16, 0, 'white', 'text');
 
     if (this.loading) {
-      ctx.fillText('Loading...', 16, 24);
+      surf.drawText('Loading...', 16, 24, 'white', 'text');
     } else if (this.message) {
-      ctx.fillStyle = this.message.startsWith('Load failed') ? '#ff8888' : '#88ff88';
-      ctx.fillText(this.message, 16, 60);
+      surf.drawText(this.message, 16, 60, this.message.startsWith('Load failed') ? 'red' : 'green', 'text');
     } else if (this.restoring) {
-      ctx.fillText('Loading...', 16, 24);
+      surf.drawText('Loading...', 16, 24, 'white', 'text');
     } else if (this.menu) {
       this.menu.draw(surf);
     }
 
+    return surf;
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Shared post-load resume (Python TitleLoadState.take_input)
+// ---------------------------------------------------------------------------
+
+/**
+ * After a save has been restored, enter gameplay the way Python does:
+ * a 'start' save (written at new game / between chapters) restarts
+ * `_next_level_nid` from the beginning; any other kind resumes play.
+ */
+export async function resumeLoadedGame(game: any, kind: string | null | undefined): Promise<void> {
+  if (kind === 'start') {
+    const nextLevel: string | undefined = game.gameVars.get('_next_level_nid') ?? game.currentLevel?.nid;
+    if (nextLevel && game.db.levels.has(nextLevel)) {
+      game.cleanUpLevel();
+      await game.loadLevel(nextLevel);
+      game.state.clear();
+      game.state.change('free');
+      if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+      return;
+    }
+  }
+  game.state.clear();
+  game.state.change('free');
+}
+
+// ---------------------------------------------------------------------------
+// TitleSaveState — between-chapter save prompt (Python title_save)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shown after a chapter ends unless the ending level set `_skip_save`.
+ * SELECT on a slot writes a 'start' save for the upcoming chapter; BACK
+ * proceeds without saving. The continuation that enters the next chapter
+ * is handed over through game.memory['title_save_continue'].
+ */
+export class TitleSaveState extends State {
+  name = 'title_save';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private menu: ChoiceMenu | null = null;
+  private loading = true;
+  private busy = false;
+  private message = '';
+  private messageTimer = 0;
+  private bgImage: HTMLImageElement | null = null;
+
+  override start(): StateResult {
+    const game = getGame();
+    this.loading = true;
+    this.busy = false;
+    this.message = '';
+    this.messageTimer = 0;
+    game.resources?.tryLoadImage?.('resources/panoramas/title_background.png')
+      .then((img: HTMLImageElement | null) => { this.bgImage = img; })
+      .catch(() => {});
+    const gameNid = game.db.getConstant('game_nid', 'default') as string;
+    const numSlots = Number(game.db.getConstant('num_save_slots', 3)) || 1;
+    loadSaveSlots(gameNid, numSlots).then((slots) => {
+      const options: MenuOption[] = slots.map((slot) => {
+        const hasData = slot.name !== '--NO DATA--';
+        return {
+          label: hasData ? `${slot.name} - ${formatPlaytime(slot.playtime)}` : '--NO DATA--',
+          value: String(slot.idx),
+          enabled: true,
+        };
+      });
+      this.menu = new ChoiceMenu(options, 16, 24);
+      const recent = slots.reduce((best, slot) => (slot.realtime > (slots[best]?.realtime ?? -1) ? slot.idx : best), 0);
+      this.menu.selectedIndex = Math.max(0, Math.min(recent, options.length - 1));
+      this.loading = false;
+    }).catch(() => {
+      this.menu = new ChoiceMenu([{ label: '--NO DATA--', value: '0', enabled: true }], 16, 24);
+      this.loading = false;
+    });
+    return undefined;
+  }
+
+  private proceed(): void {
+    const game = getGame();
+    const next = game.memory?.get?.('title_save_continue') as (() => void) | undefined;
+    game.memory?.delete?.('title_save_continue');
+    if (next) next();
+    else game.state.back();
+  }
+
+  override takeInput(event: InputEvent | null): StateResult {
+    if (!event || this.loading || this.busy || this.messageTimer > 0 || !this.menu) return undefined;
+    const game = getGame();
+    const result = this.menu.handleInput(event);
+    if (result && 'back' in result) {
+      // Python: BACK proceeds to the next level without saving.
+      this.proceed();
+    } else if (result && 'selected' in result) {
+      const slot = parseInt(result.selected, 10);
+      this.busy = true;
+      saveGame(game, slot, 'start').then(() => {
+        game.currentSaveSlot = slot;
+        this.message = 'Saved.';
+      }).catch((err: unknown) => {
+        console.error('TitleSaveState: save failed', err);
+        this.message = 'Save failed!';
+      }).finally(() => {
+        this.messageTimer = 900;
+        this.busy = false;
+      });
+    }
+    return undefined;
+  }
+
+  override update(): StateResult {
+    if (this.messageTimer > 0) {
+      this.messageTimer -= getGame().frameDeltaMs ?? 16;
+      if (this.messageTimer <= 0) this.proceed();
+    }
+    return undefined;
+  }
+
+  override draw(surf: Surface): Surface {
+    const w = viewport.width;
+    const h = viewport.height;
+    surf.fillRect(0, 0, w, h, 'rgb(9, 12, 24)');
+    if (this.bgImage) {
+      const bw = this.bgImage.naturalWidth || this.bgImage.width;
+      const bh = this.bgImage.naturalHeight || this.bgImage.height;
+      const scale = Math.max(w / Math.max(1, bw), h / Math.max(1, bh));
+      const dw = bw * scale;
+      const dh = bh * scale;
+      const ps = surf.scale;
+      surf.ctx.imageSmoothingEnabled = false;
+      surf.ctx.drawImage(this.bgImage, 0, 0, bw, bh,
+        Math.round(((w - dw) / 2) * ps), Math.round(((h - dh) / 2) * ps), Math.round(dw * ps), Math.round(dh * ps));
+    }
+    surf.drawText('Save your progress?', 16, 4, 'white', 'text');
+    if (this.message) {
+      surf.drawText(this.message, 16, 60, 'white', 'text');
+    } else if (this.menu) {
+      this.menu.draw(surf);
+    }
     return surf;
   }
 }

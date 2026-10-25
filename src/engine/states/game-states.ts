@@ -262,7 +262,7 @@ import {
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
 import { RECORDS, ACHIEVEMENTS } from '../records';
-import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots, deleteSuspend, formatPlaytime } from '../save';
+import { saveGame as doSaveGame, suspendGame as doSuspendGame, hasSuspend, loadSaveSlots, deleteSuspend, formatPlaytime, loadSuspend as loadSuspendSave } from '../save';
 import { getSyncStore } from '../../storage/storage';
 import { getStartingClassSkillNids } from '../learned-skills';
 import { reportUnimplemented } from '../strict-mode';
@@ -1044,6 +1044,10 @@ export class TitleMainState extends State {
   private targetX: number = 0;
   private slideTimer: number = 0;
   private hasSaveData: boolean = false;
+  private hasSuspendData: boolean = false;
+  private suspendWarned: boolean = false;
+  private banner: Banner | null = null;
+  private busy: boolean = false;
 
   override start(): StateResult {
     const game = getGame();
@@ -1061,15 +1065,22 @@ export class TitleMainState extends State {
     this.targetX = 24;
     this.cursor = 0;
 
-    // Check if any save data exists to show Load Game / Continue options
+    // Python TitleMainState.start: ['New Game', 'Extras'], with
+    // 'Load Game'/'Restart Level' in front when any save slot has data and
+    // 'Continue' first when a suspend exists.
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const numSlots = game.db?.getConstant?.('num_save_slots', 3) ?? 3;
+    this.hasSaveData = false;
+    this.hasSuspendData = false;
+    this.suspendWarned = false;
+    this.banner = null;
+    this.busy = false;
     Promise.all([
       loadSaveSlots(gameNid as string, numSlots as number),
       hasSuspend(gameNid as string),
     ]).then(([slots, hasSusp]) => {
-      const hasAnySave = hasSusp || slots.some(s => s.name !== '--NO DATA--');
-      this.hasSaveData = hasAnySave;
+      this.hasSaveData = slots.some(s => s.name !== '--NO DATA--');
+      this.hasSuspendData = hasSusp;
       this.rebuildOptions();
     }).catch(() => {
       // Ignore errors — just show default options
@@ -1080,19 +1091,19 @@ export class TitleMainState extends State {
     this.slideX = -120;
     this.cursor = 0;
     this.slideTimer = 0;
+    this.busy = false;
     this.rebuildOptions();
   }
 
   private rebuildOptions(): void {
-    const opts: string[] = [];
+    const opts: string[] = ['New Game', 'Extras'];
     if (this.hasSaveData) {
-      opts.push('Continue');
+      opts.unshift('Restart Level');
+      opts.unshift('Load Game');
     }
-    opts.push('New Game');
-    if (this.hasSaveData) {
-      opts.push('Load Game');
+    if (this.hasSuspendData) {
+      opts.unshift('Continue');
     }
-    opts.push('Extras');
     this.options = opts;
     // Keep cursor in bounds
     if (this.cursor >= this.options.length) {
@@ -1106,6 +1117,9 @@ export class TitleMainState extends State {
       this.slideX = Math.min(this.targetX, this.slideX + 12);
     }
     this.slideTimer += getGame().frameDeltaMs ?? 16;
+    if (this.banner && this.banner.update(getGame().frameDeltaMs ?? 16)) {
+      this.banner = null;
+    }
   }
 
   override draw(surf: Surface): Surface {
@@ -1137,6 +1151,8 @@ export class TitleMainState extends State {
       surf.drawText(this.options[i], optX, optY, color, '8px monospace');
     }
 
+    if (this.banner) this.banner.draw(surf);
+
     return surf;
   }
 
@@ -1148,16 +1164,42 @@ export class TitleMainState extends State {
     } else if (event === 'DOWN') {
       this.cursor = (this.cursor + 1) % this.options.length;
     } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
+      if (this.busy) return;
+      if (this.banner) {
+        this.banner = null;
+        return;
+      }
       const selected = this.options[this.cursor];
+      game.audioManager.playSfx('Select 1');
+      if (this.hasSuspendData && !this.suspendWarned &&
+          (selected === 'New Game' || selected === 'Load Game' || selected === 'Restart Level')) {
+        // Python shows this alert once before an action that drops the suspend.
+        const verb = selected === 'New Game' ? 'Starting a new game'
+          : selected === 'Load Game' ? 'Loading a game' : 'Restarting a game';
+        this.banner = new Banner(`${verb} will remove suspend!`, undefined, 3000);
+        this.suspendWarned = true;
+        return;
+      }
       if (selected === 'New Game') {
         game.state.change('title_mode');
       } else if (selected === 'Continue') {
-        // Load the most recent save (highest realtime)
-        game.state.change('load_menu');
+        // Python continue_suspend: load the suspend and delete it.
+        this.busy = true;
+        void loadSuspendSave(game).then((ok: boolean) => {
+          this.busy = false;
+          if (ok) {
+            game.state.clear();
+            game.state.change('free');
+          }
+        });
       } else if (selected === 'Load Game') {
+        game.memory.set('load_menu_mode', 'load');
+        game.state.change('load_menu');
+      } else if (selected === 'Restart Level') {
+        game.memory.set('load_menu_mode', 'restart');
         game.state.change('load_menu');
       } else if (selected === 'Extras') {
-        // Placeholder — not yet implemented
+        game.state.change('title_extras');
       }
     } else if (event === 'BACK') {
       game.state.back(); // Return to press-start screen
@@ -1401,6 +1443,78 @@ export class TitleModeState extends State {
         this.applyDeathChoice();
       } else if (this.phase === 'growth_setup') {
         this.applyGrowthChoice();
+      }
+    }
+  }
+}
+
+// ============================================================================
+// 1a1a. TitleExtrasState — Python title_screen.TitleExtrasState
+// Options / Credits (the 'Global Credits' event when the project has one).
+// ============================================================================
+
+export class TitleExtrasState extends State {
+  readonly name = 'title_extras';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  private bgImage: HTMLImageElement | null = null;
+  private options: string[] = ['Options', 'Credits'];
+  private cursor = 0;
+
+  override start(): StateResult {
+    const game = getGame();
+    this.cursor = 0;
+    this.options = ['Options', 'Credits'];
+    if (game.db.getConstant('title_sound', false) && game.state.hasState?.('extras_sound_room')) {
+      this.options.push('Sound Room');
+    }
+    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
+      this.bgImage = img;
+    });
+  }
+
+  override draw(surf: Surface): Surface {
+    const scene = titleSceneBounds();
+    drawTitleBackground(surf, this.bgImage);
+    const rowH = 18;
+    const width = 96;
+    const x = scene.x + Math.floor((scene.width - width) / 2);
+    const top = scene.y + Math.floor((scene.height - this.options.length * rowH) / 2);
+    for (let i = 0; i < this.options.length; i++) {
+      const y = top + i * rowH;
+      const selected = i === this.cursor;
+      surf.fillRect(x, y, width, rowH - 2, selected ? 'rgba(64,64,160,0.9)' : 'rgba(16,16,48,0.85)');
+      surf.drawRect(x, y, width, rowH - 2, 'rgba(160,160,220,0.8)');
+      surf.drawText(this.options[i], x + 8, y, selected ? 'white' : 'rgb(200,200,220)', '8px monospace');
+    }
+    return surf;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    if (event === 'UP') {
+      this.cursor = (this.cursor - 1 + this.options.length) % this.options.length;
+      game.audioManager.playSfx('Select 6');
+    } else if (event === 'DOWN') {
+      this.cursor = (this.cursor + 1) % this.options.length;
+      game.audioManager.playSfx('Select 6');
+    } else if (event === 'BACK') {
+      game.audioManager.playSfx('Select 4');
+      game.state.back();
+    } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
+      game.audioManager.playSfx('Select 1');
+      const selection = this.options[this.cursor];
+      if (selection === 'Options') {
+        game.state.change('settings_menu');
+      } else if (selection === 'Credits') {
+        if (game.db.events.has('Global Credits') && game.eventManager?.triggerSpecific('Global Credits', { type: 'credits' }, true)) {
+          game.state.change('event');
+        } else {
+          game.state.change('credit');
+        }
+      } else if (selection === 'Sound Room') {
+        game.state.change('extras_sound_room');
       }
     }
   }
@@ -9014,6 +9128,8 @@ export class EventState extends State {
 
   // Skip mode: when true, all speak/narrate commands are auto-advanced
   private skipMode: boolean = false;
+  /** Python Event.super_skip: START skips through end_skip as well. */
+  private superSkip: boolean = false;
 
   // Portrait state
   private portraits: Map<string, EventPortrait> = new Map();
@@ -9139,6 +9255,7 @@ export class EventState extends State {
       this.choiceEventNid = null;
       this.forLoopStack = [];
       this.skipMode = false;
+      this.superSkip = false;
       this.portraits.clear();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
@@ -9182,10 +9299,12 @@ export class EventState extends State {
         game.state.change('dialog_log');
         return;
       }
-      if (effective === 'BACK') {
+      if (effective === 'BACK' || effective === 'START') {
         // Enable skip mode — dismiss this dialog and auto-skip all
         // remaining speak/narrate commands in the current event.
+        // Python Event.take_input: START or BACK -> skip(super_skip=START).
         this.skipMode = true;
+        if (effective === 'START') this.superSkip = true;
         this.dialog = null;
         this.endingCard = null;
         if (this.speakingPortrait) {
@@ -9307,8 +9426,9 @@ export class EventState extends State {
     // Enable skip mode when BACK is pressed outside of any blocking UI.
     // This handles the case where the user presses Escape during wait,
     // transition, screen_shake, or between instant commands.
-    if (effective === 'BACK') {
+    if (effective === 'BACK' || effective === 'START') {
       this.skipMode = true;
+      if (effective === 'START') this.superSkip = true;
       // If we're in a wait, transition, or other blockable state, resolve it
       if (this.waiting) {
         this.waiting = false;
@@ -10139,6 +10259,10 @@ export class EventState extends State {
     const levelNids = Array.from(game.db.levels.keys()) as string[];
     const currentIndex = levelNids.indexOf(currentLevelNid);
 
+    // Python EventState.level_end reads the ending level's _skip_save var
+    // before clean_up; unless set, the between-chapter save screen shows.
+    const skipSave = !!game.levelVars?.get?.('_skip_save');
+
     // Clean up current level state (persist player units)
     game.cleanUpLevel();
 
@@ -10197,14 +10321,25 @@ export class EventState extends State {
       // in begin() when EventState is re-pushed after the deferred ops.
       // If we clear it now, update() would run the burst loop with stale
       // state before processTempState flushes the clear/change ops.
-      game.state.clear();
-      game.state.change('free');
-      // If level_start triggered events, push EventState
-      if (game.eventManager?.hasActiveEvents()) {
-        // Start the new level's events with a black screen so that
-        // chapter_title + transition;Open work as expected
-        this.startWithBlackScreen = true;
-        game.state.change('event');
+      const enterNextLevel = (): void => {
+        game.state.clear();
+        game.state.change('free');
+        // If level_start triggered events, push EventState
+        if (game.eventManager?.hasActiveEvents()) {
+          // Start the new level's events with a black screen so that
+          // chapter_title + transition;Open work as expected
+          this.startWithBlackScreen = true;
+          game.state.change('event');
+        }
+      };
+      if (skipSave) {
+        enterNextLevel();
+      } else {
+        // Python level_end -> title_save (save_kind 'start'); its BACK or a
+        // completed save continues into the next chapter.
+        game.memory.set('title_save_continue', enterNextLevel);
+        game.state.clear();
+        game.state.change('title_save');
       }
     }).catch((err: unknown) => {
       this.levelTransitionInProgress = false;
@@ -11010,8 +11145,9 @@ export class EventState extends State {
 
       case 'end_skip': {
         // Python end_skip clears ordinary event skipping so subsequent
-        // blocking commands resume normal presentation.
-        this.skipMode = false;
+        // blocking commands resume normal presentation — unless START
+        // requested a super skip.
+        if (!this.superSkip) this.skipMode = false;
         this.advancePointer();
         return false;
       }
@@ -16010,13 +16146,12 @@ export class EventState extends State {
         return true; // blocking until save menu exits
       }
       case 'skip_save': {
-        // skip_save — silently auto-save to current slot
-        try {
-          const slot = game.currentSaveSlot >= 0 ? game.currentSaveSlot : 0;
-          doSaveGame(game, slot, 'battle').catch((err: any) => {
-            console.warn('skip_save failed:', err);
-          });
-        } catch (e) { console.warn('skip_save error:', e); }
+        // Python event_functions.skip_save: SetLevelVar('_skip_save', bool).
+        // It only suppresses the between-chapter save screen; it never
+        // writes a save (the web used to overwrite the slot mid-event).
+        const raw = (args[0] ?? '').trim().toLowerCase();
+        const value = ['t', 'true', '1', 'yes', 'y'].includes(raw);
+        game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_skip_save', value));
         this.advancePointer();
         return false;
       }

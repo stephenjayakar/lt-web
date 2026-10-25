@@ -403,6 +403,10 @@ export function installHarness(
             current?.name === 'turn_change') {
           stepOneFrame('SELECT');
         }
+        // Python's between-chapter save prompt: BACK continues unsaved.
+        if (current?.name === 'title_save') {
+          stepOneFrame('BACK');
+        }
         // Asset-backed event commands resolve through promises. Yield often
         // enough for those tasks to complete instead of exhausting the frame
         // budget while the browser event loop is held by this harness call.
