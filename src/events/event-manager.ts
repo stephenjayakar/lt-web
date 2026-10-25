@@ -434,7 +434,23 @@ export class GameEvent {
       return null;
     }
 
-    const parts = trimmed.split(';');
+    // Python event_commands.get_command_arguments: split on ';' but ignore
+    // semicolons nested inside {...} (e.g. `{c:e;Grigol;CloseEyes}` or
+    // `{e:...}` expressions inside a speak text).
+    const parts: string[] = [];
+    let current = '';
+    let depth = 0;
+    for (const ch of trimmed) {
+      if (ch === ';' && depth === 0) {
+        parts.push(current);
+        current = '';
+        continue;
+      }
+      if (ch === '{') depth += 1;
+      else if (ch === '}') depth -= 1;
+      current += ch;
+    }
+    parts.push(current);
     let rawType = parts[0].trim().toLowerCase();
 
     // Resolve aliases to canonical command names

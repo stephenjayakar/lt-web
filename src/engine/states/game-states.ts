@@ -34,7 +34,7 @@ import type {
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
-import { evaluateCondition, evaluateExpression, type ConditionContext, type GameEvent, type EventCommand } from '../../events/event-manager';
+import { evaluateCondition, evaluateExpression, GameEvent, type ConditionContext, type EventCommand } from '../../events/event-manager';
 import {
   activateCombatArt,
   deactivateCombatArts,
@@ -9025,6 +9025,66 @@ type EventOverlaySprite = {
   foreground: boolean;
 };
 
+/** Python app/events/speak_style.SpeakStyle (unset fields are null). */
+type SpeakStyleDef = {
+  speaker?: string | null;
+  position?: string | [number, number] | null;
+  width?: number | null;
+  speed?: number | null;
+  fontColor?: string | null;
+  fontType?: string | null;
+  background?: string | null;
+  numLines?: number | null;
+  drawCursor?: boolean | null;
+  messageTail?: string | null;
+  transparency?: number | null;
+  nameTagBg?: string | null;
+  flags?: Set<string>;
+};
+
+/** Python SpeakStyleLibrary built-ins (WINWIDTH = 240). */
+const BUILTIN_SPEAK_STYLES: Record<string, SpeakStyleDef> = {
+  __default: { speed: 1, fontType: 'convo', background: 'message_bg_base', numLines: 2, drawCursor: true,
+    messageTail: 'message_bg_tail', nameTagBg: 'name_tag', transparency: 0.05 },
+  __default_text: { speed: 0.5, fontType: 'text', background: 'menu_bg_base', numLines: 0,
+    nameTagBg: 'menu_bg_base', transparency: 0.05 },
+  __default_help: { speed: 0.5, fontType: 'convo', background: 'None', drawCursor: false, numLines: 8,
+    nameTagBg: 'name_tag', transparency: 0.05 },
+  noir: { background: 'menu_bg_dark', fontColor: 'white', messageTail: 'None' },
+  hint: { background: 'menu_bg_parchment', position: 'center', width: 128, numLines: 4, messageTail: 'None' },
+  cinematic: { background: 'None', position: 'center', fontColor: 'grey', numLines: 5, fontType: 'chapter',
+    drawCursor: false, messageTail: 'None' },
+  narration: { background: 'menu_bg_base', position: [4, 110], width: 232, fontColor: 'white', messageTail: 'None' },
+  narration_top: { background: 'menu_bg_base', position: [4, 2], width: 232, fontColor: 'white', messageTail: 'None' },
+  clear: { background: 'None', fontColor: 'white', drawCursor: false, messageTail: 'None' },
+  thought_bubble: { messageTail: 'message_bg_thought_tail', flags: new Set(['no_talk']) },
+  boss_convo_left: { speed: 1, fontType: 'convo', background: 'message_bg_base', numLines: 2, drawCursor: true,
+    messageTail: 'message_bg_tail', transparency: 0, position: [72, 112], width: 160 },
+  boss_convo_right: { speed: 1, fontType: 'convo', background: 'message_bg_base', numLines: 2, drawCursor: true,
+    messageTail: 'message_bg_tail', transparency: 0, position: [8, 112], width: 160 },
+  overworld_narration: { background: 'None', position: [4, 110], width: 232, fontColor: 'white',
+    numLines: 2, speed: 2 },
+};
+
+/** Python SpeakStyle.update: later non-null fields win; flags union. */
+function mergeSpeakStyle(base: SpeakStyleDef, other: SpeakStyleDef): SpeakStyleDef {
+  const out: SpeakStyleDef = { ...base };
+  for (const [key, value] of Object.entries(other) as [keyof SpeakStyleDef, unknown][]) {
+    if (key === 'flags' || value === null || value === undefined) continue;
+    (out as Record<string, unknown>)[key] = value;
+  }
+  out.flags = new Set([...(base.flags ?? []), ...(other.flags ?? [])]);
+  return out;
+}
+
+/** TextPosition: an Alignments name or an "x,y" point. */
+function parseSpeakPosition(value: string | undefined): string | [number, number] | null {
+  if (!value) return null;
+  const point = value.match(/^\s*(-?\d+)\s*,\s*(-?\d+)\s*$/);
+  if (point) return [parseInt(point[1], 10), parseInt(point[2], 10)];
+  return value.trim().toLowerCase();
+}
+
 const colorkeyedPortraits: Map<string, HTMLCanvasElement | null> = new Map();
 /** Portrait sheet with the LT colorkey removed, loaded on first use. */
 function getColorkeyedPortrait(game: any, nid: string): HTMLCanvasElement | null {
@@ -9627,6 +9687,14 @@ export class EventState extends State {
           this.advancePointer();
         }
       } else {
+        // Inline {c:...} commands (Python queue_command + unpause) run while
+        // the dialog waits at its command pause.
+        if (this.dialog.isCommandPaused()) {
+          for (const line of this.dialog.takePendingCommands()) {
+            this.runInlineDialogCommand(line, game);
+          }
+          this.dialog.commandUnpause();
+        }
         this.dialog.update(FRAMETIME);
         const isTyping = this.dialog.isTyping();
         if (this.speakingPortrait) {
@@ -10984,6 +11052,56 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   /**
+   * Run one `{c:...}` command embedded in dialog text without moving the
+   * event's own command pointer. Commands that would block the event
+   * (wait, bop_portrait, ...) instead hold the dialog for that long.
+   */
+  private runInlineDialogCommand(line: string, game: any): void {
+    const cmd = GameEvent.parseCommand(line);
+    if (!cmd || !this.dialog) return;
+    if (cmd.type === 'wait') {
+      this.dialog.holdFor(parseInt(cmd.args?.[0] ?? '', 10) || 0);
+      return;
+    }
+    const event = this.currentEvent;
+    const pointer = event?.commandPointer ?? 0;
+    const dialog = this.dialog;
+    const blocks = this.dialogBlocksCommands;
+    try {
+      this.executeCommand(cmd, game);
+    } catch (error) {
+      console.warn(`inline dialog command failed: ${line}`, error);
+    }
+    if (event) event.commandPointer = pointer;
+    this.dialog = dialog;
+    this.dialogBlocksCommands = blocks;
+    if (this.waiting) {
+      dialog.holdFor(this.waitTimer);
+      this.waiting = false;
+      this.waitTimer = 0;
+    }
+  }
+
+  /** Python Event._resolve_speak_style(speaker_or_style, style_nid, manual_style). */
+  private resolveSpeakStyle(game: any, speakerOrStyle: string, styleNid: string | null, manual: SpeakStyleDef): SpeakStyleDef {
+    const lookup = (nid: string | null): SpeakStyleDef | undefined => {
+      if (!nid) return undefined;
+      const project = game.speakStyles instanceof Map ? game.speakStyles.get(nid) : undefined;
+      return project && !Array.isArray(project) ? project : BUILTIN_SPEAK_STYLES[nid];
+    };
+    let current: SpeakStyleDef = mergeSpeakStyle({}, BUILTIN_SPEAK_STYLES.__default);
+    const styles: SpeakStyleDef[] = [];
+    const named = lookup(styleNid);
+    if (named) styles.push(named);
+    styles.push(manual);
+    const speakerStyle = lookup(speakerOrStyle);
+    if (speakerStyle) styles.push(speakerStyle);
+    else current.speaker = speakerOrStyle;
+    for (const style of styles) current = mergeSpeakStyle(current, style);
+    return current;
+  }
+
+  /**
    * Build one `choice` entry the way Python's GridChoiceMenu option classes
    * render it: items/skills with their icon and name, units with their map
    * sprite and name, classes by name, `type_icon` as `sheet-x-y-text`.
@@ -11362,33 +11480,84 @@ export class EventState extends State {
       case 'say':
       case 'speak':
       case 'narrate': {
-        // say;Speaker;Text1,Text2,... (Python :322) = speak with the text
-        // list joined by {sub_break}. Preserve recognized trailing flags.
-        const dialogFlagNames: Record<string, true> = {
-          low_priority: true,
-          hold: true,
-          no_popup: true,
-          fit: true,
-          no_block: true,
-          no_talk: true,
-          no_sound: true,
-          autogray: true,
-        };
-        let flagArgs = args.slice(2)
-          .map(s => s.toLowerCase())
-          .filter(flag => dialogFlagNames[flag]);
-        if (cmd.type === 'say' && args.length > 2) {
-          const textParts = args.slice(1)
-            .filter(value => !dialogFlagNames[value.toLowerCase()]);
-          args = [args[0] ?? '', textParts.join('{sub_break}'), ...flagArgs];
+        // speak;SpeakerOrStyle;Text;TextPosition;Width;StyleNid;TextSpeed;
+        // FontColor;FontType;DialogBox;NumLines;DrawCursor;MessageTail;
+        // Transparency;NameTagBg;BoopSound;flags (Python event_commands.Speak).
+        // say takes a list of texts joined by {sub_break}.
+        const dialogFlagNames = new Set(['low_priority', 'hold', 'no_popup', 'fit', 'no_block',
+          'no_talk', 'no_sound', 'autogray']);
+        const optionalNames = ['textposition', 'width', 'stylenid', 'textspeed', 'fontcolor',
+          'fonttype', 'dialogbox', 'numlines', 'drawcursor', 'messagetail', 'transparency',
+          'nametagbg', 'boopsound'];
+        const speakFlags = new Set<string>();
+        const speakKw = new Map<string, string>();
+        const speakerArg = (args[0] ?? '').trim();
+        let text = args[1] ?? '';
+        const restArgs = args.slice(2);
+        const sayParts: string[] = [];
+        let positional = 0;
+        for (const raw of restArgs) {
+          const entry = raw.trim();
+          const lower = entry.toLowerCase();
+          if (dialogFlagNames.has(lower)) {
+            speakFlags.add(lower);
+            continue;
+          }
+          const eq = entry.indexOf('=');
+          const key = eq > 0 ? entry.slice(0, eq).trim().toLowerCase() : '';
+          if (eq > 0 && optionalNames.includes(key)) {
+            speakKw.set(key, entry.slice(eq + 1).trim());
+            continue;
+          }
+          if (cmd.type === 'say') {
+            sayParts.push(raw);
+            continue;
+          }
+          if (positional < optionalNames.length) {
+            if (entry) speakKw.set(optionalNames[positional], entry);
+            positional += 1;
+          }
         }
+        if (cmd.type === 'say') text = [text, ...sayParts].join('{sub_break}');
+        const noBlock = speakFlags.has('no_block');
         // In skip mode, auto-advance past all dialogue without showing it
-        if (this.skipMode) {
+        // (Python: hold speaks are still shown).
+        if (this.skipMode && !speakFlags.has('hold')) {
           this.advancePointer();
           return false;
         }
-        const speaker = args[0] ?? '';
-        const text = args[1] ?? '';
+
+        const numOrNull = (value: string | undefined): number | null => {
+          if (value === undefined || value === '') return null;
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        };
+        const boolOrNull = (value: string | undefined): boolean | null => {
+          if (value === undefined || value === '') return null;
+          return ['t', 'true', '1', 'y', 'yes'].includes(value.toLowerCase());
+        };
+        const drawCursorArg = boolOrNull(speakKw.get('drawcursor'));
+        const manualStyle: SpeakStyleDef = {
+          position: parseSpeakPosition(speakKw.get('textposition')),
+          width: numOrNull(speakKw.get('width')),
+          speed: numOrNull(speakKw.get('textspeed')),
+          fontColor: speakKw.get('fontcolor') || null,
+          fontType: speakKw.get('fonttype') || null,
+          background: speakKw.get('dialogbox') || null,
+          numLines: numOrNull(speakKw.get('numlines')),
+          // Python speak(): cursor = True if draw_cursor is None
+          drawCursor: drawCursorArg ?? true,
+          messageTail: speakKw.get('messagetail') || null,
+          transparency: numOrNull(speakKw.get('transparency')),
+          nameTagBg: speakKw.get('nametagbg') || null,
+          flags: speakFlags,
+        };
+        const style = this.resolveSpeakStyle(game, speakerArg, speakKw.get('stylenid') ?? null, manualStyle);
+        let speaker = style.speaker ?? '';
+        if (speaker === 'None') speaker = '';
+        if (speaker.startsWith('"') && speaker.endsWith('"')) speaker = speaker.slice(1, -1);
+        const speakerUnit = speaker ? this.findUnit(speaker) : undefined;
+        if (speakerUnit) speaker = speakerUnit.nid;
         appendDialogLogEntry(game, speaker, text);
 
         // Stop previous speaking portrait
@@ -11399,33 +11568,48 @@ export class EventState extends State {
 
         // Look up portrait for the speaker
         const portrait = this.portraits.get(speaker) ?? null;
+        const allFlags = style.flags ?? speakFlags;
+        const noTalk = allFlags.has('no_talk');
 
-        // Check flags (flags are extra args like 'no_talk', 'low_priority', 'hold')
-        flagArgs = args.slice(2)
-          .map(s => s.toLowerCase())
-          .filter(flag => dialogFlagNames[flag]);
-        const noTalk = flagArgs.includes('no_talk');
-        const noBlock = flagArgs.includes('no_block');
+        let numLines = style.numLines ?? 2;
+        if (numLines === 0) {
+          // Python: auto-choose 1 or 2 lines
+          numLines = 2;
+          if (portrait && !text.includes('{br}') && !text.includes('{clear}') &&
+              measureStyledText(text, style.fontType ?? 'convo') < Math.floor(viewport.width / 2)) {
+            numLines = 1;
+          }
+        }
 
         if (portrait && !noTalk && cmd.type !== 'narrate') {
           this.speakingPortrait = portrait;
-
           // Raise portrait priority (bring to front) unless low_priority
-          if (!flagArgs.includes('low_priority')) {
+          if (!allFlags.has('low_priority')) {
             portrait.priority = this.portraitPriorityCounter++;
           }
         }
 
-        const dialogSpeedMult = this.getDialogSpeedMultiplier(args.slice(2));
-
-        // Create dialog with optional portrait reference for positioning
         this.dialog = new Dialog(
           text,
           speaker || undefined,
           portrait ?? undefined,
           this.getDialogTextSpeedMs(),
-          dialogSpeedMult,
+          style.speed ?? 1,
           noBlock,
+          {
+            position: style.position ?? null,
+            width: style.width ?? null,
+            numLines,
+            background: style.background ?? null,
+            fontColor: style.fontColor ?? null,
+            fontType: style.fontType ?? null,
+            drawCursor: style.drawCursor ?? true,
+            messageTail: style.messageTail ?? null,
+            transparency: style.transparency ?? 0.05,
+            nameTagBg: style.nameTagBg ?? null,
+            autosize: allFlags.has('fit'),
+            hold: allFlags.has('hold'),
+          },
         );
         this.dialogBlocksCommands = !noBlock;
         this.wasDialogTyping = false;
@@ -11811,13 +11995,58 @@ export class EventState extends State {
       }
 
       case 'speak_style': {
-        // speak_style;Nid;props... (Python speak style registry). The web
-        // stores styles for future speak consumption; only text_speed and
-        // speaker defaults are consumed today (documented deviation).
-        const styleNid = args[0] ?? '';
+        // speak_style;Style;Speaker;Position;Width;Speed;FontColor;FontType;
+        // Background;NumLines;DrawCursor;MessageTail;Transparency;NameTagBg;
+        // BoopSound;flags — Python event_functions.speak_style merges into an
+        // existing style of the same name.
+        const styleNid = (args[0] ?? '').trim();
         if (styleNid) {
-          if (!game.speakStyles) game.speakStyles = new Map();
-          game.speakStyles.set(styleNid, args.slice(1));
+          const names = ['speaker', 'position', 'width', 'speed', 'fontcolor', 'fonttype', 'background',
+            'numlines', 'drawcursor', 'messagetail', 'transparency', 'nametagbg', 'boopsound'];
+          const styleFlagNames = new Set(['low_priority', 'hold', 'no_popup', 'fit', 'no_talk', 'no_sound', 'autogray']);
+          const kw = new Map<string, string>();
+          const styleFlags = new Set<string>();
+          let position = 0;
+          for (const raw of args.slice(1)) {
+            const entry = raw.trim();
+            if (styleFlagNames.has(entry.toLowerCase())) {
+              styleFlags.add(entry.toLowerCase());
+              continue;
+            }
+            const eq = entry.indexOf('=');
+            const key = eq > 0 ? entry.slice(0, eq).trim().toLowerCase() : '';
+            if (eq > 0 && names.includes(key)) {
+              kw.set(key, entry.slice(eq + 1).trim());
+              continue;
+            }
+            if (position < names.length) {
+              if (entry) kw.set(names[position], entry);
+              position += 1;
+            }
+          }
+          const num = (value: string | undefined): number | null => {
+            if (!value) return null;
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+          };
+          const def: SpeakStyleDef = {
+            speaker: kw.get('speaker') || null,
+            position: parseSpeakPosition(kw.get('position')),
+            width: num(kw.get('width')),
+            speed: num(kw.get('speed')),
+            fontColor: kw.get('fontcolor') || null,
+            fontType: kw.get('fonttype') || null,
+            background: kw.get('background') || null,
+            numLines: num(kw.get('numlines')),
+            drawCursor: kw.has('drawcursor') ? ['t', 'true', '1', 'y', 'yes'].includes(kw.get('drawcursor')!.toLowerCase()) : null,
+            messageTail: kw.get('messagetail') || null,
+            transparency: num(kw.get('transparency')),
+            nameTagBg: kw.get('nametagbg') || null,
+            flags: styleFlags,
+          };
+          if (!(game.speakStyles instanceof Map)) game.speakStyles = new Map();
+          const existing: SpeakStyleDef | undefined = game.speakStyles.get(styleNid) ?? BUILTIN_SPEAK_STYLES[styleNid];
+          game.speakStyles.set(styleNid, existing ? mergeSpeakStyle(existing, def) : def);
         }
         this.advancePointer();
         return false;

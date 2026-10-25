@@ -203,6 +203,11 @@ export class StateMachine {
 
           // Notify the current top that it is being covered.
           const prev = this.getCurrentState();
+          // States are singletons here (Python pushes a fresh instance).
+          // Pushing the instance that is already on top would re-run its
+          // start() and, when the duplicate pops, finish() the live copy
+          // too — the extra back() then drains the whole stack (black screen).
+          if (prev === state) break;
           if (prev) {
             prev.end();
             prev.processed = false;

@@ -559,7 +559,10 @@ test.describe('Event command flag matching: no_block', () => {
     expect(await getGameVar(page, 'say_no_block')).toBe('done');
     expect(await getGameVar(page, 'narrate_no_block')).toBe('done');
 
-    await stepFrames(page, 30);
+    // Python Dialog timing: 10-frame transition, 32ms/char typing, period
+    // pauses and a 9-frame pause before closing a {no_wait} box (~40
+    // frames here); stay inside the trailing wait;1000 (60 frames).
+    await stepFrames(page, 50);
     const dialogActive = await page.evaluate(() => {
       const gameWindow = window as Window & {
         __gameRef: { state: { getCurrentState(): unknown } };
@@ -652,6 +655,9 @@ test.describe('Event command flag matching: camera flags', () => {
     await installAndRunEvent(page, 'test_flicker_immediate', [
       'flicker_cursor;17,15;immediate',
       'game_var;flicker_done;yes',
+      // Keep the event alive: once it ends Python's FreeState.begin shows
+      // the map cursor again.
+      'wait;1000',
     ], 5);
     expect(await getGameVar(page, 'flicker_done')).toBeUndefined();
     await stepFrames(page, 70);

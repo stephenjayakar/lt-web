@@ -316,3 +316,42 @@ test('expression unit proxy falls back to prefab fields like portrait_nid', asyn
   });
   expect(value.got).toBe(value.expected);
 });
+
+test('queuing the already-top state twice does not drain the stack', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.db.events.set('qa_dup', {
+      name: 'qa_dup', nid: 'qa_dup', trigger: 'qa_dup', level_nid: null,
+      condition: 'True', only_once: false, priority: 0, _source: ['wait;100'],
+    });
+    g.eventManager.triggerSpecific('qa_dup', { type: 'qa_dup' }, true);
+    g.state.change('event');
+    g.state.change('event');
+  });
+  await stepFrames(page, 40);
+  const stack = await page.evaluate(() => (window as any).__gameRef.state.getStackNames());
+  expect(stack).toEqual(['free']);
+});
+
+test('speak honours speak styles and runs inline {c:} commands mid-line', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_speak_style', [
+    'speak;;Hello there.{c:game_var;inline_ran;1} More.;center;;cinematic',
+  ], 4);
+  const box = await page.evaluate(() => {
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    const d = s.dialog;
+    return { font: d?.fontType, color: d?.fontColor, lines: d?.numLines, bg: d?.backgroundName, pos: d?.position, h: d?.height };
+  });
+  expect(box.font).toBe('chapter');
+  expect(box.color).toBe('grey');
+  expect(box.lines).toBe(5);
+  expect(box.bg).toBeNull();
+  const vh = await page.evaluate(async () => (await import('/src/engine/viewport.ts')).viewport.height);
+  expect(box.pos[1]).toBe(Math.floor(vh / 2) - Math.floor(box.h / 2));
+  for (let i = 0; i < 20 && (await gameVar(page, 'inline_ran')) !== 1; i++) await stepFrames(page, 5);
+  expect(await gameVar(page, 'inline_ran')).toBe(1);
+  const text = await page.evaluate(() => ((window as any).__gameRef.state.getCurrentState() as any).dialog?.displayedText ?? '');
+  expect(text.startsWith('Hello there.')).toBe(true);
+});

@@ -1,95 +1,132 @@
+/**
+ * dialog.ts — speech/narration text box.
+ *
+ * Port of lt-maker/app/engine/dialog.py (Dialog): a `message_bg_base`
+ * window holding `num_lines` lines of 16px text in the speak style's font
+ * (default black 'convo'), typed out character by character with short
+ * pauses after punctuation, a waiting cursor at {w}, lines that scroll up
+ * when more than `num_lines` are needed, a speech tail toward the speaking
+ * portrait, and a name tag when there is a speaker but no portrait.
+ *
+ * Speak styles (position, width, num_lines, background, font colour/type,
+ * cursor, tail) arrive through `DialogStyle`; the caller resolves Python's
+ * built-in and project speak styles.
+ */
+
 import { Surface } from '../engine/surface';
 import { viewport } from '../engine/viewport';
 import type { InputEvent } from '../engine/input';
 import type { EventPortrait } from '../events/event-portrait';
-import { drawStyledText, measureStyledText, styledTextHeight } from './styled-text';
+import { FONT, areFontsReady } from '../rendering/bmp-font';
+import { getMenuBackgroundSync, loadMenuBgSprite } from './base-surf';
+import { drawIconByAlias } from './icons';
 
-export type DialogState = 'transition_in' | 'typing' | 'waiting' | 'done';
+export type DialogState =
+  | 'transition_in'
+  | 'process'
+  | 'pause'
+  | 'pause_before_wait'
+  | 'wait'
+  | 'new_line'
+  | 'command_pause'
+  | 'done';
 
-const SPEAKER_FONT = '8px monospace';
-const BOX_MARGIN = 2;
-const INNER_PAD = 4;
-const LINE_HEIGHT = 10;
-/** Default LT text speed (milliseconds per character). */
-const DEFAULT_TEXT_SPEED_MS = 32;
-/** Default LT dialog speed multiplier (1 = normal). */
-const DEFAULT_SPEED_MULT = 1;
-
-/** Minimum box height (2 lines of text + padding). */
-const MIN_BOX_HEIGHT = 40;
-
-const BG_COLOR = 'rgba(12, 12, 28, 0.92)';
-const BORDER_COLOR = 'rgba(160, 160, 200, 0.5)';
-const SPEAKER_COLOR = 'rgba(255, 220, 80, 1)';
-const TEXT_COLOR = 'white';
-
-
-/**
- * Word-wrap a string to fit within `maxWidth` pixels using `font`.
- * Returns an array of lines. Preserves existing newlines.
- */
-function wordWrap(text: string, maxWidth: number): string[] {
-  const result: string[] = [];
-  // First split on explicit newlines
-  const paragraphs = text.split('\n');
-  for (const para of paragraphs) {
-    if (para === '') {
-      result.push('');
-      continue;
-    }
-    const words = para.split(' ');
-    let currentLine = '';
-    for (const word of words) {
-      if (currentLine === '') {
-        // First word on the line — always place it (even if too wide)
-        currentLine = word;
-      } else {
-        const testLine = currentLine + ' ' + word;
-        if (measureStyledText(testLine, 'text') <= maxWidth) {
-          currentLine = testLine;
-        } else {
-          result.push(currentLine);
-          currentLine = word;
-        }
-      }
-    }
-    result.push(currentLine);
-  }
-  return result;
+export interface DialogStyle {
+  /** Alignment name (center, top, bottom_left, ...) or explicit [x, y]. */
+  position?: string | [number, number] | null;
+  width?: number | null;
+  numLines?: number | null;
+  background?: string | null;
+  fontColor?: string | null;
+  fontType?: string | null;
+  drawCursor?: boolean | null;
+  messageTail?: string | null;
+  transparency?: number | null;
+  nameTagBg?: string | null;
+  autosize?: boolean;
+  hold?: boolean;
 }
 
-/** Speech bubble tail height. */
-const TAIL_HEIGHT = 6;
+const FRAME_MS = 1000 / 60;
+const TRANSITION_MS = 10 * FRAME_MS;
+const PAUSE_BEFORE_WAIT_MS = 9 * FRAME_MS;
+const PAUSE_MS = 3 * FRAME_MS;
+const CURSOR_OFFSET = [
+  ...Array<number>(20).fill(0), 1, 1, ...Array<number>(8).fill(2), 1, 1,
+];
+const PORTRAIT_HEIGHT = 80;
+const PUNCTUATION = new Set(['.', ',', ';', '!', '?']);
+/** Placeholder char standing for an inline <icon> in the visible stream. */
+const ICON_CHAR = '\u0001';
 
-/**
- * Dialog - Text box for character speech/narration.
- * Supports typewriter effect, wait for input, and line breaks.
- * Inline commands: {w} = wait for input, {br} = line break, | = wait + break
- */
+type Glyph = { ch: string; color: string; icon: string | null };
+
+/** Python dialog.process_dialog_shorthand. */
+function processShorthand(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\n/g, '{br}')
+    .replace(/\|/g, '{w}{br}')
+    .replace(/\{semicolon\}/g, ';')
+    .replace(/\{lt\}/g, '<').replace(/\{gt\}/g, '>')
+    .replace(/\{lcb\}/g, '{').replace(/\{rcb\}/g, '}');
+}
+
+function fontFor(type: string) {
+  return areFontsReady() ? (FONT[type] ?? FONT.convo ?? FONT.text ?? null) : null;
+}
+
+function measure(fontType: string, text: string): number {
+  const font = fontFor(fontType);
+  return font ? font.width(text) : text.length * 6;
+}
+
 export class Dialog {
-  private text: string;
-  private displayedText: string;
-  private charIndex: number;
+  static readonly TRANSITION_DURATION_MS = TRANSITION_MS;
+
+  private plainText: string;
   private speaker: string;
-  private state: DialogState;
-  private textSpeedMs: number;
-  private speedMult: number;
-  private startingSpeedMult: number;
-  private frameCounter: number;
-  private charProgress: number;
-  private waitingForInput: boolean;
-  private autoClose: boolean;
-  private lines: string[];
-  private currentLine: number;
-
-  /** Optional portrait for speech bubble positioning. */
   private portrait: EventPortrait | null;
-  /** Whether to clear displayed text on next input (from {clear} tag). */
-  private _clearOnResume: boolean = false;
+  private textSpeedMs: number;
+  private speed: number;
+  private startingSpeed: number;
+  private autoClose: boolean;
+  private noWait = false;
+  private _state: DialogState = 'transition_in';
 
-  /** Transition-in progress 0..1 (matching Python's ~167ms / 10 frames). */
-  private transitionProgress: number = 0;
-  private static readonly TRANSITION_DURATION_MS = 167; // 10 frames at 60fps
+  private fontType: string;
+  private fontColor: string;
+  private numLines: number;
+  private drawCursorFlag: boolean;
+  private backgroundName: string | null;
+  private messageTail: string | null;
+  private transparency: number;
+  private nameTagBg: string;
+  private hold: boolean;
+
+  /** Commands and visible characters in typing order. */
+  private textCommands: string[] = [];
+  /** Visible glyphs (tags resolved to colours, icons as one glyph). */
+  private glyphs: Glyph[] = [];
+  /** [start, stop) glyph ranges, one per text line. */
+  private textIndices: Array<{ start: number; stop: number }> = [];
+  private textIndex = 0;
+  /** Index into `glyphs` of the next visible glyph to reveal. */
+  private glyphCursor = 0;
+  private totalUpdates = 0;
+  private yOffset = 0;
+  private lastUpdate = 0;
+  private elapsed = 0;
+  private transitionProgress = 0;
+  private cursorOffsetIndex = 0;
+  private pendingCommands: string[] = [];
+  private commandWaitMs = 0;
+
+  width: number;
+  height: number;
+  private textWidth: number;
+  private textHeight: number;
+  position: [number, number];
 
   constructor(
     text: string,
@@ -98,338 +135,442 @@ export class Dialog {
     textSpeedMs?: number,
     speedMult?: number,
     autoClose: boolean = false,
+    style: DialogStyle = {},
   ) {
-    this.text = text;
-    this.displayedText = '';
-    this.charIndex = 0;
     this.speaker = speaker ?? '';
-    this.state = 'transition_in';
-    this.textSpeedMs = textSpeedMs ?? DEFAULT_TEXT_SPEED_MS;
-    this.speedMult = speedMult ?? DEFAULT_SPEED_MULT;
-    this.startingSpeedMult = this.speedMult;
-    this.frameCounter = 0;
-    this.charProgress = 0;
-    this.waitingForInput = false;
-    this.autoClose = autoClose;
-    this.currentLine = 0;
     this.portrait = portrait ?? null;
+    this.textSpeedMs = textSpeedMs ?? 32;
+    this.speed = speedMult ?? 1;
+    this.startingSpeed = this.speed;
+    this.autoClose = autoClose;
+    this.fontType = style.fontType || 'convo';
+    this.fontColor = style.fontColor || 'black';
+    this.numLines = style.numLines && style.numLines > 0 ? style.numLines : 2;
+    this.drawCursorFlag = style.drawCursor ?? true;
+    const bg = style.background === undefined ? 'message_bg_base' : style.background;
+    this.backgroundName = bg && bg !== 'None' && bg !== 'clear' ? bg : null;
+    const tail = style.messageTail === undefined ? 'message_bg_tail' : style.messageTail;
+    this.messageTail = tail && tail !== 'None' ? tail : null;
+    this.transparency = style.transparency ?? 0.05;
+    this.nameTagBg = style.nameTagBg || 'name_tag';
+    this.hold = !!style.hold;
+    if (this.backgroundName) void loadMenuBgSprite(this.backgroundName);
+    if (this.messageTail) void loadMenuBgSprite(this.messageTail);
 
-    // Pre-process the text into logical segments split by | (wait+break)
-    // We keep {w} and {br} inline for the typewriter to encounter.
-    this.lines = this.text.split('|');
+    this.plainText = processShorthand(text ?? '');
+    let body = this.plainText;
+    if (body.endsWith('{no_wait}')) {
+      body = body.slice(0, -'{no_wait}'.length);
+      this.noWait = true;
+    } else if (!body.endsWith('{w}')) {
+      body += '{w}';
+    }
+    this.parse(body);
+
+    const winW = viewport.width;
+    const winH = viewport.height;
+    if (style.width) {
+      this.width = style.width + (style.width % 8 ? 8 - (style.width % 8) : 0);
+      this.textWidth = Math.max(8, this.width - 16);
+      this.textHeight = Math.max(16, 16 * this.numLines);
+      this.height = this.textHeight + 16;
+    } else if (this.portrait || style.autosize) {
+      this.textWidth = Math.max(48, Math.min(this.determineWidth(), winW - 32));
+      this.width = this.textWidth + 24 - (this.textWidth % 8);
+      if (this.width <= winW - 16) this.width += 8;
+      this.textHeight = Math.max(16, 16 * this.numLines);
+      this.height = this.textHeight + 16;
+    } else {
+      this.textWidth = winW - 24;
+      this.textHeight = this.numLines * 16;
+      this.width = this.textWidth + 16;
+      this.height = this.textHeight + 16;
+    }
+
+    const position = style.position ?? null;
+    let x: number;
+    let y: number;
+    if (Array.isArray(position)) {
+      [x, y] = position;
+    } else if (position) {
+      [x, y] = Dialog.calcAlign([this.width, this.height], position, winW, winH);
+    } else if (this.portrait) {
+      if (this.width >= winW - 8) {
+        x = 4;
+      } else {
+        const desired = this.portrait.getDesiredCenter();
+        x = Math.max(8, Math.min(desired - Math.floor(this.width / 2), winW - 8 - this.width));
+        if (x % 8 !== 0) x += 4;
+        if (x === 0) x = 4;
+      }
+      y = winH - this.height - PORTRAIT_HEIGHT - 4;
+    } else {
+      x = 4;
+      y = winH - this.height - 4;
+    }
+    this.position = [x, y];
+  }
+
+  /** Python ui_funcs.calc_align with the dialog margins (4, 4, 2, 2). */
+  static calcAlign(size: [number, number], alignment: string, winW: number, winH: number): [number, number] {
+    const [w, h] = size;
+    const a = alignment.toLowerCase();
+    const x = a.endsWith('left') ? 4 : a.endsWith('right') ? winW - (4 + w) : Math.floor(winW / 2) - Math.floor(w / 2);
+    const y = a.startsWith('top') ? 2 : a.startsWith('bottom') ? winH - (2 + h) : Math.floor(winH / 2) - Math.floor(h / 2);
+    return [x, y];
+  }
+
+  // -------------------------------------------------------------------------
+  // Parsing
+  // -------------------------------------------------------------------------
+
+  private parse(body: string): void {
+    const colorStack = [this.fontColor];
+    let i = 0;
+    while (i < body.length) {
+      if (body[i] === '{') {
+        const end = body.indexOf('}', i);
+        if (end > i) {
+          let depth = 0;
+          let close = -1;
+          for (let k = i; k < body.length; k++) {
+            if (body[k] === '{') depth++;
+            else if (body[k] === '}') {
+              depth--;
+              if (depth === 0) { close = k; break; }
+            }
+          }
+          const command = body.slice(i, (close >= 0 ? close : end) + 1);
+          if (command.startsWith('{c:') || command.startsWith('{command:')) {
+            const inner = command.slice(command.indexOf(':') + 1, -1);
+            this.textCommands.push(`{p:${inner}}`);
+          } else {
+            this.textCommands.push(command);
+          }
+          i += command.length;
+          continue;
+        }
+      }
+      if (body.startsWith('<icon>', i)) {
+        const end = body.indexOf('</>', i + 6);
+        if (end > i) {
+          this.glyphs.push({ ch: ICON_CHAR, color: colorStack[colorStack.length - 1], icon: body.slice(i + 6, end).trim() });
+          this.textCommands.push(ICON_CHAR);
+          i = end + 3;
+          continue;
+        }
+      }
+      if (body.startsWith('</>', i)) {
+        if (colorStack.length > 1) colorStack.pop();
+        i += 3;
+        continue;
+      }
+      if (body[i] === '<') {
+        const end = body.indexOf('>', i + 1);
+        if (end > i) {
+          const tag = body.slice(i + 1, end).trim().toLowerCase();
+          const font = fontFor(this.fontType);
+          colorStack.push(font?.hasColor(tag) ? tag : colorStack[colorStack.length - 1]);
+          i = end + 1;
+          continue;
+        }
+      }
+      this.glyphs.push({ ch: body[i], color: colorStack[colorStack.length - 1], icon: null });
+      this.textCommands.push(body[i]);
+      i += 1;
+    }
+  }
+
+  private glyphWidth(start: number, stop: number): number {
+    let width = 0;
+    let run = '';
+    for (let g = start; g < stop; g++) {
+      const glyph = this.glyphs[g];
+      if (glyph.icon) {
+        width += measure(this.fontType, run) + 16;
+        run = '';
+      } else {
+        run += glyph.ch;
+      }
+    }
+    return width + measure(this.fontType, run);
+  }
+
+  /** Python Dialog.determine_width for portrait/autosized boxes. */
+  private determineWidth(): number {
+    const winW = viewport.width;
+    const split = (block: string, forceLines?: number): string[] => {
+      let lines = forceLines ?? this.numLines;
+      if (!forceLines && block.length <= 24) lines = 1;
+      const total = measure(this.fontType, block);
+      const out: string[][] = Array.from({ length: lines }, () => []);
+      let newLine = false;
+      let which = 0;
+      for (const ch of block) {
+        if (newLine && ch === ' ') {
+          which++;
+          newLine = false;
+          if (which >= out.length) break;
+          continue;
+        }
+        if (which >= out.length) out.push([]);
+        out[which].push(ch);
+        const so = measure(this.fontType, out[which].join(''));
+        if (lines > 1 && so >= Math.floor(total / lines) - 5) newLine = true;
+        else if (so >= winW - 16) newLine = true;
+      }
+      return out.map((l) => l.join(''));
+    };
+    let width = 0;
+    let current = '';
+    let precededByWait = false;
+    let waitingCursor = false;
+    let lastLines: string[] = [];
+    let currentWidth = 0;
+    const attemptSplit = !this.plainText.includes('{sub_break}');
+    const flush = (force: boolean): void => {
+      lastLines = force || !attemptSplit ? split(current, 1) : split(current);
+      currentWidth = Math.max(0, ...lastLines.map((l) => measure(this.fontType, l)));
+      width = Math.max(width, currentWidth);
+      if (lastLines.length === 1) waitingCursor = true;
+    };
+    for (const command of this.textCommands) {
+      if (['{br}', '{break}', '{clear}', '{sub_break}'].includes(command)) {
+        flush(!precededByWait);
+        current = '';
+        precededByWait = false;
+      } else if (command === '{w}' || command === '{wait}') {
+        precededByWait = true;
+      } else if (command.startsWith('{')) {
+        // other command
+      } else {
+        current += command === ICON_CHAR ? '  ' : command;
+      }
+    }
+    if (current) flush(false);
+    if (waitingCursor && lastLines.length === 1) {
+      width += Math.max(0, Math.min(currentWidth - width + 16, 16));
+    }
+    return width;
+  }
+
+  // -------------------------------------------------------------------------
+  // State
+  // -------------------------------------------------------------------------
+
+  private get state(): DialogState {
+    return this._state;
+  }
+
+  private set state(value: DialogState) {
+    this._state = value;
+  }
+
+  /** Unnarrowed state read (nextChar() mutates the state behind TS's back). */
+  private currentState(): DialogState {
+    return this._state;
+  }
+
+  private addTextIndices(whitespace: boolean): void {
+    const last = this.textIndices[this.textIndices.length - 1];
+    if (last) {
+      const start = whitespace ? last.stop + 1 : last.stop;
+      this.textIndices.push({ start, stop: start });
+    } else {
+      this.textIndices.push({ start: 0, stop: 0 });
+    }
+  }
+
+  private nextLine(whitespace = false): void {
+    if (this.textIndices.length > this.numLines - 1) {
+      this.state = 'new_line';
+      this.yOffset = 16;
+    } else {
+      this.state = 'process';
+    }
+    this.addTextIndices(whitespace);
+  }
+
+  private doneProcessing(): boolean {
+    return this.textIndex >= this.textCommands.length;
+  }
+
+  private pause(): void {
+    this.state = 'pause';
+    this.lastUpdate = this.elapsed;
+  }
+
+  private pauseBeforeWait(): void {
+    this.state = 'pause_before_wait';
+    this.lastUpdate = this.elapsed;
+  }
+
+  private nextWord(): string {
+    let word = '';
+    for (const command of this.textCommands.slice(this.textIndex + 1)) {
+      if (command === ' ') break;
+      if (command.length > 1 && command.startsWith('{')) break;
+      word += command;
+    }
+    return word;
+  }
+
+  private increment(): void {
+    const last = this.textIndices[this.textIndices.length - 1];
+    if (last) last.stop += 1;
+    this.glyphCursor += 1;
+  }
+
+  private nextChar(): void {
+    if (this.doneProcessing()) {
+      this.pauseBeforeWait();
+      return;
+    }
+    const command = this.textCommands[this.textIndex];
+    if (command === '{br}' || command === '{break}' || command === '{sub_break}') {
+      this.nextLine();
+    } else if (command === '{w}' || command === '{wait}') {
+      this.pauseBeforeWait();
+    } else if (command === '{clear}') {
+      const lastStop = this.textIndices[this.textIndices.length - 1]?.stop ?? 0;
+      this.textIndices = [{ start: lastStop, stop: lastStop }];
+    } else if (command === '{p}') {
+      this.state = 'command_pause';
+    } else if (command.startsWith('{p:')) {
+      this.pendingCommands.push(command.slice(3, -1));
+      this.state = 'command_pause';
+    } else if (command === '{max_speed}') {
+      this.speed = 0;
+    } else if (command === '{starting_speed}') {
+      this.speed = this.startingSpeed;
+    } else if (/^\{speed:(\d+(?:\.\d+)?)\}$/.test(command)) {
+      this.speed = Number(command.slice(7, -1));
+    } else if (command.startsWith('{')) {
+      // Unknown / presentation-only command ({tgm}, {tgs}, ...)
+    } else if (command === ' ') {
+      const last = this.textIndices[this.textIndices.length - 1];
+      const nextWidth = this.glyphWidth(last.start, last.stop + this.nextWord().length + 1);
+      if (nextWidth > this.textWidth) {
+        this.nextLine(true);
+        this.glyphCursor += 1; // the discarded space
+      } else {
+        this.increment();
+      }
+    } else if (PUNCTUATION.has(command)) {
+      this.increment();
+      this.pause();
+    } else {
+      this.increment();
+    }
+    this.textIndex += 1;
+  }
+
+  /** Python Dialog.hurry_up (SELECT/RIGHT/DOWN while a dialog is active). */
+  private hurryUp(): void {
+    if (this.state === 'transition_in') {
+      this.transitionProgress = 1;
+      this.state = 'process';
+      this.nextLine();
+    }
+    if (this.state === 'process' || this.state === 'pause') {
+      this.state = 'process';
+      while (this.state === 'process') {
+        this.nextChar();
+        // Skip pauses because we want maximum velocity of speech
+        if (this.currentState() === 'pause') this.state = 'process';
+      }
+    } else if (this.state === 'wait') {
+      this.state = this.doneProcessing() ? 'done' : 'process';
+    }
   }
 
   /** Process input. Returns true when dialog is complete. */
   handleInput(event: InputEvent): boolean {
-    if (event === null) return false;
-
-    if (event === 'SELECT') {
-      // Skip transition if still transitioning in
-      if (this.state === 'transition_in') {
-        this.transitionProgress = 1;
-        this.state = 'typing';
-        return false;
-      }
-      if (this.state === 'typing') {
-        // Skip to end of current line
-        this._finishCurrentLine();
-        return false;
-      }
-      if (this.state === 'waiting') {
-        // If {clear} was triggered, clear text and continue typing same line
-        if (this._clearOnResume) {
-          this._clearOnResume = false;
-          this.displayedText = '';
-          this.state = 'typing';
-          this.waitingForInput = false;
-          return false;
-        }
-        // Advance to next line or finish
-        if (this.currentLine < this.lines.length - 1) {
-          this.currentLine++;
-          this.charIndex = 0;
-          this.displayedText = '';
-          this.state = 'typing';
-          this.waitingForInput = false;
-        } else {
-          this.state = 'done';
-          return true;
-        }
-        return false;
-      }
-      if (this.state === 'done') {
-        return true;
-      }
+    if (event === 'SELECT' || event === 'RIGHT' || event === 'DOWN') {
+      if (this.state === 'command_pause') return false;
+      this.hurryUp();
+      return this.state === 'done';
     }
-
     if (event === 'BACK') {
-      // Skip entire dialog
-      this._skipAll();
+      this.state = 'done';
       return true;
     }
-
     return false;
   }
 
   /** Update typewriter effect. `deltaMs` is elapsed time since last frame. */
-  update(deltaMs: number = 1000 / 60): void {
-    // Handle transition_in: advance progress until complete, then start typing
-    if (this.state === 'transition_in') {
-      // ~16.67ms per frame at 60fps
-      this.transitionProgress = Math.min(1, this.transitionProgress + (1000 / 60) / Dialog.TRANSITION_DURATION_MS);
-      if (this.transitionProgress >= 1) {
-        this.transitionProgress = 1;
-        this.state = 'typing';
-      }
-      return;
-    }
-
-    if (this.state !== 'typing') return;
-
-    const baseTextSpeed = Number.isFinite(this.textSpeedMs)
-      ? this.textSpeedMs
-      : DEFAULT_TEXT_SPEED_MS;
-    const localSpeedMult = Number.isFinite(this.speedMult)
-      ? this.speedMult
-      : this.startingSpeedMult;
-    const effectiveTextSpeed = baseTextSpeed * localSpeedMult;
-    const instant = effectiveTextSpeed <= 0;
-
-    if (!instant) {
-      this.charProgress += deltaMs / effectiveTextSpeed;
-    }
-
-    while ((instant || this.charProgress >= 1) && this.state === 'typing') {
-      if (!instant) {
-        this.charProgress -= 1;
-      }
-
-      const currentLineText = this.lines[this.currentLine] ?? '';
-      if (this.charIndex >= currentLineText.length) {
-        // End of current line segment
-        if (this.currentLine < this.lines.length - 1) {
-          // There's another segment after this | separator — wait for input
-          this.state = 'waiting';
-          this.waitingForInput = true;
-        } else if (this.autoClose) {
-          this.state = 'done';
-          this.waitingForInput = false;
+  update(deltaMs: number = FRAME_MS): void {
+    this.elapsed += deltaMs;
+    this.cursorOffsetIndex = (this.cursorOffsetIndex + 1) % CURSOR_OFFSET.length;
+    switch (this.state) {
+      case 'transition_in':
+        this.transitionProgress = Math.min(1, this.transitionProgress + deltaMs / TRANSITION_MS);
+        if (this.transitionProgress >= 1) this.nextLine();
+        break;
+      case 'process': {
+        const msPerChar = this.textSpeedMs * this.speed;
+        if (msPerChar > 0) {
+          this.totalUpdates += deltaMs / msPerChar;
+          while (this.totalUpdates >= 1 && this.state === 'process') {
+            this.totalUpdates -= 1;
+            this.nextChar();
+            if (this.state !== 'process') this.totalUpdates = 0;
+          }
         } else {
-          this.state = 'waiting';
-          this.waitingForInput = true;
+          while (this.state === 'process') {
+            this.nextChar();
+            if (this.currentState() === 'pause') this.state = 'process';
+          }
         }
-        this.charProgress = 0;
-        return;
+        break;
       }
-
-      // Check for inline commands
-      const remaining = currentLineText.slice(this.charIndex);
-
-      if (remaining.startsWith('{w}')) {
-        // Wait for input
-        this.charIndex += 3;
-        this.state = 'waiting';
-        this.waitingForInput = true;
-        this.charProgress = 0;
-        return;
-      }
-
-      if (remaining.startsWith('{br}')) {
-        // Line break
-        this.charIndex += 4;
-        this.displayedText += '\n';
-        continue;
-      }
-
-      if (remaining.startsWith('{clear}')) {
-        // Clear the text box and wait for input before continuing
-        this.charIndex += 7;
-        this.state = 'waiting';
-        this.waitingForInput = true;
-        this._clearOnResume = true;
-        this.charProgress = 0;
-        return;
-      }
-
-      if (remaining.startsWith('{p}')) {
-        // Brief pause (auto-continues) — treat as short wait
-        this.charIndex += 3;
-        this.state = 'waiting';
-        this.waitingForInput = true;
-        this.charProgress = 0;
-        return;
-      }
-
-      if (remaining.startsWith('{max_speed}')) {
-        this.charIndex += '{max_speed}'.length;
-        this.speedMult = 0;
-        continue;
-      }
-
-      if (remaining.startsWith('{starting_speed}')) {
-        this.charIndex += '{starting_speed}'.length;
-        this.speedMult = this.startingSpeedMult;
-        continue;
-      }
-
-      const speedMatch = remaining.match(/^\{speed:(\d+(?:\.\d+)?)\}/);
-      if (speedMatch) {
-        this.charIndex += speedMatch[0].length;
-        this.speedMult = Number(speedMatch[1]);
-        continue;
-      }
-
-      // {c:command;arg1;arg2} — inline event command (skip silently)
-      if (remaining.startsWith('{c:')) {
-        const endIdx = remaining.indexOf('}');
-        if (endIdx !== -1) {
-          this.charIndex += endIdx + 1;
-          continue;
+      case 'pause_before_wait':
+        if (this.elapsed - this.lastUpdate > PAUSE_BEFORE_WAIT_MS) {
+          this.state = this.noWait || this.autoClose ? 'done' : 'wait';
         }
-      }
-
-      // Skip other unrecognized {tags}
-      if (remaining.startsWith('{')) {
-        const endIdx = remaining.indexOf('}');
-        if (endIdx !== -1) {
-          this.charIndex += endIdx + 1;
-          continue;
+        break;
+      case 'pause':
+        if (this.elapsed - this.lastUpdate > PAUSE_MS) this.state = 'process';
+        break;
+      case 'new_line':
+        this.yOffset = Math.max(0, this.yOffset - 2);
+        if (this.yOffset === 0) this.state = 'process';
+        break;
+      case 'command_pause':
+        if (this.commandWaitMs > 0) {
+          this.commandWaitMs -= deltaMs;
+          if (this.commandWaitMs <= 0) {
+            this.commandWaitMs = 0;
+            if (!this.pendingCommands.length) this.state = 'process';
+          }
         }
-      }
-
-      // Normal character
-      this.displayedText += currentLineText[this.charIndex];
-      this.charIndex++;
+        break;
+      default:
+        break;
     }
   }
 
-  /** Draw the dialog box. Completed ending cards may retain their final text. */
-  draw(surf: Surface, showCompleted: boolean = false): void {
-    if (this.state === 'done' && !showCompleted) return;
+  /** Inline `{c:...}` commands waiting for the event to run (Python queue_command). */
+  takePendingCommands(): string[] {
+    const commands = this.pendingCommands;
+    this.pendingCommands = [];
+    return commands;
+  }
 
-    const isTransitionIn = this.state === 'transition_in';
-    const transT = this.transitionProgress;
+  /** Pause the text for `ms` (an inline `{c:wait;ms}`), then resume. */
+  holdFor(ms: number): void {
+    this.commandWaitMs = Math.max(this.commandWaitMs, ms);
+  }
 
-    // Compute box position — either relative to portrait or at bottom
-    let boxX: number;
-    let boxW: number;
-    let tailX: number | null = null; // Speech bubble tail X position
-
-    // Compute text width first to determine box size (matching Python's auto-sizing)
-    // We need a preliminary wrap at max width to know the actual text extent.
-    const maxBoxW = viewport.width - 8;
-    const prelimAvailW = maxBoxW - INNER_PAD * 2;
-    const wrappedLines = wordWrap(this.displayedText, prelimAvailW);
-
-    const speakerHeight = this.speaker ? LINE_HEIGHT : 0;
-    const textHeight = wrappedLines.reduce(
-      (height, line) => height + styledTextHeight(line, LINE_HEIGHT),
-      0,
-    );
-    const boxH = Math.max(MIN_BOX_HEIGHT, speakerHeight + textHeight + INNER_PAD * 2);
-
-    if (this.portrait) {
-      // Auto-size width to text content (matching Python's determine_size())
-      const speakerW = this.speaker ? measureStyledText(this.speaker, 'text') : 0;
-      const maxLineW = wrappedLines.reduce(
-        (max, line) => Math.max(max, measureStyledText(line, 'text')),
-        0,
-      );
-      const contentW = Math.max(speakerW, maxLineW) + INNER_PAD * 2 + 8;
-      // Minimum 80px wide for short lines, maximum full viewport width
-      boxW = Math.min(maxBoxW, Math.max(80, contentW));
-
-      const portraitCenter = this.portrait.getDesiredCenter();
-      if (boxW >= viewport.width - 8) {
-        // Wide dialog: fixed at x=4 (matching Python)
-        boxX = 4;
-      } else {
-        // Center dialog on portrait's desired center
-        boxX = Math.max(8, Math.min(portraitCenter - boxW / 2, viewport.width - 8 - boxW));
-      }
-      tailX = Math.max(boxX + 6, Math.min(portraitCenter, boxX + boxW - 6));
-    } else {
-      // Default: full-width bar at bottom of screen
-      boxX = BOX_MARGIN;
-      boxW = viewport.width - BOX_MARGIN * 2;
+  /** Python Dialog.command_unpause. */
+  commandUnpause(): void {
+    if (this.state === 'command_pause' && this.commandWaitMs <= 0 && !this.pendingCommands.length) {
+      this.state = 'process';
     }
+  }
 
-    // Re-wrap at actual box width if it differs from preliminary width
-    const availableTextW = boxW - INNER_PAD * 2;
-    const finalLines = (availableTextW < prelimAvailW)
-      ? wordWrap(this.displayedText, availableTextW)
-      : wrappedLines;
-
-    // Compute Y position (depends on box height)
-    // Python formula: pos_y = WINHEIGHT - height - portrait_height(80) - 4
-    // This places the dialog above the portrait area at the bottom of screen.
-    let boxY: number;
-    if (this.portrait) {
-      boxY = viewport.height - boxH - 80 - 4;
-      // Clamp to at least 2px from top
-      if (boxY < 2) boxY = 2;
-    } else {
-      boxY = viewport.height - boxH - BOX_MARGIN;
-    }
-
-    // During transition_in, animate the background growing + fading in
-    // Python: background grows from center and opacity increases over 10 frames
-    if (isTransitionIn) {
-      const alpha = 0.92 * transT;
-      const scaleW = 0.5 + 0.5 * transT;
-      const scaleH = 0.3 + 0.7 * transT;
-      const transBoxW = boxW * scaleW;
-      const transBoxH = boxH * scaleH;
-      const transBoxX = boxX + (boxW - transBoxW) / 2;
-      const transBoxY = boxY + (boxH - transBoxH) / 2;
-      surf.fillRect(transBoxX, transBoxY, transBoxW, transBoxH, `rgba(12, 12, 28, ${alpha.toFixed(2)})`);
-      surf.drawRect(transBoxX, transBoxY, transBoxW, transBoxH,
-        `rgba(160, 160, 200, ${(0.5 * transT).toFixed(2)})`);
-      // Don't draw tail, text, or speaker during transition_in (matching Python)
-      return;
-    }
-
-    // Background
-    surf.fillRect(boxX, boxY, boxW, boxH, BG_COLOR);
-
-    // Pixel-art border
-    surf.drawRect(boxX, boxY, boxW, boxH, BORDER_COLOR);
-    surf.drawRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2, 'rgba(80, 80, 120, 0.3)');
-
-    // Speech bubble tail pointing toward portrait
-    if (tailX !== null && this.portrait) {
-      const tailBaseY = boxY + boxH;
-      // Small triangle tail
-      for (let i = 0; i < TAIL_HEIGHT; i++) {
-        const tw = TAIL_HEIGHT - i;
-        surf.fillRect(tailX - tw, tailBaseY + i, tw * 2, 1, BG_COLOR);
-      }
-    }
-
-    let textY = boxY + INNER_PAD;
-    const textX = boxX + INNER_PAD;
-
-    // Speaker name (yellow)
-    if (this.speaker) {
-      surf.drawText(this.speaker, textX, textY, SPEAKER_COLOR, SPEAKER_FONT);
-      textY += LINE_HEIGHT;
-    }
-
-    // Render word-wrapped text lines
-    for (const line of finalLines) {
-      drawStyledText(surf, line, textX, textY, TEXT_COLOR, 'text');
-      textY += styledTextHeight(line, LINE_HEIGHT);
-    }
-
-    // Waiting indicator — a small blinking triangle
-    if (this.state === 'waiting') {
-      this.frameCounter++;
-      if (Math.floor(this.frameCounter / 20) % 2 === 0) {
-        const indicatorX = boxX + boxW - 10;
-        const indicatorY = boxY + boxH - 10;
-        surf.fillRect(indicatorX, indicatorY, 4, 4, TEXT_COLOR);
-      }
-    }
+  isCommandPaused(): boolean {
+    return this.state === 'command_pause';
   }
 
   /** Check if done */
@@ -439,48 +580,170 @@ export class Dialog {
 
   /** True while the typewriter is actively advancing characters. */
   isTyping(): boolean {
-    return this.state === 'typing';
+    return this.state === 'process' || this.state === 'pause' || this.state === 'new_line';
   }
+
   /** True while the dialog is waiting for input. */
   isWaiting(): boolean {
-    return this.state === 'waiting';
+    return this.state === 'wait';
   }
 
+  isHeld(): boolean {
+    return this.hold;
+  }
 
-  /** Finish typing the current line instantly. */
-  private _finishCurrentLine(): void {
-    const currentLineText = this.lines[this.currentLine] ?? '';
-    // Strip inline commands for display
-    let text = currentLineText.slice(this.charIndex);
-    text = text
-      .replace(/\{w\}/g, '')
-      .replace(/\{br\}/g, '\n')
-      .replace(/\{clear\}/g, '')
-      .replace(/\{p\}/g, '')
-      .replace(/\{max_speed\}/g, '')
-      .replace(/\{starting_speed\}/g, '')
-      .replace(/\{speed:\d+(?:\.\d+)?\}/g, '')
-      .replace(/\{c:[^}]*\}/g, '')
-      .replace(/\{[^}]*\}/g, '');
-    this.displayedText += text;
-    this.charIndex = currentLineText.length;
+  // -------------------------------------------------------------------------
+  // Drawing
+  // -------------------------------------------------------------------------
 
-    if (this.currentLine < this.lines.length - 1) {
-      this.state = 'waiting';
-      this.waitingForInput = true;
-    } else if (this.autoClose) {
-      this.state = 'done';
-      this.waitingForInput = false;
-    } else {
-      this.state = 'waiting';
-      this.waitingForInput = true;
+  private drawGlyphRange(surf: Surface, start: number, stop: number, x: number, y: number,
+    clip: [number, number, number, number]): number {
+    let cursorX = x;
+    let run = '';
+    let runColor = '';
+    const flush = (): void => {
+      if (!run) return;
+      if (y >= clip[1] - 8 && y < clip[1] + clip[3]) {
+        surf.drawText(run, cursorX, y, runColor, this.fontType);
+      }
+      cursorX += measure(this.fontType, run);
+      run = '';
+    };
+    for (let g = start; g < stop && g < this.glyphs.length; g++) {
+      const glyph = this.glyphs[g];
+      if (glyph.icon) {
+        flush();
+        drawIconByAlias(surf, glyph.icon, cursorX, y);
+        cursorX += 16;
+        continue;
+      }
+      if (glyph.color !== runColor) {
+        flush();
+        runColor = glyph.color;
+      }
+      run += glyph.ch;
+    }
+    flush();
+    return cursorX;
+  }
+
+  private drawText(surf: Surface): [number, number] {
+    const [px, py] = this.position;
+    const left = px + 8;
+    const top = py + 8;
+    const clip: [number, number, number, number] = [left, top, this.textWidth, this.textHeight];
+    let endX = left;
+    let endY = top;
+    const total = this.textIndices.length;
+    if (this.yOffset && total > this.numLines) {
+      const { start, stop } = this.textIndices[total - this.numLines - 1];
+      const y = top - 16 + this.yOffset;
+      if (y >= top) this.drawGlyphRange(surf, start, stop, left, y, clip);
+    }
+    const shown = this.textIndices.slice(-this.numLines);
+    shown.forEach(({ start, stop }, idx) => {
+      const baseY = top + 16 * idx;
+      const y = total > this.numLines ? baseY + this.yOffset : baseY;
+      const x = this.drawGlyphRange(surf, start, stop, left, y, clip);
+      endX = x;
+      endY = baseY;
+    });
+    return [endX, endY];
+  }
+
+  private drawTail(surf: Surface, portrait: EventPortrait): void {
+    if (!this.messageTail) return;
+    const tail = getSprite(this.messageTail);
+    if (!tail) return;
+    const pos = portrait.position;
+    const portraitX = pos[0] + 48;
+    const portraitY = pos[1] + 40;
+    const mirrorX = portraitX < Math.floor(viewport.width / 2);
+    const mirrorY = this.position[1] > portraitY;
+    const y = mirrorY ? this.position[1] - tail.height + 2 : this.position[1] + this.height - 2;
+    let x = mirrorX ? portraitX + 20 : portraitX - 36;
+    if (x > this.width + this.position[0] - 24) x = this.position[0] + this.width - 24;
+    else if (x < this.position[0] + 8) x = this.position[0] + 8;
+    const s = surf.scale;
+    const ctx = surf.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = 1 - this.transparency;
+    ctx.translate(Math.round((x + (mirrorX ? tail.width : 0)) * s), Math.round((y + (mirrorY ? tail.height : 0)) * s));
+    ctx.scale(mirrorX ? -1 : 1, mirrorY ? -1 : 1);
+    ctx.drawImage(tail, 0, 0, tail.width, tail.height, 0, 0, tail.width * s, tail.height * s);
+    ctx.restore();
+  }
+
+  private drawNameTag(surf: Surface): void {
+    const y = this.position[1] < 10 ? this.position[1] + this.height - 6 : this.position[1] - 10;
+    let x = this.position[0] - 4;
+    if (x < 0) x = this.position[0] + 16;
+    surf.blit(getMenuBackgroundSync(64, 16, this.nameTagBg), x, y);
+    const w = measure(this.fontType, this.speaker);
+    surf.drawText(this.speaker, x + 32 - Math.floor(w / 2), y, this.fontColor, this.fontType);
+  }
+
+  /** Draw the dialog box. Completed ending cards may retain their final text. */
+  draw(surf: Surface, showCompleted: boolean = false): void {
+    if (this.state === 'done' && !showCompleted && !this.hold) return;
+    const [x, y] = this.position;
+    if (this.backgroundName) {
+      const bg = getMenuBackgroundSync(this.width, this.height, this.backgroundName);
+      const ctx = surf.ctx;
+      ctx.save();
+      if (this.state === 'transition_in') {
+        const w = Math.max(1, this.width - 10 + Math.floor(10 * this.transitionProgress));
+        const h = Math.max(1, this.height - 10 + Math.floor(10 * this.transitionProgress));
+        ctx.globalAlpha = 1 - (this.transparency + (0.75 - this.transparency) * (1 - this.transitionProgress));
+        const s = surf.scale;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(bg.canvas, 0, 0, bg.canvas.width, bg.canvas.height,
+          Math.round(x * s), Math.round((y + this.height - h) * s), Math.round(w * s), Math.round(h * s));
+      } else {
+        ctx.globalAlpha = 1 - this.transparency;
+        surf.blit(bg, x, y);
+      }
+      ctx.restore();
+    }
+    if (this.state === 'transition_in') return;
+    if (this.portrait) this.drawTail(surf, this.portrait);
+    if (!this.portrait && this.speaker && this.speaker !== 'Narrator') this.drawNameTag(surf);
+    const [endX, endY] = this.drawText(surf);
+    if (this.state === 'wait' && this.drawCursorFlag) {
+      const cursor = getRootSprite('waiting_cursor');
+      if (cursor) {
+        surf.blitImage(cursor, 0, 0, cursor.width, cursor.height,
+          4 + endX, 6 + endY + CURSOR_OFFSET[this.cursorOffsetIndex]);
+      } else {
+        surf.fillRect(4 + endX, 8 + endY + CURSOR_OFFSET[this.cursorOffsetIndex], 4, 4, 'black');
+      }
     }
   }
 
-  /** Skip the entire dialog immediately. */
-  private _skipAll(): void {
-    this.state = 'done';
-    this.currentLine = this.lines.length - 1;
-    this.charIndex = (this.lines[this.currentLine] ?? '').length;
+  /** Visible text so far (for logs/tests). */
+  get displayedText(): string {
+    return this.glyphs.slice(0, this.glyphCursor).map((g) => (g.icon ? '' : g.ch)).join('');
   }
+}
+
+const rootSprites: Map<string, HTMLImageElement | null> = new Map();
+/** Engine sprite directly under /game-data/sprites/ (Python SPRITES). */
+function getRootSprite(nid: string): HTMLImageElement | null {
+  if (!rootSprites.has(nid)) {
+    rootSprites.set(nid, null);
+    const img = new Image();
+    img.onload = () => rootSprites.set(nid, img);
+    img.src = `/game-data/sprites/${nid}.png`;
+  }
+  return rootSprites.get(nid) ?? null;
+}
+
+const sprites: Map<string, HTMLImageElement | null> = new Map();
+function getSprite(nid: string): HTMLImageElement | null {
+  if (!sprites.has(nid)) {
+    sprites.set(nid, null);
+    void loadMenuBgSprite(nid).then((img) => sprites.set(nid, img));
+  }
+  return sprites.get(nid) ?? null;
 }
