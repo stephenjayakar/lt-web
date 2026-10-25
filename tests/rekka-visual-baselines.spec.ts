@@ -50,13 +50,20 @@ test.describe('Rekka visual baselines', () => {
         (window as any).__harness.stepFrames(1, null);
         const state = game.state.getCurrentState() as any;
         if (state?.dialog) {
-          state.dialog.handleInput('SELECT');
+          // Python Dialog.hurry_up: finish the line, then the box sits in
+          // pause_before_wait for a few frames before waiting for input.
           state.dialog.handleInput('SELECT');
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
+      for (let index = 0; index < 60; index++) {
+        const state = game.state.getCurrentState() as any;
+        if (state?.dialog?.isWaiting()) break;
+        (window as any).__harness.stepFrames(1, null);
+      }
     });
+    // Portrait fades run on real time; render once more after they settle.
     await page.waitForTimeout(300);
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
     expect(await page.evaluate(

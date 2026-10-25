@@ -609,3 +609,39 @@ test('choice menus use Python Simple sizing (text + 24, floored to 8)', async ({
   });
   expect(sizes.width).toBe(sizes.expected);
 });
+
+test('objective loss text alone never forces a game over (Python: events own lose_game)', async ({ page }) => {
+  await boot(page);
+  const setup = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const victim = g.getUnit('Moulder');
+    const enemy = g.getUnit('Bone');
+    g.currentLevel.objective = { ...g.currentLevel.objective, loss: 'Moulder dies' };
+    const spot = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dy]) => [victim.position[0] + dx, victim.position[1] + dy])
+      .find(([x, y]) => g.board.inBounds(x, y) && !g.board.getUnit(x, y));
+    if (!spot) return false;
+    g.board.moveUnit(enemy, spot[0], spot[1]);
+    victim.currentHp = 1;
+    g.selectedUnit = enemy;
+    g.combatTarget = victim;
+    g.combatScript = ['hit1', 'end'];
+    g.memory.set('combat_item', enemy.items[0]);
+    g.state.change('combat');
+    return true;
+  });
+  expect(setup).toBe(true);
+  await stepFrames(page, 2);
+  for (let i = 0; i < 120; i++) {
+    const done = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name !== 'combat');
+    if (done) break;
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+    await page.waitForTimeout(50);
+  }
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return { dead: g.getUnit('Moulder').isDead(), stack: g.state.getStackNames() };
+  });
+  expect(result.dead).toBe(true);
+  expect(result.stack).not.toContain('game_over');
+});

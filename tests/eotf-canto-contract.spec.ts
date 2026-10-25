@@ -321,8 +321,9 @@ test.describe('Embrace of the Fog Canto and Canter contract', () => {
         actionEnd: game.actionLog.actionIndex,
       };
     });
+    // Python handle_state_stack: a player Canto attacker returns to 'move'.
     expect(canter).toMatchObject({
-      state: 'free_roam',
+      state: 'move',
       attacked: true,
       finished: false,
       movementLeft: 3,

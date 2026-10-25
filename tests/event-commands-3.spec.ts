@@ -706,8 +706,9 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
     });
     expect(opened).toEqual({ state: 'trade', phase: 'select_items', partner: 'Seth' });
 
-    // The two-pane trade UI chooses a source item, then its destination, and
-    // only consumes the turn when BACK explicitly finishes the exchange.
+    // The two-pane trade UI chooses a source item, then its destination.
+    // Python CombatTradeState.back only pops: trading records HasTraded but
+    // never ends the unit's turn.
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1, 'BACK');
@@ -722,7 +723,7 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
         finished: eirika.finished,
       });
       const traded = snapshot();
-      const actions = [g.actionLog.undo(), g.actionLog.undo(), g.actionLog.undo()];
+      const actions = [g.actionLog.undo(), g.actionLog.undo()];
       const undone = snapshot();
       for (const action of [...actions].reverse()) action?.execute();
       const redone = snapshot();
@@ -739,7 +740,7 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
       eirikaItem: before.sethItem,
       sethItem: before.eirikaItem,
       hasTraded: true,
-      finished: true,
+      finished: false,
     });
     expect(result.undone).toEqual({
       eirikaItem: before.eirikaItem,
@@ -748,7 +749,7 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
       finished: false,
     });
     expect(result.redone).toEqual(result.traded);
-    expect(result.actionNames).toEqual(['WaitAction', 'HasTradedAction', 'TradeAction']);
+    expect(result.actionNames).toEqual(['HasTradedAction', 'TradeAction']);
   });
 });
 

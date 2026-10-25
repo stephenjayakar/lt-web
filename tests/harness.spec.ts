@@ -4900,7 +4900,9 @@ test.describe('Event command parity', () => {
 
     expect(result).not.toBeNull();
     expect(result!.blockedAtCap).toBe(0);
-    expect(result!.cappedMenu).not.toContain('Item');
+    // Python ItemAbility lists Item whenever the unit has items; the capped
+    // booster is refused by can_use (no 'Use' child option) instead.
+    expect(result!.cappedMenu).toContain('Item');
     expect(result!.availableMenu).toContain('Item');
     expect(result!.normalized).toEqual({ HP: 7 });
     expect(result!.normalizedGrowths).toMatchObject({ HP: 5, STR: 5, SPD: 5, DEF: 5, RES: 5 });
@@ -6285,91 +6287,25 @@ test.describe('Prologue (with events)', () => {
     // commands and arrive at the first speak command with portraits visible.
     // Step a large number of frames, pressing SELECT periodically to advance
     // through any blocking waits.
+    // Python Dialog: a speaker with a portrait places the box at
+    // WINHEIGHT - height - main_portrait_height(80) - 4, i.e. above the
+    // portrait row instead of over it.
     let dialogFound = false;
     for (let batch = 0; batch < 100; batch++) {
       await stepFrames(page, 20);
-      const s = await getState(page);
-
-      if (s.currentStateName === 'event') {
-        // Check if we can see a dialog box by sampling pixel colors.
-        // The dialog background is rgba(12, 12, 28, 0.92) — very dark blue.
-        // Portraits are drawn at the bottom 80px of the 240x160 viewport.
-        // The dialog should be ABOVE the portrait area (y < 80).
-        //
-        // Sample the canvas at the game's native resolution (240x160).
-        // The display canvas is 480x320 (2x scaling), so we check at 2x coords.
-        const pixelInfo = await page.evaluate(() => {
-          const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-          if (!canvas) return null;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return null;
-
-          // The game renders at 240x160, display is 480x320 (2x).
-          // Check for dark dialog background at various Y positions.
-          // Dialog box at y ~36 (native) = y ~72 (display) when portrait exists.
-          // Dialog box at y ~116 (native) = y ~232 (display) when no portrait (bottom).
-          // Portrait area: y 80-160 (native) = y 160-320 (display).
-          const width = canvas.width;
-
-          // Sample a horizontal strip in the middle of the canvas at different Y levels
-          const midX = Math.floor(width / 2);
-
-          function getPixel(x: number, y: number) {
-            const data = ctx!.getImageData(x, y, 1, 1).data;
-            return { r: data[0], g: data[1], b: data[2], a: data[3] };
-          }
-
-          // The display canvas maps game pixels to physical pixels.
-          // Compute the scale from canvas dimensions vs native 240x160.
-          const scaleX = canvas.width / 240;
-          const scaleY = canvas.height / 160;
-
-          // Check for dialog background (very dark, R<30, G<30, B<40)
-          // Dialog is at native y ~46-76 (above portrait area at y=80).
-          // Sample at native y=55 to catch dialog in the middle.
-          const abovePortrait = getPixel(Math.floor(midX), Math.floor(55 * scaleY));
-          // Native y=120 (in portrait overlap zone)
-          const belowInPortrait = getPixel(Math.floor(midX), Math.floor(120 * scaleY));
-
-          // Check if there's a portrait visible (non-black pixels in the portrait area)
-          // Portrait area: native y 80-160, check at native (20, 100)
-          const portraitArea = getPixel(Math.floor(20 * scaleX), Math.floor(100 * scaleY));
-
-          return {
-            abovePortrait,
-            belowInPortrait,
-            portraitArea,
-          };
-        });
-
-        if (pixelInfo) {
-          const ap = pixelInfo.abovePortrait;
-          // Check if the dark dialog background is present above the portrait area
-          // Dialog bg is rgba(12, 12, 28, 0.92) composited on the forest background
-          const isDarkAbove = ap.r < 50 && ap.g < 50 && ap.b < 60;
-
-          // Check if there's portrait content in the portrait area (not fully black)
-          const pp = pixelInfo.portraitArea;
-          const hasPortraitContent = pp.a > 0 && (pp.r > 20 || pp.g > 20 || pp.b > 20);
-
-          if (isDarkAbove && hasPortraitContent) {
-            // We found a frame where dialog is above portraits!
-            dialogFound = true;
-            console.log(`Dialog found above portraits at batch ${batch}`);
-            console.log(`  Above portrait pixel: R=${ap.r} G=${ap.g} B=${ap.b} A=${ap.a}`);
-            console.log(`  Portrait area pixel: R=${pp.r} G=${pp.g} B=${pp.b} A=${pp.a}`);
-
-            // Verify the dialog is NOT overlapping the portrait area
-            const bp = pixelInfo.belowInPortrait;
-            const isDarkBelow = bp.r < 20 && bp.g < 20 && bp.b < 35 && bp.a > 200;
-            // The area at y=240 (display) should be portrait or background, NOT dialog
-            // (dialog bg has very specific dark blue color)
-            console.log(`  Below-in-portrait pixel: R=${bp.r} G=${bp.g} B=${bp.b} A=${bp.a}`);
-
-            await saveScreenshot(page, '14-dialog-above-portraits');
-            break;
-          }
-        }
+      const info = await page.evaluate(async () => {
+        const g = (window as any).__gameRef;
+        const st: any = g.state.getCurrentState();
+        if (st?.name !== 'event' || !st.dialog || !st.portraits?.size) return null;
+        const d = st.dialog;
+        if (!d.portrait) return null;
+        const { viewport } = await import('/src/engine/viewport.ts');
+        return { top: d.position[1], height: d.height, vh: viewport.height };
+      });
+      if (info) {
+        expect(info.top + info.height).toBe(info.vh - 84);
+        dialogFound = true;
+        break;
       }
     }
 
@@ -8475,6 +8411,9 @@ test.describe('Sacred Stones Chapter Mechanics', () => {
       return { ok: true };
     });
     expect(setup.ok).toBe(true);
+    // Let the queued AI state take the stack before pressing SELECT: in free,
+    // SELECT on an empty tile opens the option menu (Python FreeState).
+    await stepFrames(page, 2);
 
     let interacted = false;
     let hitTitle = false;

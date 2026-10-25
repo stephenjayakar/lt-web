@@ -10,6 +10,7 @@ import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
+import { getSyncStore, type SyncKV } from '../../storage/storage';
 
 // ============================================================================
 // Lazy game reference (same pattern as prep-state.ts)
@@ -205,12 +206,16 @@ const COLOR_CONTROLS_KEY = 'rgba(180,200,255,1)';
 
 const SETTINGS_STORAGE_KEY = 'lt-web-settings';
 let settingsCache: Record<string, unknown> | null = null;
+let settingsCacheStore: SyncKV | null = null;
 
+/** Settings live in the sync store (local, or Convex once signed in). */
 function loadSettingsCache(): Record<string, unknown> {
-  if (settingsCache) return settingsCache;
+  const store = getSyncStore();
+  if (settingsCache && settingsCacheStore === store) return settingsCache;
   settingsCache = {};
+  settingsCacheStore = store;
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SETTINGS_STORAGE_KEY) : null;
+    const raw = store.getItem(SETTINGS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') settingsCache = parsed as Record<string, unknown>;
@@ -237,16 +242,21 @@ export function setSetting(name: string, value: unknown): void {
   const cache = loadSettingsCache();
   cache[name] = value;
   try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cache));
+    getSyncStore().setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cache));
   } catch {
     // Storage may be full or unavailable; keep the in-memory value.
   }
 }
 
-/** Apply settings with engine-wide side effects (volumes) at boot. */
+/**
+ * Apply stored settings with engine-wide side effects (volumes) at boot.
+ * Only values the player chose are applied; untouched volumes keep the web
+ * shell's defaults.
+ */
 export function applyStoredSettings(game: any): void {
-  const music = getSetting('music_volume');
-  const sound = getSetting('sound_volume');
+  const cache = loadSettingsCache();
+  const music = cache.music_volume;
+  const sound = cache.sound_volume;
   if (typeof music === 'number') game.audioManager?.setMusicVolume?.(music);
   if (typeof sound === 'number') game.audioManager?.setSfxVolume?.(sound);
 }

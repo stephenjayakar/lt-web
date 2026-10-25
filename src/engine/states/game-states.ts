@@ -7219,19 +7219,10 @@ export class CombatState extends State {
           }
         }
 
-        // Check win/loss conditions
-        // Note: In the original Python engine, loss conditions are handled
-        // through the event system (combat_death triggers → lose_game command).
-        // This auto-detect is a fallback for cases where events don't fire.
-        const didMeetLossCondition = game.checkLossCondition();
-        if (didMeetLossCondition) {
-          console.warn('GAME OVER — loss condition met');
-          game.state.clear();
-          game.state.change('game_over');
-        } else if (game.checkWinCondition()) {
-          console.warn('VICTORY — win condition met');
-          // TODO: push a VictoryState / trigger level_end event
-        }
+        // Python has no engine-side win/loss detection: objectives are text,
+        // and projects end levels through events (unit_death / combat_end ->
+        // win_game / lose_game). An auto game over here pre-empted EOtF's
+        // Global_Loss (defeat text + currency banking).
 
         // Python AnimationCombat.finish: fade back if and only if it was faded in
         if (this.battleMusic) {
@@ -7263,16 +7254,11 @@ export class CombatState extends State {
         const wasEventCombat = game.eventCombat;
         game.eventCombat = false;
 
-        // Pop combat unless loss handling is replacing the entire stack.
-        // State transitions are deferred, so back() after clear/change would
-        // otherwise pop the newly queued game_over state.
-        if (!didMeetLossCondition) {
-          game.state.back();
-        }
+        game.state.back();
 
         // A full player killer force-given a droppable item must resolve the
         // 'item_discard' state (Python GiveItem force_give -> item_discard).
-        if (!didMeetLossCondition && this.pendingDiscards.length > 0) {
+        if (this.pendingDiscards.length > 0) {
           const queue = (game.memory.get('item_discard_queue') as any[] | undefined) ?? [];
           queue.push(...this.pendingDiscards);
           game.memory.set('item_discard_queue', queue);
@@ -7280,7 +7266,7 @@ export class CombatState extends State {
           game.state.change('item_discard');
         }
 
-        if (!wasEventCombat && !didMeetLossCondition) {
+        if (!wasEventCombat) {
           // Queue the post-combat continuation before EventState so the event
           // is layered above it and pops back to the correct state. Python's
           // stack preserves menu/Canto/trade while combat events run.
