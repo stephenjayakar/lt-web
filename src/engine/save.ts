@@ -1781,6 +1781,7 @@ async function restoreLevel(
     // Create GameBoard
     game.board = new GameBoard(game.tilemap.width, game.tilemap.height);
     game.board.onUnitPositionChanged = () => game.refreshPositionSkills();
+    game.board.regionSource = () => game.currentLevel?.regions;
     game.targetSystem = new TargetSystem(game.db, game.board, game);
     game.board.initFromTilemap(game.tilemap);
 

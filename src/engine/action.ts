@@ -1933,6 +1933,21 @@ export class UnregisterUnitAction extends Action {
 }
 
 /**
+ * Python AddRegion/RemoveRegion reset the board under terrain regions and
+ * add/remove status-region skills immediately. The web derives both from the
+ * live region list, so re-derive whenever that list changes.
+ */
+function refreshRegionEffects(region: RegionData | null): void {
+  if (!region) return;
+  const type = region.region_type?.toLowerCase();
+  if (type !== 'terrain' && type !== 'status') return;
+  const game = _getGame?.();
+  if (!game?.board) return;
+  if (type === 'terrain') game.board.refreshTerrain?.();
+  game.refreshPositionSkills?.();
+}
+
+/**
  * AddRegionAction - Add a region to the current level's region list.
  * Mirrors Python's action.AddRegion.
  */
@@ -1954,12 +1969,14 @@ export class AddRegionAction extends Action {
     }
     this.regions.push(this.region);
     this.didAdd = true;
+    refreshRegionEffects(this.region);
   }
 
   reverse(): void {
     if (!this.didAdd) return;
     const idx = this.regions.indexOf(this.region);
     if (idx !== -1) this.regions.splice(idx, 1);
+    refreshRegionEffects(this.region);
   }
 }
 
@@ -1989,12 +2006,35 @@ export class RemoveRegionAction extends Action {
     this.removed = this.regions[idx];
     this.removedIndex = idx;
     this.regions.splice(idx, 1);
+    refreshRegionEffects(this.removed);
   }
 
   reverse(): void {
     if (!this.removed) return;
     const idx = Math.min(this.removedIndex, this.regions.length);
     this.regions.splice(idx, 0, this.removed);
+    refreshRegionEffects(this.removed);
+  }
+}
+
+/**
+ * DecrementTimeRegionAction - Python action.DecrementTimeRegion: count a
+ * timed region down by one turn.
+ */
+export class DecrementTimeRegionAction extends Action {
+  private region: RegionData;
+
+  constructor(region: RegionData) {
+    super();
+    this.region = region;
+  }
+
+  execute(): void {
+    this.region.time_left = Number(this.region.time_left) - 1;
+  }
+
+  reverse(): void {
+    this.region.time_left = Number(this.region.time_left) + 1;
   }
 }
 

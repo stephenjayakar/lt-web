@@ -1,5 +1,5 @@
 import type { UnitObject } from './unit';
-import type { NID, FogOfWarConfig } from '../data/types';
+import type { NID, FogOfWarConfig, RegionData } from '../data/types';
 import type { Database } from '../data/database';
 import { simpleCheck } from '../engine/line-of-sight';
 import { sightRange } from '../combat/skill-system';
@@ -50,6 +50,15 @@ export class GameBoard {
    * `release_aura`).
    */
   onUnitPositionChanged?: () => void;
+
+  /**
+   * Live level regions. Terrain regions override the tilemap terrain under
+   * them (Python GameState.get_terrain_nid), so terrain lookups, movement
+   * cost, and opacity all follow region adds/removals.
+   */
+  regionSource: (() => readonly RegionData[] | null | undefined) | null = null;
+  private terrainTilemap: { width: number; height: number; getTerrain(x: number, y: number): NID } | null = null;
+  private opacityDb: Database | null = null;
 
   /** Movement bounds (Python game_board.bounds): [minX, minY, maxX, maxY]. */
   bounds: [number, number, number, number];
@@ -260,10 +269,40 @@ export class GameBoard {
    * getTerrain returns '0' for unmapped tiles (never null), matching Python.
    */
   initFromTilemap(tilemap: { width: number; height: number; getTerrain(x: number, y: number): NID }): void {
+    this.terrainTilemap = tilemap;
     for (let y = 0; y < Math.min(this.height, tilemap.height); y++) {
       for (let x = 0; x < Math.min(this.width, tilemap.width); x++) {
         const terrain = tilemap.getTerrain(x, y);
         this.terrainGrid[y][x] = terrain;
+      }
+    }
+    this.applyTerrainRegions();
+    // Python reset_grid/reset_pos rebuild opacity with movement cost.
+    if (this.opacityDb) this.initOpacityGrid(this.opacityDb);
+  }
+
+  /** Re-derive terrain (tilemap plus terrain regions) and opacity. */
+  refreshTerrain(): void {
+    if (this.terrainTilemap) this.initFromTilemap(this.terrainTilemap);
+  }
+
+  /**
+   * Python get_region_under_pos returns the first matching region in level
+   * order, so apply terrain regions last-to-first and let earlier ones win.
+   */
+  private applyTerrainRegions(): void {
+    const regions = this.regionSource?.() ?? [];
+    for (let index = regions.length - 1; index >= 0; index--) {
+      const region = regions[index];
+      if (region.region_type?.toLowerCase() !== 'terrain' || !region.position) continue;
+      if (region.sub_nid === null || region.sub_nid === undefined || region.sub_nid === '') continue;
+      const terrainNid = String(region.sub_nid);
+      const [rx, ry] = region.position;
+      const [width, height] = region.size ?? [1, 1];
+      for (let y = ry; y < ry + height; y++) {
+        for (let x = rx; x < rx + width; x++) {
+          if (this.inBounds(x, y)) this.terrainGrid[y][x] = terrainNid;
+        }
       }
     }
   }
@@ -319,6 +358,7 @@ export class GameBoard {
    * Reads each tile's terrain definition to determine if it is opaque.
    */
   initOpacityGrid(db: Database): void {
+    this.opacityDb = db;
     this.opacityGrid = this.createBoolGrid();
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {

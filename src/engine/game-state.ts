@@ -230,6 +230,7 @@ export class GameState {
     this.unitMarkers.loadAll().catch(() => {});
     this.highlight = new HighlightManager();
     this.mapView = new MapView();
+    this.mapView.regionSource = () => this.currentLevel?.regions;
     this.unitRenderer = new UnitRenderer();
     this.movementSystem = new MovementSystem();
     this.hud = new HUD();
@@ -762,6 +763,7 @@ export class GameState {
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
     this.board.onUnitPositionChanged = () => this.refreshPositionSkills();
+    this.board.regionSource = () => this.currentLevel?.regions;
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 
@@ -998,6 +1000,7 @@ export class GameState {
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
     this.board.onUnitPositionChanged = () => this.refreshPositionSkills();
+    this.board.regionSource = () => this.currentLevel?.regions;
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
 

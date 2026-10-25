@@ -1,5 +1,10 @@
 import { evaluateCondition } from '../events/event-manager';
-import { initializeSkillData, ignoreRegionStatus, isCantoSkill } from '../combat/skill-system';
+import {
+  initializeSkillData,
+  ignoreRegionStatus,
+  ignoreTerrain,
+  isCantoSkill,
+} from '../combat/skill-system';
 import type { Database } from '../data/database';
 import type { RegionData } from '../data/types';
 import type { GameBoard } from '../objects/game-board';
@@ -9,10 +14,12 @@ import type { UnitObject } from '../objects/unit';
 const REGION_SOURCE_TYPE_KEY = 'positionStatusSourceType';
 const REGION_SOURCE_NID_KEY = 'positionStatusRegionNid';
 const REGION_SOURCE_TYPE = 'region';
+const TERRAIN_SOURCE_TYPE = 'terrain';
 
 const regionSkillCaches = new WeakMap<object, Map<string, SkillObject>>();
 
 function contains(region: RegionData, position: [number, number]): boolean {
+  if (!region.position) return false;
   const width = region.size?.[0] ?? 1;
   const height = region.size?.[1] ?? 1;
   return position[0] >= region.position[0] &&
@@ -21,17 +28,38 @@ function contains(region: RegionData, position: [number, number]): boolean {
     position[1] < region.position[1] + height;
 }
 
-function sourcedFromRegion(skill: SkillObject, regionNid?: string): boolean {
-  return skill.data.get(REGION_SOURCE_TYPE_KEY) === REGION_SOURCE_TYPE &&
-    (regionNid === undefined ||
-      skill.data.get(REGION_SOURCE_NID_KEY) === regionNid);
+function positionSourced(skill: SkillObject): boolean {
+  const type = skill.data.get(REGION_SOURCE_TYPE_KEY);
+  return type === REGION_SOURCE_TYPE || type === TERRAIN_SOURCE_TYPE;
+}
+
+/** Cache key: region NID, or `terrain:` plus Python's (x, y, status) key. */
+function sourceKey(skill: SkillObject): string | null {
+  const key = skill.data.get(REGION_SOURCE_NID_KEY);
+  if (typeof key !== 'string') return null;
+  return skill.data.get(REGION_SOURCE_TYPE_KEY) === TERRAIN_SOURCE_TYPE
+    ? `terrain:${key}`
+    : key;
+}
+
+interface DesiredStatus {
+  type: typeof REGION_SOURCE_TYPE | typeof TERRAIN_SOURCE_TYPE;
+  /** Region NID, or `x,y,status` for terrain. */
+  key: string;
+  skillNid: string;
+}
+
+function cacheKeyFor(entry: DesiredStatus): string {
+  return entry.type === TERRAIN_SOURCE_TYPE ? `terrain:${entry.key}` : entry.key;
 }
 
 /**
- * Re-derive Python status-region skills from current board positions.
+ * Re-derive Python position-sourced skills from current board positions:
+ * terrain statuses (GameState.add_terrain_status, keyed per tile and status)
+ * and status-region skills (add_region_status, keyed per region).
  *
- * Region instances are cached and reused across leave/arrive reversal, matching
- * Python's one registered terrain-status SkillObject per region key.
+ * Instances are cached and reused across leave/arrive reversal, matching
+ * Python's one registered SkillObject per terrain/region key.
  */
 export function refreshPositionStatuses(
   units: Iterable<UnitObject>,
@@ -50,60 +78,72 @@ export function refreshPositionStatuses(
   // Recover restored instances before deriving desired coverage.
   for (const unit of allUnits) {
     for (const skill of unit.skills) {
-      if (!sourcedFromRegion(skill)) continue;
-      const regionNid = skill.data.get(REGION_SOURCE_NID_KEY);
-      if (typeof regionNid === 'string' && !cache.has(regionNid)) {
-        cache.set(regionNid, skill);
-      }
+      if (!positionSourced(skill)) continue;
+      const key = sourceKey(skill);
+      if (key && !cache.has(key)) cache.set(key, skill);
     }
   }
 
   for (const unit of allUnits) {
-    const desired = new Set<string>();
-    if (unit.position && board.getUnit(unit.position[0], unit.position[1]) === unit &&
-        !ignoreRegionStatus(unit, game)) {
-      for (const region of regions) {
-        if (!contains(region, unit.position)) continue;
-        if (region.condition && !evaluateCondition(region.condition, {
-          game,
-          unit1: unit,
-          region,
-          position: unit.position,
-          gameVars: game.gameVars,
-          levelVars: game.levelVars,
-          localArgs: new Map([['region', region]]),
-        })) continue;
-        desired.add(region.nid);
+    const desired: DesiredStatus[] = [];
+    const position = unit.position;
+    if (position && board.getUnit(position[0], position[1]) === unit) {
+      // Tiles and terrain regions come first, as in Python arrive().
+      if (!ignoreTerrain(unit, game)) {
+        const terrainNid = board.getTerrain(position[0], position[1]);
+        const status = terrainNid ? (db.terrain.get(terrainNid) as any)?.status : null;
+        if (typeof status === 'string' && status.length > 0) {
+          desired.push({
+            type: TERRAIN_SOURCE_TYPE,
+            key: `${position[0]},${position[1]},${status}`,
+            skillNid: status,
+          });
+        }
+      }
+      if (!ignoreRegionStatus(unit, game)) {
+        for (const region of regions) {
+          if (!contains(region, position)) continue;
+          if (region.condition && !evaluateCondition(region.condition, {
+            game,
+            unit1: unit,
+            region,
+            position,
+            gameVars: game.gameVars,
+            levelVars: game.levelVars,
+            localArgs: new Map([['region', region]]),
+          })) continue;
+          desired.push({ type: REGION_SOURCE_TYPE, key: region.nid, skillNid: region.sub_nid });
+        }
       }
     }
+    const desiredKeys = new Set(desired.map(cacheKeyFor));
 
     for (let index = unit.skills.length - 1; index >= 0; index--) {
       const skill = unit.skills[index];
-      if (!sourcedFromRegion(skill)) continue;
-      const regionNid = skill.data.get(REGION_SOURCE_NID_KEY);
-      if (typeof regionNid !== 'string' || !desired.has(regionNid)) {
+      if (!positionSourced(skill)) continue;
+      const key = sourceKey(skill);
+      if (!key || !desiredKeys.has(key)) {
         unit.skills.splice(index, 1);
         if (skill.ownerNid === unit.nid) skill.ownerNid = null;
       }
     }
 
-    for (const regionNid of desired) {
-      const region = regions.find((candidate) => candidate.nid === regionNid);
-      const prefab = region ? db.skills.get(region.sub_nid) : undefined;
-      if (!region || !prefab) continue;
-      let status = cache.get(regionNid);
-      if (!status || status.nid !== region.sub_nid) {
+    for (const entry of desired) {
+      const prefab = db.skills.get(entry.skillNid);
+      if (!prefab) continue;
+      const cacheKey = cacheKeyFor(entry);
+      let status = cache.get(cacheKey);
+      if (!status || status.nid !== entry.skillNid) {
         status = new SkillObject(prefab);
-        status.data.set(REGION_SOURCE_TYPE_KEY, REGION_SOURCE_TYPE);
-        status.data.set(REGION_SOURCE_NID_KEY, regionNid);
-        cache.set(regionNid, status);
+        status.data.set(REGION_SOURCE_TYPE_KEY, entry.type);
+        status.data.set(REGION_SOURCE_NID_KEY, entry.key);
+        cache.set(cacheKey, status);
       }
-      const existingIndex = unit.skills.findIndex(
-        (skill) => sourcedFromRegion(skill, regionNid),
-      );
+      const existingIndex = unit.skills.findIndex((skill) =>
+        positionSourced(skill) && sourceKey(skill) === cacheKey);
       if (existingIndex >= 0) {
         // Save restoration constructs per-owner instances. Python registers
-        // one shared status object per region key, so converge on the cached
+        // one shared status object per key, so converge on the cached
         // object once every owner has been restored.
         if (unit.skills[existingIndex] !== status) {
           unit.skills[existingIndex] = status;
@@ -118,5 +158,5 @@ export function refreshPositionStatuses(
 }
 
 export function isPositionStatusSkill(skill: SkillObject): boolean {
-  return sourcedFromRegion(skill);
+  return positionSourced(skill);
 }

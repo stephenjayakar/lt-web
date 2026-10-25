@@ -116,6 +116,7 @@ import {
   BringToTopItemAction,
   AddRegionAction,
   RemoveRegionAction,
+  DecrementTimeRegionAction,
   CreateUnitAction,
   UnregisterUnitAction,
   SetLevelVarAction,
@@ -8397,27 +8398,37 @@ export class TurnChangeState extends State {
       game.state.change('phase_change');
     }
 
+    // Python TurnChangeState.end: on entering player phase after turn one,
+    // count timed regions down and remove expired ones before the phase
+    // events fire, remembering each for a TimeRegionComplete trigger.
+    const expiredRegions: RegionData[] = [];
+    if (currentTeam === 'player' && turnCount > 1 && game.currentLevel?.regions) {
+      for (const region of [...game.currentLevel.regions] as RegionData[]) {
+        if (region.time_left === null || region.time_left === undefined) continue;
+        game.actionLog.doAction(new DecrementTimeRegionAction(region));
+        if (Number(region.time_left) <= 0) {
+          game.actionLog.doAction(new RemoveRegionAction(region.nid, game.currentLevel.regions));
+          expiredRegions.push(region);
+        }
+      }
+    }
+
     // Fire event triggers — they'll queue events for the EventState
-    // to process after the phase banner dismisses
+    // to process after the phase banner dismisses. Python triggers
+    // TimeRegionComplete(s), PhaseChange, then the team's turn change, and
+    // its event stack runs the last trigger first. Our queue is FIFO, so
+    // enqueue the turn change, then phase_change, then expired regions in
+    // reverse order.
     if (game.eventManager) {
       const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
 
-      // phase_change fires for every phase
-      game.eventManager.trigger(
-        { type: 'phase_change', team: currentTeam, levelNid },
-        ctx,
-      );
-
       if (currentTeam === 'player') {
-        // turn_change fires on player phase
+        // turn_change fires on player phase. level_start is queued by
+        // loadLevel for turn one rather than here.
         game.eventManager.trigger(
           { type: 'turn_change', turnCount, levelNid },
           ctx,
         );
-        // level_start fires on the first player turn (turnCount === 1)
-        // Note: loadLevel already triggers level_start, but only on initial load.
-        // Subsequent level_start events from turn_change are NOT standard — 
-        // the Python engine fires level_start separately. We skip it here.
       } else if (currentTeam === 'enemy') {
         game.eventManager.trigger(
           { type: 'enemy_turn_change', turnCount, levelNid },
@@ -8431,6 +8442,22 @@ export class TurnChangeState extends State {
       } else {
         game.eventManager.trigger(
           { type: 'other_turn_change', turnCount, levelNid, team: currentTeam },
+          ctx,
+        );
+      }
+
+      // phase_change fires for every phase
+      game.eventManager.trigger(
+        { type: 'phase_change', team: currentTeam, levelNid },
+        ctx,
+      );
+
+      for (const region of [...expiredRegions].reverse()) {
+        const position = region.position
+          ? [region.position[0], region.position[1]] as [number, number]
+          : undefined;
+        game.eventManager.trigger(
+          { type: 'time_region_complete', levelNid, region, position },
           ctx,
         );
       }
@@ -11271,6 +11298,10 @@ export class EventState extends State {
       gameVars: game.gameVars,
       levelVars: game.levelVars,
       localArgs: new Map<string, any>([
+        // Python Event local args are trigger.to_args(), so {region} and
+        // {position} substitute from the trigger like any other local.
+        ...(trigger?.region ? [['region', trigger.region] as [string, any]] : []),
+        ...(trigger?.position ? [['position', trigger.position] as [string, any]] : []),
         ...(trigger?.localArgs?.entries() ?? []),
         ['stat_changes', trigger?.statChanges],
         ['source', trigger?.source],
@@ -14874,22 +14905,32 @@ export class EventState extends State {
         const posStr = args[1] ?? '0,0';
         const sizeStr = args[2] ?? '1,1';
         const regionType = (args[3] ?? 'normal').toLowerCase();
-        const subNid = args[4] ?? '';
-        // Time left could be in args[5], flags could be scattered in remaining args
-        let timeLeft: number | null = null;
+        // Python optional keywords: String, TimeLeft, HideTime — positional
+        // in that order or as Key=value — plus only_once/interrupt_move flags.
+        const optionalNames = ['string', 'timeleft', 'hidetime'];
+        const optional = new Map<string, string>();
         let onlyOnce = false;
         let interruptMove = false;
-        let hideTime = false;
-        for (let i = 5; i < args.length; i++) {
-          const a = args[i].toLowerCase().trim();
-          if (a === 'only_once') onlyOnce = true;
-          else if (a === 'interrupt_move') interruptMove = true;
-          else if (a === 'true' || a === 'false') hideTime = a === 'true';
-          else {
-            const n = parseInt(a, 10);
-            if (!isNaN(n) && timeLeft === null) timeLeft = n;
+        let positional = 0;
+        for (let i = 4; i < args.length; i++) {
+          const raw = args[i].trim();
+          const lowered = raw.toLowerCase();
+          if (lowered === 'only_once') { onlyOnce = true; continue; }
+          if (lowered === 'interrupt_move') { interruptMove = true; continue; }
+          const named = raw.match(/^(String|TimeLeft|HideTime)=(.*)$/i);
+          if (named) {
+            optional.set(named[1].toLowerCase(), named[2].trim());
+            continue;
           }
+          if (positional < optionalNames.length) {
+            optional.set(optionalNames[positional], raw);
+          }
+          positional += 1;
         }
+        const subNid = optional.get('string') ?? '';
+        const parsedTime = parseInt(optional.get('timeleft') ?? '', 10);
+        const timeLeft: number | null = Number.isNaN(parsedTime) ? null : parsedTime;
+        const hideTime = (optional.get('hidetime') ?? '').toLowerCase() === 'true';
 
         // Parse position
         const posParts = posStr.split(',').map((s: string) => parseInt(s.trim(), 10));

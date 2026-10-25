@@ -5,7 +5,8 @@ import type { TileMapObject } from './tilemap';
 import { TILEWIDTH, TILEHEIGHT, getFrameCount } from '../engine/constants';
 import { viewport } from '../engine/viewport';
 import type { GameBoard } from '../objects/game-board';
-import type { FogOfWarConfig } from '../data/types';
+import type { FogOfWarConfig, RegionData } from '../data/types';
+import { FONT } from './bmp-font';
 import type { Database } from '../data/database';
 import type { UnitObject } from '../objects/unit';
 import type { UnitMarkerIcons } from './unit-markers';
@@ -89,6 +90,9 @@ export class MapView {
   /** Optional background tilemap drawn beneath the main one
    * (set from GameState when change_bg_tilemap applies). */
   bgTilemap: any | null = null;
+
+  /** Live level regions, for Python's time-region countdown text. */
+  regionSource: (() => readonly RegionData[] | null | undefined) | null = null;
 
   private mapSurface: Surface;
   private currentScale: number;
@@ -224,6 +228,9 @@ export class MapView {
       this.drawFogOfWar(this.mapSurface, fogConfig, cullRect, offsetX, offsetY, tilemap.width, tilemap.height);
     }
 
+    // 5.7. Time region countdowns (Python MapView.time_region_text)
+    this.drawTimeRegionText(this.mapSurface, offsetX, offsetY);
+
     // 6. Cursor
     if (cursor && cursor.visible) {
       cursor.draw(this.mapSurface, offsetX, offsetY);
@@ -243,6 +250,23 @@ export class MapView {
   /**
    * Draw movement/attack range highlights as semi-transparent colored tiles.
    */
+  private drawTimeRegionText(surf: Surface, offsetX: number, offsetY: number): void {
+    const regions = this.regionSource?.();
+    const font = FONT['text-yellow'];
+    if (!regions || !font) return;
+    const bob = 2 * Math.sin(Math.floor(performance.now() / 500));
+    for (const region of regions) {
+      if (region.hide_time || region.time_left === null || region.time_left === undefined ||
+          !region.position) continue;
+      const text = String(region.time_left);
+      const width = font.width(text);
+      const [w, h] = region.size ?? [1, 1];
+      const centerX = (region.position[0] + w / 2) * TILEWIDTH - offsetX;
+      const centerY = (region.position[1] + h / 2) * TILEHEIGHT - offsetY;
+      font.blit(surf, text, centerX - Math.floor(width / 2) - 1, centerY - 12 + bob);
+    }
+  }
+
   private drawHighlights(
     surf: Surface,
     highlights: Map<string, string>,

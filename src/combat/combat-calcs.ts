@@ -4,7 +4,6 @@ import type { Database } from '../data/database';
 import type { GameBoard } from '../objects/game-board';
 import * as itemSystem from './item-system';
 import * as skillSystem from './skill-system';
-import { getTerrainBonusesForUnit } from './terrain-bonuses';
 import type { SupportEffect } from '../engine/support-system';
 
 // ============================================================
@@ -483,10 +482,9 @@ export function avoid(
     unit, equippedWeapon, game, target, itemToAvoid, mode, attackInfo,
   );
 
-  // Add terrain avoid bonus
-  const terrainAvo = board ? getTerrainBonusesForUnit(unit, board, db, game)[1] : 0;
-
-  return baseAvoid + itemMod + skillMod + terrainAvo;
+  // Terrain avoid arrives through the tile's terrain status skill, which
+  // position-status-system grants exactly as Python arrive() does.
+  return baseAvoid + itemMod + skillMod;
 }
 
 /** Calculate damage output. */
@@ -560,12 +558,8 @@ export function defense(
     unit, item ?? null, game, target, attackItem, mode, attackInfo,
   );
 
-  // Add terrain defense bonus (only for physical attacks)
-  const terrainDef = (!magic && board)
-    ? getTerrainBonusesForUnit(unit, board, db, game)[0]
-    : 0;
-
-  return baseDef + skillMod + terrainDef;
+  // Terrain DEF/RES come from the terrain status skill's stat_change.
+  return baseDef + skillMod;
 }
 
 /** Calculate attack speed (for doubling checks). */
