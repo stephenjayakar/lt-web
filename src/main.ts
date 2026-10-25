@@ -985,6 +985,9 @@ async function main(): Promise<void> {
 
     // Store real frame delta on game state for time-based animations
     game.frameDeltaMs = deltaMs;
+    // Python driver: game.playtime += clock.tick() every frame. Cap long
+    // gaps (a backgrounded tab) so suspended time is not counted.
+    game.playtime += Math.min(rawDelta, 1000);
 
     // --- Process input ---
     const event = inputManager.processInput(deltaMs);
@@ -1118,7 +1121,9 @@ async function main(): Promise<void> {
     console.info('[PWA] Update available — call apply() to reload with new version');
     // Store the apply function on the game state so the settings/title screen can use it
     game.gameVars.set('_pwa_update_available', true);
-    game.gameVars.set('_pwa_apply_update', apply as any);
+    // Not in gameVars: they are saved, and a function cannot be cloned into
+    // IndexedDB (every save would fail once an update was detected).
+    (window as any).__ltApplyPwaUpdate = apply;
   });
   if (controlTelemetry) {
     // Programmatic campaign runs must load the just-built module, not a

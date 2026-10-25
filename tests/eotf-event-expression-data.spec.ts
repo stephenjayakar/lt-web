@@ -160,8 +160,9 @@ test.describe('Embrace of the Fog event expression data', () => {
         enemyPhase: game.currentLevel.music.enemy_phase,
         oldEnemyPhase,
         undoneAction: undone?.constructor.name,
+        // Python `music` is a sound-thread fade_in of the chosen song.
         directPlayNids: calls
-          .filter((call: any) => call.op === 'play')
+          .filter((call: any) => call.op === 'play' || call.op === 'fadeIn')
           .map((call: any) => call.nid),
       };
     });

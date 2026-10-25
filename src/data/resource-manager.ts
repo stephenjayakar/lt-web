@@ -229,6 +229,27 @@ export class ResourceManager {
     return this.loadImage(`sprites/${name}.png`);
   }
 
+  /**
+   * Python SPRITES lookup: project `custom_sprites` override engine sprites
+   * of the same name (engine sprites live under /game-data/sprites/ and its
+   * menus/ folder). Used by draw_overlay_sprite and similar commands.
+   */
+  async loadNamedSprite(name: string): Promise<HTMLImageElement> {
+    const candidates = [
+      `resources/custom_sprites/${name}.png`,
+      `../sprites/${name}.png`,
+      `../sprites/menus/${name}.png`,
+    ];
+    for (const candidate of candidates) {
+      try {
+        return await this.loadImage(candidate);
+      } catch {
+        // try the next location
+      }
+    }
+    throw new Error(`Sprite not found: ${name}`);
+  }
+
   /** Load an icon sheet from a folder (e.g. "icons", "item_icons"). */
   async loadIconSheet(folder: string, nid: string): Promise<HTMLImageElement> {
     return this.loadImage(`resources/${folder}/${nid}.png`);

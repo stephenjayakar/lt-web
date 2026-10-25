@@ -490,7 +490,7 @@ export class PrepPickUnitsState extends State {
       surf.drawText(unit.name, 16, y + 2, nameColor, '7px monospace');
 
       // Class
-      surf.drawText(unit.klass, 90, y + 2, 'rgba(160,160,200,1)', '6px monospace');
+      surf.drawText(getGame().db.classes.get(unit.klass)?.name ?? unit.klass, 90, y + 2, 'rgba(160,160,200,1)', '6px monospace');
 
       // Level
       surf.drawText(`Lv${unit.level}`, 150, y + 2, 'rgba(160,160,200,1)', '6px monospace');

@@ -392,6 +392,7 @@ export class TitleSaveState extends State {
   private message = '';
   private messageTimer = 0;
   private bgImage: HTMLImageElement | null = null;
+  private continuation: (() => void) | null = null;
 
   override start(): StateResult {
     const game = getGame();
@@ -399,6 +400,11 @@ export class TitleSaveState extends State {
     this.busy = false;
     this.message = '';
     this.messageTimer = 0;
+    // Take the continuation out of game.memory before anything is saved:
+    // memory is serialized with the save and a function cannot be cloned
+    // into IndexedDB (the save used to fail with DataCloneError).
+    this.continuation = (game.memory?.get?.('title_save_continue') as (() => void) | undefined) ?? null;
+    game.memory?.delete?.('title_save_continue');
     game.resources?.tryLoadImage?.('resources/panoramas/title_background.png')
       .then((img: HTMLImageElement | null) => { this.bgImage = img; })
       .catch(() => {});
@@ -426,8 +432,8 @@ export class TitleSaveState extends State {
 
   private proceed(): void {
     const game = getGame();
-    const next = game.memory?.get?.('title_save_continue') as (() => void) | undefined;
-    game.memory?.delete?.('title_save_continue');
+    const next = this.continuation;
+    this.continuation = null;
     if (next) next();
     else game.state.back();
   }

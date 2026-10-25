@@ -936,7 +936,17 @@ export function buildSaveDict(game: any): SaveDict {
     overworldRegistry: Array.from(
       (game.overworldRegistry as Map<string, any>).entries(),
     ),
-    memory: Array.from((game.memory as Map<string, any>).entries()),
+    // game.memory is transient UI scratch space (Python never saves it).
+    // Keep only structured-cloneable entries so a stored callback or image
+    // cannot make the whole save fail with DataCloneError.
+    memory: Array.from((game.memory as Map<string, any>).entries()).filter(([, value]) => {
+      try {
+        structuredClone(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
     dialogLogEntries: [...(game.dialogLogEntries ?? [])],
     initiative,
     overworld,

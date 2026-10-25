@@ -117,7 +117,7 @@ export class HUD {
     const hs = hudScale(screenW, screenH);
 
     if (this.hoveredUnit) {
-      this.drawUnitInfo(ctx, this.hoveredUnit, dpr, hs, screenW, screenH);
+      this.drawUnitInfo(ctx, this.hoveredUnit, dpr, hs, screenW, screenH, _db);
     }
     if (this.terrainName) {
       this.drawTerrainInfo(ctx, dpr, hs, screenW, screenH);
@@ -193,6 +193,7 @@ export class HUD {
   private drawUnitInfo(
     ctx: CanvasRenderingContext2D, unit: UnitObject,
     dpr: number, hs: number, _screenW: number, screenH: number,
+    db?: Database,
   ): void {
     const s = dpr * hs;
     const margin = BASE_PANEL_MARGIN * s;
@@ -242,7 +243,10 @@ export class HUD {
     // Class + Level
     ctx.font = `${BASE_FONT_SUB * s}px monospace`;
     ctx.fillStyle = 'rgba(200, 200, 220, 1)';
-    ctx.fillText(`Lv ${unit.level} ${unit.klass}`, textX, textY);
+    // Show the class's display name, not its NID (e.g. "Manakete", not
+    // "Manakete_Lord").
+    const className = db?.classes?.get?.(unit.klass)?.name ?? unit.klass;
+    ctx.fillText(`Lv ${unit.level} ${className}`, textX, textY);
     textY += lh;
 
     // HP bar

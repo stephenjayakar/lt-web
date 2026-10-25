@@ -16168,7 +16168,7 @@ export class EventState extends State {
           foreground,
         };
         this.overlaySprites.set(nid, overlay);
-        void game.resources.loadSystemSprite(spriteNid)
+        void game.resources.loadNamedSprite(spriteNid)
           .then((image: HTMLImageElement) => {
             if (this.overlaySprites.get(nid) === overlay) overlay.image = image;
           })
