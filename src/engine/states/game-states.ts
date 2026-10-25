@@ -8537,7 +8537,7 @@ function fadeOutPhaseMusic(game: any): void {
 }
 
 /** Python: phase.fade_in_phase_music(at_turn_change) — called at PhaseChangeState.end() / FreeState.begin(). */
-function fadeInPhaseMusic(game: any, atTurnChange: boolean = false): void {
+export function fadeInPhaseMusic(game: any, atTurnChange: boolean = false): void {
   const musicNid = getPhaseMusicNid(game, game.phase.getCurrent());
   const fade = getPhaseMusicFadeMs(game);
   if (musicNid) {
@@ -9311,6 +9311,12 @@ export class EventState extends State {
     portraitPriorityCounter: number;
     background: HTMLImageElement | null;
   }> = new WeakMap();
+  /**
+   * Parked events in pause order. Python pushes a new EventState for each
+   * triggered sub-event; the paused parents stay on the (transparent) stack
+   * and keep drawing their background, portraits and boxes underneath.
+   */
+  private parkedOrder: GameEvent[] = [];
   private suspendedChoiceEvents: Array<{
     owner: GameEvent;
     commandPointer: number;
@@ -9318,6 +9324,8 @@ export class EventState extends State {
     eventTextboxes: Map<string, EventTextbox>;
     portraits?: Map<string, EventPortrait>;
     replay: boolean;
+    /** Python PlayerChoiceState stays below the sub-event (static cursor). */
+    menu?: { draw(surf: Surface): void } | null;
   }> = [];
 
   // For-loop variables are event locals and shadow level/game variables.
@@ -9622,6 +9630,7 @@ export class EventState extends State {
       if (persist && this.choiceNid) {
         this.choiceCursorMemory.set(this.choiceNid, this.choiceMenu.selectedIndex);
       }
+      const chosenMenu = this.choiceMenu;
       this.choiceMenu = null;
       this.choiceNid = null;
       this.choiceBackable = false;
@@ -9647,6 +9656,7 @@ export class EventState extends State {
             portraits: new Map(this.portraits),
             // A persistent choice re-opens once its selection event ends.
             replay: persist,
+            menu: chosenMenu,
           } : null;
           const priorLength = queue.length;
           game.eventManager.triggerSpecific(
@@ -10090,24 +10100,61 @@ export class EventState extends State {
   // Draw
   // -----------------------------------------------------------------------
 
+  /** Python PanoramaBackground: cover the whole window, centered. */
+  private drawEventBackground(surf: Surface, image: HTMLImageElement): void {
+    const bw = image.width;
+    const bh = image.height;
+    const coverScale = Math.max(1, surf.width / Math.max(1, bw), surf.height / Math.max(1, bh));
+    const dw = bw * coverScale;
+    const dh = bh * coverScale;
+    const ps = surf.scale;
+    surf.ctx.imageSmoothingEnabled = false;
+    surf.ctx.drawImage(
+      image, 0, 0, bw, bh,
+      Math.round(((surf.width - dw) / 2) * ps), Math.round(((surf.height - dh) / 2) * ps),
+      Math.round(dw * ps), Math.round(dh * ps),
+    );
+  }
+
+  /**
+   * Paused parent events (Python: lower EventState instances on the stack)
+   * keep drawing beneath the running sub-event, including a chosen
+   * PlayerChoiceState menu that has not popped yet.
+   */
+  private drawParkedLayers(surf: Surface): void {
+    if (this.parkedOrder.length === 0) return;
+    const ownTables = this.eventTables;
+    const ownTextboxes = this.eventTextboxes;
+    try {
+      for (const event of this.parkedOrder) {
+        const parked = this.parkedEventPresentation.get(event);
+        if (!parked) continue;
+        if (parked.background) this.drawEventBackground(surf, parked.background);
+        for (const portrait of [...parked.portraits.values()].sort((a, b) => a.priority - b.priority)) {
+          portrait.draw(surf);
+        }
+        this.eventTables = parked.eventTables;
+        this.eventTextboxes = parked.eventTextboxes;
+        this.drawEventTables(surf);
+        this.drawEventTextboxes(surf);
+        for (const suspended of this.suspendedChoiceEvents) {
+          if (suspended.owner === event) suspended.menu?.draw(surf);
+        }
+      }
+    } finally {
+      this.eventTables = ownTables;
+      this.eventTextboxes = ownTextboxes;
+    }
+  }
+
   override draw(surf: Surface): Surface {
+    this.drawParkedLayers(surf);
     // Background panorama (drawn on top of map, behind portraits)
     if (this.background) {
       // Python PanoramaBackground fills the whole 240x160 window. The web
       // viewport can be larger than the authored scene, so scale the panorama
       // to cover it (centered) instead of leaving the map visible around it.
-      const bw = this.background.width;
-      const bh = this.background.height;
-      const coverScale = Math.max(1, surf.width / Math.max(1, bw), surf.height / Math.max(1, bh));
-      const dw = bw * coverScale;
-      const dh = bh * coverScale;
-      const ps = surf.scale;
-      surf.ctx.imageSmoothingEnabled = false;
-      surf.ctx.drawImage(
-        this.background, 0, 0, bw, bh,
-        Math.round(((surf.width - dw) / 2) * ps), Math.round(((surf.height - dh) / 2) * ps),
-        Math.round(dw * ps), Math.round(dh * ps),
-      );
+      this.drawEventBackground(surf, this.background);
     }
 
     // Update and draw portraits (sorted by priority, ascending)
@@ -10368,6 +10415,8 @@ export class EventState extends State {
         portraitPriorityCounter: this.portraitPriorityCounter,
         background: this.background,
       });
+      this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
+      this.parkedOrder.push(previous);
       this.eventTables = new Map();
       this.eventTextboxes = new Map();
       this.portraits = new Map();
@@ -10395,6 +10444,7 @@ export class EventState extends State {
       }
       const parked = this.parkedEventPresentation.get(next);
       let restoredBackground: HTMLImageElement | null = null;
+      this.parkedOrder = this.parkedOrder.filter((event) => event !== next);
       if (parked) {
         this.parkedEventPresentation.delete(next);
         this.eventTables = parked.eventTables;
@@ -10421,6 +10471,7 @@ export class EventState extends State {
       this.locationCard = null;
     } else {
       this.currentEvent = null;
+      this.parkedOrder = [];
       this.endingCard = null;
       this.creditCards = [];
       this.portraits.clear();

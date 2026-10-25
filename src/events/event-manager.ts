@@ -1099,6 +1099,62 @@ function findMatchingParen(str: string, start: number): number {
   return -1;
 }
 
+/** Start index of the primary expression (receiver) that ends just before `end`. */
+function receiverStart(str: string, end: number): number {
+  let i = end - 1;
+  for (;;) {
+    if (i < 0) return 0;
+    const ch = str[i];
+    let group = false;
+    if (ch === ')' || ch === ']') {
+      const open = ch === ')' ? '(' : '[';
+      let depth = 0;
+      for (; i >= 0; i--) {
+        if (str[i] === ch) depth++;
+        else if (str[i] === open && --depth === 0) break;
+      }
+      if (i < 0) return -1;
+      i -= 1;
+      group = true;
+    } else if (ch === "'" || ch === '"') {
+      i -= 1;
+      while (i >= 0 && str[i] !== ch) i -= 1;
+      if (i < 0) return -1;
+      i -= 1;
+    } else if (/[\w$]/.test(ch)) {
+      while (i >= 0 && /[\w$]/.test(str[i])) i -= 1;
+    } else {
+      return i + 1;
+    }
+    if (i < 0) return 0;
+    // Member chains: `a.b`, and calls/subscripts `f(x)`, `a[0]`.
+    if (str[i] === '.') { i -= 1; continue; }
+    if (group && /[\w$\])]/.test(str[i])) continue;
+    return i + 1;
+  }
+}
+
+/**
+ * Python `seq.index(x)` (lists and strings): JavaScript arrays have no
+ * `index`, so rewrite to `__pyIndex(seq, x)`, which raises like Python when
+ * the value is missing.
+ */
+function translatePyIndexCalls(expression: string): string {
+  let translated = expression;
+  for (let pass = 0; pass < 20; pass++) {
+    const match = /\.index\s*\(/.exec(translated);
+    if (!match) break;
+    const start = receiverStart(translated, match.index);
+    const open = translated.indexOf('(', match.index);
+    const close = findMatchingParen(translated, open);
+    if (start < 0 || close < 0 || start >= match.index) break;
+    const receiver = translated.slice(start, match.index);
+    const arg = translated.slice(open + 1, close);
+    translated = `${translated.slice(0, start)}__pyIndex(${receiver}, ${arg})${translated.slice(close + 1)}`;
+  }
+  return translated;
+}
+
 /** Translate Python any/all generator expressions without losing nested calls. */
 function translateGeneratorExpressions(expression: string): string {
   let translated = expression;
@@ -2590,6 +2646,7 @@ function translateExpression(condition: string): string {
   jsExpr = translateListComprehensions(jsExpr);
   jsExpr = translateSortedCalls(jsExpr);
   jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
+  jsExpr = translatePyIndexCalls(jsExpr);
   jsExpr = jsExpr.replace(
     /(\b[A-Za-z_]\w*(?:\([^)]*\)|(?:\.[A-Za-z_]\w*)|\[[^\]]+\])*)\[-(\d+)\]/g,
     '$1.at(-$2)',
@@ -2957,6 +3014,11 @@ function evaluateWithJsFallback(
       '_wrapUnit', '_wrapItem', '_wrapSkill', '_wrapClass', 'action', 'SourceType',
       `"use strict";
        ${localDeclarations}
+       var __pyIndex = (seq, x) => {
+         const i = seq == null ? -1 : seq.indexOf(x);
+         if (i < 0) throw new Error('ValueError: ' + String(x) + ' is not in list');
+         return i;
+       };
        // Spread query engine functions into local scope
        var _units = values => Array.from(values || []).map(_wrapUnit),
            u = (...args) => _wrapUnit(_qf.u(...args)),

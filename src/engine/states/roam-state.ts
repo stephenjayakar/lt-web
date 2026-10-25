@@ -30,6 +30,7 @@ import { unitSpriteTint } from '../../combat/skill-system';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
 import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
+import { fadeInPhaseMusic } from './game-states';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -218,6 +219,9 @@ export class FreeRoamState extends MapState {
 
     // Hide cursor — roam uses direct unit control
     game.cursor.visible = false;
+    // Python FreeRoamState.begin: phase.fade_in_phase_music() (the hub's
+    // change_music otherwise never played and the title song kept going).
+    fadeInPhaseMusic(game);
 
     // Get the roam unit
     const roamInfo = game.roamInfo;

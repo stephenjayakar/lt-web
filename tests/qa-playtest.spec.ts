@@ -647,3 +647,84 @@ test('objective loss text alone never forces a game over (Python: events own los
   expect(result.dead).toBe(true);
   expect(result.stack).not.toContain('game_over');
 });
+
+test('expressions support Python seq.index (EOtF hub music track list)', async ({ page }) => {
+  await boot(page);
+  const values = await page.evaluate(async () => {
+    const { evaluateExpression } = await import('/src/events/event-manager.ts');
+    const g = (window as any).__gameRef;
+    const ctx = { game: g, gameVars: g.gameVars, levelVars: g.levelVars };
+    return [
+      evaluateExpression("[1, 2, 3].index(2)", ctx),
+      evaluateExpression("'abc'.index('c')", ctx),
+      evaluateExpression("[str(['Track 1','Track 2'].index(s)) + '|' + s for s in ['Track 1','Track 2']]", ctx),
+    ];
+  });
+  expect(values).toEqual([1, 2, ['0|Track 1', '1|Track 2']]);
+});
+
+test('free roam fades in the level phase music on begin (Python FreeRoamState.begin)', async ({ page }) => {
+  await boot(page);
+  const calls = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const seen: string[] = [];
+    g.audioManager.fadeIn = async (nid: string) => { seen.push(nid); };
+    g.currentLevel.music = { ...(g.currentLevel.music ?? {}), player_phase: 'QA_Hub_Song' };
+    g.roamInfo.roam = true;
+    g.roamInfo.roamUnitNid = 'Eirika';
+    g.state.change('free_roam');
+    (window as any).__harness.stepFrames(3, null);
+    return seen;
+  });
+  expect(calls).toContain('QA_Hub_Song');
+});
+
+test('choice sub-events draw the paused parent (tables + chosen menu) underneath', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.db.events.set('qa_sub_child', {
+      name: 'qa_sub_child', nid: 'qa_sub_child', trigger: null, level_nid: null,
+      condition: 'True', only_once: false, priority: 0, _source: ['speak;;Child running'],
+    });
+  });
+  await runEvent(page, 'qa_sub_parent', [
+    'table;qa_tbl;A,B;;1,2',
+    'choice;qa_pick;Pick;X,Y;EventNid=qa_sub_child',
+    'game_var;after_parent;1',
+  ], 5);
+  await press(page, 'SELECT');
+  await stepFrames(page, 6);
+  const drawn = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const s = g.state.getCurrentState() as any;
+    let tableDraws = 0;
+    let menuDraws = 0;
+    const original = s.drawEventTables.bind(s);
+    s.drawEventTables = (surf: any) => { if (s.eventTables.has('qa_tbl')) tableDraws++; original(surf); };
+    const suspended = s.suspendedChoiceEvents.at(-1);
+    if (suspended?.menu) {
+      const drawMenu = suspended.menu.draw.bind(suspended.menu);
+      suspended.menu.draw = (surf: any) => { menuDraws++; drawMenu(surf); };
+    }
+    (window as any).__harness.stepFrames(1, null);
+    s.drawEventTables = original;
+    return { parked: s.parkedOrder.length, tableDraws, menuDraws, child: !!s.dialog };
+  });
+  expect(drawn.child).toBe(true);
+  expect(drawn.parked).toBeGreaterThan(0);
+  expect(drawn.tableDraws).toBeGreaterThan(0);
+  expect(drawn.menuDraws).toBeGreaterThan(0);
+});
+
+test('phase change shows the Python turnbanner (PhaseIn)', async ({ page }) => {
+  await boot(page);
+  const info = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.state.change('phase_change');
+    (window as any).__harness.stepFrames(2, null);
+    const s = g.state.getCurrentState() as any;
+    return { name: s.name, banner: s.banner?.constructor?.name ?? null };
+  });
+  expect(info).toEqual({ name: 'phase_change', banner: 'PhaseIn' });
+});
