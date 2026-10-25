@@ -8,6 +8,17 @@
  * and internally scale them. Sprite blits use nearest-neighbor filtering;
  * text and vector ops render at native resolution for crispness.
  */
+/**
+ * Whether the per-frame screen and map surfaces are GPU-backed (see the
+ * Surface constructor's `readback` flag). `?gpu=0` turns it off to compare
+ * against the CPU rasterizer: the two agree except for sub-game-pixel
+ * tie-breaking at scaled texel edges and rounding in translucent overlays.
+ */
+let frameSurfacesOnGpu = true;
+export function setFrameSurfacesOnGpu(enabled: boolean): void {
+  frameSurfacesOnGpu = enabled;
+}
+
 export class Surface {
   /** Logical dimensions (game-space, e.g. 240x160). */
   readonly width: number;
@@ -37,6 +48,11 @@ export class Surface {
     if (!ctx) throw new Error('Failed to get 2d context');
     this._ctx = ctx;
     this._ctx.imageSmoothingEnabled = false;
+  }
+
+  /** A full-screen per-frame compositing target (never read back). */
+  static frame(width: number, height: number, scale: number): Surface {
+    return new Surface(width, height, scale, !frameSurfacesOnGpu);
   }
 
   /**

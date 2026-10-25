@@ -8,7 +8,7 @@
 
 import { FRAMETIME, updateAnimationCounters } from './engine/constants';
 import { viewport } from './engine/viewport';
-import { Surface } from './engine/surface';
+import { Surface, setFrameSurfacesOnGpu } from './engine/surface';
 import { InputManager } from './engine/input';
 import { installWebControls } from './ui/web-controls';
 import { installStartupStatus } from './ui/web-startup';
@@ -495,6 +495,8 @@ async function main(): Promise<void> {
 
   // --- Determine project URL ---
   const params = new URLSearchParams(window.location.search);
+  // ?gpu=0 rasterizes the screen/map surfaces on the CPU (comparison aid).
+  if (params.get('gpu') === '0') setFrameSurfacesOnGpu(false);
   const harnessMode = params.get('harness') === 'true';
   const controlTelemetry = params.get('control') === 'true';
   const harnessLevel = params.get('level') ?? 'DEBUG';
@@ -806,14 +808,14 @@ async function main(): Promise<void> {
   canvas.focus({ preventScroll: true });
 
   // --- Game surface (dynamic size) ---
-  let gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale, false);
+  let gameSurface = Surface.frame(viewport.width, viewport.height, viewport.renderScale);
   let lastViewW = viewport.width;
   let lastViewH = viewport.height;
 
   /** Recreate surface if viewport changed. */
   function refreshSurface(): void {
     if (viewport.width !== lastViewW || viewport.height !== lastViewH) {
-      gameSurface = new Surface(viewport.width, viewport.height, viewport.renderScale, false);
+      gameSurface = Surface.frame(viewport.width, viewport.height, viewport.renderScale);
       lastViewW = viewport.width;
       lastViewH = viewport.height;
     }
