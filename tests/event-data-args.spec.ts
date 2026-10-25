@@ -193,6 +193,49 @@ test.describe('Event data command parity', () => {
     expect(position).toEqual([setup.target[0], setup.target[1] + 1]);
   });
 
+  test('{f:unit.field} placeholders read unit and class fields', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'QaFields', [
+      'set_unit_field;Eirika;QaHp;5',
+      'game_var;qa_f;{f:Eirika.QaHp}',
+      'game_var;qa_e;{e:{f:Eirika.QaHp} + 1}',
+      'game_var;qa_fallback;{f:Eirika.QaMissing,7}',
+    ]);
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { f: g.gameVars.get('qa_f'), e: g.gameVars.get('qa_e'), fallback: g.gameVars.get('qa_fallback') };
+    });
+    expect(vars).toEqual({ f: 5, e: 6, fallback: 7 });
+  });
+
+  test('end_turn ends the turn and clears every queued event', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      for (const [nid, source] of [
+        ['QaEndTurn', ['end_turn', 'game_var;qa_after_end_turn;1']],
+        ['QaQueuedBehind', ['game_var;qa_queued_ran;1']],
+      ] as const) {
+        g.db.events.set(nid, {
+          name: nid, nid, trigger: nid, level_nid: g.currentLevel?.nid ?? null,
+          condition: 'True', only_once: false, priority: 0, _source: source,
+        });
+        g.eventManager.triggerSpecific(nid, { type: nid }, true);
+      }
+      g.state.change('event');
+      (window as any).__harness.stepFrames(10, null);
+    });
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        phase: g.phase.getCurrent(),
+        after: g.gameVars.get('qa_after_end_turn') ?? null,
+        queued: g.gameVars.get('qa_queued_ran') ?? null,
+      };
+    });
+    expect(result).toEqual({ phase: 'enemy', after: null, queued: null });
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);

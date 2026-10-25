@@ -64,6 +64,18 @@ export class PhaseController {
     } while (true);
   }
 
+  /**
+   * Python PhaseController.get_next: the next team (after the current one,
+   * wrapping) that has units on the map; 'player' if none does.
+   */
+  getNext(hasUnitsOnMap: (team: string) => boolean): string {
+    for (let counter = 1; counter < 100; counter += 1) {
+      const team = this.teams[(this.currentIndex + counter) % this.teams.length];
+      if (hasUnitsOnMap(team)) return team;
+    }
+    return 'player';
+  }
+
   /** Check if it's the player's turn. */
   isPlayerPhase(): boolean {
     return this.getCurrent() === 'player';

@@ -11374,10 +11374,11 @@ export class EventState extends State {
     );
     try {
       const evaluated = evaluateExpression(typedSource, context);
-      return evaluated === undefined ? substitutedSource : evaluated;
+      if (evaluated !== undefined) return evaluated;
     } catch {
-      return substitutedSource;
+      // Fall through: Python evaluates the fully substituted text.
     }
+    return this.evaluateVariableExpression(substitutedSource);
   }
 
   /** Open an event-owned state directly or after the standard fade-to-black. */
@@ -11686,6 +11687,43 @@ export class EventState extends State {
           return resolved === undefined ? '??' : eventObjectToString(resolved);
         },
       );
+      // Python TextEvaluator._evaluate_unit_fields: {f:[unit.]key[, fallback]}
+      // reads unit.get_field (unit fields, then class fields); a class nid
+      // reads that class's field. EOtF stores Undeath HP, possessors, and
+      // original names this way.
+      const replaceFieldTags = (source: string): string => source.replace(
+        /\{(?:f|field):([^{}]*)\}/g,
+        (_match, body: string) => {
+          const comma = body.indexOf(',');
+          const fieldText = comma >= 0 ? body.slice(0, comma) : body;
+          const fallback = comma >= 0 ? body.slice(comma + 1) : ' ';
+          const dot = body.indexOf('.');
+          const [nid, field] = dot >= 0
+            ? [fieldText.slice(0, fieldText.indexOf('.')), fieldText.slice(fieldText.indexOf('.') + 1)]
+            : ['_unit', fieldText];
+          const trigger = this.currentEvent?.trigger;
+          const unit = nid === '_unit'
+            ? (trigger?.unit1 ?? (unitNid ? this.findUnit(unitNid) : undefined))
+            : nid === '_unit2'
+              ? (trigger?.unit2 ?? (unit2Nid ? this.findUnit(unit2Nid) : undefined))
+              : this.findUnit(nid);
+          if (!unit) {
+            const klass = game.db.classes.get(nid);
+            const found = klass?.fields?.find?.((entry: [string, unknown]) => entry[0] === field);
+            if (!found) {
+              console.warn(`eval of {f:${body}} failed, unknown unit or class: ${nid}`);
+              return '??';
+            }
+            return eventObjectToString(found[1]);
+          }
+          const fields: Map<string, unknown> | undefined = (unit as any).fields;
+          if (fields?.has?.(field)) return eventObjectToString(fields.get(field));
+          const classField = game.db.classes.get(unit.klass)?.fields?.find?.(
+            (entry: [string, unknown]) => entry[0] === field,
+          );
+          return eventObjectToString(classField ? classField[1] : fallback);
+        },
+      );
       const typedVariableLiteral = (resolved: unknown): string => {
         if (typeof resolved === 'string') {
           const trimmed = resolved.trim();
@@ -11747,7 +11785,8 @@ export class EventState extends State {
             .replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
               const resolved = variableValue(key);
               return resolved === undefined ? match : eventObjectToString(resolved);
-            }),
+            })
+            .replace(/\{(?:f|field):[^{}]*\}/g, (match) => replaceFieldTags(match)),
         );
         const bareName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(typedExpression);
         const contextName = /^(?:game|unit1?|unit2|target|region|position|target_pos|item)$/
@@ -11770,6 +11809,7 @@ export class EventState extends State {
         if (result !== undefined) return eventObjectToString(result);
         return match;
       });
+      value = replaceFieldTags(value);
       value = replaceDataTags(value);
       return value;
     });
@@ -14699,9 +14739,25 @@ export class EventState extends State {
       // ----- End turn -----
 
       case 'end_turn': {
-        // Finish this event, then trigger a turn change
+        // end_turn;Team? (Python :723): with a team, skip phases until that
+        // team is next; then end this event, forcibly clear every queued
+        // event (Python event_state end_turn_flag), and change turns.
+        const team = args[0];
+        const fieldTeam = (nid: string) => [...game.units.values()].some((unit: UnitObject) =>
+          unit.team === nid && !!unit.position && !unit.tags.includes('Tile'));
+        if (team) {
+          const teamExists = game.db.teams?.defs?.some((def: { nid: string }) => def.nid === team);
+          if (!teamExists || !fieldTeam(team)) {
+            console.warn(`end_turn: ${team} is not a valid team with units on the map`);
+            this.advancePointer();
+            return false;
+          }
+          for (let guard = 0; guard < 99 && game.phase.getNext(fieldTeam) !== team; guard += 1) {
+            game.phase.next((nid: string) => game.board.getTeamUnits(nid));
+          }
+        }
         if (this.currentEvent) this.currentEvent.finish();
-        game.eventManager?.dequeueCurrentEvent();
+        if (game.eventManager) game.eventManager.eventQueue.length = 0;
         this.currentEvent = null;
         game.state.back();
         game.state.change('turn_change');
