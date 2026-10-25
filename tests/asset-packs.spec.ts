@@ -5,8 +5,9 @@
  */
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
+import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { deflateSync } from 'zlib';
@@ -14,6 +15,8 @@ import { deflateSync } from 'zlib';
 import { buildPacks, packRecord, splitChunks as splitChunksNode } from '../scripts/lib/asset-packs.mjs';
 // @ts-expect-error — plain ESM build script without type declarations
 import { decodePng } from '../scripts/lib/pngopt.mjs';
+// @ts-expect-error — plain ESM build script without type declarations
+import { checkMusicTools, transcodeOgg } from '../scripts/lib/music-transcode.mjs';
 import { joinChunks, parseManifest, splitChunks } from '../src/packs/manifest';
 
 interface BuiltChunk { hash: string; size: number; bytes: Buffer }
@@ -104,8 +107,8 @@ function makeFixture(): { root: string; projectDir: string; engineDir: string } 
 
 const CHUNK = 4096;
 
-function build(fixture: { projectDir: string; engineDir: string }): Built {
-  return buildPacks({ ...fixture, pngCacheDir: null, chunkMax: CHUNK }) as Built;
+function build(fixture: { projectDir: string; engineDir: string }, overrides?: Map<string, Buffer>): Built {
+  return buildPacks({ ...fixture, pngCacheDir: null, chunkMax: CHUNK, overrides }) as Built;
 }
 
 test.describe('asset pack builder', () => {
@@ -403,5 +406,100 @@ test.describe('hosted asset pack loader', () => {
     expect(recovered.replaced).toBe(data.chunks[0].size);
     expect(recovered.removed).toBe(1);
     expect(served.hits.get(dataHash)).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Re-encoded music (build:site --music-quality)
+// ---------------------------------------------------------------------------
+
+function hasMusicTools(): boolean {
+  try {
+    checkMusicTools();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A high-bitrate stereo 44.1 kHz Ogg Vorbis tone with an odd sample count. */
+function makeToneOgg(dir: string, frames: number): Buffer {
+  const wav = join(dir, 'tone.wav');
+  const ogg = join(dir, 'tone.ogg');
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi',
+    '-i', `sine=frequency=440:sample_rate=44100,aformat=channel_layouts=stereo,atrim=end_sample=${frames}`,
+    '-c:a', 'pcm_f32le', wav], { stdio: 'pipe' });
+  execFileSync('oggenc', ['-Q', '-q', '10', '-o', ogg, wav], { stdio: 'pipe' });
+  return readFileSync(ogg);
+}
+
+test.describe('re-encoded music', () => {
+  test.skip(!hasMusicTools(), 'needs ffmpeg/ffprobe and oggenc (vorbis-tools)');
+
+  const FRAMES = 3 * 44100 + 1237; // not a multiple of any Vorbis block size
+
+  test('libvorbis re-encode keeps format and exact length, decodes and loops in the engine', async ({ page }) => {
+    const fx = makeFixture();
+    try {
+      const source = makeToneOgg(fx.root, FRAMES);
+      const r = await transcodeOgg(source, { quality: 5, cacheDir: null, label: 'tone' });
+      expect(r.kept).toBe(false);
+      expect(r.data.length).toBeLessThan(source.length);
+      expect(r.sampleRate).toBe(44100);
+      expect(r.channels).toBe(2);
+      expect(r.sourceFrames).toBe(FRAMES);
+      expect(r.frames).toBe(FRAMES);
+      expect(r.data.subarray(0, 4).toString('latin1')).toBe('OggS');
+
+      const rel = 'demo.ltproj/resources/music/Theme.ogg';
+      const built = build(fx, new Map([[rel, r.data]]));
+      await servePacks(page, built);
+      const played = await page.evaluate(async (base) => {
+        await caches.delete('lt-packs-v1');
+        const { bootHostedPacks, loadPackManifest } = await import('/src/packs/hosted.ts');
+        const { AudioManager } = await import('/src/audio/audio-manager.ts');
+        await bootHostedPacks(await loadPackManifest(base), { base });
+        const am = new AudioManager('/game-data/demo.ltproj');
+        am.init();
+        await am.playMusic('Theme', 0);
+        const internal = am as unknown as { currentMusic: AudioBufferSourceNode | null; currentMusicNid: string };
+        const src = internal.currentMusic;
+        const buf = src?.buffer ?? null;
+        let rms = 0;
+        if (buf) {
+          const ch = buf.getChannelData(0);
+          for (let i = 0; i < ch.length; i++) rms += ch[i] * ch[i];
+          rms = Math.sqrt(rms / ch.length);
+        }
+        return {
+          nid: internal.currentMusicNid,
+          loop: src?.loop ?? null,
+          duration: buf?.duration ?? null,
+          channels: buf?.numberOfChannels ?? null,
+          rms,
+        };
+      }, BASE);
+      const lengths = await page.evaluate(async ([a, b]) => {
+        const decode = async (b64: string) => {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const ctx = new OfflineAudioContext(2, 1, 44100);
+          return (await ctx.decodeAudioData(bytes.buffer)).length;
+        };
+        return { source: await decode(a), reencoded: await decode(b), rate: new AudioContext().sampleRate };
+      }, [source.toString('base64'), r.data.toString('base64')]);
+      expect(played.nid).toBe('Theme');
+      expect(played.loop).toBe(true);
+      expect(played.channels).toBe(2);
+      // Chrome's Vorbis decoder ignores the end-of-stream trim, so it pads to
+      // the last block for the original and the re-encode alike: the loop the
+      // engine plays must be exactly as long as the original's.
+      expect(lengths.reencoded).toBe(lengths.source);
+      expect(Math.abs(lengths.reencoded - FRAMES)).toBeLessThan(2048);
+      // decodeAudioData resamples to the context rate; duration is preserved
+      expect(Math.abs(played.duration! - lengths.source / 44100)).toBeLessThan(0.001);
+      expect(played.rms).toBeGreaterThan(0.03); // ffmpeg sine (amplitude 1/8): audible, not silence
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
   });
 });

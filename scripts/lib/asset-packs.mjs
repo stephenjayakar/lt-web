@@ -34,6 +34,8 @@
  *   - Python-only custom component sources (*.py) are dropped — the web port
  *     implements components in TypeScript and never requests them;
  *   - PNGs are re-encoded losslessly (pngopt.mjs, pixel-verified);
+ *   - (build:site only) music may be re-encoded at a lower Vorbis quality by
+ *     the caller (music-transcode.mjs, passed in as overrides);
  *   - text formats (JSON, .orderkeys) are DEFLATEd inside the zip; media is
  *     STOREd (already compressed).
  */
@@ -262,7 +264,10 @@ function makePngOptimizer(cacheDir) {
  *
  * @param {{ projectDir: string, engineDir?: string | null, pngopt?: boolean,
  *           pngCacheDir?: string | null, chunkMax?: number,
- *           musicLoad?: 'demand' | 'background' }} opts
+ *           musicLoad?: 'demand' | 'background',
+ *           overrides?: Map<string, Buffer> }} opts
+ *   overrides  replacement bytes by pack path (e.g. re-encoded music from
+ *              music-transcode.mjs); the source tree is never modified.
  */
 export function buildPacks(opts) {
   const { projectDir, engineDir = null, pngopt = true, chunkMax = CHUNK_MAX, musicLoad = 'background' } = opts;
@@ -272,7 +277,8 @@ export function buildPacks(opts) {
 
   const entries = files.map((f) => {
     const raw = readFileSync(f.abs);
-    const data = extOf(f.rel) === '.png' ? shrinkPng(raw) : raw;
+    const replaced = opts.overrides?.get(f.rel);
+    const data = replaced ?? (extOf(f.rel) === '.png' ? shrinkPng(raw) : raw);
     return { rel: f.rel, origSize: raw.length, data };
   });
 

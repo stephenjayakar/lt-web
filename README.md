@@ -63,8 +63,15 @@ background; music intro/battle variants, which the web engine never plays,
 load only on request. Chunks are verified and kept in Cache Storage by hash,
 so returning visits and redeploys download only changed packs. Files Lex
 Talionis can never load (music not in `music.json`, Python sources) are
-dropped and PNGs are re-encoded losslessly. The build fails if any file
-reaches 25 MiB or raw game assets leak outside `dist/packs/`.
+dropped and PNGs are re-encoded losslessly.
+
+To fit the host's 256 MiB archive cap, `build:site` (only) re-encodes the music
+with libvorbis — `oggenc` from vorbis-tools, decoding via ffmpeg (`brew install
+ffmpeg vorbis-tools`) — at `--music-quality 5` (~160 kbps; `off` keeps the
+originals). Names, sample rate, channels and decoded sample counts are
+unchanged (each track is verified); transcodes are cached by source hash and
+quality. EOtF's `dist/` is about 163 MiB. The build fails if any file reaches
+25 MiB, `dist/` reaches 240 MiB, or raw game assets leak outside `dist/packs/`.
 
 ### Saves and upgrades
 

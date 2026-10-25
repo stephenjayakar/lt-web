@@ -6,6 +6,7 @@
  * Usage:
  *   npm run build:site [-- --project <dir>] [--engine <lt-maker dir>]
  *                      [--convex-url <url>] [--no-pngopt] [--music-on-demand]
+ *                      [--music-quality N|off]
  *
  *   --project DIR      the .ltproj to ship (default lt-maker/eotf.ltproj)
  *   --engine DIR       lt-maker checkout with the engine-level assets
@@ -15,6 +16,11 @@
  *   --no-pngopt        keep PNG bytes as-is
  *   --music-on-demand  download each music track on first play instead of in
  *                      the background after boot
+ *   --music-quality N  re-encode the campaign music with libvorbis (oggenc)
+ *                      at VBR quality N (default 5, ~160 kbps; `off` ships the
+ *                      original files). Same names, sample rate, channels and
+ *                      sample counts; cached by source hash + quality.
+ *                      Needs ffmpeg/ffprobe and oggenc (vorbis-tools).
  *
  * Steps: typecheck, `vite build` with LT_SITE_BUILD=1 (public/ is copied
  * without game-data/ and bundles/; the client loads packs), then write the
@@ -22,8 +28,9 @@
  * dist/packs/<sha256>.bin per chunk (scripts/lib/asset-packs.mjs).
  *
  * Fails when any dist/ file reaches the static host's 25 MiB per-file limit,
- * when raw game assets (game-data/, bundles/, loose media) end up outside
- * dist/packs/, or when a chunk does not match the manifest.
+ * when dist/ as a whole reaches 240 MiB (headroom under the host's 256 MiB
+ * archive cap), when raw game assets (game-data/, bundles/, loose media) end
+ * up outside dist/packs/, or when a chunk does not match the manifest.
  */
 
 import { spawnSync } from 'child_process';
@@ -31,10 +38,12 @@ import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { buildPacks, packRecord } from './lib/asset-packs.mjs';
+import { buildPacks, collectFiles, packRecord } from './lib/asset-packs.mjs';
+import { checkMusicTools, transcodeAll } from './lib/music-transcode.mjs';
 
 const PROD_CONVEX_URL = 'https://<prod-deployment>.convex.cloud';
 const FILE_LIMIT = 25 * 1024 * 1024;
+const TOTAL_LIMIT = 240 * 1024 * 1024;
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -49,6 +58,12 @@ const engineDir = resolve(root, opt('--engine', 'lt-maker'));
 const convexUrl = opt('--convex-url', process.env.CONVEX_URL || PROD_CONVEX_URL);
 const pngopt = !flag('--no-pngopt');
 const musicLoad = flag('--music-on-demand') ? 'demand' : 'background';
+const musicQualityArg = opt('--music-quality', '5');
+const musicQuality = musicQualityArg === 'off' ? null : Number(musicQualityArg);
+if (musicQuality !== null && !(musicQuality >= -1 && musicQuality <= 10)) {
+  console.error(`--music-quality must be -1..10 or off, got ${musicQualityArg}`);
+  process.exit(1);
+}
 const dist = join(root, 'dist');
 const mb = (n) => (n / 1048576).toFixed(2);
 
@@ -72,6 +87,13 @@ function* walk(dir) {
 
 if (!/^https:\/\/[a-z0-9-]+\.convex\.cloud\/?$/.test(convexUrl)) fail(`not a Convex cloud URL: ${convexUrl}`);
 if (!existsSync(projectDir)) fail(`${projectDir} not found (link the EOtF project at lt-maker/eotf.ltproj)`);
+if (musicQuality !== null) {
+  try {
+    checkMusicTools();
+  } catch (err) {
+    fail(err.message);
+  }
+}
 const convexSiteUrl = convexUrl.replace(/\/$/, '').replace(/\.convex\.cloud$/, '.convex.site');
 
 // --- 1. app shell -----------------------------------------------------------
@@ -85,10 +107,44 @@ run(npx, ['vite', 'build'], {
   VITE_CONVEX_SITE_URL: convexSiteUrl,
 });
 
-// --- 2. game data packs -------------------------------------------------------
+// --- 2. music re-encode (hosted build only; the source tree is untouched) ----
+let overrides = new Map();
+const music = { files: 0, before: 0, after: 0, kept: 0, cached: 0, maxDrift: 0 };
+if (musicQuality !== null) {
+  const musicFiles = collectFiles({ projectDir }).files
+    .filter((f) => /\/resources\/music\/[^/]+\.ogg$/i.test(f.rel));
+  console.log(`\nRe-encoding ${musicFiles.length} music tracks with libvorbis -q ${musicQuality}…`);
+  const t = Date.now();
+  overrides = new Map();
+  try {
+    const results = await transcodeAll(musicFiles, {
+      quality: musicQuality,
+      onDone: (rel, r) => {
+        music.files++;
+        if (r.cached) music.cached++;
+        if (r.kept) music.kept++;
+        music.maxDrift = Math.max(music.maxDrift, Math.abs(r.frames - r.sourceFrames));
+        if (!r.cached) process.stdout.write(`  ${music.files}/${musicFiles.length} ${rel.split('/').pop()}\n`);
+      },
+    });
+    for (const f of musicFiles) {
+      const r = results.get(f.rel);
+      music.before += f.size;
+      music.after += r.data.length;
+      overrides.set(f.rel, r.data);
+    }
+  } catch (err) {
+    fail(`music re-encode: ${err.message}`);
+  }
+  console.log(`music: ${music.files} tracks ${mb(music.before)} MB -> ${mb(music.after)} MB `
+    + `(${music.cached} cached, ${music.kept} kept original, max length change ${music.maxDrift} samples) `
+    + `in ${((Date.now() - t) / 1000).toFixed(1)}s`);
+}
+
+// --- 3. game data packs -------------------------------------------------------
 console.log(`\nPacking ${projectDir} (+ engine assets from ${engineDir})…`);
 const t0 = Date.now();
-const { project, packs, excluded } = buildPacks({ projectDir, engineDir, pngopt, musicLoad });
+const { project, packs, excluded } = buildPacks({ projectDir, engineDir, pngopt, musicLoad, overrides });
 const packDir = join(dist, 'packs');
 mkdirSync(packDir, { recursive: true });
 const written = new Set();
@@ -111,8 +167,11 @@ for (const load of ['boot', 'background', 'demand']) {
 }
 const droppedBytes = sum(excluded, (e) => e.size);
 console.log(`  dropped    ${String(excluded.length).padStart(4)} files ${mb(droppedBytes).padStart(8)} MB (never loaded by the engine)`);
+const isMusic = (p) => p.name.startsWith('music/');
+console.log(`  by kind:   music ${mb(sum(packs.filter(isMusic), (p) => p.size))} MB, `
+  + `other game data ${mb(sum(packs.filter((p) => !isMusic(p)), (p) => p.size))} MB`);
 
-// --- 3. checks ----------------------------------------------------------------
+// --- 4. checks ----------------------------------------------------------------
 const problems = [];
 let distBytes = 0;
 let distFiles = 0;
@@ -137,9 +196,16 @@ for (const p of manifest.packs) {
     }
   }
 }
+if (distBytes >= TOTAL_LIMIT) {
+  problems.push(`dist/ totals ${mb(distBytes)} MB (limit: under 240 MiB for the 256 MiB archive cap; lower --music-quality)`);
+}
 const indexHtml = readFileSync(join(dist, 'index.html'), 'utf8');
 if (!/src="\/assets\/[^"]+\.js"/.test(indexHtml)) problems.push('index.html does not load /assets/*.js from the site root');
 if (problems.length) fail(`\n  ${problems.join('\n  ')}`);
 
-console.log(`\nbuild:site OK: ${distFiles} files, ${mb(distBytes)} MB in ${dist}; largest file under 25 MiB; `
-  + `project ${project}; Convex ${convexUrl}`);
+const packBytes = sum(manifest.packs, (p) => p.size);
+console.log(`\ndist/ breakdown: app shell ${mb(distBytes - packBytes - statSync(join(packDir, 'manifest.json')).size)} MB, `
+  + `packs ${mb(packBytes)} MB (boot ${mb(sum(byLoad('boot'), (p) => p.size))}, background ${mb(sum(byLoad('background'), (p) => p.size))}, `
+  + `demand ${mb(sum(byLoad('demand'), (p) => p.size))}), manifest ${mb(statSync(join(packDir, 'manifest.json')).size)} MB`);
+console.log(`build:site OK: ${distFiles} files, ${mb(distBytes)} MB (MiB) in ${dist}; under 240 MiB total, every file under 25 MiB; `
+  + `music ${musicQuality === null ? 'original' : `libvorbis -q ${musicQuality}`}; project ${project}; Convex ${convexUrl}`);
