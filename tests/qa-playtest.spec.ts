@@ -975,3 +975,29 @@ test('grid_opacity and show_bounds settings draw the map grid and bounds (Python
   expect(result.off.some((pixel) => pixel !== '0,0,0')).toBe(true);
   expect(result.boundsOn).not.toEqual(result.boundsOff);
 });
+
+test('unchoice re-opens the choice with the cursor where it was (Python PlayerChoiceState.unchoose)', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.db.events.set('qa_unchoice_sub', {
+      name: 'qa_unchoice_sub', nid: 'qa_unchoice_sub', trigger: null, level_nid: null,
+      condition: 'True', only_once: false, priority: 0,
+      _source: ['if;{v:qa_uc_count} < 1', 'game_var;qa_uc_count;{v:qa_uc_count} + 1', 'unchoice', 'end'],
+    });
+    g.gameVars.set('qa_uc_count', 0);
+  });
+  await runEvent(page, 'qa_unchoice_parent', [
+    'choice;qa_uc;Pick;A,B,C,D;EventNid=qa_unchoice_sub',
+    'game_var;qa_uc_done;1',
+  ], 5);
+  await press(page, 'DOWN');
+  await press(page, 'DOWN');
+  await press(page, 'SELECT');
+  await stepFrames(page, 12);
+  const after = await page.evaluate(() => {
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    return { open: !!s.choiceMenu, index: s.choiceMenu?.selectedIndex ?? null };
+  });
+  expect(after).toEqual({ open: true, index: 2 });
+});

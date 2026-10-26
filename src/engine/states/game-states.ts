@@ -9702,6 +9702,10 @@ export class EventState extends State {
     replay: boolean;
     /** Python PlayerChoiceState stays below the sub-event (static cursor). */
     menu?: { draw(surf: Surface): void } | null;
+    /** The choice's nid and cursor: an `unchoice` re-opens the same Python
+     * PlayerChoiceState, so the cursor stays where it was. */
+    choiceNid?: string | null;
+    cursor?: number;
   }> = [];
 
   // For-loop variables are event locals and shadow level/game variables.
@@ -10019,6 +10023,7 @@ export class EventState extends State {
         this.choiceCursorMemory.set(this.choiceNid, this.choiceMenu.selectedIndex);
       }
       const chosenMenu = this.choiceMenu;
+      const chosenNid = this.choiceNid;
       this.choiceMenu = null;
       this.choiceNid = null;
       this.choiceBackable = false;
@@ -10045,6 +10050,8 @@ export class EventState extends State {
             // A persistent choice re-opens once its selection event ends.
             replay: persist,
             menu: chosenMenu,
+            choiceNid: chosenNid,
+            cursor: chosenMenu.selectedIndex,
           } : null;
           const priorLength = queue.length;
           // Python PlayerChoiceState passes the choosing event's context
@@ -10927,7 +10934,12 @@ export class EventState extends State {
         // The parent's portraits belong to its own Python Event object and
         // survive the selection event.
         if (suspended.portraits) this.portraits = suspended.portraits;
-        if (suspended.replay) next.commandPointer = suspended.commandPointer;
+        if (suspended.replay) {
+          next.commandPointer = suspended.commandPointer;
+          if (suspended.choiceNid && suspended.cursor !== undefined && !this.choiceCursorMemory.has(suspended.choiceNid)) {
+            this.choiceCursorMemory.set(suspended.choiceNid, suspended.cursor);
+          }
+        }
       }
       this.background = restoredBackground;
       this.pendingBackgroundLoad = false;
