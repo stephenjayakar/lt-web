@@ -8,11 +8,11 @@
  * ItemTargetingState.selectTarget, PromotionChoiceState) for the
  * implementation.
  *
- * Deviation from Python: the promotion display is a simplified
- * keyboard/mouse choice menu (PromotionChoiceState) rather than the full
- * scroll/fanfare animation screen. Mechanics (class swap, stat gains per
- * the promotion-value sentinel formula, wexp gain, learned-skill grants,
- * stat caps, level reset) are exact.
+ * The item opens promotion_choice (several classes) or 'promotion' (one),
+ * both in src/engine/states/promotion-state.ts; the class change applies
+ * when the level screen starts. Mechanics (class swap, stat gains per the
+ * promotion-value sentinel formula, wexp gain, learned-skill grants, stat
+ * caps, level reset) are exact.
  */
 
 import { test, expect } from '@playwright/test';
@@ -35,6 +35,18 @@ async function stepFrames(page: any, count: number, input?: string | null) {
 
 async function getState(page: any) {
   return page.evaluate(() => (window as any).__harness.getState());
+}
+
+/** Run the promotion animation and level screen (real-time) to the end. */
+async function finishPromotion(page: any) {
+  const end = Date.now() + 30_000;
+  while (Date.now() < end) {
+    const name = (await getState(page)).currentStateName;
+    if (!['promotion', 'class_change', 'promotion_choice', 'event'].includes(name)) return;
+    await stepFrames(page, 20);
+    await page.waitForTimeout(20);
+  }
+  throw new Error('promotion did not finish');
 }
 
 test.describe('Promotion item flow', () => {
@@ -104,10 +116,14 @@ test.describe('Promotion item flow', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('promotion_choice');
 
-    // Exercise the choice menu: move to the second option (Warrior) and select it.
+    // Exercise the choice menu: move to the second option (Warrior), select
+    // it, and confirm Change in the child menu.
     await stepFrames(page, 1, 'DOWN');
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 3);
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('promotion');
+    await finishPromotion(page);
 
     const result = await page.evaluate(({ unitNid, beforeActionIndex }) => {
       const game = (window as any).__gameRef;
@@ -187,8 +203,10 @@ test.describe('Promotion item flow', () => {
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('item_targeting');
-    await stepFrames(page, 1, 'SELECT'); // single option: auto-applies, no promotion_choice
-    await stepFrames(page, 3);
+    await stepFrames(page, 1, 'SELECT'); // single option: straight to the promotion screen
+    await stepFrames(page, 2);
+    expect((await getState(page)).currentStateName).toBe('promotion');
+    await finishPromotion(page);
 
     const result = await page.evaluate(({ unitNid }) => {
       const game = (window as any).__gameRef;
@@ -305,7 +323,8 @@ test.describe('Promotion item flow', () => {
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 3);
+    await stepFrames(page, 2);
+    await finishPromotion(page);
 
     const promoted = await page.evaluate(({ unitNid }) => {
       const game = (window as any).__gameRef;
@@ -377,7 +396,8 @@ test.describe('Promotion item flow', () => {
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 3);
+    await stepFrames(page, 2);
+    await finishPromotion(page);
 
     const beforeSave = await page.evaluate(({ unitNid }) => {
       const game = (window as any).__gameRef;

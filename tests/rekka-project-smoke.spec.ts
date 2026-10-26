@@ -1298,7 +1298,17 @@ test.describe('Rekka all-level compatibility', () => {
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
       .toBe('item_targeting');
     await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    // One promotion class: straight to the promotion screen, whose level
+    // screen runs on real time.
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
+      .toBe('promotion');
+    for (let i = 0; i < 600; i++) {
+      const name = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name);
+      if (name === 'phase_change') break;
+      await page.evaluate(() => (window as any).__harness.stepFrames(20, null));
+      await page.waitForTimeout(20);
+    }
 
     const promoted = await page.evaluate(() => {
       const game = (window as any).__gameRef;

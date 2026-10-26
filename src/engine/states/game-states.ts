@@ -174,6 +174,7 @@ import {
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
+import { requestPromotion } from './promotion-state';
 import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
@@ -711,7 +712,7 @@ function drawUnitMarkers(surf: Surface): void {
  * Python Animation(RESOURCES.animations.get(nid), topleft): a resource
  * animation placed at a pixel top-left (screen or panel space).
  */
-function createPixelAnimation(nid: string, x: number, y: number, hold = false): MapAnimation | null {
+export function createPixelAnimation(nid: string, x: number, y: number, hold = false): MapAnimation | null {
   const game = getGame();
   const prefab = game.db.mapAnimations?.get(nid);
   if (!prefab) return null;
@@ -3881,7 +3882,7 @@ function effectUnits(
   return [...units.values()];
 }
 
-function finishCoreItemUse(
+export function finishCoreItemUse(
   unit: UnitObject,
   item: ItemObject,
   targets: UnitObject[] = [],
@@ -4679,23 +4680,20 @@ export function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): b
  */
 export function useItemInBase(game: any, unit: UnitObject, item: ItemObject, origin: string): 'pushed' | 'done' {
   if (item.hasComponent('promote')) {
+    // Python Promote.end_combat: one option goes straight to the promotion
+    // screen, several to promotion_choice; the item use completes after.
     const options = [...(game.db.classes.get(unit.klass)?.turns_into ?? [])];
-    if (options.length > 1) {
-      game.memory.set('promotion_choice_unit', unit);
-      game.memory.set('promotion_choice_options', options);
-      game.memory.set('promotion_choice_item', item);
-      game.memory.set('promotion_choice_actor', unit);
-      game.memory.set('promotion_choice_source', 'promote');
-      game.memory.set('promotion_choice_origin', origin);
-      game.state.change('promotion_choice');
-      return 'pushed';
-    }
-    if (options.length === 1) {
-      game.actionLog.doAction(new MarkActionGroupStart(unit, 'item_use'));
-      applyItemStartResourceHooks(game, unit, item);
-      performPromotionOrClassChange(unit, options[0], game, 'promote');
-      finishCoreItemUse(unit, item, [unit], new Map(), true, true);
-    }
+    if (options.length === 0) return 'done';
+    requestPromotion(game, {
+      unit,
+      kind: 'promote',
+      options: [],
+      nextClass: options.length === 1 ? options[0] : null,
+      canGoBack: true,
+      popBelow: 0,
+      itemUse: { actor: unit, item, baseUse: origin === 'base_use' },
+    });
+    return 'pushed';
   } else if (item.hasComponent('permanent_stat_change') ||
       item.hasComponent('permanent_stat_change_early')) {
     const componentNid = item.hasComponent('permanent_stat_change_early')
@@ -4740,10 +4738,13 @@ export class BaseUseState extends State {
   private items: ItemObject[] = [];
   /** Python PrepUseState: menus.Inventory at (6, 72) over the manage table. */
   private menu: PrepChoice | null = null;
+  /** The unit whose item opened a promotion screen over this state. */
+  private resumeUnit: UnitObject | null = null;
 
   override begin(): StateResult {
     const game = getGame();
-    this.unit = game.memory.get('base_use_unit') ?? game.selectedUnit ?? null;
+    this.unit = game.memory.get('base_use_unit') ?? this.resumeUnit ?? game.selectedUnit ?? null;
+    this.resumeUnit = null;
     if (!this.unit) {
       game.state.back();
       return 'repeat';
@@ -4801,7 +4802,10 @@ export class BaseUseState extends State {
     const index = selected ? this.items.indexOf(selected) : -1;
     const item = this.items[index];
     if (!item || !canUseBaseItem(this.unit, item, game)) return;
-    if (useItemInBase(game, this.unit, item, 'base_use') === 'pushed') return;
+    if (useItemInBase(game, this.unit, item, 'base_use') === 'pushed') {
+      this.resumeUnit = this.unit;
+      return;
+    }
     this.buildMenu();
   }
 
@@ -4964,32 +4968,24 @@ export class ItemTargetingState extends MapState {
         options = klass?.turns_into ? [...klass.turns_into] : [];
       }
       if (options.length === 0) return;
-      if (options.length === 1) {
-        applyItemStartResourceHooks(game, unit, this.item);
-        performPromotionOrClassChange(
-          defender,
-          options[0],
-          game,
-          isClassChange ? 'change_class' : 'promote',
-        );
-        finishCoreItemUse(unit, this.item, [defender], new Map(), false, true);
-        game.memory.delete('item_use_item');
-        game.highlight.clear();
-        game.state.back();
-        return;
-      }
-      // Multiple promotion options: route to the choice menu state, matching
-      // Python's game.state 'promotion_choice'.
-      game.memory.set('promotion_choice_unit', defender);
-      game.memory.set('promotion_choice_options', options);
-      game.memory.set('promotion_choice_item', this.item);
-      game.memory.set('promotion_choice_actor', unit);
-      game.memory.set(
-        'promotion_choice_source',
-        isClassChange ? 'change_class' : 'promote',
-      );
+      // Python Promote/ForcePromote/ClassChange.end_combat: a single class
+      // goes straight to the promotion (class change) screen, several to the
+      // choice screen. The item's use completes once the level screen ends.
+      const kind = isClassChange ? 'class_change' : 'promote';
+      const itemUse = { actor: unit, item: this.item, baseUse: false };
       game.highlight.clear();
-      game.state.change('promotion_choice');
+      if (forceKlass || options.length === 1) {
+        game.memory.delete('item_use_item');
+        game.state.back();
+        requestPromotion(game, {
+          unit: defender, kind, options: [], nextClass: options[0], canGoBack: false, popBelow: 0, itemUse,
+        });
+      } else {
+        requestPromotion(game, {
+          unit: defender, kind, options: isClassChange ? [] : options, nextClass: null,
+          canGoBack: true, popBelow: 1, itemUse,
+        });
+      }
       return;
     }
 
@@ -5262,121 +5258,6 @@ export class ItemTargetingState extends MapState {
     getGame().highlight.clear();
     getGame().hud.resetInfo();
     getGame().cursor.show?.();
-  }
-}
-
-// ============================================================================
-// 4c-2. PromotionChoiceState - Choose between multiple promotion targets
-// ============================================================================
-
-/**
- * Port of Python's PromotionChoiceState (game.state 'promotion_choice').
- * Reached from ItemTargetingState when the target's class has 2+
- * `turns_into` options. Presentation is a simplified keyboard/mouse choice
- * menu rather than the full scroll/fanfare screen; mechanics (class swap,
- * stat gains, wexp, skills) go through the same reversible core as the
- * single-option path (see `performPromotionOrClassChange`).
- */
-export class PromotionChoiceState extends State {
-  readonly name = 'promotion_choice';
-  override readonly transparent = true;
-
-  private menu: ChoiceMenu | null = null;
-  private options: string[] = [];
-  private targetUnit: UnitObject | null = null;
-
-  override begin(): StateResult {
-    const game = getGame();
-    this.targetUnit = game.memory.get('promotion_choice_unit') ?? null;
-    this.options = game.memory.get('promotion_choice_options') ?? [];
-    if (!this.targetUnit || this.options.length === 0) {
-      game.state.back();
-      return 'repeat';
-    }
-
-    const menuOptions: MenuOption[] = this.options.map((klassNid: string) => ({
-      label: game.db.classes.get(klassNid)?.name ?? klassNid,
-      value: klassNid,
-      enabled: true,
-    }));
-
-    const [cameraX, cameraY] = game.camera.getOffset();
-    const pos = this.targetUnit.position;
-    const menuX = pos
-      ? Math.min(pos[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100)
-      : viewport.width / 2;
-    const menuY = pos
-      ? Math.min(pos[1] * TILEHEIGHT - cameraY, viewport.height - menuOptions.length * 16 - 8)
-      : viewport.height / 2;
-    this.menu = new ChoiceMenu(menuOptions, Math.max(0, menuX), Math.max(0, menuY));
-  }
-
-  private cleanupMemory(): void {
-    const game = getGame();
-    game.memory.delete('promotion_choice_unit');
-    game.memory.delete('promotion_choice_options');
-    game.memory.delete('promotion_choice_item');
-    game.memory.delete('promotion_choice_actor');
-    game.memory.delete('promotion_choice_source');
-    game.memory.delete('promotion_choice_origin');
-  }
-
-  override takeInput(event: InputEvent): StateResult {
-    if (!this.menu) return;
-    const game = getGame();
-
-    let result: { selected: string } | { back: true } | null = null;
-    if (game.input?.mouseClick) {
-      const [gx, gy] = game.input.getGameMousePos();
-      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
-    }
-    if (game.input?.mouseMoved) {
-      const [gx, gy] = game.input.getGameMousePos();
-      this.menu.handleMouseHover(gx, gy);
-    }
-    if (!result && event !== null) result = this.menu.handleInput(event);
-    if (!result) return;
-
-    if ('back' in result) {
-      // Cancel: refund (nothing consumed yet), return to target selection
-      // without promoting -- mirrors Python's can_go_back refund path.
-      this.cleanupMemory();
-      this.menu = null;
-      game.state.back();
-      return;
-    }
-
-    if ('selected' in result) {
-      const newKlass = result.selected;
-      const target = this.targetUnit;
-      const item: ItemObject | null = game.memory.get('promotion_choice_item') ?? null;
-      const actor: UnitObject | null = game.memory.get('promotion_choice_actor') ?? null;
-      const source = game.memory.get('promotion_choice_source') === 'change_class'
-        ? 'change_class'
-        : 'promote';
-      const baseUse = game.memory.get('promotion_choice_origin') === 'base_use';
-      if (target && item && actor) {
-        if (baseUse) game.actionLog.doAction(new MarkActionGroupStart(actor, 'item_use'));
-        applyItemStartResourceHooks(game, actor, item);
-        performPromotionOrClassChange(target, newKlass, game, source);
-        finishCoreItemUse(actor, item, [target], new Map(), baseUse, true);
-      }
-      this.cleanupMemory();
-      game.memory.delete('item_use_item');
-      game.highlight.clear();
-      this.menu = null;
-      game.state.back(); // pop promotion_choice
-      game.state.back(); // pop item_targeting
-    }
-  }
-
-  override draw(surf: Surface): Surface {
-    if (this.menu) this.menu.draw(surf);
-    return surf;
-  }
-
-  override end(): StateResult {
-    this.menu = null;
   }
 }
 
@@ -6434,7 +6315,7 @@ const eventResumeBarriers: GameEvent[] = [];
  * `pushState` is set an EventState opens on top of the current state now,
  * and the paused event is fenced so it resumes in its own EventState.
  */
-function runEventsBeforeWaiting(game: any, events: GameEvent[], pushState: boolean): boolean {
+export function runEventsBeforeWaiting(game: any, events: GameEvent[], pushState: boolean): boolean {
   const queue = game.eventManager?.eventQueue as GameEvent[] | undefined;
   if (!queue || events.length === 0) return false;
   for (const event of events) {
@@ -15404,107 +15285,97 @@ export class EventState extends State {
 
       case 'promote': {
         // promote;unit_nid;[class_nid1,class_nid2,...];[silent]
-        // Silent applies the action without presentation; otherwise the shared
-        // non-combat level screen presents the action's copied stat changes.
+        // Python event_functions.promote: one class (given, or the only
+        // turns_into) plays the promotion screen, or applies directly when
+        // silent; several open promotion_choice (silent is then ignored).
         const promoUnitNid = args[0] ?? '';
         const promoUnit = this.findUnit(promoUnitNid);
-        if (promoUnit) {
-          const klassListStr = args[1] ?? '';
-          const isSilent = args.some((a: string) => a.toLowerCase() === 'silent');
-          let klassList = klassListStr
-            ? klassListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
-            : [];
-
-          // If no class list given, use the class's turns_into
-          if (klassList.length === 0) {
-            const currentKlass = game.db.classes.get(promoUnit.klass);
-            if (currentKlass && currentKlass.turns_into && currentKlass.turns_into.length > 0) {
-              klassList = [...currentKlass.turns_into];
-            }
-          }
-
-          if (klassList.length > 0) {
-            // A choice UI is not yet available in the event-command flow, so
-            // preserve the existing first-option fallback.
-            const newKlass = klassList[0];
-            const oldLevel = promoUnit.level;
-            const { statChanges } = performPromotionOrClassChange(
-              promoUnit,
-              newKlass,
-              game,
-              'promote',
-              isSilent ? 'exact' : undefined,
-            );
-            this.loadMapSpriteForUnit(promoUnit, game);
-            if (!isSilent && this.startEventLevelUpPresentation(
-              promoUnit,
-              statChanges,
-              'promote',
-              oldLevel,
-            )) {
-              return true;
-            }
-          } else {
-            console.warn(`promote: no promotion classes available for unit "${promoUnitNid}"`);
-          }
-        }
         this.advancePointer();
-        return false;
+        if (!promoUnit) {
+          console.warn(`promote: couldn't find unit "${promoUnitNid}"`);
+          return false;
+        }
+        const isSilent = args.some((a: string) => a.toLowerCase() === 'silent');
+        const klassList = (args[1] ?? '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        let options: string[] = [];
+        let newKlass: string | null = null;
+        if (klassList.length === 1) {
+          newKlass = klassList[0];
+        } else if (klassList.length > 1) {
+          options = klassList;
+        } else {
+          const turnsInto: string[] = game.db.classes.get(promoUnit.klass)?.turns_into ?? [];
+          if (turnsInto.length === 0) {
+            console.warn(`promote: no promotion classes available for unit "${promoUnitNid}"`);
+            return false;
+          }
+          if (turnsInto.length === 1) newKlass = turnsInto[0];
+        }
+        if (isSilent && newKlass) {
+          performPromotionOrClassChange(promoUnit, newKlass, game, 'promote', 'exact');
+          this.loadMapSpriteForUnit(promoUnit, game);
+          return false;
+        }
+        if (isSilent && options.length) {
+          console.warn('promote: silent flag set with multiple klass options. Silent will be ignored.');
+        }
+        requestPromotion(game, {
+          unit: promoUnit, kind: 'promote', options, nextClass: newKlass,
+          canGoBack: false, popBelow: 0, itemUse: null,
+        });
+        return true;
       }
 
       case 'change_class': {
         // change_class;unit_nid;[class_nid1,class_nid2,...];[silent]
-        // Silent applies the action without presentation; otherwise the shared
-        // non-combat level screen presents the action's copied stat changes.
+        // Python event_functions.change_class: the given classes, else the
+        // unit prefab's alternate_classes. One class plays the class change
+        // screen (or applies directly when silent); several open
+        // class_change_choice.
         const ccUnitNid = args[0] ?? '';
         const ccUnit = this.findUnit(ccUnitNid);
-        if (ccUnit) {
-          const ccKlassListStr = args[1] ?? '';
-          const ccIsSilent = args.some((a: string) => a.toLowerCase() === 'silent');
-          // EOtF's engine fork adds a no_wexp flag (absent from every
-          // upstream lt-maker): the class change skips the new class's
-          // starting weapon experience.
-          const ccNoWexp = args.some((a: string) => a.toLowerCase() === 'no_wexp');
-          let ccKlassList = ccKlassListStr
-            ? ccKlassListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
-            : [];
-
-          // If no class list given, use the class's turns_into as a fallback
-          if (ccKlassList.length === 0) {
-            const currentKlass = game.db.classes.get(ccUnit.klass);
-            if (currentKlass && currentKlass.turns_into && currentKlass.turns_into.length > 0) {
-              ccKlassList = [...currentKlass.turns_into];
-            }
-          }
-
-          if (ccKlassList.length > 0) {
-            const newKlass = ccKlassList[0];
-            if (newKlass !== ccUnit.klass) {
-              const oldLevel = ccUnit.level;
-              const { statChanges } = performPromotionOrClassChange(
-                ccUnit,
-                newKlass,
-                game,
-                'change_class',
-                ccIsSilent ? 'exact' : undefined,
-                !ccNoWexp,
-              );
-              this.loadMapSpriteForUnit(ccUnit, game);
-              if (!ccIsSilent && this.startEventLevelUpPresentation(
-                ccUnit,
-                statChanges,
-                'class_change',
-                oldLevel,
-              )) {
-                return true;
-              }
-            }
-          } else {
-            console.warn(`change_class: no class options available for unit "${ccUnitNid}"`);
-          }
-        }
         this.advancePointer();
-        return false;
+        if (!ccUnit) {
+          console.warn(`change_class: couldn't find unit "${ccUnitNid}"`);
+          return false;
+        }
+        const ccIsSilent = args.some((a: string) => a.toLowerCase() === 'silent');
+        // EOtF's engine fork adds a no_wexp flag (absent from every
+        // upstream lt-maker): the class change skips the new class's
+        // starting weapon experience.
+        const ccNoWexp = args.some((a: string) => a.toLowerCase() === 'no_wexp');
+        const ccKlassList = (args[1] ?? '').split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        let ccOptions: string[] = [];
+        let ccNewKlass: string | null = null;
+        if (ccKlassList.length === 1) {
+          ccNewKlass = ccKlassList[0];
+        } else if (ccKlassList.length > 1) {
+          ccOptions = ccKlassList;
+        } else if (!ccUnit.generic) {
+          const alternates: string[] = (game.db.units.get(ccUnit.nid) as any)?.alternate_classes ?? [];
+          if (alternates.length === 0) {
+            console.warn(`change_class: no alternate classes available for unit "${ccUnitNid}"`);
+            return false;
+          }
+          if (alternates.length === 1) ccNewKlass = alternates[0];
+        } else {
+          console.warn(`change_class: no alternate classes available for unit "${ccUnitNid}"`);
+          return false;
+        }
+        if (ccNewKlass === ccUnit.klass) {
+          console.warn('change_class: no need to change classes');
+          return false;
+        }
+        if (ccIsSilent && ccNewKlass) {
+          performPromotionOrClassChange(ccUnit, ccNewKlass, game, 'change_class', 'exact', !ccNoWexp);
+          this.loadMapSpriteForUnit(ccUnit, game);
+          return false;
+        }
+        requestPromotion(game, {
+          unit: ccUnit, kind: 'class_change', options: ccOptions, nextClass: ccNewKlass,
+          canGoBack: false, popBelow: 0, itemUse: null,
+        });
+        return true;
       }
 
       // ----- Choice menu -----

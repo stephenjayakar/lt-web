@@ -19,9 +19,9 @@ test.describe('class-change and movement-restricted items', () => {
       } = await import('/src/combat/item-system.ts');
       const {
         applyCoreTargetedItem,
-        PromotionChoiceState,
         setGameRef,
       } = await import('/src/engine/states/game-states.ts');
+      const { ClassChangeChoiceState } = await import('/src/engine/states/promotion-state.ts');
       const unit = game.units.get('Eirika');
       const prefab = game.db.units.get('Eirika');
       const sourceClass = game.db.classes.get('Fighter');
@@ -92,7 +92,7 @@ test.describe('class-change and movement-restricted items', () => {
       const secondKlass = [...game.db.classes.keys()].find(
         (nid: string) => nid !== 'Fighter' && nid !== targetKlass,
       );
-      let choice: { klass: string; backs: number } | null = null;
+      let choice: { klass: string; backs: number; next: string | null; changes: string[] } | null = null;
       if (secondKlass) {
         const choiceItem = new ItemObject({
           nid: '_ClassChoiceItem', name: 'Choice Seal', desc: '',
@@ -104,20 +104,28 @@ test.describe('class-change and movement-restricted items', () => {
         unit.klass = 'Fighter';
         unit.finished = false;
         const choiceBeforeIndex = game.actionLog.actionIndex;
-        game.memory.set('promotion_choice_unit', unit);
-        game.memory.set('promotion_choice_options', [targetKlass, secondKlass]);
-        game.memory.set('promotion_choice_item', choiceItem);
-        game.memory.set('promotion_choice_actor', unit);
-        game.memory.set('promotion_choice_source', 'change_class');
-        const choiceState: any = new PromotionChoiceState();
-        choiceState.begin();
-        choiceState.menu.selectedIndex = 1;
+        const request = {
+          unit, kind: 'class_change', options: [targetKlass, secondKlass], nextClass: null,
+          canGoBack: true, popBelow: 1, itemUse: { actor: unit, item: choiceItem, baseUse: false },
+        };
+        game.memory.set('promotion_request', request);
+        const choiceState: any = new ClassChangeChoiceState();
+        choiceState.start();
+        choiceState.menu.moveDown(true);
         let backs = 0;
+        const changes: string[] = [];
         const originalBack = game.state.back;
+        const originalChange = game.state.change;
         game.state.back = () => { backs++; };
-        choiceState.takeInput('SELECT');
+        game.state.change = (name: string) => { changes.push(name); };
+        choiceState.takeInput('SELECT'); // opens Change / Cancel
+        choiceState.takeInput('SELECT'); // Change
         game.state.back = originalBack;
-        choice = { klass: unit.klass, backs };
+        game.state.change = originalChange;
+        // The class change itself applies when the class_change screen's
+        // level screen starts, not on selection.
+        choice = { klass: unit.klass, backs, next: request.nextClass, changes };
+        game.memory.delete('promotion_request');
         while (game.actionLog.actionIndex > choiceBeforeIndex) {
           game.actionLog.runActionBackward();
         }
@@ -171,7 +179,9 @@ test.describe('class-change and movement-restricted items', () => {
       finished: false,
     });
     if (result!.secondKlass) {
-      expect(result!.choice).toEqual({ klass: result!.secondKlass, backs: 2 });
+      expect(result!.choice).toEqual({
+        klass: 'Fighter', backs: 2, next: result!.secondKlass, changes: ['class_change'],
+      });
     }
     expect(result!.movement).toEqual({
       beforeMove: true,

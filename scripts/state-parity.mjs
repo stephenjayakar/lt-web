@@ -18,8 +18,6 @@ const MERGED = {
   base_market_select: 'shop',
   canto_wait: 'menu',
   chapter_title: 'event',
-  class_change: 'item_use',
-  class_change_choice: 'promotion_choice',
   combat_targeting: 'targeting',
   combat_trade: 'trade',
   defender: 'combat',
@@ -51,7 +49,6 @@ const MERGED = {
   prep_trade: 'trade',
   prep_trade_select: 'trade',
   prep_use: 'item_use',
-  promotion: 'promotion_choice',
   repair_shop: 'shop',
   spell_choice: 'weapon_choice',
   start_level_asset_loading: 'title',
@@ -118,7 +115,7 @@ function webStates() {
   const states = new Map();
   for (const file of walk(path.join(ROOT, 'src/engine'), '.ts')) {
     const source = fs.readFileSync(file, 'utf8');
-    for (const match of source.matchAll(/readonly name\s*=\s*['"]([^'"]+)['"]/g)) {
+    for (const match of source.matchAll(/readonly name(?:\s*:\s*string)?\s*=\s*['"]([^'"]+)['"]/g)) {
       states.set(match[1], path.relative(ROOT, file));
     }
   }

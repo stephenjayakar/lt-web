@@ -74,6 +74,8 @@ function applyPaletteToImageData(
   const len = data.length;
 
   for (let i = 0; i < len; i += 4) {
+    // Already keyed out (transparent source pixels, effect black colorkey).
+    if (data[i + 3] === 0) continue;
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
@@ -200,6 +202,16 @@ export function convertSpritesheetToFrames(
   // Apply palette conversion to the full sheet if palette provided
   const imageData = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
   if (palette) {
+    // Python load_full_image: a palette without COLORKEY means the effect
+    // uses (0, 0, 0) (palette coordinate 0, 0) as its colorkey.
+    const hasColorkey = [...palette.colors.values()].some(([r, g, b]) =>
+      r === COLORKEY_R && g === COLORKEY_G && b === COLORKEY_B);
+    if (!hasColorkey) {
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) data[i + 3] = 0;
+      }
+    }
     const lut = buildPaletteLUT(palette);
     applyPaletteToImageData(imageData, lut);
   } else {

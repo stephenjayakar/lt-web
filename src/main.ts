@@ -61,7 +61,6 @@ import {
   AccessoryChoiceState,
   CombatArtChoiceState,
   ItemTargetingState,
-  PromotionChoiceState,
   TradeState,
   RescueState,
   TransferState,
@@ -86,6 +85,13 @@ import {
   setObjectiveDialogGameRef,
 } from './engine/states/objective-dialog-states';
 import { DexMenuState, setDexMenuGameRef } from './engine/states/dex-menu-state';
+import {
+  ClassChangeChoiceState,
+  ClassChangeState,
+  PromotionChoiceState,
+  PromotionState,
+  setPromotionGameRef,
+} from './engine/states/promotion-state';
 import {
   PrepMainState,
   PrepPickUnitsState,
@@ -689,6 +695,7 @@ async function main(): Promise<void> {
   setGameRef(gameState);
   setInfoMenuGameRef(gameState);
   setDexMenuGameRef(gameState);
+  setPromotionGameRef(gameState);
   setHelpMenuGameRef(gameState);
   setMenuAudioManager(audioManager);
   setBannerAudio(audioManager);
@@ -743,6 +750,9 @@ async function main(): Promise<void> {
     new CombatArtChoiceState(),
     new ItemTargetingState(),
     new PromotionChoiceState(),
+    new ClassChangeChoiceState(),
+    new PromotionState(),
+    new ClassChangeState(),
     new TradeState(),
     new RescueState(),
     new TransferState(),

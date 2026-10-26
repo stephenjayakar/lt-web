@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 58,
-    "merged": 55,
+    "exact": 61,
+    "merged": 52,
     "open": 0,
-    "web": 76
+    "web": 80
   },
   "rows": [
     {
@@ -172,17 +172,17 @@
       "name": "class_change",
       "className": "ClassChangeState",
       "source": "lt-maker/app/engine/promotion.py",
-      "status": "merged",
-      "webState": "item_use",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "class_change",
+      "webSource": "src/engine/states/promotion-state.ts"
     },
     {
       "name": "class_change_choice",
       "className": "ClassChangeChoiceState",
       "source": "lt-maker/app/engine/promotion.py",
-      "status": "merged",
-      "webState": "promotion_choice",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "class_change_choice",
+      "webSource": "src/engine/states/promotion-state.ts"
     },
     {
       "name": "combat",
@@ -262,7 +262,7 @@
       "source": "lt-maker/app/engine/feat_choice.py",
       "status": "merged",
       "webState": "promotion_choice",
-      "webSource": "src/engine/states/game-states.ts"
+      "webSource": "src/engine/states/promotion-state.ts"
     },
     {
       "name": "free",
@@ -628,9 +628,9 @@
       "name": "promotion",
       "className": "PromotionState",
       "source": "lt-maker/app/engine/promotion.py",
-      "status": "merged",
-      "webState": "promotion_choice",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "promotion",
+      "webSource": "src/engine/states/promotion-state.ts"
     },
     {
       "name": "promotion_choice",
@@ -638,7 +638,7 @@
       "source": "lt-maker/app/engine/promotion.py",
       "status": "exact",
       "webState": "promotion_choice",
-      "webSource": "src/engine/states/game-states.ts"
+      "webSource": "src/engine/states/promotion-state.ts"
     },
     {
       "name": "repair_shop",

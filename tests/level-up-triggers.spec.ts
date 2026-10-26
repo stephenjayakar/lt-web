@@ -473,11 +473,21 @@ async function runEventLevelUpProducer(
     });
 
     const trace: TriggerTrace[] = [];
+    // The level screen lives on the top EventState, or on the promotion /
+    // class_change state an event promote or change_class opens.
+    (window as any).__levelPresentation = () => {
+      const top = game.state.getCurrentState() as any;
+      if (top?.levelUpPresentation) return top.levelUpPresentation;
+      const states = (game.state as any).allStates as Map<string, any> | undefined;
+      return ['promotion', 'class_change']
+        .map((nid) => states?.get(nid)?.levelUpPresentation)
+        .find(Boolean) ?? null;
+    };
     const originalTrigger = game.eventManager.trigger.bind(game.eventManager);
     game.eventManager.trigger = (trigger: any, context: any) => {
       if (trigger.type === 'during_unit_level_up' || trigger.type === 'unit_level_up') {
         const state = game.state.getCurrentState() as any;
-        const presentation = state?.levelUpPresentation;
+        const presentation = (window as any).__levelPresentation();
         if (trigger.type === 'during_unit_level_up') {
           (window as any).__eventLevelScreen = presentation?.screen;
         }
@@ -519,7 +529,8 @@ async function runEventLevelUpProducer(
     const game = (window as any).__gameRef;
     const harness = (window as any).__harness;
     const trace = (window as any).__eventLevelTrace as TriggerTrace[];
-    for (let frame = 0; frame < 300; frame++) {
+    // Event promotions first play the (frame-timed) promotion animation.
+    for (let frame = 0; frame < 1500; frame++) {
       (window as any).__eventLevelNow += 400;
       harness.stepFrames(1, null);
       const state = game.state.getCurrentState() as any;
@@ -540,10 +551,11 @@ async function runEventLevelUpProducer(
       : kind === 'set_stats_immediate'
         ? unit.stats.STR === expected
         : unit.klass === expected && unit.klass !== before;
+    const presentation = (window as any).__levelPresentation();
     return {
-      currentEvent: state?.currentEvent?.nid ?? '',
-      screenState: state?.levelUpPresentation?.screen?.state ?? '',
-      sameScreen: state?.levelUpPresentation?.screen === (window as any).__eventLevelScreen,
+      currentEvent: state?.currentEvent?.nid ?? state?.name ?? '',
+      screenState: presentation?.screen?.state ?? '',
+      sameScreen: presentation?.screen === (window as any).__eventLevelScreen,
       actionApplied,
       duringStarted: game.gameVars.get('_event_during_started'),
       duringFinished: game.gameVars.get('_event_during_finished'),
@@ -563,10 +575,11 @@ async function runEventLevelUpProducer(
       }
     }
     const state = game.state.getCurrentState() as any;
+    const presentation = (window as any).__levelPresentation();
     return {
-      currentEvent: state?.currentEvent?.nid ?? '',
-      screenState: state?.levelUpPresentation?.screen?.state ?? '',
-      sameScreen: state?.levelUpPresentation?.screen === (window as any).__eventLevelScreen,
+      currentEvent: state?.currentEvent?.nid ?? state?.name ?? '',
+      screenState: presentation?.screen?.state ?? '',
+      sameScreen: presentation?.screen === (window as any).__eventLevelScreen,
       duringFinished: game.gameVars.get('_event_during_finished'),
       producerAfter: game.gameVars.get('_producer_after'),
     };
@@ -579,17 +592,17 @@ async function runEventLevelUpProducer(
     harness.stepFrames(1, null);
     (window as any).__eventLevelNow += 600;
     harness.stepFrames(1, null);
-    for (let frame = 0; frame < 30; frame++) {
+    for (let frame = 0; frame < 60; frame++) {
       harness.stepFrames(1, null);
-      if (game.gameVars.get('_event_late_started') === 'yes') break;
+      if (game.gameVars.get('_event_late_started') === 'yes' &&
+          game.gameVars.get('_producer_after') === 'yes') break;
     }
-    const state = game.state.getCurrentState() as any;
     return {
       duringStarted: game.gameVars.get('_event_during_started'),
       duringFinished: game.gameVars.get('_event_during_finished'),
       producerAfter: game.gameVars.get('_producer_after'),
       lateStarted: game.gameVars.get('_event_late_started'),
-      screenPresent: !!state?.levelUpPresentation,
+      screenPresent: !!(window as any).__levelPresentation(),
     };
   });
 
@@ -655,7 +668,11 @@ test('event stat changes use the level screen lifecycle while immediate set_stat
 });
 
 test('event class change and promotion share the interruptible level screen producer', async ({ page }) => {
+  // Python event promote/change_class open PromotionState/ClassChangeState;
+  // ExpState's level screen fires the hooks with that state on top, and a
+  // during event interrupts it the way Python's _add_event pushes 'event'.
   for (const kind of ['class_change', 'promote'] as const) {
+    const screenState = kind === 'promote' ? 'promotion' : 'class_change';
     const result = await runEventLevelUpProducer(page, kind);
     expect(result.trace.map((entry) => entry.type)).toEqual([
       'during_unit_level_up',
@@ -664,7 +681,7 @@ test('event class change and promotion share the interruptible level screen prod
     for (const entry of result.trace) {
       expect(entry.unitNid).toBe('Eirika');
       expect(entry.source).toBe(kind);
-      expect(entry.combatPhase).toBe('event');
+      expect(entry.combatPhase).toBe(screenState);
       expect(entry.copiedStatChanges).toBe(true);
       expect(entry.sameScreen).toBe(true);
     }
@@ -682,7 +699,7 @@ test('event class change and promotion share the interruptible level screen prod
       producerAfter: undefined,
     });
     expect(result.atResume).toEqual({
-      currentEvent: '_test_event_level_producer',
+      currentEvent: screenState,
       screenState: 'level_up_wait',
       sameScreen: true,
       duringFinished: 'yes',

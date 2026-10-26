@@ -56,6 +56,11 @@ export interface DialogStyle {
   boopSound?: string | null;
   /** The `no_sound` speak flag: no boops for this dialog. */
   noSound?: boolean;
+  /**
+   * Set text_width (and width = text_width + 16) after sizing, the way
+   * Python callers assign d.text_width / d.width on a built Dialog.
+   */
+  textWidth?: number | null;
 }
 
 const FRAME_MS = 1000 / 60;
@@ -202,6 +207,11 @@ export class Dialog {
       this.textHeight = this.numLines * 16;
       this.width = this.textWidth + 16;
       this.height = this.textHeight + 16;
+    }
+
+    if (style.textWidth) {
+      this.textWidth = style.textWidth;
+      this.width = style.textWidth + 16;
     }
 
     const position = style.position ?? null;
