@@ -855,3 +855,17 @@ test('title menu starts on Continue when a suspend exists (Python menus.Main ind
   expect(info.options[0]).toBe('Continue');
   expect(info.current).toBe('Continue');
 });
+
+test('{e:} resolves {d:Data.{v:key}.field} with the raw key (EOtF upgrade costs)', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    if (!g.db.rawData) g.db.rawData = new Map();
+    g.db.rawData.set('QA_Upgrades', [{ nid: 'Gold_Up', cost: 100, cost_mult: 2 }]);
+    g.gameVars.set('qa_hover', 'Gold_Up');
+  });
+  await runEvent(page, 'qa_data_key', [
+    "game_var;qa_cost;{e:int({d:QA_Upgrades.{v:qa_hover}.cost} * ({d:QA_Upgrades.{v:qa_hover}.cost_mult} ** 1))}",
+  ], 6);
+  expect(await gameVar(page, 'qa_cost')).toBe(200);
+});

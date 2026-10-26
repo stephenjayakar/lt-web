@@ -12116,8 +12116,18 @@ export class EventState extends State {
         if (close < 0) break;
         const colon = value.indexOf(':', start);
         const expression = value.slice(colon + 1, close);
+        // Python evaluates innermost braces first as plain text: a {v:} inside
+        // a {d:Data.{v:key}.field} tag is the raw key, so resolve those data
+        // tags before typing the remaining variables.
+        const withDataKeys = expression.replace(
+          /\{(?:d|data):[^{}]*(?:\{v:[A-Za-z_][A-Za-z0-9_]*\}[^{}]*)+\}/g,
+          (dataTag) => replaceDataTags(dataTag.replace(
+            /\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g,
+            (_variableMatch, key: string) => eventObjectToString(variableValue(key)),
+          )),
+        );
         const typedExpression = replaceDataTags(
-          expression
+          withDataKeys
             .replace(
               /(['"])\{v:([A-Za-z_][A-Za-z0-9_]*)\}\1/g,
               (_variableMatch, _quote: string, key: string) => {
