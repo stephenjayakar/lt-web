@@ -397,3 +397,33 @@ test.describe('canto movement-left semantics', () => {
     expect(result.none).toBe(false);
   });
 });
+
+test('a unit with no valid moves can still act in place (own tile opens the menu)', async ({ page }) => {
+  // Python MoveState checks cursor == unit.position before valid_moves, so a
+  // unit whose movement_left went negative (EOtF's Chains of Thanatos aura
+  // applies MOV -99 to Sisyphus's neighbours at the turn reset) still gets
+  // its action menu. The web ignored SELECT and the unit could not even Wait.
+  await page.goto('/?harness=true&level=DEBUG&bundle=false');
+  await waitForHarness(page);
+  await stepFrames(page, 5);
+  const ok = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const eirika = g.units.get('Eirika');
+    if (!eirika?.position) return false;
+    eirika.resetTurnState();
+    eirika.movementLeft = -95;
+    g.cursor.setPos(eirika.position[0], eirika.position[1]);
+    return true;
+  });
+  expect(ok).toBe(true);
+  await stepFrames(page, 1, 'SELECT');
+  const moves = await page.evaluate(() => {
+    const s = (window as any).__gameRef.state.getCurrentState();
+    return { name: s?.name, valid: s?.validMoves?.length };
+  });
+  expect(moves).toEqual({ name: 'move', valid: 0 });
+  await stepFrames(page, 2);
+  await stepFrames(page, 1, 'SELECT');
+  await stepFrames(page, 3);
+  expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('menu');
+});

@@ -2852,7 +2852,12 @@ export class MoveState extends MapState {
 
       case 'SELECT': {
         const pos = game.cursor.getHover();
-        const isValid = this.validMoves.some(
+        // Python MoveState: the unit's own tile always works ("move in
+        // place"), even when it has no valid moves (MOV -99 statuses such as
+        // EOtF's Chains of Thanatos aura leave valid_moves empty).
+        const selected: UnitObject | null = game.selectedUnit;
+        const ownTile = !!selected?.position && selected.position[0] === pos.x && selected.position[1] === pos.y;
+        const isValid = ownTile || this.validMoves.some(
           ([x, y]) => x === pos.x && y === pos.y,
         );
         if (isValid) {

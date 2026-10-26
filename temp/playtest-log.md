@@ -61,3 +61,6 @@ Playwright Chromium (muted, headless) driven over a local command server.
   sets `Run_Choice_choice_hover`, logging `EventCondition JS eval failed for
   "int(?? * (?? ** RECORDS.get(null + '_level')))"`; the next frame renders
   correctly. Python would also fail that first evaluation (logs an error).
+- Unit management "Optimize All" from an act node map strips every party unit
+  except the roam lord (Python `convoy_funcs.optimize_all` only re-arms units
+  with a map position). Matches Python; noted as a trap, not a port bug.
