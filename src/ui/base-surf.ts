@@ -205,7 +205,9 @@ export async function getMenuBackground(
   const cached = surfCache.get(key);
   if (cached) return cached;
 
-  const img = await loadMenuBgSprite(nid);
+  // Python SPRITES.get(base, 'menu_bg_base'): a missing sprite falls back
+  // to the standard window.
+  const img = await loadMenuBgSprite(nid) ?? (nid !== 'menu_bg_base' ? await loadMenuBgSprite('menu_bg_base') : null);
   if (!img) {
     // Fallback: solid dark surface
     const fallback = new Surface(width, height);
@@ -213,8 +215,26 @@ export async function getMenuBackground(
     return fallback;
   }
 
-  const surf = createBaseSurf(img, width, height);
+  const surf = isSlicedBase(nid) ? createBaseSurf(img, width, height) : plainBaseSurf(img, width, height);
   surfCache.set(key, surf);
+  return surf;
+}
+
+/** base_surf.HARDCODED_BG_SURFS: 9-sliced even without `_bg` in the name. */
+const HARDCODED_BG_SURFS = new Set(['name_tag']);
+
+/**
+ * create_base_surf: only `*_bg*` sprites (and the hard-coded name tag) are
+ * 9-sliced; any other sprite, such as an authored choice/table BG, is drawn
+ * once, unscaled, at the top-left of a transparent width x height surface.
+ */
+export function isSlicedBase(nid: string): boolean {
+  return nid.includes('_bg') || HARDCODED_BG_SURFS.has(nid);
+}
+
+function plainBaseSurf(image: HTMLImageElement, width: number, height: number): Surface {
+  const surf = new Surface(Math.max(1, width), Math.max(1, height));
+  surf.blitImage(image, 0, 0, image.width, image.height, 0, 0);
   return surf;
 }
 

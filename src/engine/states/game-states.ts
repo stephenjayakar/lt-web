@@ -12757,11 +12757,17 @@ export class EventState extends State {
           eventObjectToString(result) +
           value.slice(close + 1);
       }
-      // Python TextEvaluator._evaluate_vars: a missing variable becomes '??'
-      // (so `if;len({v:missing}) > 0` fails to evaluate and is False).
-      value = value.replace(/\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
-        const result = variableValue(key);
-        return result === undefined ? '??' : eventObjectToString(result);
+      // Python TextEvaluator._evaluate_vars: {v:}/{var:} reads level_vars,
+      // then game_vars (never local args). A var that exists but holds None
+      // prints 'None' and does not fall through to game_vars (unlike
+      // QueryEngine.v); a missing variable becomes '??' (so
+      // `if;len({v:missing}) > 0` fails to evaluate and is False).
+      value = value.replace(/\{(?:v|var):([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
+        const source = game.levelVars?.has?.(key) ? game.levelVars
+          : game.gameVars?.has?.(key) ? game.gameVars : null;
+        if (!source) return '??';
+        const result = source.get(key);
+        return result === null || result === undefined ? 'None' : eventObjectToString(result);
       });
       value = value.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
         const result = variableValue(key);
@@ -16153,7 +16159,9 @@ export class EventState extends State {
             rowWidth: Number.isFinite(rowWidth) && rowWidth > 0 ? rowWidth : 0,
             alignment,
             orientation,
-            bg: flags.has('no_bg') ? null : (keywords.get('bg') || 'menu_bg_base'),
+            // Python bg defaults to menu_bg_base; the EOtF fork always uses
+            // the (window-skinned) menu_bg_base and ignores an authored BG.
+            bg: flags.has('no_bg') ? null : ((!isForkEngine() && keywords.get('bg')) || 'menu_bg_base'),
             textAlign: textAlignRaw === 'center' || textAlignRaw === 'right' ? textAlignRaw : 'left',
             noCursor: flags.has('no_cursor'),
             screenWidth: viewport.width,
@@ -18011,7 +18019,8 @@ export class EventState extends State {
           columns: Number.isFinite(dimensions[1]) ? Math.max(1, dimensions[1]) : 1,
           rowWidth: Number.isFinite(rowWidth) && rowWidth > 0 ? rowWidth : -1,
           alignment: parsed.kw.get('alignment') || 'top_left',
-          background: parsed.kw.get('bg') || 'menu_bg_base',
+          // The EOtF fork ignores an authored BG (skinned menu_bg_base).
+          background: (!isForkEngine() && parsed.kw.get('bg')) || 'menu_bg_base',
           entryType: (parsed.kw.get('entrytype') || 'str').toLowerCase(),
           textAlignment: parsed.kw.get('textalign') || 'left',
           expression: parsed.flags.has('expression'),
