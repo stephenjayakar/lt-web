@@ -161,6 +161,13 @@ Two EOtF item components are deliberately not implemented, both cosmetic:
   implementation returns `'white'` for every input, so honouring it would be
   indistinguishable from the default.
 
+Keyboard bindings follow Python's Controls settings page: a rebound button
+gets exactly the chosen key, and a key already bound to another button is
+refused. Two web-only differences: buttons never rebound keep the web's extra
+default aliases (Enter, Escape, Shift, Tab, WASD), and the page ends with a
+Restore Defaults row, because a browser player cannot delete
+`saves/config.ini` to reset the keys.
+
 lt-web also probes `resources/tilesets/tileset.json` when the standard
 `tilesets.json` manifest is absent. Python globs that directory instead, which
 a browser cannot do; the probe covers the loose-prefab layout EOtF ships.

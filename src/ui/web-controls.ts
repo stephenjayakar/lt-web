@@ -1,4 +1,6 @@
 import type { GameButton, InputManager } from '../engine/input';
+import { DEFAULT_KEY_BINDINGS, keyName } from '../engine/key-bindings';
+import { keyBindingsFor } from '../engine/states/settings-state';
 
 type VirtualInput = Pick<InputManager, 'pressVirtual' | 'releaseVirtual'>;
 interface WebAudioControls {
@@ -11,6 +13,29 @@ interface WebAudioControls {
 
 function gameButton(label: string, button: GameButton, className: string): string {
   return `<button class="touch-controls__button ${className}" type="button" data-game-button="${button}" aria-label="${label}">${label}</button>`;
+}
+
+/** A key as the help panel names it ('Z', 'Enter', 'Esc'). */
+function shellKeyLabel(code: string): string {
+  const name = keyName(code);
+  if (name === 'escape') return 'Esc';
+  return name.length === 1 ? name.toUpperCase() : name.replace(/[a-z]/g, (c) => c.toUpperCase());
+}
+
+/** The help panel's keyboard rows for the player's current bindings. */
+function keyboardRows(): string {
+  const labels = (button: GameButton): string[] => [...new Set(keyBindingsFor(button).map(shellKeyLabel))];
+  const dirs: GameButton[] = ['UP', 'LEFT', 'DOWN', 'RIGHT'];
+  const dirsDefault = dirs.every((button) =>
+    keyBindingsFor(button).join() === DEFAULT_KEY_BINDINGS[button].join());
+  const move = dirsDefault ? 'Arrows / WASD' : dirs.map((button) => labels(button).join('/')).join(' ');
+  const rows: [string, string][] = [
+    [move, 'Move'],
+    ...([['SELECT', 'Select'], ['BACK', 'Back'], ['INFO', 'Info'], ['AUX', 'Auxiliary'], ['START', 'Start']] as [GameButton, string][])
+      .map(([button, action]): [string, string] => [labels(button).join(' / '), action]),
+  ];
+  const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return rows.map(([keys, action]) => `<dt>${escape(keys)}</dt><dd>${action}</dd>`).join('');
 }
 
 /**
@@ -37,14 +62,7 @@ export function installWebControls(input: VirtualInput, audio?: WebAudioControls
       <div class="web-controls__groups">
         <div class="web-controls__group">
           <h3>Keyboard</h3>
-          <dl>
-            <dt>Arrows / WASD</dt><dd>Move</dd>
-            <dt>Z / Enter</dt><dd>Select</dd>
-            <dt>X / Esc</dt><dd>Back</dd>
-            <dt>C / Shift</dt><dd>Info</dd>
-            <dt>V / Tab</dt><dd>Auxiliary</dd>
-            <dt>Space</dt><dd>Start</dd>
-          </dl>
+          <dl data-keyboard-rows>${keyboardRows()}</dl>
         </div>
         <div class="web-controls__group">
           <h3>Pointer & touch</h3>
@@ -83,7 +101,10 @@ export function installWebControls(input: VirtualInput, audio?: WebAudioControls
   let priorMusicVolume = audio?.getMusicVolume() ?? 0.7;
   let priorSfxVolume = audio?.getSfxVolume() ?? 1;
 
+  const keyboardList = root.querySelector<HTMLElement>('[data-keyboard-rows]')!;
   const setHelpOpen = (open: boolean): void => {
+    // Rebinding on the Controls settings page changes these rows.
+    if (open) keyboardList.innerHTML = keyboardRows();
     panel.hidden = !open;
     helpButton.setAttribute('aria-expanded', String(open));
     if (open) closeButton.focus();

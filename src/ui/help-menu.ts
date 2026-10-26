@@ -7,17 +7,22 @@
  * whenever they reappear. Item boxes add the weapon-type icon, rank and the
  * Rng/Wt/Mt/Hit/Crit grid; stat boxes list each bonus with a dotted leader.
  *
- * Text is drawn complete rather than typed out at the help style's speed.
+ * Descriptions type out through a Dialog in the `__default_help` speak style
+ * (speed 0.5 of the text_speed setting, 8 lines, no window or cursor), and
+ * retype whenever the box reappears after a second unseen.
  */
 
 import { Surface } from '../engine/surface';
-import { FRAMETIME, WINHEIGHT, WINWIDTH } from '../engine/constants';
+import { FRAMETIME, WINHEIGHT, WINWIDTH, getFrameCount } from '../engine/constants';
 import { drawIcon16 } from './icons';
 import { drawStyledText, measureStyledText } from './styled-text';
 import { baseSurf, blitText, blitTextRight, getSprite, lineWrap, textWidth } from './menu-chrome';
 import { loadMenuBgSprite } from './base-surf';
 import { createItemTree, type ItemObject } from '../objects/item';
 import { evalWeightForHelp } from '../combat/item-system';
+import { Dialog } from './dialog';
+import { getSetting } from '../engine/states/settings-state';
+import { isForkEngine } from '../engine/engine-flavor';
 import type { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 
@@ -38,6 +43,30 @@ export function setHelpMenuGameRef(game: any): void {
 
 function translate(text: string): string {
   return _game?.db?.translate?.(text) ?? text;
+}
+
+/** The `__default_help` speak style, with any event `speak_style` override. */
+function helpStyle(): { speed: number; fontColor: string; numLines: number } {
+  const custom = _game?.speakStyles instanceof Map ? _game.speakStyles.get('__default_help') : null;
+  return {
+    speed: typeof custom?.speed === 'number' ? custom.speed : 0.5,
+    fontColor: custom?.fontColor || TEXT_COLOR,
+    numLines: custom?.numLines || 8,
+  };
+}
+
+/**
+ * Dialog.from_style(__default_help, desc, width) placed at (0, y) inside the
+ * help window: the typewriter that reveals a help description.
+ */
+function helpDialog(desc: string, width: number, y: number): Dialog {
+  const style = helpStyle();
+  const raw = Number(getSetting('text_speed'));
+  const textSpeed = Number.isFinite(raw) && raw >= 0 ? raw : 32;
+  return new Dialog(desc.replace(/\n/g, '{br}'), undefined, undefined, textSpeed, style.speed, false, {
+    background: 'None', messageTail: 'None', drawCursor: false, fontType: FONT,
+    fontColor: style.fontColor, numLines: style.numLines, width, position: [0, y],
+  });
 }
 
 /** text_funcs.split: spread `text` over `numLines` roughly equal lines. */
@@ -86,6 +115,14 @@ function wrapTo(desc: string, width: number): string[] {
 }
 
 export abstract class HelpBox {
+  /** The description typewriter (Python self.dlg); null when there is no text. */
+  protected dlg: Dialog | null = null;
+  /**
+   * Whether the text retypes when the box reappears. Upstream
+   * ItemHelpDialog.draw rebuilds its dialog without keeping it, so item text
+   * stays revealed; HelpDialog/StatDialog (and the fork base) retype.
+   */
+  protected retypeOnReappear = true;
   protected lastTime = -Infinity;
   protected startTime = 0;
   protected time = 0;
@@ -94,6 +131,13 @@ export abstract class HelpBox {
   abstract get width(): number;
   abstract get height(): number;
   protected abstract paint(surf: Surface): void;
+  /** Python create_dialog. */
+  protected createDialog(): Dialog | null { return null; }
+
+  /** Description text revealed so far (tests/logs). */
+  get revealedText(): string {
+    return this.dlg?.displayedText ?? '';
+  }
 
   setTransitionIn(): void {
     this.transitionIn = true;
@@ -130,16 +174,25 @@ export abstract class HelpBox {
    */
   draw(surf: Surface, x: number, y: number, right = false, origin: [number, number] = [0, 0], dtMs = FRAMETIME): void {
     this.time += dtMs;
-    if (this.time > this.lastTime + 1000) {
+    // Python compares engine.get_time() with the last draw: a box unseen for
+    // over a second grows in again and retypes. The engine is frame-stepped
+    // at 60 FPS, so the global frame count is that clock.
+    const clock = getFrameCount() * FRAMETIME;
+    if (this.lastTime === -Infinity || clock > this.lastTime + 1000) {
       this.startTime = this.time - 16;
       this.transitionIn = true;
       this.transitionOut = 0;
+      if (this.retypeOnReappear || !this.dlg) this.dlg = this.createDialog();
     }
-    this.lastTime = this.time;
+    this.lastTime = clock;
 
     const help = new Surface(this.width, this.height);
     help.blit(baseSurf(this.width, this.height, 'help_bg_base'), 0, 0);
     this.paint(help);
+    if (this.dlg) {
+      this.dlg.update(dtMs);
+      this.dlg.draw(help);
+    }
     const box = new Surface(this.width, this.height + 3);
     box.blit(help, 0, 3);
     const logo = getSprite('menus/help_logo');
@@ -173,7 +226,9 @@ export abstract class HelpBox {
 
 /** Python help_menu.HelpDialog (plain description, optional name). */
 export class HelpDialog extends HelpBox {
-  private lines: string[];
+  /** The description as wrapped lines (sizing; tests read the text). */
+  readonly lines: string[];
+  private text: string;
   private name: string;
   private w: number;
   private h: number;
@@ -193,6 +248,7 @@ export class HelpDialog extends HelpBox {
     }
     const dlgWidth = greatest + 16 + ((greatest + 16) % 8 ? 8 - ((greatest + 16) % 8) : 0);
     this.w = dlgWidth;
+    this.text = text;
     this.lines = wrapTo(text, dlgWidth - 16);
     this.h = LINE_H * numLines + 16;
   }
@@ -200,13 +256,12 @@ export class HelpDialog extends HelpBox {
   get width(): number { return this.w; }
   get height(): number { return this.h; }
 
+  protected override createDialog(): Dialog {
+    return helpDialog(this.text, this.w, this.name ? 16 : 0);
+  }
+
   protected paint(surf: Surface): void {
-    let y = 8;
-    if (this.name) {
-      drawStyledText(surf, this.name, 8, 8, TEXT_COLOR, FONT);
-      y += 16;
-    }
-    this.lines.forEach((line, i) => drawStyledText(surf, line, 8, y + i * LINE_H, TEXT_COLOR, FONT));
+    if (this.name) drawStyledText(surf, this.name, 8, 8, helpStyle().fontColor, FONT);
   }
 }
 
@@ -221,12 +276,14 @@ export class SkillHelpDialog extends HelpDialog {
 
 /** Python help_menu.StatDialog: description plus a line per bonus source. */
 export class StatDialog extends HelpBox {
-  private lines: string[];
+  readonly lines: string[];
+  private desc: string;
   private bonuses: [string, number][];
 
   constructor(desc: string, bonuses: Record<string, number>) {
     super();
-    this.lines = wrapTo(translate(desc), 144);
+    this.desc = translate(desc);
+    this.lines = wrapTo(this.desc, 144);
     this.bonuses = Object.entries(bonuses)
       .sort((a, b) => Number(a[0] !== 'Base Value') - Number(b[0] !== 'Base Value'));
   }
@@ -234,22 +291,35 @@ export class StatDialog extends HelpBox {
   get width(): number { return 160; }
   get height(): number { return LINE_H * (this.lines.length + this.bonuses.length) + 16; }
 
-  protected paint(surf: Surface): void {
-    this.lines.forEach((line, i) => drawStyledText(surf, line, 8, 8 + i * LINE_H, TEXT_COLOR, FONT));
-    this.bonuses.forEach(([name, val], i) => {
-      const y = 8 + (this.lines.length + i) * LINE_H;
-      let text = String(val);
-      let font = `text-${TEXT_COLOR}`;
-      if (i > 0 && val > 0) { text = `+${val}`; font = 'text-green'; }
-      else if (i > 0 && val < 0) font = 'text-red';
-      blitText(surf, font, text, 8, y);
-      const w = textWidth(font, text);
-      const leader = '﹘'.repeat(Math.max(0, 24 - w));
-      const leaderX = 8 + w;
-      blitText(surf, `${FONT}-${TEXT_COLOR}`, leader, leaderX, y);
-      blitText(surf, `${FONT}-${TEXT_COLOR}`, name, leaderX + textWidth(FONT, leader), y);
+  /**
+   * StatDialog.create_dialog: each bonus becomes a dialog line, the value in
+   * 'text' (green/red for later sources), a dotted leader typed at max speed,
+   * then the source name.
+   */
+  protected override createDialog(): Dialog {
+    const color = helpStyle().fontColor;
+    let desc = this.desc.replace(/\n/g, '{br}');
+    this.bonuses.forEach(([bonus, val], idx) => {
+      let width: number;
+      if (idx === 0) {
+        width = textWidth('text', String(val));
+        desc += `{br}<text><${color}>${val}</></>`;
+      } else if (val > 0) {
+        width = textWidth('text', `+${val}`);
+        desc += `{br}<text><green>+${val}</></>`;
+      } else if (val < 0) {
+        width = textWidth('text', String(val));
+        desc += `{br}<text><red>${val}</></>`;
+      } else {
+        width = textWidth(FONT, String(val));
+        desc += `{br}<${FONT}><${color}>${val}</></>`;
+      }
+      desc += `{max_speed}${'﹘'.repeat(Math.max(0, 24 - width))}{starting_speed}<${FONT}><${color}>${bonus}</></>`;
     });
+    return helpDialog(desc, 160, 0);
   }
+
+  protected paint(_surf: Surface): void {}
 }
 
 /** Python help_menu.ItemHelpDialog. */
@@ -258,7 +328,8 @@ export class ItemHelpDialog extends HelpBox {
   private unit: UnitObject | null;
   private vals: (string | number | null)[];
   private numPresent: number;
-  private lines: string[];
+  readonly lines: string[];
+  private desc: string;
   private vOffset = 0;
   private nameOverride: string | null = null;
 
@@ -286,7 +357,14 @@ export class ItemHelpDialog extends HelpBox {
     if (item.hasComponent('eval_weight')) weight = evalWeightForHelp(item, this.unit, _game);
     this.vals = [rank, this.rangeString(), weight, might, hit, crit];
     this.numPresent = this.vals.filter((v) => v !== null).length;
-    this.lines = item.desc ? wrapTo(translate(item.desc), ITEM_HELP_WIDTH - 16) : [];
+    this.desc = item.desc ? translate(item.desc) : '';
+    this.lines = this.desc ? wrapTo(this.desc, ITEM_HELP_WIDTH - 16) : [];
+    this.retypeOnReappear = isForkEngine();
+  }
+
+  protected override createDialog(): Dialog | null {
+    if (!this.desc) return null;
+    return helpDialog(this.desc, ITEM_HELP_WIDTH, (this.numPresent > 3 ? 32 : 16) + this.vOffset);
   }
 
   /** item_funcs.get_range_string */
@@ -322,8 +400,6 @@ export class ItemHelpDialog extends HelpBox {
       blitText(surf, 'text-yellow', translate(names[i]), nx, ny + v);
       blitTextRight(surf, 'text-blue', String(val), vx, vy + v);
     });
-    const top = (this.numPresent > 3 ? 32 : 16) + v + 8;
-    this.lines.forEach((line, i) => drawStyledText(surf, line, 8, top + i * LINE_H, TEXT_COLOR, FONT));
   }
 }
 
