@@ -541,7 +541,13 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
       const unit: UnitObject | null = game.board.getUnit(hover.x, hover.y);
       const activeUnit = !!unit && unit.team === 'player' && !unit.finished && !unit.tags.includes('Tile') &&
         game.board.inVision([hover.x, hover.y], 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits());
-      game.cursor.draw(s, [ox, oy] as [number, number], { activeUnit });
+      // LevelCursor formation frame: which half depends on the tile being a
+      // formation spot (prep_formation_select uses formation_show).
+      const inFormation = game.cursor.drawState === 'formation' &&
+        (game.currentLevel?.regions ?? []).some((r: any) => r.region_type === 'formation' &&
+          hover.x >= r.position[0] && hover.x < r.position[0] + (r.size?.[0] ?? 1) &&
+          hover.y >= r.position[1] && hover.y < r.position[1] + (r.size?.[1] ?? 1));
+      game.cursor.draw(s, [ox, oy] as [number, number], { activeUnit, inFormation });
     },
   };
 

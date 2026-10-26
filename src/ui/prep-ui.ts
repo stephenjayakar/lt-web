@@ -21,7 +21,8 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { LoreEntry } from '../data/types';
 import { FONT } from '../rendering/bmp-font';
-import { getMenuBackgroundSync, loadMenuBgSprite } from './base-surf';
+import { getMenuBackgroundSync } from './base-surf';
+import { getSprite as getRegistrySprite } from './sprites';
 import { drawIcon16 } from './icons';
 import {
   available as itemAvailable,
@@ -47,32 +48,16 @@ export function screenOrigin(): [number, number] {
 // Sprites
 // ---------------------------------------------------------------------------
 
-/** Engine sprites that live directly under sprites/ rather than sprites/menus/. */
-const ROOT_SPRITES = new Set(['focus_fade', 'buttons', 'scroll_bar', 'bg_black_tile', 'page_arrows', 'weapon_shine']);
-const spriteCache = new Map<string, HTMLImageElement | null>();
+/** A drawable sprite image (the canvas behind a SPRITES Surface). */
+export type SpriteImage = HTMLCanvasElement & { width: number; height: number };
 
-function loadImage(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-}
-
-/** Python SPRITES.get(nid) for engine sprites (null until loaded). */
-export function getSprite(nid: string): HTMLImageElement | null {
-  if (!spriteCache.has(nid)) {
-    spriteCache.set(nid, null);
-    const load = ROOT_SPRITES.has(nid)
-      ? loadImage(`/game-data/sprites/${nid}.png`)
-      : nid.endsWith('_portrait')
-        ? loadImage(`/game-data/sprites/extra_portraits/${nid}.png`)
-        : loadMenuBgSprite(nid);
-    void load.then((img) => spriteCache.set(nid, img));
-  }
-  return spriteCache.get(nid) ?? null;
+/**
+ * Python SPRITES.get(nid) via the shared SPRITES registry (src/ui/sprites.ts:
+ * project custom_sprites override engine sprites). Null until loaded.
+ */
+export function getSprite(nid: string): SpriteImage | null {
+  const surf = getRegistrySprite(nid);
+  return surf ? (surf.canvas as unknown as SpriteImage) : null;
 }
 
 /** Start loading every sprite the prep screens use. */

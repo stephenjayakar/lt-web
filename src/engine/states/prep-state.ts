@@ -649,10 +649,19 @@ export class PrepFormationSelectState extends State {
     const game = getGame();
     const hover = game.cursor?.getHover();
     this.unit = game.memory?.get?.('formation_unit') ?? (hover ? game.board?.getUnit(hover.x, hover.y) : null);
+    // Python cursor.formation_show().
+    if (game.cursor) game.cursor.drawState = 'formation';
   }
 
   private back(): void {
-    getGame().state.back();
+    const game = getGame();
+    if (game.cursor) game.cursor.drawState = 'visible';
+    game.state.back();
+  }
+
+  override finish(): void {
+    const game = getGame();
+    if (game.cursor?.drawState === 'formation') game.cursor.drawState = 'visible';
   }
 
   override takeInput(event: InputEvent): StateResult {
