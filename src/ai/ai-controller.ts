@@ -88,6 +88,8 @@ export class AIController {
   private pathSystem: PathSystem;
   /** Reference to the game state for region lookups. Set after construction. */
   gameRef: any;
+  /** The behaviour each unit last acted on (Python AIController.behaviour). */
+  private lastBehaviour = new WeakMap<UnitObject, AiBehavior>();
 
   constructor(db: Database, board: GameBoard, pathSystem: PathSystem) {
     this.db = db;
@@ -135,7 +137,10 @@ export class AIController {
 
       // Try the behaviour
       const action = this.tryBehaviour(unit, behaviour, validMoves, aiDef.offense_bias);
-      if (action) return action;
+      if (action) {
+        this.lastBehaviour.set(unit, behaviour);
+        return action;
+      }
     }
 
     // All behaviours exhausted -- wait
@@ -148,7 +153,9 @@ export class AIController {
    */
   getCantoRetreatAction(unit: UnitObject): AIAction | null {
     if (!unit.position) return null;
-    const validMoves = this.pathSystem.getValidMoves(unit, this.board);
+    // Python canto_retreat uses get_true_valid_moves with the behaviour that
+    // chose this turn's action (a guard of an inactive group stays put).
+    const validMoves = this.getValidMovesForBehaviour(unit, this.lastBehaviour.get(unit)?.view_range ?? 0);
     const enemies = this.getEnemies(unit).filter((enemy) => enemy.position);
     if (validMoves.length === 0 || enemies.length === 0) return null;
     const averageX = enemies.reduce(
@@ -751,15 +758,20 @@ export class AIController {
    * Get the maximum range of any weapon or usable item the unit has.
    * Includes staves and spells for proper view range calculations.
    */
+  /**
+   * Python item_funcs.get_max_range: the largest range of every available
+   * inventory item (multi items by their leaves; no extra abilities). An
+   * item whose range set is empty counts 0.
+   */
   private getMaxItemRange(unit: UnitObject): number {
     let maxRange = 0;
-    for (const item of unit.items) {
-      if ((item.isWeapon() || item.isSpell()) && itemAvailable(unit, item, this.db, this.gameRef)) {
-        maxRange = Math.max(maxRange, modifiedMaximumRange(unit, item, this.gameRef));
-      }
-    }
-    for (const item of this.getStealItems(unit)) {
-      maxRange = Math.max(maxRange, modifiedMaximumRange(unit, item, this.gameRef));
+    const leaves = (item: ItemObject): ItemObject[] =>
+      item.hasComponent('multi_item') && item.subitems.length > 0 ? item.subitems.flatMap(leaves) : [item];
+    for (const item of unit.items.flatMap(leaves)) {
+      if (!itemAvailable(unit, item, this.db, this.gameRef)) continue;
+      const max = Math.max(0, modifiedMaximumRange(unit, item, this.gameRef));
+      const min = Math.max(0, modifiedMinimumRange(unit, item, this.gameRef));
+      if (max >= min) maxRange = Math.max(maxRange, max);
     }
     return maxRange;
   }
@@ -780,15 +792,21 @@ export class AIController {
     return items;
   }
 
-  /** Choose the highest-value legal inventory item, matching Python Steal AI. */
+  /**
+   * Python PrimaryAI for Steal: the unit's 'Steal' extra ability against
+   * each target it can reach, scored by compute_priority (Steal.ai_priority:
+   * 0.075 + 0.01 x distance from the move to the enemies' average) with a
+   * strictly positive best; AIController.attack then takes the target's
+   * most expensive legal item.
+   */
   private stealPrimaryAI(
     unit: UnitObject,
     validMoves: [number, number][],
     enemies: UnitObject[],
   ): AIAction | null {
     let best: AIAction | null = null;
-    let bestValue = -Infinity;
-    const stealItems = this.getStealItems(unit);
+    let bestValue = 0;
+    const stealItems = this.getStealItems(unit).filter((item) => !unit.items.includes(item));
     for (const stealItem of stealItems) {
       for (const enemy of enemies) {
         if (!enemy.position || enemy.isDead()) continue;
@@ -805,8 +823,9 @@ export class AIController {
           candidate.getValue() >= most.getValue() ? candidate : most,
         );
         for (const pos of this.getAttackPositions(unit, validMoves, enemy, stealItem)) {
-          const value = targetItem.getValue();
-          if (value < bestValue) continue;
+          const value = (this.itemAiPriority(unit, stealItem, enemy, pos) ?? 0) *
+            aiPriorityMultiplier(enemy, this.gameRef);
+          if (!(value > bestValue)) continue;
           bestValue = value;
           const path = unit.position
             ? this.pathSystem.getPath(unit, pos[0], pos[1], this.board)
@@ -1422,10 +1441,11 @@ export class AIController {
           const attackPositions = this.getAttackPositions(unit, validMoves, target, item);
 
           for (const pos of attackPositions) {
-            const priority = Math.max(
-              this.computeHealPriority(unit, item, target),
-              this.computeStatusPriority(unit, item, target, pos),
-            );
+            // Python compute_priority: the sum of the item's ai_priority
+            // hooks (heal, statuses, buff_ally...) times the target's
+            // ai_priority_multiplier.
+            const priority = (this.itemAiPriority(unit, item, target, pos) ?? 0) *
+              aiPriorityMultiplier(target, this.gameRef);
             if (priority > bestPriority) {
               bestPriority = priority;
               const path = unit.position

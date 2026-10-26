@@ -222,7 +222,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 772
+          "line": 784
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
@@ -244,7 +244,7 @@
       "directReads": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 772
+          "line": 784
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
@@ -1373,19 +1373,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14872
+          "line": 14885
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16576
-        },
-        {
-          "source": "src/engine/states/game-states.ts",
-          "line": 19033
+          "line": 16589
         },
         {
           "source": "src/engine/states/game-states.ts",
           "line": 19046
+        },
+        {
+          "source": "src/engine/states/game-states.ts",
+          "line": 19059
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1652,27 +1652,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14623
+          "line": 14636
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14628
+          "line": 14641
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14640
+          "line": 14653
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14652
+          "line": 14665
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19214
+          "line": 19227
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19283
+          "line": 19296
         },
         {
           "source": "src/events/event-command-flags.ts",
@@ -2206,7 +2206,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15821
+          "line": 15834
         },
         {
           "source": "src/events/event-manager.ts",
@@ -5118,15 +5118,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10371
+          "line": 10384
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15908
+          "line": 15921
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16606
+          "line": 16619
         },
         {
           "source": "src/main.ts",
@@ -5408,7 +5408,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1660
+          "line": 1680
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -5545,7 +5545,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1660
+          "line": 1680
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -5666,7 +5666,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1367
+          "line": 1386
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -5748,7 +5748,7 @@
       "directReads": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1367
+          "line": 1386
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -5946,7 +5946,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1048
+          "line": 1067
         },
         {
           "source": "src/combat/animation-combat.ts",
