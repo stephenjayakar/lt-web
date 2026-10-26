@@ -59,8 +59,8 @@ interface SettingDef {
   icon: number;
 }
 
-/** Bools are stored as 'ON'/'OFF' (the web's existing settings format). */
-const BOOL_VALUES = ['OFF', 'ON'];
+/** Bools are stored as Python's 0/1 (older web saves used 'OFF'/'ON'). */
+const BOOL_VALUES = [0, 1];
 const VOLUMES = [0, 0.01, 0.02, 0.03, 0.0625, 0.125, 0.25, 0.5, 1];
 
 /**
@@ -69,24 +69,24 @@ const VOLUMES = [0, 0.01, 0.02, 0.03, 0.0625, 0.125, 0.25, 0.5, 1];
  */
 const CONFIG_SETTINGS: SettingDef[] = [
   { name: 'animation', kind: 'choice', values: ['Always', 'Your Turn', 'Combat Only', 'Never'], defaultValue: 'Always', icon: 0 },
-  { name: 'display_fps', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 2 },
-  { name: 'battle_bg', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 17 },
+  { name: 'display_fps', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 2 },
+  { name: 'battle_bg', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 17 },
   { name: 'unit_speed', kind: 'slider', values: [165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15], defaultValue: 120, icon: 1 },
   { name: 'text_speed', kind: 'slider', values: [150, 112, 80, 64, 50, 32, 15, 8, 3, 0], defaultValue: 32, icon: 2 },
-  { name: 'mouse', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 19 },
-  { name: 'show_terrain', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 7 },
-  { name: 'show_objective', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 6 },
-  { name: 'autocursor', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 13 },
+  { name: 'mouse', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 19 },
+  { name: 'show_terrain', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 7 },
+  { name: 'show_objective', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 6 },
+  { name: 'autocursor', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 13 },
   { name: 'hp_map_team', kind: 'simple', values: ['All', 'Ally', 'Enemy'], defaultValue: 'All', icon: 10 },
   { name: 'hp_map_cull', kind: 'simple', values: ['None', 'Wounded', 'All'], defaultValue: 'All', icon: 10 },
   { name: 'music_volume', kind: 'slider', values: VOLUMES, defaultValue: 0.3, icon: 15 },
   { name: 'sound_volume', kind: 'slider', values: VOLUMES, defaultValue: 0.3, icon: 16 },
-  { name: 'talk_boop', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 16 },
-  { name: 'show_bounds', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 7 },
+  { name: 'talk_boop', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 16 },
+  { name: 'show_bounds', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 7 },
   { name: 'grid_opacity', kind: 'slider', values: [0, 25, 51, 76, 102, 127, 153, 178, 204, 229, 255], defaultValue: 0, icon: 7 },
-  { name: 'autoend_turn', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 14 },
-  { name: 'confirm_end', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 14 },
-  { name: 'display_hints', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 3 },
+  { name: 'autoend_turn', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 14 },
+  { name: 'confirm_end', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 14 },
+  { name: 'display_hints', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 3 },
 ];
 
 /** Python settings.controls: buttons.png sub-rects for each control icon. */
@@ -148,9 +148,15 @@ function loadSettingsCache(): Record<string, unknown> {
  */
 export function getSetting(name: string): any {
   const cache = loadSettingsCache();
-  if (name in cache) return cache[name];
   const def = CONFIG_SETTINGS.find((d) => d.name === name);
+  if (name in cache) return def?.kind === 'bool' ? normalizeBool(cache[name]) : cache[name];
   return def ? def.defaultValue : undefined;
+}
+
+/** Python cf.SETTINGS bools are 0/1; accept the legacy 'ON'/'OFF' strings. */
+function normalizeBool(value: unknown): number {
+  if (value === 'OFF' || value === 'off' || value === false || value === 0 || value === '0') return 0;
+  return value ? 1 : 0;
 }
 
 export function setSetting(name: string, value: unknown): void {
@@ -179,7 +185,7 @@ export function applyStoredSettings(game: any): void {
 /** Effective value shown in the menu: stored, else the live engine value. */
 function currentValue(def: SettingDef): string | number {
   const cache = loadSettingsCache();
-  if (def.name in cache) return cache[def.name] as string | number;
+  if (def.name in cache) return def.kind === 'bool' ? normalizeBool(cache[def.name]) : cache[def.name] as string | number;
   const audio = _game?.audioManager;
   if (def.name === 'music_volume' && typeof audio?.getMusicVolume === 'function') return audio.getMusicVolume();
   if (def.name === 'sound_volume' && typeof audio?.getSfxVolume === 'function') return audio.getSfxVolume();
@@ -320,7 +326,7 @@ export class SettingsMenuState extends State {
     const idx = def.values.indexOf(value);
     if (def.kind === 'bool') {
       // BoolOption.move_left: turn on.
-      if (value !== 'ON') this.setValue(def, 'ON');
+      if (!value) this.setValue(def, 1);
     } else if (def.kind === 'choice') {
       this.setValue(def, idx >= 0 ? def.values[(idx - 1 + def.values.length) % def.values.length] : def.values[0]);
       this.choiceArrows.get(def.name)?.[0].pulse();
@@ -334,7 +340,7 @@ export class SettingsMenuState extends State {
     const idx = def.values.indexOf(value);
     if (def.kind === 'bool') {
       // BoolOption.move_right: turn off.
-      if (value === 'ON') this.setValue(def, 'OFF');
+      if (value) this.setValue(def, 0);
     } else if (def.kind === 'choice') {
       this.setValue(def, idx >= 0 ? def.values[(idx + 1) % def.values.length] : def.values[def.values.length - 1]);
       this.choiceArrows.get(def.name)?.[1].pulse();
@@ -346,7 +352,7 @@ export class SettingsMenuState extends State {
   private moveNext(def: SettingDef): void {
     const value = currentValue(def);
     if (def.kind === 'bool') {
-      this.setValue(def, value === 'ON' ? 'OFF' : 'ON');
+      this.setValue(def, value ? 0 : 1);
       return;
     }
     const idx = def.values.indexOf(value);
@@ -498,7 +504,7 @@ export class SettingsMenuState extends State {
       blitText(surf, 'text', displayName(def.name), left + 32, top);
       const value = currentValue(def);
       switch (def.kind) {
-        case 'bool': this.drawBool(surf, left, top, value === 'ON'); break;
+        case 'bool': this.drawBool(surf, left, top, !!value); break;
         case 'slider': this.drawSlider(surf, i, def, left, top, value, active); break;
         case 'choice': this.drawChoice(surf, def, left, top, value); break;
         case 'simple': this.drawSimple(surf, def, left, top, value); break;

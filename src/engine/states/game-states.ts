@@ -1146,7 +1146,6 @@ export class TitleState extends State {
     this.logoChecked = false;
     this.pressStartChecked = false;
     this.pulseTimer = 0;
-    preloadTitleMenuSprites();
     // Load the title background panorama (try single file, then frame 0 for animated panoramas)
     game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
       if (img) {
@@ -2210,7 +2209,7 @@ export class OptionMenuState extends State {
       }
       const selected = result.selected;
       if ((selected === 'end_turn' || selected === 'suspend' || selected === 'save') &&
-          getSetting('confirm_end') !== 'OFF') {
+          getSetting('confirm_end')) {
         // Python: confirm_end routes these through OptionChildState (Yes/No).
         this.confirmOwner = selected;
         this.confirm = new ChoiceMenu([
@@ -2543,7 +2542,7 @@ export class FreeState extends MapState {
       // Standard mode: Python auto-ends when the autoend_turn setting is on
       // and every selectable player unit has finished.
       const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
-      if (playerUnits.length > 0 && getSetting('autoend_turn') !== 'OFF') {
+      if (playerUnits.length > 0 && getSetting('autoend_turn')) {
         const allFinished = playerUnits.every((u) => u.finished || u.isDead() || u.tags.includes('Tile'));
         if (allFinished) {
           game.state.change('turn_change');
@@ -8637,7 +8636,7 @@ export class PhaseChangeState extends State {
         u.team === 'player' && !!u.position && !u.isDead());
       const lord = playerUnits.find((u) => u.tags.includes('Lord')) ?? playerUnits[0];
       const remembered = game.memory.get('previous_cursor_position') as [number, number] | undefined;
-      const target = getSetting('autocursor') !== 'OFF' || !remembered ? lord?.position : remembered;
+      const target = getSetting('autocursor') || !remembered ? lord?.position : remembered;
       if (target) {
         game.cursor.setPos(target[0], target[1]);
         game.camera.focusTile(target[0], target[1]);

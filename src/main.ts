@@ -1126,7 +1126,7 @@ async function main(): Promise<void> {
     // --- Performance overlay (screen-space, on top of everything) ---
     // Sync perf overlay with the in-game settings (display_fps)
     const fpsSettingVal = getSetting('display_fps');
-    PerfMonitor.setEnabled(fpsSettingVal === 'ON' || fpsSettingVal === 1 || fpsSettingVal === true);
+    PerfMonitor.setEnabled(!!fpsSettingVal);
     PerfMonitor.draw(display.ctx, display.canvas.width, display.canvas.height);
 
     // --- End of frame ---
