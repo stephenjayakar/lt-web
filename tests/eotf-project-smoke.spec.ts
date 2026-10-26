@@ -1299,6 +1299,10 @@ test.describe('Embrace of the Fog project compatibility', () => {
 
   test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
     test.setTimeout(12 * 60_000);
+    // Clean boots skip the level's events, so most levels have no player
+    // units; Python's FreeState would auto-end that empty phase and run the
+    // enemy turn without its setup. Keep each boot in its first player phase.
+    await page.addInitScript(() => localStorage.setItem('lt-web-settings', JSON.stringify({ autoend_turn: 0 })));
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {

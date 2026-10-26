@@ -48,6 +48,9 @@ test.describe('Embrace of the Fog skill attributes', () => {
   });
 
   test('applies terrain, visibility, tag, global, stack, and aura policies', async ({ page }) => {
+    // A clean boot has no player units, and Python's FreeState auto-ends an
+    // empty player phase; keep the free state up for the hover checks.
+    await page.addInitScript(() => localStorage.setItem('lt-web-settings', JSON.stringify({ autoend_turn: 0 })));
     await bootEotf(page, 'Grigol');
     const result = await page.evaluate(async () => {
       const game = (window as any).__gameRef;

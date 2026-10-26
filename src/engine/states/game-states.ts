@@ -2682,8 +2682,10 @@ export class FreeState extends MapState {
       // any unit is on the map, and every selectable player unit has
       // finished -- including when no player units are left (EOtF then
       // reaches its enemy_turn_change Global_Loss check).
-      const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
-      if (game.board.getAllUnits().length > 0 && getSetting('autoend_turn')) {
+      // Python get_player_units / get_all_units: units with a position.
+      const fieldUnits: UnitObject[] = game.getAllUnits().filter((u: UnitObject) => u.position && !u.isDead());
+      const playerUnits = fieldUnits.filter((u) => u.team === 'player');
+      if (fieldUnits.length > 0 && getSetting('autoend_turn')) {
         const allFinished = playerUnits.every((u) => u.finished || u.isDead() || unitHasTag(u, 'Tile'));
         if (allFinished) {
           game.state.change('turn_change');
