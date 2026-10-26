@@ -1373,19 +1373,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14399
+          "line": 14587
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16069
+          "line": 16257
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18487
+          "line": 18675
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18500
+          "line": 18688
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1652,27 +1652,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14150
+          "line": 14338
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14155
+          "line": 14343
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14167
+          "line": 14355
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14179
+          "line": 14367
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18668
+          "line": 18856
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18737
+          "line": 18925
         },
         {
           "source": "src/events/event-command-flags.ts",
@@ -2013,7 +2013,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 471
+          "line": 473
         }
       ],
       "directReads": [
@@ -2060,7 +2060,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 471
+          "line": 473
         }
       ],
       "directReads": [
@@ -2206,7 +2206,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15322
+          "line": 15510
         },
         {
           "source": "src/events/event-manager.ts",
@@ -2297,7 +2297,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 475
+          "line": 477
         }
       ],
       "directReads": [],
@@ -2333,7 +2333,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 476
+          "line": 478
         }
       ],
       "directReads": [],
@@ -2369,7 +2369,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 476
+          "line": 478
         }
       ],
       "directReads": [],
@@ -2511,7 +2511,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 476
+          "line": 478
         }
       ],
       "directReads": [],
@@ -2587,7 +2587,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 479
+          "line": 481
         }
       ],
       "directReads": [
@@ -2636,7 +2636,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 479
+          "line": 481
         }
       ],
       "directReads": [
@@ -2885,7 +2885,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 469
+          "line": 471
         },
         {
           "source": "src/objects/skill.ts",
@@ -3122,7 +3122,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 469
+          "line": 471
         },
         {
           "source": "src/objects/skill.ts",
@@ -3227,7 +3227,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 469
+          "line": 471
         },
         {
           "source": "src/objects/skill.ts",
@@ -3540,7 +3540,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 469
+          "line": 471
         }
       ],
       "directReads": [
@@ -4337,7 +4337,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 471
+          "line": 473
         }
       ],
       "directReads": [
@@ -5118,19 +5118,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9982
+          "line": 10170
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15409
+          "line": 15597
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16099
+          "line": 16287
         },
         {
           "source": "src/main.ts",
-          "line": 467
+          "line": 469
         }
       ],
       "directReads": [
@@ -5352,7 +5352,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 467
+          "line": 469
         }
       ],
       "directReads": [
@@ -5698,11 +5698,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5135
+          "line": 5249
         },
         {
           "source": "src/main.ts",
-          "line": 452
+          "line": 454
         },
         {
           "source": "src/objects/item.ts",
@@ -5748,7 +5748,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5135
+          "line": 5249
         },
         {
           "source": "src/objects/item.ts",
@@ -5978,7 +5978,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4546
+          "line": 4659
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -5990,7 +5990,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 452
+          "line": 454
         },
         {
           "source": "src/ui/help-menu.ts",
@@ -6737,7 +6737,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 469
+          "line": 471
         }
       ],
       "directReads": [],
@@ -6773,7 +6773,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 470
+          "line": 472
         }
       ],
       "directReads": [],
@@ -6809,7 +6809,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 470
+          "line": 472
         }
       ],
       "directReads": [],
@@ -6845,7 +6845,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 470
+          "line": 472
         }
       ],
       "directReads": [],
@@ -7041,7 +7041,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 470
+          "line": 472
         }
       ],
       "directReads": [],
@@ -7122,7 +7122,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 474
+          "line": 476
         }
       ],
       "directReads": [
@@ -7208,7 +7208,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 475
+          "line": 477
         }
       ],
       "directReads": [
@@ -7294,7 +7294,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 474
+          "line": 476
         }
       ],
       "directReads": [
@@ -7380,7 +7380,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 475
+          "line": 477
         }
       ],
       "directReads": [
@@ -7828,7 +7828,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 481
+          "line": 483
         }
       ],
       "directReads": [
@@ -8190,7 +8190,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 472
+          "line": 474
         }
       ],
       "directReads": [],
@@ -9048,7 +9048,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 480
+          "line": 482
         },
         {
           "source": "src/rendering/highlight.ts",
@@ -9103,7 +9103,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 480
+          "line": 482
         }
       ],
       "directReads": [
@@ -9138,7 +9138,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 480
+          "line": 482
         }
       ],
       "directReads": [
@@ -9165,7 +9165,7 @@
       "webReferences": [
         {
           "source": "src/main.ts",
-          "line": 480
+          "line": 482
         }
       ],
       "directReads": [],
@@ -9195,7 +9195,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 480
+          "line": 482
         }
       ],
       "directReads": [
@@ -9259,7 +9259,7 @@
         },
         {
           "source": "src/main.ts",
-          "line": 472
+          "line": 474
         }
       ],
       "directReads": [

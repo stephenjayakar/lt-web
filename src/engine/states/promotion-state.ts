@@ -60,6 +60,7 @@ import {
 } from '../../ui/menu-chrome';
 import {
   createPixelAnimation,
+  BROKEN_ALERT_SHOWN,
   finishCoreItemUse,
   itemUseCantoMovement,
   performPromotionOrClassChange,
@@ -418,6 +419,7 @@ export class PromotionChoiceState extends State {
             game.actionLog.doAction(new GiveItemAction(unit, use.item));
           }
           game.memory.delete('item_use_item');
+          game.memory.delete(BROKEN_ALERT_SHOWN);
           game.highlight?.clear?.();
           game._moveOrigin = null;
           game._moveAction = null;

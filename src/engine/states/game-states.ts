@@ -4090,7 +4090,16 @@ export function finishCoreItemUse(
     if (nextUses === 0 && !item.hasComponent('no_break_out_of_uses') && unit.items.includes(item)) {
       game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
     }
+    // Python handle_broken_items: the map combat (not a base use) alerts a
+    // player's broken item unless it targeted the user itself.
+    if (nextUses === 0 && !baseUse && game.memory.get(BROKEN_ALERT_SHOWN) !== item &&
+        shouldAlertBrokenItem(unit, item, uniqueTargets[0] ?? null)) {
+      const pending: Banner[] = game.memory.get(PENDING_ALERTS) ?? [];
+      pending.push(brokenItemBanner(item));
+      game.memory.set(PENDING_ALERTS, pending);
+    }
   }
+  if (game.memory.get(BROKEN_ALERT_SHOWN) === item) game.memory.delete(BROKEN_ALERT_SHOWN);
   triggerAbilityItemCharge(game, unit, item, 'use');
   if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
   else if (!canAttackAfterCombat(unit, item)) {
@@ -4103,10 +4112,113 @@ export function finishCoreItemUse(
       game.memory.set(ITEM_USE_CANTO, unit);
       if (unit.position) game.cursor?.setPos?.(unit.position[0], unit.position[1]);
     } else {
-      game.actionLog.doAction(new WaitAction(unit));
+      // Python WaitState: unit.wait() fires unit_wait (not actively chosen).
+      waitUnit(game, unit, false);
     }
   }
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+}
+
+/** Memory key: broken-item banners waiting for the item menus to resume. */
+const PENDING_ALERTS = 'pending_item_alerts';
+/** Memory key: the item whose broken alert the promotion flow already showed. */
+export const BROKEN_ALERT_SHOWN = 'broken_alert_shown';
+
+/**
+ * Python simple_combat.handle_broken_items' alert condition: a player unit's
+ * item broke, the combat was not the unit targeting itself, the unit is not
+ * dying, and no no_alert_on_break (alerts_when_broken, ALL_DEFAULT_TRUE).
+ */
+export function shouldAlertBrokenItem(unit: UnitObject, item: ItemObject, defender: UnitObject | null): boolean {
+  return unit !== defender && unit.team === 'player' && unit.currentHp > 0 && !unit.isDead() &&
+    !item.hasComponent('no_alert_on_break');
+}
+
+/** Python banner.BrokenItem: "<color>{item}</> broke." with the ItemBreak sound. */
+export function brokenItemBanner(item: ItemObject): Banner {
+  // The deprecated text_color component always resolves to 'white'.
+  const color = item.hasComponent('text_color') ? 'white' : 'blue';
+  return new Banner(`${colored(item.name, color)} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
+}
+
+/** Push an AlertState for a banner (Python game.alerts.append + change('alert')). */
+export function pushAlert(game: any, banner: Banner): void {
+  const alerts: Banner[] = game.memory.get(ALERTS) ?? [];
+  alerts.push(banner);
+  game.memory.set(ALERTS, alerts);
+  game.state.change('alert');
+}
+
+/** The resumed item menu shows the item use's pending broken-item alerts first. */
+function showPendingAlerts(game: any): boolean {
+  const pending: Banner[] = game.memory.get(PENDING_ALERTS) ?? [];
+  if (pending.length === 0) return false;
+  game.memory.delete(PENDING_ALERTS);
+  for (const banner of pending) pushAlert(game, banner);
+  return true;
+}
+
+const ALERTS = 'alerts';
+
+/**
+ * Port of Python AlertState: shows the newest banner in game.alerts until it
+ * times out or, after its pause, any input dismisses it.
+ */
+export class AlertState extends State {
+  readonly name = 'alert';
+  override readonly transparent = true;
+
+  private current(): Banner | null {
+    const alerts: Banner[] = getGame().memory.get(ALERTS) ?? [];
+    return alerts[alerts.length - 1] ?? null;
+  }
+
+  private leave(): StateResult {
+    const game = getGame();
+    const alerts: Banner[] = game.memory.get(ALERTS) ?? [];
+    alerts.pop();
+    game.state.back();
+    return 'repeat';
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const alert = this.current();
+    if (event && alert && alert.canDismiss()) return this.leave();
+  }
+
+  override update(): StateResult {
+    const alert = this.current();
+    if (!alert) {
+      getGame().state.back();
+      return 'repeat';
+    }
+    if (alert.update(FRAMETIME)) return this.leave();
+  }
+
+  override draw(surf: Surface): Surface {
+    this.current()?.draw(surf);
+    return surf;
+  }
+}
+
+/**
+ * Port of Python WaitState: every unit that has attacked but is not finished
+ * waits through unit.wait() (unit_wait, actively_chosen False). Combat pushes
+ * it under its end-of-combat events, so it runs after them.
+ */
+export class WaitState extends State {
+  readonly name = 'wait';
+  override readonly transparent = true;
+
+  override update(): StateResult {
+    const game = getGame();
+    game.state.back();
+    for (const unit of game.getAllUnits() as UnitObject[]) {
+      if (unit.hasAttacked && !unit.finished && !unit.isDead()) waitUnit(game, unit, false);
+    }
+    if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+    return 'repeat';
+  }
 }
 
 /** Memory key: the unit whose map item use left it in Canto. */
@@ -4299,6 +4411,7 @@ export class ItemMenuState extends State {
   override begin(): StateResult {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
+    if (showPendingAlerts(game)) return 'repeat';
     if (unit && enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (!unit || !unit.position || unit.finished) {
       game.state.back();
@@ -4707,6 +4820,7 @@ export class ItemUseState extends State {
       return;
     }
 
+    if (showPendingAlerts(game)) return 'repeat';
     if (enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (unit.finished) {
       game.state.back();
@@ -5196,6 +5310,13 @@ export class ItemTargetingState extends MapState {
           unit: defender, kind, options: isClassChange ? [] : options, nextClass: null,
           canGoBack: true, popBelow: 1, itemUse,
         });
+      }
+      // Python: the crest's map combat spent its last use and alerted
+      // handle_broken_items' banner before end_combat opened these screens.
+      if (this.item.maxUses > 0 && this.item.uses <= 1 &&
+          shouldAlertBrokenItem(unit, this.item, defender)) {
+        pushAlert(game, brokenItemBanner(this.item));
+        game.memory.set(BROKEN_ALERT_SHOWN, this.item);
       }
       return;
     }
@@ -6626,7 +6747,7 @@ function enterForkMultiTargetCombat(game: any, positions: [number, number][]): U
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'anim_exit' | 'post_exp_events' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
+type CombatPhase = 'combat' | 'anim_exit' | 'post_exp_events' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'broken_item' | 'cleanup';
 
 /**
  * Python pushes an EventState per trigger and the stack runs the most recent
@@ -6747,6 +6868,9 @@ export class CombatState extends State {
   private rankUpBanner: Banner | null = null;
   private stoleBanner: Banner | null = null;
   private stoleBannerShown: boolean = false;
+  /** Python handle_broken_items alerts, newest (shown first) first. */
+  private brokenBanners: Banner[] | null = null;
+  private brokenBanner: Banner | null = null;
   private gotItemBanner: Banner | null = null;
   private gotItemBannerQueue: Banner[] = [];
   private pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
@@ -7125,6 +7249,8 @@ export class CombatState extends State {
     this.rankUpBanner = null;
     this.stoleBanner = null;
     this.stoleBannerShown = false;
+    this.brokenBanners = null;
+    this.brokenBanner = null;
     this.gotItemBanner = null;
     this.gotItemBannerQueue = [];
     this.pendingDiscards = [];
@@ -7912,6 +8038,14 @@ export class CombatState extends State {
         break;
       }
 
+      case 'broken_item': {
+        if (!this.brokenBanner || this.brokenBanner.update(realDelta)) {
+          this.brokenBanner = null;
+          this.startRankUpOrCleanup();
+        }
+        break;
+      }
+
       case 'got_item': {
         if (!this.gotItemBanner || this.gotItemBanner.update(realDelta)) {
           this.gotItemBanner = null;
@@ -7947,10 +8081,6 @@ export class CombatState extends State {
             ));
           }
 
-          // Canto keeps the unit actionable; all other attacks consume the turn.
-          if (!hasCanto && !returnsToMenu && !resetByCombatHook) {
-            game.actionLog.doAction(new WaitAction(attacker));
-          }
         }
 
         // Python clean_up2 triggers CombatEnd and then the end_combat item and
@@ -8010,8 +8140,30 @@ export class CombatState extends State {
         // Clear eventCombat flag
         const wasEventCombat = this.eventCombat;
         game.eventCombat = false;
+        const stackNames: string[] = game.state.getStackNames?.() ?? [];
+        const aiCombat = stackNames[stackNames.length - 2] === 'ai';
 
         game.state.back();
+
+        // Python handle_state_stack: an event combat leaves the stack alone;
+        // an AI combat without Canto pushes 'wait' over the AI; a player
+        // attack that neither returns to the menu nor has Canto clears to
+        // free + 'wait'. WaitState then waits the attacker through
+        // unit.wait() (unit_wait, not actively chosen) after the end-of-combat
+        // events pushed above it.
+        if (!wasEventCombat && !hasCanto) {
+          if (aiCombat) {
+            game.state.change('wait');
+          } else if (!attacker.isDead() && !returnsToMenu) {
+            game.selectedUnit = null;
+            game._moveOrigin = null;
+            game._moveAction = null;
+            game.highlight.clear();
+            game.state.clear();
+            game.state.change('free');
+            game.state.change('wait');
+          }
+        }
 
         // A full player killer force-given a droppable item must resolve the
         // 'item_discard' state (Python GiveItem force_give -> item_discard).
@@ -8199,10 +8351,43 @@ export class CombatState extends State {
     this.dyingUnits = [];
   }
 
+  /**
+   * Python handle_broken_items: an alert for the attacker's broken item and
+   * then the defender's (AlertState shows the newest first), each only for a
+   * player unit that is not dying, never when a unit targeted itself.
+   */
+  private brokenItemBanners(): Banner[] {
+    const combat = this.getActiveCombat();
+    const results = this.results;
+    if (!combat || !results) return [];
+    const attacker = combat.attacker;
+    const defender = this.getPrimaryCombatDefender() ?? combat.defender ?? null;
+    const banners: Banner[] = [];
+    if (results.attackWeaponBroke && combat.attackItem &&
+        shouldAlertBrokenItem(attacker, combat.attackItem, defender)) {
+      banners.push(brokenItemBanner(combat.attackItem));
+    }
+    if (results.defenseWeaponBroke && defender && combat.defenseItem && attacker !== defender &&
+        shouldAlertBrokenItem(defender, combat.defenseItem, attacker)) {
+      banners.push(brokenItemBanner(combat.defenseItem));
+    }
+    return banners.reverse();
+  }
+
   private startRankUpOrCleanup(): void {
     if (this.isAnimationCombat && this.animCombat && this.animCombat.state !== 'done') {
       this.animCombat.expDone = true;
       this.phase = 'anim_exit';
+      this.phaseTimer = 0;
+      return;
+    }
+    // Python handle_broken_items pushes its alerts after on_broken's events,
+    // so the banners show before them (and, upstream, after the exp screen;
+    // the fork checks broken items last, so before everything else).
+    if (this.brokenBanners === null) this.brokenBanners = this.brokenItemBanners();
+    if (this.brokenBanners.length > 0) {
+      this.brokenBanner = this.brokenBanners.shift() as Banner;
+      this.phase = 'broken_item';
       this.phaseTimer = 0;
       return;
     }
@@ -8415,6 +8600,9 @@ export class CombatState extends State {
     }
     if (this.phase === 'got_item' && this.gotItemBanner) {
       this.gotItemBanner.draw(surf);
+    }
+    if (this.phase === 'broken_item' && this.brokenBanner) {
+      this.brokenBanner.draw(surf);
     }
   }
 

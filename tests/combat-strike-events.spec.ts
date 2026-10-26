@@ -530,10 +530,13 @@ test.describe('combat strike events run between strikes', () => {
       const applied = applyCoreSequenceItem(caster, entangle, [
         [free[2]], [ally.position], [free[2]], [enemy.position],
       ]);
+      // The caster's automatic wait (unit_wait) queues after the hit events.
+      const hits = game.eventManager.eventQueue.filter((event: any) =>
+        String(event.nid ?? event.prefab?.nid ?? event.name).includes('Entangle'));
       return {
         applied,
-        order: game.eventManager.eventQueue.map((event: any) => event.nid ?? event.prefab?.nid ?? event.name),
-        unit2: game.eventManager.eventQueue.map((event: any) => event.trigger?.unit2?.nid ?? null),
+        order: hits.map((event: any) => event.nid ?? event.prefab?.nid ?? event.name),
+        unit2: hits.map((event: any) => event.trigger?.unit2?.nid ?? null),
         casterNid: caster.nid,
         allyNid: ally.nid,
         enemyNid: enemy.nid,
