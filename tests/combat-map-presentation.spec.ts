@@ -71,7 +71,9 @@ async function sampleFrames(page: Page, maxFrames: number): Promise<FrameSample[
         attackerOffset: av?.offset ?? [0, 0],
         defenderOnBoard: game.board.getUnit(...(defender.position ?? [-1, -1])) === defender,
       });
-      if (left < 0 && top !== 'combat' && frame > 5) left = frame;
+      // Events the combat pushes (combat_death, unit_death before the dying
+      // fade) sit above it; stop once the combat itself has been popped.
+      if (left < 0 && !game.state.getStackNames().includes('combat') && frame > 5) left = frame;
       if (left >= 0 && frame > left + 3) break;
     }
     return samples;
