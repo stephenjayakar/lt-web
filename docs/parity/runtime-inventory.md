@@ -10,8 +10,8 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 > `level_select` fires only from the overworld). Saves now persist equipped
 > weapon/accessory, prefab nid, skill uid/owner/initiator/subskill chains,
 > regions, the event queue and already-triggered events, board bounds, the
-> dialog log, current fatigue and roam AI. Still not persisted: `action_log`
-> (turnwheel history across a reload), `speak_styles` and team palettes.
+> dialog log, current fatigue, roam AI and (save 1.1.0) the `action_log`.
+> Still not persisted: `speak_styles` and team palettes.
 > Current gaps are listed in `PARITY-REPORT.md` "Remaining Gaps".
 
 ## 1. TRIGGERS (lt-maker/app/events/triggers.py)
@@ -186,7 +186,7 @@ Sources: `game_state.py:398` (GameState.save), `unit.py:893` (UnitObject.save), 
 | parties | game_state.py:412 | PERSISTED | save.ts:668 | |
 | current_party | game_state.py:413 | PERSISTED | save.ts:669 | |
 | state | game_state.py:414 | PARTIAL | save.ts:670 | only current state name (`stateStack`), not full state-machine save |
-| action_log | game_state.py:415 | DEFERRED (documented, 2026-07-17) | — | Large feature: `src/engine/action.ts` has no `serialize`/`save`/`restore` scaffolding at all (grepped) — the web action log is in-memory only. Persisting it (for mid-battle-save turnwheel history) requires a serialization format for every Action subclass, out of scope for this slice. Deferred; see runtime-inventory.md Highest-Risk Gaps #5 for the related `already_triggered_events` gap (since closed, see below) which was a much smaller, tractable slice of the same area. |
+| action_log | game_state.py:415 | PERSISTED (2026-10-26) | src/engine/action-serialization.ts (`saveActionLog`/`restoreActionLog`) | Python ActionLog.save/restore; `tests/turnwheel-save-restore.spec.ts`. Original 2026-07-17 note: | Large feature: `src/engine/action.ts` has no `serialize`/`save`/`restore` scaffolding at all (grepped) — the web action log is in-memory only. Persisting it (for mid-battle-save turnwheel history) requires a serialization format for every Action subclass, out of scope for this slice. Deferred; see runtime-inventory.md Highest-Risk Gaps #5 for the related `already_triggered_events` gap (since closed, see below) which was a much smaller, tractable slice of the same area. |
 | events | game_state.py:416 | MISSING | — | EventManager state not serialized |
 | supports | game_state.py:417 | PERSISTED | save.ts:673 | |
 | records | game_state.py:418 | PERSISTED | save.ts:672 | |

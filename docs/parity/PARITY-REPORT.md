@@ -79,7 +79,7 @@ Domains with current inventory counts, verification method, and specification re
 | Skill components (hook surfaces) | 93/241 | 241 nids | Hook dispatch audit | `src/combat/skill-system.ts` | Inventory only |
 | Triggers (dispatched) | 38/41 | 41 constant nids | Trigger dispatch audit | `docs/parity/runtime-inventory.md §1` | Remaining 3 unreachable in EOtF |
 | Query functions | 21/21 | 21 public methods | Behavioral equivalence | `src/engine/query-engine.ts` | Implemented |
-| Save fields | all but `action_log` (and a few representation differences) | Python `game_state.save` | Serialization audit | `docs/parity/runtime-inventory.md §4` (status banner) | Partial: see Remaining Gaps |
+| Save fields | all, including `action_log` (save 1.1.0); a few representation differences | Python `game_state.save` | Serialization audit + `tests/turnwheel-save-restore.spec.ts` | `docs/parity/runtime-inventory.md §4` (status banner) | Implemented |
 | Equations | 32 nids | 32 nids | Evaluator + golden regression | `src/combat/combat-calcs.ts` + `tests/equation-parity.spec.ts` | Implemented |
 | Combat mode RNG | 5 modes | 5 modes | Deterministic replay + turnwheel | `tests/rng-replay.spec.ts` + `tests/combat-goldens.spec.ts` | Verified |
 | Turnwheel actions | 40+ reversible classes | Python `action.py` | Action round-trip tests | `src/engine/action.ts` + `tests/turnwheel-breadth.spec.ts` | Verified |
@@ -119,6 +119,7 @@ can reach the difference.
 | Keyboard rebinding keeps the web's extra default aliases and adds Restore Defaults | Settings | A browser player cannot delete `saves/config.ini` | Yes | Documented (`README.md`) |
 | Per-unit level-cap modifier survives save/load | Save | The fork forgets it on reload (fork bug) | Yes | Deliberate (`temp/plan-fork-diff.md`) |
 | Subtractive blends (`blend2`, `map_hit_sub_blend`) draw with canvas `difference` | Rendering | Canvas has no `BLEND_RGB_SUB`; `difference` matches whenever the destination is brighter | No (0 uses) | Documented |
+| Turnwheel history after a reload | Save | FIXED 2026-10-26: saves carry the action log (Python Action.save/restore: units by nid, items/skills by uid, by value once out of play), so a suspend or save keeps the turnwheel history; pre-1.1.0 saves load with an empty log (`tests/turnwheel-save-restore.spec.ts`) | Yes | Fixed |
 | Mutual kill: droppable items are not handed to the dying killer | Combat | Python gives them to a unit that is dying, so the item is lost either way; only the banner differs | Rare | Documented |
 | Initiative bar draws team chips, not chibis | UI | Chibi art is not guaranteed per unit | No (`initiative` off) | Documented |
 | Movement arrows | Rendering | FIXED 2026-10-26: constant 0.9 alpha; the pulse/tint only with `translucent_unit_sprite` (`tests/map-ui.spec.ts`) | Yes | Fixed |
@@ -218,7 +219,6 @@ What is still open, most player-visible first:
 
 | Gap | EOtF reach | Why it remains |
 |-----|------------|----------------|
-| `action_log` is not saved, so after a suspend/reload the turnwheel cannot rewind past the load | Yes: EOtF has the turnwheel and battle-map suspend | Needs save/restore for every reversible Action class; large |
 | The board holds one unit per tile; Python allows stacking | Only in free roam, where the roam components keep a stacked unit's position and restore the grid (`quickArrive`/`quickLeave`) | Board-wide multi-occupancy would touch every board query |
 | `item_funcs.has_damage` (Hurricane_Onslaught_Child, Rumbling_Earth_Child_Helper, Critical_Zone_Aura_Helper/Child conditions) | Yes | Not in the lt-maker reference, so the conditions raise and stay False in both; needs the fork's source to confirm |
 | Expressions get every context name; Python passes a per-call-site subset | Only expressions that would raise in Python | Low impact; tracked in `PLAN.md` P8.2 |

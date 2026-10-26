@@ -156,9 +156,9 @@ The release gate is green: build, all four audits, the full serial suite,
   Rumbling_Earth_Child_Helper and Critical_Zone_Aura_Helper/Child) does not exist in the lt-maker reference, so those conditions raise
   and stay False there and here; confirm against EOtF's shipped engine (its
   v1.90 source is only on the Mac, so this is still open).
-- [ ] Save the action log so the turnwheel can rewind past a suspend/reload,
-  as Python's `game_state.save` does (every reversible Action needs
-  save/restore).
+- [x] Save the action log so the turnwheel can rewind past a suspend/reload,
+  as Python's `game_state.save` does (`src/engine/action-serialization.ts`,
+  save version 1.1.0; `tests/turnwheel-save-restore.spec.ts`).
 
 ### P8.3 — Roguelite systems and campaign proof
 

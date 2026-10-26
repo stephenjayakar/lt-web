@@ -523,6 +523,33 @@ export class ActionLog {
     return this.actions.length;
   }
 
+  /** Recorded actions, oldest first (for save; do not mutate). */
+  getActions(): readonly Action[] {
+    return this.actions;
+  }
+
+  /** Python ActionLog._first_free_action. */
+  get firstFreeAction(): number {
+    return this._firstFreeAction;
+  }
+
+  /** Python ActionLog.record (the stop/start recording counter). */
+  get recordCounter(): number {
+    return this._record;
+  }
+
+  /**
+   * Python ActionLog.restore: replace the log with saved actions. The
+   * turnwheel navigation state starts fresh, as after a load in Python.
+   */
+  restoreState(actions: Action[], actionIndex: number, firstFreeAction: number, record: number): void {
+    this.clear();
+    this.actions.push(...actions);
+    this.actionIndex = Math.min(actionIndex, actions.length - 1);
+    this._firstFreeAction = Math.min(firstFreeAction, this.actionIndex);
+    this._record = record;
+  }
+
   // -----------------------------------------------------------------
   // Turnwheel navigation
   // -----------------------------------------------------------------
