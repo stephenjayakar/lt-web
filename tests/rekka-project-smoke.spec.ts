@@ -1043,11 +1043,27 @@ test.describe('Rekka all-level compatibility', () => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=7&clean=false&bundle=false');
     await waitForHarness(page);
     await page.evaluate(() => (window as any).__harness.settle(1_200));
-    await page.evaluate(() => {
+    // settle() is async: awaiting it keeps it from stepping frames in the
+    // background while the screenshot is compared (the retries differed).
+    await page.evaluate(async () => {
       const game = (window as any).__gameRef;
       game.eventManager.triggerSpecific('Global Setup', { type: 'Global Setup' }, true);
       game.state.change('event');
-      (window as any).__harness.settle(100);
+      await (window as any).__harness.settle(100, ['prep_main']);
+    });
+    // Map sprites load asynchronously. Then park the frame-driven unit and
+    // cursor animation cycles (LCM 384 frames) at a fixed phase, since how
+    // many frames the setup took depends on asset load timing.
+    await page.waitForFunction(() => {
+      const game = (window as any).__gameRef;
+      return [...game.units.values()]
+        .filter((unit: any) => unit.position && !unit.dead)
+        .every((unit: any) => !!unit.sprite);
+    }, undefined, { timeout: 15_000 });
+    await page.evaluate(async () => {
+      const { getFrameCount } = await import('/src/engine/constants.ts');
+      const remainder = getFrameCount() % 384;
+      (window as any).__harness.stepFrames(remainder === 0 ? 384 : 384 - remainder, null);
     });
 
     const prep = await page.evaluate(() => {
