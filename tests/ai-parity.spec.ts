@@ -240,7 +240,11 @@ test.describe('AI parity', () => {
       if (!path) return null;
       const before = unit.movementLeft;
       const cost = g.pathSystem.getPathCost(unit, path, g.board);
-      g.aiController.getAction = () => ({ type: 'move', targetPosition: destination, movePath: path });
+      // Only Bone walks: the other AI units must not stand in its path
+      // (check_position stops a walk before an enemy, as an ambush).
+      g.aiController.getAction = (actor: any) => actor === unit
+        ? { type: 'move', targetPosition: destination, movePath: path }
+        : { type: 'wait' };
       g.state.change('ai');
       return { origin, destination, before, cost };
     });

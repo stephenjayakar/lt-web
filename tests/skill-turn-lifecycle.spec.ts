@@ -127,4 +127,73 @@ test.describe('skill turn lifecycle', () => {
       hasExpiring: false,
     });
   });
+
+  // Python: turn_change + status_endstep on top (the ending phase's endstep
+  // hooks and their events run first), then TurnChangeState.end advances the
+  // phase, pushes free, status_upkeep, phase_change and fires the phase
+  // events above them (turn_change runs before phase_change: last trigger
+  // first). PhaseChangeState locks the turnwheel and ResetAlls; then
+  // status_upkeep pops the team's units last to first, each unit's events
+  // running before the next unit, and ends with MarkPhase.
+  test('a turn change interleaves endstep, phase events, ResetAll, and per-unit upkeep in Python order', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
+    await page.evaluate(() => (window as any).__harness.settle(600));
+    const players: string[] = await page.evaluate(async () => {
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const log: string[] = [];
+      (window as any).__order = log;
+      const players = game.getTeamUnits('player').filter((u: any) => u.position).slice(0, 2);
+      const enemy = game.getTeamUnits('enemy').find((u: any) => u.position);
+      const event = (nid: string, trigger: string, key: string) => game.db.events.set(nid, {
+        name: nid, nid, trigger, level_nid: game.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0, _source: [`game_var;${key};1`],
+      });
+      const skill = (nid: string, components: [string, unknown][]) => new SkillObject({
+        nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0], components,
+      } as any);
+      event('_OrdTurn', 'turn_change', '_ord_turn_change');
+      event('_OrdPhase', 'phase_change', '_ord_phase_change');
+      event('_OrdEndstep', '_OrdEndstep', '_ord_endstep');
+      enemy.skills.push(skill('_OrdEnd', [['endstep_event', '_OrdEndstep']]));
+      players.forEach((unit: any, index: number) => {
+        event(`_OrdUpkeep${index}`, `_OrdUpkeep${index}`, `_ord_upkeep_${unit.nid}`);
+        unit.currentHp = Math.max(1, unit.maxHp - 5);
+        unit.skills.push(skill(`_OrdUp${index}`, [['regeneration', 0.5], ['upkeep_event', `_OrdUpkeep${index}`]]));
+      });
+      const set = game.gameVars.set.bind(game.gameVars);
+      game.gameVars.set = (key: string, value: unknown) => {
+        if (String(key).startsWith('_ord_')) log.push(`event:${key.slice(5)}:${game.phase.getCurrent()}`);
+        return set(key, value);
+      };
+      const doAction = game.actionLog.doAction.bind(game.actionLog);
+      game.actionLog.doAction = (action: any) => {
+        const name = action.constructor.name;
+        if (['ResetAllAction', 'MarkPhase', 'LockTurnwheel'].includes(name)) log.push(name);
+        else if (name === 'SetCurrentHpAction' && players.includes(action.unit)) log.push(`hp:${action.unit.nid}`);
+        return doAction(action);
+      };
+      game.phase.setCurrentTeam('enemy');
+      game.state.clear();
+      game.state.change('turn_change');
+      return players.map((unit: any) => unit.nid);
+    });
+    expect(players).toHaveLength(2);
+    await page.evaluate(() => (window as any).__harness.settle(1200));
+    const order = await page.evaluate(() => (window as any).__order);
+    const [first, second] = players;
+    expect(order).toEqual([
+      'event:endstep:enemy',
+      'event:turn_change:player',
+      'event:phase_change:player',
+      'LockTurnwheel',
+      'ResetAllAction',
+      `hp:${second}`,
+      `event:upkeep_${second}:player`,
+      `hp:${first}`,
+      `event:upkeep_${first}:player`,
+      'MarkPhase',
+    ]);
+  });
 });

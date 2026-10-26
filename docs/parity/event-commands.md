@@ -41,8 +41,8 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | narrate | Narrate |  | HIDDEN |  | Speaker, String | no_block | yes | yes | no |  | dispatched-unverified |
 | transition | Transition | transition:435 | BG_FG | t | Direction?, Speed?, Color3?, Panorama? | no_block | yes | yes | yes | mention | dispatched-unverified |
 | change_background | ChangeBackground | change_background:460 | BG_FG | b | Panorama?, Speed? | keep_portraits, scroll | yes | yes | no | mention | dispatched-unverified |
-| pause_background | PauseBackground | pause_background:476 | BG_FG |  | PauseAt? |  | yes | yes | no |  | stub-hint |
-| unpause_background | UnpauseBackground | unpause_background:482 | BG_FG |  |  |  | yes | yes | no |  | stub-hint |
+| pause_background | PauseBackground | pause_background:476 | BG_FG |  | PauseAt? |  | yes | yes | no |  | dispatched-unverified |
+| unpause_background | UnpauseBackground | unpause_background:482 | BG_FG |  |  |  | yes | yes | no |  | dispatched-unverified |
 | disp_cursor | DispCursor | disp_cursor:488 | CURSOR_CAMERA |  | ShowCursor |  | yes | yes | no |  | dispatched-unverified |
 | move_cursor | MoveCursor | move_cursor:494 | CURSOR_CAMERA | set_cursor | Position, Speed? | immediate, no_block | yes | yes | no |  | dispatched-unverified |
 | center_cursor | CenterCursor | center_cursor:518 | CURSOR_CAMERA |  | Position, Speed? | immediate, no_block | yes | yes | no |  | dispatched-unverified |
@@ -245,8 +245,8 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | create_overworld_entity | CreateOverworldEntity |  | OVERWORLD |  | Nid, Unit?, Team? | delete | yes | yes | no |  | dispatched-unverified |
 | disable_overworld_entity | DisableOverworldEntity |  | OVERWORLD |  | Nid | no_animate | yes | yes | no |  | dispatched-unverified |
 | toggle_narration_mode | ToggleNarrationMode |  | DIALOGUE_TEXT |  | Direction, Speed? |  | yes | yes | no |  | dispatched-unverified |
-| hide_combat_ui | HideCombatUI | hide_combat_ui:3954 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | stub-hint |
-| show_combat_ui | ShowCombatUI | show_combat_ui:3957 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | stub-hint |
+| hide_combat_ui | HideCombatUI | hide_combat_ui:3954 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | dispatched-unverified |
+| show_combat_ui | ShowCombatUI | show_combat_ui:3957 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | dispatched-unverified |
 | set_overworld_menu_option_enabled | SetOverworldMenuOptionEnabled |  | OVERWORLD |  | OverworldNID, OverworldNodeNid, OverworldNodeMenuOption, Setting |  | yes | yes | no |  | dispatched-unverified |
 | set_overworld_menu_option_visible | SetOverworldMenuOptionVisible |  | OVERWORLD |  | OverworldNID, OverworldNodeNID, OverworldNodeMenuOption, Setting |  | yes | yes | no |  | dispatched-unverified |
 | enter_level_from_overworld | EnterLevelFromOverworld |  | OVERWORLD |  | LevelNid |  | yes | yes | no |  | dispatched-unverified |
