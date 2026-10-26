@@ -18,13 +18,19 @@ import {
   computeHit,
   computeCrit,
   canDouble,
+  canCounterattack,
+  computeBlitzPhases,
+  computeExtraAttackPhases,
+  computeStrikeCount,
   getEquippedWeapon,
   evaluateEquation,
+  weaponTriangle,
 } from '../combat/combat-calcs';
 import {
   available as itemAvailable,
   healAmount as itemHealAmount,
   isStealItem,
+  noAttackAfterMove as itemNoAttackAfterMove,
   stealItemRestrict,
   stealTargetStatRestrict,
 } from '../combat/item-system';
@@ -33,10 +39,16 @@ import {
   changeAi,
   checkAlly,
   checkEnemy,
+  criticalAdditionFormula,
+  criticalMultiplierFormula,
+  dynamicCritDamageAddition,
   modifiedMaximumRange,
   modifiedMinimumRange,
   unitHasTag,
+  modifyCritDamage,
+  noAttackAfterMove as skillNoAttackAfterMove,
 } from '../combat/skill-system';
+import { isForkEngine } from '../engine/engine-flavor';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 import { SkillObject } from '../objects/skill';
@@ -216,11 +228,9 @@ export class AIController {
       const primaryAction = this.primaryAI(unit, validMoves, enemies, offenseBias);
       if (primaryAction) return primaryAction;
 
-      // Fall back to secondary AI (move toward nearest target)
-      const secondaryAction = this.secondaryAI(unit, validMoves, enemies, behaviour.view_range);
-      if (secondaryAction) return secondaryAction;
-
-      return null;
+      // Python falls back to SecondaryAI over every get_targets() position;
+      // its own view-range limit (none at all for -1/-2) applies there.
+      return this.pythonSecondaryAI(unit, behaviour, this.unitPositions(targets));
     }
 
     if (action === 'Support') {
@@ -237,11 +247,10 @@ export class AIController {
       const primaryAction = this.supportPrimaryAI(unit, validMoves, inRange, selfDamaged);
       if (primaryAction) return primaryAction;
 
-      // Fall back to secondary AI: move toward most injured ally
-      const secondaryAction = this.supportSecondaryAI(unit, validMoves, inRange, behaviour.view_range);
-      if (secondaryAction) return secondaryAction;
-
-      return null;
+      // Python SecondaryAI over every allied target (help term 100).
+      return this.pythonSecondaryAI(
+        unit, behaviour, this.unitPositions(this.getTargets(unit, behaviour)),
+      );
     }
 
     if (action === 'Steal') {
@@ -249,8 +258,9 @@ export class AIController {
       const enemies = this.filterByViewRange(unit, targets, behaviour.view_range);
       const primaryAction = this.stealPrimaryAI(unit, validMoves, enemies);
       if (primaryAction) return primaryAction;
-      const secondaryAction = this.secondaryAI(unit, validMoves, enemies, behaviour.view_range);
-      return secondaryAction;
+      // Python SecondaryAI scores every Steal target 0 (fork) / None
+      // (upstream), so a thief with nothing to steal in reach never advances.
+      return this.pythonSecondaryAI(unit, behaviour, this.unitPositions(targets));
     }
 
     if (action === 'Interact') {
@@ -300,13 +310,15 @@ export class AIController {
   }
 
   /**
-   * Python ai_controller.SecondaryAI for Move_to / Interact: filter the target
-   * positions by the view-range limit (view_range -4 first tries double-move
-   * range, then widens to everything), A* to each one (enemies block; adjacent
-   * is good enough only for unit targets), score by compute_priority and travel
-   * as far as possible along the best path. A target without a path is skipped
-   * rather than approached in a straight line. When the best position is the
-   * unit's own tile the AI is done and the unit waits.
+   * Python ai_controller.SecondaryAI (Move_to / Interact, and the fallback of
+   * Attack / Support / Steal): filter the target positions by the view-range
+   * limit (view_range -4 first tries double-move range, then widens to
+   * everything; -1, and -2 for Attack/Support/Steal, allow nothing), A* to
+   * each one (enemies block; adjacent is good enough only for unit targets),
+   * score by compute_priority and travel as far as possible along the best
+   * path. A target without a path is skipped rather than approached in a
+   * straight line. When the best position is the unit's own tile the AI is
+   * done and the unit waits.
    */
   private pythonSecondaryAI(
     unit: UnitObject,
@@ -315,6 +327,7 @@ export class AIController {
   ): AIAction | null {
     const start = unit.position;
     if (!start) return null;
+    const fork = isForkEngine();
     const groupActive = !!(unit.aiGroup && this.gameRef?.isAiGroupActive?.(unit.aiGroup));
     let viewRange = behaviour.view_range === -4 || groupActive ? -3 : behaviour.view_range;
     const movement = unit.getMovement();
@@ -347,16 +360,18 @@ export class AIController {
         const path = this.pathSystem.getPath(unit, target[0], target[1], this.board, {
           adjGoodEnough,
           limit: limit > 0 ? limit : undefined,
-          maxMovementLimit: movement,
+          // Upstream AStar treats any single tile costing more than the
+          // unit's movement as impassable; EOtF's fork has no such cap.
+          maxMovementLimit: fork ? undefined : movement,
         });
         if (!path || path.length === 0) continue;
-        // compute_priority: distance term (60), plus for Interact a preference
-        // for tiles nobody stands on (15).
-        const terms: Array<[number, number]> = [[1 - Math.log(path.length) / 4, 60]];
-        if (behaviour.action === 'Interact') terms.push([occupant ? 0 : 1, 15]);
-        const weightSum = terms.reduce((sum, [, weight]) => sum + weight, 0);
-        const tp = terms.reduce((sum, [value, weight]) => sum + value * weight, 0) / weightSum;
-        if (bestTp === null || tp > bestTp) {
+        const tp = this.secondaryPriority(unit, behaviour, occupant, path.length);
+        // Fork: max_tp starts at 0 and only a strictly positive score wins.
+        // Upstream: max_tp starts at None so any non-None score can win.
+        const better = fork
+          ? tp !== null && tp > (bestTp ?? 0)
+          : tp !== null && (bestTp === null || tp > bestTp);
+        if (better) {
           bestTp = tp;
           bestTarget = target;
           bestPath = path;
@@ -414,6 +429,101 @@ export class AIController {
       targetUnit: this.board.getUnit(bestTarget![0], bestTarget![1]) ?? undefined,
       movePath: movePath ?? [start, destination],
     };
+  }
+
+  /**
+   * Python SecondaryAI.compute_priority. Where upstream returns None (skip
+   * the target) this returns null; the fork returns 0 there, which can never
+   * beat its starting max_tp of 0.
+   */
+  private secondaryPriority(
+    unit: UnitObject,
+    behaviour: AiBehavior,
+    occupant: UnitObject | null,
+    pathLength: number,
+  ): number | null {
+    const fork = isForkEngine();
+    const terms: Array<[number, number]> = [[1 - Math.log(pathLength) / 4, 60]];
+    if (behaviour.action === 'Attack' && occupant) {
+      const damageTerms = this.secondaryDamageTerms(unit, occupant);
+      if (damageTerms.length === 0) return fork ? 0 : null;
+      terms.push(...damageTerms);
+    } else if (behaviour.action === 'Support' && occupant) {
+      if (occupant === unit) return fork ? 0 : null;
+      const maxHp = occupant.maxHp;
+      const missing = maxHp - occupant.currentHp;
+      terms.push([Math.min(1, Math.max(0, missing / maxHp)), 100]);
+    } else if (behaviour.action === 'Steal' && occupant) {
+      return fork ? 0 : null;
+    } else if (behaviour.action === 'Interact' && !fork) {
+      // Upstream only: lower the quality of tiles someone already stands on.
+      terms.push([occupant ? 0 : 1, 15]);
+    }
+    return processTerms(terms);
+  }
+
+  /**
+   * Python SecondaryAI.default_priority: best damage/status item against the
+   * target plus its missing-HP weakness. The fork skips any item whose
+   * expected damage is 0 (it never took upstream's `attack_zero_dam` /
+   * `attack_zero_hit` change), so a target it cannot hurt or status gets no
+   * terms at all.
+   */
+  private secondaryDamageTerms(unit: UnitObject, enemy: UnitObject): Array<[number, number]> {
+    const fork = isForkEngine();
+    const hpMax = enemy.maxHp;
+    const weaknessTerm = (hpMax - enemy.currentHp) / hpMax;
+    const attackZeroDam = !!this.db.getConstant('attack_zero_dam', true);
+    const attackZeroHit = !!this.db.getConstant('attack_zero_hit', true);
+    let tp: number | null = fork ? 0 : null;
+    let highestDamage = 0;
+    let highestStatus = 0;
+    for (const item of this.allItems(unit)) {
+      if (!itemAvailable(unit, item, this.db, this.gameRef)) continue;
+      const statusTerm = item.getComponent('status_on_hit') ? 1 : 0;
+      let trueDamage: number | null = fork ? 0 : null;
+      if (item.isWeapon() || item.isSpell()) {
+        const raw = itemHasDamage(item) ? this.predictedDamage(unit, item, enemy) : null;
+        const hit = Math.min(1, Math.max(0, this.predictedHit(unit, item, enemy) / 100));
+        if (fork) {
+          trueDamage = raw ? raw * hit : 0;
+        } else if (raw !== null && (raw > 0 || attackZeroDam) && (hit > 0 || attackZeroHit)) {
+          trueDamage = raw * hit;
+        }
+      }
+      if (fork ? (trueDamage ?? 0) <= 0 && statusTerm <= 0 : trueDamage === null && statusTerm <= 0) {
+        continue;
+      }
+      const damageTerm = trueDamage ? Math.min(trueDamage / hpMax, 1) : 0;
+      const newTp = damageTerm + statusTerm / 2;
+      if (tp === null || newTp > tp) {
+        tp = newTp;
+        highestDamage = damageTerm;
+        highestStatus = statusTerm;
+      }
+    }
+    if (fork ? highestStatus === 0 && highestDamage === 0 : tp === null) return [];
+    return [[highestDamage, 15], [highestStatus, 10], [weaknessTerm, 15]];
+  }
+
+  private unitPositions(units: UnitObject[]): [number, number][] {
+    return units
+      .filter((target) => !target.isDead() && target.position)
+      .map((target) => [target.position![0], target.position![1]]);
+  }
+
+  /** Python item_funcs.get_all_items: multi items contribute their leaves. */
+  private allItems(unit: UnitObject): ItemObject[] {
+    const result: ItemObject[] = [];
+    const visit = (item: ItemObject): void => {
+      if (item.hasComponent('multi_item') && item.subitems.length > 0) {
+        for (const subitem of item.subitems) visit(subitem);
+      } else {
+        result.push(item);
+      }
+    };
+    for (const item of unit.items) visit(item);
+    return result;
   }
 
   private getTargets(unit: UnitObject, behaviour: AiBehavior): UnitObject[] {
@@ -721,8 +831,17 @@ export class AIController {
   // ====================================================================
 
   /**
-   * Primary AI: Find best attack target + position.
-   * For each weapon, for each enemy in the target list, evaluate utility.
+   * Python PrimaryAI for Attack. Every available weapon/spell (multi items
+   * contribute their leaves; sequence items are skipped like
+   * get_ai_targets) and every ready combat art is tried against every
+   * position it can reach a target from. A (item, target, move) triple is
+   * scored by compute_priority and only a strictly positive score beats the
+   * starting max_tp of 0, so a unit that cannot hurt anything it can reach
+   * falls back to SecondaryAI. With more than 10 targets for an item, only
+   * the strike position farthest from the enemies is scored per target.
+   *
+   * `enemies` are the behaviour's legal targets (Python behaviour_targets):
+   * only those count as the main target or as splash.
    */
   private primaryAI(
     unit: UnitObject,
@@ -730,65 +849,69 @@ export class AIController {
     enemies: UnitObject[],
     offenseBias: number,
   ): AIAction | null {
-    if (validMoves.length === 0) return null;
+    if (validMoves.length === 0 || !unit.position) return null;
     if (enemies.length === 0) return null;
+    const origin: [number, number] = [unit.position[0], unit.position[1]];
 
-    // Gather all ordinary weapons and every currently ready combat-art variant.
-    // Python PrimaryAI treats extra abilities as additional items and evaluates
-    // them through the same target/priority loop.
+    // Python PrimaryAI treats extra abilities (combat arts) as additional
+    // items and evaluates them through the same target/priority loop.
     const variants: { weapon: ItemObject; combatArt?: CombatArtOption }[] = [];
-    for (const item of unit.items) {
-      if (item.isWeapon() && !item.hasNoAI() &&
-          itemAvailable(unit, item, this.db, this.gameRef)) {
-        variants.push({ weapon: item });
-      }
+    for (const item of this.allItems(unit)) {
+      if (!item.isWeapon() && !item.isSpell()) continue;
+      if (item.hasComponent('sequence_item')) continue;
+      if (itemAvailable(unit, item, this.db, this.gameRef)) variants.push({ weapon: item });
     }
     for (const option of getCombatArtOptions(this.gameRef, unit, false)) {
-      for (const weapon of option.weapons) {
-        if (!weapon.hasNoAI()) variants.push({ weapon, combatArt: option });
-      }
+      for (const weapon of option.weapons) variants.push({ weapon, combatArt: option });
     }
-
     if (variants.length === 0) return null;
 
-    let bestUtility = -Infinity;
+    const enemyPositions = this.getEnemies(unit).map((enemy) => enemy.position!);
+    let maxTp = 0;
     let bestAction: AIAction | null = null;
 
     for (const variant of variants) {
       this.withCombatArt(unit, variant.combatArt, () => {
-        for (const enemy of enemies) {
-          if (enemy.isDead()) continue;
-
-          const attackPositions = this.getAttackPositions(unit, validMoves, enemy, variant.weapon);
-
-          for (const pos of attackPositions) {
-            const utility = this.withTemporaryPosition(
-              unit,
-              pos,
-              () => this.evaluateAttackTargetUtility(
-                unit,
-                variant.weapon,
-                enemy,
-                pos,
-                enemies,
-                offenseBias,
-              ),
-            );
-
-            if (utility > bestUtility) {
-              bestUtility = utility;
-
-              const path = unit.position
-                ? this.pathSystem.getPath(unit, pos[0], pos[1], this.board)
-                : null;
-
+        const item = variant.weapon;
+        const noMoveAttack = itemNoAttackAfterMove(unit, item) ||
+          skillNoAttackAfterMove(unit, { game: this.gameRef, item });
+        const candidates = this.aiTargets(unit, item, validMoves);
+        const many = candidates.length > 10;
+        const validFrom = new Map<string, Set<string>>();
+        for (const [targetPos, possibleMoves] of candidates) {
+          const targetUnit = this.board.getUnit(targetPos[0], targetPos[1]);
+          // The AI state can only start combat against a unit.
+          if (!targetUnit || targetUnit === unit || targetUnit.isDead()) continue;
+          let moves = possibleMoves;
+          if (many) {
+            const farthest = farthestAwayPos(origin, possibleMoves, enemyPositions);
+            moves = [farthest ?? possibleMoves[0]];
+          }
+          for (const move of moves) {
+            if (noMoveAttack && (move[0] !== origin[0] || move[1] !== origin[1])) continue;
+            const tp = this.withTemporaryPosition(unit, move, () => {
+              const key = `${move[0]},${move[1]}`;
+              let valid = validFrom.get(key);
+              if (!valid) {
+                valid = new Set(this.validTargetsFrom(unit, item, move)
+                  .map(([x, y]) => `${x},${y}`));
+                validFrom.set(key, valid);
+              }
+              if (!valid.has(`${targetPos[0]},${targetPos[1]}`)) return 0;
+              return this.computePrimaryPriority(
+                unit, item, targetPos, move, origin, enemies, offenseBias,
+              );
+            });
+            if (tp > maxTp) {
+              maxTp = tp;
+              const path = this.pathSystem.getPath(unit, move[0], move[1], this.board);
               bestAction = {
                 type: 'attack',
                 unit,
-                targetPosition: pos,
-                targetUnit: enemy,
-                item: variant.weapon,
-                movePath: path ?? [pos],
+                targetPosition: move,
+                targetUnit,
+                item,
+                movePath: path ?? [move],
                 combatArt: variant.combatArt,
               };
             }
@@ -798,6 +921,336 @@ export class AIController {
     }
 
     return bestAction;
+  }
+
+  /**
+   * Python target_system.get_ai_targets + get_possible_attack_positions: the
+   * item's component targets that lie within its range of at least one
+   * valid move, each with the moves it can be struck from.
+   */
+  private aiTargets(
+    unit: UnitObject,
+    item: ItemObject,
+    validMoves: [number, number][],
+  ): Array<[[number, number], [number, number][]]> {
+    const targetSystem = this.gameRef?.targetSystem;
+    const positions: [number, number][] = targetSystem
+      ? targetSystem.getComponentTargets(unit, item)
+      : this.getEnemies(unit).map((enemy) => enemy.position!);
+    const minRange = modifiedMinimumRange(unit, item, this.gameRef);
+    const maxRange = modifiedMaximumRange(unit, item, this.gameRef);
+    const result: Array<[[number, number], [number, number][]]> = [];
+    const seen = new Set<string>();
+    for (const position of positions) {
+      const key = `${position[0]},${position[1]}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const moves = validMoves.filter((move) => {
+        const distance = this.distance(move, position);
+        return distance >= minRange && distance <= maxRange;
+      });
+      if (moves.length > 0) result.push([[position[0], position[1]], moves]);
+    }
+    return result;
+  }
+
+  /** Targets the item can legally hit from `move` (range, restrictions, splash). */
+  private validTargetsFrom(
+    unit: UnitObject,
+    item: ItemObject,
+    move: [number, number],
+  ): [number, number][] {
+    const targetSystem = this.gameRef?.targetSystem;
+    if (targetSystem) return targetSystem.getValidTargetsRecursive(unit, item, move);
+    return this.getEnemies(unit)
+      .map((enemy) => enemy.position!)
+      .filter((position) => {
+        const distance = this.distance(move, position);
+        return distance >= modifiedMinimumRange(unit, item, this.gameRef) &&
+          distance <= modifiedMaximumRange(unit, item, this.gameRef);
+      });
+  }
+
+  /**
+   * Python PrimaryAI.compute_priority: item ai_priority hooks plus, for a
+   * damaging item against an enemy, default_priority, each scaled by the
+   * target's ai_priority_multiplier. Splash targets add their hook value and
+   * a lethality x accuracy term (3 when certainly lethal), positive for
+   * enemies and negative for allies. Only legal behaviour targets count.
+   */
+  private computePrimaryPriority(
+    unit: UnitObject,
+    item: ItemObject,
+    targetPos: [number, number],
+    move: [number, number],
+    origin: [number, number],
+    behaviourTargets: UnitObject[],
+    offenseBias: number,
+  ): number {
+    let tp = 0;
+    const targetSystem = this.gameRef?.targetSystem;
+    const affected: { mainTarget: [number, number] | null; splash: [number, number][] } =
+      targetSystem
+        ? targetSystem.getTargetFromPosition(unit, item, targetPos)
+        : { mainTarget: targetPos, splash: [] };
+    const main = affected.mainTarget
+      ? this.board.getUnit(affected.mainTarget[0], affected.mainTarget[1])
+      : null;
+    const damaging = itemHasDamage(item);
+    if (main && behaviourTargets.includes(main)) {
+      const aiPriority = this.itemAiPriority(unit, item, main, move);
+      const multiplier = aiPriorityMultiplier(main, this.gameRef);
+      if (aiPriority !== null) tp += aiPriority * multiplier;
+      if (damaging && checkEnemy(unit, main, this.db)) {
+        tp += this.defaultPriority(unit, item, main, move, origin, offenseBias) * multiplier;
+      }
+    }
+    for (const splashPosition of affected.splash) {
+      const splashTarget = this.board.getUnit(splashPosition[0], splashPosition[1]);
+      if (!splashTarget || splashTarget === main || !behaviourTargets.includes(splashTarget)) continue;
+      const aiPriority = this.itemAiPriority(unit, item, splashTarget, move);
+      const multiplier = aiPriorityMultiplier(splashTarget, this.gameRef);
+      if (aiPriority !== null) tp += aiPriority * multiplier;
+      if (!damaging) continue;
+      const accuracy = clamp01(this.predictedHit(unit, item, splashTarget) / 100);
+      const lethality = clamp01(
+        this.predictedDamage(unit, item, splashTarget) / Math.max(1, splashTarget.currentHp),
+      );
+      const priority = lethality * accuracy >= 1 ? 3 : lethality * accuracy;
+      if (checkEnemy(unit, splashTarget, this.db)) tp += priority * multiplier;
+      else if (checkAlly(unit, splashTarget, this.db)) tp -= priority * multiplier;
+    }
+    return tp;
+  }
+
+  /**
+   * Python PrimaryAI.default_priority. Offense is 3 for a certain kill,
+   * otherwise lethality x accuracy x attacks plus the crit increment;
+   * defense subtracts the counter threat (target damage over the TARGET's
+   * HP, as Python divides it), cut to 30% when the target cannot counter.
+   * Attacks are compute_attack_phases (+ compute_blitzes on EOtF's fork)
+   * times compute_multiattacks. Distance (weight 0.0001) only breaks ties.
+   */
+  private defaultPriority(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    move: [number, number],
+    origin: [number, number],
+    offenseBias: number,
+  ): number {
+    const targetHp = Math.max(1, target.currentHp);
+    const rawDamage = this.predictedDamage(unit, item, target);
+    const critDamage = this.predictedCritDamage(unit, item, target, rawDamage);
+    const lethality = clamp01(rawDamage / targetHp);
+    const critLethality = clamp01(critDamage / targetHp);
+    const accuracy = clamp01(this.predictedHit(unit, item, target) / 100);
+    const critAccuracy = this.db.getConstant('crit', true)
+      ? clamp01(computeCrit(unit, item, target, this.db, this.gameRef) / 100)
+      : 0;
+
+    const targetWeapon = getEquippedWeapon(target, this.db, this.gameRef);
+    let targetDamage = targetWeapon
+      ? clamp01(this.predictedDamage(target, targetWeapon, unit, 'defense', item) / targetHp)
+      : 0;
+    let targetAccuracy = targetWeapon
+      ? clamp01(this.predictedHit(target, targetWeapon, unit, 'defense', item) / 100)
+      : 0;
+    if (!targetWeapon || !canCounterattack(unit, item, target, this.db, this.gameRef)) {
+      targetDamage *= 0.3;
+      targetAccuracy *= 0.3;
+    }
+
+    const doubles = canDouble(unit, item, target, targetWeapon, this.db, this.gameRef);
+    let numAttacks = 1 +
+      computeExtraAttackPhases(unit, item, target, targetWeapon, 'attack', [0, 0], this.gameRef) +
+      (doubles ? 1 : 0);
+    if (isForkEngine()) {
+      numAttacks += computeBlitzPhases(unit, item, target, targetWeapon, 'attack', [0, 0], this.gameRef);
+    }
+    numAttacks *= computeStrikeCount(unit, item, target, targetWeapon, 'attack', [0, 0], this.gameRef);
+    const firstStrike = lethality >= 1 ? lethality * accuracy : 0;
+    if (numAttacks > 1 && targetDamage >= 1) {
+      numAttacks -= targetAccuracy * (1 - firstStrike);
+    }
+
+    let offenseTerm = lethality * accuracy >= 1 ? 3 : lethality * accuracy * numAttacks;
+    offenseTerm += (critLethality - lethality) * critAccuracy * accuracy * numAttacks;
+    const defenseTerm = 1 - targetDamage * targetAccuracy * (1 - firstStrike);
+    if (offenseTerm <= 0) {
+      const zeroHit = accuracy <= 0 && this.db.getConstant('attack_zero_hit', true);
+      const zeroDam = lethality <= 0 && this.db.getConstant('attack_zero_dam', true);
+      if (!zeroHit && !zeroDam) return 0;
+    }
+
+    const maxDistance = unit.getMovement();
+    const distanceTerm = maxDistance > 0
+      ? (maxDistance - this.distance(move, origin)) / maxDistance
+      : 1;
+    const offenseWeight = offenseBias * (1 / (offenseBias + 1));
+    const defenseWeight = 1 - offenseWeight;
+    return processTerms([
+      [offenseTerm, offenseWeight],
+      [defenseTerm, defenseWeight],
+      [distanceTerm, 0.0001],
+    ]);
+  }
+
+  /**
+   * Python item_system.ai_priority: the sum of every item component's
+   * ai_priority hook, or null when the item defines none.
+   */
+  private itemAiPriority(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    move: [number, number],
+  ): number | null {
+    let total = 0;
+    let defined = false;
+    const add = (value: number): void => {
+      defined = true;
+      total += value;
+    };
+    if (item.hasComponent('no_ai')) add(-1);
+    const single = ['status_on_hit', 'status_after_combat_on_hit', 'status_after_combat_on_hit_foe_only'];
+    for (const component of single) {
+      const nid = item.getComponent<unknown>(component);
+      if (item.hasComponent(component)) add(this.aiStatusPriority(unit, target, item, move, nid));
+    }
+    if (item.hasComponent('self_status_on_hit')) {
+      add(this.aiStatusPriority(unit, unit, item, move, item.getComponent('self_status_on_hit')));
+    }
+    for (const component of ['statuses_on_hit', 'statuses_after_combat_on_hit']) {
+      if (!item.hasComponent(component)) continue;
+      const nids = item.getComponent<unknown>(component);
+      add((Array.isArray(nids) ? nids : []).reduce<number>(
+        (sum, nid) => sum + this.aiStatusPriority(unit, target, item, move, nid), 0,
+      ));
+    }
+    if (item.hasComponent('stacks_on_hit')) {
+      const value = item.getComponent<unknown>('stacks_on_hit');
+      const nid = value instanceof Map
+        ? value.get('skill')
+        : (value as Record<string, unknown> | null)?.skill;
+      add(this.aiStatusPriority(unit, target, item, move, nid ?? 'Canto'));
+    }
+    if (item.hasComponent('buff_ally')) {
+      add(this.aiStatusPriorityBuff(unit, target, item, move, item.getComponent('buff_ally')));
+    }
+    for (const component of ['heal', 'equation_heal', 'heal_no_target_restrict', 'eval_heal']) {
+      if (!item.hasComponent(component)) continue;
+      add(checkAlly(unit, target, this.db) ? this.computeHealPriority(unit, item, target) : 0);
+    }
+    for (const component of ['steal', 'gba_steal', 'steal_con', 'gimme_that', 'thief_staff']) {
+      if (!item.hasComponent(component)) continue;
+      const enemies = this.getEnemies(unit).map((enemy) => enemy.position!);
+      if (enemies.length === 0) {
+        add(0.075);
+        continue;
+      }
+      const averageX = enemies.reduce((sum, position) => sum + position[0], 0) / enemies.length;
+      const averageY = enemies.reduce((sum, position) => sum + position[1], 0) / enemies.length;
+      add(0.075 + 0.01 * (Math.abs(move[0] - averageX) + Math.abs(move[1] - averageY)));
+    }
+    return defined ? total : null;
+  }
+
+  /**
+   * Python hit_components.ai_status_priority. Its "num_attacks" is
+   * combat_calcs.outspeed, i.e. 0 or 1, so a status item only scores
+   * accuracy when the attacker doubles.
+   */
+  private aiStatusPriority(
+    unit: UnitObject,
+    target: UnitObject,
+    item: ItemObject,
+    move: [number, number],
+    statusNid: unknown,
+  ): number {
+    if (typeof statusNid !== 'string' || target.skills.some((skill) => skill.nid === statusNid)) {
+      return 0;
+    }
+    const outspeed = this.statusOutspeed(unit, item, target);
+    const accuracyTerm = clamp01(this.predictedHit(unit, item, target) / 100) * outspeed;
+    const distanceTerm = target.position ? 0.01 * this.distance(move, target.position) : 0;
+    return checkEnemy(unit, target, this.db)
+      ? 0.5 * accuracyTerm + distanceTerm
+      : -0.5 * accuracyTerm;
+  }
+
+  /** EOtF custom ai_status_priority_buff (buff_ally). */
+  private aiStatusPriorityBuff(
+    unit: UnitObject,
+    target: UnitObject,
+    item: ItemObject,
+    move: [number, number],
+    statusNid: unknown,
+  ): number {
+    if (typeof statusNid !== 'string' || target.skills.some((skill) => skill.nid === statusNid)) {
+      return 0;
+    }
+    const outspeed = this.statusOutspeed(unit, item, target);
+    const accuracyTerm = clamp01(this.predictedHit(unit, item, target) / 100) * outspeed;
+    const distanceTerm = target.position ? 0.01 * this.distance(move, target.position) : 0;
+    return checkEnemy(unit, target, this.db)
+      ? -0.5 * accuracyTerm + distanceTerm
+      : 1 + 0.5 * accuracyTerm;
+  }
+
+  private statusOutspeed(unit: UnitObject, item: ItemObject, target: UnitObject): number {
+    const targetWeapon = getEquippedWeapon(target, this.db, this.gameRef);
+    return canDouble(unit, item, target, targetWeapon, this.db, this.gameRef) ? 1 : 0;
+  }
+
+  /** Damage one strike would deal, as the combat solver resolves it. */
+  private predictedDamage(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    mode: 'attack' | 'defense' = 'attack',
+    targetItem: ItemObject | null = getEquippedWeapon(target, this.db, this.gameRef),
+  ): number {
+    const triangle = weaponTriangle(item, targetItem, this.db, unit, target);
+    const damage = computeDamage(unit, item, target, this.db, this.board, this.gameRef, mode);
+    return Math.max(0, damage + triangle.damageBonus);
+  }
+
+  /** Hit chance of one strike, as the combat solver resolves it. */
+  private predictedHit(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    mode: 'attack' | 'defense' = 'attack',
+    targetItem: ItemObject | null = getEquippedWeapon(target, this.db, this.gameRef),
+  ): number {
+    const triangle = weaponTriangle(item, targetItem, this.db, unit, target);
+    const hit = computeHit(unit, item, target, this.db, this.board, this.gameRef, mode);
+    return Math.max(0, Math.min(100, hit + triangle.hitBonus));
+  }
+
+  /** Critical damage of one strike, mirroring the combat solver's crit path. */
+  private predictedCritDamage(
+    unit: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    damage: number,
+  ): number {
+    const context = { game: this.gameRef, item, target };
+    const multiplierFormula = criticalMultiplierFormula(unit, context) ?? 'CRIT_MULT';
+    const multiplierExpression = this.db.getEquation(multiplierFormula) ??
+      (multiplierFormula === 'CRIT_MULT' ? '3' : multiplierFormula);
+    const additionFormula = criticalAdditionFormula(unit, context) ?? 'CRIT_ADD';
+    const additionExpression = this.db.getEquation(additionFormula) ??
+      (additionFormula === 'CRIT_ADD' ? '0' : additionFormula);
+    let crit = damage * Math.max(0, evaluateEquation(multiplierExpression, unit, { db: this.db, item }));
+    crit += evaluateEquation(additionExpression, unit, { db: this.db, item });
+    crit += modifyCritDamage(unit, item, this.gameRef);
+    const targetWeapon = getEquippedWeapon(target, this.db, this.gameRef);
+    crit += dynamicCritDamageAddition(
+      unit, item, target, targetWeapon, 'attack', [0, 0], crit, this.gameRef,
+    );
+    return Math.max(0, crit);
   }
 
   private withCombatArt(
@@ -843,116 +1296,6 @@ export class AIController {
     } finally {
       this.board.moveUnit(unit, origin[0], origin[1]);
     }
-  }
-
-  private evaluateAttackTargetUtility(
-    unit: UnitObject,
-    item: ItemObject,
-    target: UnitObject,
-    attackPosition: [number, number],
-    legalTargets: UnitObject[],
-    offenseBias: number,
-  ): number {
-    let utility = this.evaluateAttackUtility(
-      unit, item, target, attackPosition, offenseBias,
-    );
-    const targetSystem = this.gameRef?.targetSystem;
-    if (!targetSystem || !target.position) return utility;
-    const affected = targetSystem.getTargetFromPosition(unit, item, target.position);
-    for (const splashPosition of affected.splash) {
-      const splashTarget = this.board.getUnit(splashPosition[0], splashPosition[1]);
-      if (!splashTarget || splashTarget === target || splashTarget.isDead()) continue;
-      const splashUtility = this.evaluateAttackUtility(
-        unit, item, splashTarget, attackPosition, offenseBias,
-      );
-      if (legalTargets.includes(splashTarget)) utility += splashUtility;
-      else if (checkAlly(unit, splashTarget, this.db)) utility -= splashUtility;
-    }
-    return utility;
-  }
-
-  // ====================================================================
-  // Secondary AI: Move toward nearest target
-  // ====================================================================
-
-  /**
-   * Secondary AI: Move toward nearest target if can't attack.
-   * Uses pathfinding to find the closest reachable position.
-   * For view_range -4, widens search to full map if initial search fails.
-   */
-  private secondaryAI(
-    unit: UnitObject,
-    validMoves: [number, number][],
-    targets: UnitObject[],
-    viewRange: number,
-  ): AIAction | null {
-    if (validMoves.length === 0) return null;
-    if (!unit.position) return null;
-    if (targets.length === 0) return null;
-
-    // Find the nearest target by path distance
-    let bestMove: [number, number] | null = null;
-    let bestDist = Infinity;
-    let nearestTarget: UnitObject | null = null;
-
-    for (const target of targets) {
-      if (target.isDead() || !target.position) continue;
-
-      const path = this.pathSystem.getPath(
-        unit,
-        target.position[0],
-        target.position[1],
-        this.board,
-      );
-
-      if (path && path.length > 0) {
-        const dist = path.length;
-        if (dist < bestDist) {
-          bestDist = dist;
-
-          // Use travelAlgorithm to find the best reachable position along the path
-          const moveTarget = this.pathSystem.travelAlgorithm(path, unit, this.board);
-          bestMove = moveTarget;
-          nearestTarget = target;
-        }
-      } else {
-        // Fallback: use Manhattan distance if no path found
-        const manhattanDist = this.distance(unit.position, target.position);
-        if (manhattanDist < bestDist) {
-          bestDist = manhattanDist;
-          nearestTarget = target;
-
-          // Can't path -- find closest valid move toward the target
-          bestMove = this.findClosestMoveToward(unit.position, target.position, validMoves);
-        }
-      }
-    }
-
-    if (!bestMove || !nearestTarget) return null;
-
-    // Only move if the target is different from current position
-    if (
-      bestMove[0] === unit.position[0] &&
-      bestMove[1] === unit.position[1]
-    ) {
-      return null; // Already as close as possible
-    }
-
-    // Get the sub-path to the move target
-    const movePath = this.pathSystem.getPath(
-      unit,
-      bestMove[0],
-      bestMove[1],
-      this.board,
-    );
-
-    return {
-      type: 'move',
-      unit,
-      targetPosition: bestMove,
-      targetUnit: nearestTarget,
-      movePath: movePath ?? [unit.position, bestMove],
-    };
   }
 
   // ====================================================================
@@ -1176,188 +1519,57 @@ export class AIController {
     return helpTerm * healTerm;
   }
 
-  /**
-   * Enhanced secondary AI for Support: move toward the most injured ally.
-   * Weights strongly by injury severity (help_term weight 100 vs distance weight 60),
-   * matching the Python SecondaryAI's Support priority weighting.
-   */
-  private supportSecondaryAI(
-    unit: UnitObject,
-    validMoves: [number, number][],
-    targets: UnitObject[],
-    viewRange: number,
-  ): AIAction | null {
-    if (validMoves.length === 0 || !unit.position || targets.length === 0) return null;
-
-    // Score each target by injury severity weighted against distance
-    let bestMove: [number, number] | null = null;
-    let bestScore = -Infinity;
-    let nearestTarget: UnitObject | null = null;
-
-    for (const target of targets) {
-      if (target.isDead() || !target.position) continue;
-
-      const maxHp = target.maxHp;
-      const missingHealth = maxHp - target.currentHp;
-      if (missingHealth <= 0) continue;
-
-      const helpTerm = Math.min(1, Math.max(0, missingHealth / maxHp));
-      const dist = this.distance(unit.position, target.position);
-      const distTerm = 1 / (1 + dist);
-
-      // Python weights: help_term * 100, dist_term * 60
-      const score = helpTerm * 100 + distTerm * 60;
-
-      if (score > bestScore) {
-        bestScore = score;
-        nearestTarget = target;
-      }
-    }
-
-    if (!nearestTarget) return null;
-
-    // Use the standard secondary AI movement toward the best target
-    return this.secondaryAI(unit, validMoves, [nearestTarget], viewRange);
-  }
-
   // ====================================================================
   // Smart retreat (Move_away_from)
   // ====================================================================
 
   /**
-   * Smart retreat: find the position in valid moves that is farthest from threats.
+   * Python AIController.smart_retreat: keep the targets strictly inside the
+   * view-range limit (zero/single/double move or the literal range), and if
+   * any remain and the unit has more than one tile to choose from, go to
+   * utils.smart_farthest_away_pos -- the tile whose offset has the largest
+   * dot product with the distance-weighted "away from the targets" vector.
+   * Choosing the unit's own tile still ends the AI (the unit waits); only
+   * when there is nothing to flee from does the next behaviour run.
    */
   private smartRetreat(
     unit: UnitObject,
     validMoves: [number, number][],
     behaviour: AiBehavior,
   ): AIAction | null {
-    if (!unit.position || validMoves.length === 0) return null;
+    const start = unit.position;
+    if (!start || validMoves.length === 0) return null;
 
-    // Get the threats to move away from
-    const threats = this.getTargets(unit, behaviour);
-    const filteredThreats = this.filterByViewRange(unit, threats, behaviour.view_range);
-
-    if (filteredThreats.length === 0) return null;
-
-    // Find the valid move position that maximizes minimum distance from all threats
-    let bestMove: [number, number] | null = null;
-    let bestMinDist = -Infinity;
-
-    for (const move of validMoves) {
-      let minDistToAnyThreat = Infinity;
-      for (const threat of filteredThreats) {
-        if (!threat.position) continue;
-        const dist = this.distance(move, threat.position);
-        minDistToAnyThreat = Math.min(minDistToAnyThreat, dist);
-      }
-
-      if (minDistToAnyThreat > bestMinDist) {
-        bestMinDist = minDistToAnyThreat;
-        bestMove = move;
-      }
+    const zeroMove = this.getMaxItemRange(unit);
+    const singleMove = zeroMove + unit.getMovement();
+    const doubleMove = singleMove + unit.getMovement();
+    const viewRange = behaviour.view_range;
+    const limit = viewRange === -4 ? Infinity
+      : viewRange === -3 ? doubleMove
+        : viewRange === -2 ? singleMove
+          : viewRange === -1 ? zeroMove
+            : viewRange;
+    const threats: Array<[[number, number], number]> = [];
+    for (const position of this.unitPositions(this.getTargets(unit, behaviour))) {
+      const magnitude = this.distance(start, position);
+      // A zero magnitude would divide by zero in Python; it cannot be fled.
+      if (magnitude > 0 && magnitude < limit) threats.push([position, magnitude]);
     }
+    if (threats.length === 0 || validMoves.length <= 1) return null;
 
-    if (!bestMove) return null;
-
-    // Don't move if already at the best spot
-    if (bestMove[0] === unit.position[0] && bestMove[1] === unit.position[1]) {
-      return null;
+    const best = smartFarthestAwayPos(start, validMoves, threats);
+    if (!best || (best[0] === start[0] && best[1] === start[1])) {
+      return { type: 'wait', unit };
     }
-
-    const movePath = this.pathSystem.getPath(unit, bestMove[0], bestMove[1], this.board);
-
+    const movePath = this.pathSystem.getPath(unit, best[0], best[1], this.board);
     return {
       type: 'move',
       unit,
-      targetPosition: bestMove,
-      movePath: movePath ?? [unit.position, bestMove],
+      targetPosition: best,
+      movePath: movePath ?? [start, best],
     };
   }
 
-  // ====================================================================
-  // Utility evaluation
-  // ====================================================================
-
-  /**
-   * Evaluate attack utility for choosing best target.
-   * Higher utility = better attack choice.
-   * Factors: lethality, accuracy, damage dealt, risk taken.
-   */
-  private evaluateAttackUtility(
-    unit: UnitObject,
-    item: ItemObject,
-    target: UnitObject,
-    attackPosition: [number, number],
-    offenseBias: number,
-  ): number {
-    // --- Offense ---
-    const expectedDamage = computeDamage(
-      unit, item, target, this.db, this.board, this.gameRef,
-    );
-    const targetHP = Math.max(1, target.currentHp);
-    const lethality = Math.min(1.0, expectedDamage / targetHP);
-
-    const hitChance = computeHit(
-      unit, item, target, this.db, this.board, this.gameRef,
-    );
-    const accuracy = hitChance / 100;
-
-    const defenderWeapon = getEquippedWeapon(target, this.db, this.gameRef);
-    const doubles = canDouble(
-      unit, item, target, defenderWeapon, this.db, this.gameRef,
-    );
-    const numAttacks = 1 + (doubles ? 1 : 0);
-
-    const critChance = computeCrit(unit, item, target, this.db, this.gameRef);
-    const critBonus = (critChance / 100) * 0.5;
-
-    // Kill bonus: strongly prefer targets we can kill
-    const killBonus = (expectedDamage * numAttacks >= targetHP) ? 2.0 : 0;
-
-    const offense = lethality * accuracy * numAttacks + critBonus + killBonus;
-
-    // --- Defense ---
-    // Determine distance from attack position to target
-    const targetPos = target.position;
-    const dist = targetPos
-      ? this.distance(attackPosition, targetPos)
-      : 1;
-
-    // Check if target has a weapon that can counter at this distance
-    const counterWeapon = this.findCounterWeapon(target, dist);
-    let defense: number;
-
-    if (counterWeapon) {
-      const targetDamage = computeDamage(target, counterWeapon, unit, this.db, this.board);
-      const targetAccuracy = computeHit(target, counterWeapon, unit, this.db, this.board);
-      const rawThreat = (targetDamage * targetAccuracy) / 100;
-      const unitHP = Math.max(1, unit.currentHp);
-      defense = 1 - Math.min(1.0, rawThreat / unitHP);
-    } else {
-      // Target can't counter -- defense factor is high (safe attack)
-      defense = 1.0;
-    }
-
-    // --- Distance factor ---
-    // Slight preference for closer attack positions (less movement = less risk)
-    const unitPos = unit.position ?? attackPosition;
-    const movementDistance = this.distance(unitPos, attackPosition);
-    const distanceFactor = 1 / (1 + movementDistance * 0.1);
-
-    // --- Final utility ---
-    // Normalize offense_bias: bias ranges 0-4, with 2.0 = balanced
-    const offenseWeight = offenseBias / (offenseBias + 1);
-    const defenseWeight = 1 - offenseWeight;
-
-    const utility =
-      offense * offenseWeight +
-      defense * defenseWeight +
-      distanceFactor * 0.1;
-
-    const priorityMultiplier = aiPriorityMultiplier(target, this.gameRef);
-    return priorityMultiplier <= 0 ? -Infinity : utility * priorityMultiplier;
-  }
 
   // ====================================================================
   // Helpers
@@ -1424,43 +1636,6 @@ export class AIController {
   }
 
   /**
-   * Find the valid move position closest to a target position (Manhattan distance).
-   */
-  private findClosestMoveToward(
-    _unitPos: [number, number],
-    targetPos: [number, number],
-    validMoves: [number, number][],
-  ): [number, number] | null {
-    let best: [number, number] | null = null;
-    let bestDist = Infinity;
-
-    for (const move of validMoves) {
-      const dist = this.distance(move, targetPos);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = move;
-      }
-    }
-
-    return best;
-  }
-
-  /**
-   * Find a weapon on the defender that can counter at the given distance.
-   * Returns the first matching weapon, or null.
-   */
-  private findCounterWeapon(defender: UnitObject, dist: number): ItemObject | null {
-    for (const item of defender.items) {
-      if (!item.isWeapon() || !itemAvailable(defender, item, this.db, this.gameRef)) continue;
-      if (dist >= modifiedMinimumRange(defender, item, this.gameRef) &&
-          dist <= modifiedMaximumRange(defender, item, this.gameRef)) {
-        return item;
-      }
-    }
-    return null;
-  }
-
-  /**
    * Manhattan distance between two positions.
    */
   private distance(a: [number, number], b: [number, number]): number {
@@ -1510,4 +1685,87 @@ export class AIController {
     }
   }
 
+}
+
+/** Python utils.process_terms: weighted average of (value, weight) pairs. */
+function processTerms(terms: Array<[number, number]>): number {
+  const weightSum = terms.reduce((sum, [, weight]) => sum + weight, 0);
+  if (weightSum <= 0) return 0;
+  return terms.reduce((sum, [value, weight]) => sum + value * weight, 0) / weightSum;
+}
+
+function clamp01(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+}
+
+/** Python `item_system.damage(unit, item) is not None`. */
+function itemHasDamage(item: ItemObject): boolean {
+  return ['damage', 'damage_any', 'eval_damage', 'eval_damage_any', 'equation_damage']
+    .some((component) => item.hasComponent(component));
+}
+
+function manhattan(a: readonly [number, number], b: readonly [number, number]): number {
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+}
+
+/**
+ * Python utils.farthest_away_pos: the move farthest from the average enemy
+ * position, then closest to `position`. Python takes the last of a stable
+ * sort over a set, so full ties resolve by set order; here the last tied
+ * move in list order wins.
+ */
+export function farthestAwayPos(
+  position: [number, number],
+  validMoves: [number, number][],
+  enemyPositions: [number, number][],
+): [number, number] | null {
+  if (validMoves.length === 0 || enemyPositions.length === 0) return null;
+  const average: [number, number] = [
+    enemyPositions.reduce((sum, pos) => sum + pos[0], 0) / enemyPositions.length,
+    enemyPositions.reduce((sum, pos) => sum + pos[1], 0) / enemyPositions.length,
+  ];
+  let best: [number, number] | null = null;
+  let bestAway = -Infinity;
+  let bestNear = Infinity;
+  for (const move of validMoves) {
+    const away = manhattan(average, move);
+    const near = manhattan(position, move);
+    if (away > bestAway || (away === bestAway && near <= bestNear)) {
+      best = move;
+      bestAway = away;
+      bestNear = near;
+    }
+  }
+  return best;
+}
+
+/**
+ * Python utils.smart_farthest_away_pos: average the unit-to-threat offsets,
+ * each divided by its distance, and pick the move whose offset has the
+ * largest dot product with that "away" vector (last tied move wins).
+ */
+export function smartFarthestAwayPos(
+  position: [number, number],
+  validMoves: [number, number][],
+  threats: Array<[[number, number], number]>,
+): [number, number] | null {
+  if (validMoves.length === 0 || threats.length === 0) return null;
+  let awayX = 0;
+  let awayY = 0;
+  for (const [pos, magnitude] of threats) {
+    awayX += (position[0] - pos[0]) / magnitude;
+    awayY += (position[1] - pos[1]) / magnitude;
+  }
+  awayX /= threats.length;
+  awayY /= threats.length;
+  let best: [number, number] | null = null;
+  let bestDot = -Infinity;
+  for (const move of validMoves) {
+    const dot = (move[0] - position[0]) * awayX + (move[1] - position[1]) * awayY;
+    if (dot >= bestDot) {
+      best = move;
+      bestDot = dot;
+    }
+  }
+  return best;
 }
