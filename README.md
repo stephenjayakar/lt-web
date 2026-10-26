@@ -153,13 +153,6 @@ the campaign's font directory first and falls back to the engine defaults in
 `default.ltproj`, so a project without fonts renders bitmap text rather than
 degrading to canvas text.
 
-Two EOtF item components are deliberately not implemented, both cosmetic:
-
-- `item_icon_flash` (2 items) flashes an item icon during the combat preview
-  when a condition holds. Combat math and targeting are unaffected.
-- `text_color` (2 items) is deprecated in Lex Talionis and its Python
-  implementation returns `'white'` for every input, so honouring it would be
-  indistinguishable from the default.
 
 Keyboard bindings follow Python's Controls settings page: a rebound button
 gets exactly the chosen key, and a key already bound to another button is

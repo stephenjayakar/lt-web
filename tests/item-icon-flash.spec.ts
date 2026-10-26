@@ -132,3 +132,91 @@ test.describe('item icon white flash (item_icon_mod)', () => {
     expect(result.mismatched).toBe(0);
   });
 });
+
+test.describe('target markers (item_system.target_icon)', () => {
+  test('warning, fork eval_warning, effective_damage and effective_tag markers', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { computeTargetIcons, allItemsWithMultiItems } = await import('/src/combat/item-system.ts');
+      // A class that can wield swords (the Player's Manakete_Lord cannot).
+      const klass = [...game.db.classes.values()].find((c: any) => c.wexp_gain?.Sword?.[0]);
+      const makeUnit = (nid: string, team: string, tags: string[] = []) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: klass.nid,
+          tags, bases: { ...klass.bases }, growths: {}, stat_cap_modifiers: {},
+          starting_items: [], learned_skills: [], unit_notes: [], fields: [],
+          wexp_gain: {}, portrait_nid: '', affinity: '',
+        }, klass);
+        unit.team = team;
+        unit.items = [];
+        unit.skills = [];
+        unit.position = [1, 1];
+        for (const weapon of game.db.weapons.values()) unit.wexp[weapon.nid] = 999;
+        return unit;
+      };
+      const give = (nid: string, owner: any) => {
+        const obj = new ItemObject(game.db.items.get(nid));
+        obj.owner = owner;
+        owner.items.push(obj);
+        return obj;
+      };
+      const enemy = makeUnit('_Mark_Enemy', 'enemy');
+      const ally = makeUnit('_Mark_Ally', 'player');
+      const knight = makeUnit('_Mark_Knight', 'player', ['Armor']);
+      const flier = makeUnit('_Mark_Flier', 'player', ['Flying']);
+      const negator = makeUnit('_Mark_Negate', 'player', ['Armor']);
+      negator.skills = [new SkillObject({
+        nid: '_Negate', name: '_Negate', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['negate', null]],
+      } as any)];
+      const swordsman = makeUnit('_Mark_Sword', 'player');
+      swordsman.equippedWeapon = give('Iron_Sword', swordsman);
+      const mage = makeUnit('_Mark_Mage', 'player');
+      mage.equippedWeapon = give('Fire', mage);
+
+      const killer = give('Killing_Edge', enemy);
+      const armorslayer = give('Armorslayer', enemy);
+      const windSword = give('Wind_Sword', enemy);
+      const rex = give('Rexobscura', enemy);
+      const icons = (item: any, target: any, holder = enemy) =>
+        computeTargetIcons(holder, item, target, game.db, game);
+      const multi = new ItemObject({
+        nid: '_Multi', name: '_Multi', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['multi_item', ['Killing_Edge', 'Armorslayer']]],
+      } as any);
+      multi.subitems = [new ItemObject(game.db.items.get('Killing_Edge')), new ItemObject(game.db.items.get('Armorslayer'))];
+      return {
+        killerVsPlayer: icons(killer, knight),
+        killerVsAllyOfHolder: icons(killer, enemy),
+        armorslayerVsKnight: icons(armorslayer, knight),
+        armorslayerVsFlier: icons(armorslayer, flier),
+        armorslayerVsNegate: icons(armorslayer, negator),
+        windVsFlier: icons(windSword, flier),
+        windVsKnight: icons(windSword, knight),
+        rexVsPhysical: icons(rex, swordsman),
+        rexVsMagic: icons(rex, mage),
+        rexVsUnarmed: icons(rex, knight),
+        playerHolderVsAlly: icons(armorslayer, knight, ally),
+        flattened: allItemsWithMultiItems([multi, killer]).map((item: any) => item.nid),
+      };
+    });
+    expect(result).toEqual({
+      killerVsPlayer: ['warning'],
+      killerVsAllyOfHolder: [],
+      armorslayerVsKnight: ['danger'],
+      armorslayerVsFlier: [],
+      armorslayerVsNegate: [],
+      windVsFlier: ['danger'],
+      windVsKnight: [],
+      rexVsPhysical: ['warning'],
+      rexVsMagic: [],
+      rexVsUnarmed: [],
+      playerHolderVsAlly: [],
+      flattened: ['Killing_Edge', 'Armorslayer', 'Killing_Edge'],
+    });
+  });
+});

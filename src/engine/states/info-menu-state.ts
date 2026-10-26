@@ -35,7 +35,7 @@ import {
   skillConditionActive,
   unitHasTag,
 } from '../../combat/skill-system';
-import { available as itemAvailable, inventoryCapacity } from '../../combat/item-system';
+import { available as itemAvailable, inventoryCapacity, itemTextColor } from '../../combat/item-system';
 import type { SkillObject } from '../../objects/skill';
 import type { ItemObject } from '../../objects/item';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
@@ -1214,7 +1214,7 @@ export class InfoMenuState extends State {
     const game = getGame();
     const owner = item.owner ?? unit;
     const ok = !owner || itemAvailable(owner, item, game.db, game);
-    const textColor = item.getComponent?.<string>('text_color');
+    const textColor = itemTextColor(item);
     let main = 'grey';
     let uses = 'grey';
     if (textColor) {

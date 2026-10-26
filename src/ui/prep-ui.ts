@@ -32,6 +32,7 @@ import {
   fullPrice as itemFullPrice,
   sellPrice as itemSellPrice,
   weaponType as itemWeaponType,
+  itemTextColor,
 } from '../combat/item-system';
 import { priceSkillMultiplier } from '../combat/skill-system';
 
@@ -1156,7 +1157,7 @@ export function itemOptionColors(
   const owner: UnitObject | null = convoyOwner ?? item.owner ?? null;
   if (convoy) {
     // ConvoyItemOption.get_color: availability for the unit at the convoy.
-    const textColor = item.components?.get?.('text_color');
+    const textColor = itemTextColor(item);
     if (ignore) return ['grey', 'grey'];
     if (textColor) return [String(textColor), 'blue'];
     let ok = true;
@@ -1165,7 +1166,7 @@ export function itemOptionColors(
   }
   let main: string | null = 'grey';
   let uses = 'grey';
-  const textColor = item.components?.get?.('text_color');
+  const textColor = itemTextColor(item);
   const isAvailable = (unit: UnitObject | null) => {
     if (!unit) return true;
     try { return itemAvailable(unit, item, game.db, game); } catch { return true; }

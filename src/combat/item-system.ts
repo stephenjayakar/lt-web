@@ -2849,19 +2849,91 @@ function isSubitemOf(candidate: ItemObject, parent: ItemObject): boolean {
 }
 
 /**
- * Python `Warning.target_icon` / `EvalWarning.target_icon`: a marker shown
- * over an enemy unit while targeting, warning that the item is dangerous
- * against them (Killer weapons -> 'warning'; effective-weapon evaluated
- * conditions -> 'danger').
- *
- * `eval_warning`'s Python string is an arbitrary evaluated expression
- * (`evaluate.evaluate`). The web has no general expression evaluator wired
- * into targeting, so this approximates only the common default-project
- * pattern: an unconfigured/`'True'` value means "always danger against an
- * enemy". No default.ltproj item actually ships a non-trivial eval_warning
- * expression, so this covers the real-world usage; anything more exotic is
- * deferred (documented in PLAN.md).
+ * Python `item_system.target_icon(unit, item, target)` (UNION policy): the
+ * markers an item held by `unit` contributes over `unit` while the player
+ * hovers `target` (unit_sprite.draw_markers). Hooks:
+ *  - `warning`: 'warning' when the item is available and target is an enemy.
+ *  - `eval_warning`: the fork's value is `{condition, is_danger}` and returns
+ *    'danger' when is_danger is set, else 'warning'; upstream's string value
+ *    returns 'danger'. Either way only for enemies, and an expression that
+ *    raises contributes nothing.
+ *  - `effective_damage`: 'danger' when available, enemy, and effective
+ *    against target (`_check_effective`, negation included).
+ *  - deprecated `effective_tag`/`effective_icon`: 'danger' when enemy and the
+ *    tags match without an (unconditional) negation.
+ * Returned de-duplicated, as Python's set union.
  */
+export function computeTargetIcons(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  db: Database,
+  game?: any,
+): Array<'warning' | 'danger'> {
+  const icons = new Set<'warning' | 'danger'>();
+  if (!checkEnemy(target, unit, db, game)) return [];
+  let isAvailable: boolean | null = null;
+  const availableNow = () => (isAvailable ??= available(unit, item, db, game));
+  const fork = isForkEngine();
+  for (const [nid, value] of resolvedItemComponents(unit, item, db, game)) {
+    if (nid === 'warning') {
+      if (availableNow()) icons.add('warning');
+    } else if (nid === 'eval_warning') {
+      const dict = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as { condition?: unknown; is_danger?: unknown }
+        : null;
+      const expression = String((dict ? dict.condition : value) ?? 'True').trim() || 'True';
+      const outcome = evaluatePythonInContext(expression, {
+        game,
+        unit1: unit,
+        unit2: target,
+        item,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs: new Map<string, any>([['item', item]]),
+      });
+      if (outcome.ok && pythonTruthy(outcome.value)) {
+        icons.add(dict && !dict.is_danger ? 'warning' : 'danger');
+      }
+    } else if (nid === 'effective_damage') {
+      const eff = (value ?? {}) as EffectiveDamageValue;
+      const tags = Array.isArray(eff.effective_tags) ? eff.effective_tags : [];
+      if (availableNow() &&
+          !checkEffectiveNegate(target, tags, game, !fork) &&
+          isEffectiveAgainstTags(target, tags, db)) {
+        icons.add('danger');
+      }
+    } else if (nid === 'effective_tag' || nid === 'effective_icon') {
+      const tags = Array.isArray(value) ? value as string[] : [];
+      if (!checkEffectiveNegate(target, tags, game, false) &&
+          isEffectiveAgainstTags(target, tags, db)) {
+        icons.add('danger');
+      }
+    }
+  }
+  return [...icons];
+}
+
+/**
+ * Python `item_system.text_color(None, item)`: the `text_color` component's
+ * colour, or null without one. EOtF's fork honours any font colour
+ * (Rigalbured_A 'blue', Rigalbured_B 'purple'); upstream deprecated the
+ * component and its hook returns 'white' for every value.
+ */
+export function itemTextColor(item: ItemObject): string | null {
+  if (!item.hasComponent('text_color')) return null;
+  if (!isForkEngine()) return 'white';
+  const value = item.getComponent<unknown>('text_color');
+  return typeof value === 'string' && value ? value : 'white';
+}
+
+/** Python banners: `item_system.text_color(None, item) or 'blue'`. */
+export function bannerItemColor(item: ItemObject): string {
+  return itemTextColor(item) ?? 'blue';
+}
+
+/** First of `computeTargetIcons` (kept for the harness API). */
 export function computeTargetIcon(
   unit: UnitObject,
   item: ItemObject,
@@ -2869,18 +2941,19 @@ export function computeTargetIcon(
   db: Database,
   game?: any,
 ): 'warning' | 'danger' | null {
-  const isEnemy = !unit.isAlly(target.team, db.teams.alliances);
-  if (!isEnemy) return null;
+  return computeTargetIcons(unit, item, target, db, game)[0] ?? null;
+}
 
-  if (item.hasComponent('warning') && available(unit, item, db, game)) {
-    return 'warning';
-  }
-
-  if (item.hasComponent('eval_warning')) {
-    const expr = String(item.getComponent<string>('eval_warning') ?? 'True').trim();
-    if (expr === 'True' || expr === '') return 'danger';
-    // Non-trivial expressions are not evaluated on the web; skip.
-  }
-
-  return null;
+/** Python item_funcs.get_all_items: inventory with multi-items flattened to their leaves. */
+export function allItemsWithMultiItems(items: readonly ItemObject[]): ItemObject[] {
+  const out: ItemObject[] = [];
+  const walk = (item: ItemObject) => {
+    if (item.hasComponent('multi_item')) {
+      for (const sub of item.subitems) walk(sub);
+    } else {
+      out.push(item);
+    }
+  };
+  for (const item of items) walk(item);
+  return out;
 }

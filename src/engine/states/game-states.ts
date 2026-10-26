@@ -293,7 +293,9 @@ import {
   stealItemRestrict,
   traceItemRestrict,
   available as itemAvailable,
-  computeTargetIcon,
+  allItemsWithMultiItems,
+  bannerItemColor,
+  computeTargetIcons,
   fullPrice as itemFullPrice,
   buyPrice as itemBuyPrice,
   sellPrice as itemSellPrice,
@@ -809,9 +811,9 @@ export function drawUnitMarkers(surf: Surface): void {
     }
     if (roamState && roamVisit && unit === curUnit) markers.push('interact');
     if (curUnit.team === 'player') {
-      for (const item of unit.items) {
-        const icon = computeTargetIcon(unit, item, curUnit, game.db, game);
-        if (icon) markers.push(icon);
+      // Python: item_system.target_icon over item_funcs.get_all_items(unit).
+      for (const item of allItemsWithMultiItems(unit.items)) {
+        markers.push(...computeTargetIcons(unit, item, curUnit, game.db, game));
       }
     }
     const sprites = markers.map((name) => getSprite(`marker_${name}`)).filter((sprite): sprite is Surface => !!sprite);
@@ -4236,9 +4238,7 @@ export function shouldAlertBrokenItem(unit: UnitObject, item: ItemObject, defend
 
 /** Python banner.BrokenItem: "<color>{item}</> broke." with the ItemBreak sound. */
 export function brokenItemBanner(item: ItemObject): Banner {
-  // The deprecated text_color component always resolves to 'white'.
-  const color = item.hasComponent('text_color') ? 'white' : 'blue';
-  return new Banner(`${colored(item.name, color)} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
+  return new Banner(`${colored(item.name, bannerItemColor(item))} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
 }
 
 /** Push an AlertState for a banner (Python game.alerts.append + change('alert')). */
@@ -7854,7 +7854,7 @@ export class CombatState extends State {
           );
           // Python banner.AcquiredItem per pickup.
           this.gotItemBannerQueue = pickupResult.pickups.map(({ unit, item }) => new Banner(
-            acquiredItemText(unit.name, item.name), itemIcon(item), 3000, { sound: 'Item' },
+            acquiredItemText(unit.name, item.name, bannerItemColor(item)), itemIcon(item), 3000, { sound: 'Item' },
           ));
           this.pendingDiscards = pickupResult.pendingDiscards;
           if (this.results.attackerRankUp) {
@@ -8533,7 +8533,7 @@ export class CombatState extends State {
       const stolen = this.results.stolenItem;
       const allied = getGame().db.areAllied?.('player', activeCombat.attacker.team) ?? activeCombat.attacker.team === 'player';
       this.stoleBanner = new Banner(
-        stoleItemText(activeCombat.attacker.name, stolen.name), itemIcon(stolen), 3000,
+        stoleItemText(activeCombat.attacker.name, stolen.name, bannerItemColor(stolen)), itemIcon(stolen), 3000,
         { sound: allied ? 'Item' : 'ItemBreak' },
       );
       this.phase = 'stole';
@@ -15356,18 +15356,18 @@ export class EventState extends State {
             const giParty = game.getParty(giArgs.value('Party') || undefined);
             if (giParty) {
               game.actionLog.doAction(new PutItemInConvoy(giItem, giParty.nid));
-              giBannerText = `${colored(giItem.name)} sent to convoy.`;
+              giBannerText = `${colored(giItem.name, bannerItemColor(giItem))} sent to convoy.`;
             }
           } else {
             const giUnit = this.findUnit(giUnitNid);
             if (giUnit && this.inventoryFull(giUnit, giItem) && giArgs.flags.has('no_choice')) {
               // Python: a full inventory with no_choice sends it to the convoy.
               game.actionLog.doAction(new PutItemInConvoy(giItem, game.getParty()?.nid));
-              giBannerText = `${colored(giItem.name)} sent to convoy.`;
+              giBannerText = `${colored(giItem.name, bannerItemColor(giItem))} sent to convoy.`;
             } else if (giUnit) {
               const giFull = this.inventoryFull(giUnit, giItem);
               game.actionLog.doAction(new GiveItemAction(giUnit, giItem));
-              giBannerText = acquiredItemText(giUnit.name, giItem.name);
+              giBannerText = acquiredItemText(giUnit.name, giItem.name, bannerItemColor(giItem));
               if (giFull) {
                 // Python: otherwise the unit must discard down to capacity.
                 game.memory.set('item_discard_current_unit', giUnit);
@@ -15408,7 +15408,7 @@ export class EventState extends State {
           const item = unit ? this.findInventoryItem(ownerNid, itemNid) : undefined;
           if (unit && item) {
             game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
-            riBannerText = `${colored(unit.name)} lost ${colored(item.name)}.`;
+            riBannerText = `${colored(unit.name)} lost ${colored(item.name, bannerItemColor(item))}.`;
             riIcon = itemIcon(item);
           }
         }
@@ -15585,7 +15585,7 @@ export class EventState extends State {
         if (item && item.maxUses > 0) {
           game.actionLog.doAction(new SetItemUsesAction(item, 0));
           if (biBannerFlag && biUnit && biUnit.team === 'player' && !this.skipMode) {
-            this.banner = new Banner(`${colored(item.name)} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
+            this.banner = new Banner(`${colored(item.name, bannerItemColor(item))} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
             this.bannerIsAlert = true;
             return true;
           }

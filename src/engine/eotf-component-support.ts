@@ -6,11 +6,9 @@
  * a booting project from being mistaken for a compatible project.
  *
  * Every item-component NID EotF uses has been read against its Lex Talionis
- * Python definition. Two are listed here as deliberate no-ops rather than
- * implementations, both cosmetic and both recorded in README.md:
- *   - `item_icon_flash`: flashes an item icon during the combat preview.
- *   - `text_color`: deprecated upstream; its Python body returns 'white' for
- *     every input, so honouring it is indistinguishable from the default.
+ * Python definition. The cosmetic ones once left as no-ops are implemented:
+ * `item_icon_flash` (`itemIconWhiteness`) and the fork's `text_color`
+ * (`itemTextColor`; upstream deprecated it to always return 'white').
  */
 export const EOTF_ITEM_COMPONENTS = new Set<string>([
   'accessory',

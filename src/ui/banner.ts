@@ -62,17 +62,17 @@ function article(name: string): string {
 }
 
 /** Python AcquiredItem text: "{name} got {article} {item}." (no article for possessives). */
-export function acquiredItemText(unitName: string, itemName: string): string {
+export function acquiredItemText(unitName: string, itemName: string, itemColor = 'blue'): string {
   return itemName.includes("'")
-    ? `${colored(unitName)} got ${colored(itemName)}.`
-    : `${colored(unitName)} got ${article(itemName)} ${colored(itemName)}.`;
+    ? `${colored(unitName)} got ${colored(itemName, itemColor)}.`
+    : `${colored(unitName)} got ${article(itemName)} ${colored(itemName, itemColor)}.`;
 }
 
 /** Python StoleItem text. */
-export function stoleItemText(unitName: string, itemName: string): string {
+export function stoleItemText(unitName: string, itemName: string, itemColor = 'blue'): string {
   return itemName.includes("'")
-    ? `${colored(unitName)} stole ${colored(itemName)}.`
-    : `${colored(unitName)} stole ${article(itemName)} ${colored(itemName)}.`;
+    ? `${colored(unitName)} stole ${colored(itemName, itemColor)}.`
+    : `${colored(unitName)} stole ${article(itemName)} ${colored(itemName, itemColor)}.`;
 }
 
 /** Python GainWexp text. */
