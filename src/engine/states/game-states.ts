@@ -2428,7 +2428,8 @@ export class OptionMenuState extends State {
         const cEvents: (string | null)[] = getGame().gameVars.get('_custom_options_events') ?? [];
         const evName = cEvents[cIdx];
         const game = getGame();
-        game.state.back();
+        // Python triggers the event over the option menu, which is back on
+        // top once the event ends.
         let eventNid = evName;
         if (evName && !game.db.events.has(eventNid)) {
           const byName = [...game.db.events.values()].find(
@@ -2463,8 +2464,9 @@ export class OptionMenuState extends State {
     {
       switch (selected) {
         case 'guide': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('base_guide');
           break;
         }
@@ -2498,8 +2500,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'objective': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('objective_menu');
           break;
         }
@@ -2525,8 +2528,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'options': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('settings_menu');
           break;
         }
