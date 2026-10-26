@@ -851,6 +851,76 @@ test.describe('Event command batch 3c (roaming + trigger_script)', () => {
     expect(got).toEqual({ reward: 'Iron_Sword', parent: 'weapon', derived: 'weapon' });
   });
 
+  test('a parent portrait still loading when trigger_script runs stays with the parent', async ({ page }) => {
+    await boot(page);
+    // Python loads portraits synchronously into the running Event's own
+    // dict. Here the load is async, so an `immediate` portrait (or any
+    // portrait in skip mode) can resolve after trigger_script has switched to
+    // the sub-event; it must still land in the parent's portraits.
+    const seen = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      const level = g.currentLevel?.nid ?? null;
+      const define = (nid: string, source: string[]) => g.db.events.set(nid, {
+        name: nid, nid, trigger: nid, level_nid: level,
+        condition: 'True', only_once: false, priority: 0, _source: source,
+      });
+      define('PortraitChild', ['wait;200', 'game_var;child_done;1']);
+      define('PortraitParent', [
+        'add_portrait;Seth;Left;immediate',
+        'trigger_script;PortraitChild',
+        'game_var;parent_resumed;1',
+        'wait;200',
+      ]);
+      g.eventManager.triggerSpecific('PortraitParent', { type: 'PortraitParent' }, true);
+      g.state.change('event');
+      // Synchronous frames: EventState begins, add_portrait starts the load,
+      // then trigger_script switches events before the load can resolve.
+      h.stepFrames(3, null);
+      const portraitsOf = () => [...g.state.getCurrentState().portraits.keys()];
+      const childAtSwitch = g.state.getCurrentState().currentEvent?.nid;
+      let childPortraits: string[] = [];
+      for (let frame = 0; frame < 200 && !g.gameVars.get('parent_resumed'); frame++) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        h.stepFrames(1, null);
+        if (!g.gameVars.get('child_done')) childPortraits = portraitsOf();
+      }
+      return { childAtSwitch, childPortraits, parentPortraits: portraitsOf() };
+    });
+    expect(seen.childAtSwitch).toBe('PortraitChild');
+    expect(seen.childPortraits).toEqual([]);
+    expect(seen.parentPortraits).toEqual(['Seth']);
+  });
+
+  test('trigger_script hands the parent local args and position to the sub-event', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const level = g.currentLevel?.nid ?? null;
+      g.db.events.set('ArgChild', {
+        name: 'ArgChild', nid: 'ArgChild', trigger: 'ArgChild', level_nid: level,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['game_var;child_amount;{e:amount}', 'game_var;child_pos;{e:position}'],
+      });
+      g.db.events.set('ArgParent', {
+        name: 'ArgParent', nid: 'ArgParent', trigger: 'ArgParent', level_nid: level,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['trigger_script;ArgChild'],
+      });
+      g.eventManager.triggerSpecific('ArgParent', {
+        type: 'ArgParent', position: [3, 4], localArgs: new Map([['amount', 7]]),
+      }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 20);
+    const got = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { amount: g.gameVars.get('child_amount'), pos: g.gameVars.get('child_pos') };
+    });
+    expect(String(got.amount)).toBe('7');
+    expect(String(got.pos).replace(/\s/g, '')).toMatch(/3,4/);
+  });
+
   test('data substitutions preserve Python list literals for expression commands', async ({ page }) => {
     await boot(page);
     await page.evaluate(() => {

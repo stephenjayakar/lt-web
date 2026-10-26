@@ -9424,6 +9424,9 @@ export class EventState extends State {
     eventTextboxes: Map<string, EventTextbox>;
     portraits: Map<string, EventPortrait>;
     portraitPriorityCounter: number;
+    /** Portrait loads the parked event started that have not resolved yet. */
+    pendingPortraitLoads: number;
+    blockingPortraitLoads: number;
     background: HTMLImageElement | null;
   }> = new WeakMap();
   /**
@@ -9560,6 +9563,7 @@ export class EventState extends State {
     // When EventState is re-activated after another state pops (e.g.,
     // movement, shop, combat), we keep skipMode and other state intact.
     const isNewEvent = nextEvent !== this.currentEvent;
+    if (isNewEvent) this.parkPresentation(nextEvent);
     this.currentEvent = nextEvent;
     if (isNewEvent) {
       this.dialogBlocksCommands = true;
@@ -9595,7 +9599,7 @@ export class EventState extends State {
       this.forLoopStack = [];
       this.skipMode = false;
       this.superSkip = false;
-      this.portraits.clear();
+      this.portraits = new Map();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
       this.blockingPortraitLoads = 0;
@@ -9614,6 +9618,8 @@ export class EventState extends State {
       this.locationCard = null;
       this.isHandlingLevelEnd = false;
       this.levelTransitionInProgress = false;
+      const restoredBackground = this.restoreParkedPresentation(nextEvent);
+      if (restoredBackground !== undefined) this.background = restoredBackground;
     }
   }
 
@@ -10264,6 +10270,11 @@ export class EventState extends State {
         const parked = this.parkedEventPresentation.get(event);
         if (!parked) continue;
         if (parked.background) this.drawEventBackground(surf, parked.background);
+        // Python's paused Event.draw still updates its portraits (blinking,
+        // fades) and drops the ones whose removal finished.
+        for (const [name, portrait] of [...parked.portraits]) {
+          if (portrait.update(FRAMETIME)) parked.portraits.delete(name);
+        }
         for (const portrait of [...parked.portraits.values()].sort((a, b) => a.priority - b.priority)) {
           portrait.draw(surf);
         }
@@ -10532,6 +10543,73 @@ export class EventState extends State {
   }
 
   /**
+   * Python keeps portraits, tables/textboxes and the background on each
+   * Event object, so an event paused under another (trigger_script, a
+   * choice's EventNid, an interrupting trigger) gets them back when it
+   * resumes. Park the outgoing event's presentation while it is still
+   * pending and give the incoming event fresh containers.
+   */
+  private parkPresentation(next: GameEvent | null): void {
+    const previous = this.currentEvent;
+    if (!previous || previous === next || previous.isDone()) return;
+    this.parkedEventPresentation.set(previous, {
+      eventTables: this.eventTables,
+      eventTextboxes: this.eventTextboxes,
+      portraits: this.portraits,
+      portraitPriorityCounter: this.portraitPriorityCounter,
+      pendingPortraitLoads: this.pendingPortraitLoads,
+      blockingPortraitLoads: this.blockingPortraitLoads,
+      background: this.background,
+    });
+    this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
+    this.parkedOrder.push(previous);
+    this.eventTables = new Map();
+    this.eventTextboxes = new Map();
+    this.portraits = new Map();
+    this.pendingPortraitLoads = 0;
+    this.blockingPortraitLoads = 0;
+  }
+
+  /**
+   * Give a resuming event back its parked presentation. Returns the parked
+   * background, or undefined when the event had nothing parked.
+   */
+  private restoreParkedPresentation(event: GameEvent): HTMLImageElement | null | undefined {
+    this.parkedOrder = this.parkedOrder.filter((parkedEvent) => parkedEvent !== event);
+    const parked = this.parkedEventPresentation.get(event);
+    if (!parked) return undefined;
+    this.parkedEventPresentation.delete(event);
+    this.eventTables = parked.eventTables;
+    this.eventTextboxes = parked.eventTextboxes;
+    this.portraits = parked.portraits;
+    this.portraitPriorityCounter = parked.portraitPriorityCounter;
+    this.pendingPortraitLoads = parked.pendingPortraitLoads;
+    this.blockingPortraitLoads = parked.blockingPortraitLoads;
+    return parked.background;
+  }
+
+  /**
+   * Portrait images load asynchronously here but synchronously in Python, so
+   * a load may resolve after its event was paused by a nested event. The
+   * portrait belongs to the event that ran the command: callers insert into
+   * the map captured at command time, and this settles that event's counters.
+   * Returns whether the owner is still the running event.
+   */
+  private settlePortraitLoad(owner: GameEvent | null, blocks: boolean): boolean {
+    if (owner === this.currentEvent) {
+      this.pendingPortraitLoads = Math.max(0, this.pendingPortraitLoads - 1);
+      if (blocks) this.blockingPortraitLoads = Math.max(0, this.blockingPortraitLoads - 1);
+      return true;
+    }
+    const parked = owner ? this.parkedEventPresentation.get(owner) : undefined;
+    if (parked) {
+      parked.pendingPortraitLoads = Math.max(0, parked.pendingPortraitLoads - 1);
+      if (blocks) parked.blockingPortraitLoads = Math.max(0, parked.blockingPortraitLoads - 1);
+    }
+    return false;
+  }
+
+  /**
    * Try to load the next queued event, or pop the state if none remain.
    */
   private loadNextEvent(game: any): void {
@@ -10540,21 +10618,7 @@ export class EventState extends State {
     // Event object, so a parent paused by trigger_script (or a choice's
     // EventNid) gets them back when it resumes. Park the outgoing event's
     // presentation while it is still pending.
-    const previous = this.currentEvent;
-    if (previous && previous !== next && !previous.isDone()) {
-      this.parkedEventPresentation.set(previous, {
-        eventTables: this.eventTables,
-        eventTextboxes: this.eventTextboxes,
-        portraits: this.portraits,
-        portraitPriorityCounter: this.portraitPriorityCounter,
-        background: this.background,
-      });
-      this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
-      this.parkedOrder.push(previous);
-      this.eventTables = new Map();
-      this.eventTextboxes = new Map();
-      this.portraits = new Map();
-    }
+    this.parkPresentation(next);
     if (next) {
       this.currentEvent = next;
       this.dialog = null;
@@ -10563,7 +10627,7 @@ export class EventState extends State {
       this.banner = null;
       this.waitTimer = 0;
       this.waiting = false;
-      this.portraits.clear();
+      this.portraits = new Map();
       this.portraitPriorityCounter = 1;
       this.pendingPortraitLoads = 0;
       this.blockingPortraitLoads = 0;
@@ -10576,17 +10640,7 @@ export class EventState extends State {
           break;
         }
       }
-      const parked = this.parkedEventPresentation.get(next);
-      let restoredBackground: HTMLImageElement | null = null;
-      this.parkedOrder = this.parkedOrder.filter((event) => event !== next);
-      if (parked) {
-        this.parkedEventPresentation.delete(next);
-        this.eventTables = parked.eventTables;
-        this.eventTextboxes = parked.eventTextboxes;
-        this.portraits = parked.portraits;
-        this.portraitPriorityCounter = parked.portraitPriorityCounter;
-        restoredBackground = parked.background;
-      }
+      const restoredBackground = this.restoreParkedPresentation(next) ?? null;
       if (suspendedIndex >= 0) {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
         this.eventTables = suspended.eventTables;
@@ -10608,7 +10662,7 @@ export class EventState extends State {
       this.parkedOrder = [];
       this.endingCard = null;
       this.creditCards = [];
-      this.portraits.clear();
+      this.portraits = new Map();
       this.pendingPortraitLoads = 0;
       this.blockingPortraitLoads = 0;
       this.eventTables.clear();
@@ -13121,12 +13175,22 @@ export class EventState extends State {
         // trigger_script;Event;Unit1;Unit2 / trigger_script_with_args;Event;k=v,k=v
         // (Python :3722/:3741): queues the named event and pauses this one.
         const eventName = args[0] ?? '';
-        const trig: any = { type: eventName };
+        // Python trigger_script passes the parent's local args (its whole
+        // trigger.to_args(): item, mode, target_pos, position, ...) along with
+        // unit1/unit2/position; trigger_script_with_args passes only its list.
+        const parentTrigger = this.currentEvent?.trigger;
+        const trig: any = cmd.type === 'trigger_script' && parentTrigger
+          ? {
+            ...parentTrigger,
+            type: eventName,
+            localArgs: new Map(parentTrigger.localArgs ?? []),
+          }
+          : { type: eventName };
         if (cmd.type === 'trigger_script') {
           const unit1 = args[1] ? game.units.get(args[1]) : this.currentEvent?.trigger?.unit1;
           const unit2 = args[2] ? game.units.get(args[2]) : this.currentEvent?.trigger?.unit2;
-          if (unit1) trig.unit1 = unit1;
-          if (unit2) trig.unit2 = unit2;
+          trig.unit1 = unit1 ?? undefined;
+          trig.unit2 = unit2 ?? undefined;
         } else if (args[1]) {
           const entries = args[1].split(',').map((part: string) => part.trim());
           const localArgs = new Map<string, string>();
@@ -15665,6 +15729,8 @@ export class EventState extends State {
         // commands (e.g. speak) execute.
         this.pendingPortraitLoads++;
         if (blocks) this.blockingPortraitLoads++;
+        const ownerPortraits = this.portraits;
+        const portraitOwner = this.currentEvent;
         game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
           const portrait = new EventPortrait(
             image,
@@ -15681,18 +15747,14 @@ export class EventState extends State {
               speedMult,
             },
           );
-          this.portraits.set(portraitNid, portrait);
-          this.pendingPortraitLoads--;
-          if (blocks) this.blockingPortraitLoads--;
-          if (blocks) {
+          ownerPortraits.set(portraitNid, portrait);
+          if (this.settlePortraitLoad(portraitOwner, blocks) && blocks) {
             this.waiting = true;
             this.waitTimer = (14 * FRAMETIME) / speedMult + 33;
           }
         }).catch(() => {
           console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
-          this.pendingPortraitLoads--;
-          if (blocks) this.blockingPortraitLoads--;
-          if (blocks) {
+          if (this.settlePortraitLoad(portraitOwner, blocks) && blocks) {
             this.advancePointer();
           }
         });
@@ -15727,18 +15789,18 @@ export class EventState extends State {
 
           this.pendingPortraitLoads++;
           this.blockingPortraitLoads++;
+          const ownerPortraits = this.portraits;
+          const portraitOwner = this.currentEvent;
           game.resources.loadPortrait(resolvedNid).then((image: HTMLImageElement) => {
             const portrait = new EventPortrait(
               image, blinkOffset, smileOffset, pos, priority, pNid,
               { transition: true, mirror: autoMirror },
             );
-            this.portraits.set(pNid, portrait);
-            this.pendingPortraitLoads--;
-            this.blockingPortraitLoads--;
+            ownerPortraits.set(pNid, portrait);
+            this.settlePortraitLoad(portraitOwner, true);
           }).catch(() => {
             console.warn(`EventState: failed to load portrait "${resolvedNid}"`);
-            this.pendingPortraitLoads--;
-            this.blockingPortraitLoads--;
+            this.settlePortraitLoad(portraitOwner, true);
           });
         }
         this.advancePointer();
