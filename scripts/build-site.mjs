@@ -75,8 +75,11 @@ function fail(msg) {
 }
 
 function run(cmd, cmdArgs, env) {
-  const r = spawnSync(cmd, cmdArgs, { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } });
-  if (r.status !== 0) fail(`${cmd} ${cmdArgs.join(' ')} exited with ${r.status}`);
+  // Windows: Node refuses to spawn .cmd files (npx.cmd) without a shell (EINVAL).
+  const r = spawnSync(cmd, cmdArgs, {
+    cwd: root, stdio: 'inherit', env: { ...process.env, ...env }, shell: process.platform === 'win32',
+  });
+  if (r.status !== 0) fail(`${cmd} ${cmdArgs.join(' ')} exited with ${r.status}${r.error ? ` (${r.error.message})` : ''}`);
 }
 
 function* walk(dir) {
