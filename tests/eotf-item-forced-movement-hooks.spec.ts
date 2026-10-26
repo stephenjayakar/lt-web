@@ -172,7 +172,9 @@ test.describe('Embrace of the Fog forced-movement item hooks', () => {
     expect(result!.flexibleStopsShort).toEqual({
       applied: 1, moved: [x + 3, y], rewound: [x + 2, y],
     });
-    expect(result!.standardStopsShort).toEqual(result!.flexibleStopsShort);
+    // EOtF's engine fork Shove._check_shove inspects only the final tile, so
+    // plain `shove` hops the blocker like the strict initiation variant.
+    expect(result!.standardStopsShort).toEqual(result!.strictBypassesIntermediate);
     expect(result!.signedPull).toEqual({
       applied: 1, moved: [x + 1, y], rewound: [x + 2, y],
     });

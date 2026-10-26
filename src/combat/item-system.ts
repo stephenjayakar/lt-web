@@ -10,6 +10,7 @@
  */
 
 import { drawCacheGeneration } from '../engine/draw-cache';
+import { isForkEngine } from '../engine/engine-flavor';
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
 import {
@@ -1074,7 +1075,9 @@ export function splash(
     const line = raytrace(unit.position, position).filter((candidate) => !samePosition(candidate, unit.position!));
     const target = item.hasComponent('enemy_line_aoe') ? 'enemy' : 'all';
     const affected = affectedUnits(line, unit, context, target);
-    const result: SplashResult = spell ? { mainTarget: null, splash: affected } : {
+    // EOtF's engine fork: LineAOE/EnemyLineAOE always return no main target
+    // (one strike on every unit, no counter/double/brave), spell or not.
+    const result: SplashResult = spell || isForkEngine() ? { mainTarget: null, splash: affected } : {
       mainTarget: board.getUnit(position[0], position[1]) ? position : null,
       splash: affected.filter((candidate) => !samePosition(candidate, position)),
     };
@@ -1095,7 +1098,8 @@ export function splash(
     const affected = board.getAllUnits()
       .filter((target) => target.position && checkEnemy(unit, target, context.db))
       .map((target) => [target.position![0], target.position![1]] as TargetPosition);
-    const result = spell
+    // EOtF's engine fork: AllEnemiesAOE never has a main target.
+    const result = spell || isForkEngine()
       ? { mainTarget: null, splash: affected }
       : { mainTarget: board.getUnit(position[0], position[1]) ? position : null, splash: affected };
     return resultOrAlternate(result, unit, item, position, context);
@@ -1306,7 +1310,9 @@ export function shoveDestination(
   magnitude: number,
   context: TargetRestrictionContext,
 ): TargetPosition | null {
-  if (!target.position || magnitude <= 0) return null;
+  if (!target.position) return null;
+  if (isForkEngine()) return forkShoveDestination(target, anchor, magnitude, context);
+  if (magnitude <= 0) return null;
   const step: TargetPosition = [
     Math.max(-1, Math.min(1, target.position[0] - anchor[0])),
     Math.max(-1, Math.min(1, target.position[1] - anchor[1])),
@@ -1327,6 +1333,36 @@ export function shoveDestination(
     destination = candidate;
   }
   return destination;
+}
+
+/**
+ * EOtF engine fork `Shove._check_shove` (also ShoveOnEndCombat and
+ * ShoveTargetRestrict): only the final tile `position + offset * magnitude`
+ * is checked (in bounds, unoccupied, mcost <= movement), so the shove may hop
+ * over units and a negative magnitude pulls the target past the anchor
+ * (Reposition's `shove -2` moves the ally to the tile behind the user).
+ */
+function forkShoveDestination(
+  target: UnitObject,
+  anchor: TargetPosition,
+  magnitude: number,
+  context: TargetRestrictionContext,
+): TargetPosition | null {
+  if (!target.position) return null;
+  const offset: TargetPosition = [
+    Math.max(-1, Math.min(1, target.position[0] - anchor[0])),
+    Math.max(-1, Math.min(1, target.position[1] - anchor[1])),
+  ];
+  const destination: TargetPosition = [
+    target.position[0] + offset[0] * magnitude,
+    target.position[1] + offset[1] * magnitude,
+  ];
+  if (!context.board.inBounds(destination[0], destination[1])) return null;
+  if (context.board.getUnit(destination[0], destination[1])) return null;
+  const mcost = context.board.getMovementCost(
+    destination[0], destination[1], movementGroup(target, context.db), context.db,
+  );
+  return mcost <= target.getMovement() ? destination : null;
 }
 
 /**
