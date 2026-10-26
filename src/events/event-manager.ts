@@ -370,6 +370,9 @@ export class GameEvent {
   /** PYEV1 processor for Python-syntax events (null for standard events). */
   pyev1Processor: any | null;
 
+  /** Python Event.transition_state: each event toggles its own transition. */
+  transitionState: 'open' | 'close' | null = null;
+
   constructor(prefab: EventPrefab, trigger: EventTrigger, gameGetter?: () => any) {
     this.nid = prefab.nid;
     this.commands = [];

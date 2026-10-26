@@ -1108,3 +1108,36 @@ test('free state auto-ends the turn when no player units are left (Python FreeSt
   expect(result.enemies).toBeGreaterThan(0);
   expect(result.stack).not.toEqual(['free']);
 });
+
+test('a bare transition toggles the event\'s own state, so close-then-open ends open after a black screen (Python Event.transition_state)', async ({ page }) => {
+  await boot(page);
+  // An earlier event in the same chain (EOtF's level-start scripts) leaves
+  // the screen closed when this one starts.
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const add = (nid: string, source: string[]) => g.db.events.set(nid, {
+      name: nid, nid, trigger: nid, level_nid: g.currentLevel?.nid ?? null,
+      condition: 'True', only_once: false, priority: 0, _source: source,
+    });
+    add('qa_transition_close', ['transition;close']);
+    add('qa_transition_toggle', [
+      'transition',
+      'game_var;qa_between;1',
+      'transition',
+      'game_var;qa_after;1',
+      'wait;100000',
+    ]);
+    g.eventManager.triggerSpecific('qa_transition_close', { type: 'qa_transition_close' }, true);
+    g.eventManager.triggerSpecific('qa_transition_toggle', { type: 'qa_transition_toggle' }, true);
+    g.state.change('event');
+  });
+  await stepFrames(page, 180);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const s = g.state.getCurrentState() as any;
+    return { after: g.gameVars.get('qa_after'), alpha: s.transitionAlpha, hold: s.transitionHoldBlack };
+  });
+  expect(result.after).toBe(1);
+  expect(result.alpha).toBe(0);
+  expect(result.hold).toBe(false);
+});

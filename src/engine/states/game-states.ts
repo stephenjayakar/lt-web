@@ -13091,9 +13091,15 @@ export class EventState extends State {
           this.transitionDurationMs = 250; // Python Event._transition_speed
         }
         const explicitDirection = (args[0] ?? '').trim().toLowerCase();
-        const screenClosed = this.transitionFadingIn || this.transitionHoldBlack ||
-          (this.transitionAlpha >= 1 && !this.transitionFadingOut);
-        const direction = explicitDirection || (screenClosed ? 'open' : 'close');
+        // Python toggles on the event's own transition_state (None for a fresh
+        // event, so its first bare `transition` closes), not on whatever the
+        // screen currently shows.
+        const owner = this.currentEvent;
+        const direction = explicitDirection ||
+          (owner ? (owner.transitionState === 'close' ? 'open' : 'close')
+            : ((this.transitionFadingIn || this.transitionHoldBlack ||
+              (this.transitionAlpha >= 1 && !this.transitionFadingOut)) ? 'open' : 'close'));
+        if (owner) owner.transitionState = direction === 'open' ? 'open' : 'close';
         // Parse optional color (r,g,b)
         if (args[2]) {
           const colorParts = args[2].split(',');
@@ -13119,10 +13125,13 @@ export class EventState extends State {
           this.transitionFadingOut = true;
           this.transitionAlpha = 1;
         } else {
-          // 'close' — fade to black
+          // 'close' — fade to black. A screen that is already closed stays
+          // black (Python layers each event's own overlay on top).
+          const alreadyClosed = this.transitionHoldBlack ||
+            (this.transitionAlpha >= 1 && !this.transitionFadingOut);
           this.transitionFadingIn = true;
           this.transitionFadingOut = false;
-          this.transitionAlpha = 0;
+          this.transitionAlpha = alreadyClosed ? 1 : 0;
         }
         if (!this.transitionBlocksCommands) {
           this.advancePointer();
