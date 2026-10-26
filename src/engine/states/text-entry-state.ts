@@ -117,6 +117,7 @@ export class TextEntryState extends State {
     preloadSprites(['NamingScreen'], game.resources);
     preloadSprites(['Underscore', 'focus_fade', 'menus/menu_hand', 'menus/menu_highlight']);
 
+    this.removeKeyListener();
     this.keyListener = (e: KeyboardEvent) => {
       if (this.confirmIndex !== null) return;
       if (e.key === 'Enter') {
@@ -132,6 +133,17 @@ export class TextEntryState extends State {
   }
 
   override end(): StateResult {
+    this.removeKeyListener();
+  }
+
+  // Python's state machine runs end() on pop as well; this one calls only
+  // finish(), so a popped entry kept its listener and every reopen added
+  // another (each typed key then landed once per stale listener).
+  override finish(): void {
+    this.removeKeyListener();
+  }
+
+  private removeKeyListener(): void {
     if (this.keyListener) {
       window.removeEventListener('keydown', this.keyListener);
       this.keyListener = null;
