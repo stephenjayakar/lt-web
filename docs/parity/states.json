@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 55,
-    "merged": 58,
+    "exact": 56,
+    "merged": 57,
     "open": 0,
-    "web": 73
+    "web": 74
   },
   "rows": [
     {
@@ -580,9 +580,9 @@
       "name": "prep_market",
       "className": "PrepMarketState",
       "source": "lt-maker/app/engine/prep.py",
-      "status": "merged",
-      "webState": "shop",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "prep_market",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_pick_units",

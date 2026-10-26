@@ -15,7 +15,18 @@ import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
-import { StoreItemAction, TakeItemFromConvoy, TradeAction } from '../action';
+import {
+  GainMoneyAction,
+  GiveItemAction,
+  PutItemInConvoy,
+  RemoveItemFromConvoy,
+  RemoveItemFromUnitAction,
+  StoreItemAction,
+  TakeItemFromConvoy,
+  TradeAction,
+  UpdateRecordsAction,
+} from '../action';
+import { ItemObject as ItemObjectClass } from '../../objects/item';
 import { available as itemAvailable, inventoryFull } from '../../combat/item-system';
 import { noTrade } from '../../combat/skill-system';
 import { canUseBaseItem } from './game-states';
@@ -23,8 +34,12 @@ import {
   Choice,
   CustomAlert,
   ScrollingBackground,
+  ConvoyMenu,
   Table,
   TradeMenu,
+  drawTextRight,
+  getSprite,
+  shopPrice,
   baseSurf,
   checkTrade,
   blitTranslucent,
@@ -731,6 +746,153 @@ export class PrepTradeState extends State {
     const [ox, oy] = screenOrigin();
     this.bg?.draw(surf);
     this.menu?.draw(surf, ox, oy);
+    return surf;
+  }
+}
+
+// ============================================================================
+// PrepMarketState — Python prep.PrepMarketState (base/prep Market)
+// ============================================================================
+
+export class PrepMarketState extends State {
+  readonly name = 'prep_market';
+  override readonly showMap = false;
+  override readonly inLevel = false;
+
+  unit: UnitObject | null = null;
+  buyMenu: ConvoyMenu | null = null;
+  sellMenu: ConvoyMenu | null = null;
+  choiceMenu: Choice | null = null;
+  displayMenu: ConvoyMenu | null = null;
+  mode: 'free' | 'buy' | 'sell' = 'free';
+  private bg: Background | null = null;
+
+  override start(): StateResult {
+    const game = getGame();
+    preloadPrepSprites();
+    this.bg = game.memory.get('prep_bg') ?? new ScrollingBackground(game, 'rune_background');
+    this.unit = game.memory.get('current_unit') ?? null;
+    if (!this.unit) return;
+    const market: Map<string, number> = game.marketItems ?? new Map();
+    const items: ItemObject[] = [];
+    for (const nid of market.keys()) {
+      const prefab = game.db.items.get(nid);
+      if (prefab) items.push(new ItemObjectClass(prefab));
+    }
+    const showStock = [...market.values()].some((stock) => stock >= 0);
+    this.sellMenu = new ConvoyMenu(game, this.unit, [240 - 164, 40], { market: true, dispValue: 'sell' });
+    this.buyMenu = new ConvoyMenu(game, this.unit, [240 - 164, 40], {
+      market: true, dispValue: 'buy', marketItems: items, showStock,
+      stockOf: (item) => Number(market.get(item.nid) ?? -1),
+    });
+    this.displayMenu = this.buyMenu;
+    this.sellMenu.setTakesInput(false);
+    this.buyMenu.setTakesInput(false);
+    this.choiceMenu = new Choice(game, ['Buy', 'Sell'], [20, 24], 'menu_bg_brown');
+    this.choiceMenu.gem = false;
+    this.mode = 'free';
+  }
+
+  private activeMenu(): Choice | ConvoyMenu | null {
+    return this.mode === 'free' ? this.choiceMenu : this.mode === 'buy' ? this.buyMenu : this.sellMenu;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    const unit = this.unit;
+    const menu = this.activeMenu();
+    if (!unit || !menu) { game.state.back(); return; }
+    event = mouseEvent(game, menu, event);
+    if (event === 'DOWN' || event === 'UP') {
+      const moved = event === 'DOWN' ? menu.moveDown(isFirstPush(game, event)) : menu.moveUp(isFirstPush(game, event));
+      if (moved) sfx('Select 6');
+      if (this.mode === 'free') {
+        this.displayMenu = this.choiceMenu?.getCurrentText() === 'Buy' ? this.buyMenu : this.sellMenu;
+      }
+    } else if (event === 'LEFT') {
+      sfx('TradeRight');
+      this.displayMenu?.moveLeft(isFirstPush(game, 'LEFT'));
+    } else if (event === 'RIGHT') {
+      sfx('TradeRight');
+      this.displayMenu?.moveRight(isFirstPush(game, 'RIGHT'));
+    }
+
+    if (event === 'SELECT') {
+      if (this.mode === 'buy') this.buy(unit);
+      else if (this.mode === 'sell') this.sell();
+      else {
+        const buying = this.choiceMenu?.getCurrentText() === 'Buy';
+        this.mode = buying ? 'buy' : 'sell';
+        this.displayMenu = buying ? this.buyMenu : this.sellMenu;
+        this.displayMenu?.setTakesInput(true);
+      }
+    } else if (event === 'BACK') {
+      sfx('Select 4');
+      if (this.mode === 'buy' || this.mode === 'sell') {
+        this.displayMenu?.setTakesInput(false);
+        this.mode = 'free';
+      } else {
+        game.state.back();
+      }
+    }
+  }
+
+  private buy(unit: UnitObject): void {
+    const game = getGame();
+    const menu = this.buyMenu!;
+    const item = menu.getCurrent();
+    if (!item) { sfx('Select 4'); return; }
+    const value = shopPrice(game, unit, item, 'buy');
+    if (game.getMoney() - value >= 0 && menu.getStock() !== 0) {
+      sfx('GoldExchange');
+      const party = game.getParty();
+      game.actionLog.doAction(new GainMoneyAction(-value, party?.nid));
+      game.actionLog.doAction(new UpdateRecordsAction('money', party?.nid, -value));
+      const market: Map<string, number> = game.marketItems;
+      market.set(item.nid, Number(market.get(item.nid) ?? 0) - 1);
+      const prefab = game.db.items.get(item.nid);
+      if (prefab) {
+        const newItem = new ItemObjectClass(prefab);
+        if (!inventoryFull(unit, newItem, game.db)) game.actionLog.doAction(new GiveItemAction(unit, newItem));
+        else game.actionLog.doAction(new PutItemInConvoy(newItem, party?.nid));
+      }
+      this.buyMenu?.updateOptions();
+      this.sellMenu?.updateOptions();
+    } else {
+      sfx('Select 4');
+    }
+  }
+
+  private sell(): void {
+    const game = getGame();
+    const item = this.sellMenu!.getCurrent();
+    if (!item) { sfx('Select 4'); return; }
+    const value = shopPrice(game, item.owner ?? this.unit, item, 'sell');
+    if (!value) { sfx('Select 4'); return; }
+    sfx('GoldExchange');
+    const party = game.getParty();
+    game.actionLog.doAction(new GainMoneyAction(value, party?.nid));
+    game.actionLog.doAction(new UpdateRecordsAction('money', party?.nid, value));
+    if (item.owner) game.actionLog.doAction(new RemoveItemFromUnitAction(item.owner, item));
+    else game.actionLog.doAction(new RemoveItemFromConvoy(item, party?.nid));
+    this.buyMenu?.updateOptions();
+    this.sellMenu?.updateOptions();
+  }
+
+  override update(): StateResult {
+    const menu = this.activeMenu();
+    menu?.update();
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    const [ox, oy] = screenOrigin();
+    this.bg?.draw(surf);
+    this.choiceMenu?.draw(surf, ox, oy);
+    this.displayMenu?.draw(surf, ox, oy);
+    const funds = getSprite('funds_display');
+    if (funds) surf.blitImage(funds, 0, 0, funds.width, funds.height, ox + 10, oy + 160 - 24);
+    drawTextRight(surf, String(game.getMoney()), ox + 61, oy + 160 - 20, null, 'text-blue');
     return surf;
   }
 }

@@ -406,6 +406,47 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     await attachShot(page, testInfo, 'shop-sell');
   });
 
+  test('Market opens the Python PrepMarketState with buy/sell market menus', async ({ page }, testInfo) => {
+    test.slow();
+    await openPrep(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.gameVars.set('_prep_market', true);
+      g.marketItems = new Map([['Iron_Sword', 2], ['Iron_Axe', -1]]);
+      g.getParty().money = 1000;
+      const state = g.state.getCurrentState();
+      state.cursor = state.options.indexOf('Manage');
+    });
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    const ignore = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().selectMenu;
+      const idx = menu.options.findIndex((o: any) => o.entry?.text === 'Market');
+      menu.moveTo(idx);
+      return menu.options[idx].ignore;
+    });
+    expect(ignore).toBe(false);
+    await step(page, 1, 'SELECT');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('prep_market');
+    await attachShot(page, testInfo, 'market-free');
+    // Buy: SELECT on Buy, the first tab holds the Iron Sword.
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    const after = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { money: g.getMoney(), stock: g.marketItems.get('Iron_Sword') };
+    });
+    expect(after.money).toBeLessThan(1000);
+    expect(after.stock).toBe(1);
+    await settleImages(page);
+    await attachShot(page, testInfo, 'market-buy');
+  });
+
   test('Formation selects a unit with the hand marker and moves it to a formation tile', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);
