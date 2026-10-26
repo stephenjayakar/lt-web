@@ -9,6 +9,7 @@
 
 import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
+import { isForkEngine } from '../engine-flavor';
 import type { GameState } from '../game-state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
@@ -6425,6 +6426,21 @@ export class CombatState extends State {
   private heldBreakEvents: GameEvent[] = [];
   private heldRankUpEvents: GameEvent[] = [];
   private heldEndEvents: GameEvent[] = [];
+  /**
+   * EOtF's engine fork (v1.90 simple_combat.clean_up / animation_combat
+   * clean_up2) ends combat in one pass instead of upstream's clean_up0/1/2:
+   * no combat_death trigger and no unit_weapon_rank_up trigger; wexp, exp and
+   * records are handled after CombatEnd, and end_combat, UnitDeath and the
+   * broken-item checks come last. Its EventStates (newest on top) therefore
+   * run broken items -> unit_death -> dying fade -> end_combat hook events ->
+   * map exp screen -> item gain -> combat_end. Animation combat shows exp in
+   * the battle scene (clean_up1), as upstream does.
+   */
+  private forkCleanup: boolean = false;
+  /** Fork map combat: the exp screen waits for the end_combat hook events. */
+  private deferredExp: boolean = false;
+  /** Fork: the end_combat hook events were handed to an EventState. */
+  private endEventsRun: boolean = false;
   /** The presented phase's strike events were handed to an EventState. */
   private strikeEventsStarted: boolean = false;
   /**
@@ -6554,7 +6570,8 @@ export class CombatState extends State {
   /** clean_up0: combat_death, run over the combat before the exp screen. */
   private runMidCombatEvents(): boolean {
     const game = getGame();
-    if (!game.eventManager) return false;
+    // EOtF's engine fork has no combat_death trigger.
+    if (!game.eventManager || this.forkCleanup) return false;
     const events = this.captureEvents(() => queueInStackOrder(game, this.deathTriggers('combat_death')));
     return runEventsBeforeWaiting(game, events, true);
   }
@@ -6777,6 +6794,9 @@ export class CombatState extends State {
     this.heldBreakEvents = [];
     this.heldRankUpEvents = [];
     this.heldEndEvents = [];
+    this.forkCleanup = isForkEngine();
+    this.deferredExp = false;
+    this.endEventsRun = false;
     this.strikeEventsStarted = false;
     this.initialized = true;
 
@@ -7266,7 +7286,8 @@ export class CombatState extends State {
             const rankUp = this.results.attackerRankUp;
             const weaponType = activeCombat.attackItem.getComponent<string>('weapon_type');
             const wexpGained = this.results.attackerWexpGained;
-            if (weaponType) this.heldRankUpEvents = this.captureEvents(() => game.eventManager?.trigger(
+            // EOtF's engine fork has no unit_weapon_rank_up trigger.
+            if (weaponType && !this.forkCleanup) this.heldRankUpEvents = this.captureEvents(() => game.eventManager?.trigger(
                 {
                   type: 'unit_weapon_rank_up',
                   levelNid: game.currentLevel?.nid ?? '',
@@ -7315,7 +7336,11 @@ export class CombatState extends State {
           // clean_up0: combat_death runs over the combat before the exp
           // screen (the strikes' own events already ran between strikes).
           const pausedForEvents = this.runMidCombatEvents();
-          if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
+          const gainsExp = this.results.expGained > 0 && activeCombat.attacker.team === 'player';
+          // The fork's map combat pushes ExpState in its one clean_up, under
+          // the dying and end_combat states, so the bar shows after them.
+          this.deferredExp = gainsExp && this.forkCleanup && !this.isAnimationCombat;
+          if (gainsExp && !this.deferredExp) {
             this.startExpPhase();
           } else if (pausedForEvents) {
             this.phase = 'post_exp_events';
@@ -7851,6 +7876,23 @@ export class CombatState extends State {
       this.phaseTimer = 0;
       return;
     }
+    if (this.forkCleanup && !this.endEventsRun) {
+      // Fork: end_combat's item/skill hook events run after the dying fade,
+      // ahead of the map exp screen, item gain and combat_end.
+      this.endEventsRun = true;
+      const endEvents = this.heldEndEvents;
+      this.heldEndEvents = [];
+      if (runEventsBeforeWaiting(getGame(), endEvents, true)) {
+        this.phase = 'post_exp_events';
+        this.phaseTimer = 0;
+        return;
+      }
+    }
+    if (this.deferredExp) {
+      this.deferredExp = false;
+      this.startExpPhase();
+      return;
+    }
     const activeCombat = this.getActiveCombat();
     if (this.results?.stolenItem && activeCombat && !this.stoleBannerShown) {
       // Python banner.StoleItem through AlertState.
@@ -7937,7 +7979,9 @@ export class CombatState extends State {
     // Python draws the windows while the combat state is on the stack, which
     // includes the exp bar it pushes from clean_up1; the dying fade starts
     // only after the combat state is popped.
-    if (this.phase !== 'death' && this.phase !== 'post_exp_events') {
+    // The fork pops its combat state before any of that, exp included.
+    if (this.phase !== 'death' && this.phase !== 'post_exp_events' &&
+        !(this.forkCleanup && this.postExpEventsQueued)) {
       const cameraTiles: [number, number] = [cameraOffset[0] / TILEWIDTH, cameraOffset[1] / TILEHEIGHT];
       for (const info of rs.infos) info.draw(surf, cameraTiles);
     }
