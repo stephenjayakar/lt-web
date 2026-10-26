@@ -80,7 +80,9 @@ project.
 ## Remaining (not changed)
 
 - AI multi_target repeats.
-- Fog ambush doesn't check interrupt regions.
+- (Fixed in `fix/dev-flow`: fog of war lets the player path through unseen
+  enemies and the walk is ambushed before them, after check_position's
+  current-tile interrupt-region test; `tests/fork-region-interrupt.spec.ts`.)
 - Choice/table ignoring an authored bg (EOtF never sets one); `{v:}` None fall-through.
 - (Fixed in `qa/fork-followups`: shove on hit, mid-combat weapon break, defender
   exp, Tile phase skipping, AI canto/event-move interrupts, lazy choice

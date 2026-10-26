@@ -12092,7 +12092,7 @@ export class EventState extends State {
     // ("Interruption regions take precedence"). The event finish() Resets the
     // unit, so only the stop and the Surprise sound remain.
     const interrupted = fullPath && fullPath.length > 1
-      ? interruptMovePath(unit, fullPath, game)
+      ? interruptMovePath(unit, fullPath, game, { event: true })
       : { path: fullPath, surprise: false };
     const path = interrupted.path;
     if (interrupted.surprise && path && path.length > 0) {

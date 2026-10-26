@@ -65,7 +65,10 @@ export class PathSystem {
       // configured movement bounds are unreachable (set_game_board_bounds).
       if (!board.checkBounds(x, y)) continue;
       const occupant = board.getUnit(x, y);
-      if (!occupant || occupant === unit) {
+      // Python keeps occupied tiles in valid_moves; MoveState only refuses a
+      // visible occupant, so a fog-hidden enemy's tile can be chosen.
+      if (!occupant || occupant === unit ||
+          (!this.db.areAllied(unit.team, occupant.team) && this.hiddenFrom(unit.team, x, y, board))) {
         validMoves.push([x, y]);
       }
     }
@@ -275,8 +278,23 @@ export class PathSystem {
       if (!occupant) return true;
       if (occupant === unit) return true;
       // Can pass through allied units
-      return this.db.areAllied(unit.team, occupant.team);
+      if (this.db.areAllied(unit.team, occupant.team)) return true;
+      // Python game_board.can_move_through: "Can always move through what
+      // you can't see" (fog of war; the walk is then ambushed).
+      return this.hiddenFrom(unit.team, x, y, board);
     };
+  }
+
+  /**
+   * Python game_board.can_move_through's fog clause: the player team, and
+   * other teams only with the ai_fog_of_war constant, can't see (and so
+   * path through) a tile outside their vision.
+   */
+  private hiddenFrom(team: string, x: number, y: number, board: GameBoard): boolean {
+    if (team !== 'player' && !this.db.getConstant('ai_fog_of_war', false)) return false;
+    return !board.inVision(
+      [x, y], team, this.game?.getCurrentFogInfo?.(), this.db, this.game?.getAllUnits?.(),
+    );
   }
 
   /**
