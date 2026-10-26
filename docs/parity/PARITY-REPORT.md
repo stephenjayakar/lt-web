@@ -145,7 +145,17 @@ commands no upstream release has (`heal`, `change_global_level_cap`,
 `change_unit_level_cap`, `unload_unit`, `show_pokedex`, `return`, and
 `change_class`'s `no_wexp` flag). The reference `lt-maker/` is upstream
 `b811e266` (VERSION `2026.02.17a`, cloned 2026-02-21). Where the two disagree the
-web follows what EOtF's engine does:
+web follows what EOtF's engine does.
+
+The fork's v1.90 build source (`VERSION = "1.9.5"`, 581 `.py` files) is closest to
+upstream `5078af9f` (2024-02-04): 377 files are byte-identical. A systematic
+three-way diff (base→fork, base→upstream, upstream→fork) of `app/engine`,
+`app/events`, `app/data` and `app/utilities` is in `temp/plan-fork-diff.md`, with
+every behavioural difference classified and checked against EOtF data. Fixes that
+follow fork-specific behaviour check `isForkEngine()`
+(`src/engine/engine-flavor.ts`: the project's `metadata.json` names `EotF`), so
+other projects keep upstream behaviour; places where both Python engines agree and
+the web followed neither are fixed for every project.
 
 | Behaviour | Reference (`2026.02.17a`) | EOtF's engine | Web |
 |---|---|---|---|
@@ -154,6 +164,33 @@ web follows what EOtF's engine does:
 | `has_finished` | no-op: `action.Wait` lost in `0623423e7` (2026-01-24), restored in `8a5e12750` (2026-03-24) | 2024 base waits the unit | `WaitAction` |
 | `push` placement | occupant's own tile counts as open (`da99faa2d`, 2025-12), so units stack; fixed upstream in `0f96fd6f6` (2026-10-23, `can_stay=False`) | 2024 base pushes the occupant | nearest open tile without the occupant's own, then a forced move |
 | `closest` placement | `get_closest_reachable_tile`: needs a path from the unit, and its own tile counts as open (`da99faa2d`, 2025-12) | `get_nearest_open_tile`: no path check, the unit's own tile is occupied (v1.90 `app/events/event.py`) | EOtF's behaviour |
+| End of combat | `clean_up0/1/2`: `combat_death`, then the exp pause, then UnitDeath, end_combat hooks, CombatEnd | one `clean_up()`: no `combat_death`, no `unit_weapon_rank_up`; EventStates run broken items → unit_death → dying fade → end_combat hook events → map exp screen → item gain → combat_end | EOtF's order (`tests/fork-combat-cleanup.spec.ts`); strike events still run between phases |
+| Combat formula precedence | skill override > item override > skill alternate > item alternate | item formula (`magic`, `alternate_*`, `eval_*`) wins; skill formula only when the item's is the default; defender modify hooks get the attacker's weapon | EOtF's (`tests/fork-combat-formulas.spec.ts`) |
+| Line/all-enemies AOE, `multi_target`, `shove` | target tile's unit is a full combatant; one combat per target; stepwise shove, magnitude > 0 | no main target (one strike, no counter); one counter-less combat; only the final tile is checked, negative magnitudes pull | EOtF's (`tests/fork-combat-hooks.spec.ts`) |
+| Built-in components | effective_damage adds the triangle bonus and checks negate conditions; terrain skills skip fliers; no NoMulti; heal additions only; proc removed unconditionally | the reverse, plus empower-heal multipliers on heal/equation_heal/lifelink/regeneration/live_to_serve, NullCanto caps, IgnoringDamage vs TrueMiracle, TrueDamage zero formulas, full-inventory gba_steal | EOtF's (`tests/fork-skill-components.spec.ts`) |
+| Level cap | class `max_level` | class `max_level` + global + unit modifiers (silent `give_exp` parks exp at 99) | EOtF's (`tests/fork-leveling.spec.ts`) |
+| `end_turn`, `copy_stats` | `end_turn` ends the event; `copy_stats` copies stats only | the event keeps running and the turn changes after it; stat cap modifiers are copied too | EOtF's (`tests/fork-events.spec.ts`) |
+| AI | PrimaryAI/SecondaryAI with `attack_zero_dam`, no blitzes | attack count includes blitzes; SecondaryAI skips 0-damage targets and keeps `max_tp` 0 | EOtF's (`tests/fork-ai.spec.ts`; `temp/forkdiff-ai.md`) |
+| Map and menu flow | Save on every map; canto BACK = error, own tile → canto_wait (actively chosen, Supply); Storage needs `long_range_storage`/supply, Trade option; Restart Level on title; animation/battle_bg/display_hints settings | no Save/Suspend on level `X`; canto BACK/own tile waits (not actively chosen); Storage whenever `_convoy`, no Trade; Temporary units can't be managed; Credits runs `Global Credits_Title`; `window_display` setting instead | EOtF's (`tests/fork-ui-flow.spec.ts`) |
+| Window skin | one engine `menu_bg_base` set | `window_display` 1-3 suffixes every window, gem, shimmer, funds and tile-info sprite (art in `custom_sprites/menu/1..4`) | EOtF's |
+| Info menu, help boxes, level screen | upstream pages, single help box, `level_screen` with 8 stats, 144px exp bar | TYPE row, accessory splitter, AS, 10 weapon ranks, class-skill/status page; keyword-linked help pages (AUX); INFO on item/skill choices; `LevelScreen2` with 10 stats; 136px exp bar | EOtF's (`tests/fork-info-menu.spec.ts`) |
+| Engine sprites | upstream `sprites/` | `unit_info_bg` 123x60 (with the fork's hover-panel layout) and `menu_bg_parchment` 48x30 differ; 15 fork-only sprites (purple extra-damage digits, LevelScreen2, info-menu art...). Fonts and platforms are identical | the fork's copies (`public/fork-sprites/`, served at `/game-data/fork-sprites/` and packed with the engine assets) win for EOtF (`tests/fork-engine-assets.spec.ts`) |
+| Per-unit level-cap modifier on save/load | n/a | the fork forgets it on reload (fork bug) | kept: deliberate deviation |
+
+The same audit found places where both Python engines agree and the web followed
+neither; these are fixed for every project: `magic` items now use MAGIC_DAMAGE
+(EOtF's 187 magic weapons without an alternate formula hit with STR) and item
+formula hooks resolve UNIQUE by component order; `compute_damage`'s step order,
+`min_damage` and `crit_anyway`, and the triangle hit before the 0-100 clamp; the
+solver's phase alternation, vantage/disvantage and defender desperation; combat
+RNG from `game.rng_mode` with `set_mode_rng` display names; combat exp only from
+item exp components and level-ups with the unit's growth method; unit tags as own
+∪ class ∪ skill `has_tags`; `interrupt_move` regions; NullRefresh on Reset; lethal
+upkeep damage firing `unit_death`; and the query functions `has_skill`, `is_dead`,
+`has_item`, `get_debuff_count`, allied-unit queries, Tile/dying filters, keyword
+arguments, `get_charge` and `v()` (`tests/fork-combat-math.spec.ts`,
+`tests/fork-unit-tags.spec.ts`, `tests/fork-region-interrupt.spec.ts`,
+`tests/fork-event-queries.spec.ts`).
 
 ---
 
