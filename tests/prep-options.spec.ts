@@ -32,7 +32,7 @@ test.describe('Prep main menu options', () => {
     });
     const menu = await page.evaluate(() => {
       const state = (window as any).__gameRef.state.getCurrentState() as any;
-      return { name: state?.name, options: state?.options, disabled: state?.disabled };
+      return { name: state?.name, options: state?.options, disabled: state?.populateOptions?.().ignore };
     });
     expect(menu.name).toBe('prep_main');
     expect(menu.options).toEqual([
