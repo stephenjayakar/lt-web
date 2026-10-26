@@ -1001,3 +1001,29 @@ test('unchoice re-opens the choice with the cursor where it was (Python PlayerCh
   });
   expect(after).toEqual({ open: true, index: 2 });
 });
+
+test('type_chibi tables lay out like Python SimpleIconTable (bg centred on the cells)', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_chibi_table', [
+    "table;qa_chibis;Amelia,Artur,Amelia,Artur;;1,4;32;top;;type_chibi",
+    'wait;100000',
+  ], 5);
+  const record = async () => page.evaluate(() => {
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    const blits: number[][] = [];
+    const images: number[][] = [];
+    const fake = {
+      width: 240, height: 160, scale: 1,
+      blit: (src: any, x: number, y: number) => blits.push([x, y, src.width, src.height]),
+      ctx: { imageSmoothingEnabled: false, drawImage: (...a: number[]) => images.push(a.slice(5, 9)) },
+    };
+    s.drawEventTables(fake);
+    return { blits, images };
+  });
+  await record();
+  await page.waitForTimeout(500);
+  const { blits, images } = await record();
+  // Content 128x32 at ((240 - 128) / 2, 10); bg 136x40 centred on it.
+  expect(blits[0]).toEqual([52, 6, 136, 40]);
+  expect(images.map((a) => [a[0], a[1]])).toEqual([[56, 10], [88, 10], [120, 10], [152, 10]]);
+});

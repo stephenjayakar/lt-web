@@ -11442,6 +11442,39 @@ export class EventState extends State {
         : entryType === 'type_chibi' ? 32
           : values.some(value => value.includes('<icon>')) ? 18 : 16;
       const titleHeight = table.title ? 16 : table.background === 'funds_display' ? 7 : 0;
+      if (isImage && table.background !== 'funds_display') {
+        // Python SimpleIconTable: the cells form a (cols * row_width) x
+        // (rows * row_height) content box placed 10px from the screen edges;
+        // the menu background is create_base_surf(w + 10, h + 10) centred on it.
+        const contentWidth = columns * cellWidth;
+        const contentHeight = titleHeight + rows * rowHeight;
+        const alignmentName = table.alignment.toLowerCase();
+        const cx = alignmentName.includes('right') ? surf.width - contentWidth - 10
+          : alignmentName.includes('left') ? 10 : Math.floor((surf.width - contentWidth) / 2);
+        const cy = alignmentName.includes('bottom') ? surf.height - contentHeight - 10
+          : alignmentName.includes('top') ? 10 : Math.floor((surf.height - contentHeight) / 2);
+        if (!table.noBackground) {
+          const bgWidth = (contentWidth + 10) - ((contentWidth + 10) % 8);
+          const bgHeight = (contentHeight + 10) - ((contentHeight + 10) % 8);
+          surf.blit(getMenuBackgroundSync(contentWidth + 10, contentHeight + 10, table.background),
+            cx + Math.floor(contentWidth / 2 - bgWidth / 2), cy + Math.floor(contentHeight / 2 - bgHeight / 2));
+        }
+        if (table.title) drawStyledText(surf, table.title, cx, cy, 'white', 'text');
+        const sheetScale = surf.scale;
+        values.slice(0, rows * columns).forEach((value, index) => {
+          const sheet = getColorkeyedPortrait(getGame(), value.split('|')[0]);
+          if (!sheet) return;
+          const left = cx + (index % columns) * cellWidth;
+          const top = cy + titleHeight + Math.floor(index / columns) * rowHeight;
+          surf.ctx.imageSmoothingEnabled = false;
+          if (entryType === 'type_portrait') {
+            surf.ctx.drawImage(sheet, 0, 0, 96, 80, Math.round(left * sheetScale), Math.round(top * sheetScale), 96 * sheetScale, 80 * sheetScale);
+          } else {
+            surf.ctx.drawImage(sheet, sheet.width - 32, 16, 32, 32, Math.round(left * sheetScale), Math.round(top * sheetScale), 32 * sheetScale, 32 * sheetScale);
+          }
+        });
+        continue;
+      }
       const panelWidth = Math.min(surf.width - 20, columns * cellWidth + (isImage ? 6 : 8));
       const panelHeight = Math.min(surf.height - 20, titleHeight + rows * rowHeight + 6);
       const alignment = table.alignment.toLowerCase();
