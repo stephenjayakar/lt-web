@@ -5149,6 +5149,16 @@ export class ItemTargetingState extends MapState {
         return;
       }
       if (!defender) return;
+      if (isForkEngine() && numTargets(unit, activeItem) > 1) {
+        // Fork CombatTargetingState: pick up to num_targets positions (a
+        // chosen one leaves the selection unless allow_same_target), then
+        // engage them all at once.
+        const chosen = this.selectedTargets[this.sequenceIndex];
+        chosen.push(target);
+        if (chosen.length < numTargets(unit, activeItem) && this.configureTargets(unit)) return;
+        this.engageForkMultiTarget(activeItem);
+        return;
+      }
       game.memory.set('combat_item', activeItem);
       game.combatTarget = defender;
       game.highlight.clear();
@@ -5162,6 +5172,21 @@ export class ItemTargetingState extends MapState {
       return;
     }
     this.completeTargetGroup(unit);
+  }
+
+  /** Whether the active item resolves through CombatState rather than a core use. */
+  private isCombatItem(activeItem: ItemObject): boolean {
+    return activeItem === this.item &&
+      (activeItem.isWeapon() || (activeItem.isSpell() && !activeItem.hasCoreUseEffect()));
+  }
+
+  /** Engage every chosen position of a fork multi_target combat item at once. */
+  private engageForkMultiTarget(activeItem: ItemObject): void {
+    const game = getGame();
+    if (!enterForkMultiTargetCombat(game, this.selectedTargets[this.sequenceIndex])) return;
+    game.memory.set('combat_item', activeItem);
+    game.highlight.clear();
+    game.state.change('combat');
   }
 
   private completeTargetGroup(unit: UnitObject): void {
@@ -5288,7 +5313,8 @@ export class ItemTargetingState extends MapState {
       const activeItem = this.activeItem();
       if (unit && activeItem && this.selectedTargets[this.sequenceIndex].length > 0 &&
           allowLessThanMaxTargets(unit, activeItem)) {
-        this.completeTargetGroup(unit);
+        if (isForkEngine() && this.isCombatItem(activeItem)) this.engageForkMultiTarget(activeItem);
+        else this.completeTargetGroup(unit);
       }
     } else if (event === 'BACK') {
       this.cancelTargeting();
@@ -6111,6 +6137,8 @@ export class TargetingState extends MapState {
   private targetIndex: number = 0;
   private attackerAssist: UnitObject | null = null;
   private defenderAssist: UnitObject | null = null;
+  /** Fork multi_target weapons: positions chosen so far. */
+  private chosenPositions: [number, number][] = [];
 
   override begin(): StateResult {
     const game = getGame();
@@ -6136,6 +6164,7 @@ export class TargetingState extends MapState {
     this.targetIndex = 0;
     this.attackerAssist = null;
     this.defenderAssist = null;
+    this.chosenPositions = [];
 
     if (this.targets.length === 0) {
       game.state.back();
@@ -6212,6 +6241,54 @@ export class TargetingState extends MapState {
     game.memory.set('combat_strike_partners_selected', true);
   }
 
+  /**
+   * Engage the chosen target. A fork multi_target weapon first collects up
+   * to num_targets units (Python CombatTargetingState._get_next_target: a
+   * chosen unit leaves the selection unless allow_same_target, and selection
+   * ends early once no other target remains).
+   */
+  private confirmTarget(target: UnitObject): void {
+    const game = getGame();
+    const unit: UnitObject = game.selectedUnit;
+    const weapon = unit ? getEquippedWeapon(unit, game.db, game) : null;
+    const wanted = weapon && isForkEngine() ? numTargets(unit, weapon) : 1;
+    if (wanted > 1 && weapon && target.position) {
+      this.chosenPositions.push([target.position[0], target.position[1]]);
+      const sameTarget = allowSameTarget(unit, weapon);
+      if (!sameTarget) this.targets = this.targets.filter((candidate) => candidate !== target);
+      if (this.chosenPositions.length < wanted && this.targets.length > 0) {
+        this.targetIndex = Math.min(this.targetIndex, this.targets.length - 1);
+        this.focusTarget();
+        return;
+      }
+      if (this.chosenPositions.length > 1) {
+        this.engageChosen();
+        return;
+      }
+    }
+    this.commitStrikePartners(target);
+    game.combatTarget = target;
+    game.highlight.clear();
+    game.state.change('combat');
+  }
+
+  /** Fork multi_target: engage the positions chosen so far as one combat. */
+  private engageChosen(): void {
+    const game = getGame();
+    const first = this.chosenPositions[0];
+    const lone = first && this.chosenPositions.length === 1
+      ? game.board.getUnit(first[0], first[1]) as UnitObject | null
+      : null;
+    if (lone) {
+      this.commitStrikePartners(lone);
+      game.combatTarget = lone;
+    } else if (!enterForkMultiTargetCombat(game, this.chosenPositions)) {
+      return;
+    }
+    game.highlight.clear();
+    game.state.change('combat');
+  }
+
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
 
@@ -6224,11 +6301,7 @@ export class TargetingState extends MapState {
         );
         if (clickedTargetIdx >= 0) {
           this.targetIndex = clickedTargetIdx;
-          const target = this.targets[this.targetIndex];
-          this.commitStrikePartners(target);
-          game.combatTarget = target;
-          game.highlight.clear();
-          game.state.change('combat');
+          this.confirmTarget(this.targets[this.targetIndex]);
           return;
         }
       }
@@ -6277,11 +6350,18 @@ export class TargetingState extends MapState {
 
       case 'SELECT': {
         const target = this.targets[this.targetIndex];
-        if (target) {
-          this.commitStrikePartners(target);
-          game.combatTarget = target;
-          game.highlight.clear();
-          game.state.change('combat');
+        if (target) this.confirmTarget(target);
+        break;
+      }
+
+      case 'START': {
+        // Python: allow_less_than_max_targets lets START confirm early once
+        // at least one target is chosen.
+        const unit: UnitObject | null = game.selectedUnit;
+        const weapon = unit ? getEquippedWeapon(unit, game.db, game) : null;
+        if (unit && weapon && this.chosenPositions.length > 0 &&
+            allowLessThanMaxTargets(unit, weapon)) {
+          this.engageChosen();
         }
         break;
       }
@@ -6351,6 +6431,47 @@ export function resolveCombatTargetGroup(
     mainDefender,
     splashDefenders,
   };
+}
+
+/**
+ * EOtF engine fork `interaction.engage` for a multi_target item: every chosen
+ * position's main target and splash join one splash list with no main
+ * target, so the item resolves as a single counter-less combat (one use).
+ * Upstream instead runs one item-target pair per position.
+ */
+export function resolveForkMultiTargetGroup(
+  game: any,
+  attacker: UnitObject,
+  item: ItemObject,
+  positions: [number, number][],
+): { representative: UnitObject | null; mainDefender: null; splashDefenders: UnitObject[] } {
+  const splashDefenders: UnitObject[] = [];
+  for (const position of positions) {
+    const resolved = game.targetSystem?.getTargetFromPosition(attacker, item, position) ??
+      { mainTarget: position, splash: [] };
+    for (const target of [resolved.mainTarget, ...resolved.splash]) {
+      if (!target) continue;
+      const unit = game.board.getUnit(target[0], target[1]) as UnitObject | null;
+      if (unit) splashDefenders.push(unit);
+    }
+  }
+  return { representative: splashDefenders[0] ?? null, mainDefender: null, splashDefenders };
+}
+
+/**
+ * Hand a fork multi-target selection to CombatState: one chosen position is
+ * an ordinary combat against it (Python passes the lone position, not a
+ * list); several become one grouped combat.
+ */
+function enterForkMultiTargetCombat(game: any, positions: [number, number][]): UnitObject | null {
+  const first = positions[0];
+  const defender = first ? game.board.getUnit(first[0], first[1]) as UnitObject | null : null;
+  if (!defender) return null;
+  if (positions.length > 1) {
+    game.memory.set('combat_multi_target_positions', positions.map((position) => [position[0], position[1]]));
+  }
+  game.combatTarget = defender;
+  return defender;
 }
 
 /**
@@ -6735,18 +6856,26 @@ export class CombatState extends State {
     const selectedCombatPosition = game.memory.get('combat_target_position') as
       [number, number] | undefined;
     game.memory.delete('combat_target_position');
+    const multiTargetPositions = game.memory.get('combat_multi_target_positions') as
+      [number, number][] | undefined;
+    game.memory.delete('combat_multi_target_positions');
     const attackItem = selectedCombatItem ?? getEquippedWeapon(attacker, game.db, game);
     if (!attackItem) {
       game.state.back();
       return;
     }
-    const targetGroup = resolveCombatTargetGroup(
-      game,
-      attacker,
-      attackItem,
-      defender,
-      selectedCombatPosition ?? null,
-    );
+    const forkMultiTarget = isForkEngine() && (multiTargetPositions?.length ?? 0) > 1
+      ? resolveForkMultiTargetGroup(game, attacker, attackItem, multiTargetPositions!)
+      : null;
+    const targetGroup = forkMultiTarget?.representative
+      ? { ...forkMultiTarget, representative: forkMultiTarget.representative }
+      : resolveCombatTargetGroup(
+        game,
+        attacker,
+        attackItem,
+        defender,
+        selectedCombatPosition ?? null,
+      );
     const primaryDefender = targetGroup.mainDefender;
     const splashDefenders = targetGroup.splashDefenders;
     defender = targetGroup.representative;
