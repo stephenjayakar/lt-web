@@ -182,6 +182,26 @@ export class AssetBundle {
   private blobUrls: Map<string, string> = new Map();
   /** The project prefix stripped from filenames (e.g. "default.ltproj/") */
   private prefix: string = '';
+  /** Lower-cased path -> stored path, built on the first case-mismatched lookup */
+  private lowerIndex: Map<string, string> | null = null;
+
+  /**
+   * The stored path for `path`, matched case-insensitively when there is no
+   * exact entry. Projects are authored on case-insensitive filesystems
+   * (Windows/macOS), where Python resolves e.g. portrait nid "Bishop" to
+   * `bishop.png`; EOtF ships several such resources.
+   */
+  private resolvePath(path: string): string {
+    if (this.rawData.has(path)) return path;
+    if (!this.lowerIndex) {
+      this.lowerIndex = new Map();
+      for (const key of this.rawData.keys()) {
+        const lower = key.toLowerCase();
+        if (!this.lowerIndex.has(lower)) this.lowerIndex.set(lower, key);
+      }
+    }
+    return this.lowerIndex.get(path.toLowerCase()) ?? path;
+  }
 
   /**
    * Download and extract a zip bundle.
@@ -282,6 +302,7 @@ export class AssetBundle {
       }
 
       this.rawData.set(relPath, data);
+      this.lowerIndex = null;
       const stale = this.blobUrls.get(relPath);
       if (stale) {
         URL.revokeObjectURL(stale);
@@ -311,7 +332,7 @@ export class AssetBundle {
    * Check if a file exists in the bundle.
    */
   has(path: string): boolean {
-    return this.rawData.has(path);
+    return this.rawData.has(this.resolvePath(path));
   }
 
   /**
@@ -319,6 +340,7 @@ export class AssetBundle {
    * Used for image/audio loading (can be assigned to img.src).
    */
   getBlobUrl(path: string): string | null {
+    path = this.resolvePath(path);
     const existing = this.blobUrls.get(path);
     if (existing) return existing;
     const raw = this.rawData.get(path);
@@ -334,14 +356,14 @@ export class AssetBundle {
    * Used for JSON parsing, text reading, etc.
    */
   getRaw(path: string): Uint8Array<ArrayBuffer> | null {
-    return this.rawData.get(path) ?? null;
+    return this.rawData.get(this.resolvePath(path)) ?? null;
   }
 
   /**
    * Get a file as a string (UTF-8 decoded).
    */
   getText(path: string): string | null {
-    const raw = this.rawData.get(path);
+    const raw = this.rawData.get(this.resolvePath(path));
     if (!raw) return null;
     return new TextDecoder().decode(raw);
   }
@@ -382,6 +404,7 @@ export class AssetBundle {
     }
     this.blobUrls.clear();
     this.rawData.clear();
+    this.lowerIndex = null;
   }
 }
 

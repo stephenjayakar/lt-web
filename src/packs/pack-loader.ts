@@ -67,6 +67,8 @@ export class PackLoader {
   private loads: Map<string, Promise<void>> = new Map();
   private loaded: Set<string> = new Set();
   private lazyFiles: Map<string, PackInfo> = new Map();
+  /** Lower-cased lazy paths, for AssetBundle's case-insensitive lookups */
+  private lazyFilesLower: Map<string, PackInfo> = new Map();
   private chunkFetches: Map<string, Promise<ArrayBuffer>> = new Map();
 
   constructor(opts: PackLoaderOptions) {
@@ -75,7 +77,10 @@ export class PackLoader {
     this.bundle = opts.bundle ?? new AssetBundle();
     for (const pack of opts.manifest.packs) {
       if (pack.load === 'boot') continue;
-      for (const f of pack.files ?? []) this.lazyFiles.set(f, pack);
+      for (const f of pack.files ?? []) {
+        this.lazyFiles.set(f, pack);
+        if (!this.lazyFilesLower.has(f.toLowerCase())) this.lazyFilesLower.set(f.toLowerCase(), pack);
+      }
     }
   }
 
@@ -137,7 +142,7 @@ export class PackLoader {
    * or null when no pack holds it.
    */
   waitFor(path: string): Promise<void> | null {
-    const pack = this.lazyFiles.get(path);
+    const pack = this.lazyFiles.get(path) ?? this.lazyFilesLower.get(path.toLowerCase());
     if (!pack || this.loaded.has(pack.name)) return null;
     return this.loadPack(pack);
   }
