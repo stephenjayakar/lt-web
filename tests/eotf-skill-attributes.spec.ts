@@ -87,10 +87,19 @@ test.describe('Embrace of the Fog skill attributes', () => {
         presentation: skillInfoPresentation(terrain, unit, game),
       };
       unit.tags = ['Flying'];
+      // EOtF's engine fork comments out IsTerrain's Flying condition, so
+      // terrain skills also apply to fliers; upstream turns them off.
       const flyingTerrain = {
         defense: statChange(unit, 'DEF', game),
         avoid: modifyAvoid(unit, null, game),
       };
+      const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
+      setForkEngine(false);
+      const upstreamFlyingTerrain = {
+        defense: statChange(unit, 'DEF', game),
+        avoid: modifyAvoid(unit, null, game),
+      };
+      setForkEngine(true);
 
       const inactiveHidden = make('_InactiveHidden', [
         ['condition', 'False'],
@@ -168,6 +177,7 @@ test.describe('Embrace of the Fog skill attributes', () => {
       return {
         groundedTerrain,
         flyingTerrain,
+        upstreamFlyingTerrain,
         presentation,
         stackCount,
         globals: {
@@ -192,6 +202,10 @@ test.describe('Embrace of the Fog skill attributes', () => {
         presentation: 'hidden',
       },
       flyingTerrain: {
+        defense: 1,
+        avoid: 20,
+      },
+      upstreamFlyingTerrain: {
         defense: 0,
         avoid: 0,
       },

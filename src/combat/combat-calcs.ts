@@ -1265,7 +1265,9 @@ export function computeStrikeCount(
   let count = 1;
 
   // Brave from items
-  const itemExtra = itemSystem.dynamicMultiattacks(unit, item, target, defenseItem, mode, null, 0);
+  const itemExtra = itemSystem.dynamicMultiattacks(
+    unit, item, target, defenseItem, mode, null, 0, game ?? _eqGameRef?.(),
+  );
   count += itemExtra;
 
   // Dynamic multiattacks from skills

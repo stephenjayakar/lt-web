@@ -28,6 +28,7 @@ import {
 } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
 import { evaluateEquation } from './combat-calcs';
+import { isForkEngine } from '../engine/engine-flavor';
 import {
   alternateSplash,
   additiveHealAmount,
@@ -40,6 +41,7 @@ import {
   isCantoSkill,
   movementType,
   modifiedHealAmount,
+  multiattacksBlocked,
   noAttackAfterMove as skillNoAttackAfterMove,
   skillConditionActive,
   type AlternateSplash,
@@ -760,9 +762,12 @@ export function stealItemRestrict(
   db: Database,
 ): boolean {
   if (unstealable(defender, targetItem)) return false;
+  // EOtF's fork also lets a player with a full inventory use the built-in
+  // Steal / GBASteal (then item_discard); upstream refuses a full inventory.
   const eotfSteal = stealItem.hasComponent('steal_con') ||
     stealItem.hasComponent('gimme_that') ||
-    stealItem.hasComponent('thief_staff');
+    stealItem.hasComponent('thief_staff') ||
+    (isForkEngine() && (stealItem.hasComponent('steal') || stealItem.hasComponent('gba_steal')));
   if (inventoryFull(stealer, targetItem, db) &&
       (!eotfSteal || stealer.team !== 'player')) return false;
   if (stealItem.hasComponent('gba_steal')) {
@@ -1997,34 +2002,50 @@ export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
 // ============================================================
 
 /**
- * Python item_system formula hooks are UNIQUE: the last of the item's
- * components that defines the hook wins, in component order. Components
- * only an item_override skill grants count after the item's own.
+ * Python item_system formula hooks are UNIQUE: the last component that
+ * defines the hook wins, iterating `get_all_components` (the item's own
+ * components, then the active item_override components, so an override
+ * component counts at its override position even when the item also has it).
  */
 function lastItemFormula(
   item: ItemObject,
   sources: Record<string, () => string | undefined>,
+  game?: any,
 ): string | undefined {
   const present = Object.keys(sources).filter((nid) => item.hasComponent(nid));
   if (present.length === 0) return undefined;
-  const order = [...item.components.keys()];
+  const order = resolvedItemComponents(item.owner ?? null, item, undefined, game)
+    .map(([nid]) => nid);
   const rank = (nid: string): number => {
-    const index = order.indexOf(nid);
+    const index = order.lastIndexOf(nid);
     return index < 0 ? order.length : index;
   };
   present.sort((a, b) => rank(a) - rank(b));
   return sources[present[present.length - 1]]();
 }
 
+/**
+ * EOtF fork AlternateDamageFormula / AlternateResistFormula return 'ZERO'
+ * for a `TrueDamage` item (unless it is also tagged `TDException`), whatever
+ * value the component (or an item override's copy) carries.
+ */
+function forkTrueDamageFormula(item: ItemObject, value: string | undefined): string | undefined {
+  if (!isForkEngine()) return value;
+  const tags = item.tags;
+  return tags.includes('TrueDamage') && !tags.includes('TDException') ? 'ZERO' : value;
+}
+
 export function damageFormula(unit: UnitObject, item: ItemObject, game?: any): string | undefined {
   return lastItemFormula(item, {
     // weapon_components.Magic.damage_formula
     magic: () => 'MAGIC_DAMAGE',
-    alternate_damage_formula: () => item.getComponent<string>('alternate_damage_formula'),
+    alternate_damage_formula: () => forkTrueDamageFormula(
+      item, item.getComponent<string>('alternate_damage_formula'),
+    ),
     eval_magic: () => evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE',
     eval_dragon: () => evaluatedItemCondition('eval_dragon', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE',
     eval_dragon_magic: () => 'MAGIC_DAMAGE',
-  });
+  }, game);
 }
 
 export function damageFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
@@ -2051,13 +2072,15 @@ export function resistFormula(unit: UnitObject, item: ItemObject, game?: any): s
   return lastItemFormula(item, {
     // weapon_components.Magic.resist_formula
     magic: () => 'MAGIC_DEFENSE',
-    alternate_resist_formula: () => item.getComponent<string>('alternate_resist_formula'),
+    alternate_resist_formula: () => forkTrueDamageFormula(
+      item, item.getComponent<string>('alternate_resist_formula'),
+    ),
     eval_magic: () => evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DEFENSE' : 'DEFENSE',
     eval_dragon: () => evaluatedItemCondition('eval_dragon', unit, item, game) ? 'WORSE_DEFENSE' : 'DEFENSE',
     eval_dragon_magic: () => evaluatedItemCondition('eval_dragon_magic', unit, item, game)
       ? 'WORSE_DEFENSE'
       : 'MAGIC_DEFENSE',
-  });
+  }, game);
 }
 
 export function resistFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
@@ -2321,10 +2344,14 @@ function effectiveDamageContribution(
 ): number {
   const tags: string[] = Array.isArray(eff.effective_tags) ? eff.effective_tags : [];
   if (!isEffectiveAgainstTags(target, tags, db)) return 0;
-  if (checkEffectiveNegate(target, tags, game, true)) return 0;
+  // EOtF's engine fork negates on any negate / negate_tags skill, even when
+  // that skill's condition is false, and has no weapon-triangle addition
+  // (`weapon_effectiveness_multiplied` was added upstream after the fork).
+  const fork = isForkEngine();
+  if (checkEffectiveNegate(target, tags, game, !fork)) return 0;
   const multiplier = Number(eff.effective_multiplier ?? 3);
   const bonusDamage = Number(eff.effective_bonus_damage ?? 0);
-  const weaponMultiplied = eff.weapon_effectiveness_multiplied !== false; // default true
+  const weaponMultiplied = !fork && eff.weapon_effectiveness_multiplied !== false; // default true
   let might = Number(damage(unit, item) ?? 0);
   if (weaponMultiplied) might += advantageDamage;
   return Math.trunc((multiplier - 1) * might + bonusDamage);
@@ -2423,7 +2450,9 @@ export function dynamicMultiattacks(
   mode: string,
   _attackInfo: unknown,
   _baseValue: number,
+  game?: any,
 ): number {
+  if (multiattacksBlocked(item, _target, game)) return 0;
   let total = 0;
   for (const [nid] of resolvedItemComponents(_unit, item)) {
     if (nid === 'brave') total++;

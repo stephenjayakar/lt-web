@@ -11,6 +11,7 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import { evaluateCondition, evaluateExpression } from '../events/event-manager';
+import { isForkEngine } from '../engine/engine-flavor';
 
 export type SkillFactory = (nid: string) => SkillObject | null;
 
@@ -274,7 +275,9 @@ export function skillConditionActive(
     }
   }
   if (!selfNihilActive(skill, unit)) return false;
-  if (skill.hasComponent('is_terrain')) {
+  // Upstream IsTerrain turns terrain skills off for Flying units; EOtF's fork
+  // comments that condition out, so terrain skills also apply to fliers.
+  if (skill.hasComponent('is_terrain') && !isForkEngine()) {
     const classTags = context.game?.db?.classes?.get?.(unit.klass)?.tags;
     if (unit.tags.includes('Flying') ||
         (Array.isArray(classTags) && classTags.includes('Flying'))) {
@@ -1035,14 +1038,18 @@ export function cantoMovement(
     additionalTags(unit, game).has('NullCanto');
   for (const skill of unit.skills) {
     if (!isCantoSkill(skill) || !cantoSkillActive(skill, unit, target, game)) continue;
+    // EOtF fork: every built-in canto variant returns min(1, movement) for
+    // NullCanto units (upstream has no NullCanto check).
+    const capBuiltIn = (value: number): number =>
+      nullCanto && isForkEngine() ? Math.min(1, value) : value;
     if (skill.hasComponent('canto') ||
         skill.hasComponent('canto_plus') ||
         skill.hasComponent('canto_sharp')) {
-      maximum = Math.max(maximum, Math.trunc(unit.movementLeft));
+      maximum = Math.max(maximum, capBuiltIn(Math.trunc(unit.movementLeft)));
     }
     const canter = skill.getComponent<unknown>('canter');
     if (typeof canter === 'number' && Number.isFinite(canter)) {
-      maximum = Math.max(maximum, Math.trunc(canter));
+      maximum = Math.max(maximum, capBuiltIn(Math.trunc(canter)));
     }
     const expression = skill.getComponent<unknown>('eval_canter');
     if (typeof expression === 'string' && expression.length > 0) {
@@ -2210,6 +2217,25 @@ function evaluatedCombatSkillTotal(
   return total;
 }
 
+/**
+ * EOtF fork `brave`, `brave_on_attack` and `dynamic_multiattacks` return 0
+ * when the item carries the `NoMulti` item tag or the target has the
+ * `BlockMulti` unit tag (`all_brave` has no such check). Upstream has neither.
+ */
+export function multiattacksBlocked(
+  item: ItemObject | null,
+  target: UnitObject | null,
+  game?: any,
+): boolean {
+  if (!isForkEngine()) return false;
+  if (item?.tags.includes('NoMulti')) return true;
+  if (!target) return false;
+  const classTags = game?.db?.classes?.get?.(target.klass)?.tags;
+  return target.tags.includes('BlockMulti') ||
+    (Array.isArray(classTags) && classTags.includes('BlockMulti')) ||
+    additionalTags(target, game).has('BlockMulti');
+}
+
 export function dynamicMultiattacks(
   unit: UnitObject,
   item: ItemObject | null,
@@ -2221,10 +2247,11 @@ export function dynamicMultiattacks(
   game?: any,
   combatCalcs?: Record<string, unknown>,
 ): number {
-  return evaluatedCombatSkillTotal(
+  const dynamic = multiattacksBlocked(item, target, game) ? 0 : evaluatedCombatSkillTotal(
     unit, 'dynamic_multiattacks', item, target, item2, mode,
     attackInfo, baseValue, game, combatCalcs,
-  ) + evaluatedCombatSkillTotal(
+  );
+  return dynamic + evaluatedCombatSkillTotal(
     unit, 'all_brave', item, target, item2, mode,
     attackInfo, baseValue, game, combatCalcs, 1,
   );
