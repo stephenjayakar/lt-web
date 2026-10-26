@@ -1,3 +1,4 @@
+import { getSprite } from '../ui/sprites';
 import { getSetting } from '../engine/states/settings-state';
 import { Surface } from '../engine/surface';
 import type { TileMapObject } from './tilemap';
@@ -337,22 +338,17 @@ export class MapView {
         }
       }
 
-      // Draw HP bar below the unit tile
+      // Python MapHealthBar.draw: map_health_outline at (left, top + 13)
+      // and the first int(12 * hp / max) + 1 pixels of map_health_bar at
+      // (left + 1, top + 14).
       const maxHp = unit.maxHp;
-      if (maxHp > 0 && unit.showHp !== false) {
-        const barWidth = TILEWIDTH - 2;
-        const barHeight = 2;
-        const barX = px + 1;
-        const barY = py + TILEHEIGHT - 1;
-        const hpRatio = Math.max(0, Math.min(1, unit.currentHp / maxHp));
-
-        // Background (dark)
-        surf.fillRect(barX, barY, barWidth, barHeight, 'rgba(0,0,0,0.7)');
-        // Fill (green -> yellow -> red based on HP ratio)
-        const barColor = hpRatio > 0.5 ? '#40e040' : hpRatio > 0.25 ? '#e0e040' : '#e04040';
-        const fillWidth = Math.round(barWidth * hpRatio);
-        if (fillWidth > 0) {
-          surf.fillRect(barX, barY, fillWidth, barHeight, barColor);
+      if (unit.showHp !== false) {
+        const outline = getSprite('map_health_outline');
+        const bar = getSprite('map_health_bar');
+        if (outline && bar) {
+          const fraction = Math.max(0, Math.min(1, unit.currentHp / Math.max(1, maxHp)));
+          surf.blit(outline, px, py + 13);
+          if (fraction > 0) surf.blitFrom(bar, 0, 0, Math.trunc(12 * fraction) + 1, 1, px + 1, py + 14);
         }
       }
 

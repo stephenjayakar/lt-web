@@ -45,7 +45,11 @@ const HUD_SPRITES = [
   'attack_info_red', 'attack_info_crit_red', 'attack_info_purple', 'attack_info_crit_purple',
   'blue_100', 'arrow_advantage', 'x2', 'x3', 'x4', 'x5',
   'spell_window1', 'spell_window2', 'spell_window3', 'spell_window4', 'spell_window5',
-  'initiative_platform',
+  'initiative_platform', 'map_health_outline', 'map_health_bar', 'health_bar', 'phase_transition',
+  'turnbanner_player', 'turnbanner_enemy', 'turnbanner_enemy2', 'turnbanner_other',
+  ...['blue', 'red', 'green', 'purple'].flatMap((color) => [
+    `health_${color}`, `combat_stats_${color}`, `combat_stats_guard_${color}`, `combat_gem_${color}`,
+  ]),
 ];
 
 type Game = any;
