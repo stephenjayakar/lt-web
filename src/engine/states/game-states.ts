@@ -15906,15 +15906,37 @@ export class EventState extends State {
       // ----- Preparation / Base (stubs) -----
 
       case 'prep': {
-        // prep — opens preparations screen
-        // args[0]: pick units enabled ('True'/'False'), default True
-        // args[1]: music track to play during prep
-        const pickEnabled = args[0] !== 'False' && args[0] !== 'false';
+        // Python event_functions.prep: PickUnitsEnabled (Bool, default
+        // False), Music, OtherOptions (StringList), OtherOptionsEnabled
+        // (BoolList), OtherOptionsOnSelect (StringList), descriptions.
+        const prepBool = (value: string | undefined) =>
+          ['t', 'true', '1', 'y', 'yes'].includes(String(value ?? '').trim().toLowerCase());
+        const prepList = (value: string | undefined) =>
+          value ? value.split(',').map((entry) => entry.trim()) : [];
+        const pickEnabled = prepBool(args[0]);
         game.actionLog.doAction(new SetLevelVarAction(game.levelVars, '_prep_pick', pickEnabled));
 
         if (args[1]) {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_music', args[1]));
           void game.audioManager.playMusic(args[1]);
+        }
+        const otherOptions = prepList(args[2]).filter(Boolean);
+        if (otherOptions.length) {
+          const enabled = prepList(args[3]).map(prepBool);
+          while (enabled.length < otherOptions.length) enabled.push(false);
+          const onSelect: (string | null)[] = prepList(args[4]).map((entry) => entry || null);
+          while (onSelect.length < otherOptions.length) onSelect.push(null);
+          const descs = prepList(args[5]);
+          while (descs.length < otherOptions.length) descs.push('');
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', enabled.slice(0, otherOptions.length)));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', onSelect.slice(0, otherOptions.length)));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', otherOptions));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+        } else {
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', []));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', []));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', []));
         }
 
         // Advance pointer before pushing — when prep exits (back()),

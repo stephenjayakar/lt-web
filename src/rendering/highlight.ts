@@ -2,7 +2,7 @@ import { Surface } from '../engine/surface';
 import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS } from '../engine/constants';
 
 export type HighlightType =
-  'move' | 'attack' | 'spell' | 'splash' | 'selected' | 'threat' | 'aura';
+  'move' | 'attack' | 'spell' | 'splash' | 'selected' | 'threat' | 'aura' | 'formation';
 
 /** Base RGBA for each highlight type (alpha is the centre value of the pulse). */
 const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> = {
@@ -13,6 +13,9 @@ const HIGHLIGHT_COLORS: Record<HighlightType, [number, number, number, number]> 
   selected: [255, 255, 0,   0.30],
   threat:   [180, 0,   80,  0.22],  // Magenta/purple for enemy threat zones
   aura:     [190, 120, 255, 0.20],
+  // Python Highlight.show_formation draws the animated highlight_blue sprite
+  // (map-view); this colour is only the fallback before it loads.
+  formation: [0,  100, 255, 0.25],
 };
 
 /**

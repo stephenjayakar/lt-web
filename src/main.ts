@@ -87,6 +87,7 @@ import {
   PrepPickUnitsState,
   PrepMapState,
   PrepFormationState,
+  PrepFormationSelectState,
   setPrepGameRef,
 } from './engine/states/prep-state';
 import {
@@ -742,6 +743,7 @@ async function main(): Promise<void> {
     new PrepPickUnitsState(),
     new PrepMapState(),
     new PrepFormationState(),
+    new PrepFormationSelectState(),
     new SupplyItemsState(),
     new ItemDiscardState(),
     new BaseMainState(),

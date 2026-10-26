@@ -1087,8 +1087,6 @@ test.describe('Rekka all-level compatibility', () => {
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_formation');
     const formation = await page.evaluate(() => {
       const game = (window as any).__gameRef;
-      const unit = [...game.units.values()].find((candidate: any) =>
-        candidate.team === 'player' && candidate.position);
       const formationSpots = game.currentLevel.regions
         .filter((region: any) => region.region_type === 'formation')
         .flatMap((region: any) => {
@@ -1100,17 +1098,33 @@ test.describe('Rekka all-level compatibility', () => {
           }
           return positions;
         });
-      const target = formationSpots.find(([x, y]: [number, number]) =>
-        !game.board.getUnit(x, y));
-      if (!unit || !target) return null;
+      // Python only lets units already on formation tiles be rearranged; the
+      // destination may be empty or hold another player unit (swap).
+      let unit = formationSpots.map(([x, y]: [number, number]) => game.board.getUnit(x, y))
+        .find((candidate: any) => candidate?.team === 'player');
+      if (!unit) {
+        // Chapter 7's units start off the formation tiles (stuck); deploy one
+        // onto a formation tile the way Pick Units would.
+        unit = [...game.units.values()].find((u: any) => u.team === 'player' && u.position && !u.dead);
+        const spot = formationSpots.find(([x, y]: [number, number]) => !game.board.getUnit(x, y));
+        if (unit && spot) {
+          game.board.removeUnit(unit);
+          game.board.setUnit(spot[0], spot[1], unit);
+        }
+      }
+      const target = unit && (formationSpots.find(([x, y]: [number, number]) => !game.board.getUnit(x, y)) ??
+        formationSpots.find(([x, y]: [number, number]) => game.board.getUnit(x, y) !== unit));
+      if (!unit || !target) return { spots: formationSpots, players: [...game.units.values()].filter((u: any) => u.team === 'player').map((u: any) => u.position) };
       const before = [...unit.position];
       game.cursor.setPos(unit.position[0], unit.position[1]);
       game.state.getCurrentState().takeInput('SELECT');
+      // Python opens prep_formation_select; let the deferred push flush.
+      (window as any).__harness.stepFrames(2, null);
       game.cursor.setPos(target[0], target[1]);
       game.state.getCurrentState().takeInput('SELECT');
       return { before, target, after: [...unit.position] };
     });
-    expect(formation).not.toBeNull();
+    expect(formation, JSON.stringify(formation)).toHaveProperty('after');
     expect(formation!.after).toEqual(formation!.target);
     expect(formation!.after).not.toEqual(formation!.before);
     await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));

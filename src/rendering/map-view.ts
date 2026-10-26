@@ -2,7 +2,7 @@ import { getSprite } from '../ui/sprites';
 import { getSetting } from '../engine/states/settings-state';
 import { Surface } from '../engine/surface';
 import type { TileMapObject } from './tilemap';
-import { TILEWIDTH, TILEHEIGHT } from '../engine/constants';
+import { TILEWIDTH, TILEHEIGHT, getFrameCount } from '../engine/constants';
 import { viewport } from '../engine/viewport';
 import type { GameBoard } from '../objects/game-board';
 import type { FogOfWarConfig } from '../data/types';
@@ -265,6 +265,16 @@ export class MapView {
         continue;
       }
 
+      if (colorType === 'formation') {
+        // Python Highlight.draw: highlight_blue frame update_idx // 4, where
+        // update_idx cycles 0..63 once per frame.
+        const sprite = getFormationHighlightSprite();
+        if (sprite) {
+          const frame = Math.floor((getFrameCount() % 64) / 4);
+          surf.blitImage(sprite, frame * TILEWIDTH, 0, TILEWIDTH, TILEHEIGHT, px, py);
+          continue;
+        }
+      }
       const color = highlightColor(colorType);
       surf.fillRect(px, py, TILEWIDTH, TILEHEIGHT, color);
     }
@@ -458,6 +468,19 @@ export class MapView {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+let formationHighlight: HTMLImageElement | null = null;
+let formationHighlightRequested = false;
+/** Python SPRITES['highlight_blue'] (16 animation frames of 16x16). */
+function getFormationHighlightSprite(): HTMLImageElement | null {
+  if (!formationHighlightRequested) {
+    formationHighlightRequested = true;
+    const img = new Image();
+    img.onload = () => { formationHighlight = img; };
+    img.src = '/game-data/sprites/highlights/highlight_blue.png';
+  }
+  return formationHighlight;
+}
 
 /**
  * Map a highlight type string to an rgba() color string.

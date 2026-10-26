@@ -38,6 +38,8 @@ export class MapSprite {
   resourceNid: string | null = null;
   private standFrames: Surface[];
   private grayFrames: Surface[];
+  /** Python stand row 2 (y=96): 'active' frames (menus/hover). */
+  private activeFrames: Surface[] = [];
   private moveFrames: Map<Direction, Surface[]>;
   private tintedFrames = new WeakMap<Surface, Map<string, Surface>>();
   private rgbTintedFrames = new WeakMap<Surface, Map<string, Surface>>();
@@ -106,6 +108,12 @@ export class MapSprite {
               sprite.standFrameHeight,
             ),
       );
+      if (standSurf.height >= sprite.standFrameHeight * 3) {
+        sprite.activeFrames.push(standSurf.subsurface(
+          col * sprite.standFrameWidth, sprite.standFrameHeight * 2,
+          sprite.standFrameWidth, sprite.standFrameHeight,
+        ));
+      }
     }
 
     // Extract 4 frames per direction from move image (if available)
@@ -163,6 +171,12 @@ export class MapSprite {
 
     // Absolute fallback
     return this.standFrames[0];
+  }
+
+  /** Stand-sheet frames for Python create_image('passive'|'gray'|'active'). */
+  getStandFrames(kind: 'passive' | 'gray' | 'active'): Surface[] {
+    if (kind === 'active' && this.activeFrames.length) return this.activeFrames;
+    return kind === 'gray' ? this.grayFrames : this.standFrames;
   }
 
   /**

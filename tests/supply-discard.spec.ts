@@ -41,6 +41,8 @@ test.describe('Supply/convoy and item_discard states', () => {
     const setup = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       game.gameVars.set('_convoy', true);
+      // Python PrepMainState lists Pick Units only when `prep` enabled it.
+      game.levelVars.set('_prep_pick', true);
       game.state.change('prep_main');
       return { ok: true };
     });
