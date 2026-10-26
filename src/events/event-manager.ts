@@ -17,8 +17,9 @@ import {
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS, isFavorited, setFavorited } from '../engine/records';
-import { canCounterattack, itemIsMagic } from '../combat/combat-calcs';
-import { unitHasTag, unitTags } from '../combat/skill-system';
+import { itemIsMagic, pythonCombatCalcsModule } from '../combat/combat-calcs';
+import { inventoryCapacityOffsets, movementType, unitHasTag, unitTags } from '../combat/skill-system';
+import { inventoryFull } from '../combat/item-system';
 import {
   BUILTINS,
   MATH_MODULE,
@@ -869,6 +870,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         ].includes(String(property))) {
           return wrapMapping(Reflect.get(target, property));
         }
+        // Python Klass.get_skills: the learned skill NIDs.
+        if (property === 'get_skills') {
+          return () => ((Reflect.get(target, 'learned_skills') ?? []) as [number, string][])
+            .map((entry) => entry[1]);
+        }
         return Reflect.get(target, property);
       },
     });
@@ -1371,6 +1377,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     return candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
   };
   const unwrapItem = (candidate: any) => candidate?._raw ?? candidate;
+  /** Python movement_funcs.get_mcost with get_movement_group. */
+  const movementCostFor = (raw: any, pos: [number, number]): number => {
+    const group = movementType(raw, game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot', game);
+    return game.board.getMovementCost(pos[0], pos[1], group, game.db);
+  };
   const itemSystem = {
     available(candidate: any, candidateItem: any) {
       const rawUnit = unwrapUnit(candidate);
@@ -1407,6 +1418,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       const raw = unwrapItem(candidate);
       return !!raw?.hasComponent?.('spell') || !!raw?.hasComponent?.('magic');
     },
+    is_accessory(_unit: any, candidate: any) {
+      return !!unwrapItem(candidate)?.isAccessory?.();
+    },
   };
   const itemFuncs = {
     create_item(_unit: any, itemNid: string) {
@@ -1420,6 +1434,18 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     is_magic(candidate: any, item: any, distance = 0) {
       return itemIsMagic(unwrapUnit(candidate), unwrapItem(item), distance, game.db);
+    },
+    /** Python item_funcs.get_num_items: num_items + skill num_items_offset. */
+    get_num_items(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      return Number(game.db.getConstant('num_items', 5)) + inventoryCapacityOffsets(raw, game).items;
+    },
+    get_num_accessories(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      return Number(game.db.getConstant('num_accessories', 0)) + inventoryCapacityOffsets(raw, game).accessories;
+    },
+    inventory_full(candidate: any, item: any) {
+      return inventoryFull(unwrapUnit(candidate), unwrapItem(item), game.db);
     },
   };
   const skillSystem = {
@@ -1486,6 +1512,19 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       }
       return [...usable];
     },
+    /** Python unit_funcs.check_flanked: enemies on both opposite sides. */
+    check_flanked(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      if (!raw?.position || !game.board) return false;
+      const [x, y] = raw.position;
+      const at = (px: number, py: number) => game.board.getUnit(px, py);
+      const up = at(x, y - 1);
+      const down = at(x, y + 1);
+      const left = at(x - 1, y);
+      const right = at(x + 1, y);
+      if (up && down && skillSystem.check_enemy(raw, up) && skillSystem.check_enemy(raw, down)) return true;
+      return !!(left && right && skillSystem.check_enemy(raw, left) && skillSystem.check_enemy(raw, right));
+    },
     check_focus(candidate: any, limit = 3) {
       const raw = unwrapUnit(candidate);
       if (!raw?.position) return 0;
@@ -1496,60 +1535,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         Math.abs(raw.position[0] - other.position[0]) +
           Math.abs(raw.position[1] - other.position[1]) <= limit).length;
     },
-  };
-  const computeAdvantage = (
-    attacker: any,
-    defender: any,
-    attackItem: any,
-    defenseItem: any,
-    advantage = true,
-  ) => {
-    const rawAttacker = unwrapUnit(attacker);
-    const rawAttackItem = unwrapItem(attackItem);
-    const rawDefenseItem = unwrapItem(defenseItem);
-    if (!rawAttackItem || !rawDefenseItem) return null;
-    const attackType = componentValue(rawAttackItem, 'weapon_triangle_override') ??
-      componentValue(rawAttackItem, 'weapon_type');
-    const defenseType = componentValue(rawDefenseItem, 'weapon_triangle_override') ??
-      componentValue(rawDefenseItem, 'weapon_type');
-    if (!attackType || !defenseType) return null;
-    const weapon = game.db?.weapons?.find?.((candidate: any) => candidate.nid === attackType) ??
-      game.db?.weapons?.get?.(attackType);
-    const bonuses = advantage ? weapon?.advantage : weapon?.disadvantage;
-    if (!Array.isArray(bonuses)) return null;
-    const wexp = Number(rawAttacker?.wexp?.[attackType] ?? 0);
-    let selected: any = null;
-    let selectedRequirement = -1;
-    for (const bonus of bonuses) {
-      if (bonus.weapon_type !== 'All' && bonus.weapon_type !== defenseType) continue;
-      const requirement = bonus.weapon_rank === 'All'
-        ? -1
-        : game.db?.weaponRanks?.find?.((rank: any) => rank.rank === bonus.weapon_rank)?.requirement ??
-          game.db?.weaponRanks?.get?.(bonus.weapon_rank)?.requirement ?? Infinity;
-      if (requirement === -1) {
-        selected = bonus;
-        break;
-      }
-      if (wexp >= requirement && requirement > selectedRequirement) {
-        selected = bonus;
-        selectedRequirement = requirement;
-      }
-    }
-    if (!selected) return null;
-    // Python CombatBonus casts every effect to int on load.
-    const effect = (value: unknown) => Math.trunc(Number(value)) || 0;
-    return {
-      weapon_type: selected.weapon_type,
-      weapon_rank: selected.weapon_rank,
-      damage: effect(selected.damage),
-      resist: effect(selected.resist),
-      accuracy: effect(selected.accuracy),
-      avoid: effect(selected.avoid),
-      crit: effect(selected.crit),
-      dodge: effect(selected.dodge),
-      attack_speed: effect(selected.attack_speed),
-      defense_speed: effect(selected.defense_speed),
-    };
   };
   function wrapCatalog(catalog: any, wrapper: (value: any) => any) {
     const rawValues = catalog?.values
@@ -1635,32 +1620,19 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     item_system: itemSystem,
     skill_system: skillSystem,
     unit_funcs: unitFuncs,
-    combat_calcs: {
-      compute_advantage: computeAdvantage,
-      can_counterattack(
-        attacker: any,
-        attackItem: any,
-        defender: any,
-        _defenseItem?: any,
-      ) {
-        const rawAttacker = unwrapUnit(attacker);
-        const rawDefender = unwrapUnit(defender);
-        const rawAttackItem = unwrapItem(attackItem);
-        return !!rawAttacker && !!rawDefender && !!rawAttackItem &&
-          canCounterattack(rawAttacker, rawAttackItem, rawDefender, game.db, game);
-      },
-      ...(ctx.localArgs?.get('combat_calcs') as Record<string, unknown> ?? {}),
-    },
+    combat_calcs: pythonCombatCalcsModule(game),
     movement_funcs: {
       check_traversable(candidate: any, pos: [number, number] | null) {
         const raw = unwrapUnit(candidate);
         if (!raw || !pos || !game.board?.inBounds?.(pos[0], pos[1])) return false;
-        let movementGroup = game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot';
-        for (const skill of raw.skills ?? []) {
-          const override = componentValue(skill, 'movement_type');
-          if (typeof override === 'string' && override) movementGroup = override;
-        }
-        return game.board.getMovementCost(pos[0], pos[1], movementGroup, game.db) < 99;
+        return movementCostFor(raw, pos) < 99;
+      },
+      /** Python check_weakly_traversable: mcost <= 5 or within the unit's movement. */
+      check_weakly_traversable(candidate: any, pos: [number, number] | null) {
+        const raw = unwrapUnit(candidate);
+        if (!raw || !pos || !game.board?.inBounds?.(pos[0], pos[1])) return false;
+        const mcost = movementCostFor(raw, pos);
+        return mcost <= 5 || mcost <= raw.getMovement();
       },
     },
     target_system: {
@@ -1699,10 +1671,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 const CONTEXT_NAMES = new Set([
   'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
   'target_pos', 'item', 'mode', 'stat_changes', 'support_rank_nid',
-  // Python's combat_calcs is always the module. Combat hooks pass the
-  // solver's attack_speed/defense_speed as a `combat_calcs` local; it is
-  // merged into the module wrapper (buildEvalScope) instead of replacing it.
-  'combat_calcs',
 ]);
 
 function regionWrapper(region: any): any {
@@ -1970,16 +1938,19 @@ function reportEvaluationFailure(
 ): void {
   // Exceptions CPython raises for the same expression and values (TypeError
   // on None, AttributeError on a missing unit, authored SyntaxErrors, ...)
-  // are what Python's except-clauses log: not a gap in the port.
-  if (isPythonError(error) && (error as { pyType?: string }).pyType !== 'NameError') {
+  // are what Python's except-clauses log: not a gap in the port. A missing
+  // name, or a missing attribute on an engine wrapper or module, may be
+  // unported support instead.
+  const pyError = error as { pyType?: string; hostAttribute?: boolean };
+  if (isPythonError(error) && pyError.pyType !== 'NameError' && !pyError.hostAttribute) {
     if (warn) {
       console.warn(`Python evaluation error (Python-equivalent) in "${expression}": ${describePythonError(error)}`);
     }
     return;
   }
-  // A missing name or a JavaScript error from engine code may be unported
-  // support: keep the marker tests watch for and report it (throws under
-  // ?strict=true).
+  // A missing name/engine attribute or a JavaScript error from engine code
+  // may be unported support: keep the marker tests watch for and report it
+  // (throws under ?strict=true).
   if (warn) {
     console.warn(`EventCondition JS eval failed for "${expression}": ${describePythonError(error)}`);
   }

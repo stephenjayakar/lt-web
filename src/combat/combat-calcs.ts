@@ -1,6 +1,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
+import type { NID, WeaponAdvantage } from '../data/types';
 import type { GameBoard } from '../objects/game-board';
 import * as itemSystem from './item-system';
 import * as skillSystem from './skill-system';
@@ -487,7 +488,7 @@ export function attackSpeed(
 /** Calculate defense speed (for doubling checks on the defender side). */
 export function defenseSpeed(
   unit: UnitObject,
-  item: ItemObject,
+  item: ItemObject | null,
   db: Database,
   itemToAvoid?: ItemObject | null,
   game?: any,
@@ -511,9 +512,9 @@ export function defenseSpeed(
     ? evaluateEquation(speedExpr, unit, { db, item })
     : unit.getStatValue('SPD');
   return base +
-    itemSystem.modifyDefenseSpeed(unit, item, game) +
+    (item ? itemSystem.modifyDefenseSpeed(unit, item, game) : 0) +
     skillSystem.modifyDefenseSpeed(
-      unit, defensiveSkillItem(item, itemToAvoid)!, game, target, itemToAvoid, mode, attackInfo,
+      unit, defensiveSkillItem(item, itemToAvoid), game, target, itemToAvoid, mode, attackInfo,
     );
 }
 
@@ -571,42 +572,58 @@ export function critAvoid(
     );
 }
 
-function combatExpressionCalcs(
-  db: Database,
-  game: any,
-): Record<string, (...args: any[]) => any> {
+/**
+ * Python's `combat_calcs` module as eval() sees it (evaluate.get_context
+ * imports it; no caller passes a `combat_calcs` local). Signatures and
+ * defaults follow combat_calcs.py: accuracy/crit_accuracy/attack_speed fall
+ * back to unit.get_weapon(), accuracy and crit_accuracy are None for an item
+ * without hit/crit, attack_speed without a weapon is defense_speed.
+ */
+export function pythonCombatCalcsModule(game: any): Record<string, (...args: any[]) => any> {
+  const db = (): Database => game?.db ?? _eqGameRef?.()?.db;
   const rawUnit = (candidate: any): UnitObject => candidate?._raw ?? candidate;
   const rawItem = (candidate: any): ItemObject | null => candidate?._raw ?? candidate ?? null;
+  const weaponOf = (unit: UnitObject, candidate: any): ItemObject | null =>
+    rawItem(candidate) ?? getEquippedWeapon(unit, db(), game);
+  const defenseSpeedOf = (unit: UnitObject, item: ItemObject | null, itemToAvoid: ItemObject | null) =>
+    defenseSpeed(unit, item, db(), itemToAvoid, game);
   return {
-    accuracy: (candidate: any, candidateItem: any) =>
-      accuracy(rawUnit(candidate), rawItem(candidateItem)!, db, game),
-    avoid: (candidate: any, candidateItem: any, itemToAvoid?: any) =>
-      avoid(
-        rawUnit(candidate), db, undefined,
-        rawItem(itemToAvoid) ?? rawItem(candidateItem), game,
-      ),
-    crit_accuracy: (candidate: any, candidateItem: any) =>
-      critAccuracy(rawUnit(candidate), rawItem(candidateItem)!, db, game),
-    crit_avoid: (candidate: any, candidateItem: any, itemToAvoid?: any) =>
-      critAvoid(
-        rawUnit(candidate), rawItem(candidateItem), rawItem(itemToAvoid), db, game,
-      ),
-    attack_speed: (candidate: any, candidateItem: any) =>
-      attackSpeed(rawUnit(candidate), rawItem(candidateItem)!, db),
-    defense_speed: (candidate: any, candidateItem: any, itemToAvoid?: any) =>
-      defenseSpeed(
-        rawUnit(candidate), rawItem(candidateItem)!,
-        db, rawItem(itemToAvoid),
-      ),
-    can_counterattack: (
-      attacker: any,
-      attackItem: any,
-      defender: any,
-      _defenseItem?: any,
-    ) => canCounterattack(
-      rawUnit(attacker), rawItem(attackItem)!,
-      rawUnit(defender), db, game,
-    ),
+    compute_advantage(unit1: any, unit2: any, item1: any, item2: any, advantage = true) {
+      return computeAdvantage(rawUnit(unit1), rawUnit(unit2), rawItem(item1), rawItem(item2), !!advantage, db());
+    },
+    accuracy(candidate: any, candidateItem?: any) {
+      const unit = rawUnit(candidate);
+      const item = weaponOf(unit, candidateItem);
+      if (!item || itemSystem.hit(unit, item, game) === null) return null;
+      return accuracy(unit, item, db(), game);
+    },
+    avoid(candidate: any, _candidateItem: any, itemToAvoid?: any) {
+      return avoid(rawUnit(candidate), db(), undefined, rawItem(itemToAvoid), game);
+    },
+    crit_accuracy(candidate: any, candidateItem?: any) {
+      const unit = rawUnit(candidate);
+      const item = weaponOf(unit, candidateItem);
+      if (!item || itemSystem.crit(unit, item) === null) return null;
+      return critAccuracy(unit, item, db(), game);
+    },
+    crit_avoid(candidate: any, candidateItem: any, itemToAvoid?: any) {
+      return critAvoid(rawUnit(candidate), rawItem(candidateItem), rawItem(itemToAvoid), db(), game);
+    },
+    attack_speed(candidate: any, candidateItem?: any) {
+      const unit = rawUnit(candidate);
+      const item = weaponOf(unit, candidateItem);
+      return item ? attackSpeed(unit, item, db(), game) : defenseSpeedOf(unit, null, null);
+    },
+    defense_speed(candidate: any, candidateItem: any, itemToAvoid?: any) {
+      return defenseSpeedOf(rawUnit(candidate), rawItem(candidateItem), rawItem(itemToAvoid));
+    },
+    can_counterattack(attacker: any, attackItem: any, defender: any, _defenseItem?: any) {
+      const rawAttacker = rawUnit(attacker);
+      const rawDefender = rawUnit(defender);
+      const rawAttackItem = rawItem(attackItem);
+      return !!rawAttacker && !!rawDefender && !!rawAttackItem &&
+        canCounterattack(rawAttacker, rawAttackItem, rawDefender, db(), game);
+    },
   };
 }
 
@@ -631,7 +648,6 @@ export function computeHit(
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
-  const expressionCalcs = combatExpressionCalcs(db, game);
   const acc = accuracy(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
@@ -645,11 +661,11 @@ export function computeHit(
   );
   const skillDynAcc = skillSystem.dynamicAccuracy(
     attacker, attackItem, defender, defWeapon, mode, attackInfo, acc,
-    game, expressionCalcs,
+    game,
   );
   const skillDynAvo = skillSystem.dynamicAvoid(
     defender, defWeapon, attacker, attackItem, mode, attackInfo, avo,
-    game, expressionCalcs,
+    game,
   );
 
   // Support bonuses
@@ -744,7 +760,6 @@ function computeDamageCore(
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
-  const expressionCalcs = combatExpressionCalcs(db, game);
   const atk = damage(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
@@ -765,7 +780,7 @@ function computeDamageCore(
   );
   might += skillSystem.dynamicDamage(
     attacker, attackItem, defender, defWeapon, mode, attackInfo, might,
-    game, expressionCalcs,
+    game,
   );
   might += triangle.damageBonus;
 
@@ -778,7 +793,7 @@ function computeDamageCore(
   might -= def;
   might -= skillSystem.dynamicResist(
     defender, defWeapon, attacker, attackItem, mode, attackInfo,
-    might, game, expressionCalcs,
+    might, game,
   );
 
   // Attack-stance partners deal half damage after defense.
@@ -876,7 +891,6 @@ export function computeTrueSpeed(
   attackInfo: [number, number] = [0, 0],
 ): number {
   game ??= _eqGameRef?.();
-  const expressionCalcs = combatExpressionCalcs(db, game);
   const defenseMode = mode === 'attack' ? 'defense' : 'attack';
   let speed = attackSpeed(
     attacker, attackItem, db, game, defender, defenseItem, mode, attackInfo,
@@ -895,11 +909,11 @@ export function computeTrueSpeed(
   speed += atkSupport.attack_speed - defSupport.defense_speed;
   speed += skillSystem.dynamicAttackSpeed(
     attacker, attackItem, defender, defenseItem, mode, attackInfo,
-    speed, game, expressionCalcs,
+    speed, game,
   );
   speed -= skillSystem.dynamicDefenseSpeed(
     defender, defenseItem, attacker, attackItem, mode, attackInfo,
-    speed, game, expressionCalcs,
+    speed, game,
   );
   return speed;
 }
@@ -1104,6 +1118,73 @@ function parseNumericValue(value: string): number {
   return 0;
 }
 
+/** Python weapons.CombatBonus after `modify(w_mod)`, as compute_advantage returns it. */
+export interface CombatBonusValue {
+  weapon_type: NID;
+  weapon_rank: string;
+  modification: number;
+  damage: number;
+  resist: number;
+  accuracy: number;
+  avoid: number;
+  crit: number;
+  dodge: number;
+  attack_speed: number;
+  defense_speed: number;
+}
+
+/** Python `combat_calcs.compute_advantage` (the bonus, or None). */
+export function computeAdvantage(
+  unit1: UnitObject,
+  unit2: UnitObject,
+  item1: ItemObject | null,
+  item2: ItemObject | null,
+  advantage: boolean,
+  db: Database,
+): CombatBonusValue | null {
+  if (!item1 || !item2) return null;
+  const type1 = itemSystem.weaponTriangleOverride(unit1, item1) || itemSystem.weaponType(unit1, item1);
+  const type2 = itemSystem.weaponTriangleOverride(unit2, item2) || itemSystem.weaponType(unit2, item2);
+  if (!type1 || !type2) return null;
+  if (itemSystem.ignoreWeaponAdvantage(unit1, item1) || itemSystem.ignoreWeaponAdvantage(unit2, item2)) {
+    return null;
+  }
+  const mod1 = itemSystem.modifyWeaponTriangle(unit1, item1);
+  const mod2 = itemSystem.modifyWeaponTriangle(unit2, item2);
+  const finalMod = Math.sign(mod1) * Math.sign(mod2) * Math.max(Math.abs(mod1), Math.abs(mod2));
+  const weapon = db.weapons.find((candidate) => candidate.nid === type1);
+  const bonuses = (advantage ? weapon?.advantage : weapon?.disadvantage) ?? [];
+  // CombatBonus casts every effect to int on load, then modify() scales it.
+  const make = (bonus: WeaponAdvantage): CombatBonusValue => {
+    const effect = (value: unknown) => (Math.trunc(Number(value)) || 0) * finalMod;
+    return {
+      weapon_type: bonus.weapon_type,
+      weapon_rank: bonus.weapon_rank,
+      modification: finalMod,
+      damage: effect(bonus.damage),
+      resist: effect(bonus.resist),
+      accuracy: effect(bonus.accuracy),
+      avoid: effect(bonus.avoid),
+      crit: effect(bonus.crit),
+      dodge: effect(bonus.dodge),
+      attack_speed: effect(bonus.attack_speed),
+      defense_speed: effect(bonus.defense_speed),
+    };
+  };
+  let highestRequirement = -1;
+  let result: CombatBonusValue | null = null;
+  for (const bonus of bonuses) {
+    if (bonus.weapon_type !== 'All' && bonus.weapon_type !== type2) continue;
+    if (bonus.weapon_rank === 'All') return make(bonus);
+    const requirement = db.weaponRanks.find((rank) => rank.rank === bonus.weapon_rank)?.requirement ?? Infinity;
+    if (Number(unit1.wexp[type1] ?? 0) >= requirement && requirement > highestRequirement) {
+      highestRequirement = requirement;
+      result = make(bonus);
+    }
+  }
+  return result;
+}
+
 /**
  * Compute crit rate.
  * Crit = attacker crit - defender crit avoid, clamped 0-100.
@@ -1120,7 +1201,6 @@ export function computeCrit(
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = getEquippedWeapon(defender, db, game);
-  const expressionCalcs = combatExpressionCalcs(db, game);
   const baseCrit = critAccuracy(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
@@ -1143,7 +1223,6 @@ export function computeCrit(
     attackInfo,
     baseValue,
     game,
-    expressionCalcs,
   );
   const dynamicDodge = skillSystem.dynamicCritAvoid(
     defender,
@@ -1154,7 +1233,6 @@ export function computeCrit(
     attackInfo,
     baseValue,
     game,
-    expressionCalcs,
   );
   const raw = baseValue + dynamicCrit - dynamicDodge;
   const multiplier = skillSystem.critMultiplier(
@@ -1191,18 +1269,8 @@ export function computeStrikeCount(
   count += itemExtra;
 
   // Dynamic multiattacks from skills
-  const db = game?.db ?? _eqGameRef?.()?.db;
-  const combatCalcs = db ? {
-    attack_speed: (candidate: any) => attackSpeed(candidate?._raw ?? candidate, item, db),
-    defense_speed: (candidate: any, candidateItem: any) => defenseSpeed(
-      candidate?._raw ?? candidate,
-      candidateItem?._raw ?? candidateItem ?? defenseItem ?? item,
-      db,
-      item,
-    ),
-  } : undefined;
   const skillExtra = skillSystem.dynamicMultiattacks(
-    unit, item, target, defenseItem, mode, attackInfo, count - 1, game, combatCalcs,
+    unit, item, target, defenseItem, mode, attackInfo, count - 1, game,
   );
   count += skillExtra;
 
@@ -1219,18 +1287,8 @@ export function computeExtraAttackPhases(
   attackInfo: [number, number],
   game?: any,
 ): number {
-  const db = game?.db ?? _eqGameRef?.()?.db;
-  const combatCalcs = db ? {
-    attack_speed: (candidate: any) => attackSpeed(candidate?._raw ?? candidate, item, db),
-    defense_speed: (candidate: any, candidateItem: any) => defenseSpeed(
-      candidate?._raw ?? candidate,
-      candidateItem?._raw ?? candidateItem ?? defenseItem ?? item,
-      db,
-      item,
-    ),
-  } : undefined;
   return Math.max(0, skillSystem.dynamicAttacks(
-    unit, item, target, defenseItem, mode, attackInfo, 0, game, combatCalcs,
+    unit, item, target, defenseItem, mode, attackInfo, 0, game,
   ));
 }
 
@@ -1244,18 +1302,8 @@ export function computeBlitzPhases(
   attackInfo: [number, number],
   game?: any,
 ): number {
-  const db = game?.db ?? _eqGameRef?.()?.db;
-  const combatCalcs = db ? {
-    attack_speed: (candidate: any) => attackSpeed(candidate?._raw ?? candidate, item, db),
-    defense_speed: (candidate: any, candidateItem: any) => defenseSpeed(
-      candidate?._raw ?? candidate,
-      candidateItem?._raw ?? candidateItem ?? defenseItem ?? item,
-      db,
-      item,
-    ),
-  } : undefined;
   return Math.max(0, skillSystem.dynamicBlitzes(
-    unit, item, target, defenseItem, mode, attackInfo, 0, game, combatCalcs,
+    unit, item, target, defenseItem, mode, attackInfo, 0, game,
   ));
 }
 

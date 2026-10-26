@@ -1384,7 +1384,6 @@ interface EvaluatedSkillContext {
   mode?: string;
   attackInfo?: any;
   baseValue?: number;
-  combatCalcs?: Record<string, unknown>;
 }
 
 function evaluatedSkillActive(
@@ -1453,7 +1452,6 @@ function evaluatedStaticSkillTotal(
       ['attack_info', context.attackInfo ?? null],
       ['base_value', context.baseValue ?? 0],
     ]);
-    if (context.combatCalcs) localArgs.set('combat_calcs', context.combatCalcs);
     if (!evaluatedSkillActive(skill, unit, context, localArgs)) continue;
     // Python eval_* components: int(evaluate(...)), 0 when it raises.
     const value = typeof expression === 'number'
@@ -1679,11 +1677,10 @@ export function dynamicCritAccuracy(
   attackInfo: [number, number],
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_crit_accuracy', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -1696,11 +1693,10 @@ export function dynamicCritAvoid(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_crit_avoid', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2095,11 +2091,10 @@ export function dynamicDamage(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_damage', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2113,11 +2108,10 @@ export function dynamicResist(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_resist', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2131,11 +2125,10 @@ export function dynamicAccuracy(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_accuracy', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2149,11 +2142,10 @@ export function dynamicAvoid(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_avoid', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2166,11 +2158,10 @@ export function dynamicAttackSpeed(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_attack_speed', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2183,11 +2174,10 @@ export function dynamicDefenseSpeed(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_defense_speed', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2202,7 +2192,6 @@ function evaluatedCombatSkillTotal(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
   markerValue: number = 0,
 ): number {
   game ??= skillGameRef?.();
@@ -2217,10 +2206,9 @@ function evaluatedCombatSkillTotal(
       ['attack_info', attackInfo],
       ['base_value', baseValue],
     ]);
-    if (combatCalcs) localArgs.set('combat_calcs', combatCalcs);
     if (!evaluatedSkillActive(
       skill, unit,
-      { game, item, target, item2, mode, attackInfo, baseValue, combatCalcs },
+      { game, item, target, item2, mode, attackInfo, baseValue },
       localArgs,
     )) continue;
     const configured = skill.getComponent<unknown>(component);
@@ -2272,15 +2260,14 @@ export function dynamicMultiattacks(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   const dynamic = multiattacksBlocked(item, target, game) ? 0 : evaluatedCombatSkillTotal(
     unit, 'dynamic_multiattacks', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
   return dynamic + evaluatedCombatSkillTotal(
     unit, 'all_brave', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs, 1,
+    attackInfo, baseValue, game, 1,
   );
 }
 
@@ -2293,11 +2280,10 @@ export function dynamicAttacks(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_attacks', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 
@@ -2310,11 +2296,10 @@ export function dynamicBlitzes(
   attackInfo: any,
   baseValue: number,
   game?: any,
-  combatCalcs?: Record<string, unknown>,
 ): number {
   return evaluatedCombatSkillTotal(
     unit, 'dynamic_blitzes', item, target, item2, mode,
-    attackInfo, baseValue, game, combatCalcs,
+    attackInfo, baseValue, game,
   );
 }
 

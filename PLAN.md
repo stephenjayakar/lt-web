@@ -48,8 +48,10 @@ Verified baseline:
 - all 4,937 conditions, 249 eval substitutions, and 646 loop expressions execute
   in strict mode through the Python expression evaluator (`src/events/py-expr`:
   tokenizer, CPython-precedence parser, Python-semantics tree evaluator), whose
-  parse trees match CPython's `ast` on all 7,912 distinct EOtF expressions;
-  failures CPython raises too are logged as Python's except-clauses do;
+  parse trees match CPython's `ast` on all 7,912 distinct EOtF expressions and
+  whose results match CPython on an 810-expression semantics fixture; failures
+  CPython raises too are logged as Python-equivalent, while missing names and
+  missing engine-wrapper attributes are reported as unported support;
 - authored `c. Challenge_Unlocks` and `Item_EssenceRender` payloads run through
   `EventState`, covering unit loading, record/table updates, dynamic skill
   components, nested key/value arguments, parent resume, and currency mutation;
@@ -150,6 +152,9 @@ The release gate is green: build, all four audits, the full serial suite,
   Python expression implementation; differential against CPython on the corpus.
 - [ ] Per-call-site eval context fidelity: Python passes a component-specific
   subset of unit/target/position/local args; the web still passes all of them.
+- [ ] `item_funcs.has_damage` (combat conditions of Hurricane_Onslaught_Child,
+  Rumbling_Earth_Child_Helper and Critical_Zone_Aura_Helper/Child) does not exist in the lt-maker reference, so those conditions raise
+  and stay False there and here; confirm against EOtF's shipped engine.
 
 ### P8.3 — Roguelite systems and campaign proof
 
