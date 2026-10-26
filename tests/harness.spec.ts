@@ -1589,7 +1589,8 @@ test.describe('Event command parity', () => {
     ]);
     expect(result!.combatAfter.built).toEqual([true, true]);
     expect(result!.combatAfter.partners).toEqual([null, null]);
-    expect(result!.combatAfter.rewards.exp).toBe(result!.beforeRewards.exp + 15);
+    // Python handle_paired_exp: half the partner's own item exp (level_exp).
+    expect(result!.combatAfter.rewards.exp).toBe(result!.beforeRewards.exp + 5);
     expect(result!.combatAfter.rewards.wexp).toBeGreaterThan(result!.beforeRewards.wexp);
     expect(result!.combatAfter.rewards.mainUses).toBe(result!.beforeRewards.mainUses - 1);
     expect(result!.combatAfter.rewards.assistUses).toBe(result!.beforeRewards.assistUses - 1);

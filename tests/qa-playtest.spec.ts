@@ -399,7 +399,9 @@ async function chooseMenuLabel(page: Page, label: string): Promise<void> {
 test('trading returns to the action menu; BACK then commits and waits', async ({ page }) => {
   await boot(page);
   await openUnitMenu(page, 'Vanessa');
-  expect(await topMenuLabels(page)).toEqual(['Item', 'Trade', 'Wait']);
+  // Pegasus_Knight's class tag Mounted makes RESCUE_AID 25 - CON, as Python
+  // reads unit.tags with class tags, so an adjacent ally can be rescued.
+  expect(await topMenuLabels(page)).toEqual(['Rescue', 'Item', 'Trade', 'Wait']);
   await chooseMenuLabel(page, 'Trade');
   expect((await stackNames(page)).at(-1)).toBe('trade');
   const before = await page.evaluate(() => (window as any).__gameRef.getUnit('Vanessa').items.map((i: any) => i.nid));
