@@ -116,6 +116,7 @@ export class ArrowRenderer {
     segments: ArrowSegment[],
     cameraOffset: [number, number],
     timeMs: number,
+    translucentUnitSprite: boolean = false,
   ): void {
     for (const seg of segments) {
       const [x, y] = seg.position;
@@ -123,24 +124,56 @@ export class ArrowRenderer {
       const drawY = y * TILEHEIGHT - cameraOffset[1];
 
       if (this.sheet) {
-        // t = sin(radians((time//5 - idx*6) % 180)) drives a pulsing brightness,
-        // staggered per path index so the pulse travels along the path.
-        // (Exact per-pixel change_color/blend_colors tinting from Python is not
-        // reproduced; we approximate the pulse with alpha so segment identity
-        // and timing stay testable without pixel-level color math.)
-        const phase = ((Math.floor(timeMs / 5) - seg.idx * 6) % 180 + 180) % 180;
-        const t = Math.sin((phase * Math.PI) / 180);
-        const prevAlpha = surf.getAlpha();
-        surf.setAlpha(0.4 + 0.5 * t);
-        surf.blitImage(
-          this.sheet,
-          seg.col * TILEWIDTH, seg.row * TILEHEIGHT, TILEWIDTH, TILEHEIGHT,
-          drawX, drawY,
+        // Python level_cursor.Arrow: the sheet is made 10% translucent; only
+        // with the translucent_unit_sprite constant does each segment add a
+        // pulsing blend_colors((200, 40, 0), black, t) tint, staggered by
+        // path index so the pulse travels along the path.
+        let image: CanvasImageSource = this.sheet;
+        let sx = seg.col * TILEWIDTH;
+        let sy = seg.row * TILEHEIGHT;
+        if (translucentUnitSprite) {
+          const phase = ((Math.floor(timeMs / 5) - seg.idx * 6) % 180 + 180) % 180;
+          const t = Math.max(0, Math.min(1, Math.sin((phase * Math.PI) / 180)));
+          image = this.tintedTile(sx, sy, [Math.trunc(200 * (1 - t)), Math.trunc(40 * (1 - t)), 0]);
+          sx = 0;
+          sy = 0;
+        }
+        const ctx = surf.ctx;
+        const scale = surf.scale;
+        const prevAlpha = ctx.globalAlpha;
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(
+          image, sx, sy, TILEWIDTH, TILEHEIGHT,
+          Math.round(drawX * scale), Math.round(drawY * scale), TILEWIDTH * scale, TILEHEIGHT * scale,
         );
-        surf.setAlpha(prevAlpha);
+        ctx.globalAlpha = prevAlpha;
       } else {
         surf.fillRect(drawX + 4, drawY + 4, TILEWIDTH - 8, TILEHEIGHT - 8, 'rgba(220,60,20,0.5)');
       }
     }
+  }
+
+  private tintCanvas: HTMLCanvasElement | null = null;
+
+  /** image_mods.change_color: an additive RGB tint on the tile's pixels only. */
+  private tintedTile(sx: number, sy: number, color: [number, number, number]): HTMLCanvasElement {
+    if (!this.tintCanvas) {
+      this.tintCanvas = document.createElement('canvas');
+      this.tintCanvas.width = TILEWIDTH;
+      this.tintCanvas.height = TILEHEIGHT;
+    }
+    const canvas = this.tintCanvas;
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    ctx.save();
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(this.sheet as HTMLImageElement, sx, sy, TILEWIDTH, TILEHEIGHT, 0, 0, TILEWIDTH, TILEHEIGHT);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+    ctx.fillRect(0, 0, TILEWIDTH, TILEHEIGHT);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(this.sheet as HTMLImageElement, sx, sy, TILEWIDTH, TILEHEIGHT, 0, 0, TILEWIDTH, TILEHEIGHT);
+    ctx.restore();
+    return canvas;
   }
 }

@@ -3066,7 +3066,10 @@ export class MoveState extends MapState {
         );
         if (path && path.length > 1) {
           const segments = computeArrowSegments(path);
-          game.arrowRenderer.draw(surf, segments, cameraOffset, performance.now());
+          game.arrowRenderer.draw(
+            surf, segments, cameraOffset, performance.now(),
+            !!game.db.getConstant('translucent_unit_sprite', false),
+          );
         }
       }
     }
