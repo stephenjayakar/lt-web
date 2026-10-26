@@ -12,6 +12,8 @@ import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import { getSyncStore, type SyncKV } from '../../storage/storage';
+import { isForkEngine } from '../engine-flavor';
+import { setWindowDisplayProvider } from '../../ui/sprites';
 import {
   MenuBackground,
   MenuCursor,
@@ -84,10 +86,28 @@ const CONFIG_SETTINGS: SettingDef[] = [
   { name: 'talk_boop', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 16 },
   { name: 'show_bounds', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 7 },
   { name: 'grid_opacity', kind: 'slider', values: [0, 25, 51, 76, 102, 127, 153, 178, 204, 229, 255], defaultValue: 0, icon: 7 },
+  // EOtF fork only: the menu window skin (menu_bg_base1..3 etc.).
+  { name: 'window_display', kind: 'slider', values: [1, 2, 3], defaultValue: 1, icon: 17 },
   { name: 'autoend_turn', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 14 },
   { name: 'confirm_end', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 14 },
   { name: 'display_hints', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 3 },
 ];
+
+/** Settings the EOtF fork's menu leaves out (fixed at their config.py defaults). */
+const FORK_HIDDEN_SETTINGS: Record<string, string | number> = {
+  animation: 'Always',
+  battle_bg: 0,
+  display_hints: 0,
+};
+
+/**
+ * The settings listed in the menu: the EOtF fork drops animation, battle_bg
+ * and display_hints and adds window_display; upstream has no window_display.
+ */
+function menuSettings(): SettingDef[] {
+  if (isForkEngine()) return CONFIG_SETTINGS.filter((d) => !(d.name in FORK_HIDDEN_SETTINGS));
+  return CONFIG_SETTINGS.filter((d) => d.name !== 'window_display');
+}
 
 /** Python settings.controls: buttons.png sub-rects for each control icon. */
 const CONTROL_ENTRIES: { name: string; button: string; rect: [number, number, number, number] }[] = [
@@ -147,11 +167,17 @@ function loadSettingsCache(): Record<string, unknown> {
  * used to keep them in gameVars, where most were never read and all reset.
  */
 export function getSetting(name: string): any {
+  // The EOtF fork has no menu entry for these, so a value chosen while
+  // playing another project must not leak in (settings are shared).
+  if (isForkEngine() && name in FORK_HIDDEN_SETTINGS) return FORK_HIDDEN_SETTINGS[name];
   const cache = loadSettingsCache();
   const def = CONFIG_SETTINGS.find((d) => d.name === name);
   if (name in cache) return def?.kind === 'bool' ? normalizeBool(cache[name]) : cache[name];
   return def ? def.defaultValue : undefined;
 }
+
+// The EOtF fork's window skin follows the live window_display setting.
+setWindowDisplayProvider(() => getSetting('window_display'));
 
 /** Python cf.SETTINGS bools are 0/1; accept the legacy 'ON'/'OFF' strings. */
 function normalizeBool(value: unknown): number {
@@ -277,13 +303,14 @@ export class SettingsMenuState extends State {
   override readonly transparent = false;
 
   private phase: SettingsPhase = 'top_menu_left';
-  private configMenu = new SimpleList(CONFIG_SETTINGS.length);
+  private settings: SettingDef[] = menuSettings();
+  private configMenu = new SimpleList(this.settings.length);
   private controlsMenu = new SimpleList(CONTROL_ENTRIES.length);
   private topCursor = new MenuCursor();
   private bg: MenuBackground | null = null;
   private scene = new MenuScene();
   /** SliderOption.counter, per row. */
-  private sliderCounters: number[] = CONFIG_SETTINGS.map(() => 0);
+  private sliderCounters: number[] = this.settings.map(() => 0);
   /** ChoiceOption side arrows (right arrow counter offset 0.5). */
   private choiceArrows: Map<string, [ScrollArrow, ScrollArrow]> = new Map();
 
@@ -294,14 +321,16 @@ export class SettingsMenuState extends State {
   override start(): StateResult {
     const game = getGame();
     this.phase = 'top_menu_left';
-    this.configMenu = new SimpleList(CONFIG_SETTINGS.length);
+    this.settings = menuSettings();
+    this.sliderCounters = this.settings.map(() => 0);
+    this.configMenu = new SimpleList(this.settings.length);
     this.controlsMenu = new SimpleList(CONTROL_ENTRIES.length);
     this.topCursor = new MenuCursor();
     this.bg = new MenuBackground('settings_background', game.resources);
     preloadSprites(['settings_icons', 'buttons', 'scroll_bar', 'page_arrows', 'waiting_cursor', 'menus/health_bar_bg', 'menus/menu_hand']);
     baseSurf(HEADER_WIDTH, 24, 'menu_bg_clear');
     baseSurf(WINWIDTH + 16, 16, 'menu_bg_clear');
-    for (const def of CONFIG_SETTINGS) {
+    for (const def of this.settings) {
       if (def.kind === 'choice') {
         this.choiceArrows.set(def.name, [new ScrollArrow('left', 0, 0, 0), new ScrollArrow('right', 0, 0, 0.5)]);
       }
@@ -412,7 +441,7 @@ export class SettingsMenuState extends State {
       }
     } else if (effective === 'LEFT' || effective === 'RIGHT') {
       if (this.phase === 'config') {
-        const def = CONFIG_SETTINGS[menu.currentIndex];
+        const def = this.settings[menu.currentIndex];
         if (effective === 'LEFT') this.moveLeft(def);
         else this.moveRight(def);
         sfx('Select 6');
@@ -422,7 +451,7 @@ export class SettingsMenuState extends State {
     } else if (effective === 'SELECT') {
       if (this.phase === 'config') {
         sfx('Select 6');
-        this.moveNext(CONFIG_SETTINGS[menu.currentIndex]);
+        this.moveNext(this.settings[menu.currentIndex]);
       } else {
         // Key remapping is not supported in the browser build; the bindings
         // are fixed (src/engine/input.ts).
@@ -496,7 +525,7 @@ export class SettingsMenuState extends State {
     const icons = getSprite('settings_icons');
     const end = Math.min(menu.count, menu.scroll + MENU_LIMIT);
     for (let i = menu.scroll; i < end; i++) {
-      const def = CONFIG_SETTINGS[i];
+      const def = this.settings[i];
       const top = ty + 4 + (i - menu.scroll) * OPTION_HEIGHT;
       const left = tx - 4;
       const active = i === menu.currentIndex && menu.takesInput;
@@ -593,7 +622,7 @@ export class SettingsMenuState extends State {
     surf.blit(baseSurf(WINWIDTH + 16, height, 'menu_bg_clear'), -8, WINHEIGHT - height);
     let text: string;
     if (this.phase === 'top_menu_left') text = 'config_desc';
-    else if (this.phase === 'config') text = `${CONFIG_SETTINGS[this.configMenu.currentIndex].name}_desc`;
+    else if (this.phase === 'config') text = `${this.settings[this.configMenu.currentIndex].name}_desc`;
     else text = 'keymap_desc'; // Python's top_menu_right branch is unreachable
     blitTextCenter(surf, 'text', translate(text), WINWIDTH / 2, WINHEIGHT - height);
   }

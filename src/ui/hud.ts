@@ -24,9 +24,9 @@ import type { BmpFont } from '../rendering/bmp-font';
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { ResourceManager } from '../data/resource-manager';
-import { getSprite, makeTranslucent, preloadSprites } from './sprites';
+import { getSprite, makeTranslucent, preloadSprites, skinnedSpriteName } from './sprites';
 import { isForkEngine } from '../engine/engine-flavor';
-import { createBaseSurf, loadMenuBgSprite } from './base-surf';
+import { createBaseSurf, getMenuBgSpriteSync } from './base-surf';
 import { drawItemIcon, getIconSheet } from './icons';
 import { getSetting } from '../engine/states/settings-state';
 import { getTerrainBonuses } from '../combat/terrain-bonuses';
@@ -141,7 +141,8 @@ export class HUD {
 
   private resourceManager: ResourceManager | null = null;
   private chibis: Map<string, Surface | null> = new Map();
-  private menuBg: HTMLImageElement | null = null;
+  /** menu_bg_base (the EOtF window skin's copy on the fork); null while loading. */
+  private get menuBg(): HTMLImageElement | null { return getMenuBgSpriteSync('menu_bg_base'); }
 
   private unitInfoDisp: Surface | null = null;
   private tileInfoDisp: Surface | null = null;
@@ -181,7 +182,7 @@ export class HUD {
 
   constructor() {
     void preloadSprites(HUD_SPRITES);
-    void loadMenuBgSprite('menu_bg_base').then((img) => { this.menuBg = img; });
+    void this.menuBg;
   }
 
   setResourceManager(rm: ResourceManager): void {
@@ -562,7 +563,7 @@ export class HUD {
     const obj: string = game.currentLevel?.objective?.simple ?? '';
     if (!obj) return null;
     const lines = evaluateText(obj, game).split(',').map((line) => line.replace(/\{comma\}/g, ','));
-    const key = lines.join('\n');
+    const key = `${skinnedSpriteName('menu_bg_base')}\n${lines.join('\n')}`;
     if (key === this.objInfoKey && this.objInfoDisp) return this.objInfoDisp;
     const text = font('text');
     if (!text || !this.menuBg) return this.objInfoDisp;

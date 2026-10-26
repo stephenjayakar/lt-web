@@ -14,7 +14,7 @@
 import { Surface } from '../engine/surface';
 import { FRAMETIME } from '../engine/constants';
 import { viewport } from '../engine/viewport';
-import { createBaseSurf, loadMenuBgSprite } from './base-surf';
+import { createBaseSurf, getMenuBgSpriteSync } from './base-surf';
 import { getSprite, makeTranslucent } from './sprites';
 import { drawIcon16, drawIconByAlias } from './icons';
 import { drawStyledText, measureStyledText } from './styled-text';
@@ -50,8 +50,6 @@ export function weaponIcon(db: { weapons: IconSource[] & { find: (fn: (w: any) =
 }
 const TIME_TO_WAIT = 3000;
 
-let menuBg: HTMLImageElement | null = null;
-void loadMenuBgSprite('menu_bg_base').then((img) => { menuBg = img; });
 
 /** Python `'<blue>X</>'`: wrap text in an LT colour tag. */
 export function colored(text: string, color = 'blue'): string {
@@ -154,6 +152,7 @@ export class Banner {
     if (this.timer >= this.duration) return surf;
     if (!this.surf) {
       const gem = getSprite('menu_gem_small');
+      const menuBg = getMenuBgSpriteSync('menu_bg_base');
       if (!menuBg || !gem) return surf;
       this.figureOutSize();
       const [w, h] = this.size;

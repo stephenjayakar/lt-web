@@ -7,7 +7,7 @@
  */
 
 import { Surface } from '../engine/surface';
-import { engineSpriteUrl } from './sprites';
+import { engineSpriteUrl, skinnedSpriteName, spriteUrl } from './sprites';
 
 const SLICE_SIZE = 8;
 
@@ -157,14 +157,17 @@ export function initBaseSurf(url: string): void {
  * Returns the cached image or null if loading fails.
  * Menu sprites are engine-level shared assets at /game-data/sprites/menus/{nid}.png.
  */
-export async function loadMenuBgSprite(nid: string): Promise<HTMLImageElement | null> {
+export async function loadMenuBgSprite(name: string): Promise<HTMLImageElement | null> {
+  const nid = skinnedSpriteName(name);
   const cached = bgCache.get(nid);
   if (cached) return cached;
 
   const pending = bgPending.get(nid);
   if (pending) return pending;
 
-  const url = engineSpriteUrl(nid, `${engineBaseUrl}/sprites/menus/${encodeURIComponent(nid)}.png`);
+  // Python SPRITES: a project custom sprite of that name wins (EOtF's
+  // window skins live only there), then the engine's menus/ sprite.
+  const url = spriteUrl(nid) ?? engineSpriteUrl(nid, `${engineBaseUrl}/sprites/menus/${encodeURIComponent(nid)}.png`);
   const promise = new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -197,6 +200,7 @@ export async function getMenuBackground(
   height: number,
   nid: string = 'menu_bg_base',
 ): Promise<Surface> {
+  nid = skinnedSpriteName(nid);
   const key = `${nid}:${width}x${height}`;
   const cached = surfCache.get(key);
   if (cached) return cached;
@@ -223,6 +227,7 @@ export function getMenuBackgroundSync(
   height: number,
   nid: string = 'menu_bg_base',
 ): Surface {
+  nid = skinnedSpriteName(nid);
   const key = `${nid}:${width}x${height}`;
   const cached = surfCache.get(key);
   if (cached) return cached;
@@ -234,6 +239,18 @@ export function getMenuBackgroundSync(
   const fallback = new Surface(width, height);
   fallback.fillRect(0, 0, width, height, 'rgba(16,16,32,0.9)');
   return fallback;
+}
+
+/**
+ * The loaded menu-window sprite for `name` (after the window skin), or null
+ * while it loads. For callers that 9-slice it themselves every frame.
+ */
+export function getMenuBgSpriteSync(name: string): HTMLImageElement | null {
+  const nid = skinnedSpriteName(name);
+  const cached = bgCache.get(nid);
+  if (cached) return cached;
+  void loadMenuBgSprite(nid);
+  return null;
 }
 
 let highlightImg: HTMLImageElement | null = null;

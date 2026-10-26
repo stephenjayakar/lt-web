@@ -85,6 +85,36 @@ export function hasSprite(name: string): boolean {
   return name in projectSprites || name in INDEX.engine || name in FORK;
 }
 
+/**
+ * Sprite names the EOtF fork suffixes with the `window_display` setting
+ * (`'menu_bg_base' + str(cf.SETTINGS['window_display'])` and so on; the
+ * fork never asks for the bare names). EOtF ships the skins as
+ * resources/custom_sprites/menu/{1..4}/<name><n>.png.
+ */
+const WINDOW_SKIN_SPRITES: ReadonlySet<string> = new Set([
+  'menu_bg_base', 'menu_bg_base_opaque', 'menu_gem_small', 'menu_shimmer1', 'menu_shimmer2',
+  'money_bg', 'funds_display', 'rescue_window', 'give_window', 'sound_player',
+  'tile_info_quick', 'tile_info_quick_opaque', 'tile_info_destructible', 'tile_info_destructible_opaque',
+]);
+
+let windowDisplay: () => unknown = () => 1;
+
+/** Settings register the live `window_display` value (avoids an import cycle). */
+export function setWindowDisplayProvider(provider: () => unknown): void {
+  windowDisplay = provider;
+}
+
+/**
+ * The SPRITES name actually used for `name`: on the EOtF fork, the
+ * window_display skin's copy of a menu/window sprite (falling back to the
+ * bare name when that skin lacks it); otherwise `name` unchanged.
+ */
+export function skinnedSpriteName(name: string): string {
+  if (!isForkEngine() || !WINDOW_SKIN_SPRITES.has(name)) return name;
+  const skinned = `${name}${windowDisplay() ?? 1}`;
+  return hasSprite(skinned) ? skinned : name;
+}
+
 /** Load a sprite (resolves null when it does not exist or fails to load). */
 export function loadSprite(name: string): Promise<Surface | null> {
   if (loaded.has(name)) return Promise.resolve(loaded.get(name) ?? null);
@@ -120,6 +150,7 @@ export function loadSprite(name: string): Promise<Surface | null> {
  * loading. Callers must not draw into the returned Surface; copy() first.
  */
 export function getSprite(name: string, fallback?: string): Surface | null {
+  name = skinnedSpriteName(name);
   if (!hasSprite(name) && fallback !== undefined) return getSprite(fallback);
   const surf = loaded.get(name);
   if (surf !== undefined) return surf;
