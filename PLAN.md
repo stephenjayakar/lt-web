@@ -192,3 +192,9 @@ The release gate is green: build, all four audits, the full serial suite,
   `choice;...;expression` re-evaluates every frame; battle animations draw no
   extra-damage digits (the fork's AnimationCombat has none).
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.
+- [x] UI parity: help boxes type their text out through the `__default_help`
+  dialog (`tests/help-typewriter.spec.ts`); the Controls settings page rebinds
+  keyboard keys, saved in the sync store (`tests/key-remap.spec.ts`);
+  upstream `choice`/`table` draw an authored BG by create_base_surf's rule
+  (the fork ignores it) and `{v:}` prints a None var as `None`
+  (`tests/event-choice-bg.spec.ts`).
