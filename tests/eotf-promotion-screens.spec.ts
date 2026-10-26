@@ -285,6 +285,16 @@ test('BACK from the promotion choice with Canto returns to the Canto move and re
   expect(result.redone).toEqual({
     items: ['Iron_Sword', 'Knight Crest'], movementLeft: 1, hasAttacked: false, finished: false,
   });
+  // HasNotAttacked left an ordinary MoveState: BACK deselects to free and the
+  // unit keeps its canto movement to act again (Python MoveState BACK).
+  await step(page, 1, 'BACK');
+  await step(page, 3);
+  const deselected = await page.evaluate(() => {
+    const u = (window as any).__promoUnit;
+    return { finished: u.finished, movementLeft: u.movementLeft, canAct: u.canStillAct() };
+  });
+  expect(await stateName(page)).toBe('free');
+  expect(deselected).toEqual({ finished: false, movementLeft: 1, canAct: true });
 });
 
 test('promoting with Canto ends in the Canto move instead of waiting', async ({ page }) => {
@@ -314,6 +324,29 @@ test('promoting with Canto ends in the Canto move instead of waiting', async ({ 
   });
   expect(result).toEqual({
     klass: 'Hero', items: ['Iron_Sword'], movementLeft: 1, hasAttacked: true, finished: false,
+  });
+  // EOtF fork MoveState: BACK during Canto waits the unit.
+  await step(page, 1, 'BACK');
+  await step(page, 3);
+  expect(await stateName(page)).toBe('free');
+  // The turnwheel takes the whole use back: class, crest, movement, wait.
+  const undone = await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const u = (window as any).__promoUnit;
+    const finishedAfterBack = u.finished;
+    while (game.actionLog.actions.length > (window as any).__logStart) game.actionLog.undo();
+    return {
+      finishedAfterBack,
+      klass: u.klass,
+      items: u.items.map((item: any) => item.nid),
+      movementLeft: u.movementLeft,
+      hasAttacked: u.hasAttacked,
+      finished: u.finished,
+    };
+  });
+  expect(undone).toEqual({
+    finishedAfterBack: true, klass: 'Mercenary', items: ['Knight Crest', 'Iron_Sword'],
+    movementLeft: 3, hasAttacked: false, finished: false,
   });
 });
 
