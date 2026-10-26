@@ -205,6 +205,13 @@ test.describe('Audio parity: music stack, phase/battle music, SFX loops, volume'
     });
     await stepUntilPhaseMusicFadeIn(page, 'player');
     await settle(page, 300);
+    // fadeIn resolves after a real fetch + decode; under heavy load that can
+    // outlast the fixed settle window, so wait for the observable track.
+    await page.waitForFunction(
+      () => (window as any).__gameRef.audioManager.getCurrentMusicNid() === 'Distant Roads',
+      undefined,
+      { timeout: 30_000 },
+    ).catch(() => undefined);
 
     const playerPhase = await page.evaluate(() => {
       const game = (window as any).__gameRef;
