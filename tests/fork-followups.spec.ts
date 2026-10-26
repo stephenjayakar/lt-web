@@ -275,6 +275,44 @@ test.describe('EOtF fork-parity follow-ups', () => {
     expect(result!.tile).not.toBe('enemy2');
   });
 
+  test('battle animations draw no digits for EOtF extra damage', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { AnimationCombat } = await import('/src/combat/animation-combat.ts');
+      const attacker = game.units.get('Player');
+      const defender = game.units.get('Keeper');
+      const old = {
+        items: attacker.items, skills: attacker.skills, defSkills: defender.skills,
+        hp: defender.currentHp, stats: { ...defender.stats }, tags: [...defender.tags],
+      };
+      const knife = new ItemObject(game.db.items.get('Aqua_Knife'));
+      attacker.items = [knife];
+      attacker.skills = [];
+      defender.skills = [];
+      defender.tags = [];
+      defender.stats.HP = 100;
+      defender.currentHp = 100;
+      const combat = new AnimationCombat(
+        attacker, knife, defender, null, game.db, 'classic',
+        {} as any, {} as any, true, game.board, ['hit1', 'end'], game,
+      );
+      const strike = (combat as any).strikes[0];
+      (combat as any).applyStrike(false);
+      const sheets = (combat as any).damageNumbers.map((digit: any) => digit.sheet);
+      attacker.items = old.items;
+      attacker.skills = old.skills;
+      defender.skills = old.defSkills;
+      defender.currentHp = old.hp;
+      defender.stats = old.stats;
+      defender.tags = old.tags;
+      return { damage: strike.damage, extra: strike.extraDamage, sheets };
+    });
+    expect(result.extra).toBeGreaterThan(0);
+    expect(result.sheets).toEqual(String(result.damage).split('').map(() => 'damage_numbers_red'));
+  });
+
   test('an expression choice re-evaluates its options while it is open', async ({ page }) => {
     await bootEotf(page);
     await page.evaluate(() => {

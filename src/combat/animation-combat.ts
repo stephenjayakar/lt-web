@@ -958,7 +958,9 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     const damage = strike.damage;
     if (damage < 0) this.addDamageNumbers(-damage, defenderIsLeft, 'cyan');
     else if (damage > 0) this.addDamageNumbers(damage, defenderIsLeft, strike.crit ? 'yellow' : 'red');
-    if ((strike.extraDamage ?? 0) > 0) this.addDamageNumbers(strike.extraDamage ?? 0, defenderIsLeft, 'red');
+    // The EOtF fork's AnimationCombat.handle_damage_numbers has no
+    // extra_damage branch: the extra instance drains the HP bar with no
+    // digits (only MapCombat draws them, in extra_purple).
     if (!sound) return;
 
     // hit_sound brushes (heals play only on the map).
