@@ -742,3 +742,34 @@ test('a missing {v:} becomes ?? and an un-evaluable if is False (EOtF gacha Reca
   expect(await gameVar(page, 'qa_branch')).toBe('else');
   expect(await gameVar(page, 'qa_text')).toBe('x??y');
 });
+
+test('suspend saves the stack beneath the menu and Continue restores it with autocursor', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => (window as any).__gameRef.cursor.setPos(0, 0));
+  await page.evaluate(() => (window as any).__gameRef.state.change('option_menu'));
+  await stepFrames(page, 2);
+  await chooseMenuLabel(page, 'Suspend');
+  await chooseMenuLabel(page, 'Yes');
+  for (let i = 0; i < 50 && (await stackNames(page)).at(-1) !== 'title'; i++) {
+    await page.waitForTimeout(50);
+    await stepFrames(page, 2);
+  }
+  expect((await stackNames(page)).at(-1)).toBe('title');
+  const saved = await page.evaluate(async () => {
+    const { loadSuspend } = await import('/src/engine/save.ts');
+    const g = (window as any).__gameRef;
+    g.cursor.setPos(0, 0);
+    const ok = await loadSuspend(g);
+    return { ok, stack: g.state.getStackNames() };
+  });
+  expect(saved).toEqual({ ok: true, stack: ['free'] });
+  const after = await page.evaluate(async () => {
+    const { resumeLoadedGame } = await import('/src/engine/states/save-load-state.ts');
+    const g = (window as any).__gameRef;
+    await resumeLoadedGame(g, 'suspend');
+    (window as any).__harness.stepFrames(2, null);
+    return { stack: g.state.getStackNames(), cursor: g.cursor.getPosition(), lord: g.getUnit('Eirika').position };
+  });
+  expect(after.stack).toEqual(['free']);
+  expect(after.cursor).toEqual(after.lord);
+});

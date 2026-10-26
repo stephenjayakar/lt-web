@@ -939,6 +939,19 @@ export function placeChildMenu(child: ChoiceMenu, parent: ChoiceMenu): void {
   }
 }
 
+/**
+ * Python LevelCursor.autocursor(immediate=True): first Lord-tagged player
+ * unit on the map, else the first player unit; camera centred at once.
+ */
+export function autocursorImmediate(game: any): void {
+  if (!game.cursor || !game.currentLevel) return;
+  const players = (game.getAllUnits() as UnitObject[]).filter((unit) => unit.team === 'player' && !!unit.position);
+  const target = players.find((unit) => unit.tags.includes('Lord')) ?? players[0];
+  if (!target?.position) return;
+  game.cursor.setPos(target.position[0], target.position[1]);
+  game.camera?.focusTile?.(target.position[0], target.position[1]);
+}
+
 /** Python equations RESCUE_AID(carrier) >= RESCUE_WEIGHT(carried). */
 function canCarry(carrier: UnitObject, carried: UnitObject, game: any): boolean {
   const aidExpr = game.db.getEquation?.('RESCUE_AID');
@@ -1388,8 +1401,10 @@ export class TitleMainState extends State {
         void loadSuspendSave(game).then((ok: boolean) => {
           this.busy = false;
           if (ok) {
-            game.state.clear();
-            game.state.change('free');
+            // Python GameState.load restores the saved state stack and
+            // autocursors immediately.
+            if (game.state.getStackNames().length === 0) game.state.change('free');
+            autocursorImmediate(game);
           }
         });
       } else if (this.hasSuspendData && !this.suspendWarned &&
@@ -2277,8 +2292,11 @@ export class OptionMenuState extends State {
           break;
         }
         case 'suspend': {
+          // Python general_states.suspend: back(), process_temp_state(),
+          // then save, so the suspend records the stack beneath the menu.
           this.menu = null;
           game.state.back();
+          game.state.flushPending?.();
           doSuspendGame(game).then(() => {
             game.state.clear();
             game.state.change('title');

@@ -16,6 +16,7 @@ import { WINHEIGHT, WINWIDTH } from '../constants';
 import { Banner } from '../../ui/banner';
 import { MenuBackground, MenuScene } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
+import { autocursorImmediate } from './game-states';
 import {
   saveGame,
   loadGame,
@@ -129,7 +130,13 @@ abstract class ChapterSaveScreen extends State {
       this.leaveFlag = true;
       const index = this.menu?.currentIndex ?? 0;
       const slot = this.slots[index]?.idx ?? index;
-      saveGame(game, slot, this.saveKind()).then(() => {
+      // Python in_chapter_save saves every state except itself (the save
+      // dict is built synchronously before the first await).
+      const ownIndex = game.state.stack.lastIndexOf(this);
+      if (ownIndex >= 0) game.state.stack.splice(ownIndex, 1);
+      const saving = saveGame(game, slot, this.saveKind());
+      if (ownIndex >= 0) game.state.stack.splice(ownIndex, 0, this);
+      saving.then(() => {
         game.currentSaveSlot = slot;
         this.leave(true);
       }).catch((err: unknown) => {
@@ -275,8 +282,9 @@ export class LoadMenuState extends State {
         loadSuspend(game).then((success: boolean) => {
           this.restoring = false;
           if (success) {
-            game.state.clear();
-            game.state.change('free');
+            // Python GameState.load restores the saved state stack.
+            if (game.state.getStackNames().length === 0) game.state.change('free');
+            autocursorImmediate(game);
           } else {
             this.fail();
           }
@@ -374,8 +382,10 @@ export async function resumeLoadedGame(game: any, kind: string | null | undefine
       return;
     }
   }
-  game.state.clear();
-  game.state.change('free');
+  // Python GameState.load restores the saved state stack (battle saves and
+  // suspends resume where they were) and autocursors immediately.
+  if (game.state.getStackNames().length === 0) game.state.change('free');
+  autocursorImmediate(game);
 }
 
 // ---------------------------------------------------------------------------

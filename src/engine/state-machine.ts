@@ -189,6 +189,11 @@ export class StateMachine {
    * only handles stack manipulation. The difference only matters when
    * multiple transitions are queued in a single frame (rare).
    */
+  /** Python StateMachine.process_temp_state: apply queued transitions now. */
+  flushPending(): void {
+    this.processTempState();
+  }
+
   private processTempState(): void {
     while (this.tempState.length > 0) {
       const op = this.tempState.shift()!;
