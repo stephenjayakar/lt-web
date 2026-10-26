@@ -25,6 +25,7 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { ResourceManager } from '../data/resource-manager';
 import { getSprite, makeTranslucent, preloadSprites } from './sprites';
+import { isForkEngine } from '../engine/engine-flavor';
 import { createBaseSurf, loadMenuBgSprite } from './base-surf';
 import { drawItemIcon, getIconSheet } from './icons';
 import { getSetting } from '../engine/states/settings-state';
@@ -40,7 +41,7 @@ import { checkEnemy } from '../combat/skill-system';
 /** Sprites the HUD needs on the first map frame (Python loads all at boot). */
 const HUD_SPRITES = [
   'tile_info_quick_opaque', 'tile_info_destructible_opaque', 'icon_attackable_terrain',
-  'unit_info_bg', 'unit_info_hp', 'unit_info_slash', 'health_bar2_bg', 'health_bar2',
+  'unit_info_bg', 'unit_info_hp', 'unit_info_slash', 'health_bar2_bg', 'health_bar2', 'info_equipment_highlight',
   'menu_shimmer1', 'menu_shimmer2', 'combat_gem_blue', 'menu_gem_small',
   'attack_info_red', 'attack_info_crit_red', 'attack_info_purple', 'attack_info_crit_purple',
   'blue_100', 'arrow_advantage', 'x2', 'x3', 'x4', 'x5',
@@ -400,7 +401,75 @@ export class HUD {
     return null;
   }
 
+  /**
+   * EOtF engine fork's ui_view.create_unit_info: a taller unit_info_bg
+   * (123x60) with HP on the bottom row, the name under a row of every item
+   * icon, and info_equipment_highlight under the equipped weapon.
+   */
+  private createForkUnitInfo(unit: UnitObject, game: Game): Surface {
+    const fnt = font('info-grey');
+    let complete = !!fnt;
+    const need = <T,>(value: T | null): T | null => {
+      if (!value) complete = false;
+      return value;
+    };
+    const bg = need(getSprite('unit_info_bg'));
+    const surf = bg ? bg.copy() : new Surface(123, 60);
+    const top = 4;
+    const left = 6;
+    if (unit.generic) {
+      const faction = unit.faction ? game.db.factions?.get(unit.faction) : null;
+      if (faction) {
+        const sheet = need(getIconSheet(faction.icon_nid, '32'));
+        if (sheet) {
+          surf.blitImage(sheet as HTMLImageElement, faction.icon_index[0] * 32, faction.icon_index[1] * 32, 32, 32,
+            left + 1, top + 4);
+        }
+      }
+    } else if (unit.portraitNid) {
+      blit(surf, need(this.getChibi(unit.portraitNid)), left + 1, top + 4);
+    }
+
+    blit(surf, need(getSprite('unit_info_hp')), left + 1, top + 37);
+    blit(surf, need(getSprite('unit_info_slash')), left + 34, top + 38);
+    const currentHp = unit.currentHp;
+    const maxHp = unit.maxHp;
+    if (fnt) {
+      fnt.blitRight(surf, currentHp > 99 ? '??' : String(currentHp), left + 33, top + 33);
+      fnt.blitRight(surf, maxHp > 99 ? '??' : String(maxHp), left + 57, top + 33);
+    }
+
+    blit(surf, need(getSprite('health_bar2_bg')), left + 57, top + 39);
+    const hpRatio = maxHp > 0 ? Math.max(0, Math.min(1, currentHp / maxHp)) : 0;
+    const hpSurf = need(getSprite('health_bar2'));
+    if (hpRatio > 0 && hpSurf) {
+      const idx = Math.trunc(hpRatio * hpSurf.width);
+      if (idx > 0) surf.blitFrom(hpSurf, 0, 0, idx, 2, left + 58, top + 40);
+    }
+
+    const weapon = getEquippedWeapon(unit, game.db, game);
+    let itNum = 0;
+    for (const item of unit.items) {
+      if (!item.iconNid) continue;
+      need(getIconSheet(item.iconNid, '16'));
+      const x = left + itNum * 16 + 32;
+      if (item === weapon) blit(surf, need(getSprite('info_equipment_highlight')), x, top + 14);
+      drawItemIcon(surf, item, x, top + 4);
+      itNum += 1;
+    }
+
+    let name = unit.name;
+    if (unit.generic) {
+      const shortName = game.db.classes?.get(unit.klass)?.name ?? unit.klass;
+      name = `${shortName} ${unit.level}`;
+    }
+    if (fnt) fnt.blit(surf, name, left + 34, top + 20);
+    this.unitInfoPending = complete ? null : unit;
+    return surf;
+  }
+
   private createUnitInfo(unit: UnitObject, game: Game): Surface {
+    if (isForkEngine()) return this.createForkUnitInfo(unit, game);
     const fnt = font('info-grey');
     const width = 112;
     const height = 40;

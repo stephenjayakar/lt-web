@@ -31,6 +31,7 @@ import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
 import { initSprites } from './ui/sprites';
+import { metadataUsesForkEngine, setForkEngine } from './engine/engine-flavor';
 import { setBannerAudio } from './ui/banner';
 import { initBaseSurf } from './ui/base-surf';
 import { setHelpMenuGameRef } from './ui/help-menu';
@@ -652,6 +653,7 @@ async function main(): Promise<void> {
     startupStatus?.update('Loading campaign database…');
     drawLoadingScreen(ctx, 'Loading database...');
     await db.load(resources);
+    setForkEngine(metadataUsesForkEngine(db.metadata));
     // Check for unknown components at load time
     logUnknownComponents(db, projectPath);
     if (harnessMode) {

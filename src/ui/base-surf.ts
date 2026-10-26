@@ -7,6 +7,7 @@
  */
 
 import { Surface } from '../engine/surface';
+import { engineSpriteUrl } from './sprites';
 
 const SLICE_SIZE = 8;
 
@@ -163,7 +164,7 @@ export async function loadMenuBgSprite(nid: string): Promise<HTMLImageElement | 
   const pending = bgPending.get(nid);
   if (pending) return pending;
 
-  const url = `${engineBaseUrl}/sprites/menus/${encodeURIComponent(nid)}.png`;
+  const url = engineSpriteUrl(nid, `${engineBaseUrl}/sprites/menus/${encodeURIComponent(nid)}.png`);
   const promise = new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';

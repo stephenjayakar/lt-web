@@ -9,6 +9,7 @@
  */
 
 import { ResourceManager } from './resource-manager';
+import type { ProjectMetadata } from '../engine/engine-flavor';
 import type {
   StatDef,
   WeaponDef,
@@ -42,6 +43,8 @@ import { loadCombatAnims, loadCombatEffects, loadCombatPalettes } from './loader
 import type { MapAnimPrefab } from '../rendering/map-animation';
 
 export class Database {
+  /** Project metadata.json (null when the project has none). */
+  metadata: ProjectMetadata | null = null;
   // Non-chunked data
   constants: Map<string, boolean | number | string> = new Map();
   stats: StatDef[] = [];
@@ -111,6 +114,9 @@ export class Database {
   async load(resources: ResourceManager): Promise<void> {
     // Phase 1: all non-chunked data in parallel
     const nonChunkedResults = await Promise.allSettled([
+      resources.tryLoadJsonSilent<ProjectMetadata>('metadata.json').then((metadata) => {
+        this.metadata = metadata;
+      }),
       this.loadConstants(resources),
       this.loadStats(resources),
       this.loadEquations(resources),

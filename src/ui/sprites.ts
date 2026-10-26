@@ -14,10 +14,11 @@
  */
 
 import { Surface, surfaceFromImage } from '../engine/surface';
+import { isForkEngine } from '../engine/engine-flavor';
 
 declare const __LT_SPRITES__: {
   engine: Record<string, string>;
-  /** public/fork-sprites: engine sprites only the EOtF engine fork ships. */
+  /** public/fork-sprites: EOtF engine-fork sprites (fork-only, or the fork's version of an engine sprite). */
   fork?: Record<string, string>;
   projects: Record<string, Record<string, string>>;
 } | undefined;
@@ -42,17 +43,41 @@ export function initSprites(engineBaseUrl: string, projectBaseUrl: string): void
   pending.clear();
 }
 
-/** URL of a sprite by Python SPRITES name, or null when no such sprite exists. */
+const encodePath = (path: string): string => path.split('/').map(encodeURIComponent).join('/');
+
+/** URL of the fork's copy of an engine sprite, or null when the fork has none. */
+function forkUrl(name: string): string | null {
+  const fork = FORK[name];
+  return fork ? `/fork-sprites/${encodePath(fork)}` : null;
+}
+
+/**
+ * URL of an engine sprite (no project override) for loaders that build
+ * engine paths themselves: the fork's copy for a project on EOtF's engine
+ * fork (its SPRITES dictionary has the fork's file under that name), else
+ * `defaultUrl`.
+ */
+export function engineSpriteUrl(name: string, defaultUrl: string): string {
+  return (isForkEngine() ? forkUrl(name) : null) ?? defaultUrl;
+}
+
+/**
+ * URL of a sprite by Python SPRITES name, or null when no such sprite exists.
+ * Order: the project's custom_sprites, then (on the EOtF fork) the fork's
+ * engine sprite, then the upstream engine sprite, then a fork-only sprite.
+ */
 export function spriteUrl(name: string): string | null {
   const custom = projectSprites[name];
   if (custom && projectBase) {
-    return `${projectBase}/resources/custom_sprites/${custom.split('/').map(encodeURIComponent).join('/')}`;
+    return `${projectBase}/resources/custom_sprites/${encodePath(custom)}`;
+  }
+  if (isForkEngine()) {
+    const fork = forkUrl(name);
+    if (fork) return fork;
   }
   const engine = INDEX.engine[name];
-  if (engine) return `${engineBase}/sprites/${engine.split('/').map(encodeURIComponent).join('/')}`;
-  const fork = FORK[name];
-  if (fork) return `/fork-sprites/${fork.split('/').map(encodeURIComponent).join('/')}`;
-  return null;
+  if (engine) return `${engineBase}/sprites/${encodePath(engine)}`;
+  return forkUrl(name);
 }
 
 /** Whether SPRITES has an entry with this name (Python `name in SPRITES`). */

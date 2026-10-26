@@ -14,6 +14,7 @@
  */
 
 import { Surface } from '../engine/surface';
+import { engineSpriteUrl } from './sprites';
 import { viewport } from '../engine/viewport';
 import type { InputEvent } from '../engine/input';
 import type { EventPortrait } from '../events/event-portrait';
@@ -775,7 +776,7 @@ function getRootSprite(nid: string): HTMLImageElement | null {
     rootSprites.set(nid, null);
     const img = new Image();
     img.onload = () => rootSprites.set(nid, img);
-    img.src = `/game-data/sprites/${nid}.png`;
+    img.src = engineSpriteUrl(nid, `/game-data/sprites/${nid}.png`);
   }
   return rootSprites.get(nid) ?? null;
 }

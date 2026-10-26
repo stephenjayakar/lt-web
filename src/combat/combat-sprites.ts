@@ -10,6 +10,7 @@
  */
 
 import { Surface, surfaceFromImage } from '../engine/surface';
+import { engineSpriteUrl } from '../ui/sprites';
 
 /** Engine folder of each combat sprite family (Python walks them all). */
 const SPRITE_DIRS: Array<[RegExp, string]> = [
@@ -31,7 +32,7 @@ export function setCombatSpriteResources(resources: typeof projectResources): vo
 
 function engineUrl(name: string): string {
   const dir = SPRITE_DIRS.find(([pattern]) => pattern.test(name))?.[1];
-  return dir ? `/game-data/sprites/${dir}/${name}.png` : `/game-data/sprites/${name}.png`;
+  return engineSpriteUrl(name, dir ? `/game-data/sprites/${dir}/${name}.png` : `/game-data/sprites/${name}.png`);
 }
 
 function loadImage(url: string): Promise<HTMLImageElement | null> {
