@@ -10,6 +10,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
+import { isForkEngine } from '../engine/engine-flavor';
 import { evaluateCondition, evaluateExpression } from '../events/event-manager';
 import { isForkEngine } from '../engine/engine-flavor';
 
@@ -2617,7 +2618,9 @@ export function sightRange(
   unit: UnitObject,
   game: any = skillGameRef?.(),
 ): number {
-  let total = 0;
+  // Upstream sums (NUMERIC_ACCUM); EOtF's engine fork resolves the hook as
+  // UNIQUE, so the last active value (skill then component order) wins.
+  const values: number[] = [];
   for (const skill of unit.skills) {
     const flatBonus = skill.getComponent<number>('sight_range_bonus');
     const decBonus = skill.getComponent<number>('decreasing_sight_range_bonus');
@@ -2625,16 +2628,16 @@ export function sightRange(
     if (!evaluatedSkillActive(skill, unit, { game }, new Map([
       ['skill', skill],
     ]))) continue;
-    // Flat sight range bonus
-    if (typeof flatBonus === 'number') {
-      total += flatBonus;
-    }
-
-    // Decreasing sight range bonus (torch effect)
-    if (typeof decBonus === 'number') {
-      const counter = (skill.data.get('torch_counter') as number) ?? 0;
-      total += Math.max(0, decBonus - counter);
+    for (const nid of skill.components.keys()) {
+      if (nid === 'sight_range_bonus' && typeof flatBonus === 'number') {
+        values.push(flatBonus);
+      } else if (nid === 'decreasing_sight_range_bonus' && typeof decBonus === 'number') {
+        // Torch effect: the bonus decreases by 1 each turn.
+        const counter = (skill.data.get('torch_counter') as number) ?? 0;
+        values.push(Math.max(0, decBonus - counter));
+      }
     }
   }
-  return total;
+  if (isForkEngine()) return values.length > 0 ? values[values.length - 1] : 0;
+  return values.reduce((total, value) => total + value, 0);
 }
