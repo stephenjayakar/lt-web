@@ -561,13 +561,16 @@ test('prep Fight resumes the level-start stack so the player phase change runs',
       condition: 'True', only_once: false, priority: 0, _source: ['prep', 'game_var;after_prep;1'],
     });
     g.eventManager.triggerSpecific('qa_prep', { type: 'qa_prep' }, true);
+    // The level-start stack (enterStartedLevel): free, status_upkeep,
+    // phase_change, then the level_start event on top.
     g.state.clear();
     g.state.change('free');
+    g.state.change('status_upkeep');
     g.state.change('phase_change');
     g.state.change('event');
   });
   for (let i = 0; i < 40 && (await stackNames(page)).at(-1) !== 'prep_main'; i++) await stepFrames(page, 3);
-  expect(await stackNames(page)).toEqual(['free', 'phase_change', 'event', 'prep_main']);
+  expect(await stackNames(page)).toEqual(['free', 'status_upkeep', 'phase_change', 'event', 'prep_main']);
   await page.evaluate(() => ((window as any).__gameRef.state.getCurrentState() as any).fight());
   for (let i = 0; i < 100 && (await stackNames(page)).join() !== 'free'; i++) await stepFrames(page, 5);
   expect(await stackNames(page)).toEqual(['free']);

@@ -8,7 +8,6 @@ const OUTPUT_MD = path.join(ROOT, 'docs/parity/states.md');
 const MERGED = {
   ability_multi_item_choice: 'menu',
   ability_submenu_choice: 'menu',
-  alert: 'event',
   attacker: 'combat',
   attacker_partner: 'combat',
   base_codex_child: 'base_codex',
@@ -22,7 +21,6 @@ const MERGED = {
   combat_trade: 'trade',
   defender: 'combat',
   defender_partner: 'combat',
-  dying: 'combat',
   exp: 'combat',
   feat_choice: 'promotion_choice',
   init: 'combat',
@@ -70,7 +68,6 @@ const MERGED = {
   transition_to: 'state-machine',
   transition_to_with_pop: 'state-machine',
   unit_menu: 'menu',
-  wait: 'menu',
 };
 
 const OPEN = new Set(['dialog_log', 'objective_menu']);

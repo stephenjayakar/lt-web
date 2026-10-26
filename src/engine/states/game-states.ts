@@ -154,6 +154,7 @@ import {
   ShowLayerAction,
   HideLayerAction,
   AddMapAnimationAction,
+  RemoveMapAnimationAction,
   ChangeTeamPaletteAction,
   ChangeRoamAiAction,
   ChangeTeamAction,
@@ -189,11 +190,11 @@ import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
-import { getSprite } from '../../ui/sprites';
+import { getSprite, preloadSprites } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
-import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
+import { MenuBackground, MenuScene, PanoramaFrames, loadPanoramaFrames, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
@@ -250,11 +251,18 @@ import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentatio
 import {
   clearUnitFx,
   drawMapDamageNumbers,
+  drawUnitTransitionOverlay,
+  getTransitionPosition,
   getUnitFx,
   isUnitDying,
   markDying,
+  offBoardTransitionUnits,
+  setTransitionEnv,
+  setUnitTransition,
   startDyingFade,
   DEFAULT_TRANSITION_TIME,
+  type TransitionAnimSheet,
+  type UnitTransitionState,
 } from '../../combat/map-unit-fx';
 import {
   accuracy as combatAccuracy,
@@ -338,6 +346,55 @@ import { reportUnimplemented } from '../strict-mode';
 let _game: any = null;
 export function setGameRef(g: any): void {
   _game = g;
+  setTransitionEnv({
+    playSfx: (nid) => g?.audioManager?.playSfx?.(nid),
+    anim: (nid) => transitionAnimSheet(g, nid),
+    flowerSprite: () => getSprite('particle_warp_flower'),
+  });
+  preloadTransitionArt(g);
+}
+
+/**
+ * Load the warp petal sprite and the Warp / Swoosh sheets as soon as a
+ * project is known, so the first transition has them from its first frame.
+ */
+export function preloadTransitionArt(game: any): void {
+  void preloadSprites(['particle_warp_flower']);
+  transitionAnimSheet(game, 'Warp');
+  transitionAnimSheet(game, 'Swoosh');
+}
+
+/** Whether the transition art (petals and both sheets) is ready (tests). */
+export function transitionArtReady(): boolean {
+  const ready = (nid: string) => {
+    const sheet = transitionSheets.get(nid);
+    return !!sheet && sheet !== 'loading';
+  };
+  return !!getSprite('particle_warp_flower') && ready('Warp') && ready('Swoosh');
+}
+
+const transitionSheets = new Map<string, TransitionAnimSheet | null | 'loading'>();
+
+/** The project's Warp / Swoosh map animation sheet, loaded on first use. */
+function transitionAnimSheet(game: any, nid: 'Warp' | 'Swoosh'): TransitionAnimSheet | null {
+  const cached = transitionSheets.get(nid);
+  if (cached === 'loading') return null;
+  if (cached !== undefined) return cached;
+  const prefab = game?.db?.mapAnimations?.get?.(nid);
+  // Not cached: the project's animations may not be loaded yet.
+  if (!prefab || !game?.resources?.loadImage) return null;
+  transitionSheets.set(nid, 'loading');
+  void game.resources.loadImage(`resources/animations/${nid}.png`).then((image: HTMLImageElement) => {
+    transitionSheets.set(nid, {
+      image,
+      frameWidth: Math.floor(image.width / prefab.frame_x),
+      frameHeight: Math.floor(image.height / prefab.frame_y),
+      frameX: prefab.frame_x,
+      numFrames: prefab.num_frames,
+      speed: Number(prefab.speed) || 25,
+    });
+  }).catch(() => transitionSheets.set(nid, null));
+  return null;
 }
 
 function parsePyevCommandValue(value: string): any {
@@ -429,6 +486,14 @@ function parsePythonEventArgs(
   return { value: (keyword: string) => values.get(keyword), flags };
 }
 
+/** Python str_utils.get_next_int: `name` if unused, else the first free "1", "2", ... */
+function nextIntNid(name: string, units: Map<string, unknown>): string {
+  if (!units.has(name)) return name;
+  let counter = 1;
+  while (units.has(String(counter))) counter++;
+  return String(counter);
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -478,10 +543,13 @@ function collectVisibleUnits(): {
   showHp: boolean;
   fx: MapSpriteFx | null;
   poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+  overlay: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
 }[] {
   const game = getGame();
   if (!game.board) return [];
-  const allUnits: UnitObject[] = game.board.getAllUnits();
+  // Python map_view draws every unit with a sprite position: on the map, or
+  // still on its fake tile while a departure transition plays.
+  const allUnits: UnitObject[] = [...game.board.getAllUnits(), ...offBoardTransitionUnits()];
   const currentTeam = game.phase.getCurrent();
   const result: {
     x: number;
@@ -501,10 +569,12 @@ function collectVisibleUnits(): {
     showHp: boolean;
     fx: MapSpriteFx | null;
     poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+    overlay: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
   }[] = [];
 
   for (const u of allUnits) {
-    if (!u.position) continue;
+    const drawPosition = getTransitionPosition(u);
+    if (!drawPosition) continue;
     // Python keeps an is_dying unit on the map until DeathManager's fade
     // ends; its HP already reached 0 when the combat results applied.
     if (u.isDead() && !isUnitDying(u)) continue;
@@ -580,8 +650,8 @@ function collectVisibleUnits(): {
     // downstream renderers (placeholder overlays, etc.) don't grey out
     // units from other teams.
     result.push({
-      x: u.position[0],
-      y: u.position[1],
+      x: drawPosition[0],
+      y: drawPosition[1],
       visualOffsetX,
       visualOffsetY,
       sprite: u.sprite,
@@ -593,6 +663,8 @@ function collectVisibleUnits(): {
       // (Python's map_view likewise draws HP only for culled units).
       get maxHp() { return u.maxHp; },
       get showHp() {
+        // UnitSprite.draw_hp: only with transition_state 'normal'.
+        if (unitFx?.transitioning) return false;
         return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: unitFx?.dying, dead: u.dead });
       },
       specialTag,
@@ -604,6 +676,7 @@ function collectVisibleUnits(): {
       poseOverride: unitFx?.direction
         ? { state: 'moving', direction: unitFx.direction }
         : null,
+      overlay: (s, left, top, cameraX, cameraY) => drawUnitTransitionOverlay(s, u, left, top, cameraX, cameraY),
     });
   }
   return result;
@@ -2355,7 +2428,8 @@ export class OptionMenuState extends State {
         const cEvents: (string | null)[] = getGame().gameVars.get('_custom_options_events') ?? [];
         const evName = cEvents[cIdx];
         const game = getGame();
-        game.state.back();
+        // Python triggers the event over the option menu, which is back on
+        // top once the event ends.
         let eventNid = evName;
         if (evName && !game.db.events.has(eventNid)) {
           const byName = [...game.db.events.values()].find(
@@ -2390,8 +2464,9 @@ export class OptionMenuState extends State {
     {
       switch (selected) {
         case 'guide': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('base_guide');
           break;
         }
@@ -2425,8 +2500,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'objective': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('objective_menu');
           break;
         }
@@ -2452,8 +2528,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'options': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('settings_menu');
           break;
         }
@@ -4110,7 +4187,16 @@ export function finishCoreItemUse(
     if (nextUses === 0 && !item.hasComponent('no_break_out_of_uses') && unit.items.includes(item)) {
       game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
     }
+    // Python handle_broken_items: the map combat (not a base use) alerts a
+    // player's broken item unless it targeted the user itself.
+    if (nextUses === 0 && !baseUse && game.memory.get(BROKEN_ALERT_SHOWN) !== item &&
+        shouldAlertBrokenItem(unit, item, uniqueTargets[0] ?? null)) {
+      const pending: Banner[] = game.memory.get(PENDING_ALERTS) ?? [];
+      pending.push(brokenItemBanner(item));
+      game.memory.set(PENDING_ALERTS, pending);
+    }
   }
+  if (game.memory.get(BROKEN_ALERT_SHOWN) === item) game.memory.delete(BROKEN_ALERT_SHOWN);
   triggerAbilityItemCharge(game, unit, item, 'use');
   if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
   else if (!canAttackAfterCombat(unit, item)) {
@@ -4123,10 +4209,123 @@ export function finishCoreItemUse(
       game.memory.set(ITEM_USE_CANTO, unit);
       if (unit.position) game.cursor?.setPos?.(unit.position[0], unit.position[1]);
     } else {
-      game.actionLog.doAction(new WaitAction(unit));
+      // Python WaitState: unit.wait() fires unit_wait (not actively chosen).
+      waitUnit(game, unit, false);
     }
   }
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+}
+
+/** Memory key: broken-item banners waiting for the item menus to resume. */
+const PENDING_ALERTS = 'pending_item_alerts';
+/** Memory key: the item whose broken alert the promotion flow already showed. */
+export const BROKEN_ALERT_SHOWN = 'broken_alert_shown';
+
+/**
+ * Python simple_combat.handle_broken_items' alert condition: a player unit's
+ * item broke, the combat was not the unit targeting itself, the unit is not
+ * dying, and no no_alert_on_break (alerts_when_broken, ALL_DEFAULT_TRUE).
+ */
+export function shouldAlertBrokenItem(unit: UnitObject, item: ItemObject, defender: UnitObject | null): boolean {
+  return unit !== defender && unit.team === 'player' && unit.currentHp > 0 && !unit.isDead() &&
+    !item.hasComponent('no_alert_on_break');
+}
+
+/** Python banner.BrokenItem: "<color>{item}</> broke." with the ItemBreak sound. */
+export function brokenItemBanner(item: ItemObject): Banner {
+  // The deprecated text_color component always resolves to 'white'.
+  const color = item.hasComponent('text_color') ? 'white' : 'blue';
+  return new Banner(`${colored(item.name, color)} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
+}
+
+/** Push an AlertState for a banner (Python game.alerts.append + change('alert')). */
+export function pushAlert(game: any, banner: Banner): void {
+  const alerts: Banner[] = game.memory.get(ALERTS) ?? [];
+  alerts.push(banner);
+  game.memory.set(ALERTS, alerts);
+  game.state.change('alert');
+}
+
+/**
+ * Open an item use's queued events (its end_combat events, then unit_wait)
+ * with its broken-item alerts above them: Python alerts in clean_up1, before
+ * clean_up2's events and WaitState.
+ */
+function openItemUseEvents(game: any): void {
+  if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+  showPendingAlerts(game);
+}
+
+/** The resumed item menu shows the item use's pending broken-item alerts first. */
+function showPendingAlerts(game: any): boolean {
+  const pending: Banner[] = game.memory.get(PENDING_ALERTS) ?? [];
+  if (pending.length === 0) return false;
+  game.memory.delete(PENDING_ALERTS);
+  for (const banner of pending) pushAlert(game, banner);
+  return true;
+}
+
+const ALERTS = 'alerts';
+
+/**
+ * Port of Python AlertState: shows the newest banner in game.alerts until it
+ * times out or, after its pause, any input dismisses it.
+ */
+export class AlertState extends State {
+  readonly name = 'alert';
+  override readonly transparent = true;
+
+  private current(): Banner | null {
+    const alerts: Banner[] = getGame().memory.get(ALERTS) ?? [];
+    return alerts[alerts.length - 1] ?? null;
+  }
+
+  private leave(): StateResult {
+    const game = getGame();
+    const alerts: Banner[] = game.memory.get(ALERTS) ?? [];
+    alerts.pop();
+    game.state.back();
+    return 'repeat';
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const alert = this.current();
+    if (event && alert && alert.canDismiss()) return this.leave();
+  }
+
+  override update(): StateResult {
+    const alert = this.current();
+    if (!alert) {
+      getGame().state.back();
+      return 'repeat';
+    }
+    if (alert.update(FRAMETIME)) return this.leave();
+  }
+
+  override draw(surf: Surface): Surface {
+    this.current()?.draw(surf);
+    return surf;
+  }
+}
+
+/**
+ * Port of Python WaitState: every unit that has attacked but is not finished
+ * waits through unit.wait() (unit_wait, actively_chosen False). Combat pushes
+ * it under its end-of-combat events, so it runs after them.
+ */
+export class WaitState extends State {
+  readonly name = 'wait';
+  override readonly transparent = true;
+
+  override update(): StateResult {
+    const game = getGame();
+    game.state.back();
+    for (const unit of game.getAllUnits() as UnitObject[]) {
+      if (unit.hasAttacked && !unit.finished && !unit.isDead()) waitUnit(game, unit, false);
+    }
+    if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+    return 'repeat';
+  }
 }
 
 /** Memory key: the unit whose map item use left it in Canto. */
@@ -4319,6 +4518,7 @@ export class ItemMenuState extends State {
   override begin(): StateResult {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
+    if (showPendingAlerts(game)) return 'repeat';
     if (unit && enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (!unit || !unit.position || unit.finished) {
       game.state.back();
@@ -4727,6 +4927,7 @@ export class ItemUseState extends State {
       return;
     }
 
+    if (showPendingAlerts(game)) return 'repeat';
     if (enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (unit.finished) {
       game.state.back();
@@ -5217,6 +5418,13 @@ export class ItemTargetingState extends MapState {
           canGoBack: true, popBelow: 1, itemUse,
         });
       }
+      // Python: the crest's map combat spent its last use and alerted
+      // handle_broken_items' banner before end_combat opened these screens.
+      if (this.item.maxUses > 0 && this.item.uses <= 1 &&
+          shouldAlertBrokenItem(unit, this.item, defender)) {
+        pushAlert(game, brokenItemBanner(this.item));
+        game.memory.set(BROKEN_ALERT_SHOWN, this.item);
+      }
       return;
     }
 
@@ -5293,7 +5501,7 @@ export class ItemTargetingState extends MapState {
         finishCoreItemUse(unit, activeItem, [], new Map(), false, true);
         game.memory.delete('item_use_item');
         game.highlight.clear();
-        if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+        if (game.eventManager?.hasActiveEvents()) openItemUseEvents(game);
         else game.state.back();
         return;
       }
@@ -5355,7 +5563,7 @@ export class ItemTargetingState extends MapState {
       game.memory.delete('item_use_item');
       game.highlight.clear();
       game.state.back();
-      if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+      openItemUseEvents(game);
     }
   }
 
@@ -6646,7 +6854,7 @@ function enterForkMultiTargetCombat(game: any, positions: [number, number][]): U
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'anim_exit' | 'post_exp_events' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
+type CombatPhase = 'combat' | 'anim_exit' | 'post_exp_events' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'broken_item' | 'cleanup';
 
 /**
  * Python pushes an EventState per trigger and the stack runs the most recent
@@ -6767,6 +6975,9 @@ export class CombatState extends State {
   private rankUpBanner: Banner | null = null;
   private stoleBanner: Banner | null = null;
   private stoleBannerShown: boolean = false;
+  /** Python handle_broken_items alerts, newest (shown first) first. */
+  private brokenBanners: Banner[] | null = null;
+  private brokenBanner: Banner | null = null;
   private gotItemBanner: Banner | null = null;
   private gotItemBannerQueue: Banner[] = [];
   private pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
@@ -7145,6 +7356,8 @@ export class CombatState extends State {
     this.rankUpBanner = null;
     this.stoleBanner = null;
     this.stoleBannerShown = false;
+    this.brokenBanners = null;
+    this.brokenBanner = null;
     this.gotItemBanner = null;
     this.gotItemBannerQueue = [];
     this.pendingDiscards = [];
@@ -7932,6 +8145,14 @@ export class CombatState extends State {
         break;
       }
 
+      case 'broken_item': {
+        if (!this.brokenBanner || this.brokenBanner.update(realDelta)) {
+          this.brokenBanner = null;
+          this.startRankUpOrCleanup();
+        }
+        break;
+      }
+
       case 'got_item': {
         if (!this.gotItemBanner || this.gotItemBanner.update(realDelta)) {
           this.gotItemBanner = null;
@@ -7967,10 +8188,6 @@ export class CombatState extends State {
             ));
           }
 
-          // Canto keeps the unit actionable; all other attacks consume the turn.
-          if (!hasCanto && !returnsToMenu && !resetByCombatHook) {
-            game.actionLog.doAction(new WaitAction(attacker));
-          }
         }
 
         // Python clean_up2 triggers CombatEnd and then the end_combat item and
@@ -8030,8 +8247,30 @@ export class CombatState extends State {
         // Clear eventCombat flag
         const wasEventCombat = this.eventCombat;
         game.eventCombat = false;
+        const stackNames: string[] = game.state.getStackNames?.() ?? [];
+        const aiCombat = stackNames[stackNames.length - 2] === 'ai';
 
         game.state.back();
+
+        // Python handle_state_stack: an event combat leaves the stack alone;
+        // an AI combat without Canto pushes 'wait' over the AI; a player
+        // attack that neither returns to the menu nor has Canto clears to
+        // free + 'wait'. WaitState then waits the attacker through
+        // unit.wait() (unit_wait, not actively chosen) after the end-of-combat
+        // events pushed above it.
+        if (!wasEventCombat && !hasCanto) {
+          if (aiCombat) {
+            game.state.change('wait');
+          } else if (!attacker.isDead() && !returnsToMenu) {
+            game.selectedUnit = null;
+            game._moveOrigin = null;
+            game._moveAction = null;
+            game.highlight.clear();
+            game.state.clear();
+            game.state.change('free');
+            game.state.change('wait');
+          }
+        }
 
         // A full player killer force-given a droppable item must resolve the
         // 'item_discard' state (Python GiveItem force_give -> item_discard).
@@ -8219,10 +8458,43 @@ export class CombatState extends State {
     this.dyingUnits = [];
   }
 
+  /**
+   * Python handle_broken_items: an alert for the attacker's broken item and
+   * then the defender's (AlertState shows the newest first), each only for a
+   * player unit that is not dying, never when a unit targeted itself.
+   */
+  private brokenItemBanners(): Banner[] {
+    const combat = this.getActiveCombat();
+    const results = this.results;
+    if (!combat || !results) return [];
+    const attacker = combat.attacker;
+    const defender = this.getPrimaryCombatDefender() ?? combat.defender ?? null;
+    const banners: Banner[] = [];
+    if (results.attackWeaponBroke && combat.attackItem &&
+        shouldAlertBrokenItem(attacker, combat.attackItem, defender)) {
+      banners.push(brokenItemBanner(combat.attackItem));
+    }
+    if (results.defenseWeaponBroke && defender && combat.defenseItem && attacker !== defender &&
+        shouldAlertBrokenItem(defender, combat.defenseItem, attacker)) {
+      banners.push(brokenItemBanner(combat.defenseItem));
+    }
+    return banners.reverse();
+  }
+
   private startRankUpOrCleanup(): void {
     if (this.isAnimationCombat && this.animCombat && this.animCombat.state !== 'done') {
       this.animCombat.expDone = true;
       this.phase = 'anim_exit';
+      this.phaseTimer = 0;
+      return;
+    }
+    // Python handle_broken_items pushes its alerts after on_broken's events,
+    // so the banners show before them (and, upstream, after the exp screen;
+    // the fork checks broken items last, so before everything else).
+    if (this.brokenBanners === null) this.brokenBanners = this.brokenItemBanners();
+    if (this.brokenBanners.length > 0) {
+      this.brokenBanner = this.brokenBanners.shift() as Banner;
+      this.phase = 'broken_item';
       this.phaseTimer = 0;
       return;
     }
@@ -8435,6 +8707,9 @@ export class CombatState extends State {
     }
     if (this.phase === 'got_item' && this.gotItemBanner) {
       this.gotItemBanner.draw(surf);
+    }
+    if (this.phase === 'broken_item' && this.brokenBanner) {
+      this.brokenBanner.draw(surf);
     }
   }
 
@@ -9451,6 +9726,49 @@ export class StatusEndstepState extends StatusUpkeepState {
 }
 
 // ============================================================================
+// 8d. DyingState
+// ============================================================================
+
+/**
+ * Port of Python DyingState / DeathManager for deaths outside combat
+ * (kill_unit): 'Death' sfx, a white flicker and the fade_out transition,
+ * then Die once default_transition_time - 50 ms have passed.
+ */
+export class DyingState extends State {
+  readonly name = 'dying';
+  override readonly transparent = true;
+
+  private units: UnitObject[] = [];
+  private startFrame = -1;
+
+  override start(): StateResult {
+    const game = getGame();
+    this.units = (game.memory.get('dying_units') as UnitObject[] | undefined) ?? [];
+    game.memory.delete('dying_units');
+    this.startFrame = -1;
+  }
+
+  override update(): StateResult {
+    const game = getGame();
+    if (this.startFrame < 0) {
+      this.startFrame = getFrameCount();
+      for (const unit of this.units) {
+        game.audioManager?.playSfx?.('Death');
+        startDyingFade(unit);
+      }
+    }
+    if ((getFrameCount() - this.startFrame) * FRAMETIME < DEFAULT_TRANSITION_TIME - 50) return;
+    for (const unit of this.units) {
+      clearUnitFx(unit);
+      if (unit.position) game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
+    }
+    this.units = [];
+    game.state.back();
+    return 'repeat';
+  }
+}
+
+// ============================================================================
 // 9. PhaseChangeState
 // ============================================================================
 
@@ -10219,7 +10537,12 @@ export class EventState extends State {
     pendingPortraitLoads: number;
     blockingPortraitLoads: number;
     background: HTMLImageElement | null;
+    backgroundPanorama: PanoramaFrames | null;
   }> = new WeakMap();
+  /** The panorama restoreParkedPresentation handed back with its background. */
+  private restoredPanorama: PanoramaFrames | null = null;
+  /** kill_unit's dying unit, waiting for its UnitDeath events to finish. */
+  private pendingDyingUnits = new WeakMap<GameEvent, UnitObject>();
   /**
    * Parked events in pause order. Python pushes a new EventState for each
    * triggered sub-event; the paused parents stay on the (transparent) stack
@@ -10275,6 +10598,8 @@ export class EventState extends State {
 
   // Background panorama image (drawn behind portraits, on top of map)
   private background: HTMLImageElement | null = null;
+  /** Python PanoramaBackground frame procession for `background`. */
+  private backgroundPanorama: PanoramaFrames | null = null;
   private pendingBackgroundLoad: boolean = false;
   private backgroundLoadDone: boolean = false;
   private backgroundLoadToken: number = 0;
@@ -10404,6 +10729,7 @@ export class EventState extends State {
       this.speakingPortrait = null;
       this.wasDialogTyping = false;
       this.background = null;
+      this.backgroundPanorama = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -10414,7 +10740,10 @@ export class EventState extends State {
       this.isHandlingLevelEnd = false;
       this.levelTransitionInProgress = false;
       const restoredBackground = this.restoreParkedPresentation(nextEvent);
-      if (restoredBackground !== undefined) this.background = restoredBackground;
+      if (restoredBackground !== undefined) {
+        this.background = restoredBackground;
+        this.backgroundPanorama = this.restoredPanorama;
+      }
     }
   }
 
@@ -10961,6 +11290,18 @@ export class EventState extends State {
 
       const ev = this.currentEvent;
 
+      // kill_unit pushed 'dying' under the UnitDeath events it triggered;
+      // with those done, the dying fade plays before this event goes on.
+      const dyingUnit = this.pendingDyingUnits.get(ev);
+      if (dyingUnit) {
+        this.pendingDyingUnits.delete(ev);
+        if (dyingUnit.position && isUnitDying(dyingUnit)) {
+          game.memory.set('dying_units', [dyingUnit]);
+          game.state.change('dying');
+          return;
+        }
+      }
+
       // Check if event is complete
       if (ev.isDone()) {
         this.finishAndDequeue();
@@ -11049,6 +11390,30 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   /** Python PanoramaBackground: cover the whole window, centered. */
+  /**
+   * Python PanoramaBackground.draw (also for a paused parent event): the
+   * current frame, scrolled horizontally for change_background;scroll
+   * (ScrollingBackground: unscaled, tiled, time / scroll_speed px), then
+   * update() advances the frame procession.
+   */
+  private drawBackgroundLayer(surf: Surface, image: HTMLImageElement, panorama: PanoramaFrames | null): void {
+    const frame = panorama?.image ?? image;
+    const speed = panorama?.scrollSpeed ?? null;
+    if (speed) {
+      const width = Math.max(1, frame.width);
+      const { x: ox, y: oy } = MenuScene.origin();
+      const counter = ((getFrameCount() * 1000 / 60) / speed) % width;
+      let x = ox - counter;
+      while (x > 0) x -= width;
+      for (; x < viewport.width; x += width) {
+        surf.blitImage(frame, 0, 0, frame.width, frame.height, Math.floor(x), oy);
+      }
+    } else {
+      this.drawEventBackground(surf, frame);
+    }
+    panorama?.update(FRAMETIME);
+  }
+
   private drawEventBackground(surf: Surface, image: HTMLImageElement): void {
     const bw = image.width;
     const bh = image.height;
@@ -11077,7 +11442,7 @@ export class EventState extends State {
       for (const event of this.parkedOrder) {
         const parked = this.parkedEventPresentation.get(event);
         if (!parked) continue;
-        if (parked.background) this.drawEventBackground(surf, parked.background);
+        if (parked.background) this.drawBackgroundLayer(surf, parked.background, parked.backgroundPanorama);
         // Python's paused Event.draw still updates its portraits (blinking,
         // fades) and drops the ones whose removal finished.
         for (const [name, portrait] of [...parked.portraits]) {
@@ -11107,7 +11472,7 @@ export class EventState extends State {
       // Python PanoramaBackground fills the whole 240x160 window. The web
       // viewport can be larger than the authored scene, so scale the panorama
       // to cover it (centered) instead of leaving the map visible around it.
-      this.drawEventBackground(surf, this.background);
+      this.drawBackgroundLayer(surf, this.background, this.backgroundPanorama);
     }
 
     // Update and draw portraits (sorted by priority, ascending)
@@ -11392,6 +11757,7 @@ export class EventState extends State {
       pendingPortraitLoads: this.pendingPortraitLoads,
       blockingPortraitLoads: this.blockingPortraitLoads,
       background: this.background,
+      backgroundPanorama: this.backgroundPanorama,
     });
     this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
     this.parkedOrder.push(previous);
@@ -11417,6 +11783,7 @@ export class EventState extends State {
     this.portraitPriorityCounter = parked.portraitPriorityCounter;
     this.pendingPortraitLoads = parked.pendingPortraitLoads;
     this.blockingPortraitLoads = parked.blockingPortraitLoads;
+    this.restoredPanorama = parked.backgroundPanorama;
     return parked.background;
   }
 
@@ -11454,8 +11821,10 @@ export class EventState extends State {
       eventResumeBarriers.splice(barrier, 1);
       this.parkPresentation(next);
       this.currentEvent = next;
+      this.restoredPanorama = null;
       const restoredBackground = this.restoreParkedPresentation(next);
       this.background = restoredBackground ?? null;
+      this.backgroundPanorama = this.restoredPanorama;
       game.state.back();
       return;
     }
@@ -11485,6 +11854,7 @@ export class EventState extends State {
           break;
         }
       }
+      this.restoredPanorama = null;
       const restoredBackground = this.restoreParkedPresentation(next) ?? null;
       if (suspendedIndex >= 0) {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
@@ -11501,6 +11871,7 @@ export class EventState extends State {
         }
       }
       this.background = restoredBackground;
+      this.backgroundPanorama = this.restoredPanorama;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -11518,6 +11889,7 @@ export class EventState extends State {
       this.eventTables.clear();
       this.eventTextboxes.clear();
       this.background = null;
+      this.backgroundPanorama = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -12238,6 +12610,7 @@ export class EventState extends State {
     speedMs: number,
     game: GameState,
     onComplete: () => void,
+    follow: boolean = false,
   ): boolean {
     if (!unit.position || !game.board || !game.pathSystem) return false;
     const fullPath = game.pathSystem.getPath(unit, target[0], target[1], game.board);
@@ -12275,6 +12648,14 @@ export class EventState extends State {
         unit.movementLeft = previousMovementLeft;
         onComplete();
       },
+      // Python MovementSystem.update: a following event move puts the
+      // cursor on the unit and centers the camera on it at every tile.
+      follow
+        ? (position) => {
+          game.cursor?.setPos(position[0], position[1]);
+          game.camera?.focusTile(position[0], position[1]);
+        }
+        : undefined,
     );
     return true;
   }
@@ -13381,7 +13762,6 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        if (!noFollow) game.camera?.focusTile(targetPos[0], targetPos[1]);
         if (this.skipMode || movementType === 'immediate') {
           game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
           this.advancePointer();
@@ -13390,7 +13770,9 @@ export class EventState extends State {
         if (movementType !== 'normal') {
           // Python Warp/FadeMove/Swoosh actions update position and begin their
           // sprite transition without pausing the event command stream.
+          const from: [number, number] = [unit.position[0], unit.position[1]];
           game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
+          this.moveTransition(unit, movementType, from);
           this.advancePointer();
           return false;
         }
@@ -13402,7 +13784,7 @@ export class EventState extends State {
             this.blockingEventMovements = 0;
             this.advancePointer();
           }
-        });
+        }, !noFollow);
         if (!started) {
           this.blockingEventMovements = 0;
           this.advancePointer();
@@ -13416,9 +13798,13 @@ export class EventState extends State {
       }
 
       case 'add_unit': {
-        const unitNid = args[0] ?? '';
-        const posArg = args[1] ?? 'starting';
-        const placement = (args[3] || 'giveup').toLowerCase().trim();
+        // add_unit;Unit;Position?;EntryType? (fade);Placement?;AnimationType?
+        const auArgs = parsePythonEventArgs(args, ['Unit'], ['Position', 'EntryType', 'Placement', 'AnimationType']);
+        const unitNid = auArgs.value('Unit') ?? '';
+        const posArg = auArgs.value('Position') ?? 'starting';
+        const placement = (auArgs.value('Placement') || 'giveup').toLowerCase().trim();
+        const entryType = auArgs.value('EntryType') || 'fade';
+        const fadeDirection = this.fadeDirection(auArgs.value('AnimationType'));
         const existing = game.units.get(unitNid);
         if (existing?.position || existing?.isDead()) {
           this.advancePointer();
@@ -13439,6 +13825,7 @@ export class EventState extends State {
             : null;
           if (finalPosition && game.board) {
             game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPosition, true));
+            this.entryTransition(existing, entryType, fadeDirection, game);
           } else {
             console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
           }
@@ -13463,6 +13850,8 @@ export class EventState extends State {
           : null;
         if (finalPosition) {
           this.spawnUnitFromLevelData(unitData, finalPosition, game);
+          const placed = this.findUnit(unitNid);
+          if (placed) this.entryTransition(placed, entryType, fadeDirection, game);
         } else {
           console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
         }
@@ -13578,10 +13967,9 @@ export class EventState extends State {
           const parsed = this.resolvePosition(posArg, game);
           if (parsed) targetPos = this._checkPlacement(parsed, placement, game, newUnit);
         }
-        void entryType; // Placement animation type is cosmetic-only in this port.
-
         game.actionLog.doAction(new CreateUnitAction(game, newUnit, targetPos));
         this.loadMapSpriteForUnit(newUnit, game);
+        if (targetPos) this.entryTransition(newUnit, entryType, null, game);
 
         // Mirror Python's {created_unit} substitution when Nid was left blank:
         // subsequent {e:created_unit} lookups in this event resolve to the
@@ -14513,9 +14901,11 @@ export class EventState extends State {
         // from the unit registry. Persistent player units must remain in
         // game.units (as off-map reserve members) so they carry over to
         // future levels; only the map/board presence is cleared here.
-        const unitNid = args[0] ?? '';
-        const unit = this.findUnit(unitNid);
+        // remove_unit;Unit;RemoveType? (fade);AnimationType?
+        const ruArgs = parsePythonEventArgs(args, ['Unit'], ['RemoveType', 'AnimationType']);
+        const unit = this.findUnit(ruArgs.value('Unit') ?? '');
         if (unit?.position) {
+          this.exitTransition(unit, ruArgs.value('RemoveType') || 'fade', this.fadeDirection(ruArgs.value('AnimationType')), game);
           game.actionLog.doAction(new LeaveMapAction(game, unit));
         }
         this.advancePointer();
@@ -14548,7 +14938,13 @@ export class EventState extends State {
           ? [unit.position[0], unit.position[1]] as [number, number]
           : undefined;
         game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
-        game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
+        // Python: an on-map unit goes through game.death.should_die and the
+        // DyingState (Death sfx, white flicker, fade; Die after 400 ms) once
+        // the UnitDeath events it triggers have run; `immediate` and off-map
+        // units die at once.
+        const animatedDeath = wasOnMap && !immediate && !this.skipMode;
+        if (animatedDeath) markDying(unit);
+        else game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
         const queue = game.eventManager.eventQueue as GameEvent[];
         const priorLength = queue.length;
         game.eventManager.trigger(
@@ -14560,25 +14956,27 @@ export class EventState extends State {
           },
           { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
         );
+        if (animatedDeath && this.currentEvent) this.pendingDyingUnits.set(this.currentEvent, unit);
         if (queue.length > priorLength && this.currentEvent) {
           this.advancePointer();
           return this.runEventsQueuedSince(priorLength, game);
         }
-        if (this.skipMode || immediate || !wasOnMap) {
-          this.advancePointer();
-          return false;
-        }
-        this.waiting = true;
-        this.waitTimer = 500;
-        return true;
+        this.advancePointer();
+        return false;
       }
 
       case 'add_group': {
-        // Placement: giveup (default), stack, closest, push
-        const groupNid = args[0] ?? '';
-        const startingGroup = args[1] ?? '';
-        // args[2] = entry type (ignored for now — all entries are immediate)
-        const placement = (args[3] ?? 'giveup').toLowerCase().trim();
+        // Python event_functions.add_group: Group, StartingGroup?, EntryType?
+        // (fade), Placement? (giveup), flag `create` (place fresh copies of
+        // the group's level units, Event._copy_unit). The web has no unit
+        // entry transitions, so every EntryType arrives at once, as add_unit
+        // and create_unit do.
+        const agArgs = parsePythonEventArgs(args, ['Group'], ['StartingGroup', 'EntryType', 'Placement'], ['create']);
+        const groupNid = agArgs.value('Group') ?? '';
+        const startingGroup = agArgs.value('StartingGroup') ?? '';
+        const placement = (agArgs.value('Placement') || 'giveup').toLowerCase().trim();
+        const createCopies = agArgs.flags.has('create');
+        const groupEntryType = agArgs.value('EntryType') || 'fade';
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (!group) {
@@ -14591,11 +14989,13 @@ export class EventState extends State {
         const levelUnits = game.currentLevel?.units ?? [];
 
         for (const uNid of unitNids) {
-          // Skip if already on map or dead
-          const existing = this.findUnit(uNid);
-          if (existing?.position || existing?.isDead()) continue;
-          // If not spawned yet, skip units that are already in the registry
-          if (existing && existing.position) continue;
+          let existing = this.findUnit(uNid);
+          if (createCopies) {
+            existing = this.copyLevelUnit(uNid, game) ?? undefined;
+            if (!existing) continue;
+          } else if (existing?.position || existing?.isDead()) {
+            continue;
+          }
 
           const position = this._getGroupPosition(startingGroup, uNid, group, groups, game);
           if (!position) continue;
@@ -14615,9 +15015,12 @@ export class EventState extends State {
               }
             }
             this.spawnUnitFromLevelData(unitData, finalPos, game);
+            const placed = this.findUnit(uNid);
+            if (placed) this.entryTransition(placed, groupEntryType, null, game);
           } else {
             // Unit exists but not on map — place them
             game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPos, true));
+            this.entryTransition(existing, groupEntryType, null, game);
           }
         }
         this.advancePointer();
@@ -14680,8 +15083,15 @@ export class EventState extends State {
 
           const spawnedUnit = this.findUnit(unitNid);
           if (!spawnedUnit || !game.board) continue;
-          if (this.skipMode || movementType !== 'normal') {
+          if (movementType === 'swoosh' && !this.skipMode) {
+            // Python Event._move_unit has no swoosh branch: the unit stays
+            // where it arrived on the map edge.
+          } else if (this.skipMode || movementType !== 'normal') {
+            const from: [number, number] | null = spawnedUnit.position
+              ? [spawnedUnit.position[0], spawnedUnit.position[1]]
+              : null;
             game.actionLog.doAction(new ArriveOnMapAction(game, spawnedUnit, finalDestination));
+            if (!this.skipMode && from) this.moveTransition(spawnedUnit, movementType, from);
           } else {
             moves.push({ unit: spawnedUnit, target: finalDestination });
           }
@@ -14691,20 +15101,18 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        if (!noFollow) {
-          const target = moves[moves.length - 1].target;
-          game.camera?.focusTile(target[0], target[1]);
-        }
         const blocks = !noBlock;
         if (blocks) this.blockingEventMovements = moves.length;
         let startedMoves = 0;
         for (const move of moves) {
+          // Python's camera follows the last following mover.
+          const followMove = !noFollow && move === moves[moves.length - 1];
           const started = this.beginEventMove(move.unit, move.target, 120, game, () => {
             if (blocks) {
               this.blockingEventMovements--;
               if (this.blockingEventMovements === 0) this.advancePointer();
             }
-          });
+          }, followMove);
           if (started) startedMoves++;
           else if (blocks) this.blockingEventMovements--;
         }
@@ -14731,6 +15139,9 @@ export class EventState extends State {
         // fix and rationale (persistent player units must survive as
         // off-map reserve members).
         const groupNid = args[0] ?? '';
+        // Python remove_group: warp -> WarpOut, fade (default) -> FadeOut,
+        // anything else leaves at once.
+        const removeType = (args[1] || 'fade').toLowerCase();
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (group) {
@@ -14738,6 +15149,7 @@ export class EventState extends State {
           for (const uNid of unitNids) {
             const unit = this.findUnit(uNid);
             if (unit?.position) {
+              if (removeType === 'warp' || removeType === 'fade') this.exitTransition(unit, removeType, null, game);
               game.actionLog.doAction(new LeaveMapAction(game, unit));
             }
           }
@@ -14776,8 +15188,12 @@ export class EventState extends State {
           if (!destination) continue;
           const finalPosition = this._checkPlacement(destination, placement, game, unit);
           if (!finalPosition) continue;
-          if (this.skipMode || movementType !== 'normal') {
+          if (movementType === 'swoosh' && !this.skipMode) {
+            // Python Event._move_unit has no swoosh branch: no move.
+          } else if (this.skipMode || movementType !== 'normal') {
+            const from: [number, number] = [unit.position[0], unit.position[1]];
             game.actionLog.doAction(new WarpUnitAction(unit, finalPosition, game.board));
+            if (!this.skipMode) this.moveTransition(unit, movementType, from);
           } else {
             moves.push({ unit, target: finalPosition });
           }
@@ -14787,20 +15203,18 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        if (!noFollow) {
-          const target = moves[moves.length - 1].target;
-          game.camera?.focusTile(target[0], target[1]);
-        }
         const blocks = !noBlock;
         if (blocks) this.blockingEventMovements = moves.length;
         let startedMoves = 0;
         for (const move of moves) {
+          // Python's camera follows the last following mover.
+          const followMove = !noFollow && move === moves[moves.length - 1];
           const started = this.beginEventMove(move.unit, move.target, 120, game, () => {
             if (blocks) {
               this.blockingEventMovements--;
               if (this.blockingEventMovements === 0) this.advancePointer();
             }
-          });
+          }, followMove);
           if (started) startedMoves++;
           else if (blocks) this.blockingEventMovements--;
         }
@@ -15878,11 +16292,19 @@ export class EventState extends State {
       }
 
       case 'open_convoy': {
-        // open_convoy — opens the convoy/supply UI (stub for now)
-        // This would push a supply_items state; currently just skip
-        console.warn('open_convoy: convoy UI not yet implemented');
+        // Python event_functions.open_convoy;GlobalUnit;[include_other_units]:
+        // pause the event over 'supply_items' for that unit.
+        const ocArgs = parsePythonEventArgs(args, ['GlobalUnit'], [], ['include_other_units']);
+        const ocUnit = this.findUnit(ocArgs.value('GlobalUnit') ?? '');
         this.advancePointer();
-        return false;
+        if (!ocUnit) {
+          console.warn(`open_convoy: Couldn't find unit with nid ${ocArgs.value('GlobalUnit') ?? ''}`);
+          return false;
+        }
+        game.memory.set('supply_unit', ocUnit);
+        game.memory.set('include_other_units', ocArgs.flags.has('include_other_units'));
+        game.state.change('supply_items');
+        return true;
       }
 
       // ----- Talk management -----
@@ -16387,6 +16809,8 @@ export class EventState extends State {
         // unit registry. See 'remove_unit' above for rationale.
         const enemies = game.board?.getTeamUnits('enemy') ?? [];
         for (const enemy of enemies) {
+          // action.FadeOut
+          this.exitTransition(enemy, 'fade', null, game);
           game.actionLog.doAction(new LeaveMapAction(game, enemy));
         }
         this.advancePointer();
@@ -16569,7 +16993,7 @@ export class EventState extends State {
           game.tilemap.animations.push(mapAnim);
         }
 
-        if (maNoBlock || maPermanent) {
+        if (maNoBlock || maPermanent || this.skipMode) {
           this.advancePointer();
           return false;
         }
@@ -16580,11 +17004,20 @@ export class EventState extends State {
       }
 
       case 'remove_map_anim': {
-        // remove_map_anim;AnimNid
+        // Python remove_map_anim;MapAnim;FloatPosition;[overlay]:
+        // action.RemoveMapAnim drops the animations with that nid on that
+        // position, from the overlay layer with the flag.
         const rmaAnimNid = args[0] ?? '';
-        if (game.tilemap) {
-          game.tilemap.animations = game.tilemap.animations.filter((a: MapAnimation) => a.nid !== rmaAnimNid);
-          game.tilemap.highAnimations = game.tilemap.highAnimations.filter((a: MapAnimation) => a.nid !== rmaAnimNid);
+        const rmaPosArg = args[1] ?? '';
+        const rmaMatch = rmaPosArg.match(/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/);
+        const rmaPos: [number, number] | null = rmaMatch
+          ? [parseFloat(rmaMatch[1]), parseFloat(rmaMatch[2])]
+          : this.resolvePosition(rmaPosArg, game);
+        if (!rmaPos) {
+          console.warn(`remove_map_anim: Could not find position ${rmaPosArg}`);
+        } else if (game.tilemap) {
+          const overlay = args.slice(2).some((arg) => arg.toLowerCase().trim() === 'overlay');
+          game.actionLog.doAction(new RemoveMapAnimationAction(game.tilemap, rmaAnimNid, rmaPos, overlay));
         }
         this.advancePointer();
         return false;
@@ -17076,22 +17509,25 @@ export class EventState extends State {
       case 'change_background': {
         // change_background;[PanoramaNid];[keep_portraits];[scroll]
         // No panorama arg = remove background
+        // Python ChangeBackground: Panorama?, Speed? (ms per pixel with the
+        // scroll flag, default 50), flags keep_portraits and scroll.
         const bgKnownFlags = new Set(['keep_portraits', 'scroll']);
         const bgFlagSet = new Set<string>();
-        let bgNid: string | null = null;
-
+        const bgValues: string[] = [];
         for (const a of args) {
           const lower = a.trim().toLowerCase();
-          if (bgKnownFlags.has(lower)) {
-            bgFlagSet.add(lower);
-          } else if (a.trim() && !bgNid) {
-            bgNid = a.trim(); // Keep original case for the panorama NID
-          }
+          if (bgKnownFlags.has(lower)) bgFlagSet.add(lower);
+          else bgValues.push(a.trim());
         }
+        const bgArgs = parsePythonEventArgs(bgValues, [], ['Panorama', 'Speed']);
+        const bgNid: string | null = bgArgs.value('Panorama') || null;
+        const bgSpeed = parseInt(bgArgs.value('Speed') ?? '', 10);
+        const bgScrollSpeed = bgFlagSet.has('scroll') ? (Number.isFinite(bgSpeed) && bgSpeed > 0 ? bgSpeed : 50) : null;
 
         if (!bgNid) {
           // Remove background
           this.background = null;
+          this.backgroundPanorama = null;
           this.pendingBackgroundLoad = false;
           this.backgroundLoadDone = false;
           this.backgroundLoadToken++;
@@ -17109,19 +17545,28 @@ export class EventState extends State {
           this.pendingBackgroundLoad = true;
           this.backgroundLoadDone = false;
 
-          const resourcePromise = game.resources?.loadPanorama(panoramaNid);
+          // Python create_background(panorama, False): a PanoramaBackground
+          // over every frame of the panorama.
+          const resourcePromise = game.resources
+            ? loadPanoramaFrames(panoramaNid, game.resources)
+              .then((frames) => frames.length ? frames : Promise.reject(new Error('missing')))
+            : null;
           if (!resourcePromise) {
             this.backgroundLoadDone = true;
           } else {
-            resourcePromise.then((img: HTMLImageElement) => {
+            resourcePromise.then((frames: HTMLImageElement[]) => {
               if (this.backgroundLoadToken === token) {
-                this.background = img;
+                this.background = frames[0];
+                this.backgroundPanorama = new PanoramaFrames(frames);
+                // create_background(panorama, scroll): a single frame scrolls;
+                // multi-frame panoramas animate in place.
+                if (bgScrollSpeed !== null && frames.length === 1) {
+                  this.backgroundPanorama.scrollSpeed = bgScrollSpeed;
+                }
               }
             }).catch(() => {
+              // Python changes nothing for a panorama it doesn't have.
               console.warn(`EventState: panorama "${panoramaNid}" not found`);
-              if (this.backgroundLoadToken === token) {
-                this.background = null;
-              }
             }).finally(() => {
               if (this.backgroundLoadToken === token) {
                 this.backgroundLoadDone = true;
@@ -17489,30 +17934,30 @@ export class EventState extends State {
       }
 
       case 'make_generic': {
-        // make_generic;NID;Klass;Level;Team;AI;Faction;AnimVariant;ItemList
-        let mgNid = args[0] ?? '';
+        // make_generic;Nid;Klass;Level;Team;AI?;Faction?;AnimationVariant?;
+        // ItemList? (positional or Keyword=value, as Python parses them).
+        const mgArgs = parsePythonEventArgs(
+          args.filter((arg) => arg.toLowerCase() !== 'no_warn'),
+          ['Nid', 'Klass', 'Level', 'Team'],
+          ['AI', 'Faction', 'AnimationVariant', 'ItemList'],
+        );
+        let mgNid = (mgArgs.value('Nid') ?? '').trim();
         const assignCreatedUnit = mgNid.length === 0;
-        const mgKlass = args[1] ?? '';
-        const mgLevel = parseInt(args[2], 10) || 1;
-        const mgTeam = args[3] || 'player';
-        const mgAi = args[4] || 'None';
-        // args[5] = faction (ignored for now)
-        const mgFlags = new Set(['no_warn']);
-        const mgVariant = args[6] && !mgFlags.has(args[6].toLowerCase())
-          ? args[6]
-          : '';
-        const mgItemStr = args[7] && !mgFlags.has(args[7].toLowerCase())
-          ? args[7]
-          : '';
+        const mgKlass = mgArgs.value('Klass') ?? '';
+        const mgLevel = parseInt(mgArgs.value('Level') ?? '', 10) || 1;
+        const mgTeam = mgArgs.value('Team') || 'player';
+        const mgAi = mgArgs.value('AI') || 'None';
+        const mgFaction = mgArgs.value('Faction') ?? '';
+        const mgVariant = mgArgs.value('AnimationVariant') ?? '';
+        const mgItemStr = mgArgs.value('ItemList') ?? '';
         const mgItems: [string, boolean][] = mgItemStr
-          ? mgItemStr.split(',').map((s: string) => [s.trim(), false] as [string, boolean])
+          ? mgItemStr.split(',').map((s: string) => s.trim()).filter(Boolean)
+            .map((nid: string) => [nid, false] as [string, boolean])
           : [];
 
-        // Auto-generate NID if empty
+        // Python str_utils.get_next_int('201', unit nids).
         if (!mgNid) {
-          let counter = 201;
-          while (game.units.has(String(counter))) counter++;
-          mgNid = String(counter);
+          mgNid = nextIntNid('201', game.units);
         } else if (game.units.has(mgNid)) {
           console.warn(`make_generic: Unit "${mgNid}" already exists`);
           this.advancePointer();
@@ -17533,7 +17978,7 @@ export class EventState extends State {
           level: mgLevel,
           klass: mgKlass,
           // Python: a blank faction defaults to the first faction.
-          faction: args[5] || ((game.db.factions?.values?.().next?.().value as any)?.nid ?? ''),
+          faction: mgFaction || ((game.db.factions?.values?.().next?.().value as any)?.nid ?? ''),
           starting_items: mgItems,
           starting_skills: [],
           team: mgTeam,
@@ -17635,9 +18080,25 @@ export class EventState extends State {
 
       case 'hide_combat_ui':
       case 'show_combat_ui':
-      case 'pause_background':
+        // Python event_functions: game_vars['_hide_ui'] (read by
+        // AnimationCombat.ui_should_be_hidden), set directly, not an action.
+        game.gameVars.set('_hide_ui', cmd.type === 'hide_combat_ui');
+        this.advancePointer();
+        return false;
+
+      case 'pause_background': {
+        // pause_background;[PauseAt]: PanoramaBackground.pause(pause_at).
+        const pauseArg = (args[0] ?? '').trim();
+        const pauseAt = pauseArg ? parseInt(pauseArg, 10) : NaN;
+        if (!this.backgroundPanorama) console.warn('Event pause_background: No current background to pause!');
+        else this.backgroundPanorama.pause(Number.isFinite(pauseAt) ? pauseAt : null);
+        this.advancePointer();
+        return false;
+      }
+
       case 'unpause_background':
-        // Visual/UI commands — skip for now to allow event progression
+        if (!this.backgroundPanorama) console.warn('Event unpause_background: No current background to unpause');
+        else this.backgroundPanorama.unpause();
         this.advancePointer();
         return false;
 
@@ -18785,6 +19246,96 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
   // Unit spawning helper: handles both unique and generic units from level data
   // -----------------------------------------------------------------------
+
+  /** Python add_unit/remove_unit AnimationType: a fade direction, unless 'fade'. */
+  private fadeDirection(animationType: string | undefined): string | null {
+    const value = (animationType ?? '').trim().toLowerCase();
+    return value && value !== 'fade' ? value : null;
+  }
+
+  /**
+   * Python Event._place_unit's presentation once the unit is on its tile:
+   * warp -> WarpIn, swoosh -> SwooshIn, fade -> FadeIn (sliding in from a
+   * map edge or a fade direction), immediate -> nothing. Skipped events
+   * arrive at once. Nothing here blocks the event.
+   */
+  private entryTransition(unit: UnitObject, entryType: string, fadeDirection: string | null, game: any): void {
+    if (this.skipMode || !unit.position) return;
+    const type = entryType.trim().toLowerCase();
+    if (type === 'warp') setUnitTransition(unit, 'warp_in');
+    else if (type === 'swoosh') setUnitTransition(unit, 'swoosh_in');
+    else if (type === 'fade') this.fadeTransition(unit, fadeDirection, true, game);
+  }
+
+  /**
+   * Python remove_unit's presentation, before the unit leaves: warp ->
+   * WarpOut, swoosh -> SwooshOut, fade -> FadeOut, else LeaveMap alone.
+   */
+  private exitTransition(unit: UnitObject, removeType: string, fadeDirection: string | null, game: any): void {
+    if (this.skipMode || !unit.position) return;
+    const type = removeType.trim().toLowerCase();
+    if (type === 'warp') setUnitTransition(unit, 'warp_out');
+    else if (type === 'swoosh') setUnitTransition(unit, 'swoosh_out');
+    else if (type === 'fade') this.fadeTransition(unit, fadeDirection, false, game);
+  }
+
+  /**
+   * action.FadeIn / FadeOut: on a map edge (or with a fade direction) the
+   * sprite slides a tile in (2 px out) as fake_in/fake_out, else it fades.
+   */
+  private fadeTransition(unit: UnitObject, fadeDirection: string | null, arriving: boolean, game: any): void {
+    const [x, y] = unit.position as [number, number];
+    const width = game.tilemap?.width ?? 0;
+    const height = game.tilemap?.height ?? 0;
+    const onBorder = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+    if (!onBorder && !fadeDirection) {
+      setUnitTransition(unit, arriving ? 'fade_in' : 'fade_out');
+      return;
+    }
+    const distance = arriving ? TILEWIDTH : 2;
+    let offset: [number, number] = [0, 0];
+    if (x === 0 || fadeDirection === 'west') offset = [-distance, 0];
+    else if (x === width - 1 || fadeDirection === 'east') offset = [distance, 0];
+    else if (y === 0 || fadeDirection === 'north') offset = [0, -distance];
+    else if (y === height - 1 || fadeDirection === 'south') offset = [0, distance];
+    setUnitTransition(unit, arriving ? 'fake_in' : 'fake_out', { offset });
+  }
+
+  /** action.Warp / FadeMove / Swoosh: the move transition from `from`. */
+  private moveTransition(unit: UnitObject, movementType: string, from: [number, number]): void {
+    const type = movementType.trim().toLowerCase();
+    const state: UnitTransitionState | null = type === 'warp' ? 'warp_move'
+      : type === 'fade' ? 'fade_move'
+        : type === 'swoosh' ? 'swoosh_move'
+          : null;
+    if (state && !this.skipMode) setUnitTransition(unit, state, { from });
+  }
+
+  /**
+   * Python Event._copy_unit: a fresh off-map copy of a level unit, named by
+   * str_utils.get_next_int(prefab nid, registry) and registered directly.
+   */
+  private copyLevelUnit(unitNid: string, game: any): UnitObject | null {
+    const unitData = (game.currentLevel?.units ?? []).find((candidate: any) => candidate.nid === unitNid);
+    if (!unitData) {
+      console.warn(`EventState: Could not find level unit prefab for unit with nid: ${unitNid}`);
+      return null;
+    }
+    const newNid = nextIntNid(unitData.nid, game.units);
+    if (unitData.generic === true) {
+      game.spawnGenericUnit({ ...unitData, nid: newNid, starting_position: null });
+    } else {
+      const prefab = game.db.units.get(unitData.nid);
+      if (!prefab) return null;
+      game.spawnUnit({ ...prefab, nid: newNid }, unitData.team ?? 'player', null, unitData.ai ?? 'None');
+    }
+    const copy: UnitObject | undefined = game.units.get(newNid);
+    if (!copy) return null;
+    copy.dead = false;
+    if (game.currentParty) copy.party = game.currentParty;
+    this.loadMapSpriteForUnit(copy, game);
+    return copy;
+  }
 
   private spawnUnitFromLevelData(
     unitData: any,

@@ -34,6 +34,8 @@ export class MapAnimation {
   /** Position in pixel coords. */
   x: number;
   y: number;
+  /** The tile position it was placed at (Python Animation.xy_pos). */
+  readonly tilePosition: [number, number];
 
   private image: HTMLImageElement | null = null;
   private frameX: number;
@@ -93,6 +95,7 @@ export class MapAnimation {
     this.hold = options?.hold ?? false;
 
     // Convert tile coords to pixel coords, centered on tile
+    this.tilePosition = [tileX, tileY];
     this.x = tileX * TILEWIDTH;
     this.y = tileY * TILEHEIGHT;
   }

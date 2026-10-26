@@ -3222,6 +3222,8 @@ test.describe('Event command parity', () => {
       game.board.setUnit(origin[0], origin[1], caster);
       game.board.setUnit(origin[0] + 2, origin[1], targetA);
       game.board.setUnit(origin[0] + 2, origin[1] + 1, targetB);
+      // Registered like real units: Python's WaitState waits game.units.
+      for (const unit of [caster, targetA, targetB]) game.units.set(unit.nid, unit);
       game.selectedUnit = caster;
       game.combatTarget = targetA;
       game.memory.set('combat_item', spell);
@@ -3267,6 +3269,7 @@ test.describe('Event command parity', () => {
       game.board.removeUnit(caster);
       game.board.removeUnit(targetA);
       game.board.removeUnit(targetB);
+      for (const unit of [caster, targetA, targetB]) game.units.delete(unit.nid);
       delete (window as any).__aoeStateTest;
       return result;
     });

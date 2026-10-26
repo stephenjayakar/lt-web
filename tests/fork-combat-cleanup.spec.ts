@@ -14,10 +14,10 @@ async function waitForHarness(page: Page): Promise<void> {
 
 type Entry = { label: string; combat: boolean; phase: string | null; onMap: boolean };
 
-async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
+async function runHookCombat(page: Page, fork: boolean, extras = false): Promise<Entry[]> {
   await page.goto('/?harness=true&level=0&clean=true&bundle=false');
   await waitForHarness(page);
-  const ready = await page.evaluate(async ({ fork }) => {
+  const ready = await page.evaluate(async ({ fork, extras }) => {
     const game = (window as any).__gameRef;
     const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
     setForkEngine(fork);
@@ -60,6 +60,9 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
     define('_ForkCombatDeath', 'combat_death', 'combat_death', "unit1.nid == '_ForkDefender'");
     define('_ForkUnitDeath', 'unit_death', 'unit_death', "unit1.nid == '_ForkDefender'");
     define('_ForkCombatEnd', 'combat_end', 'combat_end', "unit2.nid == '_ForkDefender'");
+    if (extras) {
+      define('_ForkUnitWait', 'unit_wait', 'unit_wait', "unit1.nid == '_ForkAttacker' and not actively_chosen");
+    }
     game.db.skills.set('_ForkSkill', {
       nid: '_ForkSkill', name: '_ForkSkill', desc: '', icon_nid: '', icon_index: [0, 0],
       components: [['event_after_combat', '_ForkSkillAfter']],
@@ -72,7 +75,7 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
       nid: '_ForkSpell', name: '_ForkSpell', desc: '', icon_nid: '', icon_index: [0, 0],
       components: [
         ['spell', null], ['target_enemy', null], ['damage', 99], ['hit', 100],
-        ['uses', 2], ['min_range', 1], ['max_range', 2], ['exp', 30],
+        ['uses', extras ? 1 : 2], ['min_range', 1], ['max_range', 2], ['exp', 30],
         ['event_on_hit', '_ForkOnHit'], ['event_after_combat_even_miss', '_ForkItemAfter'],
       ],
     });
@@ -90,10 +93,10 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
     (window as any).__forkOrderTest = { attacker, defender };
     game.state.change('combat');
     return true;
-  }, { fork });
+  }, { fork, extras });
   expect(ready).toBe(true);
 
-  return page.evaluate(async () => {
+  return page.evaluate(async ({ extras }) => {
     const game = (window as any).__gameRef;
     const harness = (window as any).__harness;
     const { attacker, defender } = (window as any).__forkOrderTest;
@@ -101,6 +104,7 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
     const combatState = (game.state as any).allStates.get('combat');
     let last = '';
     let sawExp = false;
+    let sawBroken = false;
     for (let frame = 0; frame < 4000; frame++) {
       harness.stepFrames(1, null);
       if (frame % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -110,6 +114,10 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
           String(combatState.phase).startsWith('exp')) {
         sawExp = true;
         seen.push({ label: 'exp', combat: true, phase: combatState.phase, onMap: !!defender.position });
+      }
+      if (!sawBroken && inCombat && combatState.phase === 'broken_item') {
+        sawBroken = true;
+        seen.push({ label: `broken:${combatState.brokenBanner?.text}`, combat: true, phase: 'broken_item', onMap: !!defender.position });
       }
       const order = String(game.levelVars.get('_fork_order') ?? '');
       if (order !== last) {
@@ -121,7 +129,8 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
         });
         last = order;
       }
-      if (game.state.getCurrentState()?.name === 'free' && last.includes('combat_end')) break;
+      if (game.state.getCurrentState()?.name === 'free' &&
+          last.includes(extras ? 'unit_wait' : 'combat_end')) break;
     }
     const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
     setForkEngine(false);
@@ -130,7 +139,7 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
     game.units.delete(defender.nid);
     delete (window as any).__forkOrderTest;
     return seen;
-  });
+  }, { extras });
 }
 
 test.describe('EOtF engine fork combat cleanup order', () => {
@@ -156,5 +165,29 @@ test.describe('EOtF engine fork combat cleanup order', () => {
       'on_hit', 'exp', 'combat_death', 'unit_death', 'item_after_combat', 'skill_after_combat', 'combat_end',
     ]);
     expect(timeline[3]).toMatchObject({ onMap: true });
+  });
+
+  // Python handle_broken_items alerts "<blue>X</> broke." (pushed last in the
+  // fork's clean_up, so shown first; after the exp screen upstream), and
+  // handle_state_stack's WaitState waits the attacker through unit.wait()
+  // (unit_wait, not actively chosen) after every end-of-combat event.
+  test('fork: the broken-item alert shows first and unit_wait fires after combat_end', async ({ page }) => {
+    const timeline = await runHookCombat(page, true, true);
+    expect(timeline.map((entry) => entry.label)).toEqual([
+      'on_hit', 'broken:<blue>_ForkSpell</> broke.', 'unit_death', 'item_after_combat', 'skill_after_combat',
+      'exp', 'combat_end', 'unit_wait',
+    ]);
+    expect(timeline[7]).toMatchObject({ combat: false });
+  });
+
+  test('upstream: the broken-item alert follows the exp screen and unit_wait comes last', async ({ page }) => {
+    const labels = (await runHookCombat(page, false, true)).map((entry) => entry.label);
+    // clean_up1 pushes the alert under the exp screen; clean_up2's UnitDeath
+    // comes after it (combat_death is clean_up0's).
+    const broken = labels.indexOf('broken:<blue>_ForkSpell</> broke.');
+    expect(broken).toBeGreaterThan(labels.indexOf('exp'));
+    expect(broken).toBeGreaterThan(labels.indexOf('combat_death'));
+    expect(broken).toBeLessThan(labels.indexOf('unit_death'));
+    expect(labels.slice(-2)).toEqual(['combat_end', 'unit_wait']);
   });
 });

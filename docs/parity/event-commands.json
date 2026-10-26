@@ -7,13 +7,12 @@
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 255,
     "dispatcherPythonNids": 255,
-    "itemReferencedComponentNids": 178,
+    "itemReferencedComponentNids": 179,
     "itemHookMappedComponentNids": 110,
     "skillReferencedComponentNids": 192,
     "skillHookMappedComponentNids": 93,
     "structuralStatuses": {
-      "dispatched-unverified": 248,
-      "stub-hint": 7
+      "dispatched-unverified": 255
     }
   },
   "commands": [
@@ -878,7 +877,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "unpause_background",
@@ -898,7 +897,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "disp_cursor",
@@ -1743,7 +1742,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "create_unit",
@@ -2355,7 +2354,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "spawn_group",
@@ -2594,7 +2593,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_item_uses",
@@ -5801,7 +5800,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "show_combat_ui",
@@ -5821,7 +5820,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_overworld_menu_option_enabled",

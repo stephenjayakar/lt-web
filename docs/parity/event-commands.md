@@ -41,8 +41,8 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | narrate | Narrate |  | HIDDEN |  | Speaker, String | no_block | yes | yes | no |  | dispatched-unverified |
 | transition | Transition | transition:435 | BG_FG | t | Direction?, Speed?, Color3?, Panorama? | no_block | yes | yes | yes | mention | dispatched-unverified |
 | change_background | ChangeBackground | change_background:460 | BG_FG | b | Panorama?, Speed? | keep_portraits, scroll | yes | yes | no | mention | dispatched-unverified |
-| pause_background | PauseBackground | pause_background:476 | BG_FG |  | PauseAt? |  | yes | yes | no |  | stub-hint |
-| unpause_background | UnpauseBackground | unpause_background:482 | BG_FG |  |  |  | yes | yes | no |  | stub-hint |
+| pause_background | PauseBackground | pause_background:476 | BG_FG |  | PauseAt? |  | yes | yes | no |  | dispatched-unverified |
+| unpause_background | UnpauseBackground | unpause_background:482 | BG_FG |  |  |  | yes | yes | no |  | dispatched-unverified |
 | disp_cursor | DispCursor | disp_cursor:488 | CURSOR_CAMERA |  | ShowCursor |  | yes | yes | no |  | dispatched-unverified |
 | move_cursor | MoveCursor | move_cursor:494 | CURSOR_CAMERA | set_cursor | Position, Speed? | immediate, no_block | yes | yes | no |  | dispatched-unverified |
 | center_cursor | CenterCursor | center_cursor:518 | CURSOR_CAMERA |  | Position, Speed? | immediate, no_block | yes | yes | no |  | dispatched-unverified |
@@ -79,7 +79,7 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | set_game_board_bounds | SetGameBoardBounds | set_game_board_bounds:890 | TILEMAP |  | MinX, MinY, MaxX, MaxY |  | yes | yes | no |  | dispatched-unverified |
 | remove_game_board_bounds | RemoveGameBoardBounds | remove_game_board_bounds:901 | TILEMAP |  |  |  | yes | yes | no |  | dispatched-unverified |
 | load_unit | LoadUnit | load_unit:908 | ADD_REMOVE_INTERACT_WITH_UNITS |  | UniqueUnit, Team?, AI? |  | yes | yes | no | mention | dispatched-unverified |
-| make_generic | MakeGeneric | make_generic:926 | ADD_REMOVE_INTERACT_WITH_UNITS |  | Nid, Klass, Level, Team, AI?, Faction?, AnimationVariant?, ItemList? |  | yes | yes | no |  | stub-hint |
+| make_generic | MakeGeneric | make_generic:926 | ADD_REMOVE_INTERACT_WITH_UNITS |  | Nid, Klass, Level, Team, AI?, Faction?, AnimationVariant?, ItemList? |  | yes | yes | no |  | dispatched-unverified |
 | create_unit | CreateUnit | create_unit:955 | ADD_REMOVE_INTERACT_WITH_UNITS |  | Unit, Nid?, Level?, Position?, EntryType?, Placement? | copy_stats | yes | yes | no |  | dispatched-unverified |
 | add_unit | AddUnit | add_unit:1005 | ADD_REMOVE_INTERACT_WITH_UNITS | add | Unit, Position?, EntryType?, Placement?, AnimationType? |  | yes | yes | no |  | dispatched-unverified |
 | move_unit | MoveUnit | move_unit:1052 | ADD_REMOVE_INTERACT_WITH_UNITS | move | Unit, Position?, MovementType?, Placement?, Speed? | no_block, no_follow, silent | yes | yes | no | mention | dispatched-unverified |
@@ -104,7 +104,7 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | has_visited | HasVisited | has_visited:1382 | MODIFY_UNIT_PROPERTIES |  | Unit | attacked | yes | yes | no |  | dispatched-unverified |
 | has_finished | HasFinished | has_finished:1402 | MODIFY_UNIT_PROPERTIES |  | Unit |  | yes | yes | no |  | dispatched-unverified |
 | recruit_generic | RecruitGeneric | recruit_generic:1255 | MODIFY_UNIT_PROPERTIES |  | Unit, Nid, Name? |  | yes | yes | no |  | dispatched-unverified |
-| add_group | AddGroup | add_group:1408 | UNIT_GROUPS |  | Group, StartingGroup?, EntryType?, Placement? | create | yes | yes | no |  | stub-hint |
+| add_group | AddGroup | add_group:1408 | UNIT_GROUPS |  | Group, StartingGroup?, EntryType?, Placement? | create | yes | yes | no |  | dispatched-unverified |
 | spawn_group | SpawnGroup | spawn_group:1442 | UNIT_GROUPS |  | Group, CardinalDirection, StartingGroup, MovementType?, Placement? | create, no_block, no_follow | yes | yes | no |  | dispatched-unverified |
 | move_group | MoveGroup | move_group:1488 | UNIT_GROUPS | morph_group | Group, StartingGroup, MovementType?, Placement? | no_block, no_follow | yes | yes | no |  | dispatched-unverified |
 | remove_group | RemoveGroup | remove_group:1518 | UNIT_GROUPS |  | Group, RemoveType? |  | yes | yes | no |  | dispatched-unverified |
@@ -113,7 +113,7 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | remove_item | RemoveItem | remove_item:1619 | MODIFY_UNIT_PROPERTIES |  | GlobalUnitOrConvoy, Item, Party? | no_banner | yes | yes | no | mention | dispatched-unverified |
 | move_item | MoveItem | move_item:1640 | MODIFY_UNIT_PROPERTIES |  | Giver, Receiver, Item? |  | yes | yes | no | mention | dispatched-unverified |
 | move_item_between_convoys | MoveItemBetweenConvoys | move_item_between_convoys:1692 | MODIFY_UNIT_PROPERTIES |  | Item, Party1, Party2 |  | yes | yes | no | mention | dispatched-unverified |
-| open_convoy | OpenConvoy | open_convoy:1714 | MISCELLANEOUS |  | GlobalUnit | include_other_units | yes | yes | no |  | stub-hint |
+| open_convoy | OpenConvoy | open_convoy:1714 | MISCELLANEOUS |  | GlobalUnit | include_other_units | yes | yes | no |  | dispatched-unverified |
 | set_item_uses | SetItemUses | set_item_uses:1727 | MODIFY_ITEM_PROPERTIES |  | GlobalUnitOrConvoy, Item, Uses | additive, recursive | yes | yes | no | mention | dispatched-unverified |
 | set_item_data | SetItemData | set_item_data:1749 | MODIFY_ITEM_PROPERTIES |  | GlobalUnitOrConvoy, Item, Nid, Expression |  | yes | yes | no | mention | dispatched-unverified |
 | set_item_droppable | SetItemDroppable | set_item_droppable:1761 | MODIFY_ITEM_PROPERTIES |  | GlobalUnit, Item, Droppable |  | yes | yes | no | mention | dispatched-unverified |
@@ -245,8 +245,8 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | create_overworld_entity | CreateOverworldEntity |  | OVERWORLD |  | Nid, Unit?, Team? | delete | yes | yes | no |  | dispatched-unverified |
 | disable_overworld_entity | DisableOverworldEntity |  | OVERWORLD |  | Nid | no_animate | yes | yes | no |  | dispatched-unverified |
 | toggle_narration_mode | ToggleNarrationMode |  | DIALOGUE_TEXT |  | Direction, Speed? |  | yes | yes | no |  | dispatched-unverified |
-| hide_combat_ui | HideCombatUI | hide_combat_ui:3954 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | stub-hint |
-| show_combat_ui | ShowCombatUI | show_combat_ui:3957 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | stub-hint |
+| hide_combat_ui | HideCombatUI | hide_combat_ui:3954 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | dispatched-unverified |
+| show_combat_ui | ShowCombatUI | show_combat_ui:3957 | DIALOGUE_TEXT |  |  |  | yes | yes | no |  | dispatched-unverified |
 | set_overworld_menu_option_enabled | SetOverworldMenuOptionEnabled |  | OVERWORLD |  | OverworldNID, OverworldNodeNid, OverworldNodeMenuOption, Setting |  | yes | yes | no |  | dispatched-unverified |
 | set_overworld_menu_option_visible | SetOverworldMenuOptionVisible |  | OVERWORLD |  | OverworldNID, OverworldNodeNID, OverworldNodeMenuOption, Setting |  | yes | yes | no |  | dispatched-unverified |
 | enter_level_from_overworld | EnterLevelFromOverworld |  | OVERWORLD |  | LevelNid |  | yes | yes | no |  | dispatched-unverified |

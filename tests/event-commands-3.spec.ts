@@ -1792,6 +1792,33 @@ test.describe('Event command batch 3l (set_custom_options)', () => {
     await stepFrames(page, 15);
     const fired = await page.evaluate(() => (window as any).__gameRef.gameVars.get('custom_fired'));
     expect(fired).toBe('yes');
+    // Python runs the event over the option menu, which is back on top after.
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('option_menu');
+  });
+
+  test('Objective and Options return to the option menu on BACK', async ({ page }) => {
+    // Python OptionMenuState: transition_to pops only itself, so the option
+    // menu stays beneath objective_menu / settings_menu.
+    await boot(page);
+    const names: string[] = [];
+    for (const value of ['objective', 'options']) {
+      await page.evaluate((value) => {
+        const g = (window as any).__gameRef;
+        g.state.change('option_menu');
+        (window as any).__harness.stepFrames(3);
+        const st: any = g.state.getCurrentState();
+        st.menu.selectedIndex = st.menu.options.findIndex((o: any) => o.value === value);
+      }, value);
+      await stepFrames(page, 1, 'SELECT');
+      await stepFrames(page, 10);
+      names.push(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name));
+      await stepFrames(page, 1, 'BACK');
+      await stepFrames(page, 30);
+      names.push(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name));
+      await stepFrames(page, 1, 'BACK');
+      await stepFrames(page, 10);
+    }
+    expect(names).toEqual(['objective_menu', 'option_menu', 'settings_menu', 'option_menu']);
   });
 });
 
@@ -2557,5 +2584,258 @@ test.describe('choice and textbox commands', () => {
     expect(rendered.tokens[0]).toEqual({ kind: 'icon', alias: 'event_fragments' });
     expect(rendered.styledWidth).toBe(rendered.plainWidth + 16);
     expect(rendered.iconPixels, 'the alias cell should draw actual sprite pixels').toBeGreaterThan(0);
+  });
+
+  // Python event_functions.hide_combat_ui / show_combat_ui set
+  // game_vars['_hide_ui'], which AnimationCombat.ui_should_be_hidden reads:
+  // the entrance slides only the platforms, and the name tags and bars fade
+  // out by 0.1 a frame while hidden.
+  test('hide_combat_ui / show_combat_ui toggle _hide_ui and the battle UI slides', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestHideUi', ['hide_combat_ui']);
+    const hidden = await page.evaluate(() => (window as any).__gameRef.gameVars.get('_hide_ui'));
+    await runEvent(page, 'TestShowUi', ['show_combat_ui']);
+    const shown = await page.evaluate(() => (window as any).__gameRef.gameVars.get('_hide_ui'));
+    expect([hidden, shown]).toEqual([true, false]);
+    const slides = await page.evaluate(async () => {
+      const { AnimationCombat } = await import('/src/combat/animation-combat.ts');
+      const entrance = (hide: boolean) => {
+        const scene: any = {
+          stateTimer: 1000, skipFlag: false, barOffset: 0, nameOffset: 0, platformOffset: 0,
+          game: { gameVars: new Map([['_hide_ui', hide]]) }, setState() {},
+        };
+        scene.uiShouldBeHidden = (AnimationCombat.prototype as any).uiShouldBeHidden;
+        (AnimationCombat.prototype as any).updateEntrance.call(scene);
+        return [scene.barOffset, scene.nameOffset, scene.platformOffset];
+      };
+      return { hidden: entrance(true), shown: entrance(false) };
+    });
+    expect(slides).toEqual({ hidden: [0, 0, 1], shown: [1, 1, 1] });
+  });
+
+  // Python event_functions.pause_background / unpause_background drive the
+  // event's PanoramaBackground: pause(at) stops on frame `at`, pause() at
+  // once, unpause() resumes the 125 ms frame procession.
+  test('pause_background / unpause_background control the event panorama frames', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const resources = g.resources;
+      const loadJson = resources.tryLoadJsonSilent.bind(resources);
+      const loadImage = resources.loadImage.bind(resources);
+      resources.tryLoadJsonSilent = (path: string) => path.endsWith('panoramas/panoramas.json')
+        ? Promise.resolve([['_TestPano', 3]]) : loadJson(path);
+      resources.loadImage = (path: string) => /_TestPano\d\.png$/.test(path)
+        ? loadImage('resources/panoramas/default_background.png') : loadImage(path);
+      g.db.events.set('TestPause', {
+        name: 'TestPause', nid: 'TestPause', trigger: 'TestPause', level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'change_background;_TestPano', 'pause_background;2', 'wait;1500',
+          'unpause_background', 'wait;1500', 'pause_background', 'wait;1500',
+        ],
+      });
+      g.eventManager.triggerSpecific('TestPause', { type: 'TestPause' }, true);
+      g.state.change('event');
+    });
+    const panorama = () => page.evaluate(() => {
+      const state: any = (window as any).__gameRef.state.getCurrentState();
+      const pano = state?.backgroundPanorama;
+      return pano ? { counter: pano.counter, paused: pano.paused, pauseAt: pano.pauseAt, frames: pano.frames.length } : null;
+    });
+    const until = async (check: (p: any) => boolean) => {
+      for (let i = 0; i < 300; i++) {
+        const p = await panorama();
+        if (p && check(p)) return p;
+        await stepFrames(page, 2);
+      }
+      throw new Error('panorama never reached the expected state');
+    };
+    // pause_background;2: frames advance until frame 2, then stop there.
+    expect(await until((p) => p.paused)).toEqual({ counter: 2, paused: true, pauseAt: null, frames: 3 });
+    await stepFrames(page, 20);
+    expect((await panorama())?.counter).toBe(2);
+    // unpause_background resumes; pause_background (no frame) stops at once.
+    await until((p) => !p.paused && p.counter !== 2);
+    const stopped = await until((p) => p.paused);
+    await stepFrames(page, 20);
+    expect((await panorama())?.counter).toBe(stopped.counter);
+  });
+
+  // Python make_generic: positional or Keyword=value args, a blank faction
+  // takes the first faction, and a blank Nid is str_utils.get_next_int('201',
+  // unit nids): "201", else the first free "1", "2", ...
+  test('make_generic parses keywords and names blank Nids with get_next_int', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const klass = [...g.db.classes.keys()][0];
+      const item = [...g.db.items.keys()][0];
+      const faction = [...g.db.factions.keys()][0];
+      return { klass, item, faction };
+    });
+    await runEvent(page, 'TestGenerics', [
+      `make_generic;;${setup.klass};2;enemy`,
+      `make_generic;;${setup.klass};2;enemy`,
+      `make_generic;Nid=_KwGeneric;Klass=${setup.klass};Level=4;Team=other;ItemList=${setup.item}`,
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const kw = g.units.get('_KwGeneric');
+      return {
+        first: g.units.has('201'),
+        second: g.units.has('1'),
+        kw: kw ? { level: kw.level, team: kw.team, items: kw.items.map((i: any) => i.nid), faction: kw.faction ?? null } : null,
+      };
+    });
+    expect(result.first).toBe(true);
+    expect(result.second).toBe(true);
+    expect(result.kw).toMatchObject({ level: 4, team: 'other', items: [setup.item] });
+  });
+
+  // Python add_group;Group;StartingGroup;EntryType;Placement;create places a
+  // fresh copy of each level unit (Event._copy_unit, get_next_int nid)
+  // instead of skipping units that are already on the map.
+  test('add_group create places copies of on-map group units', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.currentLevel.unit_groups.push({ nid: '_CopyGroup', units: ['101'], positions: { 101: [1, 1] } });
+    });
+    await runEvent(page, 'TestAddGroupCopy', ['add_group;_CopyGroup;;immediate;giveup', 'add_group;_CopyGroup;;fade;giveup;create']);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const copy = g.board.getUnit(1, 1);
+      return {
+        original: g.units.get('101')?.position,
+        copy: copy ? { nid: copy.nid, klass: copy.klass, team: copy.team } : null,
+        klass: g.units.get('101')?.klass,
+      };
+    });
+    // Without create the on-map 101 is skipped; the copy takes the slot.
+    expect(result.original).toEqual([9, 6]);
+    expect(result.copy).toEqual({ nid: '1', klass: result.klass, team: 'enemy' });
+  });
+
+  // Python open_convoy;GlobalUnit;[include_other_units] pauses the event over
+  // supply_items for the unit; the event resumes when the convoy closes.
+  test('open_convoy opens supply_items for the unit and resumes the event after', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestConvoy', {
+        name: 'TestConvoy', nid: 'TestConvoy', trigger: 'TestConvoy', level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['open_convoy;Eirika;include_other_units', 'game_var;_after_convoy;1'],
+      });
+      g.gameVars.set('_convoy', true);
+      g.eventManager.triggerSpecific('TestConvoy', { type: 'TestConvoy' }, true);
+      g.state.change('event');
+    });
+    await stepFrames(page, 10);
+    const open = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const state: any = g.state.getCurrentState();
+      return { state: state?.name, unit: state?.unit?.nid, after: g.gameVars.get('_after_convoy') ?? null };
+    });
+    expect(open).toEqual({ state: 'supply_items', unit: 'Eirika', after: null });
+    for (let i = 0; i < 10; i++) {
+      if (await page.evaluate(() => (window as any).__gameRef.gameVars.get('_after_convoy'))) break;
+      await stepFrames(page, 2, 'BACK');
+      await stepFrames(page, 10);
+    }
+    expect(await page.evaluate(() => (window as any).__gameRef.gameVars.get('_after_convoy'))).toBe(1);
+  });
+
+  // Python change_background;Panorama;Speed;scroll: a one-frame panorama
+  // becomes a ScrollingBackground moving 1 px per Speed ms (default 50).
+  test('change_background scroll scrolls the panorama at Speed ms per pixel', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestScroll', {
+        name: 'TestScroll', nid: 'TestScroll', trigger: 'TestScroll', level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'change_background;default_background;Speed=10;scroll', 'wait;400',
+          'change_background;default_background;scroll', 'wait;400',
+          'change_background;default_background', 'wait;400',
+        ],
+      });
+      g.eventManager.triggerSpecific('TestScroll', { type: 'TestScroll' }, true);
+      g.state.change('event');
+    });
+    const speeds: Array<number | null> = [];
+    for (let i = 0; i < 200 && speeds.length < 3; i++) {
+      await stepFrames(page, 2);
+      const speed = await page.evaluate(() => {
+        const state: any = (window as any).__gameRef.state.getCurrentState();
+        return state?.backgroundPanorama ? (state.backgroundPanorama.scrollSpeed ?? 0) : -1;
+      });
+      if (speed >= 0 && speeds[speeds.length - 1] !== (speed || null)) speeds.push(speed || null);
+    }
+    expect(speeds).toEqual([10, 50, null]);
+  });
+
+  // Python keeps drawing a paused parent Event, so its PanoramaBackground
+  // keeps advancing frames under a running sub-event.
+  test('a paused parent event keeps animating its panorama under a sub-event', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const resources = g.resources;
+      const loadJson = resources.tryLoadJsonSilent.bind(resources);
+      const loadImage = resources.loadImage.bind(resources);
+      resources.tryLoadJsonSilent = (path: string) => path.endsWith('panoramas/panoramas.json')
+        ? Promise.resolve([['_TestPano', 3]]) : loadJson(path);
+      resources.loadImage = (path: string) => /_TestPano\d\.png$/.test(path)
+        ? loadImage('resources/panoramas/default_background.png') : loadImage(path);
+      const define = (nid: string, source: string[]) => g.db.events.set(nid, {
+        name: nid, nid, trigger: nid, level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0, _source: source,
+      });
+      define('TestParent', ['change_background;_TestPano', 'trigger_script;TestChild', 'wait;100']);
+      define('TestChild', ['wait;3000']);
+      g.eventManager.triggerSpecific('TestParent', { type: 'TestParent' }, true);
+      g.state.change('event');
+    });
+    const parked = () => page.evaluate(() => {
+      const state: any = (window as any).__gameRef.state.getCurrentState();
+      const parent = state?.parkedOrder?.[0];
+      const pano = parent ? state.parkedEventPresentation.get(parent)?.backgroundPanorama : null;
+      return pano ? pano.counter : null;
+    });
+    let first: number | null = null;
+    for (let i = 0; i < 100 && first === null; i++) {
+      await stepFrames(page, 2);
+      first = await parked();
+    }
+    expect(first).not.toBeNull();
+    const seen = new Set<number>([first as number]);
+    for (let i = 0; i < 30; i++) {
+      await stepFrames(page, 2);
+      const counter = await parked();
+      if (counter !== null) seen.add(counter);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  // Python remove_map_anim;MapAnim;FloatPosition;[overlay] (action.RemoveMapAnim)
+  // removes only the animation at that position, reversibly.
+  test('remove_map_anim removes the animation at its position only and undoes', async ({ page }) => {
+    await boot(page);
+    const nid = await page.evaluate(() => [...(window as any).__gameRef.db.mapAnimations.keys()][0]);
+    await runEvent(page, 'TestMapAnims', [
+      `map_anim;${nid};2,2;permanent`, `map_anim;${nid};3,3;permanent`, `remove_map_anim;${nid};2,2`,
+    ]);
+    const result = await page.evaluate((nid) => {
+      const g = (window as any).__gameRef;
+      const positions = () => g.tilemap.animations.filter((a: any) => a.nid === nid).map((a: any) => a.tilePosition);
+      const after = positions();
+      g.actionLog.undo();
+      return { after, undone: positions() };
+    }, nid);
+    expect(result.after).toEqual([[3, 3]]);
+    expect(result.undone).toHaveLength(2);
   });
 });
