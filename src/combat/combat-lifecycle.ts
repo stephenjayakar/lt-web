@@ -1565,6 +1565,8 @@ export function droppableSentToConvoyBannerText(item: ItemObject): string {
 export interface DroppablePickupResult {
   /** Banner text for each pickup, in order, for the caller to display. */
   banners: string[];
+  /** The unit/item of each pickup, in the same order as `banners`. */
+  pickups: Array<{ unit: UnitObject; item: ItemObject }>;
   /**
    * Player units force-given a drop while at capacity: the caller must route
    * the player through the 'item_discard' state after combat resolves
@@ -1594,6 +1596,7 @@ export function applyDroppableItemPickups(
   dropRecipient: UnitObject | null,
 ): DroppablePickupResult {
   const banners: string[] = [];
+  const pickups: Array<{ unit: UnitObject; item: ItemObject }> = [];
   const pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
   for (const { unit: deadUnit, item } of results.droppedItems ?? []) {
     const killer = deadUnit === attacker ? dropRecipient : attacker;
@@ -1606,11 +1609,13 @@ export function applyDroppableItemPickups(
     if (!full) {
       actionLog.doAction(new MoveItemBetweenUnitsAction(deadUnit, killer, item));
       banners.push(droppableAcquiredBannerText(killer, item));
+      pickups.push({ unit: killer, item });
     } else if (killer.team === 'player') {
       // Python force-gives the item (over capacity) and then opens the
       // item_discard state for the player to choose what to store/discard.
       actionLog.doAction(new MoveItemBetweenUnitsAction(deadUnit, killer, item));
       banners.push(droppableAcquiredBannerText(killer, item));
+      pickups.push({ unit: killer, item });
       pendingDiscards.push({ unit: killer, item });
     } else {
       // Python's GiveItem.do() silently refuses to add to a full non-player
@@ -1618,7 +1623,7 @@ export function applyDroppableItemPickups(
       actionLog.doAction(new RemoveItemFromUnitAction(deadUnit, item));
     }
   }
-  return { banners, pendingDiscards };
+  return { banners, pickups, pendingDiscards };
 }
 
 /**

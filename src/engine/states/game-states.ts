@@ -157,7 +157,7 @@ import {
 import { ChoiceMenu, type MenuItemRow, type MenuOption } from '../../ui/menu';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
-import { Banner } from '../../ui/banner';
+import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
@@ -6218,7 +6218,7 @@ export class CombatState extends State {
   private stoleBanner: Banner | null = null;
   private stoleBannerShown: boolean = false;
   private gotItemBanner: Banner | null = null;
-  private gotItemBannerQueue: string[] = [];
+  private gotItemBannerQueue: Banner[] = [];
   private pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
   private rankUpBannerShown: boolean = false;
 
@@ -6835,7 +6835,10 @@ export class CombatState extends State {
             activeCombat.attacker,
             this.getPrimaryCombatDefender() ?? activeCombat.defender,
           );
-          this.gotItemBannerQueue = pickupResult.banners;
+          // Python banner.AcquiredItem per pickup.
+          this.gotItemBannerQueue = pickupResult.pickups.map(({ unit, item }) => new Banner(
+            acquiredItemText(unit.name, item.name), itemIcon(item), 3000, { sound: 'Item' },
+          ));
           this.pendingDiscards = pickupResult.pendingDiscards;
           if (this.results.attackerRankUp) {
             const rankUp = this.results.attackerRankUp;
@@ -7433,10 +7436,12 @@ export class CombatState extends State {
     }
     const activeCombat = this.getActiveCombat();
     if (this.results?.stolenItem && activeCombat && !this.stoleBannerShown) {
+      // Python banner.StoleItem through AlertState.
+      const stolen = this.results.stolenItem;
+      const allied = getGame().db.areAllied?.('player', activeCombat.attacker.team) ?? activeCombat.attacker.team === 'player';
       this.stoleBanner = new Banner(
-        `${activeCombat.attacker.name} stole ${this.results.stolenItem.name}.`,
-        undefined,
-        1800,
+        stoleItemText(activeCombat.attacker.name, stolen.name), itemIcon(stolen), 3000,
+        { sound: allied ? 'Item' : 'ItemBreak' },
       );
       this.phase = 'stole';
       this.phaseTimer = 0;
@@ -7446,18 +7451,17 @@ export class CombatState extends State {
     const weaponType = activeCombat?.attackItem.getComponent<string>('weapon_type');
     if (rankUp && activeCombat && weaponType && !this.rankUpBannerShown) {
       this.rankUpBannerShown = true;
+      // Python banner.GainWexp through AlertState.
       this.rankUpBanner = new Banner(
-        `${activeCombat.attacker.name} reached rank ${rankUp.rank}.`,
-        weaponType,
-        1800,
+        gainWexpText(activeCombat.attacker.name, rankUp.rank), weaponIcon(getGame().db, weaponType), 3000,
+        { sound: 'Item' },
       );
       this.phase = 'rank_up';
       this.phaseTimer = 0;
       return;
     }
     if (this.gotItemBannerQueue.length > 0) {
-      const text = this.gotItemBannerQueue.shift()!;
-      this.gotItemBanner = new Banner(text, undefined, 1400);
+      this.gotItemBanner = this.gotItemBannerQueue.shift()!;
       this.phase = 'got_item';
       this.phaseTimer = 0;
       return;
@@ -7591,6 +7595,9 @@ export class CombatState extends State {
     }
     if (this.phase === 'stole' && this.stoleBanner) {
       this.stoleBanner.draw(surf);
+    }
+    if (this.phase === 'got_item' && this.gotItemBanner) {
+      this.gotItemBanner.draw(surf);
     }
   }
 
@@ -8460,7 +8467,7 @@ export class PhaseChangeState extends State {
   readonly name = 'phase_change';
   override readonly transparent = true;
 
-  private banner: Banner | null = null;
+  private banner: PhaseIn | null = null;
   private fadedIn = false;
   private roamSkip = false;
 
@@ -8512,25 +8519,11 @@ export class PhaseChangeState extends State {
       }
     }
 
-    let bannerText: string;
-    let subText: string;
-
-    switch (currentTeam) {
-      case 'player':
-        bannerText = 'Player Phase';
-        subText = `Turn ${turnCount}`;
-        break;
-      case 'enemy':
-        bannerText = 'Enemy Phase';
-        subText = `Turn ${turnCount}`;
-        break;
-      default:
-        bannerText = `${currentTeam} Phase`;
-        subText = `Turn ${turnCount}`;
-        break;
-    }
-
-    this.banner = this.roamSkip ? null : new Banner(bannerText, subText);
+    // Python game.phase.slide_in(): PhaseIn with turnbanner_<team>, or the
+    // team-coloured variant when its combat colour diverged.
+    const dbColor = game.db.teams.defs.find((t: { nid: string }) => t.nid === currentTeam)?.combatColor;
+    const color = game.getTeamCombatColor?.(currentTeam) ?? dbColor;
+    this.banner = this.roamSkip ? null : new PhaseIn(currentTeam, color !== dbColor ? color : null);
 
     // Python TurnChangeState.end -> status_upkeep also runs for the player
     // on turn 1 (the level start never passes through the web turn_change).
@@ -11787,8 +11780,14 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
+        // Python alert: banner.CustomIcon for an item/skill/icon alias, else banner.Custom.
         const text = args[0] ?? '';
-        this.banner = new Banner(text, undefined, 3000);
+        const alertItem = args[1] ? game.db.items.get(args[1]) : null;
+        const alertSkill = args[2] ? game.db.skills.get(args[2]) : null;
+        const alertIcon = alertItem ? itemIcon(alertItem)
+          : alertSkill ? skillIcon(alertSkill)
+            : args[3] ? { kind: 'alias' as const, alias: args[3] } : null;
+        this.banner = new Banner(text, alertIcon, 3000, { iconLeft: !!alertIcon });
         this.bannerIsAlert = true;
         // Don't advance — advanced when banner finishes (in update) or early dismissed via input
         return true;
@@ -13213,19 +13212,18 @@ export class EventState extends State {
             const giParty = game.getParty(args[2] || undefined);
             if (giParty) {
               game.actionLog.doAction(new PutItemInConvoy(giItem, giParty.nid));
-              giBannerText = `${giItem.name} sent to convoy.`;
+              giBannerText = `${colored(giItem.name)} sent to convoy.`;
             }
           } else {
             const giUnit = this.findUnit(giUnitNid);
             if (giUnit) {
               game.actionLog.doAction(new GiveItemAction(giUnit, giItem));
-              const giArticle = /^[aeiou]/i.test(giItem.name) ? 'an' : 'a';
-              giBannerText = `${giUnit.name} got ${giArticle} ${giItem.name}.`;
+              giBannerText = acquiredItemText(giUnit.name, giItem.name);
             }
           }
         }
         if (giBannerFlag && giBannerText && !this.skipMode) {
-          this.banner = new Banner(giBannerText, undefined, 3000);
+          this.banner = new Banner(giBannerText, itemIcon(giItem), 3000, { sound: 'Item' });
           this.bannerIsAlert = true;
           return true;
         }
@@ -13238,6 +13236,7 @@ export class EventState extends State {
         const itemNid = args[1] ?? '';
         const riBannerFlag = !args.includes('no_banner');
         let riBannerText: string | undefined;
+        let riIcon: ReturnType<typeof itemIcon> = null;
         if (ownerNid.toLowerCase() === 'convoy') {
           const partyArg = args.slice(2).find((arg) => arg !== 'no_banner');
           const party = game.getParty(partyArg || undefined);
@@ -13248,11 +13247,12 @@ export class EventState extends State {
           const item = unit?.items.find((candidate: ItemObject) => candidate.nid === itemNid);
           if (unit && item) {
             game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
-            riBannerText = `${unit.name} lost ${item.name}.`;
+            riBannerText = `${colored(unit.name)} lost ${colored(item.name)}.`;
+            riIcon = itemIcon(item);
           }
         }
         if (riBannerFlag && riBannerText && !this.skipMode) {
-          this.banner = new Banner(riBannerText, undefined, 3000);
+          this.banner = new Banner(riBannerText, riIcon, 3000, { sound: 'ItemBreak' });
           this.bannerIsAlert = true;
           return true;
         }
@@ -13417,7 +13417,7 @@ export class EventState extends State {
         if (item && item.maxUses > 0) {
           game.actionLog.doAction(new SetItemUsesAction(item, 0));
           if (biBannerFlag && biUnit && biUnit.team === 'player' && !this.skipMode) {
-            this.banner = new Banner(`${item.name} broke.`, undefined, 3000);
+            this.banner = new Banner(`${colored(item.name)} broke.`, itemIcon(item), 3000, { sound: 'ItemBreak' });
             this.bannerIsAlert = true;
             return true;
           }
@@ -13452,7 +13452,7 @@ export class EventState extends State {
           gsAdded = afterCount > beforeCount || unit.skills.includes(skill);
         }
         if (gsBannerFlag && gsAdded && unit && skillPrefab && !this.skipMode) {
-          this.banner = new Banner(`${unit.name} got ${skillPrefab.name}.`, undefined, 3000);
+          this.banner = new Banner(`${colored(unit.name)} got ${colored(skillPrefab.name)}.`, skillIcon(skillPrefab), 3000, { sound: 'Item' });
           this.bannerIsAlert = true;
           return true;
         }
@@ -13483,7 +13483,7 @@ export class EventState extends State {
           }
         }
         if (rsBannerFlag && rsRemovedSkill && unit && !this.skipMode) {
-          this.banner = new Banner(`${unit.name} lost ${rsRemovedSkill.name}.`, undefined, 3000);
+          this.banner = new Banner(`${colored(unit.name)} lost ${colored(rsRemovedSkill.name)}.`, skillIcon(rsRemovedSkill), 3000, { sound: 'Item' });
           this.bannerIsAlert = true;
           return true;
         }
@@ -13585,7 +13585,7 @@ export class EventState extends State {
               this.buildConditionContext(),
             );
             if (!args.includes('no_banner') && !this.skipMode) {
-              this.banner = new Banner(`${unit.name} reached rank ${rankUp.rank}.`, weaponType, 3000);
+              this.banner = new Banner(gainWexpText(unit.name, rankUp.rank), weaponIcon(game.db, weaponType), 3000, { sound: 'Item' });
               this.bannerIsAlert = true;
               return true;
             }
@@ -13619,7 +13619,7 @@ export class EventState extends State {
               this.buildConditionContext(),
             );
             if (!args.includes('no_banner') && !this.skipMode) {
-              this.banner = new Banner(`${unit.name} reached rank ${rankUp.rank}.`, weaponType, 3000);
+              this.banner = new Banner(gainWexpText(unit.name, rankUp.rank), weaponIcon(game.db, weaponType), 3000, { sound: 'Item' });
               this.bannerIsAlert = true;
               return true;
             }
@@ -14092,8 +14092,9 @@ export class EventState extends State {
           );
         }
         if (gmBannerFlag && !this.skipMode) {
-          const text = amount >= 0 ? `Got ${amount} gold.` : `Lost ${-amount} gold.`;
-          this.banner = new Banner(text, undefined, 3000);
+          // Python banner.Advanced('Got <blue>N</> gold.', 'Item') / ('Lost ...', 'ItemBreak').
+          const text = amount >= 0 ? `Got ${colored(String(amount))} gold.` : `Lost ${colored(String(-amount))} gold.`;
+          this.banner = new Banner(text, null, 3000, { sound: amount >= 0 ? 'Item' : 'ItemBreak' });
           this.bannerIsAlert = true;
           return true;
         }
@@ -14114,7 +14115,7 @@ export class EventState extends State {
           );
         }
         if (gbBannerFlag && !this.skipMode) {
-          this.banner = new Banner(`Got ${bexpAmount} BEXP.`, undefined, 3000);
+          this.banner = new Banner(`Got ${colored(String(bexpAmount))} BEXP.`, null, 3000, { sound: 'Item' });
           this.bannerIsAlert = true;
           return true;
         }
@@ -16726,7 +16727,7 @@ export class EventState extends State {
               const achievement = ACHIEVEMENTS.getAchievement(args[0]);
               if (achievement) {
                 game.audioManager?.playSfx?.('Item');
-                this.banner = new Banner(achievement.name, 'Achievement Unlocked', 2000);
+                this.banner = new Banner(achievement.name, null, 2000);
                 this.bannerIsAlert = false;
                 // Python waits two seconds and removes the notification before advancing.
                 return true;

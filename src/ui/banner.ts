@@ -1,113 +1,282 @@
-import { Surface } from '../engine/surface';
-import { viewport } from '../engine/viewport';
-
-const FONT_MAIN = '10px monospace';
-const FONT_SUB = '8px monospace';
-const CHAR_WIDTH_MAIN = 6; // approximate for 10px monospace
-const CHAR_WIDTH_SUB = 5;  // approximate for 8px monospace
-
-const DEFAULT_DURATION = 1000; // ms total
-const FADE_IN_MS = 150;
-const FADE_OUT_MS = 150;
-
-const STRIP_HEIGHT = 32;
-const BG_COLOR_BASE = [0, 0, 0] as const; // black
-const TEXT_COLOR = 'white';
-const SUB_TEXT_COLOR = 'rgba(200, 200, 220, 1)';
-
 /**
- * Banner - Temporary centered text banner (e.g. "Player Phase", "Enemy Phase")
+ * banner.ts — Map banners. Port of lt-maker/app/engine/banner.py (Banner and
+ * its AcquiredItem / StoleItem / GainWexp / GiveSkill ... subclasses) and of
+ * phase.py PhaseIn (the "Player Phase" turn banner with the black-square
+ * transition).
+ *
+ * A Banner is a menu_bg_base window with the menu_gem_small gem, made 10%
+ * translucent, with styled bitmap text at (6, 7) and an optional 16x16 icon
+ * at the right, blitted at the centre of the scene. Python shows it through
+ * AlertState for `time_to_wait` (3000 ms), dismissable by input after
+ * `time_to_pause` (300 ms).
  */
-export class Banner {
-  private text: string;
-  private subText: string;
-  private timer: number;
-  private duration: number;
-  private fadeIn: number;
-  private fadeOut: number;
 
-  constructor(text: string, subText?: string, duration?: number) {
+import { Surface } from '../engine/surface';
+import { FRAMETIME } from '../engine/constants';
+import { viewport } from '../engine/viewport';
+import { createBaseSurf, loadMenuBgSprite } from './base-surf';
+import { getSprite, makeTranslucent } from './sprites';
+import { drawIcon16, drawIconByAlias } from './icons';
+import { drawStyledText, measureStyledText } from './styled-text';
+
+/** What a banner shows at its right edge (Python Banner.item / draw_icon). */
+export type BannerIcon =
+  | { kind: 'item'; iconNid: string; iconIndex: [number, number] }
+  | { kind: 'skill'; iconNid: string; iconIndex: [number, number] }
+  | { kind: 'weapon'; iconNid: string; iconIndex: [number, number] }
+  | { kind: 'alias'; alias: string };
+
+const TIME_TO_PAUSE = 300;
+
+let bannerAudio: { playSfx?: (nid: string) => void } | null = null;
+/** Banners play their sound on their first update (Python Banner.update). */
+export function setBannerAudio(audio: { playSfx?: (nid: string) => void } | null): void {
+  bannerAudio = audio;
+}
+
+type IconSource = { iconNid?: string; icon_nid?: string; iconIndex?: [number, number]; icon_index?: [number, number] };
+function iconOf(kind: 'item' | 'skill' | 'weapon', src: IconSource | null | undefined): BannerIcon | null {
+  const iconNid = src?.iconNid ?? src?.icon_nid;
+  const iconIndex = src?.iconIndex ?? src?.icon_index;
+  return iconNid && iconIndex ? { kind, iconNid, iconIndex } : null;
+}
+/** Python icons.draw_item source for a banner. */
+export const itemIcon = (item: IconSource | null | undefined) => iconOf('item', item);
+/** Python icons.draw_skill source for a banner. */
+export const skillIcon = (skill: IconSource | null | undefined) => iconOf('skill', skill);
+/** Python icons.draw_weapon: the weapon type's icon from the database. */
+export function weaponIcon(db: { weapons: IconSource[] & { find: (fn: (w: any) => boolean) => any } }, weaponType: string): BannerIcon | null {
+  return iconOf('weapon', db.weapons.find((weapon: any) => weapon.nid === weaponType));
+}
+const TIME_TO_WAIT = 3000;
+
+let menuBg: HTMLImageElement | null = null;
+void loadMenuBgSprite('menu_bg_base').then((img) => { menuBg = img; });
+
+/** Python `'<blue>X</>'`: wrap text in an LT colour tag. */
+export function colored(text: string, color = 'blue'): string {
+  return `<${color}>${text}</>`;
+}
+
+/** Python article rule used by AcquiredItem / StoleItem. */
+function article(name: string): string {
+  return 'aeiou'.includes(name.toLowerCase()[0] ?? '') ? 'an' : 'a';
+}
+
+/** Python AcquiredItem text: "{name} got {article} {item}." (no article for possessives). */
+export function acquiredItemText(unitName: string, itemName: string): string {
+  return itemName.includes("'")
+    ? `${colored(unitName)} got ${colored(itemName)}.`
+    : `${colored(unitName)} got ${article(itemName)} ${colored(itemName)}.`;
+}
+
+/** Python StoleItem text. */
+export function stoleItemText(unitName: string, itemName: string): string {
+  return itemName.includes("'")
+    ? `${colored(unitName)} stole ${colored(itemName)}.`
+    : `${colored(unitName)} stole ${article(itemName)} ${colored(itemName)}.`;
+}
+
+/** Python GainWexp text. */
+export function gainWexpText(unitName: string, rank: string): string {
+  return `${colored(unitName)} reached rank ${colored(rank)}.`;
+}
+
+export class Banner {
+  readonly text: string;
+  private icon: BannerIcon | null;
+  /** Python AlertState: the banner leaves after this long. */
+  private duration: number;
+  private timer = 0;
+  private surf: Surface | null = null;
+  private size: [number, number] = [0, 24];
+  /** Python CustomIcon draws its icon on the left with text at x=22. */
+  private iconLeft: boolean;
+
+  private sound: string | null;
+  private started = false;
+
+  /**
+   * @param opts.iconLeft Python CustomIcon layout (icon left, text at x=22)
+   * @param opts.sound    sfx played when the banner first updates
+   */
+  constructor(
+    text: string,
+    icon: BannerIcon | null = null,
+    duration: number = TIME_TO_WAIT,
+    opts: { iconLeft?: boolean; sound?: string | null } = {},
+  ) {
     this.text = text;
-    this.subText = subText ?? '';
-    this.duration = duration ?? DEFAULT_DURATION;
-    this.fadeIn = FADE_IN_MS;
-    this.fadeOut = FADE_OUT_MS;
-    this.timer = 0;
+    this.icon = icon;
+    this.duration = duration;
+    this.iconLeft = opts.iconLeft ?? false;
+    this.sound = opts.sound ?? null;
   }
 
-  /** Update timer. Returns true when done. */
-  update(deltaMs: number): boolean {
+  /** Python figure_out_size. */
+  private figureOutSize(): void {
+    let length = measureStyledText(this.text, 'text') + 16;
+    length -= length % 8;
+    length += this.icon ? 16 : 0;
+    this.size = [length, 24];
+  }
+
+  /** Advance the timer. Returns true when the banner should be removed. */
+  update(deltaMs: number = FRAMETIME): boolean {
+    if (!this.started) {
+      this.started = true;
+      if (this.sound) bannerAudio?.playSfx?.(this.sound);
+      return false;
+    }
     this.timer += deltaMs;
     return this.timer >= this.duration;
   }
 
-  /** Get the elapsed time in milliseconds. */
+  /** Python AlertState.take_input: any input closes it after time_to_pause. */
+  canDismiss(): boolean {
+    return this.timer > TIME_TO_PAUSE;
+  }
+
   getElapsed(): number {
     return this.timer;
   }
 
-  /** Draw the banner */
-  draw(surf: Surface): void {
-    if (this.timer >= this.duration) return;
+  private drawIcon(surf: Surface): void {
+    const icon = this.icon;
+    if (!icon) return;
+    const x = this.iconLeft ? 4 : this.size[0] - 20;
+    const y = this.iconLeft || icon.kind !== 'item' ? 7 : 8;
+    if (icon.kind === 'alias') drawIconByAlias(surf, icon.alias, x, y);
+    else if (icon.iconNid) drawIcon16(surf, icon.iconNid, icon.iconIndex, x, y);
+  }
 
-    // Compute alpha based on fade in/out
+  draw(surf: Surface): Surface {
+    if (this.timer >= this.duration) return surf;
+    if (!this.surf) {
+      const gem = getSprite('menu_gem_small');
+      if (!menuBg || !gem) return surf;
+      this.figureOutSize();
+      const [w, h] = this.size;
+      const bgSurf = createBaseSurf(menuBg, w, h);
+      const built = new Surface(w + 2, h + 4);
+      built.blit(bgSurf, 2, 4);
+      built.blit(gem, 0, 0);
+      this.surf = makeTranslucent(built, 0.1);
+    }
+    const bgSurf = this.surf.copy();
+    drawStyledText(bgSurf, this.text, this.iconLeft ? 22 : 6, Math.floor(this.size[1] / 2) - 8 + 3, 'white', 'text');
+    this.drawIcon(bgSurf);
+    // Python engine.blit_center
+    surf.blit(bgSurf,
+      Math.floor(viewport.width / 2 - bgSurf.width / 2),
+      Math.floor(viewport.height / 2 - bgSurf.height / 2));
+    return surf;
+  }
+}
+
+/**
+ * Python phase.PhaseIn: the turnbanner_<team> sprite slides in from the
+ * right, holds, and slides out to the left, while rows of phase_transition
+ * squares close in from the top and bottom of the screen.
+ */
+export class PhaseIn {
+  static readonly tBegin = 128;
+  static readonly tMain = 1000;
+  static readonly tEnd = 240;
+  static readonly tDisplay = PhaseIn.tBegin + PhaseIn.tMain + PhaseIn.tEnd;
+
+  private elapsed = 0;
+  private spriteName: string;
+  private fallbackName: string;
+
+  /**
+   * @param team        team nid (sprite turnbanner_<team>)
+   * @param combatColor the team's current combat colour when it diverged
+   *                    from the database colour, else null
+   */
+  constructor(team: string, combatColor: string | null = null) {
+    this.fallbackName = `turnbanner_${team}`;
+    this.spriteName = combatColor ? `${this.fallbackName}_${combatColor}` : this.fallbackName;
+    // Start loading now so the first frame has the images.
+    getSprite(this.spriteName, this.fallbackName);
+    getSprite('phase_transition');
+  }
+
+  /** Advance one frame; true once the display time has passed. */
+  update(deltaMs: number = FRAMETIME): boolean {
+    this.elapsed += deltaMs;
+    return this.elapsed >= PhaseIn.tDisplay;
+  }
+
+  draw(surf: Surface): Surface {
+    const winW = viewport.width;
+    const winH = viewport.height;
+    const timePassed = Math.min(this.elapsed, PhaseIn.tDisplay);
+    const maxOpacity = 118;
+    const image = getSprite(this.spriteName, this.fallbackName);
+    if (image) {
+      let offsetX: number;
+      let trans: number;
+      if (timePassed < PhaseIn.tBegin) {
+        const diff = timePassed / PhaseIn.tBegin;
+        offsetX = PhaseIn.tBegin * (1 - diff);
+        trans = (1 - diff) ** 2;
+      } else if (timePassed < PhaseIn.tBegin + PhaseIn.tMain) {
+        offsetX = 0;
+        trans = 0;
+      } else {
+        const diff = (timePassed - PhaseIn.tBegin - PhaseIn.tMain) / PhaseIn.tEnd;
+        offsetX = -PhaseIn.tEnd * diff;
+        trans = diff ** 2;
+      }
+      surf.blit(makeTranslucent(image, trans),
+        offsetX + Math.floor(winW / 2) - Math.floor(image.width / 2),
+        Math.floor(winH / 2) - Math.floor(image.height / 2));
+    }
+
+    const squares = getSprite('phase_transition');
+    if (!squares) return surf;
+    const spaceH = Math.floor(winH / 2) - 16;
+    const space1 = new Surface(winW, spaceH);
+    const space2 = new Surface(winW, spaceH);
+    const tHalf = Math.floor(PhaseIn.tDisplay / 2);
+    let height: number;
     let alpha: number;
-    if (this.timer < this.fadeIn) {
-      // Fading in
-      alpha = this.timer / this.fadeIn;
-    } else if (this.timer > this.duration - this.fadeOut) {
-      // Fading out
-      alpha = (this.duration - this.timer) / this.fadeOut;
+    let t: number;
+    if (timePassed < tHalf) {
+      const diff = timePassed / tHalf;
+      height = 64 * diff;
+      alpha = Math.trunc(maxOpacity * Math.sqrt(timePassed / tHalf));
+      t = Math.trunc(2 + diff * 16);
     } else {
-      // Fully visible
-      alpha = 1;
+      const diff = -(tHalf - timePassed) / tHalf;
+      height = 64 * (1 - diff);
+      alpha = Math.trunc(maxOpacity - maxOpacity * ((timePassed - tHalf) / tHalf) ** 2);
+      t = Math.trunc(diff * 16);
     }
-    alpha = Math.max(0, Math.min(1, alpha));
-
-    // Banner position: centered horizontally, 1/3 from top
-    const stripY = Math.floor(viewport.height / 3) - Math.floor(STRIP_HEIGHT / 2);
-    const totalHeight = this.subText ? STRIP_HEIGHT + 12 : STRIP_HEIGHT;
-
-    // Semi-transparent black background strip (full width)
-    const bgAlpha = 0.75 * alpha;
-    surf.fillRect(
-      0,
-      stripY,
-      viewport.width,
-      totalHeight,
-      `rgba(${BG_COLOR_BASE[0]}, ${BG_COLOR_BASE[1]}, ${BG_COLOR_BASE[2]}, ${bgAlpha})`,
-    );
-
-    // Subtle border lines
-    const borderAlpha = 0.4 * alpha;
-    surf.fillRect(0, stripY, viewport.width, 1, `rgba(160, 160, 200, ${borderAlpha})`);
-    surf.fillRect(0, stripY + totalHeight - 1, viewport.width, 1, `rgba(160, 160, 200, ${borderAlpha})`);
-
-    // Main text — centered
-    const mainTextWidth = this.text.length * CHAR_WIDTH_MAIN;
-    const mainTextX = Math.floor((viewport.width - mainTextWidth) / 2);
-    const mainTextY = stripY + Math.floor((STRIP_HEIGHT - 10) / 2);
-    const textAlpha = alpha;
-    surf.drawText(
-      this.text,
-      mainTextX,
-      mainTextY,
-      `rgba(255, 255, 255, ${textAlpha})`,
-      FONT_MAIN,
-    );
-
-    // Sub-text — centered below main text
-    if (this.subText) {
-      const subTextWidth = this.subText.length * CHAR_WIDTH_SUB;
-      const subTextX = Math.floor((viewport.width - subTextWidth) / 2);
-      const subTextY = stripY + STRIP_HEIGHT + 1;
-      surf.drawText(
-        this.subText,
-        subTextX,
-        subTextY,
-        `rgba(200, 200, 220, ${textAlpha})`,
-        FONT_SUB,
-      );
+    const clamp = (v: number) => Math.max(0, Math.min(8, v));
+    for (let x = 0; x < winW; x += 16) {
+      for (let y = 0; y < spaceH; y += 16) {
+        const i = Math.floor(x / 16);
+        const j = Math.floor(y / 16);
+        const k1 = Math.trunc(t * 1.5 - (i - (j % 2)) / 2 + j / 2 - 4);
+        const k2 = Math.trunc(t * 1.5 - (i - (j % 2)) / 2 + j / 2 - 1);
+        const frame1 = timePassed < tHalf ? clamp(8 - Math.abs(Math.max(k1, 8) - 8)) : clamp(k1);
+        const frame2 = timePassed < tHalf ? clamp(8 - Math.abs(Math.max(k2, 8) - 8)) : clamp(k2);
+        space1.blitFrom(squares, frame1 * 16, 0, 16, 16, x, y);
+        space2.blitFrom(squares, frame2 * 16, 0, 16, 16, x, y);
+      }
     }
+    const h = Math.trunc(height);
+    if (h > 0) {
+      const a = Math.max(0, alpha) / 255;
+      const top = space1.subsurface(0, 0, winW, Math.min(h, spaceH));
+      const bottom = space2.subsurface(0, Math.max(0, spaceH - h), winW, Math.min(h, spaceH));
+      top.setAlpha(a);
+      bottom.setAlpha(a);
+      surf.blit(top, 0, 0);
+      surf.blit(bottom, 0, winH - bottom.height);
+    }
+    return surf;
   }
 }

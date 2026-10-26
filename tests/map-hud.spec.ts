@@ -139,3 +139,52 @@ test('project custom_sprites override engine sprites like Python SPRITES', async
   expect(urls.tileInfo).toBe('/game-data/sprites/menus/tile_info_quick_opaque.png');
   expect(urls.missing).toBeNull();
 });
+
+test('banners are Python menu windows centred on the scene', async ({ page }) => {
+  await bootLevel(page);
+  const result = await page.evaluate(async () => {
+    const { Surface } = await import('/src/engine/surface.ts');
+    const banner = await import('/src/ui/banner.ts');
+    const sprites = await import('/src/ui/sprites.ts');
+    const styled = await import('/src/ui/styled-text.ts');
+    await sprites.preloadSprites(['menu_gem_small', 'turnbanner_player', 'phase_transition']);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const bbox = (surf: any): number[] => {
+      const data = surf.getImageData();
+      let x0 = Infinity; let y0 = Infinity; let x1 = -1; let y1 = -1;
+      for (let y = 0; y < data.height; y++) {
+        for (let x = 0; x < data.width; x++) {
+          if (data.data[(y * data.width + x) * 4 + 3] > 0) {
+            x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+          }
+        }
+      }
+      return [x0, y0, x1 - x0 + 1, y1 - y0 + 1];
+    };
+    const text = banner.acquiredItemText('Phantom', 'Iron Sword');
+    const b = new banner.Banner(text, { kind: 'item', iconNid: '', iconIndex: [0, 0] });
+    const surf = new Surface(240, 160);
+    b.draw(surf);
+    let length = styled.measureStyledText(text, 'text') + 16;
+    length -= length % 8;
+    length += 16;
+    const phase = new banner.PhaseIn('player');
+    for (let i = 0; i < 40; i++) phase.update();
+    const phaseSurf = new Surface(240, 160);
+    phase.draw(phaseSurf);
+    return {
+      text,
+      box: bbox(surf),
+      expectedW: length + 2,
+      phaseBox: bbox(phaseSurf),
+      phaseTopRow: phaseSurf.getPixel(8, 8)[3] > 0,
+    };
+  });
+  expect(result.text).toBe('<blue>Phantom</> got an <blue>Iron Sword</>.');
+  // Window (w + 2) x 28 with the gem at its top-left, blitted at the centre.
+  expect(result.box[2]).toBe(result.expectedW);
+  expect(result.box[0]).toBe(Math.floor(120 - result.expectedW / 2));
+  expect(result.box[1]).toBe(Math.floor(80 - 28 / 2));
+  // PhaseIn at ~667 ms: squares close in from the top edge.
+  expect(result.phaseTopRow).toBe(true);
+});

@@ -31,6 +31,7 @@ import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
 import { initSprites } from './ui/sprites';
+import { setBannerAudio } from './ui/banner';
 import { initBaseSurf } from './ui/base-surf';
 import { setMenuAudioManager } from './ui/menu';
 import { setEventChoiceAudio } from './ui/event-choice';
@@ -672,6 +673,7 @@ async function main(): Promise<void> {
   setGameRef(gameState);
   setInfoMenuGameRef(gameState);
   setMenuAudioManager(audioManager);
+  setBannerAudio(audioManager);
   setEventChoiceAudio(audioManager);
   setPrepGameRef(gameState);
   setSupplyGameRef(gameState);
