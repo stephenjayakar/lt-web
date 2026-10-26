@@ -5601,7 +5601,13 @@ export class RescueState extends State {
           game.actionLog.doAction(new PairUpAction(unit, target, game.board, game.db));
         } else {
           game.actionLog.doAction(new RescueAction(unit, target, game.board));
-          game.actionLog.doAction(new WaitAction(unit));
+          // EOtF's engine (abilities.RescueAbility.do): a Canto unit marks
+          // HasTraded and returns to the action menu instead of waiting.
+          if (isForkEngine() && unitHasCanto(unit, target, game)) {
+            game.actionLog.doAction(new HasTradedAction(unit));
+          } else {
+            game.actionLog.doAction(new WaitAction(unit));
+          }
         }
       }
 
@@ -5743,10 +5749,17 @@ export class DropState extends MapState {
               game.actionLog.doAction(new SeparatePairUpAction(
                 unit, target, game.board, game.db, [pos.x, pos.y], true,
               ));
+              game.actionLog.doAction(new WaitAction(unit));
             } else {
               game.actionLog.doAction(new DropAction(unit, target, game.board, [pos.x, pos.y]));
+              // EOtF's engine (abilities.DropAbility.do): a Canto unit marks
+              // HasTraded and returns to the action menu instead of waiting.
+              if (isForkEngine() && unitHasCanto(unit, target, game)) {
+                game.actionLog.doAction(new HasTradedAction(unit));
+              } else {
+                game.actionLog.doAction(new WaitAction(unit));
+              }
             }
-            game.actionLog.doAction(new WaitAction(unit));
           }
           game.highlight.clear();
           game.state.back();

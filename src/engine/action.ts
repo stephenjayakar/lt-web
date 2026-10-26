@@ -2206,6 +2206,7 @@ export class ResetAction extends Action {
     hasGiven: boolean;
     movementLeft: number;
   } | null = null;
+  private blocked: boolean | null = null;
 
   constructor(unit: UnitObject) {
     super();
@@ -2226,12 +2227,38 @@ export class ResetAction extends Action {
     };
     this.unit.resetTurnState();
     this.unit.movementLeft = this.unit.getMovement();
+    // Fork action.Reset.do: outside phase_change/prep_main every Reset runs
+    // skill_system.on_refresh, where EOtF's NullRefresh waits the unit.
+    if (this.blocked === null) {
+      const game = _getGame?.();
+      const stateName = game?.state?.getCurrentState?.()?.name;
+      this.blocked = stateName !== 'phase_change' && stateName !== 'prep_main' &&
+        nullRefreshBlocks(this.unit, game);
+    }
+    if (this.blocked) applyNullRefreshWait(this.unit);
   }
 
   reverse(): void {
     if (!this.savedState) return;
     Object.assign(this.unit, this.savedState);
   }
+}
+
+/**
+ * EOtF NullRefresh.on_refresh: the fork's on_refresh dispatch ignores skill
+ * conditions, and a unit with the AlwaysRefresh tag is exempt.
+ */
+function nullRefreshBlocks(unit: UnitObject, game: any): boolean {
+  return unit.skills.some((skill) => skill.hasComponent('null_refresh')) &&
+    !unitHasTag(unit, 'AlwaysRefresh', game);
+}
+
+/** The action-state half of the Wait that NullRefresh performs. */
+function applyNullRefreshWait(unit: UnitObject): void {
+  unit.hasAttacked = true;
+  unit.hasMoved = true;
+  unit.hasTraded = true;
+  unit.finished = true;
 }
 
 /**
@@ -4331,19 +4358,10 @@ export class RefreshUnitAction extends Action {
     this.oldMovementLeft = this.unit.movementLeft;
     this.unit.resetTurnState();
     if (!this.initialized) {
-      const game = _getGame?.();
-      this.blocked = !unitHasTag(this.unit, 'AlwaysRefresh', game) &&
-        this.unit.skills.some((skill) =>
-          skill.hasComponent('null_refresh') &&
-          skillConditionActive(skill, this.unit, { game }));
+      this.blocked = nullRefreshBlocks(this.unit, _getGame?.());
       this.initialized = true;
     }
-    if (this.blocked) {
-      this.unit.hasAttacked = true;
-      this.unit.hasMoved = true;
-      this.unit.hasTraded = true;
-      this.unit.finished = true;
-    }
+    if (this.blocked) applyNullRefreshWait(this.unit);
   }
 
   reverse(): void {

@@ -50,6 +50,7 @@ import {
   activeUnitAnimations,
   changeVariant,
   isCantoSkill,
+  onRemoveRescue,
   unitHasTag,
 } from '../combat/skill-system';
 import { refreshAuras } from '../combat/aura-system';
@@ -550,8 +551,11 @@ export class GameState {
 
     // Per-unit cleanup
     for (const unit of this.units.values()) {
-      // Drop rescued units
+      // Drop rescued units. Python clean_up runs on_drop for the traveler,
+      // where EOtF's RescueBonus removes the skill it granted the rescuer
+      // (Eat / Serve Forth would otherwise survive into the next chapter).
       if (unit.rescuing) {
+        onRemoveRescue(unit, unit.rescuing);
         unit.rescuing.rescuedBy = null;
         unit.rescuing = null;
       }
