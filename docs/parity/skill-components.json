@@ -5412,23 +5412,31 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 381
+          "line": 289
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1093
+          "line": 440
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1101
+          "line": 467
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1105
+          "line": 1152
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1109
+          "line": 1160
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1164
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1168
         },
         {
           "source": "src/combat/item-system.ts",
@@ -5490,7 +5498,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 381
+          "line": 440
         },
         {
           "source": "src/combat/item-system.ts",
@@ -5541,7 +5549,7 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 383
+          "line": 442
         },
         {
           "source": "src/combat/item-system.ts",
@@ -5571,7 +5579,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 383
+          "line": 442
         },
         {
           "source": "src/combat/item-system.ts",
@@ -5610,11 +5618,19 @@
       "webReferences": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1093
+          "line": 289
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1102
+          "line": 506
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1152
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1161
         },
         {
           "source": "src/combat/skill-system.ts",
@@ -5846,11 +5862,19 @@
       "webReferences": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1093
+          "line": 289
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1098
+          "line": 424
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1152
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1157
         },
         {
           "source": "src/combat/skill-system.ts",
@@ -5934,7 +5958,15 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 542
+          "line": 289
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 601
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 601
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -6020,7 +6052,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 542
+          "line": 601
         },
         {
           "source": "src/combat/item-system.ts",
@@ -6122,6 +6154,14 @@
       ],
       "webReferences": [
         {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 289
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 544
+        },
+        {
           "source": "src/combat/skill-system.ts",
           "line": 2062
         },
@@ -6153,6 +6193,14 @@
         "modify_defense_speed"
       ],
       "webReferences": [
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 289
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 573
+        },
         {
           "source": "src/combat/skill-system.ts",
           "line": 2077

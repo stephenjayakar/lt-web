@@ -285,6 +285,65 @@ function defensiveSkillItem(item: ItemObject | null, itemToAvoid: ItemObject | n
   return isForkEngine() ? itemToAvoid ?? item : item;
 }
 
+type RankBonusAttribute =
+  'accuracy' | 'avoid' | 'crit' | 'dodge' | 'damage' | 'resist' | 'attack_speed' | 'defense_speed';
+
+/**
+ * Python combat_calcs.get_weapon_rank_bonus: the item's weapon type's
+ * `rank_bonus` list. An entry with weapon_rank 'All' is returned as soon as
+ * the scan reaches it; otherwise the entry with the highest requirement the
+ * unit's wexp in that weapon type meets wins (ties keep the first). Python
+ * never reads an entry's own weapon_type, so neither does this.
+ */
+export function weaponRankBonus(
+  unit: UnitObject,
+  item: ItemObject | null | undefined,
+  db: Database,
+): WeaponAdvantage | null {
+  if (!item) return null;
+  const type = itemSystem.weaponType(unit, item);
+  if (!type) return null;
+  const rankBonus = (db.weapons ?? []).find((weapon) => weapon.nid === type)?.rank_bonus ?? [];
+  const wexp = Number(unit.wexp?.[type] ?? 0);
+  let best: WeaponAdvantage | null = null;
+  let highestRequirement = -1;
+  for (const bonus of rankBonus as WeaponAdvantage[]) {
+    if (bonus.weapon_rank === 'All') return bonus;
+    const requirement = (db.weaponRanks ?? []).find((rank) => rank.rank === bonus.weapon_rank)?.requirement;
+    if (requirement === undefined) continue;
+    if (wexp >= requirement && requirement > highestRequirement) {
+      highestRequirement = requirement;
+      best = bonus;
+    }
+  }
+  return best;
+}
+
+/** `int(weapon_rank_bonus.<attribute>)`, or 0 without a bonus. */
+function rankBonus(
+  unit: UnitObject,
+  item: ItemObject | null | undefined,
+  db: Database,
+  attribute: RankBonusAttribute,
+): number {
+  const bonus = weaponRankBonus(unit, item, db);
+  if (!bonus) return 0;
+  return Math.trunc(Number(bonus[attribute] ?? 0)) || 0;
+}
+
+/**
+ * Defender-side rank bonuses (avoid, dodge, resist, defense_speed) are an
+ * upstream addition the EOtF fork lacks; its attacker-side ones match.
+ */
+function defensiveRankBonus(
+  unit: UnitObject,
+  item: ItemObject | null | undefined,
+  db: Database,
+  attribute: RankBonusAttribute,
+): number {
+  return isForkEngine() ? 0 : rankBonus(unit, item, db, attribute);
+}
+
 /** Calculate hit rate for an attacker. */
 export function accuracy(
   unit: UnitObject,
@@ -317,7 +376,7 @@ export function accuracy(
     unit, item, game, target, item2, mode, attackInfo,
   );
 
-  return baseHit + itemHit + itemMod + skillMod;
+  return baseHit + itemHit + rankBonus(unit, item, db, 'accuracy') + itemMod + skillMod;
 }
 
 /** Calculate avoid for a defender. */
@@ -362,7 +421,7 @@ export function avoid(
 
   // Terrain avoid arrives through the tile's terrain status skill, which
   // position-status-system grants exactly as Python arrive() does.
-  return baseAvoid + itemMod + skillMod;
+  return baseAvoid + defensiveRankBonus(unit, equippedWeapon, db, 'avoid') + itemMod + skillMod;
 }
 
 /** Calculate damage output. */
@@ -405,7 +464,7 @@ export function damage(
     unit, item, game, target, item2, mode, attackInfo,
   );
 
-  return baseDmg + itemDmg + itemMod + skillMod;
+  return baseDmg + itemDmg + rankBonus(unit, item, db, 'damage') + itemMod + skillMod;
 }
 
 /** Calculate defense/resistance against an incoming attack item. */
@@ -444,7 +503,7 @@ export function defense(
   );
 
   // Terrain DEF/RES come from the terrain status skill's stat_change.
-  return baseDef + skillMod;
+  return baseDef + defensiveRankBonus(unit, item, db, 'resist') + skillMod;
 }
 
 /** Calculate attack speed (for doubling checks). */
@@ -482,7 +541,7 @@ export function attackSpeed(
     unit, item, game, target, item2, mode, attackInfo,
   );
 
-  return baseAS + itemMod + skillMod;
+  return baseAS + rankBonus(unit, item, db, 'attack_speed') + itemMod + skillMod;
 }
 
 /** Calculate defense speed (for doubling checks on the defender side). */
@@ -511,7 +570,7 @@ export function defenseSpeed(
   const base = speedExpr
     ? evaluateEquation(speedExpr, unit, { db, item })
     : unit.getStatValue('SPD');
-  return base +
+  return base + defensiveRankBonus(unit, item, db, 'defense_speed') +
     (item ? itemSystem.modifyDefenseSpeed(unit, item, game) : 0) +
     skillSystem.modifyDefenseSpeed(
       unit, defensiveSkillItem(item, itemToAvoid), game, target, itemToAvoid, mode, attackInfo,
@@ -539,7 +598,7 @@ export function critAccuracy(
       itemSystem.critAccuracyFormula(unit, item) ??
       'CRIT_HIT';
   const base = resolveEquation(db, formula, 'SKL // 2', unit);
-  return base + (item.getComponent<number>('crit') ?? 0) +
+  return base + (item.getComponent<number>('crit') ?? 0) + rankBonus(unit, item, db, 'crit') +
     itemSystem.modifyCritAccuracy(unit, item) +
     skillSystem.modifyCritAccuracy(
       unit, item, game, target, item2, mode, attackInfo,
@@ -566,7 +625,7 @@ export function critAvoid(
       skillSystem.critAvoidFormula(unit, formulaContext) ??
       (itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined) ??
       'CRIT_AVOID';
-  return resolveEquation(db, formula, 'LCK', unit) +
+  return resolveEquation(db, formula, 'LCK', unit) + defensiveRankBonus(unit, item, db, 'dodge') +
     skillSystem.modifyCritAvoid(
       unit, defensiveSkillItem(item, itemToAvoid), game, target, itemToAvoid, mode, attackInfo,
     );

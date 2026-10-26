@@ -9946,23 +9946,31 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 381
+          "line": 289
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1093
+          "line": 440
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1101
+          "line": 467
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1105
+          "line": 1152
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1109
+          "line": 1160
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1164
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 1168
         },
         {
           "source": "src/combat/item-system.ts",
@@ -10024,7 +10032,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 381
+          "line": 440
         },
         {
           "source": "src/combat/item-system.ts",
@@ -10084,7 +10092,15 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 542
+          "line": 289
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 601
+        },
+        {
+          "source": "src/combat/combat-calcs.ts",
+          "line": 601
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -10170,7 +10186,7 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 542
+          "line": 601
         },
         {
           "source": "src/combat/item-system.ts",
