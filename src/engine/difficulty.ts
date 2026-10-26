@@ -5,6 +5,35 @@
 
 import type { DifficultyMode, NID } from '../data/types';
 
+/** Python RNGOption display values, keyed by the solver's rng-mode ids. */
+const RNG_OPTIONS: Array<[string, string]> = [
+  ['classic', 'Classic'],
+  ['true_hit', 'True Hit'],
+  ['true_hit_plus', 'True Hit Plus'],
+  ['fates_hit', 'Fates Hit'],
+  ['grandmaster', 'Grandmaster'],
+];
+
+/**
+ * RNGOption display value ('Classic', 'True Hit', ...) for an event or
+ * difficulty-mode string; also accepts the solver ids ('true_hit').
+ * Returns null for anything else.
+ */
+export function rngOptionDisplay(raw: unknown): string | null {
+  const text = String(raw ?? '').trim();
+  const key = text.toLowerCase().replace(/\s+/g, '_');
+  return RNG_OPTIONS.find(([id, display]) => id === key || display === text)?.[1] ?? null;
+}
+
+/**
+ * Solver rng-mode id for an RNGOption value. Python's solver logs an
+ * invalid mode and falls back to True Hit.
+ */
+export function rngModeId(raw: unknown): string {
+  const display = rngOptionDisplay(raw);
+  return RNG_OPTIONS.find(([, value]) => value === display)?.[0] ?? 'true_hit';
+}
+
 /**
  * Runtime difficulty mode for the current game session.
  * Created from a DifficultyMode DB prefab at game start.

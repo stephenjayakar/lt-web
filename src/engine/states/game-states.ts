@@ -172,7 +172,7 @@ import {
   TradeMenu,
   checkTrade as prepCheckTrade,
 } from '../../ui/prep-ui';
-import { DifficultyModeObject } from '../difficulty';
+import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
@@ -6759,7 +6759,7 @@ export class CombatState extends State {
       startEvents.push(...this.captureEvents(() =>
         queueCombatSkillStartEvents(game, attacker, primaryDefender, attackItem, defenseItem)));
     }
-    const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
+    const rngMode = game.rngMode;
 
     const playerSelectedPartners = !!game.memory.get('combat_strike_partners_selected');
     game.memory.delete('combat_strike_partners_selected');
@@ -13855,11 +13855,13 @@ export class EventState extends State {
       }
 
       case 'set_mode_rng': {
-        // set_mode_rng;RNG (Python event_functions.py:2382) — not turnwheel-logged
-        const validModes = ['classic', 'true_hit', 'true_hit_plus', 'fates_hit', 'grandmaster'];
-        const mode = (args[0] ?? '').trim();
-        if (!validModes.includes(mode)) {
-          console.warn(`set_mode_rng: ${mode} is not a valid RNG option`);
+        // set_mode_rng;RNG (Python event_functions.py) — not turnwheel-logged.
+        // RNG is an RNGOption display value ('Classic', 'True Hit', ...); it
+        // overrides the difficulty's rng_choice for combat (game.rng_mode).
+        const raw = (args[0] ?? '').trim();
+        const mode = rngOptionDisplay(raw);
+        if (!mode) {
+          console.warn(`set_mode_rng: ${raw} is not a valid RNG option`);
         } else if (game.currentMode) {
           game.currentMode.rng_mode = mode;
         }
@@ -16815,7 +16817,7 @@ export class EventState extends State {
                 ...targetGroup.splashDefenders,
               ],
             );
-            const rngMode2 = game.db.getConstant('rng_mode', 'true_hit') as any;
+            const rngMode2 = game.rngMode;
             const mc = new MapCombat(
               iuAttacker, attackItem, targetGroup.representative, defItem,
               game.db, rngMode2, game.board, iuScript,

@@ -99,9 +99,9 @@ export function cursorOnTop(game: Game): boolean {
   return game.cursor.getPosition()[1] < Math.floor(tileY / 2) + cameraTiles(game)[1];
 }
 
-/** Python RNGOption.GRANDMASTER check on the current difficulty. */
+/** Python `game.rng_mode == RNGOption.GRANDMASTER`. */
 function isGrandmaster(game: Game): boolean {
-  return String(game.currentMode?.rng_mode ?? '').toLowerCase() === 'grandmaster';
+  return game.rngMode === 'grandmaster';
 }
 
 function itemUses(item: ItemObject): number {

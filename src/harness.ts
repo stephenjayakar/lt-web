@@ -529,7 +529,7 @@ export function installHarness(
       const weapon = attacker.equippedWeapon;
       if (!weapon) return null;
       const defenseItem = useDefenderWeapon ? (defender.equippedWeapon ?? null) : null;
-      const rngMode = (game.db.getConstant('rng_mode', 'true_hit') as string) as any;
+      const rngMode = game.rngMode;
       const mc = new MapCombat(
         attacker, weapon, defender, defenseItem,
         game.db, rngMode, game.board, script ?? null, undefined, game,
@@ -575,7 +575,7 @@ export function installHarness(
       if (!attacker || !defender || !attacker.position || !defender.position) return null;
       const weapon = attacker.equippedWeapon;
       if (!weapon) return null;
-      const rngMode = (game.db.getConstant('rng_mode', 'true_hit') as string) as any;
+      const rngMode = game.rngMode;
       const mc = new MapCombat(
         attacker, weapon, defender, null,
         game.db, rngMode, game.board, null, undefined, game,

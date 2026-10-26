@@ -343,12 +343,29 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
   });
   test('set_mode_rng changes the difficulty mode rng and rejects invalid options', async ({ page }) => {
     await boot(page);
-    await runEvent(page, 'TestSetRng', ['set_mode_rng;grandmaster']);
-    let mode = await page.evaluate(() => (window as any).__gameRef.currentMode?.rng_mode);
-    expect(mode).toBe('grandmaster');
+    const read = () => page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.db.constants.delete('rng_mode');
+      return { stored: game.currentMode?.rng_mode, solver: game.rngMode };
+    });
+    // Python RNGOption display values ('Classic', 'True Hit', ...).
+    expect(await read()).toEqual({ stored: 'True Hit', solver: 'true_hit' });
+    await runEvent(page, 'TestSetRng', ['set_mode_rng;Grandmaster']);
+    expect(await read()).toEqual({ stored: 'Grandmaster', solver: 'grandmaster' });
     await runEvent(page, 'TestSetRngBad', ['set_mode_rng;bogus_mode']);
-    mode = await page.evaluate(() => (window as any).__gameRef.currentMode?.rng_mode);
-    expect(mode).toBe('grandmaster'); // unchanged on invalid input
+    expect(await read()).toEqual({ stored: 'Grandmaster', solver: 'grandmaster' }); // unchanged on invalid input
+    await runEvent(page, 'TestSetRngClassic', ['set_mode_rng;Classic']);
+    expect(await read()).toEqual({ stored: 'Classic', solver: 'classic' });
+    // The override is saved with the difficulty mode.
+    const restored = await page.evaluate(async () => {
+      const h = (window as any).__harness;
+      const game = (window as any).__gameRef;
+      const snapshot = h.saveSnapshot();
+      game.currentMode.rng_mode = 'True Hit';
+      await h.loadSnapshot(snapshot);
+      return game.rngMode;
+    });
+    expect(restored).toBe('classic');
   });
 
   test('set_mode_autolevels routes hidden/boss flags to the right fields', async ({ page }) => {

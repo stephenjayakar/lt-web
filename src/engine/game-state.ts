@@ -13,7 +13,7 @@ import type {
   FogOfWarConfig,
   DifficultyMode,
 } from '../data/types';
-import { DifficultyModeObject } from './difficulty';
+import { DifficultyModeObject, rngModeId } from './difficulty';
 import { FRAMETIME } from './constants';
 import { Database } from '../data/database';
 import { ResourceManager } from '../data/resource-manager';
@@ -1208,6 +1208,18 @@ export class GameState {
   get mode(): DifficultyMode | null {
     if (!this.currentMode) return null;
     return this.db.difficultyModes.find(m => m.nid === this.currentMode!.nid) ?? null;
+  }
+
+  /**
+   * Python `game.rng_mode` as a solver id: the event override
+   * (`set_mode_rng`, stored on the current mode and saved with it), else the
+   * difficulty's `rng_choice`. A DB `rng_mode` constant is not an LT constant;
+   * the test harness sets one to pin a mode, so it wins when present.
+   */
+  get rngMode(): 'classic' | 'true_hit' | 'true_hit_plus' | 'fates_hit' | 'grandmaster' {
+    const pinned = this.db?.constants?.get?.('rng_mode');
+    const raw = pinned ?? this.currentMode?.rng_mode ?? this.mode?.rng_choice ?? 'True Hit';
+    return rngModeId(raw) as 'classic' | 'true_hit' | 'true_hit_plus' | 'fates_hit' | 'grandmaster';
   }
 
   /**
