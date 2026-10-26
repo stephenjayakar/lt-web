@@ -232,6 +232,34 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
     ]);
   });
 
+  test("change_class honours EOtF's fork-only no_wexp flag", async ({ page }) => {
+    await boot(page);
+    // EOtF runs change_class;Unit;Class;silent;no_wexp. The flag exists only
+    // in EOtF's engine fork (stock lt-maker fails to parse the line); it
+    // skips the new class's starting weapon experience.
+    const target = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Eirika');
+      const seth = g.units.get('Seth');
+      const klass = [...g.db.classes.values()].find((k: any) =>
+        k.nid !== unit.klass && k.nid !== seth.klass && k.bases);
+      klass.wexp_gain = { ...(klass.wexp_gain ?? {}), Lance: [true, 31, 251] };
+      unit.wexp.Lance = 0;
+      return klass.nid as string;
+    });
+    await runEvent(page, 'TestClassNoWexp', [`change_class;Eirika;${target};silent;no_wexp`]);
+    const noWexp = await page.evaluate(() => {
+      const unit = (window as any).__gameRef.units.get('Eirika');
+      return { klass: unit.klass, lance: unit.wexp.Lance ?? 0 };
+    });
+    expect(noWexp).toEqual({ klass: target, lance: 0 });
+
+    await page.evaluate(() => { (window as any).__gameRef.units.get('Seth').wexp.Lance = 0; });
+    await runEvent(page, 'TestClassWexp', [`change_class;Seth;${target};silent`]);
+    const withWexp = await page.evaluate(() => { const s = (window as any).__gameRef.units.get('Seth'); return s.wexp.Lance ?? 0; });
+    expect(withWexp).toBe(31);
+  });
+
   test('event variables, visited state, and map removal undo and redo through actions', async ({ page }) => {
     await boot(page);
     const before = await page.evaluate(() => {
@@ -1341,8 +1369,8 @@ test.describe('Action-backed base records', () => {
   });
 });
 
-test.describe('Action-backed persistent records', () => {
-  test('record commands undo and redo localStorage-backed state', async ({ page }) => {
+test.describe('Persistent records outside the turnwheel', () => {
+  test('record commands persist immediately and the turnwheel never rewinds them', async ({ page }) => {
     await boot(page);
     await page.evaluate(async () => {
       const g = (window as any).__gameRef;
@@ -1350,39 +1378,36 @@ test.describe('Action-backed persistent records', () => {
       records.RECORDS.clear();
       g.actionLog.clear();
     });
-    await runEvent(page, 'TestActionBackedPersistentRecords', [
+    await runEvent(page, 'TestPersistentRecords', [
       'create_record;TestRecord;1',
       'update_record;TestRecord;2',
       'replace_record;TestRecord;3',
       'unlock_difficulty;TestDifficulty',
       'unlock_song;TestSong',
-      'delete_record;TestRecord',
+      'create_record;KeptRecord;7',
     ]);
 
     const result = await page.evaluate(async () => {
       const g = (window as any).__gameRef;
       const records = await import('/src/engine/records.ts');
       const changed = records.RECORDS.save();
-      const actions = Array.from({ length: 6 }, () => g.actionLog.undo());
-      const undone = records.RECORDS.save();
-      for (const action of [...actions].reverse()) action?.execute();
-      const redone = records.RECORDS.save();
-      for (const action of actions) action?.reverse();
-      return {
-        changed,
-        undone,
-        redone,
-        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
-      };
+      // Python's RECORDS.create/update/... never go through action.do, so
+      // rewinding every logged action leaves them in place.
+      const recordActions = g.actionLog.actions
+        .filter((action: any) => /Persistent|Record/.test(action?.constructor?.name ?? ''))
+        .map((action: any) => action.constructor.name);
+      while (g.actionLog.undo()) { /* rewind everything */ }
+      return { changed, recordActions, undone: records.RECORDS.save() };
     });
 
     expect(result.changed).toEqual([
+      { nid: 'TestRecord', value: 3 },
       { nid: 'TestDifficulty', value: true },
       { nid: 'TestSong', value: true },
+      { nid: 'KeptRecord', value: 7 },
     ]);
-    expect(result.undone).toEqual([]);
-    expect(result.redone).toEqual(result.changed);
-    expect(result.actionNames).toEqual(Array(6).fill('UpdatePersistentStoreAction'));
+    expect(result.recordActions).toEqual([]);
+    expect(result.undone).toEqual(result.changed);
   });
 });
 

@@ -364,15 +364,13 @@ test.describe('Event command parity', () => {
       const { GameQueryEngine } = await import('/src/engine/query-engine.ts');
       const query = new GameQueryEngine();
       const newActions = (game.actionLog as any).actions.slice(beforeActionIndex + 1);
-      const persistentActions = newActions.filter(
-        (action: any) => action.constructor.name === 'UpdatePersistentStoreAction',
-      );
-      for (const action of [...persistentActions].reverse()) action.reverse();
+      const entries = records.ACHIEVEMENTS.save();
+      // Python ACHIEVEMENTS mutations are not actions: rewinding every new
+      // action leaves them in place.
+      while (game.actionLog.actionIndex > beforeActionIndex && game.actionLog.undo()) { /* rewind */ }
       const undoneEntries = records.ACHIEVEMENTS.save();
-      for (const action of persistentActions) action.execute();
-      const redoneEntries = records.ACHIEVEMENTS.save();
       return {
-        entries: redoneEntries,
+        entries,
         undoneEntries,
         aHiddenForDisplay: records.ACHIEVEMENTS.getHidden('A'),
         autoHiddenForDisplay: records.ACHIEVEMENTS.getHidden('Auto'),
@@ -403,10 +401,8 @@ test.describe('Event command parity', () => {
     expect(mutated.autoHiddenForDisplay).toBe(false);
     expect(mutated.hasA).toBe(true);
     expect(mutated.hasMissing).toBe(false);
-    expect(mutated.undoneEntries).toEqual([]);
-    expect(mutated.newActionTypes.filter(
-      (name: string) => name === 'UpdatePersistentStoreAction',
-    )).toHaveLength(10);
+    expect(mutated.undoneEntries).toEqual(mutated.entries);
+    expect(mutated.newActionTypes).not.toContain('UpdatePersistentStoreAction');
 
     await page.reload();
     await waitForHarness(page);
@@ -466,7 +462,7 @@ test.describe('Event command parity', () => {
       pointer: 0,
       state: 'event',
       sfx: ['Item'],
-      actionIndex: bannerSetup + 1,
+      actionIndex: bannerSetup,
     });
 
     await stepFrames(page, 140);
@@ -507,7 +503,7 @@ test.describe('Event command parity', () => {
     expect(afterClear.live).toEqual([]);
     expect(afterClear.persisted).toEqual([]);
     expect(afterClear.query).toBe(false);
-    expect(afterClear.newActionTypes).toContain('UpdatePersistentStoreAction');
+    expect(afterClear.newActionTypes).not.toContain('UpdatePersistentStoreAction');
   });
 
   test('open_achievements blocks into a navigable hidden-aware browser and resumes the event', async ({ page }) => {

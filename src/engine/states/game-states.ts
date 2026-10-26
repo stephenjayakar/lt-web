@@ -154,7 +154,6 @@ import {
   RemoveOverworldEntityAction,
   DisableOverworldEntityAction,
   SetOverworldMenuOptionAction,
-  UpdatePersistentStoreAction,
   SetRoamInfoAction,
   TransferTravelerAction,
 } from '../action';
@@ -3603,6 +3602,7 @@ export function performPromotionOrClassChange(
   game: any,
   kind: 'promote' | 'change_class' = 'promote',
   skillMode?: 'exact' | 'all' | 'none',
+  grantWexp: boolean = true,
 ): { statChanges: Record<string, number> } {
   const action = kind === 'promote'
     ? new PromoteAction(unit, newKlass)
@@ -3611,7 +3611,7 @@ export function performPromotionOrClassChange(
 
   const { statChanges, newWexp } = action.getData();
   for (const [weaponNid, value] of Object.entries(newWexp)) {
-    if (value > 0) {
+    if (grantWexp && value > 0) {
       game.actionLog.doAction(new GainWexpAction(unit, weaponNid, value));
     }
   }
@@ -15103,6 +15103,10 @@ export class EventState extends State {
         if (ccUnit) {
           const ccKlassListStr = args[1] ?? '';
           const ccIsSilent = args.some((a: string) => a.toLowerCase() === 'silent');
+          // EOtF's engine fork adds a no_wexp flag (absent from every
+          // upstream lt-maker): the class change skips the new class's
+          // starting weapon experience.
+          const ccNoWexp = args.some((a: string) => a.toLowerCase() === 'no_wexp');
           let ccKlassList = ccKlassListStr
             ? ccKlassListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
             : [];
@@ -15125,6 +15129,7 @@ export class EventState extends State {
                 game,
                 'change_class',
                 ccIsSilent ? 'exact' : undefined,
+                !ccNoWexp,
               );
               this.loadMapSpriteForUnit(ccUnit, game);
               if (!ccIsSilent && this.startEventLevelUpPresentation(
@@ -17297,21 +17302,15 @@ export class EventState extends State {
       }
 
       // ----- Persistent records & achievements -----
+      // Python mutates RECORDS/ACHIEVEMENTS directly (no action.do): they are
+      // cross-save data that the turnwheel never rewinds.
       case 'create_record': {
         // create_record;nid;expression
         try {
           const nid = args[0];
           const value = args[1] ?? 'true';
           if (nid && RECORDS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(
-                RECORDS,
-                () => RECORDS.create(nid, evaluateExpression(
-                  value,
-                  this.buildConditionContext(),
-                )),
-              ),
-            );
+            RECORDS.create(nid, evaluateExpression(value, this.buildConditionContext()));
           }
         } catch (e) { console.warn('create_record error:', e); }
         this.advancePointer();
@@ -17322,15 +17321,7 @@ export class EventState extends State {
           const nid = args[0];
           const value = args[1] ?? 'true';
           if (nid && RECORDS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(
-                RECORDS,
-                () => RECORDS.update(nid, evaluateExpression(
-                  value,
-                  this.buildConditionContext(),
-                )),
-              ),
-            );
+            RECORDS.update(nid, evaluateExpression(value, this.buildConditionContext()));
           }
         } catch (e) { console.warn('update_record error:', e); }
         this.advancePointer();
@@ -17341,15 +17332,7 @@ export class EventState extends State {
           const nid = args[0];
           const value = args[1] ?? 'true';
           if (nid && RECORDS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(
-                RECORDS,
-                () => RECORDS.replace(nid, evaluateExpression(
-                  value,
-                  this.buildConditionContext(),
-                )),
-              ),
-            );
+            RECORDS.replace(nid, evaluateExpression(value, this.buildConditionContext()));
           }
         } catch (e) { console.warn('replace_record error:', e); }
         this.advancePointer();
@@ -17358,9 +17341,7 @@ export class EventState extends State {
       case 'delete_record': {
         try {
           if (args[0] && RECORDS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.delete(args[0])),
-            );
+            RECORDS.delete(args[0]);
           }
         } catch (e) { console.warn('delete_record error:', e); }
         this.advancePointer();
@@ -17369,9 +17350,7 @@ export class EventState extends State {
       case 'unlock_difficulty': {
         try {
           if (args[0] && RECORDS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.unlockDifficulty(args[0])),
-            );
+            RECORDS.unlockDifficulty(args[0]);
           }
         } catch (e) { console.warn('unlock_difficulty error:', e); }
         this.advancePointer();
@@ -17380,9 +17359,7 @@ export class EventState extends State {
       case 'unlock_song': {
         try {
           if (args[0] && RECORDS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(RECORDS, () => RECORDS.unlockSong(args[0])),
-            );
+            RECORDS.unlockSong(args[0]);
           }
         } catch (e) { console.warn('unlock_song error:', e); }
         this.advancePointer();
@@ -17398,12 +17375,7 @@ export class EventState extends State {
             const flags = new Set(args.slice(3).map((flag) => flag.toLowerCase()));
             const complete = flags.has('completed');
             const hidden = flags.has('hidden');
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(
-                ACHIEVEMENTS,
-                () => ACHIEVEMENTS.add(nid, name, desc, complete, hidden),
-              ),
-            );
+            ACHIEVEMENTS.add(nid, name, desc, complete, hidden);
           } else {
             console.warn(`Event create_achievement: missing required argument (${args.join(';')})`);
           }
@@ -17416,12 +17388,7 @@ export class EventState extends State {
         try {
           if (args[0] && args[1] !== undefined && args[2] !== undefined && ACHIEVEMENTS) {
             const hidden = args.slice(3).some((flag) => flag.toLowerCase() === 'hidden');
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(
-                ACHIEVEMENTS,
-                () => ACHIEVEMENTS.updateAchievement(args[0], args[1], args[2], hidden),
-              ),
-            );
+            ACHIEVEMENTS.updateAchievement(args[0], args[1], args[2], hidden);
           } else {
             console.warn(`Event update_achievement: missing required argument (${args.join(';')})`);
           }
@@ -17434,12 +17401,7 @@ export class EventState extends State {
         try {
           const complete = parseEventBool(args[1]);
           if (args[0] && complete !== null && ACHIEVEMENTS) {
-            const action = new UpdatePersistentStoreAction(
-              ACHIEVEMENTS,
-              () => ACHIEVEMENTS.complete(args[0], complete),
-            );
-            game.actionLog.doAction(action);
-            const changedToComplete = action.result;
+            const changedToComplete = ACHIEVEMENTS.complete(args[0], complete);
             const banner = args.slice(2).some((flag) => flag.toLowerCase() === 'banner');
             if (changedToComplete && banner && !this.skipMode) {
               const achievement = ACHIEVEMENTS.getAchievement(args[0]);
@@ -17461,9 +17423,7 @@ export class EventState extends State {
       case 'clear_achievements': {
         try {
           if (ACHIEVEMENTS) {
-            game.actionLog.doAction(
-              new UpdatePersistentStoreAction(ACHIEVEMENTS, () => ACHIEVEMENTS.clear()),
-            );
+            ACHIEVEMENTS.clear();
           }
         } catch (e) { console.warn('clear_achievements error:', e); }
         this.advancePointer();
@@ -17610,6 +17570,7 @@ export class EventState extends State {
     position: [number, number],
     checkForValidPath: boolean,
     game: any,
+    canStay: boolean = true,
   ): [number, number] | null {
     const board = game.board;
     if (!board) return null;
@@ -17624,7 +17585,7 @@ export class EventState extends State {
       const mcost = board.getMovementCost(x, y, group, game.db);
       if (!(mcost <= 5 || mcost <= movement)) return false;
       const occupant = board.getUnit(x, y);
-      if (occupant && occupant !== unit) return false;
+      if (occupant && !(canStay && occupant === unit)) return false;
       if (checkForValidPath && unit?.position) {
         const path = game.pathSystem?.getPath(unit, x, y, board);
         if (!path) return false;
@@ -17670,23 +17631,15 @@ export class EventState extends State {
         // unit can stand on (and reach, when it is already on the map).
         return this.nearestOpenTile(unit, position, true, game);
       case 'push': {
-        // Push the occupant to a nearby tile, then use this position
-        const maxRange = 5;
-        for (let r = 1; r <= maxRange; r++) {
-          for (let dx = -r; dx <= r; dx++) {
-            for (let dy = -r; dy <= r; dy++) {
-              if (Math.abs(dx) + Math.abs(dy) !== r) continue;
-              const nx = position[0] + dx;
-              const ny = position[1] + dy;
-              if (game.tilemap && !game.tilemap.checkBounds(nx, ny)) continue;
-              if (!game.board?.getUnit(nx, ny)) {
-                game.actionLog.doAction(new ArriveOnMapAction(game, occupant, [nx, ny]));
-                return position;
-              }
-            }
-          }
-        }
-        return null;
+        // Python: ForcedMovement(occupant, get_nearest_open_tile(occupant,
+        // position)). The reference (2025-12 to 2026-10 lt-maker) also
+        // accepted the occupant's own tile, so nobody moved and the units
+        // stacked; EOtF's engine (forked mid-2024) and upstream since
+        // 0f96fd6f6 (can_stay=False) move the occupant off the tile.
+        const destination = this.nearestOpenTile(occupant, position, false, game, false);
+        if (!destination) return null;
+        game.actionLog.doAction(new WarpUnitAction(occupant, destination, game.board));
+        return position;
       }
       default:
         return position;

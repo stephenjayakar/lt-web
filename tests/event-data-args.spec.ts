@@ -308,6 +308,39 @@ test.describe('Event data command parity', () => {
     expect(vars).toEqual([1, 1, 1, 1]);
   });
 
+  test('push placement moves the occupant to the nearest open tile instead of stacking', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      const [x, y] = eirika.position;
+      const seth = g.units.get('Seth');
+      if (seth.position) g.board.removeUnit(seth);
+      seth.position = null;
+      // Ring 1 is scanned left, down, up, right: wall off the left tile so
+      // Eirika is pushed to the open tile below.
+      g.board.setTerrain(x - 1, y, '9');
+      g.board.setTerrain(x, y + 1, '1');
+      const below = g.board.getUnit(x, y + 1);
+      if (below) { g.board.removeUnit(below); below.position = null; }
+      return { target: [x, y] };
+    });
+    await runEvent(page, 'QaPush', [
+      `add_unit;Seth;${setup.target[0]},${setup.target[1]};immediate;push`,
+    ]);
+    const placed = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        seth: g.units.get('Seth').position,
+        eirika: g.units.get('Eirika').position,
+        boardAtTarget: g.board.getUnit(...g.units.get('Seth').position)?.nid,
+      };
+    });
+    expect(placed.seth).toEqual(setup.target);
+    expect(placed.eirika).toEqual([setup.target[0], setup.target[1] + 1]);
+    expect(placed.boardAtTarget).toBe('Seth');
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);

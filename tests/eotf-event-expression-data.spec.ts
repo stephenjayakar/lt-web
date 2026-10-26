@@ -305,7 +305,7 @@ test.describe('Embrace of the Fog event expression data', () => {
     expect(result.highestLevel).toBe(result.expectedHighestLevel);
   });
 
-  test('evaluates authored persistent-record values with fallbacks reversibly', async ({ page }) => {
+  test('evaluates authored persistent-record values with fallbacks outside the turnwheel', async ({ page }) => {
     const warnings: string[] = [];
     page.on('console', (message) => {
       const text = message.text();
@@ -362,15 +362,9 @@ test.describe('Embrace of the Fog event expression data', () => {
         tether: RECORDS.get('Tether'),
       });
       const changed = structuredClone(snapshot());
-      const actions = Array.from({ length: 5 }, () => game.actionLog.undo());
-      const undone = structuredClone(snapshot());
-      for (const action of [...actions].reverse()) action?.execute();
-      return {
-        changed,
-        undone,
-        redone: structuredClone(snapshot()),
-        actionNames: actions.map((action: any) => action?.constructor?.name ?? null),
-      };
+      // Python RECORDS mutations are not actions; rewinding leaves them.
+      while (game.actionLog.undo()) { /* rewind everything */ }
+      return { changed, undone: structuredClone(snapshot()) };
     });
 
     expect(authoredCounts).toEqual({ create: 249, update: 208, replace: 1 });
@@ -381,15 +375,7 @@ test.describe('Embrace of the Fog event expression data', () => {
       inheritance: { Nothing: 'None', Patchwork: 'Player' },
       tether: 5,
     });
-    expect(result.undone).toEqual({
-      created: null,
-      units: ['Player'],
-      counter: 4,
-      inheritance: { Nothing: 'None' },
-      tether: null,
-    });
-    expect(result.redone).toEqual(result.changed);
-    expect(result.actionNames).toEqual(Array(5).fill('UpdatePersistentStoreAction'));
+    expect(result.undone).toEqual(result.changed);
     expect(warnings).toEqual([]);
   });
 });
