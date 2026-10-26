@@ -387,6 +387,110 @@ export function queueCombatSkillEvents(
   defenseItem: ItemObject | null,
 ): number {
   let queued = 0;
+  for (const strike of strikes) queued += queueStrikeSkillEvents(game, strike);
+  return queued + queueCombatEndSkillEvents(
+    game, strikes, initiator, primaryTarget, attackItem, defenseItem,
+  );
+}
+
+/**
+ * One strike's after_strike (attacker) and after_take_strike (defender)
+ * skill events. Python's solver fires these while the phase resolves, before
+ * the strike is shown.
+ */
+export function queueStrikeSkillEvents(game: CombatLifecycleGame, strike: CombatStrike): number {
+  let queued = 0;
+  const mode = strike.mode ?? (strike.isCounter ? 'defense' : 'attack');
+  const defenderItem = equippedWeapon(strike.defender);
+  const attackerSkills = [...(strike.attackHookSkills ?? strike.attacker.skills)];
+  for (const mark of strike.attackProcs ?? []) {
+    if (!attackerSkills.includes(mark.procSkill)) attackerSkills.push(mark.procSkill);
+  }
+  for (const skill of attackerSkills) {
+    if (!combatSkillEnabled(
+      game,
+      strike.attacker,
+      skill,
+      strike.defender,
+      strike.item,
+      defenderItem,
+      mode,
+    )) continue;
+    for (const [component, value] of skill.components) {
+      const fires = component === 'event_after_strike' ||
+        component === 'event_on_strike' ||
+        (component === 'event_after_hit' && strike.hit) ||
+        (component === 'event_after_crit' && strike.crit);
+      if (fires && triggerSkillEvent(
+        game, value, component, strike.attacker, strike.defender,
+        component === 'event_on_strike' ? null : strike.item,
+        component === 'event_on_strike' ? null : defenderItem,
+        component === 'event_on_strike' ? null : mode,
+      )) queued++;
+    }
+  }
+  const defenderSkills = [...(strike.defenseHookSkills ?? strike.defender.skills)];
+  for (const mark of strike.defenseProcs ?? []) {
+    if (!defenderSkills.includes(mark.procSkill)) defenderSkills.push(mark.procSkill);
+  }
+  for (const skill of defenderSkills) {
+    const defenderMode = mode === 'attack'
+      ? 'defense'
+      : mode === 'defense'
+        ? 'attack'
+        : 'splash';
+    if (!combatSkillEnabled(
+      game,
+      strike.defender,
+      skill,
+      strike.attacker,
+      defenderItem ?? strike.item,
+      strike.item,
+      defenderMode,
+    )) {
+      continue;
+    }
+    for (const [component, value] of skill.components) {
+      const fires = (component === 'event_when_hit' && strike.hit) ||
+        (component === 'event_when_dodging' && !strike.hit) ||
+        (component === 'event_stack_on_take_hit' &&
+          strike.hit &&
+          !strike.guarded &&
+          !!game.db &&
+          checkEnemy(strike.defender, strike.attacker, game.db));
+      if (fires && triggerSkillEvent(
+        game, value, component, strike.defender, strike.attacker,
+        component === 'event_stack_on_take_hit' ? null : defenderItem,
+        component === 'event_stack_on_take_hit' ? null : strike.item,
+        component === 'event_stack_on_take_hit' ? null : mode,
+      )) queued++;
+    }
+  }
+  const survival = strike.survivalProc;
+  if ((survival?.component === 'true_miracle_event' ||
+      survival?.component === 'True_Miracle_Event') && triggerSkillEvent(
+    game,
+    survival.value,
+    survival.component,
+    strike.defender,
+    strike.attacker,
+    defenderItem,
+    strike.item,
+    mode,
+  )) queued++;
+  return queued;
+}
+
+/** end_combat skill events, per participant in Python end_combat order. */
+export function queueCombatEndSkillEvents(
+  game: CombatLifecycleGame,
+  strikes: CombatStrike[],
+  initiator: UnitObject,
+  primaryTarget: UnitObject,
+  attackItem: ItemObject,
+  defenseItem: ItemObject | null,
+): number {
+  let queued = 0;
   const playback = strikes.map((strike) => {
     let mainAttacker = strike.attacker;
     if (strike.assist) {
@@ -402,87 +506,6 @@ export function queueCombatSkillEvents(
       main_attacker: mainAttacker,
     };
   });
-  for (const strike of strikes) {
-    const mode = strike.mode ?? (strike.isCounter ? 'defense' : 'attack');
-    const defenderItem = equippedWeapon(strike.defender);
-    const attackerSkills = [...(strike.attackHookSkills ?? strike.attacker.skills)];
-    for (const mark of strike.attackProcs ?? []) {
-      if (!attackerSkills.includes(mark.procSkill)) attackerSkills.push(mark.procSkill);
-    }
-    for (const skill of attackerSkills) {
-      if (!combatSkillEnabled(
-        game,
-        strike.attacker,
-        skill,
-        strike.defender,
-        strike.item,
-        defenderItem,
-        mode,
-      )) continue;
-      for (const [component, value] of skill.components) {
-        const fires = component === 'event_after_strike' ||
-          component === 'event_on_strike' ||
-          (component === 'event_after_hit' && strike.hit) ||
-          (component === 'event_after_crit' && strike.crit);
-        if (fires && triggerSkillEvent(
-          game, value, component, strike.attacker, strike.defender,
-          component === 'event_on_strike' ? null : strike.item,
-          component === 'event_on_strike' ? null : defenderItem,
-          component === 'event_on_strike' ? null : mode,
-        )) queued++;
-      }
-    }
-    const defenderSkills = [...(strike.defenseHookSkills ?? strike.defender.skills)];
-    for (const mark of strike.defenseProcs ?? []) {
-      if (!defenderSkills.includes(mark.procSkill)) defenderSkills.push(mark.procSkill);
-    }
-    for (const skill of defenderSkills) {
-      const defenderMode = mode === 'attack'
-        ? 'defense'
-        : mode === 'defense'
-          ? 'attack'
-          : 'splash';
-      if (!combatSkillEnabled(
-        game,
-        strike.defender,
-        skill,
-        strike.attacker,
-        defenderItem ?? strike.item,
-        strike.item,
-        defenderMode,
-      )) {
-        continue;
-      }
-      for (const [component, value] of skill.components) {
-        const fires = (component === 'event_when_hit' && strike.hit) ||
-          (component === 'event_when_dodging' && !strike.hit) ||
-          (component === 'event_stack_on_take_hit' &&
-            strike.hit &&
-            !strike.guarded &&
-            !!game.db &&
-            checkEnemy(strike.defender, strike.attacker, game.db));
-        if (fires && triggerSkillEvent(
-          game, value, component, strike.defender, strike.attacker,
-          component === 'event_stack_on_take_hit' ? null : defenderItem,
-          component === 'event_stack_on_take_hit' ? null : strike.item,
-          component === 'event_stack_on_take_hit' ? null : mode,
-        )) queued++;
-      }
-    }
-    const survival = strike.survivalProc;
-    if ((survival?.component === 'true_miracle_event' ||
-        survival?.component === 'True_Miracle_Event') && triggerSkillEvent(
-      game,
-      survival.value,
-      survival.component,
-      strike.defender,
-      strike.attacker,
-      defenderItem,
-      strike.item,
-      mode,
-    )) queued++;
-  }
-
   const participants: Array<{
     unit: UnitObject;
     target: UnitObject;
@@ -2153,17 +2176,37 @@ export function queueCombatItemBreakEvents(
  * Specific events bypass their prefab condition, matching trigger_specific_event.
  */
 export function queueCombatItemEvents(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
+  let queued = 0;
+  strikes.forEach((strike, index) => {
+    queued += queueStrikeItemEvents(game, strike, index);
+  });
+  return queued + queueCombatEndItemEvents(game, strikes);
+}
+
+/**
+ * One hitting strike's item on_hit events (event_on_use, event_on_hit),
+ * which Python's solver fires while the phase resolves.
+ */
+export function queueStrikeItemEvents(
+  game: CombatLifecycleGame,
+  strike: CombatStrike,
+  index: number,
+): number {
+  const manager = game.eventManager;
+  if (!manager || !strike.hit) return 0;
+  let queued = 0;
+  for (const component of ['event_on_use', 'event_on_hit']) {
+    const nid = eventNid(strike.item, component);
+    if (nid && manager.triggerSpecific(nid, triggerForStrike(strike, index))) queued++;
+  }
+  return queued;
+}
+
+/** Item end_combat events (event_after_combat*, event_after_use, ...). */
+export function queueCombatEndItemEvents(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
   const manager = game.eventManager;
   if (!manager) return 0;
   let queued = 0;
-
-  strikes.forEach((strike, index) => {
-    if (!strike.hit) return;
-    for (const component of ['event_on_use', 'event_on_hit']) {
-      const nid = eventNid(strike.item, component);
-      if (nid && manager.triggerSpecific(nid, triggerForStrike(strike, index))) queued++;
-    }
-  });
 
   const itemStrikes = new Map<ItemObject, CombatStrike[]>();
   for (const strike of strikes) {

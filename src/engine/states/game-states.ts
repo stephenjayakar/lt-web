@@ -187,6 +187,7 @@ import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../.
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
+import type { CombatStrike } from '../../combat/combat-solver';
 import {
   queueAfterInitiatedCombatEvents,
   queueCombatSkillEvents,
@@ -196,6 +197,10 @@ import {
   queueCombatItemBreakEvents,
   queueDirectItemUseEvents,
   queueCombatItemEvents,
+  queueCombatEndItemEvents,
+  queueCombatEndSkillEvents,
+  queueStrikeItemEvents,
+  queueStrikeSkillEvents,
   applyDroppableItemPickups,
   applyStolenItemTransfer,
   combatTradePair,
@@ -6384,7 +6389,57 @@ export function resolveCombatTargetGroup(
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'anim_exit' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
+type CombatPhase = 'combat' | 'anim_exit' | 'post_exp_events' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
+
+/**
+ * Python pushes an EventState per trigger and the stack runs the most recent
+ * one first. Run each trigger thunk in Python call order and re-queue the
+ * events they added so the FIFO queue runs them in Python's order: later
+ * triggers first, each trigger's own matches in their usual order.
+ */
+function queueInStackOrder(game: any, triggers: Array<() => unknown>): GameEvent[] {
+  const queue = game.eventManager?.eventQueue as GameEvent[] | undefined;
+  if (!queue) return [];
+  const slices: GameEvent[][] = [];
+  for (const trigger of triggers) {
+    const before = queue.length;
+    trigger();
+    slices.push(queue.splice(before));
+  }
+  const ordered = slices.reverse().flat();
+  queue.push(...ordered);
+  return ordered;
+}
+
+/**
+ * Events a paused event (e.g. the one running interact_unit) must wait for:
+ * when the interrupting events finish, EventState pops back to the state
+ * above the paused event instead of resuming it there.
+ */
+const eventResumeBarriers: GameEvent[] = [];
+
+/**
+ * Run freshly queued events (at the end of the queue) before anything that
+ * was already waiting, as Python's newly pushed EventStates do. A paused
+ * event at the front (interact_unit's caller) resumes only after them; when
+ * `pushState` is set an EventState opens on top of the current state now,
+ * and the paused event is fenced so it resumes in its own EventState.
+ */
+function runEventsBeforeWaiting(game: any, events: GameEvent[], pushState: boolean): boolean {
+  const queue = game.eventManager?.eventQueue as GameEvent[] | undefined;
+  if (!queue || events.length === 0) return false;
+  for (const event of events) {
+    const index = queue.indexOf(event);
+    if (index >= 0) queue.splice(index, 1);
+  }
+  const waiting = queue[0] ?? null;
+  queue.unshift(...events);
+  if (pushState) {
+    if (waiting) eventResumeBarriers.push(waiting);
+    game.state.change('event');
+  }
+  return true;
+}
 
 export class CombatState extends State {
   private initialized: boolean = false;
@@ -6459,6 +6514,122 @@ export class CombatState extends State {
   private gotItemBannerQueue: Banner[] = [];
   private pendingDiscards: Array<{ unit: UnitObject; item: ItemObject }> = [];
   private rankUpBannerShown: boolean = false;
+  /** clean_up1 break events and clean_up2 unit_death events were queued. */
+  private postExpEventsQueued: boolean = false;
+  /** Events triggered with the results but run later, in Python's order. */
+  private heldBreakEvents: GameEvent[] = [];
+  private heldRankUpEvents: GameEvent[] = [];
+  private heldEndEvents: GameEvent[] = [];
+
+  /** Run `trigger` and take the events it queued back out of the queue. */
+  private captureEvents(trigger: () => unknown): GameEvent[] {
+    const queue = getGame().eventManager?.eventQueue as GameEvent[] | undefined;
+    if (!queue) {
+      trigger();
+      return [];
+    }
+    const before = queue.length;
+    trigger();
+    return queue.splice(before);
+  }
+
+  /**
+   * Python end_combat: per participant (attacker, its strike partner, the
+   * defender's partner, each defender) skill hooks then the item's hooks,
+   * each trigger pushing an EventState. The stack runs them newest first.
+   */
+  private orderEndCombatEvents(skillEvents: GameEvent[], itemEvents: GameEvent[]): GameEvent[] {
+    const active = this.getActiveCombat();
+    const participants: UnitObject[] = [];
+    const add = (unit: UnitObject | null | undefined) => {
+      if (unit && !participants.includes(unit)) participants.push(unit);
+    };
+    if (active) {
+      add(active.attacker);
+      add(active.attacker.strikePartner);
+      add(active.defender?.strikePartner);
+      for (const defender of this.getCombatDefenders()) add(defender);
+    }
+    const ordered: GameEvent[] = [];
+    const take = (events: GameEvent[], unit: UnitObject | null) => {
+      for (const event of events) {
+        if (ordered.includes(event)) continue;
+        if (unit === null || event.trigger?.unit1 === unit) ordered.push(event);
+      }
+    };
+    for (const unit of participants) {
+      take(skillEvents, unit);
+      take(itemEvents, unit);
+    }
+    take(skillEvents, null);
+    take(itemEvents, null);
+    return ordered.reverse();
+  }
+
+  /**
+   * Python solver phases fire on_hit / after_strike / after_take_strike
+   * events (each phase's own triggers run newest first, phases in order),
+   * then clean_up0 fires combat_death; all run over the combat before the
+   * exp screen. The web solves every strike up front, so the strike events
+   * run here, after the last strike, rather than between strikes.
+   */
+  private runMidCombatEvents(strikes: CombatStrike[]): boolean {
+    const game = getGame();
+    if (!game.eventManager) return false;
+    const events: GameEvent[] = [];
+    strikes.forEach((strike, index) => {
+      events.push(...this.captureEvents(() => {
+        queueStrikeItemEvents(game, strike, index);
+        queueStrikeSkillEvents(game, strike);
+      }).reverse());
+    });
+    events.push(...this.captureEvents(() => queueInStackOrder(game, this.deathTriggers('combat_death'))));
+    return runEventsBeforeWaiting(game, events, true);
+  }
+
+  /** One trigger thunk per dying unit (defenders, then the attacker). */
+  private deathTriggers(type: 'combat_death' | 'unit_death'): Array<() => unknown> {
+    const game = getGame();
+    const active = this.getActiveCombat();
+    if (!active || !game.eventManager) return [];
+    const levelNid = game.currentLevel?.nid;
+    const attacker = active.attacker;
+    const defender = this.getPrimaryCombatDefender() ?? active.defender;
+    const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
+    const dying: Array<{ unit: UnitObject; fallbackKiller: UnitObject }> = [
+      ...this.getDefenderDeaths().map((unit) => ({ unit, fallbackKiller: attacker })),
+      ...(this.results?.attackerDead ? [{ unit: attacker, fallbackKiller: defender }] : []),
+    ];
+    return dying.map(({ unit, fallbackKiller }) => () => {
+      const killer = this.getCombatKiller(unit) ?? fallbackKiller;
+      return game.eventManager.trigger(
+        {
+          type,
+          unit1: unit,
+          unit2: killer,
+          unitNid: unit.nid,
+          position: this.results?.deathPositions?.get(unit) ?? unit.position,
+          levelNid,
+        },
+        { ...ctx, unit1: unit, unit2: killer },
+      );
+    });
+  }
+
+  /**
+   * After the exp screen: Python's clean_up1 events (weapon rank, broken
+   * items) and then clean_up2's UnitDeath, which runs before the dying fade.
+   * Returns whether an EventState was opened over the combat.
+   */
+  private queuePostExpEvents(): boolean {
+    const game = getGame();
+    if (!game.eventManager) return false;
+    const unitDeath = this.captureEvents(() => queueInStackOrder(game, this.deathTriggers('unit_death')));
+    const events = [...this.heldRankUpEvents, ...this.heldBreakEvents, ...unitDeath];
+    this.heldRankUpEvents = [];
+    this.heldBreakEvents = [];
+    return runEventsBeforeWaiting(game, events, true);
+  }
 
   /** Get whichever combat controller is active (AnimationCombat or MapCombat). */
   private getActiveCombat(): MapCombat | AnimationCombat | null {
@@ -6623,6 +6794,10 @@ export class CombatState extends State {
     this.gotItemBannerQueue = [];
     this.pendingDiscards = [];
     this.rankUpBannerShown = false;
+    this.postExpEventsQueued = false;
+    this.heldBreakEvents = [];
+    this.heldRankUpEvents = [];
+    this.heldEndEvents = [];
     this.initialized = true;
 
     // Clear all highlights and hide cursor/HUD before combat starts
@@ -6987,10 +7162,15 @@ export class CombatState extends State {
                  this.phase === 'exp0' || this.phase === 'exp100' || this.phase === 'exp_leave' ||
                  this.phase === 'level_up' || this.phase === 'level_screen') {
         // Skip post-combat phases — stop looping SFX, finish any pending
-        // deaths, and jump straight to cleanup
+        // deaths, and jump straight to cleanup. UnitDeath events still run
+        // before the units die, as clean_up2 does.
         game.audioManager?.stopSfx?.('Experience Gain');
-        this.finishDeathsNow();
-        this.phase = 'cleanup';
+        if (!this.postExpEventsQueued) {
+          this.phase = 'post_exp_events';
+        } else {
+          this.finishDeathsNow();
+          this.phase = 'cleanup';
+        }
         this.phaseTimer = 0;
       }
     }
@@ -7018,37 +7198,47 @@ export class CombatState extends State {
         // draws over the battle, and the scene then slides out (anim_exit).
         const animReadyForExp = this.isAnimationCombat && this.animCombat?.state === 'exp_wait';
         if ((done || animReadyForExp) && !this.results) {
+          // Event hooks are triggered here, where their arguments still see
+          // the combat's units on the map, but run in Python's order (see
+          // runMidCombatEvents / queuePostExpEvents / the cleanup phase).
           const initiatedPartner = activeCombat.attacker.strikePartner;
-          queueAfterInitiatedCombatEvents(
-            game,
-            activeCombat.attacker,
-            activeCombat.defender,
-            activeCombat.attackItem,
-            activeCombat.defenseItem,
-            'attack',
-          );
-          if (initiatedPartner) {
+          const initiatedEvents = this.captureEvents(() => {
             queueAfterInitiatedCombatEvents(
               game,
-              initiatedPartner,
+              activeCombat.attacker,
               activeCombat.defender,
               activeCombat.attackItem,
               activeCombat.defenseItem,
               'attack',
             );
-          }
+            if (initiatedPartner) {
+              queueAfterInitiatedCombatEvents(
+                game,
+                initiatedPartner,
+                activeCombat.defender,
+                activeCombat.attackItem,
+                activeCombat.defenseItem,
+                'attack',
+              );
+            }
+          });
           this.results = activeCombat.applyResults(game.actionLog);
           game.actionLog.doAction(new HasAttackedAction(activeCombat.attacker));
-          queueCombatItemBreakEvents(game, activeCombat.strikes);
+          // Python on_broken runs in clean_up1, so these follow the exp screen.
+          this.heldBreakEvents = this.captureEvents(() =>
+            queueCombatItemBreakEvents(game, activeCombat.strikes)).reverse();
           applyCombatItemEndHooks(game, activeCombat.strikes);
-          queueCombatSkillEvents(
-            game,
-            activeCombat.strikes,
-            activeCombat.attacker,
-            activeCombat.defender,
-            activeCombat.attackItem,
-            activeCombat.defenseItem,
-          );
+          const skillEndEvents = [
+            ...initiatedEvents,
+            ...this.captureEvents(() => queueCombatEndSkillEvents(
+              game,
+              activeCombat.strikes,
+              activeCombat.attacker,
+              activeCombat.defender,
+              activeCombat.attackItem,
+              activeCombat.defenseItem,
+            )),
+          ];
           applyCombatSkillEndHooks(
             game,
             activeCombat.strikes,
@@ -7056,7 +7246,9 @@ export class CombatState extends State {
             activeCombat.defender,
             activeCombat.procPlayback,
           );
-          queueCombatItemEvents(game, activeCombat.strikes);
+          const itemEndEvents = this.captureEvents(() =>
+            queueCombatEndItemEvents(game, activeCombat.strikes));
+          this.heldEndEvents = this.orderEndCombatEvents(skillEndEvents, itemEndEvents);
           if (this.results.stolenItem) {
             const stolenItem = this.results.stolenItem;
             const stealDefender = this.getPrimaryCombatDefender() ?? activeCombat.defender;
@@ -7085,15 +7277,15 @@ export class CombatState extends State {
           if (this.results.attackerRankUp) {
             const rankUp = this.results.attackerRankUp;
             const weaponType = activeCombat.attackItem.getComponent<string>('weapon_type');
-            if (weaponType) {
-              game.eventManager?.trigger(
+            const wexpGained = this.results.attackerWexpGained;
+            if (weaponType) this.heldRankUpEvents = this.captureEvents(() => game.eventManager?.trigger(
                 {
                   type: 'unit_weapon_rank_up',
                   levelNid: game.currentLevel?.nid ?? '',
                   unitNid: activeCombat.attacker.nid,
                   unit1: activeCombat.attacker,
                   weaponType,
-                  oldWexp: (activeCombat.attacker.wexp[weaponType] ?? 0) - this.results.attackerWexpGained,
+                  oldWexp: (activeCombat.attacker.wexp[weaponType] ?? 0) - wexpGained,
                   rank: rankUp.rank,
                 },
                 {
@@ -7103,8 +7295,7 @@ export class CombatState extends State {
                   gameVars: game.gameVars,
                   levelVars: game.levelVars,
                 },
-              );
-            }
+              ));
           }
           // Record combat message for turnwheel
           const atkName = activeCombat.attacker.name;
@@ -7133,14 +7324,25 @@ export class CombatState extends State {
             else if (isUnitDying(unit)) clearUnitFx(unit); // miracle
           }
           this.deathStarted = false;
+          // clean_up0: the strikes' own events, then combat_death, run over
+          // the combat before the exp screen.
+          const pausedForEvents = this.runMidCombatEvents(activeCombat.strikes);
           if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
             this.startExpPhase();
+          } else if (pausedForEvents) {
+            this.phase = 'post_exp_events';
+            this.phaseTimer = 0;
           } else {
             this.startRankUpOrCleanup();
           }
         }
         break;
       }
+
+      case 'post_exp_events':
+        // Resumed after the clean_up1/clean_up2 events pushed over combat.
+        this.startRankUpOrCleanup();
+        break;
 
       case 'anim_exit': {
         // revert_transform -> fade_out_wait -> name_tags_out -> all_out ->
@@ -7333,13 +7535,11 @@ export class CombatState extends State {
           if (result === 'entered_level_up_wait') {
             this.fireDuringUnitLevelUpTrigger();
           } else if (result === 'done') {
-            this.fireUnitLevelUpTrigger();
-            this.startRankUpOrCleanup();
+            this.afterUnitLevelUp();
           }
         } else {
           // No screen object — skip
-          this.fireUnitLevelUpTrigger();
-          this.startRankUpOrCleanup();
+          this.afterUnitLevelUp();
         }
         break;
       }
@@ -7402,67 +7602,14 @@ export class CombatState extends State {
           }
         }
 
-        // Fire combat event triggers
+        // Python clean_up2 triggers CombatEnd and then the end_combat item and
+        // skill hooks (UnitDeath ran before the dying fade); the stack runs
+        // the newest first, so the hooks run before combat_end.
+        let cleanupEvents: GameEvent[] = [];
         if (game.eventManager) {
           const levelNid = game.currentLevel?.nid;
           const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
-
-          // combat_death for each dead unit
-          for (const deadDefender of this.getDefenderDeaths()) {
-            const killer = this.getCombatKiller(deadDefender) ?? attacker;
-            game.eventManager.trigger(
-              {
-                type: 'combat_death',
-                unit1: deadDefender,
-                unit2: killer,
-                unitNid: deadDefender.nid,
-                position: this.results?.deathPositions?.get(deadDefender) ?? deadDefender.position,
-                levelNid,
-              },
-              { ...ctx, unit1: deadDefender, unit2: killer },
-            );
-          }
-          if (this.results?.attackerDead) {
-            const killer = this.getCombatKiller(attacker) ?? defender;
-            game.eventManager.trigger(
-              {
-                type: 'combat_death', unit1: attacker, unit2: killer, unitNid: attacker.nid,
-                position: this.results?.deathPositions?.get(attacker) ?? attacker.position, levelNid,
-              },
-              { ...ctx, unit1: attacker, unit2: killer },
-            );
-          }
-
-          // Python's clean_up2 triggers CombatEnd and then UnitDeath, but
-          // every trigger pushes an EventState and the stack runs the last
-          // one first: unit_death events run before combat_end events.
-          for (const deadDefender of this.getDefenderDeaths()) {
-            const killer = this.getCombatKiller(deadDefender) ?? attacker;
-            game.eventManager.trigger(
-              {
-                type: 'unit_death', unit1: deadDefender, unit2: killer,
-                unitNid: deadDefender.nid,
-                position: this.results?.deathPositions?.get(deadDefender) ?? deadDefender.position,
-                levelNid,
-              },
-              { ...ctx, unit1: deadDefender, unit2: killer },
-            );
-          }
-          if (this.results?.attackerDead) {
-            const killer = this.getCombatKiller(attacker) ?? defender;
-            game.eventManager.trigger(
-              {
-                type: 'unit_death', unit1: attacker, unit2: killer,
-                unitNid: attacker.nid,
-                position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
-                levelNid,
-              },
-              { ...ctx, unit1: attacker, unit2: killer },
-            );
-          }
-
-          // combat_end fires after every combat
-          game.eventManager.trigger(
+          const combatEnd = this.captureEvents(() => game.eventManager.trigger(
             {
               type: 'combat_end', unit1: attacker, unit2: defender, levelNid,
               position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
@@ -7471,7 +7618,9 @@ export class CombatState extends State {
               playback: activeCombat!.strikes,
             },
             { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
-          );
+          ));
+          cleanupEvents = [...this.heldEndEvents, ...combatEnd];
+          this.heldEndEvents = [];
         }
 
         // Activate AI groups if an enemy was involved in combat
@@ -7543,9 +7692,14 @@ export class CombatState extends State {
             game.state.change('move');
           }
 
-          if (game.eventManager?.hasActiveEvents()) {
+          if (!runEventsBeforeWaiting(game, cleanupEvents, true) &&
+              game.eventManager?.hasActiveEvents()) {
             game.state.change('event');
           }
+        } else {
+          // interact_unit: its paused event resumes after these, as Python's
+          // EventStates pushed above it run first.
+          runEventsBeforeWaiting(game, cleanupEvents, false);
         }
         break;
       }
@@ -7602,19 +7756,32 @@ export class CombatState extends State {
     const activeCombat = this.getActiveCombat();
     const unit = activeCombat?.attacker;
     if (!game?.eventManager || !unit || !this.levelUpGains) return;
-    const triggered = game.eventManager.trigger(
+    const gains = { ...this.levelUpGains };
+    const events = this.captureEvents(() => game.eventManager.trigger(
       {
         type: 'during_unit_level_up',
         levelNid: game.currentLevel?.nid ?? '',
         unitNid: unit.nid,
         unit1: unit,
-        statChanges: { ...this.levelUpGains },
+        statChanges: gains,
         source: 'exp_gain',
       },
       { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
-    );
-    if (triggered && game.eventManager.hasActiveEvents()) {
-      game.state.change('event');
+    ));
+    // Ahead of an interact_unit caller waiting in the queue.
+    runEventsBeforeWaiting(game, events, true);
+  }
+
+  /**
+   * Python ExpState fires UnitLevelUp when the level screen closes; its
+   * EventState runs before the combat continues to clean_up2.
+   */
+  private afterUnitLevelUp(): void {
+    if (this.fireUnitLevelUpTrigger()) {
+      this.phase = 'post_exp_events';
+      this.phaseTimer = 0;
+    } else {
+      this.startRankUpOrCleanup();
     }
   }
 
@@ -7625,22 +7792,24 @@ export class CombatState extends State {
    * (not just `autolevel_to`, which already dispatches this trigger separately
    * at the event-command call site).
    */
-  private fireUnitLevelUpTrigger(): void {
+  private fireUnitLevelUpTrigger(): boolean {
     const game = getGame();
     const activeCombat = this.getActiveCombat();
     const unit = activeCombat?.attacker;
-    if (!game?.eventManager || !unit || !this.levelUpGains) return;
-    game.eventManager.trigger(
+    if (!game?.eventManager || !unit || !this.levelUpGains) return false;
+    const gains = { ...this.levelUpGains };
+    const events = this.captureEvents(() => game.eventManager.trigger(
       {
         type: 'unit_level_up',
         levelNid: game.currentLevel?.nid ?? '',
         unitNid: unit.nid,
         unit1: unit,
-        statChanges: { ...this.levelUpGains },
+        statChanges: gains,
         source: 'exp_gain',
       },
       { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
-    );
+    ));
+    return runEventsBeforeWaiting(game, events, true);
   }
 
   /** AnimationCombat.finish: fade back if and only if the music faded in. */
@@ -7680,6 +7849,14 @@ export class CombatState extends State {
       this.phase = 'anim_exit';
       this.phaseTimer = 0;
       return;
+    }
+    if (!this.postExpEventsQueued) {
+      this.postExpEventsQueued = true;
+      if (this.queuePostExpEvents()) {
+        this.phase = 'post_exp_events';
+        this.phaseTimer = 0;
+        return;
+      }
     }
     if (this.dyingUnits.length > 0) {
       this.phase = 'death';
@@ -7760,7 +7937,7 @@ export class CombatState extends State {
     // Python draws the windows while the combat state is on the stack, which
     // includes the exp bar it pushes from clean_up1; the dying fade starts
     // only after the combat state is popped.
-    if (this.phase !== 'death') {
+    if (this.phase !== 'death' && this.phase !== 'post_exp_events') {
       const cameraTiles: [number, number] = [cameraOffset[0] / TILEWIDTH, cameraOffset[1] / TILEHEIGHT];
       for (const info of rs.infos) info.draw(surf, cameraTiles);
     }
@@ -10691,6 +10868,19 @@ export class EventState extends State {
    */
   private loadNextEvent(game: any): void {
     const next = game.eventManager?.getCurrentEvent() ?? null;
+    const barrier = next ? eventResumeBarriers.lastIndexOf(next) : -1;
+    if (barrier >= 0 && next) {
+      // Events that interrupted a state above this paused event (e.g. a
+      // combat run by its interact_unit) are done: return to that state.
+      // The paused event resumes in its own EventState further down.
+      eventResumeBarriers.splice(barrier, 1);
+      this.parkPresentation(next);
+      this.currentEvent = next;
+      const restoredBackground = this.restoreParkedPresentation(next);
+      this.background = restoredBackground ?? null;
+      game.state.back();
+      return;
+    }
     // Python keeps portraits, tables/textboxes and the background on each
     // Event object, so a parent paused by trigger_script (or a choice's
     // EventNid) gets them back when it resumes. Park the outgoing event's

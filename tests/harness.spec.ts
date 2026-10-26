@@ -4298,6 +4298,227 @@ test.describe('Event command parity', () => {
     });
   });
 
+  test('CombatState runs item and skill combat hooks in Python stack order around deaths', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const ready = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return false;
+      let origin: [number, number] | null = null;
+      for (let y = 1; y < game.board.height - 1 && !origin; y++) {
+        for (let x = 1; x < game.board.width - 1; x++) {
+          if (!game.board.getUnit(x, y) && !game.board.getUnit(x + 1, y)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return false;
+      const makeUnit = (nid: string, team: string, hp: number) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 0, MAG: 0, SKL: 5, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = hp;
+        return unit;
+      };
+      const define = (nid: string, trigger: string, label: string, condition = 'True') => {
+        game.db.events.set(nid, {
+          nid, name: nid, trigger, level_nid: '0', condition, only_once: false, priority: 0,
+          _source: [`level_var;_hook_order;{_hook_order}>${label}`],
+        });
+      };
+      define('_HookOnHit', '_HookOnHit', 'on_hit');
+      define('_HookItemAfter', '_HookItemAfter', 'item_after_combat');
+      define('_HookSkillAfter', '_HookSkillAfter', 'skill_after_combat');
+      define('_HookCombatDeath', 'combat_death', 'combat_death', "unit1.nid == '_HookDefender'");
+      define('_HookUnitDeath', 'unit_death', 'unit_death', "unit1.nid == '_HookDefender'");
+      define('_HookCombatEnd', 'combat_end', 'combat_end', "unit2.nid == '_HookDefender'");
+      game.db.skills.set('_HookSkill', {
+        nid: '_HookSkill', name: '_HookSkill', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['event_after_combat', '_HookSkillAfter']],
+      });
+      game.levelVars.set('_hook_order', '');
+      const attacker = makeUnit('_HookAttacker', 'player', 30);
+      const defender = makeUnit('_HookDefender', 'enemy', 1);
+      attacker.skills.push(new SkillObject(game.db.skills.get('_HookSkill')));
+      const item = new ItemObject({
+        nid: '_HookSpell', name: '_HookSpell', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_enemy', null], ['damage', 99], ['hit', 100],
+          ['uses', 2], ['min_range', 1], ['max_range', 2],
+          ['event_on_hit', '_HookOnHit'], ['event_after_combat_even_miss', '_HookItemAfter'],
+        ],
+      });
+      item.owner = attacker;
+      attacker.items.push(item);
+      game.board.setUnit(origin[0], origin[1], attacker);
+      game.board.setUnit(origin[0] + 1, origin[1], defender);
+      game.units.set(attacker.nid, attacker);
+      game.units.set(defender.nid, defender);
+      game.selectedUnit = attacker;
+      game.combatTarget = defender;
+      game.combatScript = ['hit1'];
+      game.memory.set('combat_item', item);
+      (window as any).__hookOrderTest = { attacker, defender };
+      game.state.change('combat');
+      return true;
+    });
+    expect(ready).toBe(true);
+
+    // Watch each event as it runs: whether combat is still underneath, which
+    // combat phase it paused, and whether the defender is still on the map.
+    const timeline = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const { attacker, defender } = (window as any).__hookOrderTest;
+      const seen: Array<{ label: string; combat: boolean; phase: string | null; onMap: boolean }> = [];
+      const combatState = game.state.allStates?.get?.('combat') ??
+        (game.state as any).allStates.get('combat');
+      let last = '';
+      for (let frame = 0; frame < 3000; frame++) {
+        harness.stepFrames(1, null);
+        if (frame % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+        const order = String(game.levelVars.get('_hook_order') ?? '');
+        if (order !== last) {
+          const label = order.slice(last.length).replace(/^>/, '');
+          const names = game.state.getStackNames();
+          seen.push({
+            label,
+            combat: names.includes('combat'),
+            phase: names.includes('combat') ? combatState.phase : null,
+            onMap: !!defender.position,
+          });
+          last = order;
+        }
+        if (game.state.getCurrentState()?.name === 'free' && last.includes('combat_end')) break;
+      }
+      game.board.removeUnit(attacker);
+      game.units.delete(attacker.nid);
+      game.units.delete(defender.nid);
+      delete (window as any).__hookOrderTest;
+      return seen;
+    });
+
+    expect(timeline.map((entry) => entry.label)).toEqual([
+      // Solver phase: event_on_hit; clean_up0: combat_death. Both run over
+      // the combat before the exp screen, with the dying unit still placed.
+      'on_hit', 'combat_death',
+      // clean_up2: UnitDeath runs before the dying fade; then the stack runs
+      // end_combat hooks newest first (item after the attacker's skill), and
+      // CombatEnd, triggered first, last.
+      'unit_death', 'item_after_combat', 'skill_after_combat', 'combat_end',
+    ]);
+    expect(timeline[0]).toMatchObject({ combat: true, onMap: true });
+    expect(timeline[0].phase).toMatch(/^exp_|post_exp_events/);
+    expect(timeline[1]).toMatchObject({ combat: true, onMap: true });
+    expect(timeline[2]).toMatchObject({ onMap: true });
+    expect(timeline[3]).toMatchObject({ combat: false, onMap: false });
+    expect(timeline[5]).toMatchObject({ combat: false, onMap: false });
+  });
+
+  test('interact_unit combat events run before the calling event resumes', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await waitForHarness(page);
+
+    const ready = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { UnitObject } = await import('/src/objects/unit.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const template = game.units.get('Eirika');
+      const klass = template ? game.db.classes.get(template.klass) : null;
+      if (!template || !klass) return false;
+      let origin: [number, number] | null = null;
+      for (let y = 1; y < game.board.height - 1 && !origin; y++) {
+        for (let x = 1; x < game.board.width - 1; x++) {
+          if (!game.board.getUnit(x, y) && !game.board.getUnit(x + 1, y)) {
+            origin = [x, y];
+            break;
+          }
+        }
+      }
+      if (!origin) return false;
+      const makeUnit = (nid: string, team: string, hp: number) => {
+        const unit = new UnitObject({
+          nid, name: nid, desc: '', variant: null, level: 1, klass: template.klass,
+          tags: [], bases: { HP: 30, STR: 0, MAG: 0, SKL: 5, SPD: 5, LCK: 0, DEF: 0, RES: 0, CON: 5, MOV: 5 },
+          growths: {}, stat_cap_modifiers: {}, starting_items: [], learned_skills: [],
+          unit_notes: [], fields: [], wexp_gain: {}, portrait_nid: '', affinity: '',
+        } as any, klass);
+        unit.team = team;
+        unit.currentHp = hp;
+        return unit;
+      };
+      const define = (nid: string, trigger: string, source: string[], condition = 'True') => {
+        game.db.events.set(nid, {
+          nid, name: nid, trigger, level_nid: '0', condition, only_once: false, priority: 0,
+          _source: source,
+        });
+      };
+      define('_IuOnHit', '_IuOnHit', ['level_var;_iu_order;{_iu_order}>on_hit']);
+      define('_IuCombatDeath', 'combat_death', ['level_var;_iu_order;{_iu_order}>combat_death'],
+        "unit1.nid == '_IuDefender'");
+      define('_IuUnitDeath', 'unit_death', ['level_var;_iu_order;{_iu_order}>unit_death'],
+        "unit1.nid == '_IuDefender'");
+      define('_IuCombatEnd', 'combat_end', ['level_var;_iu_order;{_iu_order}>combat_end'],
+        "unit2.nid == '_IuDefender'");
+      game.levelVars.set('_iu_order', '');
+      const attacker = makeUnit('_IuAttacker', 'player', 30);
+      const defender = makeUnit('_IuDefender', 'enemy', 1);
+      const item = new ItemObject({
+        nid: '_IuSpell', name: '_IuSpell', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_enemy', null], ['damage', 99], ['hit', 100],
+          ['uses', 2], ['min_range', 1], ['max_range', 2], ['event_on_hit', '_IuOnHit'],
+        ],
+      });
+      item.owner = attacker;
+      attacker.items.push(item);
+      game.board.setUnit(origin[0], origin[1], attacker);
+      game.board.setUnit(origin[0] + 1, origin[1], defender);
+      game.units.set(attacker.nid, attacker);
+      game.units.set(defender.nid, defender);
+      define('_IuCaller', '_IuCaller', [
+        'level_var;_iu_order;{_iu_order}>caller_before',
+        `interact_unit;_IuAttacker;${origin[0] + 1},${origin[1]};hit1;Ability=_IuSpell`,
+        'level_var;_iu_order;{_iu_order}>caller_after',
+      ]);
+      game.eventManager.triggerSpecific('_IuCaller', { type: '_IuCaller' }, true);
+      game.state.change('event');
+      return true;
+    });
+    expect(ready).toBe(true);
+    await settle(page, 2000);
+    const order = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const result = {
+        order: game.levelVars.get('_iu_order'),
+        state: game.state.getCurrentState()?.name,
+        queue: game.eventManager.eventQueue.length,
+      };
+      for (const nid of ['_IuAttacker', '_IuDefender']) {
+        const unit = game.units.get(nid);
+        if (unit?.position) game.board.removeUnit(unit);
+        game.units.delete(nid);
+      }
+      return result;
+    });
+    expect(order).toEqual({
+      order: '>caller_before>on_hit>combat_death>unit_death>combat_end>caller_after',
+      state: 'free',
+      queue: 0,
+    });
+  });
+
   test('uses_options consumes durability per hit, miss policy, and per-combat policy', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
