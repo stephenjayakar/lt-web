@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 async function waitForHarness(page: import('@playwright/test').Page): Promise<void> {
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
     timeout: 60_000,
   });
 }
+
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka visual baselines', () => {
   test('representative chapter map renders project tiles, units, and HUD', async ({ page }) => {

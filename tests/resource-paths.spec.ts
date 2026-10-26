@@ -25,6 +25,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -137,6 +138,7 @@ test.describe('Chunked vs Non-Chunked data format fallback', () => {
   });
 
   test('rekka.ltproj (non-chunked): loads data from single JSON files', async ({ page }) => {
+    test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -325,6 +327,7 @@ test.describe('Cross-project resource loading consistency', () => {
   });
 
   test('rekka.ltproj (non-chunked) loads without resource errors', async ({ page }) => {
+    test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
     const errors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error' && msg.text().includes('Failed to load')) {

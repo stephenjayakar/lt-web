@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
-test('all 899 Rekka events construct through their direct entrypoint', async ({ page }) => {
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
+
+test('all 892 Rekka events construct through their direct entrypoint', async ({ page }) => {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
     timeout: 60_000,
@@ -91,20 +94,22 @@ test('all 899 Rekka events construct through their direct entrypoint', async ({ 
     };
   });
 
-  expect(coverage.total).toBe(899);
-  expect(coverage.uniqueNids).toBe(899);
-  expect(coverage.queued).toBe(889);
-  expect(coverage.empty).toBe(10);
   expect(coverage.parsedCommands).toBeGreaterThan(3_900);
+  expect({
+    total: coverage.total,
+    uniqueNids: coverage.uniqueNids,
+    queued: coverage.queued,
+    empty: coverage.empty,
+  }).toEqual({ total: 892, uniqueNids: 892, queued: 884, empty: 8 });
   expect(coverage.categories).toEqual({
-    recruitment: 52,
+    recruitment: 51,
     talk: 30,
     visit: 158,
-    chestDoor: 93,
+    chestDoor: 92,
     reinforcement: 17,
-    boss: 92,
-    objective: 64,
-    transition: 9,
+    boss: 98,
+    objective: 63,
+    transition: 8,
   });
   expect(coverage.failures, coverage.failures.join('\n')).toEqual([]);
 });

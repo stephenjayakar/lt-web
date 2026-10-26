@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
@@ -7,6 +8,8 @@ async function boot(page: Page): Promise<void> {
     timeout: 60_000,
   });
 }
+
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka AI scenarios', () => {
   test.beforeEach(async ({ page }) => boot(page));

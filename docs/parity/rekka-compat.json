@@ -4,12 +4,12 @@
     "path": "lt-maker/rekka.ltproj",
     "nid": "FE7A",
     "levels": 48,
-    "events": 899,
-    "items": 462,
-    "skills": 586,
+    "events": 892,
+    "items": 464,
+    "skills": 588,
     "units": 118,
     "classes": 84,
-    "files": 1733
+    "files": 1730
   },
   "levels": [
     {
@@ -211,20 +211,12 @@
       "uses": 596
     },
     {
-      "nid": "add_base_convo",
-      "uses": 1
-    },
-    {
       "nid": "add_group",
       "uses": 8
     },
     {
-      "nid": "add_lore",
-      "uses": 1
-    },
-    {
       "nid": "add_portrait",
-      "uses": 2
+      "uses": 1
     },
     {
       "nid": "add_region",
@@ -252,7 +244,7 @@
     },
     {
       "nid": "add_weather",
-      "uses": 3
+      "uses": 2
     },
     {
       "nid": "alert",
@@ -261,10 +253,6 @@
     {
       "nid": "autolevel_to",
       "uses": 23
-    },
-    {
-      "nid": "base",
-      "uses": 1
     },
     {
       "nid": "break_item",
@@ -308,7 +296,7 @@
     },
     {
       "nid": "change_team",
-      "uses": 48
+      "uses": 47
     },
     {
       "nid": "change_tilemap",
@@ -324,7 +312,7 @@
     },
     {
       "nid": "elif",
-      "uses": 61
+      "uses": 60
     },
     {
       "nid": "else",
@@ -340,7 +328,7 @@
     },
     {
       "nid": "end",
-      "uses": 122
+      "uses": 124
     },
     {
       "nid": "end_turn",
@@ -348,7 +336,7 @@
     },
     {
       "nid": "endf",
-      "uses": 34
+      "uses": 36
     },
     {
       "nid": "equip_item",
@@ -364,15 +352,15 @@
     },
     {
       "nid": "for",
-      "uses": 34
+      "uses": 36
     },
     {
       "nid": "game_var",
-      "uses": 57
+      "uses": 70
     },
     {
       "nid": "give_item",
-      "uses": 157
+      "uses": 156
     },
     {
       "nid": "give_money",
@@ -396,7 +384,7 @@
     },
     {
       "nid": "if",
-      "uses": 122
+      "uses": 123
     },
     {
       "nid": "inc_game_var",
@@ -444,15 +432,7 @@
     },
     {
       "nid": "move_unit",
-      "uses": 54
-    },
-    {
-      "nid": "multi_add_portrait",
-      "uses": 1
-    },
-    {
-      "nid": "multi_remove_portrait",
-      "uses": 1
+      "uses": 56
     },
     {
       "nid": "music",
@@ -487,10 +467,6 @@
       "uses": 11
     },
     {
-      "nid": "remove_portrait",
-      "uses": 1
-    },
-    {
       "nid": "remove_region",
       "uses": 28
     },
@@ -500,7 +476,7 @@
     },
     {
       "nid": "remove_talk",
-      "uses": 20
+      "uses": 21
     },
     {
       "nid": "remove_unit",
@@ -520,7 +496,7 @@
     },
     {
       "nid": "set_current_hp",
-      "uses": 26
+      "uses": 28
     },
     {
       "nid": "set_custom_options",
@@ -536,7 +512,7 @@
     },
     {
       "nid": "shop",
-      "uses": 41
+      "uses": 40
     },
     {
       "nid": "show_layer",
@@ -552,7 +528,7 @@
     },
     {
       "nid": "speak",
-      "uses": 6
+      "uses": 2
     },
     {
       "nid": "table",
@@ -560,14 +536,10 @@
     },
     {
       "nid": "transition",
-      "uses": 12
+      "uses": 10
     },
     {
       "nid": "unchoice",
-      "uses": 1
-    },
-    {
-      "nid": "unlock",
       "uses": 1
     },
     {
@@ -576,7 +548,7 @@
     },
     {
       "nid": "win_game",
-      "uses": 54
+      "uses": 53
     }
   ],
   "components": {
@@ -595,6 +567,12 @@
       },
       {
         "nid": "all_allies_except_self_aoe",
+        "uses": 1,
+        "structuralStatus": "hook-and-reference",
+        "semanticStatus": "verified"
+      },
+      {
+        "nid": "allow_less_than_max_targets",
         "uses": 1,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
@@ -733,8 +711,14 @@
       },
       {
         "nid": "equippable_accessory",
-        "uses": 88,
+        "uses": 90,
         "structuralStatus": "consumed",
+        "semanticStatus": "verified"
+      },
+      {
+        "nid": "eval_available",
+        "uses": 6,
+        "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
@@ -1045,7 +1029,7 @@
       },
       {
         "nid": "status_on_equip",
-        "uses": 116,
+        "uses": 118,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1171,7 +1155,7 @@
       },
       {
         "nid": "value",
-        "uses": 252,
+        "uses": 254,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1347,7 +1331,7 @@
       },
       {
         "nid": "class_skill",
-        "uses": 343,
+        "uses": 345,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1371,7 +1355,7 @@
       },
       {
         "nid": "condition",
-        "uses": 64,
+        "uses": 63,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1527,7 +1511,7 @@
       },
       {
         "nid": "event_after_combat",
-        "uses": 13,
+        "uses": 15,
         "structuralStatus": "custom-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1702,7 +1686,7 @@
       {
         "nid": "ignore_damage",
         "uses": 7,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -2174,7 +2158,7 @@
         "hooks": [
           "end_combat"
         ],
-        "uses": 13
+        "uses": 15
       },
       {
         "nid": "true_miracle_event_after_combat",
@@ -2322,7 +2306,6 @@
       "(combat_calcs.compute_advantage(unit, target, item, target.get_weapon()) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon()).accuracy < 0) or (combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False).accuracy < 0)",
       "(unit.get_hp() == 0 and unit.traveler and u(unit.traveler).dead) or (unit2.get_hp() == 0 and unit2.traveler and u(unit2.traveler).dead)",
       "1 == item_funcs.num_stacks(unit, unit.get_accessory().status_on_equip.value)",
-      "False",
       "True",
       "any_unit_in_region('BlueZone', team='player')",
       "any_unit_in_region('GrayZone', team='player')",
@@ -2367,17 +2350,17 @@
       "game._current_level.nid == '33'",
       "game._current_level.nid == '34'",
       "game._current_level.nid == '39'",
-      "game._current_level.nid == '42' and region.nid == 'Armory1'",
-      "game._current_level.nid == '42' and region.nid == 'Armory2'",
-      "game._current_level.nid == '42' and region.nid == 'Armory3'",
-      "game._current_level.nid == '42' and region.nid == 'Armory_4'",
-      "game._current_level.nid == '42' and region.nid == 'Vendor_1'",
-      "game._current_level.nid == '42' and region.nid == 'Vendor_2'",
+      "game._current_level.nid == '43' and region.nid == 'Armory_1'",
+      "game._current_level.nid == '43' and region.nid == 'Armory_2'",
+      "game._current_level.nid == '43' and region.nid == 'Armory_3'",
+      "game._current_level.nid == '43' and region.nid == 'Armory_4'",
+      "game._current_level.nid == '43' and region.nid == 'Vendor_1'",
+      "game._current_level.nid == '43' and region.nid == 'Vendor_2'",
       "game._current_level.nid == '5'",
       "game._current_level.nid == '7'",
       "game._current_level.nid == '9'",
       "game._current_level.nid in ('31','32') and region.nid == 'Armory1'",
-      "game._current_level.nid in ('31','32') and region.nid == 'Armory_2'",
+      "game._current_level.nid in ('31','32') and region.nid == 'Armory2'",
       "game._current_level.nid in ('31','32') and region.nid == 'Vendor_1'",
       "game._current_level.nid in ('31','32') and region.nid == 'Vendor_2'",
       "game.check_alive('Guy') and game.get_unit('Guy').team == 'enemy'",
@@ -2424,6 +2407,7 @@
       "game.get_unit('Matryoshka7')",
       "game.get_unit('Phantom')",
       "game.get_unit('Sword')",
+      "game.level.nid in ('44', '45', '46')",
       "game.turncount == 1",
       "game.turncount == 10",
       "game.turncount == 11",
@@ -2554,7 +2538,6 @@
       "target.get_hp() != 1",
       "target.get_stat('SPD') > unit.get_stat('SPD') + 3",
       "target.team == 'enemy'",
-      "unit == 'Dreams of Home'",
       "unit.get_hp() == 0 and unit.traveler and u(unit.traveler).dead",
       "unit.get_stat('SPD') > target.get_stat('SPD') + 3",
       "unit.nid == 'Athos'",
@@ -2727,14 +2710,16 @@
       "WTAItem;[item.nid for item in unit.items if (combat_calcs.compute_advantage(unit, target, item, target.get_weapon()) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon()).accuracy > 0) or (combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False) and combat_calcs.compute_advantage(unit, target, item, target.get_weapon(), False).accuracy > 0)]",
       "ally;[unit.nid for unit in target_system.get_adj_units(game.get_unit(unit.nid))]",
       "heal_unit;[unit.nid for unit in get_allies_within_distance(unit.position, 1)]",
-      "hopped;[unit.nid for unit in get_units_within_distance(unit.position, 5)]",
+      "hopped;[unit.nid for unit in get_units_within_distance(unit.position, 5) if 'Boss' not in unit.tags]",
       "item_clone;[item for item in game.get_unit('Nils').items]",
       "item_clone;[item for item in unit.items]",
       "item_clone;[item for item in unit2.items]",
       "linked_unit;[unit.nid for unit in game.get_player_units() if has_skill(unit, 'Soullinked')]",
       "lost_skills;[skill.nid for skill in game.get_unit(unit.nid).skills]",
       "old_skills;[skill.nid for skill in game.get_unit(unit.nid).skills]",
-      "pulled_unit;[unit.nid for unit in get_units_within_distance(unit.position, 5) if not(has_skill(unit, 'Magnetize'))]",
+      "pulled_unit;[unit.nid for unit in get_units_within_distance(unit.position, 5) if not(has_skill(unit, 'Magnetize')) and 'Boss' not in unit.tags]",
+      "pulled_unit;[unit.nid for unit in get_units_within_distance(unit.position, 5) if not(has_skill(unit, 'Panic')) and 'Boss' not in unit.tags and unit.team == 'player']",
+      "pulled_unit;[unit.nid for unit in get_units_within_distance(unit.position, 5) if not(has_skill(unit, 'Siren')) and 'Boss' not in unit.tags and unit.team == 'enemy']",
       "received_skills;[skill.nid for skill in game.get_unit(unit.nid).skills]",
       "skill_clone;[s.nid for s in unit.skills]",
       "skill_clone;[s.nid for s in unit2.skills]",
@@ -2773,7 +2758,7 @@
       },
       {
         "nid": "game",
-        "uses": 149
+        "uses": 150
       },
       {
         "nid": "game_vars",
@@ -2790,6 +2775,10 @@
       {
         "nid": "item_system",
         "uses": 2
+      },
+      {
+        "nid": "level",
+        "uses": 1
       },
       {
         "nid": "level_vars",
@@ -2829,7 +2818,7 @@
       },
       {
         "nid": "unit",
-        "uses": 88
+        "uses": 98
       },
       {
         "nid": "unit2",
@@ -2839,7 +2828,7 @@
     "forms": [
       {
         "name": "list-comprehension",
-        "uses": 35
+        "uses": 37
       },
       {
         "name": "generator-expression",
@@ -2855,11 +2844,11 @@
       },
       {
         "name": "membership",
-        "uses": 41
+        "uses": 44
       },
       {
         "name": "slice-or-index",
-        "uses": 68
+        "uses": 70
       },
       {
         "name": "string-join",
@@ -2868,7 +2857,7 @@
     ]
   },
   "resources": {
-    "files": 1697,
+    "files": 1694,
     "categories": [
       {
         "nid": "animations",
@@ -2920,7 +2909,7 @@
       },
       {
         "nid": "music",
-        "uses": 60
+        "uses": 57
       },
       {
         "nid": "panoramas",
@@ -2948,11 +2937,11 @@
       }
     ],
     "customSprites": [
-      "resources/custom_sprites/logo.png",
-      "resources/custom_sprites/press_start.png"
+      "resources\\custom_sprites\\logo.png",
+      "resources\\custom_sprites\\press_start.png"
     ],
     "audit": {
-      "checks": 1442,
+      "checks": 1437,
       "requiredMissing": [],
       "optionalMissing": [
         {
@@ -2984,33 +2973,6 @@
             "panoramas/321.png",
             "panoramas/3210.png"
           ]
-        },
-        {
-          "category": "event-portrait",
-          "nid": "DEBUG Dreams of Home: Eirika",
-          "classification": "debug-only-fixture",
-          "found": false,
-          "paths": [
-            "portraits/Eirika.png"
-          ]
-        },
-        {
-          "category": "event-portrait",
-          "nid": "DEBUG Dreams of Home: Seth",
-          "classification": "debug-only-fixture",
-          "found": false,
-          "paths": [
-            "portraits/Seth.png"
-          ]
-        },
-        {
-          "category": "event-portrait",
-          "nid": "DEBUG Trigger: Eirika",
-          "classification": "debug-only-fixture",
-          "found": false,
-          "paths": [
-            "portraits/Eirika.png"
-          ]
         }
       ],
       "metadataOnly": 26,
@@ -3041,7 +3003,7 @@
         },
         {
           "nid": "event-portrait",
-          "uses": 4
+          "uses": 1
         },
         {
           "nid": "event-sfx",
@@ -3073,7 +3035,7 @@
         },
         {
           "nid": "music",
-          "uses": 58
+          "uses": 56
         },
         {
           "nid": "panorama",
