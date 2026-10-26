@@ -585,16 +585,17 @@ export function evaluateCondition(
   }
 
   // Function calls: game.check_dead('Name'), check_dead('Name'), check_pair('A','B')
-  const funcMatch = trimmed.match(/^(?:game\.)?check_dead\s*\(\s*['"](.+?)['"]\s*\)/);
+  const funcMatch = trimmed.match(/^(?:game\.)?check_dead\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
   if (funcMatch) {
     const unitNid = funcMatch[1];
     return isUnitDead(unitNid, context);
   }
 
-  // game.check_alive('Name') / check_alive('Name') — opposite of check_dead
-  const aliveMatch = trimmed.match(/^(?:game\.)?check_alive\s*\(\s*['"](.+?)['"]\s*\)/);
+  // game.check_alive('Name') / check_alive('Name'): Python returns False for
+  // a unit missing from the registry, like check_dead.
+  const aliveMatch = trimmed.match(/^(?:game\.)?check_alive\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
   if (aliveMatch) {
-    return !isUnitDead(aliveMatch[1], context);
+    return isUnitAlive(aliveMatch[1], context);
   }
 
   const checkPairMatch = trimmed.match(/^check_pair\s*\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)/);
@@ -618,41 +619,29 @@ export function evaluateCondition(
     return !exceptionList.includes(u1 ?? '');
   }
 
-  // has_item('ItemNid', unit_nid_or_specifier) — check if a unit has an item
-  const hasItemMatch = trimmed.match(/^has_item\s*\(\s*['"](.+?)['"]\s*(?:,\s*(.+?))?\s*\)/);
-  if (hasItemMatch) {
-    const itemNid = hasItemMatch[1];
-    const specifier = hasItemMatch[2]?.trim();
-    // If specifier is a path like unit.nid, resolve it
-    let targetNid: string | undefined;
-    if (specifier) {
-      const resolved = resolvePath(specifier, context);
-      targetNid = typeof resolved === 'string' ? resolved : undefined;
-    }
-    // Search units for the item
-    if (context.game?.units) {
-      for (const [_, u] of context.game.units) {
-        if (targetNid && (u as any).nid !== targetNid) continue;
-        const items = (u as any).items ?? [];
-        if (items.some((item: any) => item.nid === itemNid)) return true;
-      }
-    }
-    return false;
-  }
+  // has_item(...) has no fast path: Python has_item(item, nid, team, tag,
+  // party) also searches convoys, so it goes through the query engine.
 
-  // has_skill('SkillNid', unit_nid_or_specifier) — check if a unit has a skill
-  const hasSkillFuncMatch = trimmed.match(/^has_skill\s*\(\s*['"](.+?)['"]\s*(?:,\s*(.+?))?\s*\)/);
+  // has_skill(unit, 'SkillNid') — Python QueryEngine.has_skill(unit, skill).
+  // Only the simple forms are handled here; anything else (u(...), kwargs,
+  // expressions) falls through to the full evaluator.
+  const hasSkillFuncMatch = trimmed.match(
+    /^has_skill\s*\(\s*(unit1|unit2|unit|target|'[^'"]+'|"[^'"]+")\s*,\s*(?:['"]([^'"]+)['"]|([A-Za-z_]\w*))\s*\)$/,
+  );
   if (hasSkillFuncMatch) {
-    const skillNid = hasSkillFuncMatch[1];
-    const specifier = hasSkillFuncMatch[2]?.trim();
-    let targetUnit = context.unit1;
-    if (specifier) {
-      const resolved = resolvePath(specifier, context);
-      if (typeof resolved === 'string' && context.game?.units) {
-        targetUnit = context.game.units.get(resolved);
-      } else if (resolved && typeof resolved === 'object') {
-        targetUnit = resolved;
-      }
+    const unitArg = hasSkillFuncMatch[1];
+    // A bare skill name is a Python variable: an undefined one raises
+    // NameError and the condition is false (EOtF authors
+    // `has_skill({unit},BloodlineCursePlus)` once).
+    const skillArg = hasSkillFuncMatch[2] ?? resolvePath(hasSkillFuncMatch[3], context);
+    const skillNid = typeof skillArg === 'string' ? skillArg : (skillArg as any)?.nid;
+    if (typeof skillNid !== 'string') return false;
+    let targetUnit: any;
+    if (unitArg.startsWith('\'') || unitArg.startsWith('"')) {
+      const nid = unitArg.slice(1, -1);
+      targetUnit = context.game?.units?.get?.(nid) ?? context.game?.getUnit?.(nid);
+    } else {
+      targetUnit = unitArg === 'unit2' || unitArg === 'target' ? context.unit2 : context.unit1;
     }
     if (!targetUnit) return false;
     const skills = targetUnit.skills ?? [];
@@ -664,8 +653,11 @@ export function evaluateCondition(
   if (vMatch) {
     const varName = vMatch[1];
     const fallback = vMatch[2] !== undefined ? resolvePath(vMatch[2], context) : undefined;
-    if (context.levelVars?.has(varName)) {
-      return pythonTruthy(context.levelVars.get(varName));
+    // Python QueryEngine.v: a level var holding None falls through to the
+    // game vars.
+    const levelValue = context.levelVars?.get(varName);
+    if (levelValue !== undefined && levelValue !== null) {
+      return pythonTruthy(levelValue);
     }
     if (context.gameVars?.has(varName)) {
       return pythonTruthy(context.gameVars.get(varName));
@@ -736,7 +728,7 @@ export function evaluateCondition(
   }
 
   // is_dead('UnitNid') — shorthand for check_dead
-  const isDeadMatch = trimmed.match(/^(?:game\.)?is_dead\s*\(\s*['"](.+?)['"]\s*\)/);
+  const isDeadMatch = trimmed.match(/^(?:game\.)?is_dead\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
   if (isDeadMatch) {
     return isUnitDead(isDeadMatch[1], context);
   }
@@ -751,28 +743,9 @@ export function evaluateCondition(
     return compareNumbers(count, op, n);
   }
 
-  // any_unit_in_region('RegionNid', team='enemy') and similar patterns
-  const anyUnitInRegionMatch = trimmed.match(/^any_unit_in_region\s*\(\s*['"](.+?)['"]\s*(?:,\s*(?:team\s*=\s*)?['"](.+?)['"]\s*)?\)/);
-  if (anyUnitInRegionMatch) {
-    const regionNid = anyUnitInRegionMatch[1];
-    const teamFilter = anyUnitInRegionMatch[2];
-    const regions = context.game?.currentLevel?.regions ?? [];
-    const region = regions.find((r: any) => r.nid === regionNid);
-    if (!region) return false;
-    const [rx, ry] = region.position;
-    const [rw, rh] = region.size;
-    if (context.game?.units) {
-      for (const [_, u] of context.game.units) {
-        if (teamFilter && (u as any).team !== teamFilter) continue;
-        const pos = (u as any).position;
-        if (!pos) continue;
-        if (pos[0] >= rx && pos[0] < rx + rw && pos[1] >= ry && pos[1] < ry + rh) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
+  // any_unit_in_region(...) has no fast path: Python filters through
+  // game.get_all_units() (no dying or 'Tile' units) and takes nid/team/tag
+  // keywords, all handled by the query engine.
 
   // Common authored existence query. Handle it against raw runtime units
   // instead of constructing the complete Python-compatible eval scope for
@@ -993,8 +966,17 @@ function snakeToCamel(s: string): string {
 function isUnitDead(nid: string, ctx: ConditionContext): boolean {
   if (!ctx.game) return false;
   const unit = ctx.game.units?.get(nid) ?? ctx.game.getUnit?.(nid);
-  if (!unit) return true; // Unit not found = treated as dead
+  // Python game.check_dead / QueryEngine.is_dead: a unit missing from the
+  // registry (never added, or removed by unload_unit) is not dead.
+  if (!unit) return false;
   return unit.isDead?.() ?? unit.dead ?? false;
+}
+
+function isUnitAlive(nid: string, ctx: ConditionContext): boolean {
+  if (!ctx.game) return false;
+  const unit = ctx.game.units?.get(nid) ?? ctx.game.getUnit?.(nid);
+  if (!unit) return false;
+  return !(unit.isDead?.() ?? unit.dead ?? false);
 }
 
 function compareNumbers(lhs: number, op: string, rhs: number): boolean {
@@ -1108,6 +1090,72 @@ function splitAtTopLevel(str: string, delimiter: string): string[] {
 }
 
 /** Find the matching closing paren for the paren at index `start`. */
+/**
+ * Query helpers whose Python keyword arguments are passed as one trailing
+ * plain object (see query-engine `bindPyArgs`).
+ */
+const KWARG_QUERY_FUNCTIONS = new Set([
+  'has_item', 'get_units_within_distance', 'get_allies_within_distance',
+  'get_units_in_region', 'any_unit_in_region', 'get_closest_allies',
+  'get_closest_units', 'get_closest_enemies',
+]);
+
+/** Split call arguments at top-level commas, tracking brackets and strings. */
+function splitCallArguments(str: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inString: string | null = null;
+  let start = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inString) {
+      if (ch === inString && str[i - 1] !== '\\') inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") inString = ch;
+    else if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(str.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(str.slice(start));
+  return parts;
+}
+
+/**
+ * Rewrite Python keyword arguments of the query helpers into one trailing
+ * object: `get_units_within_distance(p, dist=2, nid='Isaac')` becomes
+ * `get_units_within_distance(p, { __kw__: true, dist: 2, nid: 'Isaac' })`.
+ */
+function translateQueryKwargs(expr: string): string {
+  const pattern = /(?<![\w.])([A-Za-z_]\w*)\s*\(/g;
+  let out = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(expr)) !== null) {
+    if (!KWARG_QUERY_FUNCTIONS.has(match[1])) continue;
+    const open = match.index + match[0].length - 1;
+    const close = findMatchingParen(expr, open);
+    if (close < 0) break;
+    const args = splitCallArguments(expr.slice(open + 1, close));
+    const positional: string[] = [];
+    const keywords: string[] = [];
+    for (const arg of args) {
+      const keyword = arg.match(/^\s*([A-Za-z_]\w*)\s*=(?!=)\s*([\s\S]+?)\s*$/);
+      if (keyword) keywords.push(`${keyword[1]}: ${translateQueryKwargs(keyword[2])}`);
+      else positional.push(translateQueryKwargs(arg.trim()));
+    }
+    if (keywords.length === 0) continue;
+    const rebuilt = [...positional.filter(Boolean), `{ __kw__: true, ${keywords.join(', ')} }`];
+    out += `${expr.slice(cursor, open + 1)}${rebuilt.join(', ')})`;
+    cursor = close + 1;
+    pattern.lastIndex = close + 1;
+  }
+  return out + expr.slice(cursor);
+}
+
 function findMatchingParen(str: string, start: number): number {
   let depth = 0;
   for (let i = start; i < str.length; i++) {
@@ -2165,6 +2213,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 
   function getAllUnits(onlyOnField: boolean = true): any[] {
     const units = Array.from(game.units?.values?.() ?? []) as any[];
+    // Python game.get_all_units(): 'Tile' is usually a class tag (walls,
+    // doors, snags, pylons), and UnitObject.tags includes class tags.
     return units
       .filter((unit) => !onlyOnField || (
         !!unit.position &&
@@ -2872,6 +2922,7 @@ function translateExpression(condition: string): string {
     '!($1 $2 $3)',
   );
   // Python keyword arguments used by EotF query helpers.
+  jsExpr = translateQueryKwargs(jsExpr);
   jsExpr = jsExpr.replace(
     /\bteam\s*=\s*(['"][^'"]+['"])/g,
     '{ team: $1 }',
@@ -3003,7 +3054,9 @@ function evaluateWithJsFallback(
 
   // v() helper: level vars take priority over game vars
   const v = (varName: string, fallback?: any) => {
-    if (ctx.levelVars?.has(varName)) return ctx.levelVars.get(varName);
+    // Python QueryEngine.v: a level var holding None falls through.
+    const levelValue = ctx.levelVars?.get(varName);
+    if (levelValue !== undefined && levelValue !== null) return levelValue;
     if (ctx.gameVars?.has(varName)) return ctx.gameVars.get(varName);
     return fallback ?? 0;
   };
@@ -3083,13 +3136,9 @@ function evaluateWithJsFallback(
       : candidate?._raw ?? candidate;
     return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
   };
-  const get_charge = (candidate: any, skillNid: string) => {
-    const raw = typeof candidate === 'string'
-      ? game.units?.get?.(candidate)
-      : candidate?._raw ?? candidate;
-    const skill = raw?.skills?.find?.((entry: any) => entry.nid === skillNid);
-    return Number(skill?.data?.get?.('charge') ?? skill?.data?.charge ?? 0);
-  };
+  // EOtF fork get_charge: the last instance with a truthy charge.
+  const get_charge = (candidate: any, skillNid: string) =>
+    sharedQueryFuncs().get_charge(candidate, skillNid);
   const evaluate = (
     expression: unknown,
     candidate?: any,
@@ -3240,6 +3289,7 @@ function evaluateWithJsFallback(
            get_allies_within_distance = (...args) => _units(_qf.get_allies_within_distance(...args)),
            get_units_in_area = (...args) => _units(_qf.get_units_in_area(...args)),
            get_debuff_count = _qf.get_debuff_count,
+           get_total_charge = _qf.get_total_charge, check_pivot = _qf.check_pivot,
            get_units_in_region = (...args) => _units(_qf.get_units_in_region(...args)),
            any_unit_in_region = _qf.any_unit_in_region,
            is_dead = _qf.is_dead, check_alive = _qf.check_alive,

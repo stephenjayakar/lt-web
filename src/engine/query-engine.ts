@@ -46,6 +46,64 @@ interface UnitFilterOpts {
   party?: string;
 }
 
+/**
+ * Bind Python-style call arguments to parameter names. Expression
+ * translation passes Python keyword arguments as one trailing plain object
+ * (`f(a, dist=2, nid='X')` -> `f(a, { dist: 2, nid: 'X' })`), so a trailing
+ * plain object is merged in as keywords; the rest bind positionally.
+ */
+export function bindPyArgs(args: unknown[], names: readonly string[]): Record<string, any> {
+  const bound: Record<string, any> = {};
+  let positional = args;
+  const last = args[args.length - 1] as Record<string, unknown> | undefined;
+  // Translated keywords carry a __kw__ marker; internal callers may pass a
+  // plain options object whose keys are all parameter names.
+  const isKeywords = !!last && typeof last === 'object' && !Array.isArray(last) &&
+    Object.getPrototypeOf(last) === Object.prototype &&
+    (last.__kw__ === true || Object.keys(last).every((key) => names.includes(key)));
+  if (isKeywords) {
+    positional = args.slice(0, -1);
+    for (const [key, value] of Object.entries(last)) {
+      if (key !== '__kw__') bound[key] = value;
+    }
+  }
+  positional.forEach((value, index) => {
+    const name = names[index];
+    if (name !== undefined && !(name in bound)) bound[name] = value;
+  });
+  return bound;
+}
+
+/** Python `UnitObject.tags`: own tags | class tags | skill-granted tags. */
+function pythonUnitTags(unit: UnitObject, game: any): Set<string> {
+  const tags = new Set<string>(unit.tags ?? []);
+  const klassTags = game?.db?.classes?.get?.(unit.klass)?.tags;
+  if (Array.isArray(klassTags)) for (const tag of klassTags) tags.add(tag);
+  for (const skill of unit.skills ?? []) {
+    const granted = skill.getComponent?.<string[]>('has_tags');
+    if (Array.isArray(granted)) for (const tag of granted) tags.add(tag);
+  }
+  return tags;
+}
+
+/**
+ * Python `game.get_all_units()`: on the map, not dead or dying, and not a
+ * 'Tile' unit (walls, doors, snags, pylons carry the tag on their class).
+ */
+export function isPythonFieldUnit(unit: UnitObject, game: any): boolean {
+  if (!unit.position) return false;
+  if (unit.isDead?.() ?? unit.dead) return false;
+  if ((unit as any).isDying || (unit as any).is_dying) return false;
+  return !pythonUnitTags(unit, game).has('Tile');
+}
+
+/** Resolve a nid-like argument (string, wrapped/raw object, or uid). */
+function resolveNidArg(value: any): any {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'object') return value._raw?.nid ?? value.nid ?? value;
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 // GameQueryEngine
 // ---------------------------------------------------------------------------
@@ -82,6 +140,9 @@ export class GameQueryEngine {
       ['getAlliesWithinDistance',       'get_allies_within_distance',  this.getAlliesWithinDistance],
       ['getUnitsInArea',              'get_units_in_area',           this.getUnitsInArea],
       ['getDebuffCount',              'get_debuff_count',            this.getDebuffCount],
+      ['getCharge',                   'get_charge',                  this.getCharge],
+      ['getTotalCharge',              'get_total_charge',            this.getTotalCharge],
+      ['checkPivot',                  'check_pivot',                 this.checkPivot],
       ['getUnitsInRegion',            'get_units_in_region',         this.getUnitsInRegion],
       ['anyUnitInRegion',             'any_unit_in_region',          this.anyUnitInRegion],
       ['isDead',                      'is_dead',                     this.isDead],
@@ -137,8 +198,11 @@ export class GameQueryEngine {
    */
   v(varname: string, fallback?: any): any {
     const game = getGame();
-    if (game.levelVars?.has(varname)) {
-      return game.levelVars.get(varname);
+    // Python QueryEngine.v: a level var holding None falls through to the
+    // game vars (level_vars.get(name) is None -> game_vars.get(name, fallback)).
+    const levelValue = game.levelVars?.get(varname);
+    if (levelValue !== undefined && levelValue !== null) {
+      return levelValue;
     }
     if (game.gameVars?.has(varname)) {
       return game.gameVars.get(varname);
@@ -197,13 +261,34 @@ export class GameQueryEngine {
    * @param itemNid  Item NID to search for.
    * @param opts     Optional filters: nid, team, tag, party.
    */
-  hasItem(itemNid: string, opts?: UnitFilterOpts): boolean {
+  hasItem(item: any, ...rest: unknown[]): boolean {
+    // Python QueryEngine.has_item(item, nid, team, tag, party): 'convoy' (or
+    // team='player') also searches the convoy, party= searches that party's
+    // persistent units and its convoy, and items match by nid or uid.
     const game = getGame();
-    for (const unit of game.units.values()) {
-      if (opts && !this._matchesFilter(unit as UnitObject, opts)) continue;
-      for (const item of (unit as UnitObject).items) {
-        if (item.nid === itemNid) return true;
-      }
+    const { nid: rawNid, team, tag, party: rawParty } =
+      bindPyArgs(rest, ['nid', 'team', 'tag', 'party']);
+    const itemKey = resolveNidArg(item);
+    if (itemKey === null || itemKey === undefined || itemKey === '') return false;
+    const nid = resolveNidArg(rawNid);
+    const party = resolveNidArg(rawParty);
+    const matches = (candidate: ItemObject) =>
+      candidate.nid === itemKey || String(candidate.uid) === String(itemKey);
+    if (!nid || nid === 'convoy') {
+      let convoy: ItemObject[] = [];
+      if (nid === 'convoy' || team === 'player') convoy = this.getConvoyInventory();
+      else if (party) convoy = this.getConvoyInventory(party);
+      if (convoy.some(matches)) return true;
+    }
+    const units: UnitObject[] = party
+      ? [...game.units.values()].filter((unit: UnitObject) =>
+        unit.team === 'player' && !!unit.persistent && unit.party === party)
+      : [...game.units.values()];
+    for (const unit of units) {
+      if (nid && unit.nid !== nid) continue;
+      if (team && unit.team !== team) continue;
+      if (tag && !pythonUnitTags(unit, game).has(tag)) continue;
+      if (unit.items.some(matches)) return true;
     }
     return false;
   }
@@ -231,6 +316,30 @@ export class GameQueryEngine {
    */
   hasSkill(unit: any, skillNid: string): boolean {
     return this.getSkill(unit, skillNid) !== null;
+  }
+
+  /** EOtF fork QueryEngine.get_charge: last instance with a truthy charge. */
+  getCharge(unit: any, skillNid: string): any {
+    return this._lastSkillData(unit, skillNid, 'charge');
+  }
+
+  /** EOtF fork QueryEngine.get_total_charge: last truthy total_charge. */
+  getTotalCharge(unit: any, skillNid: string): any {
+    return this._lastSkillData(unit, skillNid, 'total_charge');
+  }
+
+  private _lastSkillData(unit: any, skillNid: any, key: string): any {
+    const resolved = this._resolveUnit(unit);
+    const nid = resolveNidArg(skillNid);
+    if (!resolved) return 0;
+    for (let i = resolved.skills.length - 1; i >= 0; i--) {
+      const skill = resolved.skills[i];
+      if (skill.nid !== nid) continue;
+      const data: any = skill.data;
+      const value = data instanceof Map ? data.get(key) : data?.[key];
+      if (value) return value;
+    }
+    return 0;
   }
 
   // ========================================================================
@@ -263,44 +372,32 @@ export class GameQueryEngine {
    * @param num       Maximum number of results (default 1).
    * @returns         Array of [unit, distance] pairs sorted by ascending distance.
    */
-  getClosestAllies(position: any, num: number = 1): [UnitObject, number][] {
-    const pos = this._resolvePos(position);
-    if (!pos) return [];
-
-    const game = getGame();
-    const alliedTeams = game.getAlliedTeams?.() ?? ['player'];
-
-    const pairs: [UnitObject, number][] = [];
-    for (const unit of game.units.values()) {
-      const u = unit as UnitObject;
-      if (!u.position || u.isDead()) continue;
-      if (!alliedTeams.includes(u.team)) continue;
-      const dist = this._manhattanDist(pos, u.position);
-      pairs.push([u, dist]);
-    }
-
-    pairs.sort((a, b) => a[1] - b[1]);
-    return pairs.slice(0, num);
+  getClosestAllies(...args: unknown[]): [UnitObject, number][] {
+    // Python get_closest_allies sorts game.get_player_units(): the player
+    // team only (not allied 'other' units).
+    const { position, num = 1 } = bindPyArgs(args, ['position', 'num']);
+    return this.getClosestUnits(position, Number.MAX_SAFE_INTEGER)
+      .filter(([unit]) => unit.team === 'player')
+      .slice(0, num);
   }
 
   /** Find the closest on-field units, returned as [unit, distance] pairs. */
-  getClosestUnits(position: any, num: number = 1): [UnitObject, number][] {
+  getClosestUnits(...args: unknown[]): [UnitObject, number][] {
+    const { position, num = 1 } = bindPyArgs(args, ['position', 'num']);
     const pos = this._resolvePos(position);
     if (!pos) return [];
 
-    const game = getGame();
     const pairs: [UnitObject, number][] = [];
-    for (const unit of game.units.values()) {
-      const candidate = unit as UnitObject;
-      if (!candidate.position || candidate.isDead()) continue;
-      pairs.push([candidate, this._manhattanDist(pos, candidate.position)]);
+    for (const candidate of this._fieldUnits()) {
+      pairs.push([candidate, this._manhattanDist(pos, candidate.position!)]);
     }
     pairs.sort((left, right) => left[1] - right[1]);
     return pairs.slice(0, num);
   }
 
   /** Find the closest on-field enemy-team units. */
-  getClosestEnemies(position: any, num: number = 1): [UnitObject, number][] {
+  getClosestEnemies(...args: unknown[]): [UnitObject, number][] {
+    const { position, num = 1 } = bindPyArgs(args, ['position', 'num']);
     return this.getClosestUnits(position, Number.MAX_SAFE_INTEGER)
       .filter(([unit]) => unit.team === 'enemy' || unit.team === 'enemy2')
       .slice(0, num);
@@ -314,22 +411,18 @@ export class GameQueryEngine {
    * @param dist      Maximum Manhattan distance (default 1).
    * @param opts      Optional unit filters.
    */
-  getUnitsWithinDistance(
-    position: any,
-    dist: number = 1,
-    opts?: UnitFilterOpts,
-  ): UnitObject[] {
+  getUnitsWithinDistance(...args: unknown[]): UnitObject[] {
+    // Python get_units_within_distance(position, dist=1, nid, team, tag, party)
+    // over game.get_all_units().
+    const { position, dist = 1, nid, team, tag, party } =
+      bindPyArgs(args, ['position', 'dist', 'nid', 'team', 'tag', 'party']);
     const pos = this._resolvePos(position);
     if (!pos) return [];
 
-    const game = getGame();
     const result: UnitObject[] = [];
-
-    for (const unit of game.units.values()) {
-      const u = unit as UnitObject;
-      if (!u.position || u.isDead()) continue;
-      if (this._manhattanDist(pos, u.position) > dist) continue;
-      if (opts && !this._matchesFilter(u, opts)) continue;
+    for (const u of this._fieldUnits()) {
+      if (!this._matchesFilter(u, { nid: resolveNidArg(nid), team, tag, party })) continue;
+      if (this._manhattanDist(pos, u.position!) > Number(dist)) continue;
       result.push(u);
     }
 
@@ -337,25 +430,12 @@ export class GameQueryEngine {
   }
 
   /**
-   * Get all allied (player-team) units within a Manhattan distance.
+   * Get all player-team units within a Manhattan distance (Python
+   * get_allies_within_distance -> get_units_within_distance(team='player')).
    */
-  getAlliesWithinDistance(position: any, dist: number = 1): UnitObject[] {
-    const pos = this._resolvePos(position);
-    if (!pos) return [];
-
-    const game = getGame();
-    const alliedTeams = game.getAlliedTeams?.() ?? ['player'];
-
-    const result: UnitObject[] = [];
-    for (const unit of game.units.values()) {
-      const u = unit as UnitObject;
-      if (!u.position || u.isDead()) continue;
-      if (!alliedTeams.includes(u.team)) continue;
-      if (this._manhattanDist(pos, u.position) > dist) continue;
-      result.push(u);
-    }
-
-    return result;
+  getAlliesWithinDistance(...args: unknown[]): UnitObject[] {
+    const { position, dist = 1 } = bindPyArgs(args, ['position', 'dist']);
+    return this.getUnitsWithinDistance(position, dist, { team: 'player' });
   }
 
   /**
@@ -370,13 +450,10 @@ export class GameQueryEngine {
     const minY = Math.min(corner1[1], corner2[1]);
     const maxY = Math.max(corner1[1], corner2[1]);
 
-    const game = getGame();
     const result: UnitObject[] = [];
 
-    for (const unit of game.units.values()) {
-      const u = unit as UnitObject;
-      if (!u.position || u.isDead()) continue;
-      const [ux, uy] = u.position;
+    for (const u of this._fieldUnits()) {
+      const [ux, uy] = u.position!;
       if (ux >= minX && ux <= maxX && uy >= minY && uy <= maxY) {
         result.push(u);
       }
@@ -390,24 +467,13 @@ export class GameQueryEngine {
   // ========================================================================
 
   /**
-   * Count the number of negative status effects (debuffs) on a unit.
-   * A debuff is any status effect that has negative stat modifiers,
-   * DOT damage, immobilize, or stun.
+   * Python get_debuff_count: the number of the unit's skills that carry the
+   * `negative` component.
    */
   getDebuffCount(unit: any): number {
     const resolved = this._resolveUnit(unit);
     if (!resolved) return 0;
-
-    let count = 0;
-    for (const effect of resolved.statusEffects) {
-      const isNegative =
-        effect.dotDamage > 0 ||
-        effect.immobilize ||
-        effect.stun ||
-        Object.values(effect.statMods).some((v: number) => v < 0);
-      if (isNegative) count++;
-    }
-    return count;
+    return resolved.skills.filter((skill) => skill.hasComponent('negative')).length;
   }
 
   // ========================================================================
@@ -420,22 +486,21 @@ export class GameQueryEngine {
    * @param region  A RegionData object or a region NID string.
    * @param opts    Optional unit filters: nid, team, tag.
    */
-  getUnitsInRegion(region: any, opts?: { nid?: string; team?: string; tag?: string }): UnitObject[] {
+  getUnitsInRegion(...args: unknown[]): UnitObject[] {
+    // Python get_units_in_region(region, nid, team, tag) over get_all_units().
+    const { region, nid, team, tag } = bindPyArgs(args, ['region', 'nid', 'team', 'tag']);
     const regionData = this._resolveRegion(region);
     if (!regionData) return [];
 
     const [rx, ry] = regionData.position;
     const [rw, rh] = regionData.size;
 
-    const game = getGame();
     const result: UnitObject[] = [];
 
-    for (const unit of game.units.values()) {
-      const u = unit as UnitObject;
-      if (!u.position || u.isDead()) continue;
-      const [ux, uy] = u.position;
+    for (const u of this._fieldUnits()) {
+      const [ux, uy] = u.position!;
       if (ux >= rx && ux < rx + rw && uy >= ry && uy < ry + rh) {
-        if (opts && !this._matchesFilter(u, opts)) continue;
+        if (!this._matchesFilter(u, { nid: resolveNidArg(nid), team, tag })) continue;
         result.push(u);
       }
     }
@@ -446,8 +511,8 @@ export class GameQueryEngine {
   /**
    * Check if any unit matching the filters is inside a region.
    */
-  anyUnitInRegion(region: any, opts?: { nid?: string; team?: string; tag?: string }): boolean {
-    return this.getUnitsInRegion(region, opts).length > 0;
+  anyUnitInRegion(...args: unknown[]): boolean {
+    return this.getUnitsInRegion(...args).length > 0;
   }
 
   // ========================================================================
@@ -455,15 +520,13 @@ export class GameQueryEngine {
   // ========================================================================
 
   /**
-   * Check if a unit is dead. Accepts a unit NID or UnitObject.
-   * Returns true if the unit is dead or not found in the game.
+   * Check if a unit is dead. Accepts a unit NID or UnitObject. Python
+   * QueryEngine.is_dead / game.check_dead: a unit missing from the registry
+   * is not dead.
    */
   isDead(unit: any): boolean {
     const resolved = this._resolveUnit(unit);
-    if (!resolved) {
-      // Unit not found in game — treat as dead
-      return true;
-    }
+    if (!resolved) return false;
     return resolved.isDead();
   }
 
@@ -624,6 +687,38 @@ export class GameQueryEngine {
     return [destX, destY];
   }
 
+  /**
+   * EOtF fork QueryEngine.check_pivot: the tile `magnitude` steps past the
+   * anchor on the side opposite the unit, when it is in bounds, unoccupied
+   * and not impassable (mcost 99) for the unit; otherwise false.
+   */
+  checkPivot(unitToMove: any, anchorPos: any, magnitude: number): [number, number] | false {
+    const resolved = this._resolveUnit(unitToMove);
+    const anchor = this._resolvePos(anchorPos);
+    if (!resolved?.position || !anchor) return false;
+    const game = getGame();
+    const board = game.board;
+    if (!board) return false;
+    const clampUnit = (value: number) => Math.max(-1, Math.min(1, value));
+    const offsetX = clampUnit(resolved.position[0] - anchor[0]);
+    const offsetY = clampUnit(resolved.position[1] - anchor[1]);
+    const newPosition: [number, number] = [
+      anchor[0] + offsetX * -magnitude,
+      anchor[1] + offsetY * -magnitude,
+    ];
+    if (!board.checkBounds(newPosition[0], newPosition[1])) return false;
+    if (board.getUnit(newPosition[0], newPosition[1])) return false;
+    // Python replaces any passable mcost with -999, so only an impassable
+    // (99) tile can fail the `mcost <= movement` check.
+    if (game.db) {
+      const klassDef = game.db.classes?.get(resolved.klass);
+      const movGroup = movementType(resolved, klassDef?.movement_group ?? 'Infantry', game);
+      const cost = board.getMovementCost(newPosition[0], newPosition[1], movGroup, game.db);
+      if (cost >= 99) return false;
+    }
+    return newPosition;
+  }
+
   // ========================================================================
   // Subitem lookup
   // ========================================================================
@@ -673,7 +768,9 @@ export class GameQueryEngine {
    * Returns true if the unit exists in the game and is not dead.
    */
   checkAlive(unitNid: string): boolean {
-    return !this.isDead(unitNid);
+    // Python game.check_alive: a missing unit is not alive either.
+    const resolved = this._resolveUnit(unitNid);
+    return !!resolved && !resolved.isDead();
   }
 
   // ========================================================================
@@ -894,10 +991,18 @@ export class GameQueryEngine {
    * All specified filter properties must match (AND logic).
    */
   private _matchesFilter(unit: UnitObject, opts: UnitFilterOpts): boolean {
-    if (opts.nid !== undefined && unit.nid !== opts.nid) return false;
-    if (opts.team !== undefined && unit.team !== opts.team) return false;
-    if (opts.tag !== undefined && !unitHasTag(unit, opts.tag, getGame())) return false;
-    if (opts.party !== undefined && unit.party !== opts.party) return false;
+    // Python filters skip falsy criteria (`if tag and ...`).
+    if (opts.nid && unit.nid !== opts.nid) return false;
+    if (opts.team && unit.team !== opts.team) return false;
+    if (opts.tag && !pythonUnitTags(unit, getGame()).has(opts.tag)) return false;
+    if (opts.party && unit.party !== opts.party) return false;
     return true;
+  }
+
+  /** Python game.get_all_units(): field units, minus dying and 'Tile' units. */
+  private _fieldUnits(): UnitObject[] {
+    const game = getGame();
+    return ([...game.units.values()] as UnitObject[])
+      .filter((unit) => isPythonFieldUnit(unit, game));
   }
 }
