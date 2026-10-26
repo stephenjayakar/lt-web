@@ -3,6 +3,17 @@
 Research audit generated 2026-07-17 by a GLM-5.2 subagent (omp/OpenRouter), reviewed and
 annotated by hand. This is discovery evidence for the P0 roadmap row, not a parity claim.
 
+> **Status (2026-10-26).** This file is the July discovery snapshot; rows
+> not marked otherwise keep their original wording. Since then every one of
+> the 41 Python triggers is referenced and 38 are dispatched (`preview` and
+> the `unlock_staff` trigger are upstream-only, absent from EOtF's fork;
+> `level_select` fires only from the overworld). Saves now persist equipped
+> weapon/accessory, prefab nid, skill uid/owner/initiator/subskill chains,
+> regions, the event queue and already-triggered events, board bounds, the
+> dialog log, current fatigue and roam AI. Still not persisted: `action_log`
+> (turnwheel history across a reload), `speak_styles` and team palettes.
+> Current gaps are listed in `PARITY-REPORT.md` "Remaining Gaps".
+
 ## 1. TRIGGERS (lt-maker/app/events/triggers.py)
 
 | nid | triggers.py:line | payload fields | REFERENCED/UNREFERENCED in src/ | web path:line if referenced | notes |
@@ -24,7 +35,7 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | unit_select | 187 | `unit1: UnitObject`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:1150 | Fired in FreeState SELECT; relies on FreeState.update()'s existing hasActiveEvents() check to push EventState (avoids double-push) |
 | unit_deselect | 196 | `unit1: UnitObject`, `position: Tuple[int,int]` | REFERENCED | src/engine/states/game-states.ts:1472 | Fired in MoveState BACK (cancel) handler, after `game.state.back()` |
 | unit_level_up | 205 | `unit1: UnitObject`, `stat_changes: Dict[NID,int]`, `source: str` | REFERENCED | src/engine/states/game-states.ts:9625 (`autolevel_to` event command) and :4712/:4956 (`fireUnitLevelUpTrigger()`, combat-driven level-ups) | *(Audited + fixed 2026-07-18)* `stat_changes`/`source` ARE present (via `EventManager.trigger()`'s generic `localArgs` mapping of `trigger.statChanges`/`trigger.source`, event-manager.ts:1311-1312) — the "unverified" note was stale. Real gap found: combat/EXP-driven level-ups (level_up.py:279's unconditional `game.events.trigger(triggers.UnitLevelUp(...))` on every level-up) never fired the trigger at all in the web port — only the synthetic `autolevel_to` event command dispatched it. Added `CombatState.fireUnitLevelUpTrigger()`, called when the level_screen phase completes, firing with `source: 'exp_gain'` (matching Python's `self.source = 'exp_gain'` default in level_up.py:91). |
-| during_unit_level_up | 215 | `unit1: UnitObject`, `stat_changes: Dict[NID,int]`, `source: str` | UNREFERENCED | — | Deferred: the seam exists (LevelUpScreen.update() 'get_next_spark'->'level_up_wait' transition in src/ui/exp-display.ts:378-390, mirroring level_up.py:522), but firing there mid-CombatState 'level_screen' phase has no clean event-pump point (EventState is only ever pushed after CombatState pops, at game-states.ts ~4310) — pumping mid-animation would require restructuring CombatState's phase machine to interleave with EventState, out of scope for this slice |
+| during_unit_level_up | 215 | `unit1: UnitObject`, `stat_changes: Dict[NID,int]`, `source: str` | REFERENCED (2026-10) | src/engine/states/game-states.ts (`dispatchEventLevelUpTrigger`) | Fired mid level-up screen, as level_up.py does |
 | unit_weapon_rank_up | 225 | `unit: UnitObject`, `weapon_type: NID`, `old_wexp: int`, `rank: str` | REFERENCED | src/engine/states/game-states.ts:2005, 3895 | Fired from promote/class-change paths; web payload uses `unit1`/`unitNid` (not `unit`) |
 | combat_start | 236 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `item: ItemObject`, `is_animation_combat: bool` | REFERENCED | src/engine/states/game-states.ts:3602 | Web payload uses `isAnimationCombat` (camelCase) and adds `unitNid` |
 | combat_end | 248 | `unit1: UnitObject`, `unit2: UnitObject`, `position: Tuple[int,int]`, `item: ItemObject`, `playback: List[PlaybackBrush]` | REFERENCED | src/engine/states/game-states.ts:4798-4807 | *(Audited 2026-07-18: already fixed, note was stale)* `playback: activeCombat!.strikes` IS present in the payload and reaches condition/`{e:}` context via the generic `localArgs` mapping (event-manager.ts:1317). |
@@ -37,18 +48,18 @@ annotated by hand. This is discovery evidence for the P0 roadmap row, not a pari
 | on_turnwheel | triggers.py:307 | — | REFERENCED | turnwheel-state.ts:296 | |
 | on_title_screen | triggers.py:314 | (none) | REFERENCED | game-states.ts:588 | Fired when entering TitleState; fires on_startup in same boot sequence per Python semantics |
 | on_startup | triggers.py:321 | (none) | REFERENCED | main.ts:526 | Fired once at game boot after DB/game state init, before any state change |
-| time_region_complete | triggers.py:328 | position, region | UNREFERENCED | — | time-region feature missing |
+| time_region_complete | triggers.py:328 | position, region | REFERENCED (2026-10) | src/engine/states/game-states.ts (time-region countdown) | EOtF has 8 such events |
 | on_overworld_node_select | triggers.py:343 | entity_nid, node_nid | REFERENCED | overworld-state.ts:241 | Fired when entity selects node; payload entity_nid/node_nid match Python trigger fields |
-| roam_press_start | triggers.py:352 | unit1, unit2 | UNREFERENCED | — | roam input/aux missing |
-| roam_press_info | triggers.py:361 | unit1, unit2 | UNREFERENCED | — | |
-| roam_press_aux | triggers.py:370 | unit1, unit2 | UNREFERENCED | — | |
-| roaming_interrupt | triggers.py:379 | unit1, position, region | REFERENCED | roam-state.ts:419 | web omits unit1/position |
-| preview | triggers.py:401 | position, region | UNREFERENCED | — | 'preview' string appears in game-states.ts:9924 as shop flag, unrelated |
+| roam_press_start | triggers.py:352 | unit1, unit2 | REFERENCED | src/engine/states/roam-state.ts (`checkStart`) | |
+| roam_press_info | triggers.py:361 | unit1, unit2 | REFERENCED | src/engine/states/roam-state.ts (`checkInfo`) | |
+| roam_press_aux | triggers.py:370 | unit1, unit2 | REFERENCED | src/engine/states/roam-state.ts (`checkAux`) | |
+| roaming_interrupt | triggers.py:379 | unit1, position, region | REFERENCED | src/engine/states/roam-state.ts (`checkRegionInterrupt`) | unit1/position/region all passed |
+| preview | triggers.py:401 | position, region | NOT DISPATCHED | — | Upstream-only (absent from EOtF's fork); 0 EOtF events |
 | event_on_hit | triggers.py:412 | unit1, unit2, position, item, target_pos, mode, attack_info | REFERENCED | combat-lifecycle.ts:51 | referenced as component name; nid resolved via `eventNid()` |
 | event_after_combat | triggers.py:429 | unit1, unit2, position, item, target_pos, mode | REFERENCED | combat-lifecycle.ts:69 | web also dispatches non-Python `event_after_use`, `event_after_combat_on_hit` |
-| event_after_initiated_combat | triggers.py:445 | unit1, unit2, position, item, mode | DEFERRED | — | hidden component-based trigger: EventAfterInitiatedCombat skill component (not yet ported) directly fires events; Python never unconditionally fires this trigger — defer until component implemented |
-| event_on_remove | triggers.py:460 | unit1 | DEFERRED | — | hidden component-based trigger: EventOnRemove skill component (not yet ported) directly fires events; Python never unconditionally fires this trigger — defer until component implemented |
-| unlock_staff | triggers.py:471 | unit1, position, item, region | UNREFERENCED (as trigger) | — | appears in item-system.ts:61,431,695 only as item COMPONENT, never dispatched as trigger |
+| event_after_initiated_combat | triggers.py:445 | unit1, unit2, position, item, mode | REFERENCED | src/combat/combat-lifecycle.ts | Fired by the EventAfterInitiatedCombat skill component |
+| event_on_remove | triggers.py:460 | unit1 | REFERENCED | src/engine/action.ts | Fired by the EventOnRemove skill component on removal |
+| unlock_staff | triggers.py:471 | unit1, position, item, region | NOT DISPATCHED (as trigger) | — | Upstream-only trigger (the fork has only the component); 0 EOtF events |
 | (RegionTrigger, dynamic nid) | triggers.py:390 | nid, unit1, position, region, item | REFERENCED (dynamic) | roam-state.ts:350,353 | dispatched via `region.sub_nid` |
 
 **Totals (updated 2026-07-19, P1 straggler slice):** 32/41 constant nids REFERENCED. **Newly wired:** on_base_convo, overworld_start. **Already wired (P5):** roam_press_start/info/aux. **Deferred:** time_region_complete (blocked on time-region feature), during_unit_level_up (blocked on level-up seam, no event-pump point in CombatState's animation), event_after_initiated_combat (component-based, no engine dispatch), event_on_remove (component-based, no engine dispatch). **Unreferenced (low-risk):** level_select (not fired as trigger, only state name), preview (shop flag, unrelated).
