@@ -127,6 +127,10 @@ test.describe('Embrace of the Fog dynamic combat output', () => {
       const { SkillObject } = await import('/src/objects/skill.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
       const { evaluateExpression } = await import('/src/events/event-manager.ts');
+      const { RECORDS } = await import('/src/engine/records.ts');
+      // Density-scaled expressions read a persistent record that a real run
+      // has; Python raises on None // 3 just as the evaluator does.
+      if (!RECORDS.has('current_density')) RECORDS.create('current_density', 3);
       const unit = game.units.get('Player');
       const target = game.units.get('Keeper');
       const item = new ItemObject({

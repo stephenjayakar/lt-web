@@ -6,9 +6,12 @@ import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
 import {
+  damage as itemDamage,
   damageOnMiss,
   extraDamage,
   hasDamageOnMiss,
+  healAmount,
+  lifelinkHealForStrike,
   oneLossPerCombat,
   solomonHpChange,
   usesConsumedByStrikes,
@@ -18,9 +21,14 @@ import {
   type CombatProcMark,
 } from './combat-skill-lifecycle';
 import { AddSkillAction, RemoveSkillAction } from '../engine/action';
-import { evaluateExpression } from '../events/event-manager';
+import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from '../engine/engine-flavor';
-import { applyOnHitForcedMovement, strikeHasOnHitMovement } from './combat-lifecycle';
+import {
+  applyPlannedForcedMovement,
+  planOnHitForcedMovement,
+  strikeHasOnHitMovement,
+  type PlannedForcedMovement,
+} from './combat-lifecycle';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
@@ -68,6 +76,11 @@ export interface CombatStrike {
   allySkillHpChanges?: Array<{ unit: UnitObject; amount: number }>;
   /** Damage rewritten to a cover unit by EotF after_take_strike hooks. */
   redirectedDamage?: Array<{ unit: UnitObject; amount: number }>;
+  /**
+   * ShoveFlexibleStopsEvent impact events found when the strike was solved,
+   * fired with the strike's other on_hit events (queueStrikeItemEvents).
+   */
+  shoveImpactEvents?: Array<(manager: { triggerSpecific: (nid: string, trigger: any) => unknown }) => unknown>;
   /** Skill snapshots retained for event dispatch after immediate mutations. */
   attackHookSkills?: SkillObject[];
   defenseHookSkills?: SkillObject[];
@@ -114,10 +127,15 @@ export class CombatPhaseSolver {
   /** Phases still to resolve (Python CombatPhaseSolver states). */
   private session: Generator<CombatStrike[], void, void> | null = null;
   private sessionStrikes: CombatStrike[] = [];
-  /** Hits of the last resolved phase whose on-hit movement has not run yet. */
-  private pendingMovement: CombatStrike[] = [];
+  /** The last resolved phase's on-hit movement, planned but not applied yet. */
+  private pendingMovement: PlannedForcedMovement[] = [];
   /** Lifecycle marks already copied into procPlayback. */
   private syncedMarks = 0;
+  /**
+   * Python LiveToServe.after_strike totals the phase's `heal_hit` playback
+   * (requested heal of each ally strike that healed something) so far.
+   */
+  private phaseAllyHealing = 0;
   /**
    * The last resolved strike's attack/defense procs. Python ends a strike's
    * sub-combat (removing its proc skills) only after the strike's damage and
@@ -252,7 +270,9 @@ export class CombatPhaseSolver {
   resolveNextPhase(): CombatStrike[] | null {
     if (!this.session) return null;
     this.applyPendingMovement();
-    const step = this.session.next();
+    const session = this.session;
+    this.phaseAllyHealing = 0;
+    const step = this.withLiveHp(() => session.next());
     if (step.done) {
       this.session = null;
       this.strikes = this.sessionStrikes;
@@ -261,14 +281,39 @@ export class CombatPhaseSolver {
     }
     this.sessionStrikes.push(...step.value);
     if (this.combatDb && this.game?.actionLog && this.game?.board) {
+      // Python on_hit fixes each ForcedMovement's destination while the
+      // phase is solved, before its events run or its actions apply.
       for (const strike of step.value) {
         if (strikeHasOnHitMovement(strike, this.combatDb, this.game)) {
-          this.pendingMovement.push(strike);
+          this.pendingMovement.push(...planOnHitForcedMovement(this.game, strike));
         }
       }
     }
     this.syncProcPlayback();
     return step.value;
+  }
+
+  /**
+   * Python applies every phase's actions (ChangeHP from damage, lifelink,
+   * heals) before it solves the next phase, so HP-based formulas, skill
+   * conditions and phase counts read the HP the combat has left so far. The
+   * web keeps in-combat HP simulated: show it on the units while a phase is
+   * solved, then put back what they held (keeping any change made meanwhile).
+   */
+  private withLiveHp<T>(solve: () => T): T {
+    const shown: Array<{ unit: UnitObject; saved: number; live: number }> = [];
+    for (const unit of this.simHps.keys()) {
+      const hp = this.simulatedHp(unit);
+      if (hp === undefined) continue;
+      const live = Math.max(0, Math.min(unit.maxHp, hp));
+      shown.push({ unit, saved: unit.currentHp, live });
+      unit.currentHp = live;
+    }
+    try {
+      return solve();
+    } finally {
+      for (const { unit, saved, live } of shown) unit.currentHp = saved + (unit.currentHp - live);
+    }
   }
 
   get sessionActive(): boolean {
@@ -287,7 +332,7 @@ export class CombatPhaseSolver {
    */
   applyPendingMovement(): void {
     const pending = this.pendingMovement.splice(0);
-    for (const strike of pending) applyOnHitForcedMovement(this.game, strike);
+    if (pending.length > 0) applyPlannedForcedMovement(this.game, pending);
   }
 
   /**
@@ -345,10 +390,53 @@ export class CombatPhaseSolver {
     ignoreDying: boolean = false,
   ): void {
     try {
+      const before = hp.hp;
+      this.recordAllyHealing(target, strike, before);
       this.applyStrikeDamageEffects(target, hp, strike, ignoreDying);
+      this.applyStrikeSideHp(strike, before);
     } finally {
       this.endPendingStrike();
     }
+  }
+
+  /**
+   * Python Heal.on_hit appends `HealHit(unit, item, target, heal, true_heal)`
+   * when it heals anything; LiveToServe totals those requested heals.
+   */
+  private recordAllyHealing(target: UnitObject, strike: CombatStrike, targetHp: number): void {
+    if (!strike.hit || target === strike.attacker) return;
+    const requested = healAmount(strike.attacker, strike.item, target, this.game);
+    if (requested === null || requested <= 0) return;
+    if (Math.min(requested, target.maxHp - targetHp) > 0) this.phaseAllyHealing += requested;
+  }
+
+  /**
+   * HP the strike's after_strike hooks change outside its target (the
+   * striker's lifelink and live_to_serve, item lifelink, ally lifelink).
+   * Python appends them to the phase's actions, so later phases are solved
+   * against them: keep the simulated HP in step with the result walk.
+   */
+  private applyStrikeSideHp(strike: CombatStrike, targetHpBefore: number): void {
+    const shift = (unit: UnitObject, amount: number): void => {
+      if (!amount) return;
+      for (const ref of this.simHps.get(unit) ?? []) {
+        ref.hp = Math.max(0, Math.min(unit.maxHp, ref.hp + amount));
+      }
+    };
+    const ownerItem = strike.attacker === this.sessionAttacker
+      ? this.sessionAttackItem ?? strike.item
+      : strike.item;
+    const itemHeal = lifelinkHealForStrike(strike.attacker, ownerItem, strike, targetHpBefore);
+    shift(strike.attacker, itemHeal + (strike.selfSkillHpChange ?? 0));
+    for (const effect of strike.allySkillHpChanges ?? []) shift(effect.unit, effect.amount);
+  }
+
+  /** Python LiveToServe heal: int(phase heal total * X), fork-modified. */
+  private liveToServeAmount(unit: UnitObject, ratio: number): number {
+    const base = Math.trunc(this.phaseAllyHealing * ratio);
+    return isForkEngine()
+      ? skillSystem.modifiedHealAmount(base, unit, unit, this.game)
+      : base;
   }
 
   private applyStrikeDamageEffects(
@@ -525,7 +613,8 @@ export class CombatPhaseSolver {
     skill: SkillObject,
   ): number {
     try {
-      const value = evaluateExpression(expression, {
+      // EOtF EvalLifelink: int(evaluate(...)), 0 when it raises.
+      return evaluateInt(expression, {
         game: this.game,
         unit1: strike.attacker,
         unit2: strike.defender,
@@ -534,13 +623,12 @@ export class CombatPhaseSolver {
         gameVars: this.game?.gameVars,
         levelVars: this.game?.levelVars,
         localArgs: new Map<string, unknown>([
+          ['item', strike.item],
           ['item2', strike.defender.equippedWeapon],
           ['mode', strike.mode ?? (strike.isCounter ? 'defense' : 'attack')],
           ['skill', skill],
         ]),
-      });
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+      }, 0);
     } catch (error) {
       console.error(`Could not evaluate lifelink component ${expression}`, error);
       return 0;
@@ -568,8 +656,9 @@ export class CombatPhaseSolver {
         strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + heal();
         skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
       }
-      if (fork && typeof skill.getComponent<unknown>('live_to_serve') === 'number') {
-        const amount = heal();
+      const liveToServe = skill.getComponent<unknown>('live_to_serve');
+      if (typeof liveToServe === 'number') {
+        const amount = this.liveToServeAmount(strike.attacker, liveToServe);
         if (amount > 0) {
           strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + amount;
           skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
@@ -610,13 +699,13 @@ export class CombatPhaseSolver {
         // EOtF fork: `_get_heal_amount(true_damage, unit, unit)`.
         apply(Math.trunc(trueDamage * lifelink), true, fork);
       }
-      // EOtF fork LiveToServe.after_strike runs on every strike: weapon
-      // strikes heal nobody, but `_get_heal_amount(0, unit, unit)` still adds
-      // the unit's own empower_heal bonuses.
-      if (fork && typeof skill.getComponent<unknown>('live_to_serve') === 'number') {
-        const amount = skillSystem.modifiedHealAmount(
-          0, strike.attacker, strike.attacker, this.game,
-        );
+      // LiveToServe.after_strike runs on every strike and heals X of the
+      // phase's requested ally heals so far; EOtF's fork routes it through
+      // `_get_heal_amount(amount, unit, unit)`, so the unit's own
+      // empower_heal bonuses heal even when no ally was healed.
+      const liveToServe = skill.getComponent<unknown>('live_to_serve');
+      if (typeof liveToServe === 'number') {
+        const amount = this.liveToServeAmount(strike.attacker, liveToServe);
         if (amount > 0) apply(amount);
       }
       const unbounded = skill.getComponent<unknown>('shitty_lifelink');
@@ -1137,14 +1226,11 @@ export class CombatPhaseSolver {
         dmg = strikeDamage(crit);
         dmg = this.applyCustomHitDamage(item, target, dmg);
       }
-      const solomonChange = solomonHpChange(
-        striker,
-        item,
-        target,
-        this.game,
-      );
-      dmg = solomonChange === null ? Math.max(0, dmg) : -solomonChange;
+      dmg = Math.max(0, dmg);
     }
+    // Python Damage.on_hit only exists on items with a damage component.
+    if (itemDamage(striker, item, this.game) === null) dmg = 0;
+    if (hit && !guarded) dmg = this.onHitHpChange(striker, item, target, dmg);
 
     const strike: CombatStrike = {
       attacker: striker,
@@ -1313,12 +1399,15 @@ export class CombatPhaseSolver {
     } else {
       const reference = splash[0];
       if (reference) {
+        // The attacker's own HP (lifelink, after-strike events) carries into
+        // its later splash phases, as Python applies each phase's actions.
+        const attackerHp = splashHp.get(attacker) ?? this.trackHp(attacker, attacker.currentHp);
         const strikeCount = doubleSplash
           ? calcs.computeStrikeCount(attacker, attackItem, reference, null)
           : 1;
         const phase = this.nextPhase(attacker);
         for (let idx = 0; idx < strikeCount; idx++) {
-          if (idx > 0 && !this.itemHasUses(attacker, attackItem)) break;
+          if (idx > 0 && (!this.itemHasUses(attacker, attackItem) || attackerHp.hp <= 0)) break;
           const appended = appendSplash(undefined, undefined, [phase, idx]);
           if (appended.length > 0) yield appended;
         }
@@ -1779,6 +1868,9 @@ export class CombatPhaseSolver {
       }
       dmg = Math.max(0, dmg);
     }
+    // Python Damage.on_hit only exists on items with a damage component.
+    if (itemDamage(striker, item, this.game) === null) dmg = 0;
+    if (hit && !guarded) dmg = this.onHitHpChange(striker, item, target, dmg);
 
     const strike: CombatStrike = {
       attacker: striker,
@@ -1805,6 +1897,24 @@ export class CombatPhaseSolver {
     this.pendingStrikeProcs = procs;
     this.updateGuardGauges(striker, item, target, db);
     return strike;
+  }
+
+  /**
+   * Item on_hit HP changes besides damage: Heal / EquationHeal and EOtF's
+   * EvalHeal / HealNoTargetRestrict append ChangeHP(target, heal), and
+   * SolomonHeal a signed ChangeHP, to the strike's actions, so the HP lands
+   * with the hit (before later phases are solved). A heal is negative damage.
+   */
+  private onHitHpChange(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    damage: number,
+  ): number {
+    const solomonChange = solomonHpChange(striker, item, target, this.game);
+    if (solomonChange !== null) return -solomonChange;
+    const heal = healAmount(striker, item, target, this.game);
+    return heal === null ? damage : damage - heal;
   }
 
   private applyCustomHitDamage(

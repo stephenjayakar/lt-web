@@ -239,10 +239,8 @@ Verdicts: NONE 51, VISUAL 121, STATE 29 (201 scripts; Ability_Serve_Forth moved 
 
 - `interact_unit ...;immediate` combats still solve every strike at once and
   run their strike events afterwards.
-- Damage formulas inside one solver segment still read the units' HP from
-  before the segment (strikes between two event phases are solved together
-  against simulated HP); Python applies each phase's HP before solving the
-  next. Only HP-dependent formulas notice.
+- (Fixed in `fix/dev-combat`: each phase is solved with the units showing
+  the simulated HP earlier phases left, including the striker's lifelink.)
 - Start-combat hooks are triggered skills-first then items-first for all
   participants; Python interleaves skill and item hooks per participant, so
   two before-combat events on different participants can run in a different

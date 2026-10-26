@@ -8,6 +8,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { RegionData } from '../data/types';
 import { evaluateCondition } from '../events/event-manager';
+import { passThrough } from '../combat/skill-system';
 
 function regionContains(region: RegionData, position: [number, number]): boolean {
   if (!region.position) return false;
@@ -50,26 +51,39 @@ export function checkRegionInterrupt(
 }
 
 /**
- * Where a unit walking `path` (path[0] is its start) actually stops. Python
- * UnitPathMovementComponent checks the tile the unit currently stands on
- * before every step (check_position: unless another unit shares it), so the
- * walk ends on the first interrupting tile; arriving on an interrupting final
- * tile is also a surprise.
+ * Where a unit walking `path` (path[0] is its start) actually stops: Python
+ * UnitPathMovementComponent._handle_path calls check_position before every
+ * step. It first checks the tile the unit stands on for an interrupt_move
+ * region (unless another unit shares that tile), and only then, for
+ * non-event moves, the next tile for a unit the mover can't pass: an enemy,
+ * which under fog of war is the ambush of an unseen enemy on the path, or
+ * any unit on a pass_through mover's final tile. Either stop is a surprise,
+ * and so is arriving on an interrupting final tile.
  */
 export function interruptMovePath(
   unit: UnitObject,
   path: [number, number][],
   game: any,
+  options: { event?: boolean } = {},
 ): { path: [number, number][]; surprise: boolean } {
   if (path.length <= 1) return { path, surprise: false };
   const last = path.length - 1;
+  const passes = !options.event && passThrough(unit, { game });
   for (let index = 0; index < last; index++) {
     const [x, y] = path[index];
     const occupant = game?.board?.getUnit?.(x, y);
-    if (occupant && occupant !== unit) continue;
-    if (checkRegionInterrupt(unit, game, path[index]).length > 0) {
+    if (!(occupant && occupant !== unit) &&
+        checkRegionInterrupt(unit, game, path[index]).length > 0) {
       return { path: path.slice(0, index + 1), surprise: true };
     }
+    if (options.event) continue;
+    const [nx, ny] = path[index + 1];
+    const other: UnitObject | null = game?.board?.getUnit?.(nx, ny) ?? null;
+    if (!other || other === unit) continue;
+    const blocked = passes
+      ? index + 1 === last
+      : !game?.db?.areAllied?.(unit.team, other.team);
+    if (blocked) return { path: path.slice(0, index + 1), surprise: true };
   }
   return { path, surprise: checkRegionInterrupt(unit, game, path[last]).length > 0 };
 }

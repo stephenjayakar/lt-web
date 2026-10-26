@@ -5,13 +5,15 @@
  */
 export const REKKA_ITEM_COMPONENTS = new Set([
   'advance', 'advance_target_restrict', 'all_allies_except_self_aoe',
-  'allow_same_target', 'ally_blast_aoe', 'ally_equation_blast_aoe',
+  'allow_less_than_max_targets', 'allow_same_target', 'ally_blast_aoe',
+  'ally_equation_blast_aoe',
   'alternate_damage_formula', 'alternate_resist_formula', 'attack_after_combat',
   'blast_aoe', 'brave', 'c_uses', 'can_unlock', 'cannot_be_countered', 'crit',
   'custom_triangle_multiplier', 'damage', 'draw_back', 'draw_back_target_restrict',
   'effective_damage', 'empty_tile_target_restrict', 'enemy_blast_aoe',
   'enemy_line_aoe', 'equation_blast_aoe', 'equation_heal',
-  'equippable_accessory', 'eval_special_range', 'eval_target_restrict_2',
+  'equippable_accessory', 'eval_available', 'eval_special_range',
+  'eval_target_restrict_2',
   'event_after_combat_even_miss', 'event_after_combat_on_hit', 'event_on_hit',
   'exp', 'gba_steal', 'global_range', 'gold_cost', 'heal', 'hit', 'hp_cost',
   'ignore_weapon_advantage', 'item_tags', 'level_exp', 'lifelink', 'locked',

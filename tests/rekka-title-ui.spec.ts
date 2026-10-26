@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 async function waitForHarness(page: import('@playwright/test').Page): Promise<void> {
   await page.waitForFunction(() => (window as any).__harness?.ready === true, {
     timeout: 60_000,
   });
 }
+
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka title presentation', () => {
   test('loads authored title resources, falls back for transparent art, and starts safely', async ({
@@ -49,8 +52,8 @@ test.describe('Rekka title presentation', () => {
     expect(title).toEqual({
       state: 'title',
       title: 'Rekka no Ken Alternative',
-      titleMusic: 'groovin_magic_instrumental',
-      requestedMusic: 'groovin_magic_instrumental',
+      titleMusic: 'Groovin Magic (inst.)',
+      requestedMusic: 'Groovin Magic (inst.)',
       backgroundLoaded: true,
       logoAssetLoaded: true,
       promptAssetLoaded: true,

@@ -1,4 +1,4 @@
-import { evaluateExpression } from '../events/event-manager';
+import { evaluateInt } from '../events/event-manager';
 import type { ActionLog } from '../engine/action';
 import {
   GainMoneyAction,
@@ -70,19 +70,17 @@ function evaluatedCost(
 ): number | null {
   if (typeof expression === 'number') return Math.trunc(expression);
   if (typeof expression !== 'string') return null;
-  try {
-    const result = Number(evaluateExpression(expression, {
-      game,
-      unit1: unit,
-      item,
-      position: unit.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    }));
-    return Number.isFinite(result) ? Math.trunc(result) : null;
-  } catch {
-    return null;
-  }
+  // Python int(evaluate(value, unit, local_args={'item': item})); null when it
+  // raises, so each caller applies its own except-clause.
+  const result = evaluateInt(expression, {
+    game,
+    unit1: unit,
+    item,
+    position: unit.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  }, Number.NaN);
+  return Number.isFinite(result) ? result : null;
 }
 
 function stackCost(
@@ -114,8 +112,9 @@ export function itemResourcesAvailable(
 ): boolean {
   for (const [component, raw] of components) {
     if (component === 'eval_hp_cost') {
-      const amount = evaluatedCost(raw, unit, item, game);
-      if (amount === null || unit.currentHp <= amount) return false;
+      // EOtF EvalHPCost._check_value: 0 when the expression raises.
+      const amount = evaluatedCost(raw, unit, item, game) ?? 0;
+      if (unit.currentHp <= amount) return false;
     } else if (
       component === 'stack_cost' ||
       component === 'stack_cost_multi' ||
@@ -182,11 +181,9 @@ export function applyItemEndResourceHooks(
   let applied = 0;
   for (const [component, raw] of resourceComponents(unit, item, game)) {
     if (component === 'eval_hp_cost') {
-      const amount = evaluatedCost(raw, unit, item, game);
-      if (amount !== null) {
-        game.actionLog.doAction(new SetCurrentHpAction(unit, unit.currentHp - amount));
-        applied++;
-      }
+      const amount = evaluatedCost(raw, unit, item, game) ?? 0;
+      game.actionLog.doAction(new SetCurrentHpAction(unit, unit.currentHp - amount));
+      applied++;
     } else if (component === 'cooldown') {
       const amount = Math.max(0, Math.trunc(Number(raw)));
       if (Number.isFinite(amount)) {

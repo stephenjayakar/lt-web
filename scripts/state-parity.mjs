@@ -52,7 +52,6 @@ const MERGED = {
   repair_shop: 'shop',
   spell_choice: 'weapon_choice',
   start_level_asset_loading: 'title',
-  status_upkeep: 'phase_change',
   subitem_child: 'menu',
   text_confirm: 'text_entry',
   title_all_saves: 'load_menu',
@@ -101,7 +100,7 @@ function pythonStates() {
         if (nameMatch) {
           states.set(nameMatch[1], {
             className: classMatch[2],
-            source: path.relative(ROOT, file),
+            source: path.relative(ROOT, file).split(path.sep).join("/"),
           });
           break;
         }
@@ -116,7 +115,7 @@ function webStates() {
   for (const file of walk(path.join(ROOT, 'src/engine'), '.ts')) {
     const source = fs.readFileSync(file, 'utf8');
     for (const match of source.matchAll(/readonly name(?:\s*:\s*string)?\s*=\s*['"]([^'"]+)['"]/g)) {
-      states.set(match[1], path.relative(ROOT, file));
+      states.set(match[1], path.relative(ROOT, file).split(path.sep).join("/"));
     }
   }
   return states;

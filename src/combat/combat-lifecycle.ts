@@ -1,6 +1,6 @@
 import {
   evaluateCondition,
-  evaluateExpression,
+  evaluateInt,
   type EventManager,
   type EventTrigger,
 } from '../events/event-manager';
@@ -45,7 +45,6 @@ import {
   pivotDestination,
   rekkaMovementEndpoints,
   shoveDestination,
-  healAmount as itemHealAmount,
   effectiveItemComponents,
   inventoryFull,
 } from './item-system';
@@ -618,27 +617,23 @@ function combatComponentNumber(
 ): number {
   if (typeof rawValue === 'number') return Math.trunc(rawValue);
   if (typeof rawValue !== 'string' || rawValue.length === 0) return 0;
-  try {
-    const value = evaluateExpression(rawValue, {
-      game,
-      unit1: unit,
-      unit2: target,
-      position: unit.position ?? undefined,
-      item,
-      gameVars: game.gameVars,
-      levelVars: game.levelVars,
-      localArgs: new Map<string, unknown>([
-        ['item2', equippedWeapon(target)],
-        ['mode', mode],
-        ['skill', skill],
-      ]),
-    });
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
-  } catch (error) {
-    console.error(`Could not evaluate combat component ${rawValue}`, error);
-    return 0;
-  }
+  // EOtF eval_post_combat_* / eval_heal_on_kill / eval_lifelink:
+  // int(evaluate(...)), 0 when it raises.
+  return evaluateInt(rawValue, {
+    game,
+    unit1: unit,
+    unit2: target,
+    position: unit.position ?? undefined,
+    item,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map<string, unknown>([
+      ['item', item],
+      ['item2', equippedWeapon(target)],
+      ['mode', mode],
+      ['skill', skill],
+    ]),
+  }, 0);
 }
 
 function componentOption(rawValue: unknown, key: string): unknown {
@@ -659,32 +654,26 @@ function eotfSelfShoveMagnitude(
 ): number {
   if (typeof expression === 'number') return Math.trunc(expression);
   if (typeof expression !== 'string' || !expression) return 0;
-  try {
-    const targetPosition = strike.defender.position
-      ? [...strike.defender.position] as [number, number]
-      : null;
-    const value = evaluateExpression(expression, {
-      game,
-      unit1: strike.attacker,
-      unit2: strike.defender,
-      item: strike.item,
-      position: strike.attacker.position ?? undefined,
-      gameVars: game.gameVars,
-      levelVars: game.levelVars,
-      localArgs: new Map<string, unknown>([
-        ['item', strike.item],
-        ['item2', equippedWeapon(strike.defender)],
-        ['mode', strikeMode(strike)],
-        ['target', strike.defender],
-        ['target_pos', targetPosition],
-      ]),
-    });
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
-  } catch (error) {
-    console.error(`Could not evaluate self shove component ${expression}`, error);
-    return 0;
-  }
+  const targetPosition = strike.defender.position
+    ? [...strike.defender.position] as [number, number]
+    : null;
+  // EOtF ShoveFlexibleStops: int(evaluate(...)), 0 when it raises.
+  return evaluateInt(expression, {
+    game,
+    unit1: strike.attacker,
+    unit2: strike.defender,
+    item: strike.item,
+    position: strike.attacker.position ?? undefined,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map<string, unknown>([
+      ['item', strike.item],
+      ['item2', equippedWeapon(strike.defender)],
+      ['mode', strikeMode(strike)],
+      ['target', strike.defender],
+      ['target_pos', targetPosition],
+    ]),
+  }, 0);
 }
 
 function legacyMultipleOption(
@@ -1773,18 +1762,31 @@ export function strikeHasOnHitMovement(
   return false;
 }
 
+/** One on-hit ForcedMovement/Swap, with its destination fixed when planned. */
+export type PlannedForcedMovement =
+  | { kind: 'warp'; unit: UnitObject; to: [number, number] }
+  | {
+    kind: 'swap';
+    first: UnitObject;
+    second: UnitObject;
+    firstPosition: [number, number];
+    secondPosition: [number, number];
+  };
+
 /**
  * Python solver.process -> item_system.on_hit: Shove/Swap/Pivot/DrawBack
- * move units as each hit lands, before the next phase is solved, so later
- * strikes (counter range, terrain) see the new positions.
+ * compute their destination while the strike is solved (against the board
+ * before any of the phase's actions) and append a ForcedMovement/Swap that
+ * MapCombat._apply_actions runs when the hit is shown. Plan them here, as
+ * the phase is solved; applyPlannedForcedMovement moves the units later.
  */
-export function applyOnHitForcedMovement(
+export function planOnHitForcedMovement(
   game: CombatLifecycleGame,
   strike: CombatStrike,
-): number {
-  if (!game.actionLog || !game.db || !game.board || !strike.hit) return 0;
+): PlannedForcedMovement[] {
+  const planned: PlannedForcedMovement[] = [];
+  if (!game.db || !game.board || !strike.hit) return planned;
   const mark = strike;
-  let applied = 0;
   for (const [componentNid, componentValue] of effectiveItemComponents(
     strike.attacker,
     strike.item,
@@ -1801,8 +1803,7 @@ export function applyOnHitForcedMovement(
         { board: game.board, db: game.db, game },
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.defender, to: destination });
       }
     } else if ((componentNid === 'shove_flex_stops' ||
         componentNid === 'shove_flex_stops_event') &&
@@ -1820,29 +1821,34 @@ export function applyOnHitForcedMovement(
         false,
         componentNid === 'shove_flex_stops_event'
           ? (occupant) => {
+              // Python triggers the impact event inside this on_hit, so it
+              // joins the strike's other on_hit events in component order:
+              // queueStrikeItemEvents fires it there.
               const event = componentOption(rawValue, 'impact_event');
-              if (typeof event !== 'string' || !event || !game.eventManager) return;
-              game.eventManager.triggerSpecific(event, {
+              if (typeof event !== 'string' || !event) return;
+              const position = mark.defender.position
+                ? [...mark.defender.position] as [number, number]
+                : undefined;
+              const item2 = equippedWeapon(mark.defender);
+              const mode = strikeMode(mark);
+              (strike.shoveImpactEvents ??= []).push((manager) => manager.triggerSpecific(event, {
                 type: 'shove_impact',
                 unit1: mark.defender,
                 unit2: occupant,
                 unitNid: mark.defender.nid,
-                position: mark.defender.position
-                  ? [...mark.defender.position] as [number, number]
-                  : undefined,
+                position,
                 item: strike.item,
                 localArgs: new Map<string, unknown>([
                   ['item', strike.item],
-                  ['item2', equippedWeapon(mark.defender)],
-                  ['mode', strikeMode(mark)],
+                  ['item2', item2],
+                  ['mode', mode],
                 ]),
-              });
+              }));
             }
           : undefined,
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.defender, to: destination });
       }
     } else if (componentNid === 'self_shove_flex_stops' &&
         mark.defender.position && !ignoreForcedMovement(mark.attacker)) {
@@ -1855,14 +1861,18 @@ export function applyOnHitForcedMovement(
         true,
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.attacker, to: destination });
       }
     } else if (componentNid === 'swap' &&
         mark.attacker.position && mark.defender.position &&
         !ignoreForcedMovement(mark.attacker) && !ignoreForcedMovement(mark.defender)) {
-      game.actionLog.doAction(new SwapUnitsAction(mark.attacker, mark.defender, game.board));
-      applied++;
+      planned.push({
+        kind: 'swap',
+        first: mark.attacker,
+        second: mark.defender,
+        firstPosition: [mark.attacker.position[0], mark.attacker.position[1]],
+        secondPosition: [mark.defender.position[0], mark.defender.position[1]],
+      });
     } else if (componentNid === 'pivot' && mark.defender.position &&
         !ignoreForcedMovement(mark.attacker)) {
       const destination = pivotDestination(
@@ -1872,8 +1882,7 @@ export function applyOnHitForcedMovement(
         { board: game.board, db: game.db, game },
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.attacker, to: destination });
       }
     } else if (componentNid === 'draw_back' && !ignoreForcedMovement(mark.defender)) {
       const destinations = drawBackDestinations(
@@ -1883,13 +1892,60 @@ export function applyOnHitForcedMovement(
         { board: game.board, db: game.db, game },
       );
       if (destinations) {
-        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
-        game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
-        applied += 2;
+        planned.push({ kind: 'warp', unit: mark.attacker, to: destinations[0] });
+        planned.push({ kind: 'warp', unit: mark.defender, to: destinations[1] });
       }
     }
   }
+  return planned;
+}
+
+/**
+ * Python action.ForcedMovement/Swap.do for planned on-hit movement: each
+ * unit goes to the tile fixed when its strike was solved, even if events
+ * between the solve and the hit moved it. Returns the actions applied.
+ */
+export function applyPlannedForcedMovement(
+  game: CombatLifecycleGame,
+  planned: readonly PlannedForcedMovement[],
+): number {
+  if (!game.actionLog || !game.board) return 0;
+  let applied = 0;
+  for (const move of planned) {
+    if (move.kind === 'warp') {
+      // A unit removed from the map since the solve has nowhere to move from.
+      if (!move.unit.position) continue;
+      game.actionLog.doAction(new WarpUnitAction(move.unit, move.to, game.board));
+      applied++;
+      continue;
+    }
+    const { first, second, firstPosition, secondPosition } = move;
+    if (!first.position || !second.position) continue;
+    const unmoved = first.position[0] === firstPosition[0] && first.position[1] === firstPosition[1] &&
+      second.position[0] === secondPosition[0] && second.position[1] === secondPosition[1];
+    if (unmoved) {
+      game.actionLog.doAction(new SwapUnitsAction(first, second, game.board));
+      applied++;
+    } else {
+      // Python Swap arrives each unit at the other's solve-time tile.
+      game.actionLog.doAction(new WarpUnitAction(first, secondPosition, game.board));
+      game.actionLog.doAction(new WarpUnitAction(second, firstPosition, game.board));
+      applied += 2;
+    }
+  }
   return applied;
+}
+
+/** Plan and apply one strike's on-hit movement (and impact events) at once. */
+export function applyOnHitForcedMovement(
+  game: CombatLifecycleGame,
+  strike: CombatStrike,
+): number {
+  if (!game.actionLog) return 0;
+  const planned = planOnHitForcedMovement(game, strike);
+  const manager = game.eventManager;
+  if (manager) for (const trigger of strike.shoveImpactEvents?.splice(0) ?? []) trigger(manager);
+  return applyPlannedForcedMovement(game, planned);
 }
 
 /** Apply item end-combat resource hooks once per item that participated. */
@@ -1908,14 +1964,8 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         .map((candidate) => [candidate.defender.nid, candidate]),
     ).values()];
     for (const mark of itemMarks.filter((candidate) => candidate.hit)) {
-      const healing = itemHealAmount(mark.attacker, strike.item, mark.defender, game);
-      if (healing !== null) {
-        game.actionLog.doAction(new SetCurrentHpAction(
-          mark.defender,
-          mark.defender.currentHp + healing,
-        ));
-        applied++;
-      }
+      // Heal-family on_hit HP lands with the hit (the solver's negative
+      // strike damage), not here.
       if (strike.item.hasComponent('restore_no_target_restrict')) {
         for (const skill of [...mark.defender.skills]) {
           if (!skill.hasComponent('negative')) continue;
@@ -2136,7 +2186,8 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
     const expression = strike.item.getComponent<unknown>('gain_mana_after_combat');
     if (typeof expression === 'string' && expression.length > 0) {
       try {
-        const amount = Math.trunc(Number(evaluateExpression(expression, {
+        // Python GainManaAfterCombat: int(evaluate(...)); skipped when it raises.
+        const amount = evaluateInt(expression, {
           game,
           unit1: strike.attacker,
           unit2: strike.defender,
@@ -2144,7 +2195,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
           item: strike.item,
           gameVars: game.gameVars,
           levelVars: game.levelVars,
-        })));
+        }, Number.NaN);
         if (!Number.isFinite(amount)) continue;
         const manaExpression = game.db.getEquation('MANA') ?? '0';
         const maximum = Math.max(
@@ -2262,10 +2313,28 @@ export function queueStrikeItemEvents(
   const manager = game.eventManager;
   if (!manager || !strike.hit) return 0;
   let queued = 0;
-  for (const component of ['event_on_use', 'event_on_hit']) {
+  // item_system.on_hit runs the item's components in order: event_on_use /
+  // event_on_hit trigger their events, and ShoveFlexibleStopsEvent its
+  // impact event (planned when the strike was solved).
+  const pending = ['event_on_use', 'event_on_hit'];
+  const fire = (component: string): void => {
+    if (component === 'shove_flex_stops_event') {
+      for (const trigger of strike.shoveImpactEvents?.splice(0) ?? []) {
+        if (trigger(manager)) queued++;
+      }
+      return;
+    }
+    const at = pending.indexOf(component);
+    if (at < 0) return;
+    pending.splice(at, 1);
     const nid = eventNid(strike.item, component);
     if (nid && manager.triggerSpecific(nid, triggerForStrike(strike, index))) queued++;
-  }
+  };
+  const order = game.db
+    ? effectiveItemComponents(strike.attacker, strike.item, game.db, game).map(([nid]) => nid)
+    : [...strike.item.components.keys()];
+  for (const component of order) fire(component);
+  for (const component of [...pending, 'shove_flex_stops_event']) fire(component);
   return queued;
 }
 

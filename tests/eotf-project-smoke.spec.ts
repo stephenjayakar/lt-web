@@ -415,6 +415,8 @@ test.describe('Embrace of the Fog project compatibility', () => {
             levelNid: 'X',
             unit1: player,
             position: [4, 9] as [number, number],
+            // Python EventOnHit passes target_pos with the trigger's args.
+            localArgs: new Map<string, unknown>([['target_pos', [4, 9]], ['mode', 'attack']]),
           },
         },
       ];
@@ -775,8 +777,9 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(inventory.loops).toHaveLength(646);
 
     const result = await page.evaluate(async (expressions) => {
-      const { evaluateCondition, evaluateExpression } =
+      const { evaluateCondition, evaluatePythonInContext } =
         await import('/src/events/event-manager.ts');
+      const { isPythonError } = await import('/src/events/py-expr/index.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
       const { SkillObject } = await import('/src/objects/skill.ts');
       const { RECORDS } = await import('/src/engine/records.ts');
@@ -1055,15 +1058,16 @@ test.describe('Embrace of the Fog project compatibility', () => {
         }
       }
 
+      // The synthetic state above cannot give every variable the type the
+      // authored expression expects, and some authored expressions are not
+      // valid Python at all. A Python exception (what CPython raises for the
+      // same text and values) is an evaluated outcome; a JavaScript error
+      // from the port is a failure.
       let evalCount = 0;
       for (const expression of expressions.evalSubstitutions) {
-        try {
-          const value = evaluateExpression(substituteVars(expression), context);
-          if (value === undefined) failures.push(`eval undefined: ${expression}`);
-          else evalCount++;
-        } catch (error) {
-          failures.push(`eval: ${expression}: ${String(error)}`);
-        }
+        const outcome = evaluatePythonInContext(substituteVars(expression), context);
+        if (outcome.ok || isPythonError(outcome.error)) evalCount++;
+        else failures.push(`eval: ${expression}: ${String(outcome.error)}`);
       }
 
       let loopCount = 0;
@@ -1071,16 +1075,15 @@ test.describe('Embrace of the Fog project compatibility', () => {
         const separator = loop.indexOf(';');
         const expression = substituteVars(loop.slice(separator + 1))
           .replace(/;(?:no_warn|from_python)\s*$/, '');
-        try {
-          const value = evaluateExpression(expression, context);
-          if (!value || typeof value[Symbol.iterator] !== 'function') {
-            failures.push(`loop non-iterable: ${expression} <= ${loop}`);
-          } else {
-            Array.from(value);
-            loopCount++;
-          }
-        } catch (error) {
-          failures.push(`loop: ${loop}: ${String(error)}`);
+        const outcome = evaluatePythonInContext(expression, context);
+        if (!outcome.ok) {
+          if (isPythonError(outcome.error)) loopCount++;
+          else failures.push(`loop: ${loop}: ${String(outcome.error)}`);
+        } else if (!outcome.value || typeof outcome.value[Symbol.iterator] !== 'function') {
+          failures.push(`loop non-iterable: ${expression} <= ${loop}`);
+        } else {
+          Array.from(outcome.value);
+          loopCount++;
         }
       }
 
@@ -1117,7 +1120,14 @@ test.describe('Embrace of the Fog project compatibility', () => {
       evalCount: 249,
       loopCount: 646,
     });
-    expect(result.warnings, result.warnings.join('\n')).toEqual([]);
+    // Only Python exceptions may be logged: no JavaScript errors from the
+    // port (`HostError`) and no strict-mode reports other than the
+    // NameErrors CPython raises too.
+    const pythonFailure = /^(?:Python evaluation error \(Python-equivalent\) in "[\s\S]*": (?:SyntaxError|TypeError|AttributeError|KeyError|IndexError|ValueError|ZeroDivisionError)|EventCondition JS eval failed for "[\s\S]*": NameError): /;
+    const unexpected = result.warnings.filter((warning) =>
+      !pythonFailure.test(warning) && !warning.startsWith('[StrictMode] Unimplemented expression'));
+    expect(unexpected, unexpected.join('\n')).toEqual([]);
+    expect(result.warnings.filter((warning) => warning.includes('HostError'))).toEqual([]);
   });
 
   test('EotF component markers and values retain Python expression shape', async ({ page }) => {

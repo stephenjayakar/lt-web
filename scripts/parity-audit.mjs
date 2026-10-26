@@ -153,7 +153,7 @@ function parsePythonComponents(relativePath) {
         tag: body.match(new RegExp(`^${memberIndent}tag\\s*=\\s*(?:ItemTags|SkillTags)\\.(\\w+)`, 'm'))?.[1] ?? null,
         directMethods: [...new Set(matches(body, new RegExp(`^${memberIndent}def\\s+(\\w+)\\s*\\(`, 'gm')))]
           .filter((method) => !method.startsWith('_')),
-        source: path.relative(root, file),
+        source: path.relative(root, file).split(path.sep).join("/"),
         line: source.slice(0, match.index).split('\n').length,
       });
     }
@@ -183,7 +183,7 @@ function exactLiteralLocations(nid) {
     for (const match of source.matchAll(expression)) {
       const prefix = source.slice(0, match.index);
       locations.push({
-        source: path.relative(root, file),
+        source: path.relative(root, file).split(path.sep).join("/"),
         line: prefix.split('\n').length,
       });
     }
@@ -205,7 +205,7 @@ function directConsumptionLocations(nid) {
     for (const match of source.matchAll(expression)) {
       const prefix = source.slice(0, match.index);
       locations.push({
-        source: path.relative(root, file),
+        source: path.relative(root, file).split(path.sep).join("/"),
         line: prefix.split('\n').length,
       });
     }

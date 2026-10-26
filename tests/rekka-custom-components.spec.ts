@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
@@ -8,6 +9,8 @@ async function boot(page: Page): Promise<void> {
   });
   await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
 }
+
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka project-local item components', () => {
   test('zero-use custom movement and cleave components match their Python contracts', async ({ page }) => {
@@ -778,6 +781,114 @@ test.describe('Rekka project-local item components', () => {
       afterUndo: 500,
       afterRedo: 0,
       actionName: 'GainMoneyAction',
+    });
+  });
+
+  test('eval_available gates Generosity staves, sequence children, and ring classes', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { available } = await import('/src/combat/item-system.ts');
+      const { ItemObject, createItemTree } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Lyn');
+      const create = (nid: string) => {
+        const item = createItemTree(game.db.items.get(nid), (child: string) => game.db.items.get(child));
+        item.owner = unit;
+        for (const subitem of item.subitems) subitem.owner = unit;
+        return item;
+      };
+      const oldWexp = { ...unit.wexp };
+      const oldKlass = unit.klass;
+      const oldSkills = [...unit.skills];
+      unit.wexp.Staff = 251;
+      const bunter = create('Bunter');
+      const rescue = create('Rescue');
+      const ring = create('GenerosityRing');
+      const broken = new ItemObject({
+        nid: '_BrokenEvalAvailable', name: 'Broken', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['eval_available', 'no_such_function(unit)']],
+      } as any);
+      const snapshot = () => ({
+        bunter: available(unit, bunter, game.db, game),
+        rescue: available(unit, rescue, game.db, game),
+        rescueChild: available(unit, rescue.subitems[0], game.db, game),
+      });
+      const ringForLyn = available(unit, ring, game.db, game);
+      // Staves need a staff class; Troubadour is also on the ring's class list.
+      unit.klass = 'Troubadour';
+      const ringForTroubadour = available(unit, ring, game.db, game);
+      const withoutGenerosity = snapshot();
+      unit.skills.push(new SkillObject(game.db.skills.get('Generosity')));
+      const withGenerosity = snapshot();
+      unit.skills = oldSkills;
+      unit.klass = oldKlass;
+      unit.wexp = oldWexp;
+      return {
+        withoutGenerosity,
+        withGenerosity,
+        rescueChildren: rescue.subitems.map((subitem: any) => subitem.nid),
+        ringForLyn,
+        ringForTroubadour,
+        brokenExpression: available(unit, broken, game.db, game),
+      };
+    });
+
+    expect(result).toEqual({
+      withoutGenerosity: { bunter: true, rescue: true, rescueChild: true },
+      withGenerosity: { bunter: false, rescue: false, rescueChild: false },
+      rescueChildren: ['Rescue1', 'Rescue2'],
+      ringForLyn: false,
+      ringForTroubadour: true,
+      brokenExpression: false,
+    });
+  });
+
+  test('allow_less_than_max_targets lets MultiHeal target fewer allies than multi_target', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const { allowLessThanMaxTargets, numTargets } = await import('/src/combat/item-system.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      harness.warpUnit('Lyn', 10, 7);
+      harness.warpUnit('101', 11, 7);
+      const unit = game.units.get('Lyn');
+      const ally = game.units.get('101');
+      const oldTeam = ally.team;
+      ally.team = unit.team;
+      ally.currentHp = Math.max(1, ally.getMaxHP() - 5);
+      unit.klass = 'Troubadour';
+      unit.wexp.Staff = 251;
+      const prefab = game.db.items.get('MultiHeal');
+      const multiHeal = new ItemObject(prefab);
+      multiHeal.owner = unit;
+      const strict = new ItemObject({
+        ...prefab,
+        nid: '_StrictMultiHeal',
+        components: prefab.components.filter(([nid]: [string]) => nid !== 'allow_less_than_max_targets'),
+      });
+      strict.owner = unit;
+      const flexibleTargets = [...game.targetSystem.getValidTargets(unit, multiHeal)]
+        .map((position: any) => String(position));
+      const strictTargets = [...game.targetSystem.getValidTargets(unit, strict)]
+        .map((position: any) => String(position));
+      ally.team = oldTeam;
+      return {
+        numTargets: numTargets(unit, multiHeal),
+        flexible: allowLessThanMaxTargets(unit, multiHeal),
+        strictFlag: allowLessThanMaxTargets(unit, strict),
+        flexibleTargets,
+        strictTargets,
+      };
+    });
+
+    expect(result).toEqual({
+      numTargets: 3,
+      flexible: true,
+      strictFlag: false,
+      flexibleTargets: ['11,7'],
+      strictTargets: [],
     });
   });
 

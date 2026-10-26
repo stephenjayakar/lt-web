@@ -38,7 +38,17 @@ import type {
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
-import { evaluateCondition, evaluateExpression, GameEvent, type ConditionContext, type EventCommand } from '../../events/event-manager';
+import {
+  evaluateCondition,
+  evaluateConditionOr,
+  evaluateExpression,
+  evaluateTextTag,
+  GameEvent,
+  pythonIterationValues,
+  pythonLiteral,
+  type ConditionContext,
+  type EventCommand,
+} from '../../events/event-manager';
 import {
   activateCombatArt,
   deactivateCombatArts,
@@ -1024,12 +1034,13 @@ function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | nul
 
 /**
  * Enter a freshly loaded level the way Python's TurnChangeState.end does at
- * level start: free, then the player phase_change (banner, unit reset,
- * status upkeep, autocursor), with the level_start events on top.
+ * level start: free, status_upkeep, then the player phase_change (banner,
+ * unit reset, autocursor), with the level_start events on top.
  */
 export function enterStartedLevel(game: any): void {
   game.state.clear();
   game.state.change('free');
+  game.state.change('status_upkeep');
   game.state.change('phase_change');
   if (game.eventManager?.hasActiveEvents()) game.state.change('event');
 }
@@ -2787,6 +2798,7 @@ export class MoveState extends MapState {
     // that attacked or traded but is not finished is in Canto (Python
     // MoveState with has_attacked / has_traded).
     const canto = !unit.finished && (unit.hasAttacked || unit.hasTraded);
+    game.memory.delete(ITEM_USE_CANTO);
     if (unit.finished || (!unit.canStillAct() && !canto)) {
       game.selectedUnit = null;
       game._moveOrigin = null;
@@ -3774,6 +3786,7 @@ function applyCoreTargetedEffects(
   item: ItemObject,
   position: [number, number],
   targetItem: ItemObject | null = null,
+  requestedHealing?: Map<UnitObject, number>,
 ): boolean {
   const game = getGame();
   if (!game.targetSystem) return false;
@@ -3803,6 +3816,10 @@ function applyCoreTargetedEffects(
         itemHealAmount(unit, item, target, game) ??
         healAmount + empowerHeal(unit, target, game);
       if (customHeal || target.currentHp < target.maxHp) {
+        // Python HealHit(unit, item, target, heal, true_heal): the requested heal.
+        if (requestedHealing && amount > 0) {
+          requestedHealing.set(target, (requestedHealing.get(target) ?? 0) + amount);
+        }
         game.actionLog.doAction(amount < 0
           ? new DamageAction(target, -amount)
           : new SetCurrentHpAction(target, target.currentHp + amount));
@@ -4004,26 +4021,28 @@ export function finishCoreItemUse(
   healingDone: Map<UnitObject, number> = new Map(),
   baseUse: boolean = false,
   resourcesStarted: boolean = false,
+  requestedHealing: Map<UnitObject, number> = new Map(),
+  canto?: number | null,
 ): void {
   const game = getGame();
   if (!resourcesStarted) applyItemStartResourceHooks(game, unit, item);
   applyItemEndResourceHooks(game, unit, item);
   const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
-  const allyHealing = [...healingDone.entries()]
-    .filter(([target]) => target !== unit)
-    .reduce((total, [, amount]) => total + Math.max(0, amount), 0);
-  // EOtF's fork runs LiveToServe.after_strike on every strike and heals
-  // `_get_heal_amount(int(healed * X), unit, unit)`, so the user's own
-  // empower_heal bonuses and multipliers apply even when no ally was healed.
-  const forkLiveToServe = isForkEngine() && uniqueTargets.length > 0;
-  if (allyHealing > 0 || forkLiveToServe) {
-    for (const skill of unit.skills) {
-      const ratio = skill.getComponent<number>('live_to_serve');
-      if (typeof ratio !== 'number') continue;
-      const base = Math.trunc(allyHealing * ratio);
-      const amount = forkLiveToServe
-        ? modifiedHealAmount(base, unit, unit, game)
-        : base;
+  // Python LiveToServe.after_strike runs after every strike of the one
+  // attacker phase and heals int(X * the requested heal of every ally strike
+  // so far that healed something), the phase's `heal_hit` playback. EOtF's
+  // fork routes it through `_get_heal_amount(amount, unit, unit)`, so the
+  // user's own empower_heal bonuses heal even when no ally was healed.
+  const liveToServe = unit.skills.filter((skill: SkillObject) =>
+    typeof skill.getComponent<unknown>('live_to_serve') === 'number');
+  let allyHealing = 0;
+  for (const target of liveToServe.length > 0 ? uniqueTargets : []) {
+    if (target !== unit && (healingDone.get(target) ?? 0) > 0) {
+      allyHealing += requestedHealing.get(target) ?? healingDone.get(target) ?? 0;
+    }
+    for (const skill of liveToServe) {
+      const base = Math.trunc(allyHealing * skill.getComponent<number>('live_to_serve')!);
+      const amount = isForkEngine() ? modifiedHealAmount(base, unit, unit, game) : base;
       if (amount <= 0) continue;
       game.actionLog.doAction(new HealAction(unit, amount));
       triggerSkillCharge(game, skill);
@@ -4088,8 +4107,51 @@ export function finishCoreItemUse(
   }
   triggerAbilityItemCharge(game, unit, item, 'use');
   if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
-  else if (!canAttackAfterCombat(unit, item)) game.actionLog.doAction(new WaitAction(unit));
+  else if (!canAttackAfterCombat(unit, item)) {
+    // Python clean_up2: HasAttacked, then handle_state_stack moves a Canto
+    // user on with its canto movement instead of waiting it.
+    const cantoLeft = canto === undefined ? itemUseCantoMovement(game, unit, uniqueTargets[0] ?? null) : canto;
+    game.actionLog.doAction(new HasAttackedAction(unit));
+    if (cantoLeft !== null) {
+      game.actionLog.doAction(new SetMovementLeftAction(unit, cantoLeft));
+      game.memory.set(ITEM_USE_CANTO, unit);
+      if (unit.position) game.cursor?.setPos?.(unit.position[0], unit.position[1]);
+    } else {
+      game.actionLog.doAction(new WaitAction(unit));
+    }
+  }
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+}
+
+/** Memory key: the unit whose map item use left it in Canto. */
+const ITEM_USE_CANTO = 'item_use_canto';
+
+/**
+ * Python simple_combat.handle_state_stack after an item use: with HasAttacked
+ * already applied, has_canto(user, target) gives canto_movement; null when
+ * the user must wait.
+ */
+export function itemUseCantoMovement(game: any, unit: UnitObject, target: UnitObject | null): number | null {
+  if (unit.isDead()) return null;
+  const hadAttacked = unit.hasAttacked;
+  unit.hasAttacked = true;
+  try {
+    return unitHasCanto(unit, target, game) ? cantoMovement(unit, target, game) : null;
+  } finally {
+    unit.hasAttacked = hadAttacked;
+  }
+}
+
+/**
+ * The item menu resumed after an item use that left its user in Canto
+ * swaps itself for the Canto 'move', as Python's handle_state_stack pushes
+ * 'move' over the item menus; MoveState.begin then starts Canto.
+ */
+function enterCantoAfterItemUse(game: any, unit: UnitObject): boolean {
+  if (game.memory.get(ITEM_USE_CANTO) !== unit || !unit.hasAttacked || unit.finished) return false;
+  game.state.back();
+  game.state.change('move');
+  return true;
 }
 
 export function applyCoreTargetedItem(
@@ -4103,15 +4165,27 @@ export function applyCoreTargetedItem(
   applyItemStartResourceHooks(game, unit, item);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
-  if (!applyCoreTargetedEffects(unit, item, position, targetItem)) {
+  const canto = classChangeCanto(game, unit, item, targets[0] ?? null);
+  const requestedHealing = new Map<UnitObject, number>();
+  if (!applyCoreTargetedEffects(unit, item, position, targetItem, requestedHealing)) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
     return false;
   }
   const healingDone = new Map(
     targets.map((target) => [target, Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp))]),
   );
-  finishCoreItemUse(unit, item, targets, healingDone, false, true);
+  finishCoreItemUse(unit, item, targets, healingDone, false, true, requestedHealing, canto);
   return true;
+}
+
+/**
+ * Python changes class in the item's end_combat, after handle_state_stack
+ * decided Canto, so a class-changing item's Canto uses the old class.
+ */
+function classChangeCanto(game: any, unit: UnitObject, item: ItemObject, target: UnitObject | null): number | null | undefined {
+  const changesClass = ['promote', 'force_promote', 'class_change', 'force_class_change']
+    .some((nid) => item.hasComponent(nid));
+  return changesClass ? itemUseCantoMovement(game, unit, target) : undefined;
 }
 
 /** Apply one multi-target item's effects to each selected main position, consuming it once. */
@@ -4126,12 +4200,13 @@ export function applyCoreMultiTargetedItem(
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
+  const requestedHealing = new Map<UnitObject, number>();
   for (const position of positions) {
     for (const target of effectUnits(unit, item, position)) {
       targets.set(target.nid, target);
       if (!hpBefore.has(target)) hpBefore.set(target, target.currentHp);
     }
-    applied = applyCoreTargetedEffects(unit, item, position) || applied;
+    applied = applyCoreTargetedEffects(unit, item, position, null, requestedHealing) || applied;
   }
   if (!applied) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
@@ -4143,7 +4218,7 @@ export function applyCoreMultiTargetedItem(
       Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp)),
     ]),
   );
-  finishCoreItemUse(unit, item, [...targets.values()], healingDone, false, true);
+  finishCoreItemUse(unit, item, [...targets.values()], healingDone, false, true, requestedHealing);
   return true;
 }
 
@@ -4238,6 +4313,7 @@ export class ItemMenuState extends State {
   override begin(): StateResult {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
+    if (unit && enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (!unit || !unit.position || unit.finished) {
       game.state.back();
       return 'repeat';
@@ -4645,6 +4721,7 @@ export class ItemUseState extends State {
       return;
     }
 
+    if (enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (unit.finished) {
       game.state.back();
       return 'repeat';
@@ -4783,21 +4860,25 @@ export class ItemUseState extends State {
 // 4b2. BaseUseState - Use usable_in_base items on the managed unit
 // ============================================================================
 
+/** A game_var/level_var expression that raised (Python aborts the command). */
+const VARIABLE_EVALUATION_FAILED: unique symbol = Symbol('variableEvaluationFailed');
+
 export function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): boolean {
   if (!item.hasComponent('usable_in_base') || !item.hasComponent('usable')) return false;
   if (!itemAvailable(unit, item, game.db, game)) return false;
   if (item.maxUses > 0 && item.uses <= 0) return false;
 
+  // Python EvalTargetRestrict2.simple_target_restrict:
+  // evaluate(value, unit, local_args={'item': item}); an exception passes.
   const expression = item.getComponent<string>('eval_target_restrict_2');
-  if (expression && !evaluateCondition(expression, {
+  if (expression && !evaluateConditionOr(expression, {
     game,
     unit1: unit,
-    unit2: unit,
     item,
-    position: unit.position ?? undefined,
     gameVars: game.gameVars,
     levelVars: game.levelVars,
-  })) return false;
+    localArgs: new Map([['item', item]]),
+  }, true)) return false;
 
   const permanentStatComponent = item.hasComponent('permanent_stat_change_early')
     ? 'permanent_stat_change_early'
@@ -6527,7 +6608,9 @@ export function resolveForkMultiTargetGroup(
     for (const target of [resolved.mainTarget, ...resolved.splash]) {
       if (!target) continue;
       const unit = game.board.getUnit(target[0], target[1]) as UnitObject | null;
-      if (unit) splashDefenders.push(unit);
+      // A position chosen again (the AI's `[target] * num_targets`,
+      // allow_same_target) joins the combat once.
+      if (unit && !splashDefenders.includes(unit)) splashDefenders.push(unit);
     }
   }
   return { representative: splashDefenders[0] ?? null, mainDefender: null, splashDefenders };
@@ -8934,6 +9017,18 @@ export class AIState extends MapState {
       game.actionLog.doAction(new BringToTopItemAction(attacker, weapon));
     }
     if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
+    // Python interaction.start_combat aims a multi_target item at
+    // `[target] * num_targets`; EOtF's fork engage merges those positions
+    // into one splash list with no main target: a single counter-less
+    // combat that strikes the target once per phase and spends one use.
+    const wanted = numTargets(attacker, weapon);
+    if (isForkEngine() && wanted > 1 && defender.position) {
+      const [x, y] = defender.position;
+      game.memory.set(
+        'combat_multi_target_positions',
+        Array.from({ length: wanted }, () => [x, y] as [number, number]),
+      );
+    }
 
     // CombatState.begin() reads these to set up the MapCombat instance
     game.selectedUnit = attacker;
@@ -8985,8 +9080,26 @@ export class AIState extends MapState {
 export class TurnChangeState extends State {
   readonly name = 'turn_change';
 
+  /** Python pushes status_endstep above turn_change; it has run this turn change. */
+  private endstepDone = false;
+
+  override start(): StateResult {
+    // A fresh turn change (a cleared one may have left the flag set).
+    this.endstepDone = false;
+  }
+
   override begin(): StateResult {
     const game = getGame();
+
+    // Python: turn_change, then status_endstep on top, so the ending
+    // phase's endstep hooks (and the events they queue) finish before
+    // TurnChangeState.begin/end advance the phase.
+    if (!this.endstepDone) {
+      this.endstepDone = true;
+      game.state.change('status_endstep');
+      return 'repeat';
+    }
+    this.endstepDone = false;
 
     // --- Initiative mode ---
     // Python: TurnChangeState.begin() calls refresh() + back() -> 'repeat'
@@ -9006,9 +9119,6 @@ export class TurnChangeState extends State {
 
       // Save cursor position to memory
       game.memory.set('previous_cursor_position', game.cursor.getPosition());
-
-      const endingUnit = curUnitNid ? game.getUnit(curUnitNid) : null;
-      if (endingUnit) applySkillTurnHooks(game, [endingUnit], 'endstep');
 
       // Advance initiative to next unit
       game.initiative.next();
@@ -9049,15 +9159,6 @@ export class TurnChangeState extends State {
       game.memory.set('previous_cursor_position', game.cursor.getPosition());
     }
 
-    const endingTeam = game.phase?.getCurrent();
-    if (endingTeam) {
-      applySkillTurnHooks(
-        game,
-        game.getTeamUnits(endingTeam).filter((unit: UnitObject) => unit.position),
-        'endstep',
-      );
-    }
-
     // Advance to next phase
     game.phase.next((team: string) => phaseTeamUnits(game, team));
 
@@ -9069,18 +9170,6 @@ export class TurnChangeState extends State {
     const turnCount = game.phase.turnCount;
     const levelNid = game.currentLevel?.nid;
 
-    const upkeepUnits = game.getTeamUnits(currentTeam).filter(
-      (candidate: UnitObject) => candidate.position,
-    );
-    for (const unit of upkeepUnits) {
-      applySkillTurnHooks(game, [unit], 'upkeep');
-      applyItemUpkeepResourceHooks(
-        game,
-        unit,
-        getSkillAbilityOptions(game, unit).map((ability) => ability.item),
-      );
-    }
-
     // Clear highlights before clearing the state stack (the clear() calls
     // finish() not end(), so FreeState.end() won't run to clean up highlights)
     game.highlight.clear();
@@ -9089,15 +9178,12 @@ export class TurnChangeState extends State {
     // then push the appropriate states fresh.
     game.state.clear();
 
-    if (currentTeam === 'player') {
-      // Player phase: push free, then phase banner on top
-      game.state.change('free');
-      game.state.change('phase_change');
-    } else {
-      // AI phase: push ai, then phase banner on top
-      game.state.change('ai');
-      game.state.change('phase_change');
-    }
+    // Python TurnChangeState.end: free/ai, status_upkeep, phase_change. The
+    // phase events (pushed above) run first, then PhaseChangeState (ResetAll,
+    // banner), then the new phase's upkeep hooks.
+    game.state.change(currentTeam === 'player' ? 'free' : 'ai');
+    game.state.change('status_upkeep');
+    game.state.change('phase_change');
 
     // Python TurnChangeState.end: on entering player phase after turn one,
     // count timed regions down and remove expired ones before the phase
@@ -9225,25 +9311,12 @@ export class InitiativeUpkeepState extends State {
       game.phase.setCurrentTeam(unit.team);
     }
 
-    applySkillTurnHooks(game, [unit], 'upkeep');
-    applyItemUpkeepResourceHooks(
-      game,
-      unit,
-      getSkillAbilityOptions(game, unit).map((ability) => ability.item),
-    );
-
     // Pop self
     game.state.back();
 
-    // Push the appropriate state
-    if (unit.team === 'player') {
-      game.state.change('free');
-    } else {
-      game.state.change('ai');
-    }
-
-    // Push phase_change banner on top for visual feedback
-    // (Python pushes status_upkeep too, but we don't have that yet)
+    // Python InitiativeUpkeep.end: free/ai, status_upkeep, phase_change.
+    game.state.change(unit.team === 'player' ? 'free' : 'ai');
+    game.state.change('status_upkeep');
     game.state.change('phase_change');
 
     return 'repeat';
@@ -9296,6 +9369,82 @@ export function fadeInPhaseMusic(game: any, atTurnChange: boolean = false): void
 }
 
 // ============================================================================
+// 8c. StatusUpkeepState / StatusEndstepState
+// ============================================================================
+
+/**
+ * Port of Python status_upkeep.StatusUpkeepState ('status_upkeep' and
+ * 'status_endstep'). The phase team's units on the map are processed last
+ * to first (Python pops them off the list), one per pass: the unit's skill
+ * hooks, then its item hooks, then a lethal-damage death. Events a unit's
+ * hooks queue (upkeep_event, unit_death) run before the next unit. Upkeep
+ * ends by marking the phase for the turnwheel.
+ */
+export class StatusUpkeepState extends State {
+  readonly name: string = 'status_upkeep';
+  override readonly transparent = true;
+
+  private units: UnitObject[] = [];
+
+  protected turnPhase(): 'upkeep' | 'endstep' {
+    return 'upkeep';
+  }
+
+  override start(): StateResult {
+    const game = getGame();
+    if (game.initiative) {
+      const nid = game.initiative.getCurrentUnitNid();
+      const unit = nid ? game.getUnit(nid) : null;
+      this.units = unit ? [unit] : [];
+    } else {
+      const team = game.phase.getCurrent();
+      this.units = (game.getAllUnits() as UnitObject[]).filter((unit) =>
+        !!unit.position && unit.team === team && !unit.isDead());
+    }
+    // The level start reaches the player phase_change from several entry
+    // points; its turn-one upkeep runs once per level.
+    if (this.turnPhase() === 'upkeep' && !game.initiative &&
+        game.phase.getCurrent() === 'player' && game.turnCount === 1) {
+      if (game.levelVars.get('_turn1_upkeep_done')) this.units = [];
+      else game.levelVars.set('_turn1_upkeep_done', true);
+    }
+  }
+
+  override update(): StateResult {
+    const game = getGame();
+    const phase = this.turnPhase();
+    while (this.units.length > 0) {
+      const unit = this.units.pop() as UnitObject;
+      if (!unit.position || unit.isDead()) continue;
+      applySkillTurnHooks(game, [unit], phase);
+      if (phase === 'upkeep') {
+        applyItemUpkeepResourceHooks(
+          game,
+          unit,
+          getSkillAbilityOptions(game, unit).map((ability) => ability.item),
+        );
+      }
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+        return 'repeat';
+      }
+    }
+    // Python: "About to begin the real phase"
+    if (phase === 'upkeep') game.actionLog.doAction(new MarkPhase(game.phase.getCurrent()));
+    game.state.back();
+    return 'repeat';
+  }
+}
+
+export class StatusEndstepState extends StatusUpkeepState {
+  override readonly name: string = 'status_endstep';
+
+  protected override turnPhase(): 'upkeep' | 'endstep' {
+    return 'endstep';
+  }
+}
+
+// ============================================================================
 // 9. PhaseChangeState
 // ============================================================================
 
@@ -9310,7 +9459,6 @@ export class PhaseChangeState extends State {
   override begin(): StateResult {
     const game = getGame();
     const currentTeam = game.phase.getCurrent();
-    const turnCount = game.phase.turnCount;
     // States are singletons: re-arm the end-of-banner music fade per phase.
     this.fadedIn = false;
     // Python PhaseChangeState.is_roam: free roam skips the banner and music.
@@ -9327,9 +9475,8 @@ export class PhaseChangeState extends State {
       game.audioManager?.playSfx?.('Next Turn');
     }
 
-    // Turnwheel markers: lock during non-player phases, mark phase change
+    // Turnwheel lock during non-player phases (status_upkeep marks the phase).
     game.actionLog.doAction(new LockTurnwheel(currentTeam !== 'player'));
-    game.actionLog.doAction(new MarkPhase(currentTeam));
 
     // Python PhaseIn.begin (player): autocursor setting -> first 'Lord'
     // tagged player unit (else first player unit); otherwise return to the
@@ -9360,20 +9507,6 @@ export class PhaseChangeState extends State {
     const dbColor = game.db.teams.defs.find((t: { nid: string }) => t.nid === currentTeam)?.combatColor;
     const color = game.getTeamCombatColor?.(currentTeam) ?? dbColor;
     this.banner = this.roamSkip ? null : new PhaseIn(currentTeam, color !== dbColor ? color : null);
-
-    // Python TurnChangeState.end -> status_upkeep also runs for the player
-    // on turn 1 (the level start never passes through the web turn_change).
-    if (currentTeam === 'player' && turnCount === 1 && !game.levelVars.get('_turn1_upkeep_done')) {
-      game.levelVars.set('_turn1_upkeep_done', true);
-      for (const unit of game.getTeamUnits('player').filter((candidate: UnitObject) => candidate.position)) {
-        applySkillTurnHooks(game, [unit], 'upkeep');
-        applyItemUpkeepResourceHooks(
-          game,
-          unit,
-          getSkillAbilityOptions(game, unit).map((ability) => ability.item),
-        );
-      }
-    }
 
     // Reset units for the new phase and process status effects
     if (game.initiative) {
@@ -12106,7 +12239,7 @@ export class EventState extends State {
     // ("Interruption regions take precedence"). The event finish() Resets the
     // unit, so only the stop and the Surprise sound remain.
     const interrupted = fullPath && fullPath.length > 1
-      ? interruptMovePath(unit, fullPath, game)
+      ? interruptMovePath(unit, fullPath, game, { event: true })
       : { path: fullPath, surprise: false };
     const path = interrupted.path;
     if (interrupted.surprise && path && path.length > 0) {
@@ -12162,7 +12295,7 @@ export class EventState extends State {
   }
 
   /** Evaluate LT game_var/level_var expressions while preserving bare-string shorthand. */
-  private evaluateVariableExpression(source: string): any {
+  private evaluateVariableExpression(source: string, literalFallback = true): any {
     const trimmed = source.trim();
     if (/^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)+$/.test(trimmed)) {
       return source;
@@ -12187,12 +12320,17 @@ export class EventState extends State {
       }
       return source;
     }
+    // Python's _eval_expr raises EvaluateException (fatal to the event).
+    // Web deviation for game_var/level_var: keep the raw text as a string
+    // value (event authors and tests accumulate text this way); callers that
+    // need a number get a failure marker and skip the write.
     try {
       const evaluated = evaluateExpression(trimmed, this.buildConditionContext());
-      return evaluated === undefined ? source : evaluated;
+      if (evaluated !== undefined) return evaluated;
     } catch {
-      return source;
+      // handled below
     }
+    return literalFallback ? source : VARIABLE_EVALUATION_FAILED;
   }
 
   /** Evaluate a variable command, preserving the typed result of a whole {e:...} argument. */
@@ -12207,7 +12345,8 @@ export class EventState extends State {
         if (context.localArgs?.has(key)) value = context.localArgs.get(key);
         else if (context.levelVars?.has(key)) value = context.levelVars.get(key);
         else if (context.gameVars?.has(key)) value = context.gameVars.get(key);
-        return value === undefined ? 'undefined' : JSON.stringify(value);
+        // Python substitutes str(value); a missing variable is '??'.
+        return value === undefined ? '??' : pythonLiteral(value);
       },
     );
     try {
@@ -12688,7 +12827,7 @@ export class EventState extends State {
             return trimmed;
           }
         }
-        return JSON.stringify(resolved) ?? 'null';
+        return resolved === undefined ? 'None' : pythonLiteral(resolved);
       };
 
       // Resolve typed {v:...} placeholders inside an eval before evaluating the
@@ -12764,18 +12903,24 @@ export class EventState extends State {
         const bareName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(typedExpression);
         const contextName = /^(?:game|unit1?|unit2|target|region|position|target_pos|item)$/
           .test(typedExpression);
-        const result = bareName && !contextName
-          ? variableValue(typedExpression) ?? ''
-          : evaluateExpression(typedExpression, expressionContext);
-        value = value.slice(0, start) +
-          eventObjectToString(result) +
-          value.slice(close + 1);
+        // Python TextEvaluator._evaluate_evals: _object_to_str(value), or '??'
+        // when the expression raises.
+        const text = bareName && !contextName
+          ? eventObjectToString(variableValue(typedExpression) ?? '')
+          : evaluateTextTag(typedExpression, expressionContext);
+        value = value.slice(0, start) + text + value.slice(close + 1);
       }
-      // Python TextEvaluator._evaluate_vars: a missing variable becomes '??'
-      // (so `if;len({v:missing}) > 0` fails to evaluate and is False).
-      value = value.replace(/\{v:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
-        const result = variableValue(key);
-        return result === undefined ? '??' : eventObjectToString(result);
+      // Python TextEvaluator._evaluate_vars: {v:}/{var:} reads level_vars,
+      // then game_vars (never local args). A var that exists but holds None
+      // prints 'None' and does not fall through to game_vars (unlike
+      // QueryEngine.v); a missing variable becomes '??' (so
+      // `if;len({v:missing}) > 0` fails to evaluate and is False).
+      value = value.replace(/\{(?:v|var):([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
+        const source = game.levelVars?.has?.(key) ? game.levelVars
+          : game.gameVars?.has?.(key) ? game.gameVars : null;
+        if (!source) return '??';
+        const result = source.get(key);
+        return result === null || result === undefined ? 'None' : eventObjectToString(result);
       });
       value = value.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
         const result = variableValue(key);
@@ -13981,6 +14126,8 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
+        // Python _eval_expr raises when the value expression fails and the
+        // command does not run (evaluateExpression returns undefined).
         if (cmd.type === 'add_item_component') {
           const rawValue = args[3];
           const value = rawValue !== undefined &&
@@ -13989,7 +14136,7 @@ export class EventState extends State {
               ? parsePyevCommandValue(rawValue)
               : evaluateExpression(rawValue, this.buildConditionContext())
             : null;
-          game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
+          if (value !== undefined) game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
         } else if (cmd.type === 'modify_item_component') {
           if (!item.components.has(compNid)) {
             console.warn(`modify_item_component: item lacks component ${compNid}`);
@@ -13998,9 +14145,11 @@ export class EventState extends State {
               ? parsePyevCommandValue(args[3] ?? '')
               : evaluateExpression(args[3] ?? '', this.buildConditionContext());
             const property = args[4] && !['additive', 'recursive'].includes(args[4]) ? args[4] : null;
-            game.actionLog.doAction(new ModifyObjComponentAction(
-              item, compNid, value, property, args.includes('additive'),
-            ));
+            if (value !== undefined) {
+              game.actionLog.doAction(new ModifyObjComponentAction(
+                item, compNid, value, property, args.includes('additive'),
+              ));
+            }
           }
         } else {
           game.actionLog.doAction(new RemoveObjComponentAction(item, compNid));
@@ -14032,6 +14181,7 @@ export class EventState extends State {
                 !['stack', 'from_python', 'no_warn'].includes(rawValue)
               ? evaluateExpression(rawValue, this.buildConditionContext())
               : null;
+            if (value === undefined) break;
             game.actionLog.doAction(new AddObjComponentAction(skill, compNid, value));
           } else if (cmd.type === 'modify_skill_component') {
             if (!skill.components.has(compNid)) {
@@ -14039,6 +14189,7 @@ export class EventState extends State {
               continue;
             }
             const value = evaluateExpression(args[3] ?? '', this.buildConditionContext());
+            if (value === undefined) break;
             const property = args[4] && !['additive', 'stack'].includes(args[4]) ? args[4] : null;
             game.actionLog.doAction(new ModifyObjComponentAction(
               skill, compNid, value, property, args.includes('additive'),
@@ -15304,7 +15455,9 @@ export class EventState extends State {
           rawArgs[1] ?? 'True',
           args[1] ?? 'True',
         );
-        if (!isPrimitiveOrPrimitiveCollection(value)) {
+        if (value === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`game_var: could not evaluate ${args[1]}`);
+        } else if (!isPrimitiveOrPrimitiveCollection(value)) {
           // Python rejects units/items and keeps the previous value.
           console.warn(`game_var: ${args[1]} is not a valid variable`);
         } else if (varName && game.gameVars) {
@@ -15316,11 +15469,12 @@ export class EventState extends State {
 
       case 'inc_game_var': {
         const varName = args[0] ?? '';
-        if (varName && game.gameVars) {
+        const evaluatedIncrement = args[1] === undefined ? 1 : this.evaluateVariableExpression(args[1], false);
+        if (evaluatedIncrement === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`inc_game_var: could not evaluate ${args[1]}`);
+        } else if (varName && game.gameVars) {
           const current = Number(game.gameVars.get(varName) ?? 0);
-          const increment = args[1] === undefined
-            ? 1
-            : Number(this.evaluateVariableExpression(args[1]));
+          const increment = Number(evaluatedIncrement);
           game.actionLog.doAction(new SetGameVarAction(
             game.gameVars,
             varName,
@@ -15352,7 +15506,9 @@ export class EventState extends State {
           rawArgs[1] ?? 'True',
           args[1] ?? 'True',
         );
-        if (!isPrimitiveOrPrimitiveCollection(value)) {
+        if (value === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`level_var: could not evaluate ${args[1]}`);
+        } else if (!isPrimitiveOrPrimitiveCollection(value)) {
           // Python rejects units/items and keeps the previous value.
           console.warn(`level_var: ${args[1]} is not a valid variable`);
         } else if (varName && game.levelVars) {
@@ -15364,11 +15520,12 @@ export class EventState extends State {
 
       case 'inc_level_var': {
         const varName = args[0] ?? '';
-        if (varName && game.levelVars) {
+        const evaluatedIncrement = args[1] === undefined ? 1 : this.evaluateVariableExpression(args[1], false);
+        if (evaluatedIncrement === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`inc_level_var: could not evaluate ${args[1]}`);
+        } else if (varName && game.levelVars) {
           const current = Number(game.levelVars.get(varName) ?? 0);
-          const increment = args[1] === undefined
-            ? 1
-            : Number(this.evaluateVariableExpression(args[1]));
+          const increment = Number(evaluatedIncrement);
           game.actionLog.doAction(new SetLevelVarAction(
             game.levelVars,
             varName,
@@ -16167,7 +16324,9 @@ export class EventState extends State {
             rowWidth: Number.isFinite(rowWidth) && rowWidth > 0 ? rowWidth : 0,
             alignment,
             orientation,
-            bg: flags.has('no_bg') ? null : (keywords.get('bg') || 'menu_bg_base'),
+            // Python bg defaults to menu_bg_base; the EOtF fork always uses
+            // the (window-skinned) menu_bg_base and ignores an authored BG.
+            bg: flags.has('no_bg') ? null : ((!isForkEngine() && keywords.get('bg')) || 'menu_bg_base'),
             textAlign: textAlignRaw === 'center' || textAlignRaw === 'right' ? textAlignRaw : 'left',
             noCursor: flags.has('no_cursor'),
             screenWidth: viewport.width,
@@ -16535,11 +16694,17 @@ export class EventState extends State {
         if (typedForExpression.trim().startsWith('[') ||
             typedForExpression.includes(' for ') ||
             typedForExpression.startsWith('range') ||
-            typedForExpression.includes('(')) {
+            typedForExpression.includes('(') ||
+            /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(typedForExpression.trim())) {
+          // Python's for evaluates the expression and iterates it (a dict
+          // such as unit.wexp yields its keys).
           const evaluated = evaluateExpression(typedForExpression, this.buildConditionContext());
-          if (Array.isArray(evaluated)) forValues = evaluated;
-          else if (evaluated && typeof evaluated[Symbol.iterator] === 'function') {
-            forValues = Array.from(evaluated);
+          if (evaluated !== undefined && evaluated !== null) {
+            try {
+              forValues = pythonIterationValues(evaluated);
+            } catch {
+              forValues = [];
+            }
           }
         } else {
           forValues = (args[1] ?? '').split(',')
@@ -18025,7 +18190,8 @@ export class EventState extends State {
           columns: Number.isFinite(dimensions[1]) ? Math.max(1, dimensions[1]) : 1,
           rowWidth: Number.isFinite(rowWidth) && rowWidth > 0 ? rowWidth : -1,
           alignment: parsed.kw.get('alignment') || 'top_left',
-          background: parsed.kw.get('bg') || 'menu_bg_base',
+          // The EOtF fork ignores an authored BG (skinned menu_bg_base).
+          background: (!isForkEngine() && parsed.kw.get('bg')) || 'menu_bg_base',
           entryType: (parsed.kw.get('entrytype') || 'str').toLowerCase(),
           textAlignment: parsed.kw.get('textalign') || 'left',
           expression: parsed.flags.has('expression'),
@@ -18260,9 +18426,11 @@ export class EventState extends State {
         // create_record;nid;expression
         try {
           const nid = args[0];
-          const value = args[1] ?? 'true';
+          const value = args[1] ?? 'True';
           if (nid && RECORDS) {
-            RECORDS.create(nid, evaluateExpression(value, this.buildConditionContext()));
+            // Python create_record: an expression that raises is logged and skipped.
+            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            if (evaluated !== undefined) RECORDS.create(nid, evaluated);
           }
         } catch (e) { console.warn('create_record error:', e); }
         this.advancePointer();
@@ -18271,9 +18439,11 @@ export class EventState extends State {
       case 'update_record': {
         try {
           const nid = args[0];
-          const value = args[1] ?? 'true';
+          const value = args[1] ?? 'True';
           if (nid && RECORDS) {
-            RECORDS.update(nid, evaluateExpression(value, this.buildConditionContext()));
+            // Python update_record: an expression that raises is logged and skipped.
+            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            if (evaluated !== undefined) RECORDS.update(nid, evaluated);
           }
         } catch (e) { console.warn('update_record error:', e); }
         this.advancePointer();
@@ -18282,9 +18452,11 @@ export class EventState extends State {
       case 'replace_record': {
         try {
           const nid = args[0];
-          const value = args[1] ?? 'true';
+          const value = args[1] ?? 'True';
           if (nid && RECORDS) {
-            RECORDS.replace(nid, evaluateExpression(value, this.buildConditionContext()));
+            // Python replace_record: an expression that raises is logged and skipped.
+            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            if (evaluated !== undefined) RECORDS.replace(nid, evaluated);
           }
         } catch (e) { console.warn('replace_record error:', e); }
         this.advancePointer();

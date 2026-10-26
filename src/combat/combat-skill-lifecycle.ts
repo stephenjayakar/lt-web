@@ -5,7 +5,7 @@ import {
   setCombatRandomState,
   type RandomGameState,
 } from '../engine/static-random';
-import { evaluateCondition, evaluateExpression } from '../events/event-manager';
+import { evaluateCondition, evaluateInt } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
@@ -144,40 +144,20 @@ export class CombatSkillLifecycle {
     mode: string,
     skill: SkillObject,
   ): boolean {
-    const distance = (left: [number, number] | null, right: [number, number] | null) => {
-      if (!left || !right) return 0;
-      return Math.abs(left[0] - right[0]) + Math.abs(left[1] - right[1]);
-    };
-    const weaponType = (_unit: UnitObject, value: ItemObject | null) => value?.getWeaponType() ?? null;
-    const jsExpression = expression
-      .replace(/\bTrue\b/g, 'true')
-      .replace(/\bFalse\b/g, 'false')
-      .replace(/\bNone\b/g, 'null')
-      .replace(/\band\b/g, '&&')
-      .replace(/\bor\b/g, '||')
-      .replace(/\bnot\b/g, '!')
-      .replace(/utils\.calculate_distance/g, 'distance')
-      .replace(/item_system\.weapon_type/g, 'weaponType');
-    try {
-      const fn = new Function(
-        'unit', 'unit2', 'target', 'item', 'item2', 'mode', 'skill', 'distance', 'weaponType',
-        `"use strict"; return !!(${jsExpression});`,
-      );
-      return !!fn(unit, target, target, item, item2, mode, skill, distance, weaponType);
-    } catch {
-      return evaluateCondition(expression, {
-        game: this.game,
-        unit1: unit,
-        unit2: target,
-        position: unit.position ?? undefined,
-        item,
-        gameVars: this.game?.gameVars,
-        levelVars: this.game?.levelVars,
-        localArgs: new Map<string, any>([
-          ['item2', item2], ['mode', mode], ['skill', skill],
-        ]),
-      });
-    }
+    // Python CombatCondition / Condition / AllowedWeapons:
+    // bool(evaluate(...)), False/None when it raises.
+    return evaluateCondition(expression, {
+      game: this.game,
+      unit1: unit,
+      unit2: target,
+      position: unit.position ?? undefined,
+      item,
+      gameVars: this.game?.gameVars,
+      levelVars: this.game?.levelVars,
+      localArgs: new Map<string, any>([
+        ['item', item], ['item2', item2], ['mode', mode], ['skill', skill],
+      ]),
+    });
   }
 
   private prepareCombatConditions(
@@ -239,7 +219,8 @@ export class CombatSkillLifecycle {
       if (!this.active(skill, unit, item)) continue;
       for (const [component, rawValue] of skill.components) {
         if (component === 'gain_mana' && typeof rawValue === 'string') {
-          const amount = Number(evaluateExpression(rawValue, {
+          // Python GainMana: int(evaluate(...)); no gain when it raises.
+          const amount = evaluateInt(rawValue, {
             game: this.game,
             unit1: unit,
             unit2: target,
@@ -248,7 +229,7 @@ export class CombatSkillLifecycle {
             gameVars: this.game?.gameVars,
             levelVars: this.game?.levelVars,
             localArgs: new Map([['skill', skill]]),
-          }));
+          }, Number.NaN);
           if (Number.isFinite(amount)) {
             unit.currentMana = Math.max(
               0,
@@ -278,20 +259,16 @@ export class CombatSkillLifecycle {
       ? skill.getComponent<string>('eval_proc_rate')
       : null;
     if (typeof targetExpression === 'string') {
-      const value = evaluateExpression(
-        targetExpression.replace(/\bint\s*\(/g, 'Math.trunc('),
-        {
-          game: this.game,
-          unit1: unit,
-          unit2: target,
-          position: unit.position ?? undefined,
-          gameVars: this.game?.gameVars,
-          levelVars: this.game?.levelVars,
-          localArgs: new Map([['skill', skill]]),
-        },
-      );
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+      // EOtF EvalProcRate: int(evaluate(value, unit, target)), 0 when it raises.
+      return evaluateInt(targetExpression, {
+        game: this.game,
+        unit1: unit,
+        unit2: target,
+        position: unit.position ?? undefined,
+        gameVars: this.game?.gameVars,
+        levelVars: this.game?.levelVars,
+        localArgs: new Map([['skill', skill]]),
+      }, 0);
     }
     const rate = skill.getComponent<number | string>('proc_rate');
     if (typeof rate === 'number') return rate;

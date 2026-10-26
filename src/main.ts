@@ -79,6 +79,8 @@ import {
   InfoMenuState,
   setInfoMenuGameRef,
   InitiativeUpkeepState,
+  StatusUpkeepState,
+  StatusEndstepState,
 } from './engine/states/game-states';
 import {
   DialogLogState,
@@ -766,6 +768,8 @@ async function main(): Promise<void> {
     new AIState(),
     new TurnChangeState(),
     new InitiativeUpkeepState(),
+    new StatusUpkeepState(),
+    new StatusEndstepState(),
     new PhaseChangeState(),
     new MovementState(),
     new EventState(),

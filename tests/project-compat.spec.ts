@@ -37,6 +37,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 // ---------------------------------------------------------------------------
 // Helpers (mirrors tests/harness.spec.ts / tests/save-fields.spec.ts conventions)
@@ -91,6 +92,8 @@ function collectErrors(page: Page): () => string[] {
 // ---------------------------------------------------------------------------
 
 test.describe('rekka.ltproj compatibility', () => {
+  test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
+
   test('level 0 clean boot: map loads, units placed, no unexpected errors', async ({ page }) => {
     const unexpectedErrors = collectErrors(page);
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');

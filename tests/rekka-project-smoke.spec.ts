@@ -2,16 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 interface RekkaLevel {
   nid: string;
   name: string;
 }
 
-const levels = JSON.parse(fs.readFileSync(
-  path.join(process.cwd(), 'lt-maker/rekka.ltproj/game_data/levels.json'),
-  'utf8',
-)) as RekkaLevel[];
+const rekkaInstalled = projectInstalled('rekka.ltproj');
+const levels = rekkaInstalled
+  ? JSON.parse(fs.readFileSync(
+      path.join(process.cwd(), 'lt-maker/rekka.ltproj/game_data/levels.json'),
+      'utf8',
+    )) as RekkaLevel[]
+  : [];
 const settledStates = new Set(['free', 'prep_main', 'base_main']);
 const rekkaManifest = JSON.parse(fs.readFileSync(
   path.join(process.cwd(), 'docs/parity/rekka-compat.json'),
@@ -57,6 +61,8 @@ async function waitForHarness(page: Page): Promise<void> {
     timeout: 60_000,
   });
 }
+
+test.skip(!rekkaInstalled, 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka all-level compatibility', () => {
   test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
@@ -202,7 +208,7 @@ test.describe('Rekka all-level compatibility', () => {
     expect(failures, [...new Set(failures)].join('\n')).toEqual([]);
   });
 
-  test('all 330 conditions, 69 evals, and 33 loops execute in strict mode', async ({ page }) => {
+  test('all 329 conditions, 69 evals, and 35 loops execute in strict mode', async ({ page }) => {
     await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
     await waitForHarness(page);
 
@@ -211,9 +217,9 @@ test.describe('Rekka all-level compatibility', () => {
       evalSubstitutions: string[];
       loops: string[];
     };
-    expect(inventory.conditions).toHaveLength(330);
+    expect(inventory.conditions).toHaveLength(329);
     expect(inventory.evalSubstitutions).toHaveLength(69);
-    expect(inventory.loops).toHaveLength(33);
+    expect(inventory.loops).toHaveLength(35);
 
     const result = await page.evaluate(async (expressions) => {
       const { evaluateCondition, evaluateExpression } =
@@ -353,9 +359,9 @@ test.describe('Rekka all-level compatibility', () => {
 
     expect(result.failures, result.failures.join('\n')).toEqual([]);
     expect(result).toMatchObject({
-      conditionCount: 330,
+      conditionCount: 329,
       evalCount: 69,
-      loopCount: 33,
+      loopCount: 35,
     });
   });
 
@@ -1156,59 +1162,36 @@ test.describe('Rekka all-level compatibility', () => {
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_main');
   });
 
-  test('Rekka DEBUG base enables save and Continue resumes its parent event', async ({ page }) => {
+  test('Rekka DEBUG level start wounds its test units and settles in free', async ({ page }) => {
+    // The 2026-06 Rekka release replaced the DEBUG base event with a single
+    // level_start event (set_current_hp;102;1 and set_current_hp;111;1).
     await page.goto('/?harness=true&project=rekka.ltproj&level=DEBUG&clean=false&bundle=false');
     await waitForHarness(page);
     // Rekka's on_startup event is a logo cutscene with several seconds of
-    // waits, and it now runs before the base as it does in Python. Settle
-    // through it rather than assuming the base is reachable in a few frames.
-    await page.evaluate(() => (window as any).__harness.settle(8_000, ['base_main']));
-    // settle() returns as soon as base_main is pushed; its menu is built when
-    // the state begins on the following frame (Python BaseMainState.start).
-    await page.evaluate(() => {
+    // waits, and it runs before the level as it does in Python. Settle
+    // through it rather than assuming the map is reachable in a few frames.
+    await page.evaluate(() => (window as any).__harness.settle(8_000, ['free']));
+    const result = await page.evaluate(() => {
       const game = (window as any).__gameRef;
-      for (let frame = 0; frame < 5 && !game.state.getCurrentState()?.menu; frame += 1) {
-        (window as any).__harness.stepFrames(1, null);
-      }
-    });
-    const baseOptions = await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
+      const hp = (nid: string) => {
+        const unit = game.units.get(nid);
+        return unit ? [unit.currentHp, unit.getMaxHP()] : null;
+      };
       return {
-        state: state?.name,
-        options: state?.menu?.options.map((option: any) => ({
-          label: option.label,
-          enabled: option.enabled,
-        })) ?? [],
+        level: game.currentLevel?.nid,
+        state: game.state.getCurrentState()?.name,
+        stack: game.state.stack?.map((state: any) => state.name) ?? [],
+        wounded102: hp('102'),
+        wounded111: hp('111'),
+        untouched101: hp('101'),
       };
     });
-    expect(baseOptions.state).toBe('base_main');
-    expect(baseOptions.options).toEqual(expect.arrayContaining([
-      { label: 'Manage', enabled: true },
-      { label: 'Convos', enabled: true },
-      { label: 'Supports', enabled: false },
-      { label: 'Codex', enabled: true },
-      { label: 'Options', enabled: true },
-      { label: 'Save', enabled: true },
-      { label: 'Continue', enabled: true },
-    ]));
-
-    await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      state.menu.selectedIndex = state.menu.options.findIndex((option: any) => option.label === 'Save');
-    });
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('save_menu');
-    await page.evaluate(() => (window as any).__gameRef.state.back());
-    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
-
-    await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      state.menu.selectedIndex = state.menu.options.findIndex((option: any) => option.label === 'Continue');
-    });
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('event');
-    await page.evaluate(() => (window as any).__harness.settle(1_200));
-    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('free');
+    expect(result.level).toBe('DEBUG');
+    expect(result.state).toBe('free');
+    expect(result.stack).not.toContain('base_main');
+    expect(result.wounded102?.[0]).toBe(1);
+    expect(result.wounded111?.[0]).toBe(1);
+    expect(result.untouched101?.[0]).toBe(result.untouched101?.[1]);
   });
 
   test('Rekka chapter armory and vendor events open with their exact stock', async ({ page }) => {
@@ -1575,7 +1558,8 @@ test.describe('Rekka all-level compatibility', () => {
         chestPresent: game.currentLevel.regions.some((region: any) => region.nid === 'Chest1'),
       };
     });
-    expect(chestResult.items).toContain('Energy_Ring');
+    // Chest1 (2,17) holds GamblerRing in the 2026-06 release; Energy_Ring moved to Chest4.
+    expect(chestResult.items).toContain('GamblerRing');
     expect(chestResult.chestPresent).toBe(false);
 
     const seizeReady = await page.evaluate(() => {
@@ -1619,7 +1603,7 @@ test.describe('Rekka all-level compatibility', () => {
       level: '27',
       previousLevel: '26',
       team: 'player',
-      items: expect.arrayContaining(['Energy_Ring']),
+      items: expect.arrayContaining(['GamblerRing']),
     });
   });
 
