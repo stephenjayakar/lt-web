@@ -15,6 +15,7 @@ import type { MenuOption } from './menu';
 import { getMenuBackgroundSync, getMenuHand, getMenuHighlight, loadMenuBgSprite } from './base-surf';
 import { drawStyledText, measureStyledText } from './styled-text';
 import { drawIcon16 } from './icons';
+import type { HelpBox } from './help-menu';
 
 let _audio: { playSfx(name: string): void } | null = null;
 export function setEventChoiceAudio(am: { playSfx(name: string): void } | null): void {
@@ -48,6 +49,11 @@ export interface EventChoiceConfig {
   noCursor: boolean;
   screenWidth: number;
   screenHeight: number;
+  /**
+   * PlayerChoiceState.help_boxes: per entry, the help pages INFO shows
+   * (AUX cycles them). Empty or absent when the entry type has none.
+   */
+  helpBoxes?: HelpBox[][];
 }
 
 const MARGIN = 10;
@@ -61,6 +67,9 @@ export class EventChoiceMenu {
   private gridSize: [number, number];
   private itemSize: [number, number];
   private scroll: [number, number] = [0, 0];
+  /** PlayerChoiceState.info_flag / hb_page. */
+  infoFlag = false;
+  helpPage = 0;
 
   constructor(cfg: EventChoiceConfig) {
     this.cfg = cfg;
@@ -177,15 +186,42 @@ export class EventChoiceMenu {
     return true;
   }
 
+  /** Whether any entry has help pages (Python `if self.help_boxes`). */
+  hasHelpBoxes(): boolean {
+    return (this.cfg.helpBoxes ?? []).some((pages) => pages.length > 0);
+  }
+
+  /** PlayerChoiceState INFO on an item/skill choice: toggle the help box. */
+  toggleInfo(): boolean {
+    if (this.infoFlag) {
+      _audio?.playSfx('Info Out');
+      this.infoFlag = false;
+      return true;
+    }
+    if (!this.hasHelpBoxes()) return false;
+    _audio?.playSfx('Info In');
+    this.infoFlag = true;
+    return true;
+  }
+
+  /** EOtF fork: AUX while the help box is up shows the entry's next page. */
+  nextHelpPage(): boolean {
+    if (!this.infoFlag || !this.hasHelpBoxes()) return false;
+    this.helpPage += 1;
+    return true;
+  }
+
   handleInput(event: InputEvent): { selected: string } | { back: true } | null {
     if (!this.visible || event === null) return null;
     const horizontalOk = this.cfg.orientation === 'horizontal' || this.gridSize[0] > 1;
     const verticalOk = this.cfg.orientation === 'vertical' || this.gridSize[1] > 1;
     if ((event === 'RIGHT' || event === 'LEFT') && horizontalOk) {
+      this.helpPage = 0;
       if (this.move(event)) _audio?.playSfx('Select 6');
       return null;
     }
     if ((event === 'UP' || event === 'DOWN') && verticalOk) {
+      this.helpPage = 0;
       if (this.move(event)) _audio?.playSfx('Select 6');
       return null;
     }
@@ -311,6 +347,28 @@ export class EventChoiceMenu {
       const thumbY = barTop + Math.floor((barH - thumbH) * sy / Math.max(1, totalRows - rows));
       surf.fillRect(barX, thumbY, 2, thumbH, 'rgba(232,232,248,1)');
     }
+    this.drawHelpBox(surf);
+  }
+
+  /**
+   * PlayerChoiceState.draw info box: below the hovered option (4px left of
+   * it) on the left half of the screen, else right-aligned to the menu's
+   * right edge.
+   */
+  private drawHelpBox(surf: Surface): void {
+    if (!this.infoFlag || !this.entries.length) return;
+    const pages = this.cfg.helpBoxes?.[this.selectedIndex] ?? [];
+    if (!pages.length) return;
+    if (this.helpPage >= pages.length) this.helpPage = 0;
+    const box = pages[this.helpPage];
+    const [left, top] = this.screenPosition();
+    const [cx, cy] = this.coordOf(this.selectedIndex);
+    const [iw, ih] = this.itemSize;
+    const px = Math.max(0, Math.min(this.cfg.screenWidth, left + (cx - this.scroll[0]) * iw));
+    const py = Math.max(0, Math.min(this.cfg.screenHeight,
+      top + (this.cfg.title ? 16 : 0) + (cy - this.scroll[1]) * ih));
+    if (px < Math.floor(this.cfg.screenWidth / 2)) box.draw(surf, px - 4, py + 16);
+    else box.draw(surf, px + this.pixelSize()[0], py + 16, true);
   }
 }
 

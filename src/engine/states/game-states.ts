@@ -184,6 +184,7 @@ import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as 
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
+import { HelpDialog, getLinkedHelpBoxes, itemHelpBox, type HelpBox } from '../../ui/help-menu';
 import { Dialog } from '../../ui/dialog';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
 import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../../ui/exp-display';
@@ -10020,6 +10021,7 @@ export class EventState extends State {
         this.choiceMenu.handleMouseHover(gx, gy);
       }
       if (!result && effective === 'INFO' && this.openChoiceInfo(game)) return;
+      if (!result && effective === 'AUX' && this.choiceMenu.nextHelpPage()) return;
       if (!result && effective !== null) {
         result = this.choiceMenu.handleInput(effective);
       }
@@ -12031,7 +12033,39 @@ export class EventState extends State {
       game.state.change('base_info_menu');
       return true;
     }
-    return false;
+    // Other entry types toggle the hovered entry's help box (if any).
+    return menu.toggleInfo();
+  }
+
+  /**
+   * PlayerChoiceState.create_help_boxes: item choices get the item's help
+   * box (the stat grid for weapons and spells), skill choices the skill's
+   * description. The EOtF fork adds a page per colour-tagged keyword and has
+   * none for `type_game_item`; upstream has a single page for all three.
+   */
+  private buildChoiceHelpBoxes(values: string[], entryType: string, game: any): HelpBox[][] {
+    const fork = isForkEngine();
+    const withLinks = (first: HelpBox, desc: string | undefined): HelpBox[] =>
+      fork ? [first, ...getLinkedHelpBoxes(desc)] : [first];
+    if (entryType === 'type_base_item' || (!fork && entryType === 'type_game_item')) {
+      return values.map((value) => {
+        let item: ItemObjectClass | null = null;
+        if (entryType === 'type_base_item') {
+          const prefab = game.db.items.get(value);
+          item = prefab ? createItemTree(prefab, (nid) => game.db.items.get(nid)) : null;
+        } else {
+          item = game.getItem?.(Number(value)) ?? game.getItem?.(value) ?? null;
+        }
+        return item ? withLinks(itemHelpBox(item), item.desc) : [];
+      });
+    }
+    if (entryType === 'type_skill') {
+      return values.map((value) => {
+        const skill = game.db.skills.get(value);
+        return skill ? withLinks(new HelpDialog(skill.desc ?? ''), skill.desc) : [];
+      });
+    }
+    return [];
   }
 
   /**
@@ -15673,6 +15707,7 @@ export class EventState extends State {
             noCursor: flags.has('no_cursor'),
             screenWidth: viewport.width,
             screenHeight: viewport.height,
+            helpBoxes: this.buildChoiceHelpBoxes(entries.map((entry: EventChoiceEntry) => entry.value), entryType, game),
           });
           this.choiceNid = choiceNid;
           this.choiceEntryType = entryType;
