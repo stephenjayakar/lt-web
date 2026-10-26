@@ -196,6 +196,7 @@ import { MapAnimation } from '../../rendering/map-animation';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
+import type { MapSpriteFx } from '../../rendering/map-sprite';
 import { drawIcon16, drawItemIcon } from '../../ui/icons';
 import {
   AnimationCombat,
@@ -205,6 +206,15 @@ import {
 } from '../../combat/animation-combat';
 import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
 import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentation';
+import {
+  clearUnitFx,
+  drawMapDamageNumbers,
+  getUnitFx,
+  isUnitDying,
+  markDying,
+  startDyingFade,
+  DEFAULT_TRANSITION_TIME,
+} from '../../combat/map-unit-fx';
 import {
   accuracy as combatAccuracy,
   critAccuracy as combatCritAccuracy,
@@ -364,6 +374,8 @@ function collectVisibleUnits(): {
   tintColor: [number, number, number] | null;
   tintAlpha: number;
   showHp: boolean;
+  fx: MapSpriteFx | null;
+  poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
 }[] {
   const game = getGame();
   if (!game.board) return [];
@@ -385,10 +397,16 @@ function collectVisibleUnits(): {
     tintColor: [number, number, number] | null;
     tintAlpha: number;
     showHp: boolean;
+    fx: MapSpriteFx | null;
+    poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
   }[] = [];
 
   for (const u of allUnits) {
-    if (u.isDead() || !u.position) continue;
+    if (!u.position) continue;
+    // Python keeps an is_dying unit on the map until DeathManager's fade
+    // ends; its HP already reached 0 when the combat results applied.
+    if (u.isDead() && !isUnitDying(u)) continue;
+    const unitFx = getUnitFx(u);
 
     // Update sprite state: gray for finished units on the active team only.
     // Units from other teams should never appear greyed out.
@@ -413,6 +431,10 @@ function collectVisibleUnits(): {
     const moveOffset = game.movementSystem.getVisualOffset(u);
     let visualOffsetX = moveOffset ? moveOffset[0] : 0;
     let visualOffsetY = moveOffset ? moveOffset[1] : 0;
+    if (unitFx) {
+      visualOffsetX += unitFx.offset[0] / TILEWIDTH;
+      visualOffsetY += unitFx.offset[1] / TILEHEIGHT;
+    }
 
     // Apply combat lunge/shake offsets (in pixels, convert to tile units)
     if (_activeCombatOffsets) {
@@ -469,13 +491,17 @@ function collectVisibleUnits(): {
       // (Python's map_view likewise draws HP only for culled units).
       get maxHp() { return u.maxHp; },
       get showHp() {
-        return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: (u as any).isDying, dead: u.dead });
+        return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: unitFx?.dying, dead: u.dead });
       },
       specialTag,
       travelerCombatColor,
       droppable,
       tintColor: tint?.color ?? null,
       tintAlpha: tint?.alpha ?? 0,
+      fx: unitFx,
+      poseOverride: unitFx?.direction
+        ? { state: 'moving', direction: unitFx.direction }
+        : null,
     });
   }
   return result;
@@ -530,6 +556,9 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   );
 
   surf.blit(mapSurf);
+  // UnitSprite damage numbers outlive the combat that spawned them.
+  const damageNumberCamera = game.camera.getOffset();
+  drawMapDamageNumbers(surf, damageNumberCamera[0], damageNumberCamera[1]);
   return surf;
 }
 
@@ -6217,8 +6246,9 @@ export class CombatState extends State {
   private darkFuzzAlpha: number = 0.34; // 66% translucent = 34% opaque black overlay
   private portraitImg: HTMLImageElement | null = null;
 
-  // Death fade
-  private deathFadeProgress: number = 0;
+  // Dying units (Python game.death.dying_units) and whether their fade began
+  private dyingUnits: UnitObject[] = [];
+  private deathStarted: boolean = false;
 
   // Platform images for animation combat
   private leftPlatformImg: HTMLImageElement | null = null;
@@ -6379,7 +6409,8 @@ export class CombatState extends State {
     this.results = null;
     this.phase = 'combat';
     this.phaseTimer = 0;
-    this.deathFadeProgress = 0;
+    this.dyingUnits = [];
+    this.deathStarted = false;
     this.levelUpGains = null;
     this.levelUpScreen = null;
     this.levelUpSoundPlayed = false;
@@ -6748,16 +6779,18 @@ export class CombatState extends State {
       } else if (this.phase === 'death' || this.phase === 'exp_init' || this.phase === 'exp_wait' ||
                  this.phase === 'exp0' || this.phase === 'exp100' || this.phase === 'exp_leave' ||
                  this.phase === 'level_up' || this.phase === 'level_screen') {
-        // Skip post-combat phases — stop looping SFX and jump straight to cleanup
+        // Skip post-combat phases — stop looping SFX, finish any pending
+        // deaths, and jump straight to cleanup
         game.audioManager?.stopSfx?.('Experience Gain');
+        this.finishDeathsNow();
         this.phase = 'cleanup';
         this.phaseTimer = 0;
       }
     }
     if (game.input.justPressed('START')) {
-      if (this.animCombat) {
-        this.animCombat.skipMode = !this.animCombat.skipMode;
-      }
+      // Python CombatState: START toggles combat.skip() / end_skip().
+      const active = this.isAnimationCombat ? this.animCombat : this.combat;
+      if (active) active.skipMode = !active.skipMode;
     }
   }
 
@@ -6874,11 +6907,19 @@ export class CombatState extends State {
           } else {
             game.actionLog.doAction(new MessageAction(`${atkName} attacked`));
           }
-          if (this.results.attackerDead || this.getDefenderDeaths().length > 0) {
-            this.phase = 'death';
-            this.phaseTimer = 0;
-            this.deathFadeProgress = 0;
-          } else if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
+          // game.death.should_die: dying units stay on the map until the
+          // dying fade, which Python runs after the exp screen (the combat
+          // state pushes 'exp' in clean_up1 and 'dying' in clean_up2).
+          this.dyingUnits = [
+            ...this.getDefenderDeaths(),
+            ...(this.results.attackerDead ? [activeCombat.attacker] : []),
+          ].filter((unit, index, all) => all.indexOf(unit) === index);
+          for (const unit of this.combatPresentationUnits()) {
+            if (this.dyingUnits.includes(unit)) markDying(unit);
+            else if (isUnitDying(unit)) clearUnitFx(unit); // miracle
+          }
+          this.deathStarted = false;
+          if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
             this.startExpPhase();
           } else {
             this.startRankUpOrCleanup();
@@ -6888,32 +6929,21 @@ export class CombatState extends State {
       }
 
       case 'death': {
-        // Death animation: 350ms fade-out
-        this.phaseTimer += realDelta;
-        this.deathFadeProgress = Math.min(1, this.phaseTimer / 350);
-        if (this.phaseTimer >= 350) {
-          // Remove dead units from board and initiative tracker
-          for (const deadDefender of this.getDefenderDeaths()) {
-            game.actionLog.doAction(new DeathAction(deadDefender, game.board, game.initiative));
+        // DyingState / DeathManager.update: 'Death' SFX with a white flicker
+        // and fade_out transition, then Die once 400 ms have passed.
+        if (!this.deathStarted) {
+          this.deathStarted = true;
+          this.phaseTimer = 0;
+          for (const unit of this.dyingUnits) {
+            game.audioManager?.playSfx?.('Death');
+            startDyingFade(unit);
           }
-          if (this.results!.attackerDead) {
-            game.actionLog.doAction(new DeathAction(
-              activeCombat!.attacker,
-              game.board,
-              game.initiative,
-            ));
-          }
-
-          // Check if attacker earned EXP
-          if (
-            !this.results!.attackerDead &&
-            this.results!.expGained > 0 &&
-            activeCombat!.attacker.team === 'player'
-          ) {
-            this.startExpPhase();
-          } else {
-            this.startRankUpOrCleanup();
-          }
+        } else {
+          this.phaseTimer += realDelta;
+        }
+        if (this.phaseTimer >= DEFAULT_TRANSITION_TIME - 50) {
+          this.finishDeathsNow();
+          this.startRankUpOrCleanup();
         }
         break;
       }
@@ -6925,8 +6955,9 @@ export class CombatState extends State {
 
       case 'exp_init': {
         // Create the ExpBar, start fade-in
-        const isCombatContext = !!this.getActiveCombat();
-        this.expBar = new ExpBarClass(this.expOldExp, !isCombatContext);
+        // Python passes combat_object only from AnimationCombat: map combat
+        // centers the bar, the battle scene puts it at the bottom.
+        this.expBar = new ExpBarClass(this.expOldExp, !this.isAnimationCombat);
         this.expStartTime = this.phaseTimer; // Use phaseTimer as accumulated time
         this.phase = 'exp_wait';
         this.phaseTimer = 0;
@@ -7386,7 +7417,31 @@ export class CombatState extends State {
     );
   }
 
+  /** Units awaiting DyingState (Python is_dying) after this combat. */
+  private combatPresentationUnits(): UnitObject[] {
+    const active = this.getActiveCombat();
+    if (!active) return [];
+    return [...new Set([active.attacker, ...this.getCombatDefenders()])];
+  }
+
+  /** Die every pending unit immediately (end of the fade, or a skip). */
+  private finishDeathsNow(): void {
+    const game = getGame();
+    const active = this.getActiveCombat();
+    for (const unit of this.dyingUnits) {
+      clearUnitFx(unit);
+      if (!active) continue;
+      game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
+    }
+    this.dyingUnits = [];
+  }
+
   private startRankUpOrCleanup(): void {
+    if (this.dyingUnits.length > 0) {
+      this.phase = 'death';
+      this.phaseTimer = 0;
+      return;
+    }
     const activeCombat = this.getActiveCombat();
     if (this.results?.stolenItem && activeCombat && !this.stoleBannerShown) {
       this.stoleBanner = new Banner(
@@ -7445,117 +7500,41 @@ export class CombatState extends State {
     return this.drawMapCombat(surf);
   }
 
-  /** Render map combat: overlays on top of the map (lunge, flash, HP bars, etc.) */
+  /**
+   * Render map combat (Python MapCombat.draw): hit/cast map animations, then
+   * the MapCombatInfo windows. The unit flicker, lunge, facing, vibrate and
+   * damage numbers live on the unit sprites (combat/map-unit-fx.ts).
+   */
   private drawMapCombat(surf: Surface): Surface {
     const rs = this.combat!.getRenderState();
     const game = getGame();
     const cameraOffset = game.camera.getOffset();
 
-    const atkPos = this.combat!.attacker.position;
-    // Push combat animation offsets so collectVisibleUnits applies them
-    // to the underlying map render (lunge + shake on the actual sprites)
-    const atkLunge = rs.attackerAnim.lungeOffset;
-    const atkShake = rs.attackerAnim.shakeOffset;
-    const defLunge = rs.defenderAnim.lungeOffset;
-    const defShake = rs.defenderAnim.shakeOffset;
-    const defenderOffsets = new Map<UnitObject, [number, number]>(rs.defenders.map((entry) => [
-      entry.unit,
-      [
-        entry.anim.lungeOffset[0] + entry.anim.shakeOffset[0],
-        entry.anim.lungeOffset[1] + entry.anim.shakeOffset[1],
-      ],
-    ]));
-    for (const entry of rs.assistants) {
-      defenderOffsets.set(entry.unit, [
-        entry.anim.lungeOffset[0] + entry.anim.shakeOffset[0],
-        entry.anim.lungeOffset[1] + entry.anim.shakeOffset[1],
-      ]);
-    }
-    setActiveCombatOffsets({
-      attacker: this.combat!.attacker,
-      defender: this.combat!.defender,
-      attackerOffset: [atkLunge[0] + atkShake[0], atkLunge[1] + atkShake[1]],
-      defenderOffset: [defLunge[0] + defShake[0], defLunge[1] + defShake[1]],
-      defenderOffsets,
-    });
+    for (const anim of rs.mapAnimations) anim.draw(surf, cameraOffset[0], cameraOffset[1]);
 
-    // White flash overlay on hit targets
-    if (rs.attackerAnim.flashAlpha > 0 && atkPos) {
-      const fx = atkPos[0] * TILEWIDTH - cameraOffset[0];
-      const fy = atkPos[1] * TILEHEIGHT - cameraOffset[1];
-      surf.fillRect(
-        fx - 4, fy - 4,
-        TILEWIDTH + 8, TILEHEIGHT + 8,
-        `rgba(255,255,255,${rs.attackerAnim.flashAlpha.toFixed(2)})`,
-      );
-    }
-    for (const entry of rs.defenders) {
-      const position = entry.unit.position;
-      if (entry.anim.flashAlpha <= 0 || !position) continue;
-      const fx = position[0] * TILEWIDTH - cameraOffset[0];
-      const fy = position[1] * TILEHEIGHT - cameraOffset[1];
-      surf.fillRect(fx - 4, fy - 4, TILEWIDTH + 8, TILEHEIGHT + 8,
-        `rgba(255,255,255,${entry.anim.flashAlpha.toFixed(2)})`);
+    // Python draws the windows while the combat state is on the stack, which
+    // includes the exp bar it pushes from clean_up1; the dying fade starts
+    // only after the combat state is popped.
+    if (this.phase !== 'death') {
+      const cameraTiles: [number, number] = [cameraOffset[0] / TILEWIDTH, cameraOffset[1] / TILEHEIGHT];
+      for (const info of rs.infos) info.draw(surf, cameraTiles);
     }
 
-    // map_hit_add_blend / map_hit_sub_blend color tint on hit targets.
-    // Additive blend brightens using the composite canvas 'lighter' op;
-    // subtractive blend is approximated with a normal dark overlay (canvas
-    // has no true subtractive blend mode) -- see PLAN.md for the note.
-    this.drawUnitTint(surf, rs.attackerAnim, atkPos, cameraOffset);
-    for (const entry of rs.defenders) {
-      this.drawUnitTint(surf, entry.anim, entry.unit.position, cameraOffset);
-    }
-
-    // HP bars (positioned above the unit, accounting for shake/lunge).
-    // no_map_hp_display suppresses both bars for this item use.
-    if (!rs.noMapHpDisplay) {
-      if (atkPos) {
-        const atkShakeX = rs.attackerAnim.shakeOffset[0] + rs.attackerAnim.lungeOffset[0];
-        const ax = atkPos[0] * TILEWIDTH - cameraOffset[0] + atkShakeX;
-        const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1] - 6;
-        this.drawHpBar(surf, ax, ay, rs.attackerHp, rs.attackerMaxHp);
-      }
-      for (const entry of rs.defenders) {
-        const position = entry.unit.position;
-        if (!position) continue;
-        const offsetX = entry.anim.shakeOffset[0] + entry.anim.lungeOffset[0];
-        const dx = position[0] * TILEWIDTH - cameraOffset[0] + offsetX;
-        const dy = position[1] * TILEHEIGHT - cameraOffset[1] - 6;
-        this.drawHpBar(surf, dx, dy, entry.hp, entry.maxHp);
-      }
-    }
-
-    // Floating damage numbers
-    this.drawDamagePopupsMap(surf, rs.damagePopups, cameraOffset);
-
-    // Python anchors skill proc icons to the affected unit's map health bar.
+    // Skill proc icons ride above their unit's window (MapCombatInfo.draw).
     const cueRows = new Map<UnitObject, number>();
     for (const cue of rs.procCues) {
-      const position = cue.unit.position;
-      if (!position) continue;
+      const info = rs.infos.find((candidate) => candidate.unit === cue.unit);
       const row = cueRows.get(cue.unit) ?? 0;
       cueRows.set(cue.unit, row + 1);
+      if (info?.position) {
+        this.drawProcCue(surf, cue, info.position[0] + 40, info.position[1] - 16 + row * 16, false, true);
+        continue;
+      }
+      const position = cue.unit.position;
+      if (!position) continue;
       const px = position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
       const py = position[1] * TILEHEIGHT - cameraOffset[1] - 24 - row * 17;
       this.drawProcCue(surf, cue, px, py, false, true);
-    }
-
-    // Death fade-out: dim the dying unit's tile with white overlay
-    if (this.phase === 'death') {
-      const alpha = this.deathFadeProgress * 0.85;
-      for (const deadDefender of this.getDefenderDeaths()) {
-        const position = deadDefender.position;
-        if (!position) continue;
-        const dx = position[0] * TILEWIDTH - cameraOffset[0];
-        const dy = position[1] * TILEHEIGHT - cameraOffset[1];
-        surf.fillRect(dx - 24, dy - 32, 64, 48, `rgba(255,255,255,${alpha.toFixed(2)})`);
-      }
-      if (this.results?.attackerDead && atkPos) {
-        const ax = atkPos[0] * TILEWIDTH - cameraOffset[0];
-        const ay = atkPos[1] * TILEHEIGHT - cameraOffset[1];
-        surf.fillRect(ax - 24, ay - 32, 64, 48, `rgba(255,255,255,${alpha.toFixed(2)})`);
-      }
     }
 
     // EXP / Level-up overlays (shared with animation combat)

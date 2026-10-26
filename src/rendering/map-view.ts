@@ -8,6 +8,7 @@ import type { FogOfWarConfig } from '../data/types';
 import type { Database } from '../data/database';
 import type { UnitObject } from '../objects/unit';
 import type { UnitMarkerIcons } from './unit-markers';
+import type { MapSpriteFx } from './map-sprite';
 
 export interface MapViewUnit {
   x: number;
@@ -26,6 +27,10 @@ export interface MapViewUnit {
   tintAlpha?: number;
   /** Python UnitSprite.check_draw_hp(); undefined keeps the bar visible. */
   showHp?: boolean;
+  /** Combat/death sprite effects (flicker tints, fade, stationary frame). */
+  fx?: MapSpriteFx | null;
+  /** Facing override (combat image states, pose_unit). */
+  poseOverride?: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
 }
 
 /**
@@ -318,6 +323,7 @@ export class MapView {
           offsetY,
           unit.tintColor,
           unit.tintAlpha ?? 0,
+          unit.fx ?? null,
         );
       } else {
         // Fallback: draw a colored rectangle placeholder

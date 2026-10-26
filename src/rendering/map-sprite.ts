@@ -4,6 +4,13 @@ import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS, COLORKEY } from '../engine/c
 export type SpriteState = 'standing' | 'moving' | 'gray';
 export type Direction = 'down' | 'left' | 'right' | 'up';
 
+/** Per-draw unit sprite effects (see combat/map-unit-fx.ts). */
+export interface MapSpriteFx {
+  tints: Array<{ color: [number, number, number]; mode: 'add' | 'sub' }>;
+  opacity: number;
+  stationary: boolean;
+}
+
 const DIRECTION_ROW: Record<Direction, number> = {
   down: 0,
   left: 1,
@@ -33,6 +40,7 @@ export class MapSprite {
   private grayFrames: Surface[];
   private moveFrames: Map<Direction, Surface[]>;
   private tintedFrames = new WeakMap<Surface, Map<string, Surface>>();
+  private rgbTintedFrames = new WeakMap<Surface, Map<string, Surface>>();
 
   state: SpriteState;
   direction: Direction;
@@ -178,14 +186,27 @@ export class MapSprite {
     offsetY: number,
     tintColor?: [number, number, number] | null,
     tintAlpha: number = 0,
+    fx?: MapSpriteFx | null,
   ): void {
-    const frame = this.getCurrentFrame();
+    let frame = fx?.stationary ? this.getStationaryFrame() : this.getCurrentFrame();
 
     const anchorDx = -Math.max(0, Math.floor((frame.width - TILEWIDTH) / 2));
     const anchorDy = -24;
 
     const px = worldX - offsetX + anchorDx;
     const py = worldY - offsetY + anchorDy;
+
+    if (fx && (fx.tints.length > 0 || fx.opacity < 1)) {
+      // unit_sprite.draw: the fade transition first, then every active
+      // flicker as an RGB add/sub tint (alpha untouched).
+      for (const tint of fx.tints) frame = this.getRgbTintedFrame(frame, tint.color, tint.mode);
+      if (fx.opacity <= 0) return;
+      const previous = frame.getAlpha();
+      frame.setAlpha(previous * fx.opacity);
+      surf.blit(frame, px, py);
+      frame.setAlpha(previous);
+      return;
+    }
 
     if (tintColor && tintAlpha > 0) {
       const key = tintColor.join(',');
@@ -216,6 +237,49 @@ export class MapSprite {
     } else {
       surf.blit(frame, px, py);
     }
+  }
+
+  /** Python create_image(stationary=True): the first frame of the state. */
+  getStationaryFrame(): Surface {
+    if (this.state === 'moving') {
+      const dirFrames = this.moveFrames.get(this.direction);
+      if (dirFrames && dirFrames.length > 0) return dirFrames[0];
+    }
+    const frames = this.state === 'gray' ? this.grayFrames : this.standFrames;
+    return frames[0] ?? this.standFrames[0];
+  }
+
+  /**
+   * image_mods.add_tint / sub_tint: per-channel RGB add or subtract with
+   * clamping, alpha preserved. Colors are quantized to 8 levels per step so
+   * a fading flicker reuses a bounded set of cached frames.
+   */
+  private getRgbTintedFrame(frame: Surface, color: [number, number, number], mode: 'add' | 'sub'): Surface {
+    const q = color.map((c) => Math.max(0, Math.min(255, c >= 248 ? 255 : Math.round(c / 8) * 8)));
+    if (q[0] === 0 && q[1] === 0 && q[2] === 0) return frame;
+    const key = `${mode}:${q.join(',')}`;
+    let byColor = this.rgbTintedFrames.get(frame);
+    if (!byColor) {
+      byColor = new Map();
+      this.rgbTintedFrames.set(frame, byColor);
+    }
+    let tinted = byColor.get(key);
+    if (!tinted) {
+      tinted = frame.copy();
+      tinted.setAlpha(1);
+      const image = tinted.getImageData();
+      const data = image.data;
+      const sign = mode === 'add' ? 1 : -1;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] === 0) continue;
+        data[i] = Math.max(0, Math.min(255, data[i] + sign * q[0]));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + sign * q[1]));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + sign * q[2]));
+      }
+      tinted.putImageData(image);
+      byColor.set(key, tinted);
+    }
+    return tinted;
   }
 
   /** Set the movement direction based on dx, dy velocity */

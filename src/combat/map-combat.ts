@@ -33,7 +33,19 @@ import {
   type CombatProcCue,
 } from './proc-presentation';
 import { levelUpUnit } from '../engine/leveling';
-import { applyPermanentDamage } from './skill-system';
+import { applyPermanentDamage, checkEnemy } from './skill-system';
+import { canCounterattack, computeCrit, computeDamage, computeHit, weaponTriangle } from './combat-calcs';
+import { MapCombatInfo, type MapCombatInfoMethod, type MapCombatStats } from './map-combat-info';
+import { MapAnimation } from '../rendering/map-animation';
+import {
+  addDamageNumbers,
+  facingFor,
+  markDying,
+  setCombatPose,
+  setCombatPoseOffset,
+  startFlicker,
+  startVibrate,
+} from './map-unit-fx';
 
 // ============================================================
 // MapCombat - Manages the visual presentation of combat on the
@@ -41,7 +53,11 @@ import { applyPermanentDamage } from './skill-system';
 // frame.
 // ============================================================
 
-export type MapCombatState = 'init' | 'strike' | 'hp_change' | 'waiting' | 'cleanup' | 'done';
+/** Python MapCombat states (map_combat.py update). */
+export type MapCombatState =
+  | 'init' | 'init_pause' | 'begin_phase' | 'proc_animations' | 'start_anim'
+  | 'sound' | 'anim' | 'hp_bar_wait' | 'end_phase_anim' | 'end_phase'
+  | 'exp_wait' | 'post_combat' | 'done';
 
 /** Detailed combat results returned by applyResults(). */
 export interface CombatResults {
@@ -76,20 +92,8 @@ export interface MapCombatGroup {
   splashDefenders: UnitObject[];
 }
 
-/** Duration constants (milliseconds) */
-const INIT_DURATION_MS = 150;  // Pre-combat pause
-const STRIKE_DURATION_MS = 130; // Lunge + strike animation
-const HP_DRAIN_DURATION_MS = 250; // HP bar drain animation
-const WAITING_DURATION_MS = 80;  // Pause between strikes
-const CLEANUP_DURATION_MS = 180; // Pause before done
-
-/** Animation sub-timings within STRIKE phase (ms) */
-const LUNGE_DURATION_MS = 80;  // Attacker moves toward defender
-const LUNGE_RETURN_MS = 50;    // Attacker snaps back
-
-/** Shake animation during HP drain */
-const SHAKE_FREQUENCY = 40;    // ms per oscillation
-const SHAKE_AMPLITUDE = 2;     // pixels
+/** movement_counter: the map attack lunge offsets (counters.py). */
+const ATTACK_MOVEMENT = [0, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 3, 2, 1];
 
 /** Floating damage number */
 export interface DamagePopup {
@@ -148,16 +152,25 @@ export class MapCombat {
 
   state: MapCombatState;
   currentStrikeIndex: number;
-  frameTimer: number;
-
-  // HP display state (for animated HP drain)
-  attackerDisplayHp: number;
-  defenderDisplayHp: number;
-
-  // Internal targets for HP animation
-  private attackerTargetHp: number;
-  private hpDrainElapsed: number;
-  private hpDrainStartAttacker: number;
+  /** ms since the current state began (Python current_time). */
+  private stateTime = 0;
+  /** START toggles Python's _skip: every timed wait passes immediately. */
+  skipMode = false;
+  private firstPhase = true;
+  private castPose = false;
+  private hpBarTime = 0;
+  /** Python's cursor tile for this phase (what combat_attacker faces). */
+  private cursorTarget: [number, number] | null = null;
+  private lungeUnit: UnitObject | null = null;
+  private lungeNet: [number, number] = [0, 0];
+  private lungeCount = 0;
+  private lungeStarted = false;
+  private lungeFresh = false;
+  /** HP after each presented strike (the actions Python applies at 'anim'). */
+  private presentedHps: Map<UnitObject, number>;
+  /** Python health_bars: one MapCombatInfo per displayed unit. */
+  private infos: Map<UnitObject, MapCombatInfo> = new Map();
+  private mapAnimations: MapAnimation[] = [];
 
   // Snapshot of real HP before combat (for result calculation)
   private attackerStartHp: number;
@@ -173,13 +186,9 @@ export class MapCombat {
   damagePopups: DamagePopup[];
 
   private defenderStartHps: Map<UnitObject, number>;
-  private defenderTargetHps: Map<UnitObject, number>;
-  private defenderDisplayHps: Map<UnitObject, number>;
-  private defenderDrainStartHps: Map<UnitObject, number>;
 
   // Audio (optional, set after construction to enable combat SFX)
   audioManager: { playSfx(name: string): void } | null = null;
-  private hitSoundPlayed: boolean = false;
   private cachedResults: CombatResults | null = null;
   private lifecycleRecord: CombatLifecycleRecord;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
@@ -197,12 +206,7 @@ export class MapCombat {
   readonly attackerCastPose: boolean;
   /** no_map_hp_display: suppress HP bar/drain display for this item use. */
   readonly noMapHpDisplay: boolean;
-  /** map_cast_sfx / map_cast_anim (Python on_hit/on_miss): played once when
-   * the first strike using this item resolves (hit or miss), regardless of
-   * outcome. map_cast_anim has no map-animation-overlay system to render
-   * into on the web yet, so only the SFX and a recorded anim value are
-   * exposed here; see PLAN.md for the deferral note. */
-  private castSfxPlayed: boolean = false;
+  /** map_cast_anim (Python CastAnim playback) of the initiating item. */
   castAnimValue: string | null = null;
 
   constructor(
@@ -282,21 +286,10 @@ export class MapCombat {
 
     this.state = 'init';
     this.currentStrikeIndex = 0;
-    this.frameTimer = 0;
-
-    // Initialise HP display from current unit state
-    this.attackerDisplayHp = attacker.currentHp;
-    this.defenderDisplayHp = defender.currentHp;
-    this.attackerTargetHp = attacker.currentHp;
-    this.hpDrainElapsed = 0;
-    this.hpDrainStartAttacker = attacker.currentHp;
 
     this.attackerStartHp = attacker.currentHp;
-
     this.defenderStartHps = new Map(this.defenders.map((unit) => [unit, unit.currentHp]));
-    this.defenderTargetHps = new Map(this.defenderStartHps);
-    this.defenderDisplayHps = new Map(this.defenderStartHps);
-    this.defenderDrainStartHps = new Map(this.defenderStartHps);
+    this.presentedHps = new Map(this.participants.map((unit) => [unit, unit.currentHp]));
 
     // Animation state
     this.attackerAnim = freshAnimState();
@@ -325,33 +318,98 @@ export class MapCombat {
 
   /** Instantly skip to the end of combat (no more animation). */
   skipToEnd(): void {
+    this.finishPresentation();
     this.state = 'done';
   }
 
   /**
-   * Advance the combat by one frame.
+   * Advance the combat by one frame (Python MapCombat.update).
    * Returns true when the combat is fully complete.
    */
   update(deltaMs: number): boolean {
     for (const cue of this.activeProcCues) cue.elapsed += deltaMs;
     this.activeProcCues = this.activeProcCues.filter((cue) => cue.elapsed < cue.duration);
+    if (this.state === 'done') return true;
+    this.stateTime += deltaMs;
+    const skip = this.skipMode;
+
     switch (this.state) {
       case 'init':
-        return this.updateInit(deltaMs);
-      case 'strike':
-        return this.updateStrike(deltaMs);
-      case 'hp_change':
-        return this.updateHpChange(deltaMs);
-      case 'waiting':
-        return this.updateWaiting(deltaMs);
-      case 'cleanup':
-        return this.updateCleanup(deltaMs);
-      case 'done':
+        this.setState('init_pause');
+        break;
+      case 'init_pause':
+        if (skip || this.stateTime > 200) this.setState('begin_phase');
+        break;
+      case 'begin_phase':
+        this.beginPhase();
+        break;
+      case 'proc_animations':
+        this.setState('start_anim');
+        break;
+      case 'start_anim':
+        if (skip || this.stateTime > 200) {
+          this.playCastAnimations();
+          this.setState('sound');
+        }
+        break;
+      case 'sound':
+        if (skip || this.stateTime > 250) {
+          const strike = this.currentStrike();
+          if (strike && !this.castPose) this.startLunge(strike.attacker);
+          const castSfx = strike?.item.getComponent<string>('map_cast_sfx');
+          if (castSfx) this.audioManager?.playSfx(castSfx);
+          this.setState('anim');
+        }
+        break;
+      case 'anim':
+        if (skip || this.stateTime > 83) {
+          this.handlePlayback();
+          for (const info of this.infos.values()) info.update(0, true);
+          this.hpBarTime = this.infos.size > 0
+            ? Math.max(...[...this.infos.values()].map((info) => info.timeForChange))
+            : 0;
+          this.setState('hp_bar_wait');
+        }
+        break;
+      case 'hp_bar_wait':
+        if (skip || this.stateTime > this.hpBarTime) this.setState('end_phase_anim');
+        break;
+      case 'end_phase_anim':
+        if (skip || (this.castPose && this.stateTime > 250) || this.stateTime > 550) {
+          const strike = this.currentStrike();
+          if (strike) this.faceCombatant(strike.attacker);
+          this.setState('end_phase');
+        }
+        break;
+      case 'end_phase':
+        if (skip || !this.castPose || this.stateTime > 550) {
+          this.castPose = false;
+          this.currentStrikeIndex++;
+          this.setState('begin_phase');
+        }
+        break;
+      case 'exp_wait':
+        // clean_up1: survivors return to their normal map sprite.
+        for (const unit of this.participants) {
+          if (!this.isPresentedDying(unit)) setCombatPose(unit, null);
+        }
+        this.setState('post_combat');
+        break;
+      case 'post_combat':
+        this.state = 'done';
         return true;
     }
+
+    if (this.state !== 'begin_phase' && this.state !== 'proc_animations') {
+      for (const info of this.infos.values()) info.update(deltaMs, true);
+    }
+    this.advanceLunge();
+    for (const anim of this.mapAnimations) anim.update();
+    this.mapAnimations = this.mapAnimations.filter((anim) => !anim.done);
+    return false;
   }
 
-  /** Get the current combat state for rendering. */
+  /** Map combat presentation for the renderer. */
   getRenderState(): {
     state: MapCombatState;
     currentStrike: CombatStrike | null;
@@ -368,28 +426,28 @@ export class MapCombat {
     noMapHpDisplay: boolean;
     /** map_cast_pose: attacker plays its cast pose instead of lunging. */
     attackerCastPose: boolean;
-    /** map_cast_anim: recorded animation nid for this item use (no map-anim
-     * overlay renderer exists yet on the web; see class-level deferral note). */
+    /** map_cast_anim: animation nid played on the target tile per strike. */
     castAnimValue: string | null;
     procCues: CombatProcCue[];
+    /** Python health_bars: MapCombatInfo windows, in draw order. */
+    infos: MapCombatInfo[];
+    /** Hit/miss/cast map animations (MapAnimation) to draw over the map. */
+    mapAnimations: MapAnimation[];
   } {
-    const strike =
-      this.currentStrikeIndex < this.strikes.length
-        ? this.strikes[this.currentStrikeIndex]
-        : null;
-
+    const strike = this.currentStrike();
+    const hpOf = (unit: UnitObject) => this.infos.get(unit)?.hpBar.displayedHp ?? this.presentedHps.get(unit) ?? unit.currentHp;
     return {
       state: this.state,
       currentStrike: strike,
-      attackerHp: Math.max(0, Math.round(this.attackerDisplayHp)),
-      defenderHp: Math.max(0, Math.round(this.defenderDisplayHp)),
+      attackerHp: Math.max(0, hpOf(this.attacker)),
+      defenderHp: Math.max(0, hpOf(this.defender)),
       attackerMaxHp: this.attacker.maxHp,
       defenderMaxHp: this.defender.maxHp,
       attackerAnim: this.attackerAnim,
       defenderAnim: this.defenderAnim,
       defenders: this.defenders.map((unit) => ({
         unit,
-        hp: Math.max(0, Math.round(this.defenderDisplayHps.get(unit) ?? unit.currentHp)),
+        hp: Math.max(0, hpOf(unit)),
         maxHp: unit.maxHp,
         anim: this.defenderAnims.get(unit) ?? this.defenderAnim,
       })),
@@ -401,6 +459,8 @@ export class MapCombat {
       attackerCastPose: this.attackerCastPose,
       castAnimValue: this.castAnimValue,
       procCues: this.activeProcCues,
+      infos: [...this.infos.values()],
+      mapAnimations: this.mapAnimations,
     };
   }
 
@@ -755,289 +815,318 @@ export class MapCombat {
   }
 
   // ------------------------------------------------------------------
-  // State update methods
+  // Presentation (Python MapCombat states)
   // ------------------------------------------------------------------
 
-  private updateInit(deltaMs: number): boolean {
-    this.frameTimer += deltaMs;
-    if (this.frameTimer >= INIT_DURATION_MS) {
-      this.frameTimer = 0;
-
-      if (this.strikes.length === 0) {
-        this.state = 'cleanup';
-      } else {
-        this.showFirstPhaseProcCues();
-        this.showStrikeProcCues(this.strikes[0]);
-        this.state = 'strike';
-      }
-    }
-    return false;
+  private setState(state: MapCombatState): void {
+    this.state = state;
+    this.stateTime = 0;
   }
 
-  private updateStrike(deltaMs: number): boolean {
-    this.frameTimer += deltaMs;
-
-    // Compute lunge animation: attacker moves toward defender
-    const strike = this.strikes[this.currentStrikeIndex];
-    if (strike) {
-      const strikerAnim = strike.attacker === this.attacker
-        ? this.attackerAnim
-        : this.unitAnims.get(strike.attacker) ?? this.defenderAnim;
-      const targetAnim = strike.defender === this.attacker
-        ? this.attackerAnim
-        : this.unitAnims.get(strike.defender) ?? this.defenderAnim;
-
-      // Compute direction from striker to target (in tile coords)
-      const strikerUnit = strike.attacker;
-      const targetUnit = strike.defender;
-      if (strikerUnit.position && targetUnit.position) {
-        const dx = targetUnit.position[0] - strikerUnit.position[0];
-        const dy = targetUnit.position[1] - strikerUnit.position[1];
-        const dist = Math.abs(dx) + Math.abs(dy);
-        const ndx = dist > 0 ? dx / dist : 0;
-        const ndy = dist > 0 ? dy / dist : 0;
-
-        // map_cast_pose: the caster stands still instead of lunging.
-        const strikerCastPose = strikerUnit === this.attacker && this.attackerCastPose;
-
-        if (strikerCastPose) {
-          strikerAnim.lungeOffset = [0, 0];
-        } else if (this.frameTimer <= LUNGE_DURATION_MS) {
-          // Lunge forward
-          const t = this.frameTimer / LUNGE_DURATION_MS;
-          const lungePixels = 6; // max pixels to lunge
-          strikerAnim.lungeOffset = [ndx * lungePixels * t, ndy * lungePixels * t];
-        } else {
-          // Snap back
-          const returnT = (this.frameTimer - LUNGE_DURATION_MS) / LUNGE_RETURN_MS;
-          const lungePixels = 6;
-          const eased = Math.min(1, returnT);
-          strikerAnim.lungeOffset = [ndx * lungePixels * (1 - eased), ndy * lungePixels * (1 - eased)];
-        }
-
-        // Flash on the target at the moment of impact (peak of lunge)
-        if (this.frameTimer >= LUNGE_DURATION_MS * 0.8 && this.frameTimer <= LUNGE_DURATION_MS * 1.2) {
-          if (strike.hit || hasDamageOnMiss(strike.item)) {
-            targetAnim.flashAlpha = strike.crit ? 0.8 : 0.5;
-
-            // map_hit_add_blend / map_hit_sub_blend (Python `on_hit` playback
-            // UnitTintAdd/UnitTintSub): color blend flash on the target.
-            const addColor = strike.item.getComponent<[number, number, number]>('map_hit_add_blend');
-            const subColor = strike.item.getComponent<[number, number, number]>('map_hit_sub_blend');
-            if (addColor) {
-              targetAnim.tintColor = addColor;
-              targetAnim.tintMode = 'add';
-              targetAnim.tintAlpha = 1;
-            } else if (subColor) {
-              targetAnim.tintColor = subColor;
-              targetAnim.tintMode = 'sub';
-              targetAnim.tintAlpha = 1;
-            }
-          }
-          // Play hit/miss sound at impact
-          if (!this.hitSoundPlayed && this.audioManager) {
-            this.hitSoundPlayed = true;
-            if (strike.hit) {
-              const configuredHitSfx = strike.item.getComponent<string>('map_hit_sfx');
-              if (strike.damage < 0) {
-                this.audioManager.playSfx('MapHeal');
-              } else if (configuredHitSfx) {
-                this.audioManager.playSfx(configuredHitSfx);
-              } else if (strike.crit) {
-                this.audioManager.playSfx('Critical Hit 1');
-              } else {
-                this.audioManager.playSfx('Attack Hit ' + (Math.random() < 0.5 ? '1' : '2'));
-              }
-            } else {
-              this.audioManager.playSfx('Attack Miss 2');
-            }
-          }
-          // map_cast_sfx (Python `on_hit`/`on_miss`): plays once per item use
-          // regardless of hit/miss, on the first strike of the encounter.
-          if (!this.castSfxPlayed && this.audioManager && this.currentStrikeIndex === 0) {
-            const castSfx = this.attackItem.getComponent<string>('map_cast_sfx');
-            if (castSfx) {
-              this.castSfxPlayed = true;
-              this.audioManager.playSfx(castSfx);
-            }
-          }
-        } else {
-          targetAnim.flashAlpha = Math.max(0, targetAnim.flashAlpha - deltaMs * 0.005);
-        }
-      }
-    }
-
-    if (this.frameTimer >= STRIKE_DURATION_MS) {
-      this.frameTimer = 0;
-      this.hitSoundPlayed = false;
-
-      // Reset lunge offsets
-      this.attackerAnim.lungeOffset = [0, 0];
-      for (const anim of this.unitAnims.values()) anim.lungeOffset = [0, 0];
-
-      // Apply this strike's damage to display HP targets
-      for (const [unit, hp] of this.defenderDisplayHps) {
-        this.defenderDrainStartHps.set(unit, hp);
-      }
-      if (strike && (strike.hit || hasDamageOnMiss(strike.item))) {
-        const totalDamage = strike.damage + (strike.extraDamage ?? 0);
-        // Record drain animation start points
-        this.hpDrainStartAttacker = this.attackerTargetHp;
-        if (strike.defender === this.attacker) {
-          this.attackerTargetHp = Math.max(
-            0,
-            Math.min(this.attacker.maxHp, this.attackerTargetHp - totalDamage),
-          );
-        } else if (this.defenderTargetHps.has(strike.defender)) {
-          this.defenderTargetHps.set(
-            strike.defender,
-            Math.max(
-              0,
-              Math.min(
-                strike.defender.maxHp,
-                (this.defenderTargetHps.get(strike.defender) ?? 0) - totalDamage,
-              ),
-            ),
-          );
-        }
-
-        // Spawn damage popup on the defender
-        const targetUnit = strike.defender;
-        if (targetUnit.position) {
-          this.damagePopups.push({
-            x: targetUnit.position[0],
-            y: targetUnit.position[1],
-            value: Math.abs(strike.damage),
-            isCrit: strike.crit,
-            isHeal: strike.damage < 0,
-            elapsed: 0,
-            duration: 600,
-          });
-          if ((strike.extraDamage ?? 0) > 0) {
-            this.damagePopups.push({
-              x: targetUnit.position[0],
-              y: targetUnit.position[1],
-              value: strike.extraDamage ?? 0,
-              isCrit: false,
-              elapsed: 0,
-              duration: 600,
-            });
-          }
-        }
-      } else if (strike && !strike.hit) {
-        // Miss - still need drain start points for the (no-op) animation
-        this.hpDrainStartAttacker = this.attackerTargetHp;
-
-        // Spawn "MISS" popup
-        const targetUnit = strike.defender;
-        if (targetUnit.position) {
-          this.damagePopups.push({
-            x: targetUnit.position[0],
-            y: targetUnit.position[1],
-            value: 0, // 0 = miss
-            isCrit: false,
-            elapsed: 0,
-            duration: 500,
-          });
-        }
-      } else {
-        this.hpDrainStartAttacker = this.attackerTargetHp;
-      }
-
-      this.hpDrainElapsed = 0;
-      this.state = 'hp_change';
-    }
-    return false;
+  private currentStrike(): CombatStrike | null {
+    return this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
   }
 
-  private updateHpChange(deltaMs: number): boolean {
-    this.hpDrainElapsed += deltaMs;
-    const t = Math.min(1, this.hpDrainElapsed / HP_DRAIN_DURATION_MS);
+  /** Units whose presented HP reaches 0 and no miracle restores (is_dying). */
+  private isPresentedDying(unit: UnitObject): boolean {
+    return (this.presentedHps.get(unit) ?? 1) <= 0 && !this.miracleRestoreHps.has(unit);
+  }
 
-    // Linearly interpolate display HP toward target
-    this.attackerDisplayHp = lerp(this.hpDrainStartAttacker, this.attackerTargetHp, t);
-    for (const unit of this.defenders) {
-      this.defenderDisplayHps.set(
-        unit,
-        lerp(
-          this.defenderDrainStartHps.get(unit) ?? unit.currentHp,
-          this.defenderTargetHps.get(unit) ?? unit.currentHp,
-          t,
-        ),
-      );
+  /** begin_phase: next strike, or clean_up0 when the solver has no more. */
+  private beginPhase(): void {
+    const strike = this.currentStrike();
+    if (!strike) {
+      // clean_up0: game.death.should_die for every unit at 0 HP.
+      for (const unit of this.participants) {
+        if (this.isPresentedDying(unit)) markDying(unit);
+      }
+      this.setState('exp_wait');
+      return;
     }
-    this.defenderDisplayHp = this.defenderDisplayHps.get(this.defender) ?? this.defenderDisplayHp;
+    if (!this.noMapHpDisplay) this.buildInfos();
+    if (this.firstPhase) {
+      this.showFirstPhaseProcCues();
+      this.firstPhase = false;
+    }
+    this.showStrikeProcCues(strike);
 
-    // Hit-shake on the unit that took damage
-    const strike = this.currentStrikeIndex < this.strikes.length
-      ? this.strikes[this.currentStrikeIndex]
-      : null;
-    if (strike && strike.hit && t < 0.6) {
-      // Oscillating shake
-      const shakeT = this.hpDrainElapsed / SHAKE_FREQUENCY;
-      const decay = 1 - t / 0.6; // fade shake out over first 60% of drain
-      const shakeX = Math.round(Math.sin(shakeT * Math.PI * 2) * SHAKE_AMPLITUDE * decay);
+    // Sprites: combat_attacker faces the cursor (the target), the other side
+    // faces back (combat_defender / combat_counter).
+    const counter = strike.attacker !== this.attacker;
+    const main = this.primaryDefender;
+    this.cursorTarget = counter
+      ? this.attacker.position
+      : main?.position ?? strike.defender.position ?? null;
+    this.faceCombatant(strike.attacker);
+    if (counter) this.faceToward(this.attacker, strike.attacker);
+    else if (main) this.faceToward(main, this.attacker);
+    this.castPose = strike.item.hasComponent('map_cast_pose');
+    this.setState('proc_animations');
+  }
 
-      const targetAnim = strike.defender === this.attacker
-        ? this.attackerAnim
-        : this.unitAnims.get(strike.defender) ?? this.defenderAnim;
-      targetAnim.shakeOffset = [shakeX, 0];
+  /** combat_attacker: face the cursor tile using the move frames. */
+  private faceCombatant(unit: UnitObject): void {
+    const target = this.cursorTarget;
+    if (!unit.position || !target) return;
+    setCombatPose(unit, facingFor(target[0] - unit.position[0], target[1] - unit.position[1]));
+    if (this.lungeUnit === unit) this.lungeUnit = null;
+  }
+
+  private faceToward(unit: UnitObject, other: UnitObject): void {
+    if (!unit.position || !other.position) return;
+    setCombatPose(unit, facingFor(other.position[0] - unit.position[0], other.position[1] - unit.position[1]));
+  }
+
+  /** combat_anim: the attack_movement_counter lunge toward the cursor. */
+  private startLunge(unit: UnitObject): void {
+    const target = this.cursorTarget;
+    if (!unit.position || !target) return;
+    const dx = target[0] - unit.position[0];
+    const dy = target[1] - unit.position[1];
+    setCombatPose(unit, facingFor(dx, dy));
+    this.lungeUnit = unit;
+    this.lungeNet = [Math.sign(dx), Math.sign(dy)];
+    this.lungeCount = 0;
+    this.lungeStarted = true;
+    // The sprite update for the frame that set combat_anim already ran.
+    this.lungeFresh = true;
+  }
+
+  /**
+   * UnitSprite.update_state('combat_anim') reads the shared movement counter
+   * once for x and once for y, so it steps twice per frame.
+   */
+  private advanceLunge(): void {
+    const unit = this.lungeUnit;
+    if (!unit) return;
+    if (this.lungeFresh) {
+      this.lungeFresh = false;
+      return;
+    }
+    const read = () => {
+      if (this.lungeStarted) {
+        this.lungeCount++;
+        if (this.lungeCount >= ATTACK_MOVEMENT.length) {
+          this.lungeCount = 0;
+          this.lungeStarted = false;
+        }
+      }
+      return ATTACK_MOVEMENT[this.lungeCount];
+    };
+    const x = this.lungeNet[0] * read();
+    const y = this.lungeNet[1] * read();
+    setCombatPoseOffset(unit, [x, y]);
+  }
+
+  /** Python _build_health_bars for the 1v1 / single-splash layouts. */
+  private buildInfos(): void {
+    const main = this.primaryDefender;
+    if ((main && this.splashDefenders.length > 0) || this.splashDefenders.length > 1) {
+      this.infos.clear();
+      return;
+    }
+    const pairup = !!this.db.getConstant('pairup', false) && !this.db.getConstant('attack_stance_only', false);
+    const guard = (unit: UnitObject) => (pairup ? unit.currentGuardGauge ?? 0 : null);
+    const setInfo = (
+      method: MapCombatInfoMethod,
+      unit: UnitObject,
+      item: ItemObject | null,
+      target: UnitObject | null,
+      stats: MapCombatStats,
+    ) => {
+      const existing = this.infos.get(unit);
+      if (existing) existing.updateStats(stats);
+      else {
+        this.infos.set(unit, new MapCombatInfo(
+          method, unit, item, target, stats,
+          this.presentedHps.get(unit) ?? unit.currentHp,
+          this.db, (u, t, i) => this.advantageSign(u, t, i),
+        ));
+      }
+    };
+    const attackStats = (target: UnitObject): MapCombatStats => [
+      computeHit(this.attacker, this.attackItem, target, this.db, null, this.game, 'attack'),
+      computeDamage(this.attacker, this.attackItem, target, this.db, null, this.game, 'attack'),
+      computeCrit(this.attacker, this.attackItem, target, this.db, this.game, 'attack'),
+      guard(this.attacker),
+    ];
+    if (main) {
+      setInfo('p1', this.attacker, this.attackItem, main, attackStats(main));
+      if (main !== this.attacker) {
+        const canCounter = !!this.defenseItem &&
+          canCounterattack(this.attacker, this.attackItem, main, this.db, this.game);
+        const stats: MapCombatStats = canCounter && this.defenseItem
+          ? [
+            computeHit(main, this.defenseItem, this.attacker, this.db, null, this.game, 'defense'),
+            computeDamage(main, this.defenseItem, this.attacker, this.db, null, this.game, 'defense'),
+            computeCrit(main, this.defenseItem, this.attacker, this.db, this.game, 'defense'),
+            guard(main),
+          ]
+          : [null, null, null, guard(main)];
+        setInfo('p2', main, this.defenseItem, this.attacker, stats);
+      }
+    } else if (this.splashDefenders.length === 1) {
+      const splash = this.splashDefenders[0];
+      const stats = attackStats(splash);
+      stats[3] = null;
+      setInfo('p1', this.attacker, this.attackItem, splash, stats);
+      setInfo('splash', splash, null, this.attacker, [null, null, null, null]);
+    }
+  }
+
+  /** Sign of the weapon-triangle modification shown by the advantage arrow. */
+  private advantageSign(unit: UnitObject, target: UnitObject, item: ItemObject): number {
+    if (!checkEnemy(unit, target, this.db, this.game)) return 0;
+    const targetItem = target === this.attacker ? this.attackItem : (target === this.primaryDefender ? this.defenseItem : null);
+    const triangle = weaponTriangle(item, targetItem, this.db, unit, target);
+    const sign = Math.sign(triangle.hitBonus || triangle.damageBonus);
+    return sign;
+  }
+
+  /** start_anim: map_cast_anim on the cursor, map_target_cast_anim on targets. */
+  private playCastAnimations(): void {
+    const strike = this.currentStrike();
+    if (!strike) return;
+    const castAnim = strike.item.getComponent<string>('map_cast_anim');
+    if (castAnim && this.cursorTarget) this.spawnMapAnimation(castAnim, this.cursorTarget);
+    const targetCast = strike.item.getComponent<string>('map_target_cast_anim');
+    if (targetCast && strike.defender.position) this.spawnMapAnimation(targetCast, strike.defender.position);
+  }
+
+  private spawnMapAnimation(nid: string, position: [number, number]): void {
+    const prefab = this.db.mapAnimations?.get?.(nid);
+    if (!prefab) return;
+    const anim = new MapAnimation(prefab, position[0], position[1]);
+    this.mapAnimations.push(anim);
+    const resources = this.game?.resources;
+    if (!resources?.loadImage) {
+      anim.done = true;
+      return;
+    }
+    void resources.loadImage(`resources/animations/${nid}.png`)
+      .then((image: HTMLImageElement) => anim.setImage(image))
+      .catch(() => { anim.done = true; });
+  }
+
+  private playSfx(name: string): void {
+    this.audioManager?.playSfx(name);
+  }
+
+  /**
+   * anim: Python _handle_playback + _apply_actions for this strike's default
+   * item playback (solver/item_system_base on_hit/on_crit/on_miss).
+   */
+  private handlePlayback(): void {
+    const strike = this.currentStrike();
+    if (!strike) return;
+    const target = strike.defender;
+    const anim = this.unitAnims.get(target) ?? (target === this.attacker ? this.attackerAnim : this.defenderAnim);
+    const shakeAll = (num: number) => {
+      const forced = (strike.attackProcs?.length ?? 0) > 0 ? 3 : num;
+      for (const info of this.infos.values()) info.shake(forced);
+    };
+    const connected = strike.hit || hasDamageOnMiss(strike.item);
+    if (!connected) {
+      this.playSfx('Attack Miss 2');
+      if (target.position) this.spawnMapAnimation('MapMiss', target.position);
+      return;
+    }
+
+    const damage = strike.damage;
+    const total = damage + (strike.extraDamage ?? 0);
+    const before = this.presentedHps.get(target) ?? target.currentHp;
+    const after = Math.max(0, Math.min(target.maxHp, before - total));
+    this.presentedHps.set(target, after);
+    this.infos.get(target)?.hpBar.setTarget(after);
+    const lethal = after <= 0;
+
+    if (damage < 0) {
+      // Heal on_hit: HealHit + MapHeal sound + heal-size map animation.
+      const heal = -damage;
+      addDamageNumbers(target, heal, 'small_cyan');
+      this.playSfx('MapHeal');
+      const name = heal >= 30 ? 'MapBigHealTrans' : heal >= 15 ? 'MapMediumHealTrans' : 'MapSmallHealTrans';
+      if (target.position) this.spawnMapAnimation(name, target.position);
+      return;
+    }
+
+    let hitSoundPlayed = false;
+    const hitSound = (name: string) => {
+      hitSoundPlayed = true;
+      this.playSfx(name);
+    };
+    const configuredSfx = strike.item.getComponent<string>('map_hit_sfx');
+    if (configuredSfx) hitSound(configuredSfx);
+    const addBlend = strike.item.getComponent<[number, number, number]>('map_hit_add_blend');
+    const subBlend = strike.item.getComponent<[number, number, number]>('map_hit_sub_blend');
+    let itemTint = false;
+    if (addBlend) {
+      startFlicker(target, 0, 333, addBlend, 'add');
+      anim.tintColor = addBlend;
+      anim.tintMode = 'add';
+      itemTint = true;
+    } else if (subBlend) {
+      startFlicker(target, 0, 333, subBlend, 'sub');
+      anim.tintColor = subBlend;
+      anim.tintMode = 'sub';
+      itemTint = true;
+    }
+
+    if (strike.crit) {
+      addDamageNumbers(target, damage, 'small_yellow');
+      if (damage === 0) {
+        hitSound('No Damage');
+        if (target.position) this.spawnMapAnimation('MapNoDamage', target.position);
+      }
+      shakeAll(3);
+      // crit_vibrate: in 10 frames, vibrate for 12 frames.
+      startVibrate(target, 166, 200);
+      if (!hitSoundPlayed) {
+        if (lethal) this.playSfx('Final Hit');
+        this.playSfx(`Critical Hit ${1 + Math.floor(Math.random() * 2)}`);
+      }
+      // crit_tint: a 2-frame flash, again 5 frames later, then a fading one.
+      startFlicker(target, 0, 33, [255, 255, 255]);
+      startFlicker(target, 83, 33, [255, 255, 255]);
+      startFlicker(target, 166, 333, [255, 255, 255], 'add', true);
     } else {
-      // Reset shakes
-      this.attackerAnim.shakeOffset = [0, 0];
-      for (const anim of this.unitAnims.values()) anim.shakeOffset = [0, 0];
-    }
-
-    // Decay flash alpha
-    this.attackerAnim.flashAlpha = Math.max(0, this.attackerAnim.flashAlpha - deltaMs * 0.004);
-    for (const anim of this.unitAnims.values()) {
-      anim.flashAlpha = Math.max(0, anim.flashAlpha - deltaMs * 0.004);
-      anim.tintAlpha = Math.max(0, anim.tintAlpha - deltaMs * 0.004);
-      if (anim.tintAlpha <= 0) {
-        anim.tintColor = null;
-        anim.tintMode = null;
-      }
-    }
-
-    // Update damage popups
-    this.updateDamagePopups(deltaMs);
-
-    if (t >= 1) {
-      // Snap to target
-      this.attackerDisplayHp = this.attackerTargetHp;
-      for (const unit of this.defenders) {
-        this.defenderDisplayHps.set(unit, this.defenderTargetHps.get(unit) ?? unit.currentHp);
-      }
-      this.defenderDisplayHp = this.defenderDisplayHps.get(this.defender) ?? this.defenderDisplayHp;
-
-      // Reset shakes
-      this.attackerAnim.shakeOffset = [0, 0];
-      for (const anim of this.unitAnims.values()) anim.shakeOffset = [0, 0];
-
-      // Move to next strike or cleanup
-      this.currentStrikeIndex++;
-      this.frameTimer = 0;
-
-      if (this.currentStrikeIndex >= this.strikes.length) {
-        this.state = 'cleanup';
+      addDamageNumbers(target, damage, 'small_red');
+      if (strike.glancing) {
+        if (target.position) {
+          this.spawnMapAnimation(damage === 0 ? 'MapNoDamage' : 'MapGlancingHit', target.position);
+        }
+        if (lethal) {
+          shakeAll(2);
+          if (!hitSoundPlayed) hitSound('Final Hit');
+        } else {
+          shakeAll(4);
+          if (!hitSoundPlayed) hitSound('No Damage');
+        }
       } else {
-        this.state = 'waiting';
+        if (damage === 0) {
+          hitSound('No Damage');
+          if (target.position) this.spawnMapAnimation('MapNoDamage', target.position);
+        }
+        if (lethal) {
+          shakeAll(2);
+          if (!hitSoundPlayed) hitSound('Final Hit');
+        } else {
+          shakeAll(1);
+          if (!hitSoundPlayed) hitSound(`Attack Hit ${1 + Math.floor(Math.random() * 5)}`);
+        }
       }
+      if (!itemTint) startFlicker(target, 0, 333, [255, 255, 255]);
     }
-
-    return false;
+    if ((strike.extraDamage ?? 0) > 0) addDamageNumbers(target, strike.extraDamage ?? 0, 'small_red');
   }
 
-  private updateWaiting(deltaMs: number): boolean {
-    this.frameTimer += deltaMs;
-    // Keep updating popups during pauses
-    this.updateDamagePopups(deltaMs);
-    if (this.frameTimer >= WAITING_DURATION_MS) {
-      this.frameTimer = 0;
-      this.showStrikeProcCues(this.strikes[this.currentStrikeIndex]);
-      this.state = 'strike';
+  /** Clear every combat pose/lunge (skip, or the end of the presentation). */
+  private finishPresentation(): void {
+    this.lungeUnit = null;
+    for (const unit of this.participants) {
+      if (this.isPresentedDying(unit)) markDying(unit);
+      else setCombatPose(unit, null);
     }
-    return false;
   }
 
   private showFirstPhaseProcCues(): void {
@@ -1057,40 +1146,6 @@ export class MapCombat {
     this.activeProcCues.push(...dedupeProcCues(
       marks.filter(isProcIconVisible).map(cueFromMark),
     ));
-  }
-
-  private updateCleanup(deltaMs: number): boolean {
-    this.frameTimer += deltaMs;
-    this.updateDamagePopups(deltaMs);
-    // Reset all animation offsets during cleanup
-    this.attackerAnim.lungeOffset = [0, 0];
-    this.attackerAnim.shakeOffset = [0, 0];
-    this.attackerAnim.flashAlpha = 0;
-    this.attackerAnim.tintAlpha = 0;
-    this.attackerAnim.tintColor = null;
-    this.attackerAnim.tintMode = null;
-    for (const anim of this.unitAnims.values()) {
-      anim.lungeOffset = [0, 0];
-      anim.shakeOffset = [0, 0];
-      anim.flashAlpha = 0;
-      anim.tintAlpha = 0;
-      anim.tintColor = null;
-      anim.tintMode = null;
-    }
-    if (this.frameTimer >= CLEANUP_DURATION_MS) {
-      this.frameTimer = 0;
-      this.state = 'done';
-      return true;
-    }
-    return false;
-  }
-
-  /** Advance all active damage popups, removing expired ones. */
-  private updateDamagePopups(deltaMs: number): void {
-    for (const popup of this.damagePopups) {
-      popup.elapsed += deltaMs;
-    }
-    this.damagePopups = this.damagePopups.filter(p => p.elapsed < p.duration);
   }
 
   // ------------------------------------------------------------------
@@ -1161,12 +1216,4 @@ export class MapCombat {
     const amount = Math.max(minExp, Math.min(100, guardedHits * magnitude));
     this.grantPairedExp(follower, amount, growthMode);
   }
-}
-
-// ------------------------------------------------------------------
-// Utility
-// ------------------------------------------------------------------
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
 }
