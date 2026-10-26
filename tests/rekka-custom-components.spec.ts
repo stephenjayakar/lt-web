@@ -400,7 +400,7 @@ test.describe('Rekka project-local item components', () => {
       mainState: 'begin_phase',
       revert: 'Revert',
       revertState: 'revert',
-      finalState: 'fade_out',
+      finalState: 'fade_out_wait',
     });
   });
 

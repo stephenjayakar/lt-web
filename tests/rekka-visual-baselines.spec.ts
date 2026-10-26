@@ -129,31 +129,20 @@ test.describe('Rekka visual baselines', () => {
     });
     expect(started).toBe(true);
 
-    for (let index = 0; index < 100; index++) {
+    // Drive the real presentation (red_cursor -> fade_in -> entrance) until
+    // the scene settles into init_pause with both spritesheets loaded.
+    let render: { left: boolean; right: boolean } | null = null;
+    for (let index = 0; index < 150 && !render; index++) {
       await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
-      const ready = await page.evaluate(() => {
+      render = await page.evaluate(() => {
         const state = (window as any).__gameRef.state.getCurrentState() as any;
-        return state?.name === 'combat' &&
-          !!state.animCombat?.getRenderState?.().leftDraw?.mainFrame &&
-          !!state.animCombat?.getRenderState?.().rightDraw?.mainFrame;
+        const combat = state?.name === 'combat' ? state.animCombat : null;
+        if (!combat || combat.state !== 'init_pause') return null;
+        const frame = combat.getRenderState();
+        return { left: Boolean(frame.leftDraw.mainFrame), right: Boolean(frame.rightDraw.mainFrame) };
       });
-      if (ready) break;
-      await page.waitForTimeout(10);
+      if (!render) await page.waitForTimeout(10);
     }
-    const render = await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      const combat = state?.animCombat;
-      if (!combat) return null;
-      combat.state = 'entrance';
-      combat.stateTimer = 700;
-      combat.leftAnim.opacity = 255;
-      combat.rightAnim.opacity = 255;
-      const frame = combat.getRenderState();
-      return {
-        left: Boolean(frame.leftDraw.mainFrame),
-        right: Boolean(frame.rightDraw.mainFrame),
-      };
-    });
     expect(render).toEqual({ left: true, right: true });
     await page.waitForTimeout(250);
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));

@@ -14,6 +14,7 @@
  * Playwright tests drive the game through this API.
  */
 
+import { combatSpritesReady } from './combat/combat-sprites';
 import type { GameState } from './engine/game-state';
 import type { Surface } from './engine/surface';
 import type { InputEvent, GameButton } from './engine/input';
@@ -315,6 +316,7 @@ export function installHarness(
       for (let i = 0; i < 3; i++) {
         stepOneFrame(null);
       }
+      await combatSpritesReady();
 
       isReady = true;
       harness.ready = true;
@@ -336,6 +338,7 @@ export function installHarness(
       for (let i = 0; i < 3; i++) {
         stepOneFrame(null);
       }
+      await combatSpritesReady();
 
       isReady = true;
       harness.ready = true;

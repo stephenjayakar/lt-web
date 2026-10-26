@@ -69,8 +69,20 @@ export function getCombatSprite(name: string): Surface | null {
   return null;
 }
 
+let preloadPromise: Promise<void> = Promise.resolve();
+
+/** Resolves once the boot-time preload has finished (harness readiness). */
+export function combatSpritesReady(): Promise<void> {
+  return preloadPromise;
+}
+
 /** Start loading sprites ahead of their first draw. */
 export function preloadCombatSprites(names: string[]): Promise<void> {
+  preloadPromise = loadAll(names);
+  return preloadPromise;
+}
+
+function loadAll(names: string[]): Promise<void> {
   const loads: Promise<void>[] = [];
   for (const name of names) {
     if (cache.has(name) || pending.has(name)) continue;
@@ -84,3 +96,14 @@ export function preloadCombatSprites(names: string[]): Promise<void> {
 export function combatSpritesSettled(names: string[]): boolean {
   return names.every((name) => cache.has(name));
 }
+
+const TEAM_COLORS = ['blue', 'red', 'green', 'purple'];
+
+/** Every sprite the combat presentations draw, for preloading at boot. */
+export const COMBAT_UI_SPRITES: string[] = [
+  ...['health', 'combat_stats', 'combat_stats_guard', 'combat_gem', 'combat_name_left', 'combat_name_right',
+    'combat_main_left', 'combat_main_right', 'combat_main_crit_left', 'combat_main_crit_right', 'guard']
+    .flatMap((base) => TEAM_COLORS.map((color) => `${base}_${color}`)),
+  'health_bar', 'arrow_advantage', 'full_hp_blip', 'empty_hp_blip', 'overflow_hp_blip', 'overflowpurple_hp_blip',
+  ...['red', 'yellow', 'cyan', 'small_red', 'small_yellow', 'small_cyan'].map((color) => `damage_numbers_${color}`),
+];

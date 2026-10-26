@@ -18,29 +18,20 @@ test.describe('combat animation asset fallback', () => {
     });
     expect(started).toBe(true);
 
-    for (let index = 0; index < 60; index++) {
+    // Drive the real flow (red_cursor -> fade_in -> entrance) until the
+    // scene has settled into init_pause with both spritesheets loaded.
+    let resourced: { leftMain: boolean; rightMain: boolean } | null = null;
+    for (let index = 0; index < 120 && !resourced; index++) {
       await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
-      const ready = await page.evaluate(() => {
+      resourced = await page.evaluate(() => {
         const state = (window as any).__gameRef.state.getCurrentState() as any;
-        return state?.name === 'combat' && !!state.animCombat?.getRenderState?.().leftDraw?.mainFrame;
+        const combat = state?.name === 'combat' ? state.animCombat : null;
+        if (!combat || combat.state !== 'init_pause') return null;
+        const render = combat.getRenderState();
+        return { leftMain: !!render.leftDraw.mainFrame, rightMain: !!render.rightDraw.mainFrame };
       });
-      if (ready) break;
+      if (!resourced) await page.waitForTimeout(10);
     }
-
-    const resourced = await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      const combat = state?.animCombat;
-      if (!combat) return null;
-      combat.state = 'entrance';
-      combat.stateTimer = 700;
-      combat.leftAnim.opacity = 255;
-      combat.rightAnim.opacity = 255;
-      const render = combat.getRenderState();
-      return {
-        leftMain: !!render.leftDraw.mainFrame,
-        rightMain: !!render.rightDraw.mainFrame,
-      };
-    });
     expect(resourced).toEqual({ leftMain: true, rightMain: true });
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
 
@@ -55,10 +46,6 @@ test.describe('combat animation asset fallback', () => {
       if (!combat) return null;
       combat.leftAnim.frameImages.clear();
       combat.rightAnim.frameImages.clear();
-      combat.state = 'entrance';
-      combat.stateTimer = 700;
-      combat.leftAnim.opacity = 255;
-      combat.rightAnim.opacity = 255;
       const render = combat.getRenderState();
       return {
         leftMain: !!render.leftDraw.mainFrame,

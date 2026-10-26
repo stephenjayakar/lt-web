@@ -200,11 +200,9 @@ import type { MapSpriteFx } from '../../rendering/map-sprite';
 import { drawIcon16, drawItemIcon } from '../../ui/icons';
 import {
   AnimationCombat,
-  type AnimationCombatRenderState,
-  type AnimationCombatOwner,
   type TransformBattleAnimations,
 } from '../../combat/animation-combat';
-import { BattleAnimation as RealBattleAnimation, type BattleAnimDrawData } from '../../combat/battle-animation';
+import { BattleAnimation as RealBattleAnimation } from '../../combat/battle-animation';
 import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentation';
 import {
   clearUnitFx,
@@ -6204,7 +6202,7 @@ export function resolveCombatTargetGroup(
  * 4. 'levelup' - Level-up stat display
  * 5. 'cleanup' - Check win/loss, transition out
  */
-type CombatPhase = 'combat' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
+type CombatPhase = 'combat' | 'anim_exit' | 'death' | 'exp_init' | 'exp_wait' | 'exp0' | 'exp100' | 'exp_leave' | 'level_up' | 'level_screen' | 'stole' | 'rank_up' | 'got_item' | 'cleanup';
 
 export class CombatState extends State {
   private initialized: boolean = false;
@@ -6435,16 +6433,21 @@ export class CombatState extends State {
     // the music. A song with a -battle variant crossfades to it in place;
     // otherwise the battle song fades in over the phase music.
     this.battleMusic = null;
-    if (this.isAnimationCombat) {
-      const levelMusic = (game.currentLevel?.music ?? {}) as unknown as Record<string, string | null | undefined>;
-      const attackerBattle = attacker.tags.includes('Boss') ? levelMusic.boss_battle : null;
-      const defenderBattle = defender?.tags?.includes('Boss') ? levelMusic.boss_battle : null;
-      const teamBattle = levelMusic[`${attacker.team}_battle`];
-      const battleTrack = attackerBattle || defenderBattle || teamBattle;
-      if (battleTrack) {
-        const fromStart = !!game.db.getConstant?.('restart_battle_music', true);
-        this.battleMusic = game.audioManager.battleFadeIn(battleTrack, 400, fromStart);
-      }
+    if (this.isAnimationCombat && this.animCombat) {
+      // Python runs start_battle_music in the 'battle_music' state after
+      // init_pause, and finish() fades back when the fade_out ends.
+      this.animCombat.onStartBattleMusic = () => {
+        const levelMusic = (game.currentLevel?.music ?? {}) as unknown as Record<string, string | null | undefined>;
+        const attackerBattle = attacker.tags.includes('Boss') ? levelMusic.boss_battle : null;
+        const defenderBattle = defender?.tags?.includes('Boss') ? levelMusic.boss_battle : null;
+        const teamBattle = levelMusic[`${attacker.team}_battle`];
+        const battleTrack = attackerBattle || defenderBattle || teamBattle;
+        if (battleTrack) {
+          const fromStart = !!game.db.getConstant?.('restart_battle_music', true);
+          this.battleMusic = game.audioManager.battleFadeIn(battleTrack, 400, fromStart);
+        }
+      };
+      this.animCombat.onFinish = () => this.fadeBackBattleMusic();
     }
 
     const combatStartTriggered = game.eventManager?.trigger(
@@ -6618,8 +6621,10 @@ export class CombatState extends State {
         this.rightPlatformImg = right;
       });
 
-      // Load battle background panorama based on attacker's terrain
-      const bgNid = this.getUnitBackgroundNid(attacker, db);
+      // Battle background panorama (attacker's terrain) only with the
+      // battle_bg setting on; Python's default is off, so the scene shows
+      // over the dimmed map.
+      const bgNid = getSetting('battle_bg') ? this.getUnitBackgroundNid(attacker, db) : null;
       if (bgNid) {
         const resources = getGame().resources;
         resources.loadPanorama(bgNid).then((img: HTMLImageElement) => {
@@ -6769,7 +6774,7 @@ export class CombatState extends State {
     // BACK (Escape/X) instantly skips combat (both animation and map combat).
     // START (S) toggles 4x speed for animation combat.
     if (game.input.justPressed('BACK')) {
-      if (this.phase === 'combat') {
+      if (this.phase === 'combat' || this.phase === 'anim_exit') {
         // Skip the combat animation entirely — results will be applied
         // by the normal 'done' handling in update()
         const activeCombat = this.isAnimationCombat ? this.animCombat : this.combat;
@@ -6806,7 +6811,11 @@ export class CombatState extends State {
       case 'combat': {
         // Pass real delta to combat (skip mode is handled inside AnimationCombat)
         const done = activeCombat.update(realDelta);
-        if (done) {
+        // Python AnimationCombat applies clean_up1 (exp, wexp, items) while
+        // the scene is still shown: results come in at exp_wait, the exp bar
+        // draws over the battle, and the scene then slides out (anim_exit).
+        const animReadyForExp = this.isAnimationCombat && this.animCombat?.state === 'exp_wait';
+        if ((done || animReadyForExp) && !this.results) {
           const initiatedPartner = activeCombat.attacker.strikePartner;
           queueAfterInitiatedCombatEvents(
             game,
@@ -6925,6 +6934,14 @@ export class CombatState extends State {
             this.startRankUpOrCleanup();
           }
         }
+        break;
+      }
+
+      case 'anim_exit': {
+        // revert_transform -> fade_out_wait -> name_tags_out -> all_out ->
+        // fade_out, after which the map shows for the dying fade.
+        const finished = this.animCombat?.update(realDelta) ?? true;
+        if (finished || this.animCombat?.state === 'done') this.startRankUpOrCleanup();
         break;
       }
 
@@ -7256,14 +7273,7 @@ export class CombatState extends State {
         // Global_Loss (defeat text + currency banking).
 
         // Python AnimationCombat.finish: fade back if and only if it was faded in
-        if (this.battleMusic) {
-          const fromStart = !!game.db.getConstant?.('restart_battle_music', true);
-          const pending = this.battleMusic;
-          this.battleMusic = null;
-          void pending.then((song) => {
-            if (song) void game.audioManager.battleFadeBack(song, fromStart);
-          });
-        }
+        this.fadeBackBattleMusic();
 
         // Restore cursor and HUD visibility (hidden at combat start)
         game.cursor.visible = true;
@@ -7417,6 +7427,18 @@ export class CombatState extends State {
     );
   }
 
+  /** AnimationCombat.finish: fade back if and only if the music faded in. */
+  private fadeBackBattleMusic(): void {
+    if (!this.battleMusic) return;
+    const game = getGame();
+    const fromStart = !!game.db.getConstant?.('restart_battle_music', true);
+    const pending = this.battleMusic;
+    this.battleMusic = null;
+    void pending.then((song) => {
+      if (song) void game.audioManager.battleFadeBack(song, fromStart);
+    });
+  }
+
   /** Units awaiting DyingState (Python is_dying) after this combat. */
   private combatPresentationUnits(): UnitObject[] {
     const active = this.getActiveCombat();
@@ -7437,6 +7459,12 @@ export class CombatState extends State {
   }
 
   private startRankUpOrCleanup(): void {
+    if (this.isAnimationCombat && this.animCombat && this.animCombat.state !== 'done') {
+      this.animCombat.expDone = true;
+      this.phase = 'anim_exit';
+      this.phaseTimer = 0;
+      return;
+    }
     if (this.dyingUnits.length > 0) {
       this.phase = 'death';
       this.phaseTimer = 0;
@@ -7547,530 +7575,34 @@ export class CombatState extends State {
   // Animation Combat Renderer — GBA-style full-screen battle scene
   // ================================================================
 
-  /** Render the GBA-style animation combat scene. */
+  /**
+   * Render the battle scene. Python CombatState draws the map (the lower
+   * state) and the 75% fuzz outside the viewbox; AnimationCombat.draw adds
+   * the scene. Once its fade_out ends nothing is drawn, so the map shows
+   * through for the dying fade and banners.
+   */
   private drawAnimationCombat(surf: Surface): Surface {
-    // Pass camera offset so the viewbox iris can compute tile-relative positions
     const game = getGame();
     const cameraOffset = game.camera.getOffset();
-    this.animCombat!.setCameraOffset(cameraOffset[0], cameraOffset[1]);
-
-    const rs = this.animCombat!.getRenderState();
-
-    // Screen shake (used for background/platforms)
-    const shakeX = rs.screenShake[0];
-    const shakeY = rs.screenShake[1];
-
-    // Python-faithful sprite shake: sprites get negated total_shake_x (so they
-    // move opposite to platforms, creating a ground-rumbling visual effect).
-    // Python: shake = (-total_shake_x, total_shake_y)
-    const spriteShakeX = -rs.totalShakeX;
-    const spriteShakeY = rs.totalShakeY;
-
-    // --- Viewbox iris during fade_in/fade_out ---
-    // During transitions, the map is visible and we darken around a shrinking/growing iris.
-    if (rs.viewbox) {
-      const vb = rs.viewbox;
-      // Darken everything outside the viewbox iris
-      // Top bar
-      if (vb.y > 0) {
-        surf.fillRect(0, 0, WINWIDTH, Math.max(0, vb.y), 'rgba(0,0,0,0.75)');
-      }
-      // Bottom bar
-      const botY = vb.y + vb.height;
-      if (botY < WINHEIGHT) {
-        surf.fillRect(0, botY, WINWIDTH, WINHEIGHT - botY, 'rgba(0,0,0,0.75)');
-      }
-      // Left bar (between top and bottom bars)
-      if (vb.x > 0) {
-        surf.fillRect(0, Math.max(0, vb.y), vb.x, Math.max(0, vb.height), 'rgba(0,0,0,0.75)');
-      }
-      // Right bar
-      const rightX = vb.x + vb.width;
-      if (rightX < WINWIDTH) {
-        surf.fillRect(rightX, Math.max(0, vb.y), WINWIDTH - rightX, Math.max(0, vb.height), 'rgba(0,0,0,0.75)');
-      }
-
-      // If still fading in, don't draw the battle scene yet
-      if (rs.state === 'fade_in') {
-        return surf;
-      }
-    }
-
-    // --- Full battle scene background ---
-    // Once past fade_in, fill the screen with the battle background
-    if (rs.state !== 'fade_in') {
-      // Dark fallback fill (in case panorama hasn't loaded or is missing)
-      surf.fillRect(shakeX, shakeY, WINWIDTH, WINHEIGHT, 'rgb(16,20,32)');
-      // Draw the panorama background image if available
-      if (this.battleBackgroundImg) {
-        const bgW = this.battleBackgroundImg.naturalWidth || WINWIDTH;
-        const bgH = this.battleBackgroundImg.naturalHeight || WINHEIGHT;
-        surf.drawImageFull(this.battleBackgroundImg, shakeX, shakeY, bgW, bgH);
-      }
-    }
-
-    // --- Platforms ---
-    // GBA-style: left platform on the left, right platform on the right.
-    // Melee platforms: 87x40, Ranged: 100x40. Positioned at WINHEIGHT - 72 = 88.
-    const isMelee = this.animCombat!.combatRange <= 1;
-    const PLAT_W = isMelee ? 87 : 100;
-    const PLAT_H = 40;
-    const SCENE_FLOOR_Y = WINHEIGHT - 72; // 88
-
-    // Melee: platforms touch at center. Ranged: gap with pan offset.
-    // Python formula (mock_combat.py:406-417):
-    //   total_shake_x = shake_offset[0] + platform_shake_offset[0]
-    //   total_shake_y = shake_offset[1] + platform_shake_offset[1]
-    //   if at_range:
-    //     left = W/2 - width - 11 - pan_max + total_shake_x + pan_offset
-    //     right = W/2 + 11 + pan_max + total_shake_x + pan_offset
-    //   else:
-    //     left = W/2 - width + total_shake_x
-    //     right = W/2 + total_shake_x
-    let leftPlatX: number;
-    let rightPlatX: number;
-    const panMax = this.animCombat!.panConfig?.max ?? 0;
-    const platShakeX = rs.totalShakeX;
-    const platShakeY = rs.totalShakeY;
-    if (isMelee) {
-      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W + platShakeX;
-      rightPlatX = Math.floor(WINWIDTH / 2) + platShakeX;
-    } else {
-      leftPlatX = Math.floor(WINWIDTH / 2) - PLAT_W - 11 - panMax + platShakeX + rs.panOffset;
-      rightPlatX = Math.floor(WINWIDTH / 2) + 11 + panMax + platShakeX + rs.panOffset;
-    }
-    // Python: top = platform_top + (platform_trans - platform_offset * platform_trans) + total_shake_y
-    const leftPlatY = SCENE_FLOOR_Y + rs.leftPlatformY + platShakeY;
-    const rightPlatY = SCENE_FLOOR_Y + rs.rightPlatformY + platShakeY;
-
-    // Draw platforms (real images or fallback rectangles)
-    if (this.leftPlatformImg) {
-      const pw = this.leftPlatformImg.naturalWidth || PLAT_W;
-      const ph = this.leftPlatformImg.naturalHeight || PLAT_H;
-      surf.drawImageFull(this.leftPlatformImg, leftPlatX, leftPlatY, pw, ph);
-    } else {
-      surf.fillRect(leftPlatX, leftPlatY, PLAT_W, PLAT_H, 'rgb(60,80,50)');
-      surf.fillRect(leftPlatX, leftPlatY, PLAT_W, 2, 'rgb(90,120,70)');
-    }
-    if (this.rightPlatformImg) {
-      // Right platform is drawn horizontally flipped
-      const pw = this.rightPlatformImg.naturalWidth || PLAT_W;
-      const ph = this.rightPlatformImg.naturalHeight || PLAT_H;
-      surf.drawImageFull(this.rightPlatformImg, rightPlatX, rightPlatY, pw, ph, 1, true);
-    } else {
-      surf.fillRect(rightPlatX, rightPlatY, PLAT_W, PLAT_H, 'rgb(60,80,50)');
-      surf.fillRect(rightPlatX, rightPlatY, PLAT_W, 2, 'rgb(90,120,70)');
-    }
-
-    // --- Battle sprites ---
-    // Draw under-frames, then main frames, then over-frames.
-    // Each frame has an offset in 240x160 screen coords + recoil.
-    const leftDraw = rs.leftDraw;
-    const rightDraw = rs.rightDraw;
-
-    // Helper to draw a single BattleAnimDrawData
-    const drawBattleSprite = (
-      draw: BattleAnimDrawData,
-      fallbackUnit: UnitObject | null,
-      platformX: number,
-      platformY: number,
-      rangeOffset: number,
-    ) => {
-      const alpha = Math.max(0, Math.min(1, draw.opacity / 255));
-      if (alpha <= 0) return;
-
-      // Determine canvas composite mode
-      const prevComposite = surf.ctx.globalCompositeOperation;
-      if (draw.blendMode === 'add') {
-        surf.ctx.globalCompositeOperation = 'lighter';
-      }
-
-      // Left-side sprites (right=false) need horizontal flip since
-      // animation frames are authored facing left (for right-side position).
-      const flipSprite = !draw.right;
-
-      // Python-faithful sprite X offset: get_image applies shake + range_offset
-      // + pan_offset into a `left` accumulator, then adds shake[0] again for
-      // right-side sprites. We replicate this exactly.
-      //
-      // Python get_image (battle_animation.py:830-846):
-      //   left = 0
-      //   if not static: left += shake[0] + range_offset
-      //   if at_range and not static: left += pan_offset
-      //   if right: offset = (offset[0] + shake[0] + left, offset[1] + shake[1])
-      //   else:     offset = (WINWIDTH - offset[0] - width + left, offset[1] + shake[1])
-      //
-      // where shake = (-total_shake_x, total_shake_y)
-      let spriteLeft = spriteShakeX + rangeOffset;
-      if (rs.isAtRange) {
-        spriteLeft += rs.panOffset;
-      }
-
-      // Draw under-frame first (behind platform)
-      this.drawAnimFrame(surf, draw.underFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
-
-      // Draw main frame
-      if (draw.mainFrame) {
-        this.drawAnimFrame(surf, draw.mainFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
-      } else if (fallbackUnit) {
-        // Missing battle animation: use the unit's real, team-paletted map
-        // sprite on the battle platform. Only projects missing both resources
-        // receive the neutral silhouette.
-        const mapFrame = (fallbackUnit.sprite as any)?.getCurrentFrame?.();
-        if (mapFrame instanceof Surface) {
-          const previousAlpha = mapFrame.getAlpha();
-          mapFrame.setAlpha(alpha);
-          surf.blit(
-            mapFrame,
-            platformX + Math.floor((PLAT_W - mapFrame.width) / 2),
-            platformY - mapFrame.height + 8,
-          );
-          mapFrame.setAlpha(previousAlpha);
-        } else {
-          const centerX = platformX + Math.floor(PLAT_W / 2);
-          const baseY = platformY + 5;
-          surf.fillRect(centerX - 5, baseY - 31, 10, 10, `rgba(174,183,199,${alpha.toFixed(2)})`);
-          surf.fillRect(centerX - 10, baseY - 20, 20, 22, `rgba(126,139,162,${alpha.toFixed(2)})`);
-          surf.fillRect(centerX - 12, baseY, 24, 2, `rgba(231,189,105,${alpha.toFixed(2)})`);
-        }
-      }
-
-      // Draw over-frame on top
-      this.drawAnimFrame(surf, draw.overFrame, alpha, spriteShakeX, spriteShakeY, draw.recoilX, flipSprite, spriteLeft, draw.right);
-
-      // Death flash: white overlay
-      if (draw.deathFlash && draw.mainFrame) {
-        const f = draw.mainFrame;
-        surf.fillRect(
-          f.offset[0] + spriteShakeX + draw.recoilX,
-          f.offset[1] + spriteShakeY,
-          (f.image as HTMLCanvasElement).width ?? 32,
-          (f.image as HTMLCanvasElement).height ?? 40,
-          'rgba(255,255,255,0.9)',
-        );
-      }
-
-      // Tints
-      for (const tint of draw.tints) {
-        if (tint.alpha > 0 && draw.mainFrame) {
-          const f = draw.mainFrame;
-          const [tr, tg, tb] = tint.color;
-          surf.fillRect(
-            f.offset[0] + spriteShakeX + draw.recoilX,
-            f.offset[1] + spriteShakeY,
-            (f.image as HTMLCanvasElement).width ?? 32,
-            (f.image as HTMLCanvasElement).height ?? 40,
-            `rgba(${tr},${tg},${tb},${(tint.alpha * 0.5).toFixed(2)})`,
-          );
-        }
-      }
-
-      // Draw child effects (under first, then over)
-      for (const ue of draw.underEffects) {
-        drawBattleSprite(ue, null, platformX, platformY, rangeOffset);
-      }
-      for (const e of draw.effects) {
-        drawBattleSprite(e, null, platformX, platformY, rangeOffset);
-      }
-
-      // Restore composite mode
-      surf.ctx.globalCompositeOperation = prevComposite;
-    };
-
-    // Draw left combatant (Python: left_range_offset = -24 - pan_max for ranged, 0 for melee)
-    const leftUnit = this.animCombat!.leftIsAttacker
-      ? this.animCombat!.attacker
-      : this.animCombat!.defender;
-    const rightUnit = this.animCombat!.leftIsAttacker
-      ? this.animCombat!.defender
-      : this.animCombat!.attacker;
-    drawBattleSprite(leftDraw, leftUnit, leftPlatX, leftPlatY, rs.leftRangeOffset);
-    // Draw right combatant (Python: right_range_offset = 24 + pan_max for ranged, 0 for melee)
-    drawBattleSprite(rightDraw, rightUnit, rightPlatX, rightPlatY, rs.rightRangeOffset);
-
-    // --- Name tags ---
-    // --- Name tags (top of screen, matching Python layout) ---
-    // Python: name tags slide in from y=-60, visible at y=0.
-    // Left name tag at x=-3, right name tag right-aligned.
-    // Python sprite is ~66x16 pixels.
-    const nameSlide = rs.nameTagProgress;
-    if (nameSlide > 0) {
-      const NAME_TAG_W = 66;
-      const NAME_TAG_H = 16;
-      // Slide in from above: Python uses top = -60 + name_offset * 60
-      const nameY = -60 + nameSlide * 60 + shakeY;
-      const leftNameX = -3 + shakeX;
-      const rightNameX = WINWIDTH + 3 - NAME_TAG_W + shakeX;
-
-      // Left name tag background (blue tint for player/left)
-      surf.fillRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(32,32,64,0.9)');
-      surf.drawRect(leftNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(100,100,160,0.7)');
-      // Center name text within tag (Python: HAlignment.CENTER at (30,8)/(36,8))
-      // Use approximate char width for monospace font centering
-      const charW = 5; // ~5px per char for 8px monospace
-      const leftNameW = rs.leftHp.name.length * charW;
-      surf.drawText(rs.leftHp.name, leftNameX + Math.floor((NAME_TAG_W - leftNameW) / 2), nameY + 4, 'white', '8px monospace');
-
-      // Right name tag background (red tint for enemy/right)
-      surf.fillRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(64,32,32,0.9)');
-      surf.drawRect(rightNameX, nameY, NAME_TAG_W, NAME_TAG_H, 'rgba(160,100,100,0.7)');
-      const rightNameW = rs.rightHp.name.length * charW;
-      surf.drawText(rs.rightHp.name, rightNameX + Math.floor((NAME_TAG_W - rightNameW) / 2), nameY + 4, 'white', '8px monospace');
-    }
-
-    // --- HP bars (bottom of screen, matching Python layout) ---
-    // Python: bars slide up from 52px below, visible at y=WINHEIGHT-barH.
-    // Left bar at x=-3, right bar at x=WINWIDTH/2.
-    // Python bar is 40px tall (no crit) or 48px (with crit), positioned at WINHEIGHT - barH.
-    const hpSlide = rs.hpBarProgress;
-    if (hpSlide > 0) {
-      const HP_BAR_W = WINWIDTH / 2 + 3; // Each bar covers half the screen
-      const HP_BAR_H = 40; // Matching Python's combat_main sprite height (no crit)
-      // Bottom anchor: slide up from below screen
-      const hpY = WINHEIGHT + (1 - hpSlide) * 52 - HP_BAR_H + shakeY;
-      const leftHpX = -3 + shakeX;
-      const rightHpX = WINWIDTH / 2 + shakeX;
-
-      // Left HP bar
-      this.drawBattleHpBar(surf, leftHpX, hpY, HP_BAR_W, HP_BAR_H, rs.leftHp);
-      // Right HP bar
-      this.drawBattleHpBar(surf, rightHpX, hpY, HP_BAR_W, HP_BAR_H, rs.rightHp);
-    }
+    const combat = this.animCombat!;
+    combat.setCameraOffset(cameraOffset[0], cameraOffset[1]);
+    combat.leftPlatform = this.leftPlatformImg;
+    combat.rightPlatform = this.rightPlatformImg;
+    combat.battleBackground = this.battleBackgroundImg;
+    combat.draw(surf);
 
     // Full animation combat presents one skill at a time before the strike.
-    if (rs.procCue) {
-      const isRight = !this.animCombat!.leftIsAttacker
-        ? rs.procCue.unit === this.animCombat!.attacker
-        : rs.procCue.unit === this.animCombat!.defender;
+    const rs = combat.getRenderState();
+    if (rs.procCue && combat.sceneVisible) {
+      const isRight = !combat.leftIsAttacker
+        ? rs.procCue.unit === combat.attacker
+        : rs.procCue.unit === combat.defender;
       this.drawProcCue(surf, rs.procCue, isRight ? WINWIDTH - 4 : 4, 32, isRight);
-    }
-
-    // --- Spark effects ---
-    for (const spark of rs.sparks) {
-      const t = spark.elapsed / spark.duration;
-
-      // Position spark at the defender's platform center
-      const sparkBaseX = spark.isLeft
-        ? leftPlatX + PLAT_W / 2
-        : rightPlatX + PLAT_W / 2;
-      const sparkBaseY = spark.isLeft ? leftPlatY - 16 : rightPlatY - 16;
-
-      if (spark.type === 'hit') {
-        // Burst of radiating particles
-        const numParticles = 8;
-        const alpha = Math.max(0, 1 - t * 1.5);
-        for (let i = 0; i < numParticles; i++) {
-          const angle = (i / numParticles) * Math.PI * 2;
-          const dist = t * 20;
-          const px = sparkBaseX + Math.cos(angle) * dist;
-          const py = sparkBaseY + Math.sin(angle) * dist;
-          const size = Math.max(1, 3 * (1 - t));
-          surf.fillRect(px - size / 2, py - size / 2, size, size, `rgba(255,255,200,${alpha.toFixed(2)})`);
-        }
-      } else if (spark.type === 'crit') {
-        // Dramatic crit flash + large particle burst
-        const alpha = Math.max(0, 1 - t);
-        if (t < 0.15) {
-          // Initial flash
-          const flashAlpha = (1 - t / 0.15) * 0.6;
-          surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, `rgba(255,255,255,${flashAlpha.toFixed(2)})`);
-        }
-        const numParticles = 16;
-        for (let i = 0; i < numParticles; i++) {
-          const angle = (i / numParticles) * Math.PI * 2 + t * 2;
-          const dist = t * 35;
-          const px = sparkBaseX + Math.cos(angle) * dist;
-          const py = sparkBaseY + Math.sin(angle) * dist;
-          const size = Math.max(1, 4 * (1 - t));
-          surf.fillRect(px - size / 2, py - size / 2, size, size, `rgba(255,255,128,${alpha.toFixed(2)})`);
-        }
-      } else if (spark.type === 'noDamage') {
-        // Small blue "ping"
-        const alpha = Math.max(0, 1 - t * 2);
-        const radius = t * 10 + 2;
-        // Draw as a small ring approximation
-        for (let i = 0; i < 8; i++) {
-          const angle = (i / 8) * Math.PI * 2;
-          const px = sparkBaseX + Math.cos(angle) * radius;
-          const py = sparkBaseY + Math.sin(angle) * radius;
-          surf.fillRect(px, py, 2, 2, `rgba(100,160,255,${alpha.toFixed(2)})`);
-        }
-      }
-      // 'miss' is handled by damage popups already
-    }
-
-    // --- Damage popups (in battle scene space) with bounce physics ---
-    for (const popup of rs.damagePopups) {
-      const t = popup.elapsed; // time in ms
-
-      // Position popups centered above the platform the hit landed on
-      const isLeftSide = popup.x < WINWIDTH / (2 * TILEWIDTH);
-      const popupBaseX = isLeftSide ? leftPlatX + PLAT_W / 2 : rightPlatX + PLAT_W / 2;
-      const popupBaseY = isLeftSide ? leftPlatY - 24 : rightPlatY - 24;
-
-      // Bounce physics: damped sine wave (3-phase animation)
-      let floatY = 0;
-      let alpha = 1;
-
-      if (t < 400) {
-        // Phase 0: Bounce (damped sine wave)
-        floatY = -10 * Math.exp(-t / 250) * Math.sin(t / 25);
-        alpha = Math.min(1, t / 100); // Fade in over first 100ms
-      } else if (t < 1000) {
-        // Phase 1: Pause (sit still)
-        floatY = 0;
-        alpha = 1;
-      } else {
-        // Phase 2: Fade out (drift upward)
-        const fadeT = t - 1000;
-        floatY = -fadeT / 15;
-        alpha = Math.max(0, 1 - fadeT / 200);
-      }
-
-      if (popup.value === 0) {
-        surf.drawText(
-          'Miss', popupBaseX - 8, popupBaseY + floatY,
-          `rgba(200,200,255,${alpha.toFixed(2)})`, '7px monospace',
-        );
-      } else {
-        const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
-        const color = popup.isHeal
-          ? `rgba(64,255,128,${alpha.toFixed(2)})`
-          : popup.isCrit
-          ? `rgba(255,255,64,${alpha.toFixed(2)})`
-          : `rgba(255,64,64,${alpha.toFixed(2)})`;
-        const font = popup.isCrit ? '9px monospace' : '8px monospace';
-        surf.drawText(text, popupBaseX - 4, popupBaseY + floatY, color, font);
-      }
-    }
-
-    // --- Screen blend overlay ---
-    if (rs.screenBlend) {
-      const [r, g, b] = rs.screenBlend.color;
-      surf.fillRect(
-        0, 0, WINWIDTH, WINHEIGHT,
-        `rgba(${r},${g},${b},${rs.screenBlend.alpha.toFixed(2)})`,
-      );
-    }
-
-    // --- Fade-out iris ---
-    if (rs.state === 'fade_out' && rs.viewbox) {
-      const vb = rs.viewbox;
-      // Draw black bars closing in
-      if (vb.y > 0) surf.fillRect(0, 0, WINWIDTH, vb.y, 'rgb(0,0,0)');
-      const botY = vb.y + vb.height;
-      if (botY < WINHEIGHT) surf.fillRect(0, botY, WINWIDTH, WINHEIGHT - botY, 'rgb(0,0,0)');
-      if (vb.x > 0) surf.fillRect(0, vb.y, vb.x, vb.height, 'rgb(0,0,0)');
-      const rightX = vb.x + vb.width;
-      if (rightX < WINWIDTH) surf.fillRect(rightX, vb.y, WINWIDTH - rightX, vb.height, 'rgb(0,0,0)');
     }
 
     // EXP / Level-up overlays (shared)
     this.drawExpAndLevelUp(surf);
-
     return surf;
-  }
-
-  /** Draw a battle-scene HP bar (used in animation combat).
-   *  Compact layout matching GBA Python reference (40px height):
-   *  Row 0: Weapon name (centered, y+2)
-   *  Row 1-2: HIT / DMG labels + values (y+12, y+19)
-   *  Row 3: HP number (left) + HP bar (right, y+28) */
-  private drawBattleHpBar(
-    surf: Surface,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    hp: { current: number; max: number; name: string; weapon: string; hit: number | null; damage: number | null; crit: number | null },
-  ): void {
-    // Background
-    surf.fillRect(x, y, width, height, 'rgba(16,16,40,0.9)');
-    surf.drawRect(x, y, width, height, 'rgba(100,100,160,0.8)');
-
-    // Inset the content area to avoid drawing at the panel edges
-    const pad = 3;
-    const innerX = x + pad;
-    const innerW = width - pad * 2;
-    const valueRightX = x + width - pad;
-
-    // --- Row 0: Weapon name (top, centered) ---
-    const weaponFont = '7px monospace';
-    const weaponCharW = 4; // approximate char width for 7px monospace
-    const weaponW = hp.weapon.length * weaponCharW;
-    surf.drawText(hp.weapon, innerX + Math.floor((innerW - weaponW) / 2), y + 2, 'rgba(220,220,255,1)', weaponFont);
-
-    // --- Rows 1-2: Combat stats (HIT / DMG) ---
-    const statFont = '6px monospace';
-    const statLabelColor = 'rgba(140,140,180,1)';
-    const statValueColor = 'rgba(255,255,255,1)';
-    let statY = y + 11;
-
-    // HIT
-    surf.drawText('HIT', innerX, statY, statLabelColor, statFont);
-    const hitStr = hp.hit !== null ? `${hp.hit}` : '--';
-    surf.drawTextRight(hitStr, valueRightX, statY, statValueColor, statFont);
-    statY += 7;
-
-    // DMG
-    surf.drawText('DMG', innerX, statY, statLabelColor, statFont);
-    const dmgStr = hp.damage !== null ? `${hp.damage}` : '--';
-    surf.drawTextRight(dmgStr, valueRightX, statY, statValueColor, statFont);
-
-    // --- Row 3: HP number (left) + HP bar (right) ---
-    const barX = innerX + 16;
-    const barY = y + height - 9;
-    const barW = innerW - 16;
-    const barH = 5; // Matching Python's blip height
-    const ratio = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0;
-
-    // HP number to the left of the bar
-    surf.drawTextRight(`${hp.current}`, barX - 2, barY - 1, 'white', '6px monospace');
-
-    surf.fillRect(barX, barY, barW, barH, 'rgba(32,32,32,1)');
-    let color: string;
-    if (ratio > 0.5) color = 'rgba(64,200,64,1)';
-    else if (ratio > 0.25) color = 'rgba(220,200,32,1)';
-    else color = 'rgba(220,48,48,1)';
-    const filled = Math.round(barW * ratio);
-    if (filled > 0) surf.fillRect(barX, barY, filled, barH, color);
-    surf.drawRect(barX, barY, barW, barH, 'rgba(120,120,140,0.8)');
-  }
-
-  /** Draw damage popups for map combat (tile-space positions). */
-  private drawDamagePopupsMap(
-    surf: Surface,
-    popups: Array<{
-      x: number;
-      y: number;
-      value: number;
-      isCrit: boolean;
-      isHeal?: boolean;
-      elapsed: number;
-      duration: number;
-    }>,
-    cameraOffset: [number, number],
-  ): void {
-    for (const popup of popups) {
-      const t = popup.elapsed / popup.duration;
-      const floatY = -12 * t;
-      const alpha = Math.max(0, 1 - t * 1.2);
-      const px = popup.x * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
-      const py = popup.y * TILEHEIGHT - cameraOffset[1] + floatY - 4;
-
-      if (popup.value === 0) {
-        surf.drawText('Miss', px - 8, py, `rgba(200,200,255,${alpha.toFixed(2)})`, '7px monospace');
-      } else {
-        const text = popup.isCrit ? `${popup.value}!` : `${popup.value}`;
-        const color = popup.isHeal
-          ? `rgba(64,255,128,${alpha.toFixed(2)})`
-          : popup.isCrit
-          ? `rgba(255,255,64,${alpha.toFixed(2)})`
-          : `rgba(255,255,255,${alpha.toFixed(2)})`;
-        const font = popup.isCrit ? '9px monospace' : '8px monospace';
-        surf.drawText(text, px - 4, py, color, font);
-      }
-    }
   }
 
   /** Draw EXP bar and level-up stats (shared between map and animation combat). */
@@ -8099,108 +7631,6 @@ export class CombatState extends State {
     if (this.phase === 'stole' && this.stoleBanner) {
       this.stoleBanner.draw(surf);
     }
-  }
-
-  /**
-   * Draw a single animation frame (mainFrame/underFrame/overFrame) from
-   * BattleAnimDrawData onto the battle scene surface.
-   *
-   * Frame offsets are in 240x160 screen space. The image is an
-   * HTMLCanvasElement (palette-converted frame) or ImageBitmap.
-   *
-   * Python-faithful positioning (battle_animation.py:830-846):
-   *   For right-side: final_x = offset[0] + shake[0] + left
-   *   For left-side:  final_x = WINWIDTH - offset[0] - width + left
-   *   where left = shake[0] + range_offset + pan_offset (the `spriteLeft` param)
-   *
-   * Note: resolveFrame already handles the left-side mirroring
-   * (WINWIDTH - ox - frameWidth), so for left-side sprites the offset is
-   * already mirrored. We just need to add spriteLeft (which includes
-   * shake + range + pan) and for right-side sprites, also add shake[0].
-   */
-  private drawAnimFrame(
-    surf: Surface,
-    frame: { image: ImageBitmap | HTMLCanvasElement; offset: [number, number] } | null,
-    alpha: number,
-    spriteShakeX: number,
-    spriteShakeY: number,
-    recoilX: number,
-    flipH: boolean = false,
-    spriteLeft: number = 0,
-    isRight: boolean = true,
-  ): void {
-    if (!frame) return;
-
-    const img = frame.image;
-    // Python: right side gets shake[0] + left; left side gets just left
-    // (because left-side mirroring in resolveFrame already handles the base offset)
-    const ox = isRight
-      ? frame.offset[0] + spriteShakeX + spriteLeft + recoilX
-      : frame.offset[0] + spriteLeft + recoilX;
-    const oy = frame.offset[1] + spriteShakeY;
-
-    const srcW = (img as HTMLCanvasElement).width ?? 32;
-    const srcH = (img as HTMLCanvasElement).height ?? 40;
-    surf.drawImageFull(img, ox, oy, srcW, srcH, alpha, flipH);
-  }
-
-  /**
-   * Draw a map_hit_add_blend / map_hit_sub_blend color tint over a unit's
-   * tile. Additive tints use canvas 'lighter' composite to brighten;
-   * subtractive tints are approximated with a translucent dark overlay
-   * (canvas 2D has no true subtractive/darken-only blend primitive).
-   */
-  private drawUnitTint(
-    surf: Surface,
-    anim: { tintColor: [number, number, number] | null; tintMode: 'add' | 'sub' | null; tintAlpha: number },
-    position: [number, number] | null,
-    cameraOffset: [number, number],
-  ): void {
-    if (!anim.tintColor || !anim.tintMode || anim.tintAlpha <= 0 || !position) return;
-    const [r, g, b] = anim.tintColor;
-    const fx = position[0] * TILEWIDTH - cameraOffset[0];
-    const fy = position[1] * TILEHEIGHT - cameraOffset[1];
-    const alpha = anim.tintAlpha.toFixed(2);
-    const ctx = surf.ctx;
-    const prevOp = ctx.globalCompositeOperation;
-    if (anim.tintMode === 'add') {
-      ctx.globalCompositeOperation = 'lighter';
-      surf.fillRect(fx, fy, TILEWIDTH, TILEHEIGHT, `rgba(${r},${g},${b},${alpha})`);
-    } else {
-      // Darken toward the subtractive color.
-      surf.fillRect(fx, fy, TILEWIDTH, TILEHEIGHT, `rgba(${255 - r},${255 - g},${255 - b},${alpha})`);
-    }
-    ctx.globalCompositeOperation = prevOp;
-  }
-
-  private drawHpBar(
-    surf: Surface,
-    x: number,
-    y: number,
-    current: number,
-    max: number,
-  ): void {
-    const width = TILEWIDTH;
-    const height = 4;
-    const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
-
-    // Background
-    surf.fillRect(x, y, width, height, 'rgba(32,32,32,0.8)');
-    // Filled portion
-    let color: string;
-    if (ratio > 0.5) {
-      color = 'rgba(64,200,64,1)';
-    } else if (ratio > 0.25) {
-      color = 'rgba(220,200,32,1)';
-    } else {
-      color = 'rgba(220,48,48,1)';
-    }
-    const filled = Math.round(width * ratio);
-    if (filled > 0) {
-      surf.fillRect(x, y, filled, height, color);
-    }
-    // Border
-    surf.drawRect(x, y, width, height, 'rgba(120,120,120,0.8)');
   }
 
   private drawProcCue(

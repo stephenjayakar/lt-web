@@ -36,6 +36,7 @@ import { setEventChoiceAudio } from './ui/event-choice';
 import { initFonts } from './rendering/bmp-font';
 import { initSpriteLoader } from './combat/sprite-loader';
 import { loadExpDisplaySprites } from './ui/exp-display';
+import { COMBAT_UI_SPRITES, preloadCombatSprites, setCombatSpriteResources } from './combat/combat-sprites';
 import {
   setGameRef,
   TitleState,
@@ -652,6 +653,9 @@ async function main(): Promise<void> {
   initFonts(baseUrl);
   // Load EXP display sprites (async, falls back to canvas primitives until ready)
   loadExpDisplaySprites();
+  // Combat UI sprites (map combat windows, battle-scene bars, damage numbers)
+  setCombatSpriteResources(resources);
+  void preloadCombatSprites(COMBAT_UI_SPRITES);
 
   // --- Audio ---
   const audioManager = new AudioManager(baseUrl);

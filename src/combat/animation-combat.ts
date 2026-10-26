@@ -2,12 +2,19 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { CombatStrike } from './combat-solver';
 import { CombatPhaseSolver, type RngMode } from './combat-solver';
-import type { CombatResults, DamagePopup } from './map-combat';
-import { BattleAnimation, type BattleAnimDrawData } from './battle-animation';
+import type { CombatResults } from './map-combat';
+import {
+  BattleAnimation,
+  drawCanvas,
+  fillScreen,
+  setBattleAnimSpeed,
+  type BattleAnimDrawData,
+  type BattleAnimOwner,
+} from './battle-animation';
 import type { CombatEffectData, PaletteData } from './battle-anim-types';
 import { loadEffectSpritesheet } from '../data/loaders/combat-anim-loader';
 import { convertSpritesheetToFrames } from './sprite-loader';
-import { computeHit, computeDamage, computeCrit } from './combat-calcs';
+import { computeHit, computeDamage, computeCrit, canCounterattack, isMagic, weaponTriangle } from './combat-calcs';
 import {
   hasDamageOnMiss,
   eclipseDamage,
@@ -20,7 +27,7 @@ import {
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
-import { applyPermanentDamage } from './skill-system';
+import { applyPermanentDamage, checkEnemy } from './skill-system';
 import {
   CombatLifecycleRecord,
   type CombatProcMark,
@@ -35,141 +42,134 @@ import {
 } from './proc-presentation';
 import { levelUpUnit } from '../engine/leveling';
 import { getCombatRandom, type RandomGameState } from '../engine/static-random';
-
+import { Surface } from '../engine/surface';
+import { WINWIDTH, WINHEIGHT, TILEWIDTH, TILEHEIGHT, TILEX, TILEY, FRAMETIME, getFrameCount } from '../engine/constants';
+import { FONT } from '../rendering/bmp-font';
+import { drawItemIcon } from '../ui/icons';
+import { getCombatSprite } from './combat-sprites';
+import { ScreenAnimation } from './screen-animation';
+import { fxNow } from './map-unit-fx';
 
 // ============================================================
-// AnimationCombat — Full GBA-style battle scene controller.
-// Coordinates two BattleAnimation instances through a multi-phase
-// state machine, managing screen effects, HP bars, damage popups,
-// and camera pans.
+// AnimationCombat - port of lt-maker/app/engine/combat/animation_combat.py
+// (with the MockCombat helpers it inherits): the full-screen battle scene.
 // ============================================================
 
-// -- Screen shake patterns ---------------------------------------------------
+type Color = [number, number, number];
 
-const SHAKE_PATTERNS: Record<number, [number, number][]> = {
-  1: [[3,3],[0,0],[0,0],[-3,-3],[0,0],[0,0],[3,3],[0,0],[-3,-3],[0,0],[3,3],[0,0],[-3,-3],[3,3],[0,0]],
-  2: [[1,1],[1,1],[1,1],[-1,-1],[-1,-1],[-1,-1],[0,0]],
-  3: [[3,3],[-3,-3],[3,3],[-3,3],[3,-3],[-3,-3],[3,3],[-3,3],[3,-3],[0,0],[3,3],[-3,-3],[3,3],[-3,3],[3,-3],[-3,-3],[3,3],[-3,3],[3,-3],[0,0],[0,0]],
-  4: [[-6,6],[6,-6],[-5,5],[5,-5],[-4,4],[4,-4],[-3,3],[3,-3],[-2,2],[2,-2],[-1,1],[1,-1],[-1,1],[1,-1],[0,0],[0,0],[-5,5],[5,-5],[-4,4],[4,-4],[-3,3],[3,-3],[-2,2],[2,-2],[-1,1],[1,-1],[-1,1],[1,-1],[0,0],[0,0],[-3,3],[3,-3],[-2,2],[2,-2],[-1,1],[1,-1],[0,0],[0,0]],
+/** MockCombat._shake sets. */
+const SHAKE_SETS: Record<number, [number, number][]> = {
+  1: [[3, 3], [0, 0], [0, 0], [-3, -3], [0, 0], [0, 0], [3, 3], [0, 0], [-3, -3], [0, 0],
+    [3, 3], [0, 0], [-3, -3], [3, 3], [0, 0]],
+  2: [[1, 1], [1, 1], [1, 1], [-1, -1], [-1, -1], [-1, -1], [0, 0]],
+  3: [[0, 0], [-3, -3], [0, 0], [0, 0], [0, 0], [3, 3], [0, 0], [0, 0], [-3, -3], [0, 0],
+    [0, 0], [3, 3], [0, 0], [-3, -3], [0, 0], [3, 3], [0, 0], [-3, -3], [3, 3], [3, 3],
+    [0, 0]],
+  4: [[-6, -6], [0, 0], [0, 0], [0, 0], [6, 6], [0, 0], [0, 0], [-6, -6], [0, 0], [0, 0],
+    [6, 6], [0, 0], [-6, -6], [0, 0], [6, 6], [0, 0], [4, 4], [0, 0], [-4, -4], [0, 0],
+    [4, 4], [0, 0], [-4, -4], [0, 0], [4, 4], [0, 0], [-2, -2], [0, 0], [2, 2], [0, 0],
+    [-2, -2], [0, 0], [2, 2], [0, 0], [-1, -1], [0, 0], [1, 1], [0, 0]],
 };
 
-const PLATFORM_SHAKE: [number, number][] = [[0,1],[0,0],[0,-1],[0,0],[0,1],[0,0],[-1,-1],[0,1],[0,0]];
+const PLATFORM_SHAKE: [number, number][] = [[0, 1], [0, 0], [0, -1], [0, 0], [0, 1], [0, 0], [-1, -1], [0, 1], [0, 0]];
 
-// -- Duration constants ------------------------------------------------------
-
-const FADE_DURATION_MS = 250;
+const VIEWBOX_TIME = 250;
 const ENTRANCE_FRAMES = 14;
-const INIT_PAUSE_FRAMES = 25;
+const UI_SLIDE_MS = 10 * FRAMETIME;
+const UI_SLIDE_SKIP_MS = 2.5 * FRAMETIME;
 const SPRITE_LOAD_WAIT_MS = 1500;
-const HP_DRAIN_MIN_FRAMES = 10;
-const HP_DRAIN_MAX_FRAMES = 40;
-const FADE_OUT_DURATION_MS = 250;
-
-// -- Pan config per range ----------------------------------------------------
+/** health_bar.CombatHealthBar */
+const HP_BAR_COLORS = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1];
+const MAX_HP_PER_BAR = 40;
 
 interface PanConfig {
   max: number;
   speed: number;
 }
 
-/** Pan config keyed by at_range (distance - 1). 0 = melee, 1 = range 2, etc. */
+/** MockCombat.setup_pan, keyed by at_range (distance - 1). */
 function getPanConfig(atRange: number): PanConfig {
-  if (atRange <= 0) return { max: 0, speed: 0 };
   if (atRange === 1) return { max: 16, speed: 4 };
   if (atRange === 2) return { max: 32, speed: 8 };
-  return { max: 120, speed: 25 };
+  if (atRange >= 3) return { max: 120, speed: 25 };
+  return { max: 0, speed: 0 };
 }
 
-// Re-export for consumers that imported from this file
 export type { BattleAnimDrawData } from './battle-animation';
 export { BattleAnimation } from './battle-animation';
 
-/** Callback interface that BattleAnimation expects on its owner. */
-export interface AnimationCombatOwner {
-  startHit(anim: BattleAnimation): void;
-  handleMiss(anim: BattleAnimation): void;
-  spellHit(anim: BattleAnimation): void;
-  castSpell(anim: BattleAnimation, effectNid: string | null): void;
-  shake(intensity: number): void;
-  platformShake(): void;
-  panAway(): void;
-  panBack(): void;
-  playSound(name: string): void;
-  showHitSpark(anim: BattleAnimation): void;
-  showCritSpark(anim: BattleAnimation): void;
-  screenBlend(frames: number, color: [number, number, number]): void;
-  darken(): void;
-  lighten(): void;
-  endParentLoop(anim: BattleAnimation): void;
-  spawnEffect(anim: BattleAnimation, effectNid: string, under: boolean): void;
-  getEffectData(effectNid: string): CombatEffectData | null;
-  getEffectFrameImages(effectNid: string): Map<string, ImageBitmap | HTMLCanvasElement>;
+/** CombatHealthBar: displayed HP drains 2 frames per point (4 when healing). */
+class CombatHpBar {
+  displayed: number;
+  private old: number;
+  private target: number;
+  private transition = false;
+  private timeForChange = 0;
+  private elapsed = 0;
+
+  constructor(hp: number) {
+    this.displayed = hp;
+    this.old = hp;
+    this.target = hp;
+  }
+
+  setTarget(hp: number): void {
+    this.target = hp;
+  }
+
+  get bigNumber(): boolean {
+    return this.displayed !== this.target;
+  }
+
+  done(): boolean {
+    return this.displayed === this.target;
+  }
+
+  update(deltaMs: number): void {
+    const speed = this.displayed < this.target ? 4 * FRAMETIME : 2 * FRAMETIME;
+    if (this.displayed !== this.target && !this.transition) {
+      this.transition = true;
+      this.timeForChange = Math.max(0, Math.abs(this.displayed - this.target) * speed);
+      this.elapsed = 0;
+    }
+    if (!this.transition) return;
+    this.elapsed += deltaMs;
+    const time = this.timeForChange > 0 ? this.elapsed / this.timeForChange : 1;
+    this.displayed = Math.trunc(this.old + (this.target - this.old) * Math.min(1, time));
+    if (time >= 1) {
+      this.displayed = this.target;
+      this.old = this.displayed;
+      this.transition = false;
+    }
+  }
 }
 
-// -- Render state interface --------------------------------------------------
+// -- Render state interface (diagnostics/tests) -----------------------------
 
 export interface AnimationCombatRenderState {
   state: string;
-
-  /** Viewbox iris rectangle (null when not active). */
+  /** Viewbox hole (x, y, w, h) in screen pixels, or null when unused. */
   viewbox: { x: number; y: number; width: number; height: number } | null;
-
-  /** Background dim level 0-1. */
-  backgroundDim: number;
-
-  /** Platform Y positions (animated). */
-  leftPlatformY: number;
-  rightPlatformY: number;
-  platformShakeY: number;
-
-  /** Battle sprite draw data. */
   leftDraw: BattleAnimDrawData;
   rightDraw: BattleAnimDrawData;
-
-  /** Whole-screen shake pixel offset. */
   screenShake: [number, number];
-  /** Full-screen color blend (null when inactive). */
-  screenBlend: { color: [number, number, number]; alpha: number } | null;
-
-  /** HP bar data per side (including combat stats). */
   leftHp: { current: number; max: number; name: string; weapon: string; hit: number | null; damage: number | null; crit: number | null };
   rightHp: { current: number; max: number; name: string; weapon: string; hit: number | null; damage: number | null; crit: number | null };
-
-  /** Active damage popups. */
-  damagePopups: DamagePopup[];
-
-  /** Active spark effects. */
-  sparks: { type: 'hit' | 'crit' | 'miss' | 'noDamage'; elapsed: number; duration: number; isLeft: boolean }[];
-
-  /** Camera pan offset for ranged combat. */
   panOffset: number;
-
-  /** Range offsets for sprite positioning (Python: left_range_offset, right_range_offset). */
-  leftRangeOffset: number;
-  rightRangeOffset: number;
-
-  /** Whether combat is at range (at_range > 0). */
   isAtRange: boolean;
-
-  /** Combined platform + screen shake offsets for sprite rendering. */
-  totalShakeX: number;
-  totalShakeY: number;
-
-  /** Name tag slide progress 0 (hidden) to 1 (visible). */
-  nameTagProgress: number;
-  /** HP bar slide progress 0 (hidden) to 1 (visible). */
-  hpBarProgress: number;
+  nameOffset: number;
+  barOffset: number;
+  platformOffset: number;
   procCue: CombatProcCue | null;
 }
 
-// -- State type --------------------------------------------------------------
-
 type AnimCombatState =
-  | 'init' | 'fade_in' | 'entrance' | 'init_pause'
+  | 'init' | 'red_cursor' | 'fade_in' | 'entrance' | 'init_pause'
   | 'transform'
   | 'pre_proc' | 'begin_phase' | 'attack_proc' | 'defense_proc'
   | 'anim' | 'combat_hit' | 'hp_change' | 'end_phase'
-  | 'end_combat' | 'exp_wait' | 'revert' | 'fade_out' | 'done';
+  | 'end_combat' | 'exp_pause' | 'exp_wait' | 'revert'
+  | 'fade_out_wait' | 'name_tags_out' | 'all_out' | 'fade_out' | 'done';
 
 export interface TransformBattleAnimations {
   attackerTransform?: BattleAnimation | null;
@@ -178,19 +178,25 @@ export interface TransformBattleAnimations {
   defenderRevert?: BattleAnimation | null;
 }
 
+interface BigDamageNumber {
+  digit: number;
+  idx: number;
+  length: number;
+  left: boolean;
+  sheet: string;
+  start: number;
+}
+
 // ============================================================
 // AnimationCombat
 // ============================================================
 
-export class AnimationCombat implements AnimationCombatOwner {
-  // -- Public references -----------------------------------------------------
+export class AnimationCombat implements BattleAnimOwner {
   attacker: UnitObject;
   defender: UnitObject;
-
-  // -- Constructor-assigned fields -------------------------------------------
   attackItem: ItemObject;
   defenseItem: ItemObject | null;
-  db: any; // Database
+  db: any;
   leftAnim: BattleAnimation;
   rightAnim: BattleAnimation;
   leftIsAttacker: boolean;
@@ -223,97 +229,106 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   // -- State machine ---------------------------------------------------------
   state: AnimCombatState = 'init';
+  /** ms since the current state began (Python current_time). */
   stateTimer: number = 0;
   stateFrameCount: number = 0;
+  /** Set by CombatState once the exp screen it shows over the scene ends. */
+  expDone: boolean = false;
 
   // -- HP tracking -----------------------------------------------------------
-  leftDisplayHp: number = 0;
-  rightDisplayHp: number = 0;
+  /** HP after the strikes shown so far (the actions Python applies). */
   leftTargetHp: number = 0;
   rightTargetHp: number = 0;
-  hpDrainStartLeft: number = 0;
-  hpDrainStartRight: number = 0;
-  hpDrainFrames: number = 0;
-  hpDrainElapsedFrames: number = 0;
+  private leftHpBar: CombatHpBar;
+  private rightHpBar: CombatHpBar;
   attackerStartHp: number = 0;
   defenderStartHp: number = 0;
 
-  // -- Screen shake ----------------------------------------------------------
-  shakePattern: [number, number][] = [];
-  shakeIndex: number = 0;
-  platformShakePattern: [number, number][] = [];
-  platformShakeIndex: number = 0;
+  // -- Shake -----------------------------------------------------------------
+  private shakeSet: [number, number][] = [[0, 0]];
+  private shakeOffset: [number, number] = [0, 0];
+  private currentShake = 0;
+  private platformShakeSet: [number, number][] = [[0, 0]];
+  private platformShakeOffset: [number, number] = [0, 0];
+  private platformCurrentShake = 0;
 
-  // -- Camera pan ------------------------------------------------------------
+  // -- Pan -------------------------------------------------------------------
   panOffset: number = 0;
-  panTarget: number = 0;
+  panDir: number = 0;
   panConfig: PanConfig = { max: 0, speed: 0 };
-  panFocusLeft: boolean = true;
+  focusRight: boolean = false;
 
-  // -- Screen blend ----------------------------------------------------------
-  blendColor: [number, number, number] = [0, 0, 0];
-  blendFramesTotal: number = 0;
-  blendFramesRemaining: number = 0;
+  // -- Darken / foreground -----------------------------------------------------
+  private darkenBackground = 0;
+  private targetDark = 0;
+  private darkenUiBackground = 0;
+  private foregroundColor: Color | null = null;
+  private foregroundFrames = 0;
+  private foregroundFadeOut = false;
+  private foregroundFadeFrames = 0;
 
-  // -- Background dim --------------------------------------------------------
-  backgroundDim: number = 0;
+  // -- UI slide offsets (0 hidden .. 1 shown) ---------------------------------
+  barOffset: number = 0;
+  nameOffset: number = 0;
+  platformOffset: number = 0;
 
-  // -- Entrance / UI slide ---------------------------------------------------
-  entranceProgress: number = 0;
-  nameTagProgress: number = 0;
-  hpBarProgress: number = 0;
-  leftPlatformY: number = 80;
-  rightPlatformY: number = 80;
-
-  // -- Viewbox iris ----------------------------------------------------------
-  viewPos: [number, number] = [0, 0];  // defender tile position
-  cameraX: number = 0;  // camera offset in tile coords
+  // -- Viewbox ---------------------------------------------------------------
+  viewPos: [number, number] = [0, 0];
+  cameraX: number = 0;
   cameraY: number = 0;
+  viewbox: [number, number, number, number] | null = null;
 
-  // -- Damage popups ---------------------------------------------------------
-  damagePopups: DamagePopup[] = [];
+  // -- Effects ---------------------------------------------------------------
+  private animations: ScreenAnimation[] = [];
+  private damageNumbers: BigDamageNumber[] = [];
+  /** The anim whose strike is playing (Python current_battle_anim). */
+  currentBattleAnim: BattleAnimation | null = null;
+  private strikeApplied = false;
+  private strikeHasHpBrush = false;
 
-  // -- Spark effects ---------------------------------------------------------
-  sparks: { x: number; y: number; type: 'hit' | 'crit' | 'miss' | 'noDamage'; elapsed: number; duration: number; isLeft: boolean }[] = [];
-
-  // -- Current strike tracking -----------------------------------------------
-  currentStrikeAttackerAnim: BattleAnimation | null = null;
-  currentStrikeDefenderAnim: BattleAnimation | null = null;
-  awaitingHit: boolean = false;
-
-  // -- Safety timeout for animation state (prevent infinite loops) ----------
-  animFrameCounter: number = 0;
-
-  // -- Results cache ---------------------------------------------------------
   cachedResults: CombatResults | null = null;
   private lifecycleRecord: CombatLifecycleRecord;
   private guardGaugeResults: Map<UnitObject, number> = new Map();
   private miracleRestoreHps: Map<UnitObject, number> = new Map();
 
-  // -- Combat range ----------------------------------------------------------
   combatRange: number = 1;
-  /** Python-style at_range = distance - 1. 0 = melee, 1 = range 2, etc. */
+  /** Python at_range = distance - 1. */
   atRange: number = 0;
 
-  // -- Frame timing accumulator (ensures animations run at 60fps rate) ------
-  animFrameAccumulator: number = 0;
-  panFrameAccumulator: number = 0;
-  private static readonly FRAME_MS = 1000 / 60; // ~16.67ms per frame
+  private static readonly FRAME_MS = FRAMETIME;
+  private animFrameAccumulator = 0;
 
-  // -- Skip mode (START/ESC toggles 4x speed) --------------------------------
-  skipMode: boolean = false;
+  /** START toggles Python _skip (battle_anim_speed 0.25, waits pass). */
+  private skipFlag: boolean = false;
+  get skipMode(): boolean {
+    return this.skipFlag;
+  }
+  set skipMode(value: boolean) {
+    this.skipFlag = value;
+    setBattleAnimSpeed(value ? 0.25 : 1);
+  }
 
   /** Instantly skip to the end of combat (no more animation). */
   skipToEnd(): void {
-    this.state = 'done';
+    this.setState('done');
+    setBattleAnimSpeed(1);
+    this.onFinish?.();
+    this.onFinish = null;
   }
 
   // -- Effect sprite cache ---------------------------------------------------
   effectFrameCache: Map<string, Map<string, ImageBitmap | HTMLCanvasElement>> = new Map();
   effectLoadingSet: Set<string> = new Set();
 
-  // -- Audio (optional, set after construction to enable combat SFX) --------
-  audioManager: { playSfx(name: string): void } | null = null;
+  audioManager: { playSfx(name: string): void; stopSfx?(name: string): void } | null = null;
+  /** Python start_battle_music, run after init_pause. */
+  onStartBattleMusic: (() => void) | null = null;
+  /** Python finish(): fade the battle music back once the scene is gone. */
+  onFinish: (() => void) | null = null;
+  /** Platforms (left as loaded, right already flipped) and optional panorama. */
+  leftPlatform: HTMLImageElement | null = null;
+  rightPlatform: HTMLImageElement | null = null;
+  battleBackground: HTMLImageElement | null = null;
   private game: any;
   private participants: UnitObject[];
 
@@ -365,29 +380,17 @@ export class AnimationCombat implements AnimationCombatOwner {
     this.leftAnim = this.leftTransformAnim ?? this.mainLeftAnim;
     this.rightAnim = this.rightTransformAnim ?? this.mainRightAnim;
 
-    // Wire up animation owner/partner references and set side/range.
-    // pair() sets: owner, partner, right, atRange, entranceFrames, initPosition.
-    // Left combatant: right=false (sprite x-offsets mirrored).
-    // Right combatant: right=true (sprite x-offsets used as-authored).
     const aPos = attacker.position;
     const dPos = defender.position;
     const range = (aPos && dPos)
       ? Math.abs(aPos[0] - dPos[0]) + Math.abs(aPos[1] - dPos[1])
       : 1;
-    // Python: at_range = distance - 1 (0 for melee, 1 for range-2, etc.)
-    const atRange = range - 1;
-    this.leftAnim.pair(this, this.rightAnim, false, atRange, ENTRANCE_FRAMES, [0, 0]);
-    this.rightAnim.pair(this, this.leftAnim, true, atRange, ENTRANCE_FRAMES, [0, 0]);
+    this.combatRange = range;
+    this.atRange = range - 1;
+    this.panConfig = getPanConfig(this.atRange);
     this.leftAnim.isLeft = true;
     this.rightAnim.isLeft = false;
 
-    // Set initial standing pose so sprites are visible during entrance
-    const standPose = atRange > 0 ? 'RangedStand' : 'Stand';
-    this.leftAnim.setPose(standPose);
-    this.rightAnim.setPose(standPose);
-
-    // Solve strikes and retain the already-applied RNG/proc/charge transition
-    // as a reversible setup action.
     this.lifecycleRecord = new CombatLifecycleRecord(
       this.participants,
       randomGame ?? null,
@@ -410,128 +413,134 @@ export class AnimationCombat implements AnimationCombatOwner {
     }
     this.lifecycleRecord.finish();
 
-    // HP init
     const leftUnit = leftIsAttacker ? attacker : defender;
     const rightUnit = leftIsAttacker ? defender : attacker;
-    this.leftDisplayHp = leftUnit.currentHp;
-    this.rightDisplayHp = rightUnit.currentHp;
     this.leftTargetHp = leftUnit.currentHp;
     this.rightTargetHp = rightUnit.currentHp;
+    this.leftHpBar = new CombatHpBar(leftUnit.currentHp);
+    this.rightHpBar = new CombatHpBar(rightUnit.currentHp);
     this.attackerStartHp = attacker.currentHp;
     this.defenderStartHp = defender.currentHp;
 
-    // Combat range (raw distance) and at_range (distance - 1)
-    this.combatRange = range;
-    this.atRange = atRange;
-    this.panConfig = getPanConfig(atRange);
+    // setup_pan: focus_right = attacker is right.
+    this.focusRight = !leftIsAttacker;
+    this.panOffset = this.focusRight ? -this.panConfig.max : this.panConfig.max;
 
-    // Initialize pan offset like Python: pan_offset starts at +pan_max or
-    // -pan_max depending on which side has focus. Left starts focused, so
-    // panOffset = +max (camera shifted right, viewing left unit).
-    // Python: if focus_right: pan_offset = -pan_max; else: pan_offset = pan_max
-    if (this.panConfig.max > 0) {
-      this.panOffset = leftIsAttacker ? this.panConfig.max : -this.panConfig.max;
-      this.panTarget = this.panOffset;
-      this.panFocusLeft = leftIsAttacker;
-    }
+    this.viewPos = dPos ? [dPos[0], dPos[1]] : aPos ? [aPos[0], aPos[1]] : [0, 0];
+  }
 
-    // Viewbox iris target: defender's tile position
-    if (dPos) {
-      this.viewPos = [dPos[0], dPos[1]];
-    }
+  private get leftUnit(): UnitObject {
+    return this.leftIsAttacker ? this.attacker : this.defender;
+  }
+
+  private get rightUnit(): UnitObject {
+    return this.leftIsAttacker ? this.defender : this.attacker;
   }
 
   // ================================================================
-  // Main update
+  // Main update (AnimationCombat.update)
   // ================================================================
 
-  /** How many animation frame ticks should happen this update, based on real delta. */
+  /** Battle anim ticks owed for this update (fixed 60 FPS steps). */
   private computeAnimTicks(deltaMs: number): number {
-    // When in skip mode, animations run at 4x speed (matching Python's
-    // battle_anim_speed = 0.25 which means each frame lasts 1/4 as long)
-    const effectiveDelta = this.skipMode ? deltaMs * 4 : deltaMs;
-    this.animFrameAccumulator += effectiveDelta;
+    this.animFrameAccumulator += deltaMs;
     let ticks = 0;
-    while (this.animFrameAccumulator >= AnimationCombat.FRAME_MS) {
+    while (this.animFrameAccumulator >= AnimationCombat.FRAME_MS - 0.001) {
       this.animFrameAccumulator -= AnimationCombat.FRAME_MS;
       ticks++;
     }
-    // Cap at 4 ticks per update to avoid runaway in case of frame spikes
     return Math.min(ticks, 4);
   }
 
-  /** Run BattleAnimation.update() the correct number of times for this frame. */
-  private tickAnims(ticks: number): void {
-    for (let i = 0; i < ticks; i++) {
-      this.leftAnim.update();
-      this.rightAnim.update();
-    }
-  }
-
-  /** The real deltaMs from the game loop (stored for use by state methods). */
-  private currentDeltaMs: number = 0;
-
   update(deltaMs: number): boolean {
-    this.currentDeltaMs = deltaMs;
-
-    // Advance frame-based timers
-    // When in skip mode, accelerate state timers too (matching Python where
-    // _skip bypasses most timing waits)
-    const effectiveMs = this.skipMode ? deltaMs * 4 : deltaMs;
-    this.stateTimer += effectiveMs;
-
-    // Update screen shake
-    this.advanceShake();
-    this.advancePlatformShake();
-    this.advanceBlend();
-
-    // Update damage popups
-    for (const p of this.damagePopups) {
-      p.elapsed += effectiveMs;
-    }
-    this.damagePopups = this.damagePopups.filter(p => p.elapsed < p.duration);
-
-    // Update sparks
-    for (const s of this.sparks) {
-      s.elapsed += effectiveMs;
-    }
-    this.sparks = this.sparks.filter(s => s.elapsed < s.duration);
-
-    // Advance pan (once per logical 60fps tick, matching Python's draw_ui)
-    // Use separate accumulator to avoid consuming animation ticks.
-    this.panFrameAccumulator += effectiveMs;
-    while (this.panFrameAccumulator >= AnimationCombat.FRAME_MS) {
-      this.panFrameAccumulator -= AnimationCombat.FRAME_MS;
-      this.advancePan();
-    }
-
-    // Tick battle animations unconditionally (matches Python's update_anims()
-    // which runs at the end of every update() call regardless of state).
-    // This ensures consistent animation speed independent of browser refresh rate.
-    const animTicks = this.computeAnimTicks(deltaMs);
-    if (animTicks > 0) {
-      this.tickAnims(animTicks);
-    }
+    this.stateTimer += deltaMs;
+    this.stateFrameCount++;
+    const skip = this.skipFlag;
+    let finished = false;
 
     switch (this.state) {
-      case 'init':        return this.updateInit();
-      case 'fade_in':     return this.updateFadeIn();
-      case 'entrance':    return this.updateEntrance();
-      case 'init_pause':  return this.updateInitPause();
-      case 'transform':   return this.updateTransform();
-      case 'pre_proc':    return this.updateProcCue();
-      case 'begin_phase': return this.updateBeginPhase();
-      case 'attack_proc': return this.updateProcCue();
-      case 'defense_proc': return this.updateProcCue();
-      case 'anim':        return this.updateAnim();
-      case 'combat_hit':  return this.updateCombatHit();
-      case 'hp_change':   return this.updateHpChange();
-      case 'end_phase':   return this.updateEndPhase();
-      case 'end_combat':  return this.updateEndCombat();
-      case 'exp_wait':    return this.updateExpWait();
-      case 'revert':      return this.updateRevert();
-      case 'fade_out':    return this.updateFadeOut();
-      case 'done':        return true;
+      case 'init': this.updateInit(); break;
+      case 'red_cursor':
+        if (skip || this.stateTimer > 400) this.setState('fade_in');
+        break;
+      case 'fade_in': this.updateFadeIn(); break;
+      case 'entrance': this.updateEntrance(); break;
+      case 'init_pause': this.updateInitPause(); break;
+      case 'transform': this.updateTransform(); break;
+      case 'pre_proc': this.updateProcCue(); break;
+      case 'begin_phase': this.updateBeginPhase(); break;
+      case 'attack_proc': this.updateProcCue(); break;
+      case 'defense_proc': this.updateProcCue(); break;
+      case 'anim': this.updateAnim(); break;
+      case 'combat_hit': this.updateCombatHit(); break;
+      case 'hp_change': this.updateHpChange(); break;
+      case 'end_phase': this.updateEndPhase(); break;
+      case 'end_combat': this.updateEndCombat(); break;
+      case 'exp_pause':
+        if (skip || this.stateTimer > 450) this.setState('exp_wait');
+        break;
+      case 'exp_wait':
+        // CombatState applies the results and shows the exp bar over the
+        // scene (Python clean_up1 pushes ExpState), then sets expDone.
+        if (this.expDone) this.updateExpWait();
+        break;
+      case 'revert': this.updateRevert(); break;
+      case 'fade_out_wait': this.updateFadeOutWait(); break;
+      case 'name_tags_out': {
+        const exit = skip ? UI_SLIDE_SKIP_MS : UI_SLIDE_MS;
+        this.nameOffset = Math.max(0, 1 - this.stateTimer / exit);
+        if (this.stateTimer > exit) {
+          this.nameOffset = 0;
+          this.setState('all_out');
+        }
+        break;
+      }
+      case 'all_out': {
+        const exit = skip ? UI_SLIDE_SKIP_MS : UI_SLIDE_MS;
+        this.barOffset = Math.max(0, 1 - this.stateTimer / exit);
+        this.platformOffset = this.barOffset;
+        if (this.stateTimer > exit) {
+          this.barOffset = 0;
+          this.platformOffset = 0;
+          this.setState('fade_out');
+        }
+        break;
+      }
+      case 'fade_out':
+        this.buildViewbox(VIEWBOX_TIME - this.stateTimer);
+        if (this.stateTimer > VIEWBOX_TIME) {
+          this.onFinish?.();
+          this.onFinish = null;
+          setBattleAnimSpeed(1);
+          this.setState('done');
+          finished = true;
+        }
+        break;
+      case 'done':
+        return true;
+    }
+
+    // Python: hp bars update, then update_anims (battle anims + shake).
+    this.leftHpBar.update(deltaMs);
+    this.rightHpBar.update(deltaMs);
+    const ticks = this.computeAnimTicks(deltaMs);
+    for (let i = 0; i < ticks; i++) this.updateAnims();
+    return finished;
+  }
+
+  /** MockCombat.update_anims */
+  private updateAnims(): void {
+    this.leftAnim.update();
+    this.rightAnim.update();
+    if (this.currentShake) {
+      this.shakeOffset = this.shakeSet[this.currentShake - 1];
+      this.currentShake++;
+      if (this.currentShake > this.shakeSet.length) this.currentShake = 0;
+    }
+    if (this.platformCurrentShake) {
+      this.platformShakeOffset = this.platformShakeSet[this.platformCurrentShake - 1];
+      this.platformCurrentShake++;
+      if (this.platformCurrentShake > this.platformShakeSet.length) this.platformCurrentShake = 0;
     }
   }
 
@@ -539,84 +548,78 @@ export class AnimationCombat implements AnimationCombatOwner {
   // State updates
   // ================================================================
 
-  private updateInit(): boolean {
-    // Wait for both combatants to have at least one resolved main frame before
-    // entering the visible animation phases. This prevents placeholder debug
-    // stubs (solid cyan/red blocks) from flashing on first-load combats while
-    // spritesheets are still loading asynchronously.
+  private setState(state: AnimCombatState): void {
+    this.state = state;
+    this.stateTimer = 0;
+    this.stateFrameCount = 0;
+  }
+
+  /** Kept for callers that set states directly. */
+  private transition(state: AnimCombatState): void {
+    this.setState(state);
+  }
+
+  private updateInit(): void {
+    // Python init -> red_cursor (400 ms). The web additionally waits for the
+    // spritesheets so placeholder frames never show.
     const leftReady = this.leftAnim.getDrawData().mainFrame != null;
     const rightReady = this.rightAnim.getDrawData().mainFrame != null;
-    if (leftReady && rightReady) {
-      this.transition('fade_in');
-      return false;
-    }
-
-    // Fail-safe: if assets are still missing after a short wait, continue with
-    // the renderer's real map-sprite fallback so combat cannot stall forever.
-    if (this.stateTimer >= SPRITE_LOAD_WAIT_MS) {
-      this.transition('fade_in');
-    }
-    return false;
+    if ((leftReady && rightReady) || this.stateTimer >= SPRITE_LOAD_WAIT_MS) this.setState('red_cursor');
   }
 
-  private updateFadeIn(): boolean {
-    const progress = Math.min(1, this.stateTimer / FADE_DURATION_MS);
-    // Background dims as iris closes
-    this.backgroundDim = progress;
-    if (progress >= 1) {
-      this.backgroundDim = 1;
-      this.transition('entrance');
-    }
-    return false;
+  /** build_viewbox */
+  private buildViewbox(currentTime: number): void {
+    const mul = Math.max(0, Math.min(1, currentTime / VIEWBOX_TIME));
+    const trueX = this.viewPos[0] - this.cameraX + 0.5;
+    const trueY = this.viewPos[1] - this.cameraY + 0.5;
+    const vbX = Math.trunc(mul * trueX * TILEWIDTH);
+    const vbY = Math.trunc(mul * trueY * TILEHEIGHT);
+    const vbW = Math.trunc(WINWIDTH - vbX - (mul * (TILEX - trueX)) * TILEWIDTH);
+    const vbH = Math.trunc(WINHEIGHT - vbY - (mul * (TILEY - trueY)) * TILEHEIGHT);
+    this.viewbox = [vbX, vbY, vbW, vbH];
   }
 
-  private updateEntrance(): boolean {
-    // Use ms-based progress for frame-rate independence
-    // ENTRANCE_FRAMES at 60fps ≈ 233ms
-    const entranceMs = ENTRANCE_FRAMES * AnimationCombat.FRAME_MS;
-    const t = Math.min(1, this.stateTimer / entranceMs);
-    this.entranceProgress = t;
-
-    // Platforms slide up from below screen to resting position (offset 0)
-    this.leftPlatformY = lerp(80, 0, easeOutQuad(t));
-    this.rightPlatformY = lerp(80, 0, easeOutQuad(t));
-
-    // Name tags and HP bars slide in
-    this.nameTagProgress = t;
-    this.hpBarProgress = Math.min(1, Math.max(0, (t - 0.3) / 0.7));
-
-    if (t >= 1) {
-      this.nameTagProgress = 1;
-      this.hpBarProgress = 1;
-      this.transition('init_pause');
+  private updateFadeIn(): void {
+    this.buildViewbox(this.stateTimer);
+    if (this.stateTimer > VIEWBOX_TIME) {
+      this.viewbox = [this.viewbox![0], this.viewbox![1], 0, 0];
+      this.setState('entrance');
+      this.pairBattleAnimations(ENTRANCE_FRAMES);
     }
-    return false;
   }
 
-  private updateInitPause(): boolean {
-    // stateTimer is ms-based; compare against INIT_PAUSE_FRAMES in ms
-    const pauseMs = INIT_PAUSE_FRAMES * AnimationCombat.FRAME_MS;
-    if (this.stateTimer >= pauseMs) {
-      if (this.leftTransformAnim) this.leftAnim.setPose('Attack');
-      if (this.rightTransformAnim) this.rightAnim.setPose('Attack');
-      if (this.leftTransformAnim || this.rightTransformAnim) this.transition('transform');
-      else this.beginPreProcPhase();
+  private updateEntrance(): void {
+    const t = this.stateTimer / UI_SLIDE_MS;
+    this.barOffset = Math.min(1, t);
+    this.nameOffset = Math.min(1, t);
+    this.platformOffset = Math.min(1, t);
+    if (this.skipFlag || this.stateTimer > UI_SLIDE_MS) {
+      this.barOffset = this.nameOffset = this.platformOffset = 1;
+      this.setState('init_pause');
     }
-    return false;
   }
 
-  private updateTransform(): boolean {
-    const leftDone = !this.leftTransformAnim || this.leftAnim.isIdle() || this.leftAnim.isDone();
-    const rightDone = !this.rightTransformAnim || this.rightAnim.isIdle() || this.rightAnim.isDone();
-    if (!leftDone || !rightDone) return false;
+  private updateInitPause(): void {
+    if (this.skipFlag || this.stateTimer > 25 * FRAMETIME) {
+      // battle_music, then transforms or pre_proc.
+      this.onStartBattleMusic?.();
+      this.onStartBattleMusic = null;
+      if (this.leftTransformAnim || this.rightTransformAnim) {
+        if (this.leftTransformAnim) this.leftAnim.initiateTransform();
+        if (this.rightTransformAnim) this.rightAnim.initiateTransform();
+        this.setState('transform');
+      } else {
+        this.beginPreProcPhase();
+      }
+    }
+  }
+
+  private updateTransform(): void {
+    if (!this.leftAnim.done() || !this.rightAnim.done()) return;
     this.leftAnim = this.mainLeftAnim;
     this.rightAnim = this.mainRightAnim;
-    this.pairCurrentAnimations();
-    const standPose = this.atRange > 0 ? 'RangedStand' : 'Stand';
-    this.leftAnim.setPose(standPose);
-    this.rightAnim.setPose(standPose);
+    this.pairBattleAnimations(0);
     this.beginPreProcPhase();
-    return false;
   }
 
   private beginPreProcPhase(): void {
@@ -634,12 +637,11 @@ export class AnimationCombat implements AnimationCombatOwner {
     else this.transition('begin_phase');
   }
 
-  private updateBeginPhase(): boolean {
+  private updateBeginPhase(): void {
     if (this.currentStrikeIndex >= this.strikes.length) {
       this.transition('end_combat');
-      return false;
+      return;
     }
-
     const strike = this.strikes[this.currentStrikeIndex];
     this.pendingProcCues = [
       ...(strike.attackProcs ?? []).filter(isProcIconVisible).map(cueFromMark).reverse(),
@@ -647,59 +649,50 @@ export class AnimationCombat implements AnimationCombatOwner {
     ];
     if (this.pendingProcCues.length > 0) {
       this.startNextProcCue();
-      return false;
+      return;
     }
-    this.setUpStrikeAnimation(strike);
-    return false;
+    this.setUpCombatAnimation(strike);
   }
 
-  private setUpStrikeAnimation(strike: CombatStrike): void {
-    const isLeftAttacking = this.isLeftUnit(strike.attacker);
-    const atkAnim = isLeftAttacking ? this.leftAnim : this.rightAnim;
-    const defAnim = isLeftAttacking ? this.rightAnim : this.leftAnim;
-
-    this.currentStrikeAttackerAnim = atkAnim;
-    this.currentStrikeDefenderAnim = defAnim;
-    this.awaitingHit = true;
-
-    // Set attacker pose
-    const pose = strike.crit ? 'Critical' : 'Attack';
-    atkAnim.setPose(pose);
-
-    // Set defender to standing pose (ranged or melee)
-    const defPose = this.atRange > 0 ? 'RangedStand' : 'Stand';
-    defAnim.setPose(defPose);
-
-    // Pan camera to focus on the attacking unit (Python: set_up_combat_animation -> move_camera)
-    if (this.panConfig.max > 0) {
-      const attackerIsRight = !isLeftAttacking;
-      // Python: focus_right = (current_battle_anim is right_battle_anim)
-      this.panFocusLeft = !attackerIsRight;
-      this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
-    }
-
-    this.animFrameCounter = 0; // Reset safety timeout
+  /** set_up_combat_animation */
+  private setUpCombatAnimation(strike: CombatStrike): void {
     this.transition('anim');
+    const anim = this.isLeftUnit(strike.attacker) ? this.leftAnim : this.rightAnim;
+    this.currentBattleAnim = anim;
+    this.strikeApplied = false;
+    this.strikeHasHpBrush = false;
+    const connected = strike.hit || hasDamageOnMiss(strike.item);
+    if (strike.crit && strike.hit) anim.startAnim('Critical');
+    else if (connected) anim.startAnim('Attack');
+    else anim.startAnim('Miss');
+    this.focusRight = anim === this.rightAnim;
+    this.moveCamera();
   }
 
   private startNextProcCue(forcedState?: 'pre_proc'): void {
     const cue = this.pendingProcCues.shift() ?? null;
     this.activeProcCue = cue;
     if (!cue) return;
-    const sideAnim = this.isLeftUnit(cue.unit) ? this.leftAnim : this.rightAnim;
+    const isRight = !this.isLeftUnit(cue.unit);
+    const sideAnim = isRight ? this.rightAnim : this.leftAnim;
     if (this.getEffectData(cue.skill.nid)) {
-      sideAnim.spawnEffect(cue.skill.nid, sideAnim.effects);
+      // mark_proc: the skill's combat effect on its owner's side.
+      const effect = sideAnim.getEffect?.(cue.skill.nid, false, 'Attack');
+      if (effect) sideAnim.addEffect(effect);
     }
+    // add_proc_icon focuses the camera on the skill owner.
+    this.focusRight = isRight;
+    this.moveCamera();
     this.transition(forcedState ?? (cue.kind === 'defense_proc' ? 'defense_proc' : 'attack_proc'));
   }
 
-  private updateProcCue(): boolean {
+  private updateProcCue(): void {
     if (this.activeProcCue) this.activeProcCue.elapsed = this.stateTimer;
-    if (this.stateTimer < PROC_CUE_DURATION_MS) return false;
+    if (this.stateTimer < PROC_CUE_DURATION_MS) return;
     const effectsDone = [this.leftAnim, this.rightAnim].every((anim) =>
-      anim.effects.every((effect) => effect.isDone()) &&
-      anim.underEffects.every((effect) => effect.isDone()));
-    if (!effectsDone) return false;
+      anim.effects.every((effect: any) => effect.isDone()) &&
+      anim.underEffects.every((effect: any) => effect.isDone()));
+    if (!effectsDone) return;
     const procState = this.state;
     if (this.pendingProcCues.length > 0) {
       this.startNextProcCue(procState === 'pre_proc' ? 'pre_proc' : undefined);
@@ -709,464 +702,362 @@ export class AnimationCombat implements AnimationCombatOwner {
     } else {
       this.activeProcCue = null;
       const strike = this.strikes[this.currentStrikeIndex];
-      if (strike) this.setUpStrikeAnimation(strike);
+      if (strike) this.setUpCombatAnimation(strike);
       else this.transition('end_combat');
     }
-    return false;
   }
 
-  private updateAnim(): boolean {
-    // animFrameCounter tracks total calls for safety timeout
-    this.animFrameCounter++;
-
-    // The hit is processed via the startHit callback when the animation
-    // fires the start_hit command. Once both anims return to idle/done,
-    // proceed to end_phase.
-    if (!this.awaitingHit && this.currentStrikeAttackerAnim) {
-      const atkDone = this.currentStrikeAttackerAnim.isIdle() || this.currentStrikeAttackerAnim.isDone();
-      const defDone = this.currentStrikeDefenderAnim!.isIdle() || this.currentStrikeDefenderAnim!.isDone();
-      if (atkDone && defDone) {
-        this.transition('end_phase');
-      }
-    }
-
-    // Safety timeout: if animation is stuck for 600 frames (~10s at 60fps),
-    // force-clear awaitingHit and advance.  This prevents infinite loops when
-    // a spell effect fails to spawn or a command callback is missed.
-    if (this.animFrameCounter > 600) {
-      console.warn('[AnimationCombat] Safety timeout in anim state — forcing end_phase');
-      this.awaitingHit = false;
-      this.transition('end_phase');
-    }
-    return false;
+  private updateAnim(): void {
+    if (this.leftAnim.done() && this.rightAnim.done()) this.transition('end_phase');
   }
 
-  private updateCombatHit(): boolean {
-    // One-frame state: the actual hit processing happens in startHit()
-    // which transitions us here. Now set up HP drain and go to hp_change.
-    this.hpDrainElapsedFrames = 0;
+  /** combat_hit: clean_up0 (death marks) then hp_change. */
+  private updateCombatHit(): void {
     this.transition('hp_change');
-    return false;
   }
 
-  private updateHpChange(): boolean {
-    // Use ms-based timing for HP drain
-    const drainMs = this.hpDrainFrames * AnimationCombat.FRAME_MS;
-    const t = Math.min(1, this.stateTimer / Math.max(1, drainMs));
-
-    // Animate HP bars
-    this.leftDisplayHp = lerp(this.hpDrainStartLeft, this.leftTargetHp, t);
-    this.rightDisplayHp = lerp(this.hpDrainStartRight, this.rightTargetHp, t);
-
-    // Check for death
-    if (t >= 0.5) {
-      if (this.leftTargetHp <= 0) {
-        this.leftAnim.startDeath();
+  private updateHpChange(): void {
+    const anim = this.currentBattleAnim;
+    const proceed = anim ? anim.canProceed() : true;
+    if (this.stateTimer > 27 * FRAMETIME && this.leftHpBar.done() && this.rightHpBar.done() && proceed) {
+      anim?.resume();
+      if (this.leftTargetHp <= 0) this.leftAnim.startDyingAnimation();
+      if (this.rightTargetHp <= 0) this.rightAnim.startDyingAnimation();
+      if ((this.leftTargetHp <= 0 || this.rightTargetHp <= 0) && anim && anim.state !== 'dying') {
+        anim.waitForDying();
       }
-      if (this.rightTargetHp <= 0) {
-        this.rightAnim.startDeath();
-      }
-    }
-
-    if (t >= 1) {
-      // Snap HP
-      this.leftDisplayHp = this.leftTargetHp;
-      this.rightDisplayHp = this.rightTargetHp;
-
-      // Resume attacker animation
-      if (this.currentStrikeAttackerAnim) {
-        this.currentStrikeAttackerAnim.resume();
-      }
-      this.awaitingHit = false;
-
-      // Return to anim state so the attacker can finish its animation
       this.transition('anim');
     }
-    return false;
   }
 
-  private updateEndPhase(): boolean {
-    // Advance to next strike
+  private updateEndPhase(): void {
     this.currentStrikeIndex++;
-    this.currentStrikeAttackerAnim = null;
-    this.currentStrikeDefenderAnim = null;
-
-    // If someone died, skip to end_combat
-    if (this.leftTargetHp <= 0 || this.rightTargetHp <= 0) {
-      this.transition('end_combat');
-    } else {
-      this.transition('begin_phase');
-    }
-    return false;
+    this.currentBattleAnim = null;
+    this.transition('begin_phase');
   }
 
-  private updateEndCombat(): boolean {
-    // Set both anims to Stand
-    this.leftAnim.setPose('Stand');
-    this.rightAnim.setPose('Stand');
-
-    // Wait for both to settle
-    const leftIdle = this.leftAnim.isIdle() || this.leftAnim.isDone();
-    const rightIdle = this.rightAnim.isIdle() || this.rightAnim.isDone();
-    if (leftIdle && rightIdle) {
-      this.transition('exp_wait');
+  private updateEndCombat(): void {
+    if (this.leftAnim.done() && this.rightAnim.done()) {
+      this.focusExp();
+      this.moveCamera();
+      this.transition('exp_pause');
     }
-    return false;
   }
 
-  private updateExpWait(): boolean {
+  /** revert_transform (runs once CombatState's exp screen is finished). */
+  private updateExpWait(): void {
     const leftAlive = this.leftTargetHp > 0;
     const rightAlive = this.rightTargetHp > 0;
-    const useLeftRevert = !this.skipMode && leftAlive && this.leftRevertAnim;
-    const useRightRevert = !this.skipMode && rightAlive && this.rightRevertAnim;
+    const useLeftRevert = !this.skipFlag && leftAlive && this.leftRevertAnim;
+    const useRightRevert = !this.skipFlag && rightAlive && this.rightRevertAnim;
     if (!useLeftRevert && !useRightRevert) {
-      this.transition('fade_out');
-      return false;
+      this.transition('fade_out_wait');
+      return;
     }
     if (useLeftRevert) this.leftAnim = useLeftRevert;
     if (useRightRevert) this.rightAnim = useRightRevert;
-    this.pairCurrentAnimations();
-    if (useLeftRevert) this.leftAnim.setPose('Attack');
-    if (useRightRevert) this.rightAnim.setPose('Attack');
+    this.pairBattleAnimations(0);
+    if (useLeftRevert) this.leftAnim.initiateTransform();
+    if (useRightRevert) this.rightAnim.initiateTransform();
     this.transition('revert');
-    return false;
   }
 
-  private updateRevert(): boolean {
-    const leftDone = !this.leftRevertAnim || this.leftTargetHp <= 0
-      || this.leftAnim.isIdle() || this.leftAnim.isDone();
-    const rightDone = !this.rightRevertAnim || this.rightTargetHp <= 0
-      || this.rightAnim.isIdle() || this.rightAnim.isDone();
-    if (leftDone && rightDone) this.transition('fade_out');
-    return false;
+  private updateRevert(): void {
+    const leftDone = !this.leftRevertAnim || this.leftTargetHp <= 0 || this.leftAnim.done();
+    const rightDone = !this.rightRevertAnim || this.rightTargetHp <= 0 || this.rightAnim.done();
+    if (leftDone && rightDone) this.transition('fade_out_wait');
   }
 
-  private updateFadeOut(): boolean {
-    const progress = Math.min(1, this.stateTimer / FADE_OUT_DURATION_MS);
-    // Iris expands back
-    this.backgroundDim = 1 - progress;
-    if (progress >= 1) {
-      this.state = 'done';
-      return true;
+  private updateFadeOutWait(): void {
+    if (this.skipFlag || this.stateTimer > 820) {
+      this.leftAnim.finish();
+      this.rightAnim.finish();
+      this.transition('name_tags_out');
     }
-    return false;
   }
 
-  // ================================================================
-  // State transition helper
-  // ================================================================
-
-  private transition(newState: AnimCombatState): void {
-    this.state = newState;
-    this.stateTimer = 0;
-    this.stateFrameCount = 0;
-  }
-
-  private pairCurrentAnimations(): void {
-    this.leftAnim.pair(this, this.rightAnim, false, this.atRange, ENTRANCE_FRAMES, [0, 0]);
-    this.rightAnim.pair(this, this.leftAnim, true, this.atRange, ENTRANCE_FRAMES, [0, 0]);
+  /** pair_battle_animations: sprites grow in from their map tiles. */
+  private pairBattleAnimations(entranceFrames: number): void {
+    const tile = (unit: UnitObject): [number, number] => unit.position
+      ? [(unit.position[0] - this.cameraX) * TILEWIDTH, (unit.position[1] - this.cameraY) * TILEHEIGHT]
+      : [0, 0];
+    this.leftAnim.pair(this, this.rightAnim, false, this.atRange, 14, tile(this.leftUnit));
+    this.leftAnim.entranceCounter = entranceFrames;
+    this.rightAnim.pair(this, this.leftAnim, true, this.atRange, 14, tile(this.rightUnit));
+    this.rightAnim.entranceCounter = entranceFrames;
     this.leftAnim.isLeft = true;
     this.rightAnim.isLeft = false;
   }
 
   // ================================================================
-  // BattleAnimation owner callbacks
+  // BattleAnimOwner callbacks (AnimationCombat / MockCombat)
   // ================================================================
 
-  startHit(anim: BattleAnimation): void {
-    if (this.currentStrikeIndex >= this.strikes.length) return;
-    const strike = this.strikes[this.currentStrikeIndex];
-
-    // Record HP drain start values
-    this.hpDrainStartLeft = this.leftTargetHp;
-    this.hpDrainStartRight = this.rightTargetHp;
-
-    // Use currentStrikeDefenderAnim set during beginStrike() rather than
-    // deriving from anim identity.  When a child spell effect fires
-    // spell_hit, `anim` is the child effect (not leftAnim/rightAnim),
-    // so `anim === this.leftAnim` would always fail.
-    const defAnim = this.currentStrikeDefenderAnim ?? (
-      (anim === this.leftAnim) ? this.rightAnim : this.leftAnim
-    );
-    const isLeftDefending = (defAnim === this.leftAnim);
-
-    if (strike.hit || hasDamageOnMiss(strike.item)) {
-      const totalDamage = strike.damage + (strike.extraDamage ?? 0);
-      // Apply damage to target HP
-      if (isLeftDefending) {
-        this.leftTargetHp = Math.max(
-          0,
-          Math.min(strike.defender.maxHp, this.leftTargetHp - totalDamage),
-        );
-      } else {
-        this.rightTargetHp = Math.max(
-          0,
-          Math.min(strike.defender.maxHp, this.rightTargetHp - totalDamage),
-        );
-      }
-
-      // Determine HP drain duration
-      const hpChange = Math.abs(totalDamage);
-      this.hpDrainFrames = Math.max(HP_DRAIN_MIN_FRAMES, Math.min(HP_DRAIN_MAX_FRAMES, hpChange));
-
-      // Defender takes hit
-      if (totalDamage < 0) {
-        defAnim.setPose('Idle');
-      } else {
-        const damagedPose = this.atRange > 0 ? 'RangedDamaged' : 'Damaged';
-        defAnim.setPose(damagedPose);
-      }
-
-      // Screen shake
-      if (totalDamage >= 0) {
-        const shakeIntensity = strike.crit ? 4 : 1;
-        this.shake(shakeIntensity);
-        this.platformShake();
-      }
-
-      // Recoil offset
-      if (totalDamage >= 0) defAnim.lrOffset = [-1, -2, -3, -2, -1];
-
-      // --- Hit/Crit/Kill sounds (Python: _handle_playback + item_system_base) ---
-      const defenderHp = isLeftDefending ? this.leftTargetHp : this.rightTargetHp;
-      const isLethal = defenderHp <= 0;
-      if (totalDamage < 0) {
-        this.playSound('MapHeal');
-      } else if (totalDamage === 0) {
-        this.playSound('No Damage');
-      } else if (strike.crit) {
-        // Crit: play critical hit sound (+ final hit if lethal)
-        if (isLethal) {
-          this.playSound('Final Hit');
-        }
-        this.playSound('Critical Hit ' + (1 + Math.floor(Math.random() * 2)));
-      } else {
-        // Normal hit
-        if (isLethal) {
-          this.playSound('Final Hit');
-        } else {
-          this.playSound('Attack Hit ' + (1 + Math.floor(Math.random() * 5)));
-        }
-      }
-
-      // Spawn damage popup
-      const defUnit = strike.defender;
-      if (defUnit.position) {
-        this.damagePopups.push({
-          x: defUnit.position[0],
-          y: defUnit.position[1],
-          value: Math.abs(strike.damage),
-          isCrit: strike.crit,
-          isHeal: strike.damage < 0,
-          elapsed: 0,
-          duration: 1200,
-        });
-        if ((strike.extraDamage ?? 0) > 0) {
-          this.damagePopups.push({
-            x: defUnit.position[0],
-            y: defUnit.position[1],
-            value: strike.extraDamage ?? 0,
-            isCrit: false,
-            elapsed: 0,
-            duration: 1200,
-          });
-        }
-      }
-    } else {
-      // Miss — Python replaces 'Attack Miss 2' with 'Miss' in animation combat
-      this.playSound('Miss');
-      this.hpDrainFrames = HP_DRAIN_MIN_FRAMES;
-      defAnim.setPose('Dodge');
-
-      const defUnit = strike.defender;
-      if (defUnit.position) {
-        this.damagePopups.push({
-          x: defUnit.position[0],
-          y: defUnit.position[1],
-          value: 0,
-          isCrit: false,
-          elapsed: 0,
-          duration: 1200,
-        });
-      }
-    }
-
-    // Transition to combat_hit so hp_change begins
-    this.transition('combat_hit');
+  private currentStrike(): CombatStrike | null {
+    return this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
   }
 
-  handleMiss(anim: BattleAnimation): void {
-    this.playSound('Miss');
-    const defAnim = (anim === this.leftAnim) ? this.rightAnim : this.leftAnim;
-    defAnim.setPose('Dodge');
+  /** get_damage: damage of this strike's damage_hit/damage_crit brush. */
+  private getDamage(): number {
+    const strike = this.currentStrike();
+    if (!strike || !(strike.hit || hasDamageOnMiss(strike.item)) || strike.damage < 0) return 0;
+    return strike.damage;
   }
 
-  spellHit(anim: BattleAnimation): void {
-    // Treat the same as startHit but with spell shake
-    this.startHit(anim);
-    // Override shake to spell type
-    this.shakePattern = [...(SHAKE_PATTERNS[3] ?? [])];
-    this.shakeIndex = 0;
+  private teamColor(unit: UnitObject): string {
+    return this.db?.teams?.defs?.find((team: { nid: string }) => team.nid === unit.team)?.combatColor ?? 'blue';
   }
 
-  castSpell(anim: BattleAnimation, effectNid: string | null): void {
-    if (!effectNid) {
-      // Check for battle_cast_anim component (the item's effect_animation hook).
-      // Python: item_system.effect_animation(unit, item) returns the
-      // battle_cast_anim value (e.g. "Gustblade", "Lightning", "Nosferatu").
-      const battleCastAnim = this.attackItem.getComponent<string>('battle_cast_anim');
-      effectNid = battleCastAnim ?? this.attackItem.nid;
-    }
+  private specialBossCrit(defender: UnitObject, afterAttack: boolean): boolean {
+    const strike = this.currentStrike();
+    if (!strike || !this.db?.getConstant?.('boss_crit', false) || !strike.hit || strike.crit) return false;
+    if (!defender.tags.includes('Boss')) return false;
+    const hp = defender === this.leftUnit ? this.leftTargetHp : this.rightTargetHp;
+    return afterAttack ? hp <= 0 : this.getDamage() >= hp;
+  }
 
-    // Check if the effect exists before spawning. If it doesn't exist,
-    // immediately fire the hit so combat doesn't hang waiting for a
-    // spell_hit that will never come.
-    const effectData = this.getEffectData(effectNid);
-    if (!effectData) {
-      console.warn(`[AnimationCombat] castSpell: effect "${effectNid}" not found — firing hit immediately`);
-      this.startHit(anim);
+  /** _apply_actions + _handle_playback for the current strike (once). */
+  startHit(_anim: BattleAnimation, miss: boolean = false): void {
+    this.applyStrike(true);
+    if (miss) this.missAnim();
+  }
+
+  private applyStrike(sound: boolean): void {
+    const strike = this.currentStrike();
+    if (!strike || this.strikeApplied) return;
+    this.strikeApplied = true;
+    const defenderIsLeft = this.isLeftUnit(strike.defender);
+    const connected = strike.hit || hasDamageOnMiss(strike.item);
+    if (!connected) {
+      if (sound) this.playSound('Miss'); // 'Attack Miss 2' -> 'Miss'
       return;
     }
+    const total = strike.damage + (strike.extraDamage ?? 0);
+    const before = defenderIsLeft ? this.leftTargetHp : this.rightTargetHp;
+    const after = Math.max(0, Math.min(strike.defender.maxHp, before - total));
+    if (defenderIsLeft) {
+      this.leftTargetHp = after;
+      this.leftHpBar.setTarget(after);
+    } else {
+      this.rightTargetHp = after;
+      this.rightHpBar.setTarget(after);
+    }
+    this.strikeHasHpBrush = true;
+    this.transition('combat_hit');
 
-    // Spawn the effect as a child of the calling animation
-    anim.spawnEffect(effectNid, anim.effects);
+    // handle_damage_numbers
+    const damage = strike.damage;
+    if (damage < 0) this.addDamageNumbers(-damage, defenderIsLeft, 'cyan');
+    else if (damage > 0) this.addDamageNumbers(damage, defenderIsLeft, strike.crit ? 'yellow' : 'red');
+    if ((strike.extraDamage ?? 0) > 0) this.addDamageNumbers(strike.extraDamage ?? 0, defenderIsLeft, 'red');
+    if (!sound) return;
+
+    // hit_sound brushes (heals play only on the map).
+    if (damage < 0) return;
+    const lethal = after <= 0;
+    const configured = strike.item.getComponent<string>('map_hit_sfx');
+    const crit = () => `Critical Hit ${1 + Math.floor(Math.random() * 2)}`;
+    const bossCrit = this.specialBossCrit(strike.defender, true);
+    let name: string;
+    if (configured) name = configured;
+    else if (damage === 0) name = 'No Damage';
+    else if (strike.crit) {
+      if (lethal) this.playSound('Final Hit');
+      name = crit();
+    } else if (strike.glancing) name = lethal ? 'Final Hit' : 'No Damage';
+    else name = lethal ? 'Final Hit' : `Attack Hit ${1 + Math.floor(Math.random() * 5)}`;
+    if (bossCrit) {
+      if (name.startsWith('Attack Hit')) name = crit();
+      else if (name.startsWith('Final Hit')) this.playSound(crit());
+    }
+    this.playSound(name);
   }
 
-  shake(intensity: number): void {
-    const pattern = SHAKE_PATTERNS[intensity];
-    if (pattern) {
-      this.shakePattern = [...pattern];
-      this.shakeIndex = 0;
+  spellHit(_anim: BattleAnimation): void {
+    this.applyStrike(true);
+    if (!this.strikeHasHpBrush) this.currentBattleAnim?.resume();
+    const strike = this.currentStrike();
+    if (strike && this.getDamage() <= 0 && strike.damage >= 0 && (strike.hit || hasDamageOnMiss(strike.item))) {
+      this.noDamage();
     }
+  }
+
+  hitModifiers(): void {
+    const strike = this.currentStrike();
+    if (this.getDamage() > 0 && strike?.glancing) this.glancingHit();
+  }
+
+  /** AnimationCombat.shake: pick the shake set from the strike playback. */
+  shake(): void {
+    const strike = this.currentStrike();
+    if (!strike || !(strike.hit || hasDamageOnMiss(strike.item)) || strike.damage < 0) return;
+    const damage = strike.damage;
+    if (strike.crit) {
+      this.rawShake(damage > 0 ? 4 : 2);
+    } else if (damage > 0) {
+      const magic = isMagic(strike.item) && (strike.item.hasComponent('magic') || this.combatRange > 1);
+      if (this.specialBossCrit(strike.defender, false)) this.rawShake(4);
+      else this.rawShake(magic ? 3 : 1);
+    } else {
+      this.rawShake(2);
+    }
+  }
+
+  /** MockCombat._shake */
+  rawShake(num: number): void {
+    const set = SHAKE_SETS[num];
+    if (!set) return;
+    this.currentShake = 1;
+    this.shakeSet = set;
   }
 
   platformShake(): void {
-    this.platformShakePattern = [...PLATFORM_SHAKE];
-    this.platformShakeIndex = 0;
+    this.platformCurrentShake = 1;
+    this.platformShakeSet = PLATFORM_SHAKE;
   }
 
-  /** Python: pan_away() — toggle focus and move camera. Called on first `pan` command. */
+  screenFlash(numFrames: number, color: Color, fadeOut: number = 0): void {
+    this.foregroundFrames = numFrames;
+    this.foregroundColor = color;
+    this.foregroundFadeFrames = fadeOut;
+    this.foregroundFadeOut = false;
+  }
+
+  darken(): void {
+    this.targetDark += 0.5;
+  }
+
+  lighten(): void {
+    this.targetDark -= 0.5;
+  }
+
+  setBrightness(value: number): void {
+    this.targetDark = 1 - value;
+  }
+
+  darkenUi(): void {
+    this.darkenUiBackground = 1;
+  }
+
+  lightenUi(): void {
+    this.darkenUiBackground = -3;
+  }
+
   panAway(): void {
-    if (this.panConfig.max === 0) return;
-    this.panFocusLeft = !this.panFocusLeft;
-    this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
+    this.focusRight = !this.focusRight;
+    this.moveCamera();
   }
 
-  /** Python: pan_back() — look at the next strike to determine focus, then move camera.
-   *  Called on second `pan` command (returning from spell) and as safety in endCurrentPose. */
+  /** pan_back: focus whoever strikes next, else the exp recipient. */
   panBack(): void {
-    if (this.panConfig.max === 0) return;
-    // Determine who attacks next (Python: state_machine.get_next_state())
-    const nextStrike = this.currentStrikeIndex < this.strikes.length
-      ? this.strikes[this.currentStrikeIndex]
-      : null;
-    if (nextStrike) {
-      const nextAttackerIsLeft = this.isLeftUnit(nextStrike.attacker);
-      // Python: focus_right = (attacker is self.right) for attacker phase
-      //         focus_right = (defender is self.right) for defender phase
-      // Since our strikes already resolve who the attacker is, just focus on them.
-      // panFocusLeft = !focus_right
-      this.panFocusLeft = nextAttackerIsLeft;
-    } else {
-      // No more strikes — focus_exp: focus on the player's unit (Python: focus_exp)
-      // Python defaults to focus_right = True for exp display
-      this.panFocusLeft = !this.leftIsAttacker;
-    }
-    this.panTarget = this.panFocusLeft ? this.panConfig.max : -this.panConfig.max;
+    // state_machine.get_next_state(): the solver advances when the strike's
+    // actions apply, so after the hit this is the following strike.
+    const next = this.strikes[this.currentStrikeIndex + (this.strikeApplied ? 1 : 0)] ?? null;
+    if (next) this.focusRight = !this.isLeftUnit(next.attacker);
+    else this.focusExp();
+    this.moveCamera();
+  }
+
+  private focusExp(): void {
+    if (this.attacker.team === 'player') this.focusRight = this.attacker === this.rightUnit;
+    else if (this.defender.team === 'player') this.focusRight = this.defender === this.rightUnit;
+  }
+
+  private moveCamera(): void {
+    if (!this.panConfig) return;
+    if (this.focusRight && this.panOffset !== -this.panConfig.max) this.panDir = -this.panConfig.speed;
+    else if (!this.focusRight && this.panOffset !== this.panConfig.max) this.panDir = this.panConfig.speed;
   }
 
   /** Set camera offset (in pixels) so the viewbox iris can compute tile-relative positions. */
   setCameraOffset(pixelX: number, pixelY: number): void {
-    this.cameraX = pixelX / 16;
-    this.cameraY = pixelY / 16;
+    this.cameraX = pixelX / TILEWIDTH;
+    this.cameraY = pixelY / TILEHEIGHT;
   }
 
   playSound(name: string): void {
-    if (this.audioManager) {
-      this.audioManager.playSfx(name);
-    }
+    this.audioManager?.playSfx(name);
   }
 
-  showHitSpark(anim: BattleAnimation): void {
-    // Determine which side the defending unit is on
-    const isLeftDefending = (anim === this.rightAnim);
-    const strike = this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
+  stopSound(name: string): void {
+    this.audioManager?.stopSfx?.(name);
+  }
 
-    if (strike && strike.hit && strike.damage + (strike.extraDamage ?? 0) > 0) {
-      this.sparks.push({
-        x: 0, y: 0,
-        type: 'hit',
-        elapsed: 0,
-        duration: 300,
-        isLeft: isLeftDefending,
-      });
-    } else if (strike && !strike.hit) {
-      this.sparks.push({
-        x: 0, y: 0,
-        type: 'miss',
-        elapsed: 0,
-        duration: 400,
-        isLeft: isLeftDefending,
-      });
+  spellEffectNid(_anim: BattleAnimation): string | null {
+    const item = this.currentStrike()?.item ?? this.attackItem;
+    return item.getComponent<string>('battle_cast_anim') ?? item.nid;
+  }
+
+  private spawnScreenAnimation(nid: string, position: [number, number], additive: boolean, flip: boolean = false): void {
+    const prefab = this.db?.mapAnimations?.get?.(nid);
+    if (!prefab) return;
+    const anim = new ScreenAnimation(prefab, position, flip);
+    anim.additive = additive;
+    this.animations.push(anim);
+    const resources = this.game?.resources;
+    if (!resources?.loadImage) {
+      anim.done = true;
+      return;
+    }
+    void resources.loadImage(`resources/animations/${nid}.png`)
+      .then((image: HTMLImageElement) => anim.setImage(image))
+      .catch(() => { anim.done = true; });
+  }
+
+  hitSpark(): void {
+    if (this.getDamage() > 0) {
+      if (this.currentStrike()?.glancing) {
+        this.glancingHit();
+      } else {
+        const right = this.currentBattleAnim === this.rightAnim;
+        const position: [number, number] = right
+          ? [-110 + WINWIDTH / 2 - 120, -30]
+          : [-40 + WINWIDTH / 2 - 120, -30];
+        this.spawnScreenAnimation('HitSpark', position, true);
+      }
     } else {
-      this.sparks.push({
-        x: 0, y: 0,
-        type: 'noDamage',
-        elapsed: 0,
-        duration: 300,
-        isLeft: isLeftDefending,
-      });
+      this.noDamage();
     }
   }
 
-  showCritSpark(anim: BattleAnimation): void {
-    const isLeftDefending = (anim === this.rightAnim);
-    const strike = this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
-
-    if (strike && strike.hit && strike.damage + (strike.extraDamage ?? 0) > 0) {
-      this.sparks.push({
-        x: 0, y: 0,
-        type: 'crit',
-        elapsed: 0,
-        duration: 500,
-        isLeft: isLeftDefending,
-      });
+  critSpark(): void {
+    if (this.getDamage() > 0) {
+      const flip = this.currentBattleAnim !== this.rightAnim;
+      this.spawnScreenAnimation('CritSpark', [-40 + WINWIDTH / 2 - 120, -30], true, flip);
     } else {
-      this.sparks.push({
-        x: 0, y: 0,
-        type: 'noDamage',
-        elapsed: 0,
-        duration: 300,
-        isLeft: isLeftDefending,
+      this.noDamage();
+    }
+  }
+
+  private noDamage(): void {
+    const right = this.currentBattleAnim === this.rightAnim;
+    const color = this.teamColor(right ? this.rightUnit : this.leftUnit);
+    this.spawnScreenAnimation(`NoDamage${color[0].toUpperCase()}${color.slice(1)}`, right ? [52, 21] : [WINWIDTH / 2, 21], false);
+    if (this.currentBattleAnim) this.currentBattleAnim.lrOffset = [-1, -2, -3, -2, -1];
+  }
+
+  private glancingHit(): void {
+    const right = this.currentBattleAnim === this.rightAnim;
+    const color = this.teamColor(right ? this.rightUnit : this.leftUnit);
+    this.spawnScreenAnimation(`GlancingHit${color[0].toUpperCase()}${color.slice(1)}`, right ? [64, 21] : [WINWIDTH / 2, 21], false);
+    if (this.currentBattleAnim) this.currentBattleAnim.lrOffset = [-1, -3, -5, -3, -1];
+  }
+
+  private missAnim(): void {
+    const right = this.currentBattleAnim === this.rightAnim;
+    const color = this.teamColor(right ? this.rightUnit : this.leftUnit);
+    this.spawnScreenAnimation(`Miss${color[0].toUpperCase()}${color.slice(1)}`, right ? [72, 21] : [128, 21], false);
+  }
+
+  private addDamageNumbers(damage: number, left: boolean, color: string): void {
+    const digits = String(damage);
+    const now = fxNow();
+    for (let idx = 0; idx < digits.length; idx++) {
+      this.damageNumbers.push({
+        digit: Number(digits[idx]), idx, length: digits.length, left,
+        sheet: `damage_numbers_${color}`, start: now,
       });
     }
-  }
-
-  screenBlend(frames: number, color: [number, number, number]): void {
-    this.blendColor = color;
-    this.blendFramesTotal = frames;
-    this.blendFramesRemaining = frames;
-  }
-
-  darken(): void {
-    this.backgroundDim = Math.min(1, this.backgroundDim + 0.3);
-  }
-
-  lighten(): void {
-    this.backgroundDim = Math.max(0, this.backgroundDim - 0.3);
-  }
-
-  endParentLoop(_childAnim: BattleAnimation): void {
-    // Called by child effect animations to break the parent's loop.
-    // The parent is the current strike's attacker animation.
-    if (this.currentStrikeAttackerAnim) {
-      this.currentStrikeAttackerAnim.breakLoop();
-    }
-  }
-
-  spawnEffect(anim: BattleAnimation, effectNid: string, under: boolean): void {
-    const targetList = under ? anim.underEffects : anim.effects;
-    anim.spawnEffect(effectNid, targetList);
   }
 
   // ================================================================
@@ -1180,72 +1071,41 @@ export class AnimationCombat implements AnimationCombatOwner {
   getEffectFrameImages(effectNid: string): Map<string, ImageBitmap | HTMLCanvasElement> {
     const cached = this.effectFrameCache.get(effectNid);
     if (cached) return cached;
-
-    // Start async load if not already loading
-    if (!this.effectLoadingSet.has(effectNid)) {
-      this.effectLoadingSet.add(effectNid);
-      this.loadEffectSprites(effectNid);
+    let frames = this.effectLoading.get(effectNid);
+    if (!frames) {
+      frames = new Map();
+      this.effectLoading.set(effectNid, frames);
+      void this.loadEffectSprites(effectNid, frames);
     }
-
-    return new Map(); // return empty initially; sprites hot-swap in once loaded
+    return frames;
   }
 
-  private async loadEffectSprites(effectNid: string): Promise<void> {
+  private effectLoading = new Map<string, Map<string, ImageBitmap | HTMLCanvasElement>>();
+
+  private async loadEffectSprites(
+    effectNid: string,
+    target: Map<string, ImageBitmap | HTMLCanvasElement>,
+  ): Promise<void> {
     try {
       const effectData = this.db.combatEffects?.get(effectNid) as CombatEffectData | undefined;
       if (!effectData) return;
-
-      const resources = (globalThis as any).__ltResources;
+      const resources = (globalThis as any).__ltResources ?? this.game?.resources;
       if (!resources) return;
-
-      // Load the effect spritesheet
       const img = await loadEffectSpritesheet(resources, effectNid);
       if (!img) return;
-
-      // Get the palette for this effect (if any)
       const palettes = this.db.combatPalettes as Map<string, PaletteData> | undefined;
       let palette: PaletteData | null = null;
-
       if (effectData.palettes.length > 0) {
-        // Use the first palette mapping
         const [, paletteNid] = effectData.palettes[0];
         palette = palettes?.get(paletteNid) ?? null;
       }
-
-      // Convert spritesheet to frame images
       const frames = convertSpritesheetToFrames(img, effectData.frames, palette);
-
-      this.effectFrameCache.set(effectNid, frames);
-
-      // Hot-swap into any existing child effects
-      this.hotSwapEffectFrames(effectNid, frames);
+      // Every child effect shares this map, so frames appear in place.
+      for (const [nid, canvas] of frames) target.set(nid, canvas);
+      this.effectFrameCache.set(effectNid, target);
     } catch (e) {
       console.warn(`AnimationCombat: failed to load effect "${effectNid}":`, e);
     }
-  }
-
-  private hotSwapEffectFrames(effectNid: string, frames: Map<string, ImageBitmap | HTMLCanvasElement>): void {
-    const updateAnim = (anim: BattleAnimation) => {
-      // Check child effects
-      for (const effect of anim.effects) {
-        if (effect.animData?.nid === effectNid) {
-          for (const [nid, canvas] of frames) {
-            effect.frameImages.set(nid, canvas);
-          }
-        }
-        updateAnim(effect);
-      }
-      for (const effect of anim.underEffects) {
-        if (effect.animData?.nid === effectNid) {
-          for (const [nid, canvas] of frames) {
-            effect.frameImages.set(nid, canvas);
-          }
-        }
-        updateAnim(effect);
-      }
-    };
-    updateAnim(this.leftAnim);
-    updateAnim(this.rightAnim);
   }
 
   // ================================================================
@@ -1534,133 +1394,381 @@ export class AnimationCombat implements AnimationCombatOwner {
     }
   }
 
+
   // ================================================================
-  // Render state
+  // HUD stats (Python _set_stats) and render state
   // ================================================================
 
-  getRenderState(): AnimationCombatRenderState {
-    const leftUnit = this.leftIsAttacker ? this.attacker : this.defender;
-    const rightUnit = this.leftIsAttacker ? this.defender : this.attacker;
+  private getHudStats(): NonNullable<AnimationCombat['hudStats']> {
+    const leftUnit = this.leftUnit;
+    const rightUnit = this.rightUnit;
     const leftItem = this.leftIsAttacker ? this.attackItem : this.defenseItem;
     const rightItem = this.leftIsAttacker ? this.defenseItem : this.attackItem;
-
-    // Viewbox iris — Python-faithful asymmetric iris toward defender tile
-    const TILEX = 15; // WINWIDTH / TILEWIDTH (240 / 16)
-    const TILEY = 10; // WINHEIGHT / TILEHEIGHT (160 / 16)
-    let viewbox: AnimationCombatRenderState['viewbox'] = null;
-    if (this.state === 'fade_in') {
-      const vbMul = Math.min(1, this.stateTimer / FADE_DURATION_MS);
-      const trueX = this.viewPos[0] - this.cameraX + 0.5;
-      const trueY = this.viewPos[1] - this.cameraY + 0.5;
-      const vbX = Math.floor(vbMul * trueX * 16);
-      const vbY = Math.floor(vbMul * trueY * 16);
-      const vbW = Math.floor(240 - vbX - (vbMul * (TILEX - trueX)) * 16);
-      const vbH = Math.floor(160 - vbY - (vbMul * (TILEY - trueY)) * 16);
-      viewbox = { x: vbX, y: vbY, width: Math.max(0, vbW), height: Math.max(0, vbH) };
-    } else if (this.state === 'fade_out') {
-      const progress = Math.min(1, this.stateTimer / FADE_OUT_DURATION_MS);
-      const vbMul = 1 - progress; // inverted: iris expands outward
-      const trueX = this.viewPos[0] - this.cameraX + 0.5;
-      const trueY = this.viewPos[1] - this.cameraY + 0.5;
-      const vbX = Math.floor(vbMul * trueX * 16);
-      const vbY = Math.floor(vbMul * trueY * 16);
-      const vbW = Math.floor(240 - vbX - (vbMul * (TILEX - trueX)) * 16);
-      const vbH = Math.floor(160 - vbY - (vbMul * (TILEY - trueY)) * 16);
-      viewbox = { x: vbX, y: vbY, width: Math.max(0, vbW), height: Math.max(0, vbH) };
-    }
-
-    // Screen shake
-    const screenShake = this.getCurrentShake();
-
-    // Platform shake (both X and Y components)
-    const platformShake = this.getCurrentPlatformShake();
-    const platformShakeY = platformShake[1];
-
-    // Combined total shake (Python: total_shake_x = shake_offset[0] + platform_shake_offset[0])
-    const totalShakeX = screenShake[0] + platformShake[0];
-    const totalShakeY = screenShake[1] + platformShake[1];
-
-    // Range offsets for sprite positioning (Python: mock_combat.py lines 419-423)
-    let leftRangeOffset = 0;
-    let rightRangeOffset = 0;
-    if (this.atRange > 0) {
-      rightRangeOffset = 24 + this.panConfig.max;
-      leftRangeOffset = -24 - this.panConfig.max;
-    }
-
-    // Screen blend
-    let screenBlendData: AnimationCombatRenderState['screenBlend'] = null;
-    if (this.blendFramesRemaining > 0 && this.blendFramesTotal > 0) {
-      const alpha = this.blendFramesRemaining / this.blendFramesTotal;
-      screenBlendData = { color: this.blendColor, alpha };
-    }
-
     const hudKey = `${this.state}|${this.currentStrikeIndex}|${leftUnit.currentHp}|${rightUnit.currentHp}|` +
       `${leftItem?.uses ?? ''}|${rightItem?.uses ?? ''}|${leftItem?.nid ?? ''}|${rightItem?.nid ?? ''}`;
     if (this.hudStatsKey !== hudKey || !this.hudStats) {
       this.hudStatsKey = hudKey;
+      // Defender stats are None (drawn '--') when it cannot counter.
+      const defenderCounters = !!this.defenseItem &&
+        canCounterattack(this.attacker, this.attackItem, this.defender, this.db, this.game);
+      const sideStats = (unit: UnitObject, item: ItemObject | null, target: UnitObject) => {
+        const isAttacker = unit === this.attacker;
+        if (!item || (!isAttacker && !defenderCounters)) return { hit: null, damage: null, crit: null };
+        const mode = isAttacker ? 'attack' : 'defense';
+        return {
+          hit: computeHit(unit, item, target, this.db, null, this.game, mode),
+          damage: Math.max(0, computeDamage(unit, item, target, this.db, null, this.game, mode)),
+          crit: this.db?.getConstant?.('crit', true) !== false
+            ? computeCrit(unit, item, target, this.db, this.game, mode)
+            : 0,
+        };
+      };
+      const left = sideStats(leftUnit, leftItem, rightUnit);
+      const right = sideStats(rightUnit, rightItem, leftUnit);
       this.hudStats = {
         leftMax: leftUnit.maxHp,
         rightMax: rightUnit.maxHp,
-        leftHit: leftItem ? Math.min(100, Math.max(0, computeHit(leftUnit, leftItem, rightUnit, this.db))) : null,
-        leftDamage: leftItem
-          ? Math.max(0, computeDamage(
-            leftUnit, leftItem, rightUnit, this.db, undefined, this.game,
-          ))
-          : null,
-        leftCrit: leftItem ? Math.min(100, Math.max(0, computeCrit(leftUnit, leftItem, rightUnit, this.db))) : null,
-        rightHit: rightItem ? Math.min(100, Math.max(0, computeHit(rightUnit, rightItem, leftUnit, this.db))) : null,
-        rightDamage: rightItem
-          ? Math.max(0, computeDamage(
-            rightUnit, rightItem, leftUnit, this.db, undefined, this.game, 'defense',
-          ))
-          : null,
-        rightCrit: rightItem ? Math.min(100, Math.max(0, computeCrit(rightUnit, rightItem, leftUnit, this.db))) : null,
+        leftHit: left.hit, leftDamage: left.damage, leftCrit: left.crit,
+        rightHit: right.hit, rightDamage: right.damage, rightCrit: right.crit,
       };
     }
-    const hud = this.hudStats;
+    return this.hudStats;
+  }
 
+  getRenderState(): AnimationCombatRenderState {
+    const leftItem = this.leftIsAttacker ? this.attackItem : this.defenseItem;
+    const rightItem = this.leftIsAttacker ? this.defenseItem : this.attackItem;
+    const hud = this.getHudStats();
+    const vb = this.viewbox;
     return {
       state: this.state,
-      viewbox,
-      backgroundDim: this.backgroundDim,
-      leftPlatformY: this.leftPlatformY,
-      rightPlatformY: this.rightPlatformY,
-      platformShakeY,
+      viewbox: vb ? { x: vb[0], y: vb[1], width: vb[2], height: vb[3] } : null,
       leftDraw: this.leftAnim.getDrawData(),
       rightDraw: this.rightAnim.getDrawData(),
-      screenShake,
-      screenBlend: screenBlendData,
+      screenShake: this.shakeOffset,
       leftHp: {
-        current: Math.max(0, Math.round(this.leftDisplayHp)),
-        max: hud.leftMax,
-        name: leftUnit.name,
-        weapon: leftItem?.name ?? '',
-        hit: hud.leftHit,
-        damage: hud.leftDamage,
-        crit: hud.leftCrit,
+        current: this.leftHpBar.displayed, max: hud.leftMax, name: this.leftUnit.name,
+        weapon: leftItem?.name ?? '', hit: hud.leftHit, damage: hud.leftDamage, crit: hud.leftCrit,
       },
       rightHp: {
-        current: Math.max(0, Math.round(this.rightDisplayHp)),
-        max: hud.rightMax,
-        name: rightUnit.name,
-        weapon: rightItem?.name ?? '',
-        hit: hud.rightHit,
-        damage: hud.rightDamage,
-        crit: hud.rightCrit,
+        current: this.rightHpBar.displayed, max: hud.rightMax, name: this.rightUnit.name,
+        weapon: rightItem?.name ?? '', hit: hud.rightHit, damage: hud.rightDamage, crit: hud.rightCrit,
       },
-      damagePopups: this.damagePopups,
-      sparks: this.sparks.map(s => ({ type: s.type, elapsed: s.elapsed, duration: s.duration, isLeft: s.isLeft })),
       panOffset: this.panOffset,
-      leftRangeOffset,
-      rightRangeOffset,
       isAtRange: this.atRange > 0,
-      totalShakeX,
-      totalShakeY,
-      nameTagProgress: this.nameTagProgress,
-      hpBarProgress: this.hpBarProgress,
+      nameOffset: this.nameOffset,
+      barOffset: this.barOffset,
+      platformOffset: this.platformOffset,
       procCue: this.activeProcCue,
     };
+  }
+
+  // ================================================================
+  // Drawing (AnimationCombat.draw / MockCombat.draw_ui)
+  // ================================================================
+
+  /** The map fuzz (75% black outside the viewbox) CombatState draws first. */
+  drawViewboxFuzz(surf: Surface): void {
+    if (!this.viewbox) return;
+    const [x, y, w, h] = this.viewbox;
+    const color = 'rgba(0,0,0,0.75)';
+    if (w <= 0) {
+      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, color);
+      return;
+    }
+    if (y > 0) surf.fillRect(0, 0, WINWIDTH, y, color);
+    if (y + h < WINHEIGHT) surf.fillRect(0, y + h, WINWIDTH, WINHEIGHT - y - h, color);
+    if (x > 0) surf.fillRect(0, y, x, h, color);
+    if (x + w < WINWIDTH) surf.fillRect(x + w, y, WINWIDTH - x - w, h, color);
+  }
+
+  /** Whether anything of the battle scene is drawn this frame. */
+  get sceneVisible(): boolean {
+    return this.state !== 'init' && this.state !== 'red_cursor' && this.state !== 'done';
+  }
+
+  draw(surf: Surface): void {
+    if (this.state === 'done') return;
+    this.drawViewboxFuzz(surf);
+    if (this.battleBackground) {
+      surf.drawImageFull(this.battleBackground, 0, 0,
+        this.battleBackground.naturalWidth || WINWIDTH, this.battleBackground.naturalHeight || WINHEIGHT);
+    }
+    const [leftRange, rightRange, totalShakeX, totalShakeY] = this.drawUi(surf);
+    const shake: [number, number] = [-totalShakeX, totalShakeY];
+
+    // Actor drawn last (second); before any strike, [left, right].
+    const actor = this.currentBattleAnim;
+    const order: Array<[BattleAnimation, number]> = actor === this.leftAnim
+      ? [[this.rightAnim, rightRange], [this.leftAnim, leftRange]]
+      : [[this.leftAnim, leftRange], [this.rightAnim, rightRange]];
+    const [first, second] = order;
+    first[0].drawUnder(surf, shake, first[1], this.panOffset);
+    second[0].drawUnder(surf, shake, second[1], this.panOffset);
+    first[0].draw(surf, shake, first[1], this.panOffset);
+    second[0].draw(surf, shake, second[1], this.panOffset);
+    second[0].drawOver(surf, shake, second[1], this.panOffset);
+    first[0].drawOver(surf, shake, first[1], this.panOffset);
+    this.drawMissingAnimFallback(surf, this.leftAnim, this.leftUnit, false, totalShakeY);
+    this.drawMissingAnimFallback(surf, this.rightAnim, this.rightUnit, true, totalShakeY);
+
+    // Animations (sparks, miss, no damage)
+    this.animations = this.animations.filter((anim) => !anim.update());
+    for (const anim of this.animations) anim.draw(surf);
+
+    this.drawDamageNumbers(surf, leftRange, rightRange, totalShakeX);
+
+    // UI fades in/out only during the slide states; otherwise it is shown.
+    const fadeStates = ['name_tags_out', 'all_out', 'entrance', 'fade_in', 'red_cursor', 'init', 'fade_out'];
+    if (!fadeStates.includes(this.state)) {
+      this.nameOffset = 1;
+      this.barOffset = 1;
+    }
+    this.drawCombatUi(surf);
+
+    // Foreground screen flash (always additive)
+    if (this.foregroundColor || this.foregroundFadeFrames) {
+      if (this.foregroundColor) {
+        let alpha = 1;
+        if (this.foregroundFadeOut) alpha = 1 - this.foregroundFrames / this.foregroundFadeFrames;
+        // make_translucent_blend(color, alpha*255) darkens the added color.
+        fillScreen(surf, this.foregroundColor, 'add', Math.max(0, Math.min(1, 1 - alpha)));
+      }
+      this.foregroundFrames--;
+      if (this.foregroundFrames <= 0) {
+        if (this.foregroundFadeFrames && !this.foregroundFadeOut) {
+          this.foregroundFrames = this.foregroundFadeFrames;
+          this.foregroundFadeOut = true;
+        } else {
+          this.foregroundFadeFrames = 0;
+          this.foregroundFrames = 0;
+          this.foregroundColor = null;
+          this.foregroundFadeOut = false;
+        }
+      }
+    }
+  }
+
+  /**
+   * Web-only: when a spritesheet failed to load, stand the unit's real
+   * (team-paletted) map sprite on its platform instead of drawing nothing.
+   * Python never reaches this: a missing resource selects map combat.
+   */
+  private drawMissingAnimFallback(surf: Surface, anim: BattleAnimation, unit: UnitObject, right: boolean, shakeY: number): void {
+    if (anim.state === 'inert' || anim.frameImages.size > 0 || this.platformOffset <= 0) return;
+    const frame = (unit.sprite as any)?.getCurrentFrame?.();
+    if (!(frame instanceof Surface)) return;
+    const platformW = this.atRange ? 100 : 87;
+    const top = WINHEIGHT - 72 + (WINHEIGHT - 72) * (1 - this.platformOffset) + shakeY;
+    const half = Math.floor(WINWIDTH / 2);
+    const platformX = right
+      ? half + (this.atRange ? 11 + this.panConfig.max + this.panOffset : 0)
+      : half - platformW - (this.atRange ? 11 + this.panConfig.max - this.panOffset : 0);
+    const previous = frame.getAlpha();
+    frame.setAlpha(Math.max(0, Math.min(255, anim.opacity)) / 255);
+    surf.blit(frame, platformX + Math.floor((platformW - frame.width) / 2), top - frame.height + 8);
+    frame.setAlpha(previous);
+  }
+
+  /** MockCombat.draw_ui: dark overlay, pan, platforms; returns offsets. */
+  private drawUi(surf: Surface): [number, number, number, number] {
+    const platformTrans = WINHEIGHT - 72;
+    const platformTop = WINHEIGHT - 72;
+    if (this.darkenBackground || this.targetDark) {
+      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, `rgba(0,0,0,${Math.max(0, Math.min(1, this.darkenBackground))})`);
+      if (this.targetDark > this.darkenBackground) this.darkenBackground += 0.125;
+      else if (this.targetDark < this.darkenBackground) this.darkenBackground -= 0.125;
+    }
+    if (this.panDir !== 0) {
+      this.panOffset += this.panDir;
+      if (this.panOffset > this.panConfig.max) {
+        this.panOffset = this.panConfig.max;
+        this.panDir = 0;
+      } else if (this.panOffset < -this.panConfig.max) {
+        this.panOffset = -this.panConfig.max;
+        this.panDir = 0;
+      }
+    }
+    const totalShakeX = this.shakeOffset[0] + this.platformShakeOffset[0];
+    const totalShakeY = this.shakeOffset[1] + this.platformShakeOffset[1];
+    const showPlatforms = !this.battleBackground || !!this.db?.getConstant?.('battle_platforms', false);
+    if (showPlatforms && this.leftPlatform && this.rightPlatform) {
+      const top = platformTop + (platformTrans - this.platformOffset * platformTrans) + totalShakeY;
+      const lw = this.leftPlatform.naturalWidth || this.leftPlatform.width;
+      const lh = this.leftPlatform.naturalHeight || this.leftPlatform.height;
+      const rw = this.rightPlatform.naturalWidth || this.rightPlatform.width;
+      const rh = this.rightPlatform.naturalHeight || this.rightPlatform.height;
+      const half = Math.floor(WINWIDTH / 2);
+      if (this.atRange) {
+        surf.drawImageFull(this.leftPlatform, half - lw - 11 - this.panConfig.max + totalShakeX + this.panOffset, top, lw, lh);
+        surf.drawImageFull(this.rightPlatform, half + 11 + this.panConfig.max + totalShakeX + this.panOffset, top, rw, rh, 1, true);
+      } else {
+        surf.drawImageFull(this.leftPlatform, half - lw + totalShakeX, top, lw, lh);
+        surf.drawImageFull(this.rightPlatform, half + totalShakeX, top, rw, rh, 1, true);
+      }
+    }
+    const rightRange = this.atRange ? 24 + this.panConfig.max : 0;
+    const leftRange = this.atRange ? -24 - this.panConfig.max : 0;
+    return [leftRange, rightRange, totalShakeX, totalShakeY];
+  }
+
+  /** gui.DamageNumber (big variant) per MockCombat.draw_damage_numbers. */
+  private drawDamageNumbers(surf: Surface, leftRange: number, rightRange: number, totalShakeX: number): void {
+    const now = fxNow();
+    this.damageNumbers = this.damageNumbers.filter((num) => now - num.start <= 1200);
+    for (const num of this.damageNumbers) {
+      const sheet = getCombatSprite(num.sheet);
+      if (!sheet) continue;
+      const elapsed = now - num.start;
+      const initTime = 50 * num.idx + 50;
+      if (elapsed <= initTime) continue;
+      const stateTime = elapsed - initTime;
+      let top = 0;
+      let alpha = 1;
+      if (stateTime <= 400) {
+        top = 10 * Math.exp(-stateTime / 250) * Math.sin(stateTime / 25);
+        alpha = 1 - Math.max(0, Math.min(1, (200 - stateTime) / 200));
+      } else if (elapsed > initTime + 1000) {
+        const fade = elapsed - initTime - 1000;
+        top = fade / 10;
+        alpha = 1 - Math.max(0, Math.min(1, fade / 150));
+      }
+      const x = num.left
+        ? WINWIDTH / 2 - 26 + leftRange - totalShakeX + this.panOffset
+        : WINWIDTH / 2 + 26 + rightRange - totalShakeX + this.panOffset;
+      const digit = new OffscreenCanvas(16, 16);
+      digit.getContext('2d')!.drawImage(sheet.canvas, num.digit * 16, 0, 16, 16, 0, 0, 16, 16);
+      drawCanvas(surf, digit, x - 7 * num.length + 14 * num.idx, WINHEIGHT - 120 - top, 16, 16, 'normal', alpha);
+    }
+  }
+
+  /** Name tags and HP/stat bars (initial_paint_setup + the draw tail). */
+  private drawCombatUi(surf: Surface): void {
+    const crit = this.db?.getConstant?.('crit', true) !== false;
+    const ui = new Surface(WINWIDTH, WINHEIGHT);
+    const leftColor = this.teamColor(this.leftUnit);
+    const rightColor = this.teamColor(this.rightUnit);
+    const leftItem = this.leftIsAttacker ? this.attackItem : this.defenseItem;
+    const rightItem = this.leftIsAttacker ? this.defenseItem : this.attackItem;
+    const hud = this.getHudStats();
+    const shake = this.shakeOffset;
+    const pick = (base: string, color: string) => getCombatSprite(`${base}_${color}`) ?? getCombatSprite(`${base}_blue`);
+
+    const textFont = (text: string, limit: number) =>
+      (FONT['text'] && FONT['text'].width(text) > limit ? FONT['narrow'] : FONT['text']) ?? FONT['text'];
+
+    // Bars
+    const barBase = crit ? 'combat_main_crit' : 'combat_main';
+    const leftBarSprite = pick(`${barBase}_left`, leftColor);
+    const rightBarSprite = pick(`${barBase}_right`, rightColor);
+    const critY = crit ? 7 : 0;
+    const drawBar = (
+      sprite: Surface | null, item: ItemObject | null, other: ItemObject | null,
+      unit: UnitObject, target: UnitObject, bar: CombatHpBar, max: number,
+      nameX: number, hpX: number, itemX: number, statsRight: number,
+      stats: [number | null, number | null, number | null],
+    ): Surface | null => {
+      if (!sprite) return null;
+      const surfBar = sprite.copy();
+      if (item) {
+        const font = textFont(item.name, 56);
+        font?.blitCenter(surfBar, item.name, nameX, 5 + (crit ? 8 : 0), 'brown');
+      }
+      this.drawCombatHpBar(surfBar, bar, max, hpX, 30 + critY);
+      if (item) {
+        drawItemIcon(surfBar, item as any, itemX + 2, 2 + critY + 4);
+        if (checkEnemy(unit, target, this.db, this.game)) {
+          const arrows = getCombatSprite('arrow_advantage');
+          const triangle = weaponTriangle(item, other, this.db, unit, target);
+          const sign = Math.sign(triangle.hitBonus || triangle.damageBonus);
+          if (arrows && sign !== 0) {
+            const frame = Math.floor(getFrameCount() / 8) % 3;
+            surfBar.blitFrom(arrows, frame * 7, sign > 0 ? 0 : 10, 7, 10, itemX + 11, 2 + critY + 8);
+          }
+        }
+      }
+      const small = FONT['number_small2'];
+      if (small) {
+        const fmt = (value: number | null, clamp: boolean) =>
+          value === null ? '--' : String(clamp ? Math.max(0, Math.min(100, value)) : value);
+        small.blitRight(surfBar, fmt(stats[0], true), statsRight, 0);
+        small.blitRight(surfBar, fmt(stats[1], false), statsRight, 8);
+        if (crit) small.blitRight(surfBar, fmt(stats[2], true), statsRight, 16);
+      }
+      return surfBar;
+    };
+    const leftBar = drawBar(leftBarSprite, leftItem, rightItem, this.leftUnit, this.rightUnit,
+      this.leftHpBar, hud.leftMax, Math.floor(WINWIDTH / 4) + 31, 27, 45, 42,
+      [hud.leftHit, hud.leftDamage, hud.leftCrit]);
+    const rightBar = drawBar(rightBarSprite, rightItem, leftItem, this.rightUnit, this.leftUnit,
+      this.rightHpBar, hud.rightMax, Math.floor(WINWIDTH / 4) - 13, 25, 1, Math.floor(WINWIDTH / 2) - 3,
+      [hud.rightHit, hud.rightDamage, hud.rightCrit]);
+
+    const barTrans = 52;
+    const leftX = -3 + shake[0];
+    if (leftBar) {
+      const y = WINHEIGHT - leftBar.height + (barTrans - this.barOffset * barTrans) + shake[1];
+      ui.blit(leftBar, leftX, y);
+      if (rightBar) ui.blit(rightBar, Math.floor(WINWIDTH / 2) + shake[0], y);
+    }
+
+    // Name tags
+    const top = -60 + this.nameOffset * 60 + shake[1];
+    const leftName = pick('combat_name_left', leftColor);
+    if (leftName) {
+      const tag = leftName.copy();
+      textFont(this.leftUnit.name, 52)?.blitCenter(tag, this.leftUnit.name, 30, 8, 'brown');
+      ui.blit(tag, leftX, top);
+    }
+    const rightName = pick('combat_name_right', rightColor);
+    if (rightName) {
+      const tag = rightName.copy();
+      textFont(this.rightUnit.name, 52)?.blitCenter(tag, this.rightUnit.name, 36, 8, 'brown');
+      ui.blit(tag, WINWIDTH + 3 - tag.width + shake[0], top);
+    }
+
+    // color_ui: darken the UI during the level-up screen
+    if (this.darkenUiBackground) {
+      this.darkenUiBackground = Math.min(this.darkenUiBackground, 4);
+      const c = 255 - Math.abs(this.darkenUiBackground * 24);
+      const image = ui.getImageData();
+      const d = image.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = Math.trunc(d[i] * c / 255);
+        d[i + 1] = Math.trunc(d[i + 1] * c / 255);
+        d[i + 2] = Math.trunc(d[i + 2] * c / 255);
+      }
+      ui.putImageData(image);
+      this.darkenUiBackground++;
+    }
+    surf.blit(ui, 0, 0);
+  }
+
+  /** CombatHealthBar.draw: the HP number and a row of blips. */
+  private drawCombatHpBar(surf: Surface, bar: CombatHpBar, maxHp: number, left: number, top: number): void {
+    const font = bar.bigNumber ? FONT['number_big2'] : FONT['number_small2'];
+    font?.blitRight(surf, bar.displayed <= 240 ? String(bar.displayed) : '??', left, top - 4);
+    const full = getCombatSprite('full_hp_blip');
+    const empty = getCombatSprite('empty_hp_blip');
+    if (!full || !empty) return;
+    const tick = HP_BAR_COLORS[Math.floor(fxNow() / 16.67) % HP_BAR_COLORS.length];
+    const row = (rowMax: number, rowHp: number, x: number, y: number) => {
+      for (let i = 0; i < rowMax; i++) {
+        if (i < rowHp) surf.blitFrom(full, tick * 2, 0, 2, full.height, x + i * 2, y);
+        else surf.blit(empty, x + i * 2, y);
+      }
+      if (rowMax === rowHp) surf.blitFrom(full, tick * 2, 0, 1, full.height, x + rowMax * 2, y);
+      else surf.blitFrom(empty, 0, 0, 1, empty.height, x + rowMax * 2, y);
+    };
+    const hp = Math.max(0, bar.displayed);
+    if (maxHp <= MAX_HP_PER_BAR) {
+      row(maxHp, hp, left + 5, top + 1);
+    } else {
+      const capped = Math.min(maxHp, 2 * MAX_HP_PER_BAR);
+      const current = hp > 2 * MAX_HP_PER_BAR ? hp % (2 * MAX_HP_PER_BAR) : hp;
+      row(Math.min(capped, MAX_HP_PER_BAR), Math.min(current, MAX_HP_PER_BAR), left + 5, top - 4 + full.height);
+      row(Math.max(capped - MAX_HP_PER_BAR, 0), Math.max(current - MAX_HP_PER_BAR, 0), left + 5, top - 4);
+    }
   }
 
   // ================================================================
@@ -1669,62 +1777,7 @@ export class AnimationCombat implements AnimationCombatOwner {
 
   /** Determine if a unit corresponds to the left-side animation. */
   private isLeftUnit(unit: UnitObject): boolean {
-    if (this.leftIsAttacker) {
-      return unit === this.attacker;
-    }
+    if (this.leftIsAttacker) return unit === this.attacker;
     return unit === this.defender;
   }
-
-  private advanceShake(): void {
-    if (this.shakeIndex < this.shakePattern.length) {
-      this.shakeIndex++;
-    }
-  }
-
-  private getCurrentShake(): [number, number] {
-    if (this.shakeIndex > 0 && this.shakeIndex <= this.shakePattern.length) {
-      return this.shakePattern[this.shakeIndex - 1];
-    }
-    return [0, 0];
-  }
-
-  private advancePlatformShake(): void {
-    if (this.platformShakeIndex < this.platformShakePattern.length) {
-      this.platformShakeIndex++;
-    }
-  }
-
-  private getCurrentPlatformShake(): [number, number] {
-    if (this.platformShakeIndex > 0 && this.platformShakeIndex <= this.platformShakePattern.length) {
-      return this.platformShakePattern[this.platformShakeIndex - 1];
-    }
-    return [0, 0];
-  }
-
-  private advancePan(): void {
-    if (this.panConfig.max === 0) return;
-    if (this.panOffset < this.panTarget) {
-      this.panOffset = Math.min(this.panTarget, this.panOffset + this.panConfig.speed);
-    } else if (this.panOffset > this.panTarget) {
-      this.panOffset = Math.max(this.panTarget, this.panOffset - this.panConfig.speed);
-    }
-  }
-
-  private advanceBlend(): void {
-    if (this.blendFramesRemaining > 0) {
-      this.blendFramesRemaining--;
-    }
-  }
-}
-
-// ============================================================
-// Utility
-// ============================================================
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function easeOutQuad(t: number): number {
-  return t * (2 - t);
 }
