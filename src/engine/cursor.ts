@@ -62,20 +62,36 @@ export class Cursor {
 
   /** Whether the cursor is drawn. */
   visible: boolean = true;
+  /**
+   * Python LevelCursorDrawState: which sprite row get_image() uses.
+   * 'visible' picks the active frame over an unfinished player unit.
+   */
+  drawState: 'visible' | 'combat' | 'turnwheel' | 'formation' = 'visible';
 
   /** LevelCursorDrawState.Combat: the red cursor row (combat_show). */
-  combatDraw: boolean = false;
+  get combatDraw(): boolean {
+    return this.drawState === 'combat';
+  }
+  set combatDraw(value: boolean) {
+    this.drawState = value ? 'combat' : 'visible';
+  }
 
   /** Python cursor.combat_show(): show the red combat cursor. */
   combatShow(): void {
     this.visible = true;
-    this.combatDraw = true;
+    this.drawState = 'combat';
+  }
+
+  /** Python LevelCursor.show: back to the normal cursor. */
+  show(): void {
+    this.visible = true;
+    this.drawState = 'visible';
   }
 
   /** Python cursor.hide() after the red cursor; back to the normal row. */
   combatHide(): void {
     this.visible = false;
-    this.combatDraw = false;
+    this.drawState = 'visible';
   }
 
   /** Loaded sprite sheet image (null until loaded). */
@@ -159,7 +175,11 @@ export class Cursor {
    * @param surf   The target surface.
    * @param cameraOffset  [offsetX, offsetY] from Camera.getOffset().
    */
-  draw(surf: Surface, cameraOffset: [number, number]): void {
+  draw(
+    surf: Surface,
+    cameraOffset: [number, number],
+    opts: { activeUnit?: boolean; inFormation?: boolean } = {},
+  ): void {
     if (!this.visible) return;
 
     const drawX = Math.round(this.visualX) - cameraOffset[0] - CENTER_OFFSET;
@@ -168,8 +188,20 @@ export class Cursor {
     if (this.spriteSheet) {
       // Use the actual cursor sprite sheet
       const frameIdx = ANIM_SEQUENCE[this.animCounter]; // 0, 1, or 2
-      const srcX = frameIdx * FRAME_SIZE;
-      const srcY = this.combatDraw ? FRAME_SIZE : 0; // Row 1 = red combat cursor
+      // Python LevelCursor.get_image / format_sprite rows.
+      let srcX = frameIdx * FRAME_SIZE;
+      let srcY = 0;
+      if (this.drawState === 'formation') {
+        srcX = opts.inFormation ? 64 : 96;
+        srcY = 64;
+      } else if (this.drawState === 'combat') {
+        srcY = 32;
+      } else if (this.drawState === 'turnwheel') {
+        srcY = 96;
+      } else if (opts.activeUnit) {
+        srcX = 0;
+        srcY = 64;
+      }
 
       surf.blitImage(
         this.spriteSheet,

@@ -526,7 +526,12 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     y: game.cursor.getHover().y,
     visible: game.cursor.visible,
     draw: (s: Surface, ox: number, oy: number) => {
-      game.cursor.draw(s, [ox, oy] as [number, number]);
+      // Python get_image: the active frame over a visible, unfinished player unit.
+      const hover = game.cursor.getHover();
+      const unit: UnitObject | null = game.board.getUnit(hover.x, hover.y);
+      const activeUnit = !!unit && unit.team === 'player' && !unit.finished && !unit.tags.includes('Tile') &&
+        game.board.inVision([hover.x, hover.y], 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits());
+      game.cursor.draw(s, [ox, oy] as [number, number], { activeUnit });
     },
   };
 
@@ -5103,6 +5108,7 @@ export class ItemTargetingState extends MapState {
     this.spellForecastCursor = '';
     getGame().highlight.clear();
     getGame().hud.resetInfo();
+    getGame().cursor.show?.();
   }
 }
 
@@ -6015,6 +6021,8 @@ export class TargetingState extends MapState {
       game.highlight.setAttackHighlights(attackTiles);
     }
 
+    // Python CombatTargetingState.begin: game.cursor.combat_show().
+    game.cursor.combatShow?.();
     // Position cursor on first target
     game.hud.prepareAttackInfo();
     this.focusTarget();
@@ -6152,12 +6160,7 @@ export class TargetingState extends MapState {
       const unit: UnitObject = game.selectedUnit;
       const weapon = getEquippedWeapon(unit, game.db, game);
       if (weapon && target.position) {
-        const cameraOffset = game.camera.getOffset();
-        const tx = target.position[0] * TILEWIDTH - cameraOffset[0];
-        const ty = target.position[1] * TILEHEIGHT - cameraOffset[1];
-
-        // Highlight target tile
-        surf.fillRect(tx, ty, TILEWIDTH, TILEHEIGHT, 'rgba(255,0,0,0.3)');
+        // The red combat cursor (Cursor.combatShow) marks the target.
         game.hud.drawAttackInfo(surf, game, unit, weapon, target, this.attackerAssist, this.defenderAssist);
       }
     }
@@ -6168,6 +6171,7 @@ export class TargetingState extends MapState {
     const game = getGame();
     game.highlight.clear();
     game.hud.resetInfo();
+    game.cursor.show?.();
     // Clear targets to prevent stale draw (red rectangle) when CombatState
     // draws on top of this transparent state
     this.targets = [];
