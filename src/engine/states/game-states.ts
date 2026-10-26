@@ -12680,28 +12680,39 @@ export class EventState extends State {
       // Resolve typed {v:...} placeholders inside an eval before evaluating the
       // outer expression. JSON literals preserve arrays for indexing and random
       // choice instead of flattening them to comma-delimited text.
-      for (let replacement = 0; replacement < 20; replacement += 1) {
-        const evalIndex = value.indexOf('{eval:');
-        const shortIndex = value.indexOf('{e:');
-        const start = evalIndex < 0
-          ? shortIndex
-          : shortIndex < 0
-            ? evalIndex
-            : Math.min(evalIndex, shortIndex);
-        if (start < 0) break;
-        let depth = 0;
-        let close = -1;
-        for (let index = start; index < value.length; index += 1) {
-          if (value[index] === '{') depth += 1;
-          if (value[index] === '}') {
-            depth -= 1;
-            if (depth === 0) {
-              close = index;
-              break;
+      // Python TextEvaluator evaluates innermost braces first, so a nested
+      // `{e:u('{e:receiver}').name}` resolves `{e:receiver}` to text before
+      // the outer eval. Take the first eval tag that has no eval tag inside.
+      const findInnermostEval = (): [number, number] | null => {
+        const tagAt = (index: number): boolean =>
+          value.startsWith('{e:', index) || value.startsWith('{eval:', index);
+        for (let start = value.indexOf('{'); start >= 0; start = value.indexOf('{', start + 1)) {
+          if (!tagAt(start)) continue;
+          let depth = 0;
+          let close = -1;
+          let nested = false;
+          for (let index = start; index < value.length; index += 1) {
+            if (value[index] === '{') {
+              if (index > start && tagAt(index)) nested = true;
+              depth += 1;
+            }
+            if (value[index] === '}') {
+              depth -= 1;
+              if (depth === 0) {
+                close = index;
+                break;
+              }
             }
           }
+          if (close < 0) return null;
+          if (!nested) return [start, close];
         }
-        if (close < 0) break;
+        return null;
+      };
+      for (let replacement = 0; replacement < 20; replacement += 1) {
+        const span = findInnermostEval();
+        if (!span) break;
+        const [start, close] = span;
         const colon = value.indexOf(':', start);
         const expression = value.slice(colon + 1, close);
         // Python evaluates innermost braces first as plain text: a {v:} inside

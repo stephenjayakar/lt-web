@@ -1204,3 +1204,23 @@ test('adjacent fillRects leave no seam at a fractional render scale (fog of war 
   });
   expect(seam).toEqual([]);
 });
+
+test('nested {e:} tags evaluate innermost first (EOtF Global_Give_Exp alert)', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.db.events.set('qa_nested_child', {
+      name: 'qa_nested_child', nid: 'qa_nested_child', trigger: null, level_nid: null,
+      condition: 'True', only_once: false, priority: 0,
+      _source: ["game_var;qa_name;{e:u('{e:receiver}').name}"],
+    });
+  });
+  await runEvent(page, 'qa_nested_parent', [
+    "trigger_script_with_args;qa_nested_child;receiver,{e:game.get_unit('Eirika')}",
+  ], 20);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return { name: g.gameVars.get('qa_name'), expected: g.getUnit('Eirika')?.name };
+  });
+  expect(result.name).toBe(result.expected);
+});
