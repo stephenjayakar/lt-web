@@ -1265,7 +1265,8 @@ export class MapCombat implements StrikeEventCombat {
       }
       if (!itemTint) startFlicker(target, 0, 333, [255, 255, 255]);
     }
-    if ((strike.extraDamage ?? 0) > 0) addDamageNumbers(target, strike.extraDamage ?? 0, 'small_red');
+    // EOtF fork map_combat `extra_damage` brush: purple digits beside the hit.
+    if ((strike.extraDamage ?? 0) > 0) addDamageNumbers(target, strike.extraDamage ?? 0, 'extra_purple');
   }
 
   /** Clear every combat pose/lunge (skip, or the end of the presentation). */

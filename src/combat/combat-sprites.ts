@@ -108,3 +108,6 @@ export const COMBAT_UI_SPRITES: string[] = [
   'health_bar', 'arrow_advantage', 'full_hp_blip', 'empty_hp_blip', 'overflow_hp_blip', 'overflowpurple_hp_blip',
   ...['red', 'yellow', 'cyan', 'small_red', 'small_yellow', 'small_cyan'].map((color) => `damage_numbers_${color}`),
 ];
+
+/** Engine-fork-only combat sprites (public/fork-sprites), preloaded for EOtF. */
+export const FORK_COMBAT_UI_SPRITES: string[] = ['damage_numbers_extra_purple'];

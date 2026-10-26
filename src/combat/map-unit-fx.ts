@@ -35,7 +35,7 @@ interface Vibrate {
   duration: number;
 }
 
-/** gui.DamageNumber (map variant: digits of a `small_*` sheet). */
+/** gui.DamageNumber (map variant: digits of a `small_*` or `extra_*` sheet). */
 interface DamageNumber {
   digit: number;
   idx: number;
@@ -260,7 +260,7 @@ export function drawMapDamageNumbers(
 function drawDamageNumber(surf: Surface, num: DamageNumber, elapsed: number, x: number, y: number): void {
   const sheet = getCombatSprite(num.sheet);
   if (!sheet) return;
-  const initTime = 50 * num.idx; // small numbers start without the +50 delay
+  const initTime = 50 * num.idx; // small/extra numbers start without the +50 delay
   if (elapsed <= initTime) return;
   let topPos = 0;
   let alpha = 1;
@@ -279,7 +279,10 @@ function drawDamageNumber(surf: Surface, num: DamageNumber, elapsed: number, x: 
   const prevAlpha = ctx.globalAlpha;
   ctx.imageSmoothingEnabled = false;
   ctx.globalAlpha = alpha;
-  const dx = x - 4 * num.length + 8 * num.idx;
+  // EOtF fork gui.DamageNumber: `extra_*` digits are small digits shifted
+  // 16 px right of the main number.
+  const extra = num.sheet.startsWith('damage_numbers_extra');
+  const dx = (extra ? 16 : 0) + x - 4 * num.length + 8 * num.idx;
   const dy = y - topPos;
   ctx.drawImage(
     sheet.canvas,
