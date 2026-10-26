@@ -434,4 +434,44 @@ test.describe('Embrace of the Fog Canto and Canter contract', () => {
     expect(result.allyCantoPlus).toEqual({ hasAttacked: true, finished: false, movementLeft: 2, cantoPending: true });
     expect(result.none).toMatchObject({ finished: true, cantoPending: false });
   });
+
+  test('a map item use waits through unit_wait and alerts an ally-targeted last use breaking', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { applyCoreTargetedItem } = await import('/src/engine/states/game-states.ts');
+      const unit = game.units.get('Player');
+      const ally = game.units.get('Keeper');
+      game.db.events.set('_ItemWait', {
+        name: '_ItemWait', nid: '_ItemWait', trigger: 'unit_wait', level_nid: game.currentLevel?.nid ?? null,
+        condition: "unit1.nid == 'Player' and not actively_chosen", only_once: false, priority: 0,
+        _source: ['game_var;_item_wait;1'],
+      });
+      const use = (target: any) => {
+        unit.resetTurnState();
+        unit.skills = [];
+        target.currentHp = Math.max(1, target.currentHp - 5);
+        const vulnerary = new ItemObject(game.db.items.get('Vulnerary'));
+        vulnerary.uses = 1;
+        vulnerary.owner = unit;
+        unit.items = [vulnerary];
+        game.memory.delete('pending_item_alerts');
+        const queued = game.eventManager.eventQueue.length;
+        applyCoreTargetedItem(unit, vulnerary, [...target.position]);
+        const events = game.eventManager.eventQueue.slice(queued).map((event: any) => event.nid);
+        game.eventManager.eventQueue.splice(queued);
+        return {
+          finished: unit.finished,
+          waitEvent: events.includes('_ItemWait'),
+          alerts: (game.memory.get('pending_item_alerts') ?? []).map((banner: any) => banner.text),
+        };
+      };
+      return { ally: use(ally), self: use(unit) };
+    });
+    // Python WaitState -> unit.wait(): unit_wait with actively_chosen False.
+    expect(result.ally).toEqual({ finished: true, waitEvent: true, alerts: ['<blue>Vulnerary</> broke.'] });
+    // A unit targeting itself gets no broken-item alert.
+    expect(result.self).toEqual({ finished: true, waitEvent: true, alerts: [] });
+  });
 });

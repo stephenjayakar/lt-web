@@ -317,6 +317,57 @@ test('promoting with Canto ends in the Canto move instead of waiting', async ({ 
   });
 });
 
+test('a crest used on an ally alerts "Knight Crest broke." before the promotion choice', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(async () => {
+    (window as any).__itemModule = await import('/src/objects/item.ts');
+  });
+  await mercenary(page);
+  // Python: the crest's map combat targets the ally, spends the last use and
+  // handle_broken_items alerts (attacker is not defender) before end_combat's
+  // Promote opens the choice. Self-targeted uses never alert.
+  await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const ally = [...game.units.values()].find((unit: any) => unit.nid === 'Hetja');
+    game.board.moveUnit(ally, 8, 4);
+    ally.klass = 'Mercenary';
+    ally.level = 10;
+    ally.finished = false;
+    // EOtF's crests have no range (self only); this one reaches an adjacent ally.
+    const unit = (window as any).__promoUnit;
+    const prefab = game.db.items.get('Knight Crest');
+    const { ItemObject } = (window as any).__itemModule;
+    const crest = new ItemObject({ ...prefab, components: [...prefab.components, ['max_range', 1]] });
+    crest.owner = unit;
+    unit.items = [crest];
+    game.state.change('item_use');
+  });
+  await step(page, 2);
+  await step(page, 1, 'SELECT');
+  await step(page, 2);
+  expect(await stateName(page)).toBe('item_targeting');
+  await page.evaluate(() => {
+    const state = (window as any).__gameRef.state.getCurrentState();
+    state.selectTarget(state.targets.findIndex(([x, y]: [number, number]) => x === 8 && y === 4));
+  });
+  await step(page, 2);
+  const alert = await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const alerts = game.memory.get('alerts') ?? [];
+    return { stack: game.state.getStackNames().slice(-2), text: alerts[alerts.length - 1]?.text };
+  });
+  expect(alert).toEqual({ stack: ['promotion_choice', 'alert'], text: '<blue>Knight Crest</> broke.' });
+  await runUntil(page, async () => await stateName(page) === 'promotion_choice');
+  // BACK still reverses the use (the crest comes back, the user can act).
+  await step(page, 1, 'BACK');
+  await step(page, 2);
+  const after = await page.evaluate(() => {
+    const u = (window as any).__promoUnit;
+    return { crest: u.items.some((item: any) => item.nid === 'Knight Crest'), finished: u.finished };
+  });
+  expect(after).toEqual({ crest: true, finished: false });
+});
+
 test('a non-silent event promote plays the promotion screen and resumes the event', async ({ page }) => {
   await boot(page);
   await page.evaluate(async () => {

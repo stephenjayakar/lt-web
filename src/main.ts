@@ -80,6 +80,8 @@ import {
   setInfoMenuGameRef,
   InitiativeUpkeepState,
   StatusUpkeepState,
+  WaitState,
+  AlertState,
   StatusEndstepState,
 } from './engine/states/game-states';
 import {
@@ -769,6 +771,8 @@ async function main(): Promise<void> {
     new TurnChangeState(),
     new InitiativeUpkeepState(),
     new StatusUpkeepState(),
+    new WaitState(),
+    new AlertState(),
     new StatusEndstepState(),
     new PhaseChangeState(),
     new MovementState(),
