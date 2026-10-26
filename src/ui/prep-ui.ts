@@ -191,6 +191,44 @@ export class ScrollingBackground {
   }
 }
 
+/**
+ * Python base.base_background: the `_base_bg_name` panorama scaled to the
+ * window (PanoramaBackground), else `default_background` scrolling at 50.
+ */
+export function createBaseBackground(game: any): { draw(surf: Surface): void } {
+  const name = String(game.gameVars?.get('_base_bg_name') ?? '');
+  let image: HTMLImageElement | null = null;
+  let fallback: ScrollingBackground | null = null;
+  if (name) {
+    void game.resources?.tryLoadImage?.(`resources/panoramas/${name}.png`).then((img: HTMLImageElement | null) => {
+      if (img) image = img;
+      else fallback = new ScrollingBackground(game, 'default_background');
+    });
+  } else {
+    fallback = new ScrollingBackground(game, 'default_background');
+  }
+  return {
+    draw(surf: Surface): void {
+      if (image) {
+        const w = image.naturalWidth || image.width;
+        const h = image.naturalHeight || image.height;
+        const scale = Math.max(viewport.width / WINWIDTH, viewport.height / WINHEIGHT, 1);
+        const dw = WINWIDTH * scale;
+        const dh = WINHEIGHT * scale;
+        const s = surf.scale;
+        surf.ctx.imageSmoothingEnabled = false;
+        surf.ctx.drawImage(image, 0, 0, w, h,
+          Math.round(((viewport.width - dw) / 2) * s), Math.round(((viewport.height - dh) / 2) * s),
+          Math.round(dw * s), Math.round(dh * s));
+      } else if (fallback) {
+        fallback.draw(surf);
+      } else {
+        surf.fill(0, 0, 0);
+      }
+    },
+  };
+}
+
 /** Python background.SpriteBackground (focus_fade over the prep map). */
 export class SpriteBackground {
   private nid: string;

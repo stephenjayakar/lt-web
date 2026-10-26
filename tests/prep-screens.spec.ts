@@ -449,6 +449,68 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     await attachShot(page, testInfo, 'market-buy');
   });
 
+  test('EOtF Global_Base opens the Python base menu with child menus and market select', async ({ page }, testInfo) => {
+    test.slow();
+    await openPrep(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.baseConvos = new Map([['Termina_Talk', false], ['Old_Story', true]]);
+      g.gameVars.set('_base_market', true);
+      g.marketItems = new Map([['Iron_Sword', -1]]);
+      const ev = [...g.db.events.values()].find((e: any) => e.name === 'Global_Base');
+      g.eventManager.triggerSpecific(ev.nid, { type: 'qa_base' }, true);
+      g.state.change('event');
+    });
+    for (let i = 0; i < 20 && (await stack(page)).at(-1) !== 'base_main'; i++) await step(page, 3);
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('base_main');
+    const base = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      return { labels: menu.options.map((o: any) => o.label), enabled: menu.options.map((o: any) => o.enabled), x: menu.x, y: menu.y };
+    });
+    expect(base.labels).toEqual(['Manage', 'Market', 'Convos', 'Codex', 'Options', 'Save', 'Continue']);
+    expect(base.enabled).toEqual([true, true, true, true, true, true, true]);
+    // topleft = (4, WINHEIGHT // 2 - (7 * 16 + 8) // 2)
+    expect([base.x, base.y]).toEqual([4, 20]);
+    await attachShot(page, testInfo, 'base-main');
+
+    // Convos: child Choice beside the selected row; viewed convos are greyed.
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      menu.selectedIndex = 2;
+    });
+    await step(page, 1, 'SELECT');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('base_convos');
+    const child = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const parent = g.memory.get('option_menu');
+      const menu = g.state.getCurrentState().menu;
+      return {
+        x: menu.x, y: menu.y, expected: [parent.x - 20 + parent.width, parent.y + 2 * 16 + 4],
+        enabled: menu.options.map((o: any) => o.enabled),
+      };
+    });
+    expect([child.x, child.y]).toEqual(child.expected);
+    expect(child.enabled).toEqual([true, false]);
+    await attachShot(page, testInfo, 'base-convos');
+    await step(page, 1, 'BACK');
+    await step(page, 2);
+
+    // Market -> base_market_select (unit table) -> prep_market.
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      menu.selectedIndex = 1;
+    });
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    expect((await stack(page)).at(-1)).toBe('base_market_select');
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().menu.mode)).toBe('unit');
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    expect((await stack(page)).at(-1)).toBe('prep_market');
+  });
+
   test('Formation selects a unit with the hand marker and moves it to a formation tile', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);

@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 56,
-    "merged": 57,
+    "exact": 57,
+    "merged": 56,
     "open": 0,
-    "web": 74
+    "web": 75
   },
   "rows": [
     {
@@ -124,9 +124,9 @@
       "name": "base_market_select",
       "className": "BaseMarketSelectState",
       "source": "lt-maker/app/engine/base.py",
-      "status": "merged",
-      "webState": "shop",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "base_market_select",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "base_records",

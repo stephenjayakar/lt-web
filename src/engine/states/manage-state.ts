@@ -275,8 +275,7 @@ type Background = { draw(surf: Surface): void };
 // ManageState — Python PrepManageState (prep_manage / base_manage)
 // ============================================================================
 
-export class ManageState extends State {
-  readonly name = 'base_manage';
+abstract class ManageBaseState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
@@ -327,14 +326,14 @@ export class ManageState extends State {
       const unit = menu.getCurrentUnit();
       if (!unit) return;
       game.memory.set('current_unit', unit);
-      game.state.change('prep_manage_select');
+      game.state.change(this.selectState());
       sfx('Select 1');
     } else if (event === 'BACK') {
       game.state.back();
       sfx('Select 4');
     } else if (event === 'INFO') {
       openInfo(game, menu.getCurrentUnit());
-    } else if (event === 'START') {
+    } else if (event === 'START' && this.allowOptimizeAll()) {
       sfx('Select 1');
       if (game.gameVars.get('_convoy')) game.state.change('optimize_all_choice');
       else this.alert = new CustomAlert('Convoy not available');
@@ -355,10 +354,35 @@ export class ManageState extends State {
     this.bg?.draw(surf);
     this.menu?.draw(surf, ox, oy);
     drawUnitItems(surf, game, ox + 6, oy + 72, this.menu?.getCurrentUnit() ?? null, { includeFace: true, shimmer: 2 });
-    drawQuickDisp(surf, ox + 120 + 10, oy + 80 + 9);
+    this.drawQuick(surf, ox + 120 + 10, oy + 80 + 9);
     drawFunds(surf, game, ox, oy);
     this.alert?.draw(surf);
     return surf;
+  }
+
+  protected abstract selectState(): string;
+  protected allowOptimizeAll(): boolean { return true; }
+  protected drawQuick(surf: Surface, x: number, y: number): void { drawQuickDisp(surf, x, y); }
+}
+
+/** Python PrepManageState / base_manage. */
+export class ManageState extends ManageBaseState {
+  readonly name = 'base_manage';
+  protected selectState(): string { return 'prep_manage_select'; }
+}
+
+/** Python base.BaseMarketSelectState: pick a unit, then prep_market. */
+export class MarketSelectState extends ManageBaseState {
+  readonly name = 'base_market_select';
+  protected selectState(): string { return 'prep_market'; }
+  protected override allowOptimizeAll(): boolean { return false; }
+  /** BaseMarketSelectState.create_quick_disp: one 'Market' button row. */
+  protected override drawQuick(surf: Surface, x: number, y: number): void {
+    const width = 49 + textWidth('Market');
+    blitTranslucent(surf, baseSurf(width, 24, 'menu_bg_brown'), x, y, 0.1);
+    const buttons = getSprite('buttons');
+    if (buttons) surf.blitImage(buttons, 0, 66, 14, 13, x + 12 - 7, y + 18 - 13);
+    drawText(surf, 'Market', x + 30, y + 3);
   }
 }
 

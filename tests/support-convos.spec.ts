@@ -255,9 +255,12 @@ test.describe('Support conversations (field + base + turnwheel)', () => {
     await waitForHarness(page);
     await stepFrames(page, 10);
 
-    // Enter base_main
+    // Enter base_main (Python lists Supports only once `_supports` is on
+    // and the base_convos support constant is set).
     await page.evaluate(() => {
       const g = (window as any).__gameRef;
+      g.gameVars.set('_supports', true);
+      g.db.supportConstants.set('base_convos', true);
       g.state.change('base_main');
     });
     await stepFrames(page, 15);

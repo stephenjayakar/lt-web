@@ -15934,6 +15934,24 @@ export class EventState extends State {
         if (args[0] === 'show_map' || args[0] === 'True') {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_transparent', true));
         }
+        // Python event_functions.base: OtherOptions / OtherOptionsEnabled /
+        // OtherOptionsOnSelect (enabled defaults to True).
+        const baseList = (value: string | undefined) =>
+          value ? value.split(',').map((entry) => entry.trim()) : [];
+        const baseOptions = baseList(args[2]).filter(Boolean);
+        if (baseOptions.length) {
+          const enabled = baseList(args[3]).map((v) => !['f', 'false', '0', 'n', 'no'].includes(v.toLowerCase()));
+          while (enabled.length < baseOptions.length) enabled.push(true);
+          const onSelect: (string | null)[] = baseList(args[4]).map((v) => v || null);
+          while (onSelect.length < baseOptions.length) onSelect.push(null);
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_options_disabled', enabled.slice(0, baseOptions.length).map((b) => !b)));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_options_events', onSelect.slice(0, baseOptions.length)));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_additional_options', baseOptions));
+        } else {
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_options_disabled', []));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_options_events', []));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_base_additional_options', []));
+        }
         this.advancePointer();
         game.state.change('base_main');
         return true; // Block until base closes

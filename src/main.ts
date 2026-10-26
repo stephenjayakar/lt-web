@@ -98,6 +98,7 @@ import {
   OptimizeAllChoiceState,
   PrepTradeState,
   PrepMarketState,
+  MarketSelectState,
   setManageGameRef,
 } from './engine/states/manage-state';
 import {
@@ -777,6 +778,7 @@ async function main(): Promise<void> {
     new OptimizeAllChoiceState(),
     new PrepTradeState(),
     new PrepMarketState(),
+    new MarketSelectState(),
     new SettingsMenuState(),
     new MinimapState(),
     new TextEntryState(),

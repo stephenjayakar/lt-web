@@ -22,6 +22,7 @@ import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
 import type { LoreEntry } from '../../data/types';
 import { canTradeWith } from '../../combat/skill-system';
 import { getEffectiveLevelCap } from '../leveling';
+import { createBaseBackground, preloadPrepSprites, screenOrigin } from '../../ui/prep-ui';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -42,324 +43,182 @@ function getGame(): any {
 
 export class BaseMainState extends State {
   readonly name = 'base_main';
-  override readonly showMap = false;
-  override readonly inLevel = false;
+  override showMap = false;
+  override inLevel = false;
+  /** Python draws MapState.draw when `_base_transparent` is set. */
+  override transparent = false;
 
-  private bgImage: HTMLImageElement | null = null;
-  private bgName: string = '';
-  private menu: ChoiceMenu | null = null;
-  private isTransparent: boolean = false;
-  private pulseTimer: number = 0;
+  menu: ChoiceMenu | null = null;
+  private bg: { draw(surf: Surface): void } | null = null;
+  private eventsOnOptions: (string | null)[] = [];
+  private isFromOverworld = false;
 
   override start(): StateResult {
     const game = getGame();
-
-    // Read game vars for base configuration
-    this.bgName = game.gameVars.get('_base_bg_name') || 'default_background';
+    preloadPrepSprites();
     const musicNid = game.gameVars.get('_base_music') as string | undefined;
-    this.isTransparent = !!game.gameVars.get('_base_transparent');
-    const hasMarket = !!game.gameVars.get('_base_market');
+    if (musicNid) void game.audioManager?.playMusic?.(musicNid);
+    if (game.cursor) game.cursor.visible = false;
+    this.transparent = !!game.gameVars.get('_base_transparent');
+    this.showMap = this.transparent;
+    this.inLevel = this.transparent;
+    this.bg = createBaseBackground(game);
+    game.memory.set('base_bg', this.bg);
+    this.isFromOverworld = !!game.overworldController && game.state.stack.some((s: State) => s.name.startsWith('overworld'));
+    this.buildMenu();
 
-    // Load background panorama asynchronously
-    if (!this.isTransparent) {
-      game.resources.tryLoadImage(`resources/panoramas/${this.bgName}.png`)
-        .then((img: HTMLImageElement | null) => {
-          this.bgImage = img;
-        });
-    }
-
-    // Start base music if configured
-    if (musicNid) {
-      void game.audioManager.playMusic(musicNid);
-    }
-
-    // Build menu options dynamically
-    this.buildMenu(hasMarket);
-
-    this.pulseTimer = 0;
-
-    // on_base_start fires each time the player enters base
-    // (matches Python engine/base.py BaseMainState.start).
+    // on_base_start fires each time the player enters base. Push an event
+    // state only when this trigger queued a NEW event (the parent `base`
+    // event is already active).
     if (game.eventManager) {
       const levelNid = game.currentLevel?.nid ?? '';
       const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
-      // Push an event state only when this trigger queued a NEW event —
-      // hasActiveEvents() also sees a parent event that opened base via the
-      // `base` command, and double-pushing EventState corrupts the stack.
-      const triggered = game.eventManager.trigger({ type: 'on_base_start', levelNid }, ctx);
-      if (triggered) {
+      if (game.eventManager.trigger({ type: 'on_base_start', levelNid }, ctx)) {
         game.state.change('event');
       }
     }
   }
 
   override begin(): StateResult {
-    // Rebuild menu each time we return to this state (convos may have changed)
     const game = getGame();
-    const hasMarket = !!game.gameVars.get('_base_market');
-    this.buildMenu(hasMarket);
+    const musicNid = game.gameVars.get('_base_music') as string | undefined;
+    if (musicNid) void game.audioManager?.fadeIn?.(musicNid);
+    // Convos/market availability can change while away (Python keeps the
+    // menu, but its ignore flags come from live data on the next start).
+    const current = this.menu?.getCurrentOption()?.value;
+    this.buildMenu();
+    if (this.menu && current) {
+      const idx = this.menu.options.findIndex((o) => o.value === current && o.enabled);
+      if (idx >= 0) this.menu.selectedIndex = idx;
+    }
   }
 
-  private buildMenu(hasMarket: boolean): void {
+  /** Python BaseMainState.populate_options. */
+  private buildMenu(): void {
     const game = getGame();
-    const options: MenuOption[] = [];
-
-    // Always: Manage
-    options.push({
-      label: 'Manage',
-      value: 'manage',
-      enabled: true,
-      description: 'Manage your units and equipment.',
-    });
-
-    // Market: insert after Manage if enabled
-    if (hasMarket) {
-      const hasItems = game.marketItems && game.marketItems.size > 0;
-      options.push({
-        label: 'Market',
-        value: 'market',
-        enabled: !!hasItems,
-        description: 'Buy and sell items.',
-      });
+    const labels = ['Manage', 'Convos', 'Codex', 'Options', 'Save', 'Continue'];
+    const ignore = [true, true, false, false, false, this.isFromOverworld];
+    const party = game.getUnitsInParty?.() ?? [];
+    if (party.length) ignore[0] = false;
+    const convos: Map<string, boolean> | undefined = game.baseConvos;
+    if (convos && convos.size > 0) ignore[1] = false;
+    if (game.gameVars.get('_supports') && game.db.supportConstants?.get?.('base_convos')) {
+      labels.splice(2, 0, 'Supports');
+      ignore.splice(2, 0, !this.hasSupportConversations());
     }
+    if (game.db.getConstant?.('bexp', false)) {
+      labels.splice(2, 0, 'Bonus EXP');
+      ignore.splice(2, 0, false);
+    }
+    if (game.gameVars.get('_base_market')) {
+      labels.splice(1, 0, 'Market');
+      ignore.splice(1, 0, !(game.marketItems && game.marketItems.size > 0));
+    }
+    let events: (string | null)[] = labels.map(() => null);
+    const additional: string[] = game.gameVars.get('_base_additional_options') ?? [];
+    const additionalIgnore: boolean[] = game.gameVars.get('_base_options_disabled') ?? [];
+    const additionalEvents: (string | null)[] = game.gameVars.get('_base_options_events') ?? [];
+    const optionIdx = labels.indexOf('Options');
+    const allLabels = [...labels.slice(0, optionIdx), ...additional, ...labels.slice(optionIdx)];
+    const allIgnore = [...ignore.slice(0, optionIdx), ...additional.map((_, i) => !!additionalIgnore[i]), ...ignore.slice(optionIdx)];
+    events = [...events.slice(0, optionIdx), ...additional.map((_, i) => additionalEvents[i] ?? null), ...events.slice(optionIdx)];
+    this.eventsOnOptions = events;
 
-    // Convos: enabled only if there are unviewed conversations
-    const hasConvos = game.baseConvos && game.baseConvos.size > 0;
-    options.push({
-      label: 'Convos',
-      value: 'convos',
-      enabled: !!hasConvos,
-      description: 'View available conversations.',
+    const builtIn = new Set(['Manage', 'Market', 'Convos', 'Supports', 'Bonus EXP', 'Codex', 'Options', 'Save', 'Continue']);
+    const options: MenuOption[] = allLabels.map((label, i) => {
+      const custom = i >= optionIdx && i < optionIdx + additional.length;
+      return {
+        label,
+        value: builtIn.has(label) && !custom ? label.toLowerCase().replace(/ /g, '_') : `custom:${i}`,
+        enabled: !allIgnore[i],
+      };
     });
-
-    // Supports: enabled only if there are support conversations
-    const hasSupportConvos = this.hasSupportConversations();
-    options.push({
-      label: 'Supports',
-      value: 'supports',
-      enabled: !!hasSupportConvos,
-      description: 'View support conversations.',
-    });
-
-    // Python routes achievements through the base Codex child menu.
-    options.push({
-      label: 'Codex',
-      value: 'codex',
-      enabled: true,
-      description: 'Review records and achievements.',
-    });
-
-    // Options (settings)
-    options.push({
-      label: 'Options',
-      value: 'options',
-      enabled: true,
-      description: 'Adjust game settings.',
-    });
-
-    // Save
-    options.push({
-      label: 'Save',
-      value: 'save',
-      enabled: true,
-      description: 'Save your progress.',
-    });
-
-    // Continue — exits the base
-    options.push({
-      label: 'Continue',
-      value: 'continue',
-      enabled: true,
-      description: 'Continue the story.',
-    });
-
-    // Position menu on the left side of the screen
-    const menuX = 8;
-    const menuY = 24;
-    this.menu = new ChoiceMenu(options, menuX, menuY);
+    // Python: topleft (4, WINHEIGHT // 2 - (num_options * 16 + 8) // 2), limit 9.
+    const numOptions = Math.min(options.length, 9);
+    const [ox, oy] = screenOrigin();
+    this.menu = new ChoiceMenu(options, ox + 4, oy + Math.floor(160 / 2) - Math.floor((numOptions * 16 + 8) / 2));
+    game.memory.set('option_menu', this.menu);
   }
 
   private hasSupportConversations(): boolean {
     const game = getGame();
-    const supportController = game.supports;
-    if (!supportController || !supportController.pairs) return false;
-
-    // Check if there are any support pairs with locked or unlocked ranks
-    for (const pair of supportController.pairs.values()) {
-      if (pair.lockedRanks.length > 0 || pair.unlockedRanks.length > 0) {
-        return true;
-      }
+    const party: any[] = game.getUnitsInParty?.() ?? [];
+    const nids = new Set(party.map((u) => u.nid));
+    for (const pair of game.supports?.pairs?.values?.() ?? []) {
+      if (nids.has(pair.unit1Nid) || nids.has(pair.unit2Nid)) return true;
     }
     return false;
   }
 
   override update(): StateResult {
-    const game = getGame();
-    this.pulseTimer += game.frameDeltaMs ?? 16;
+    // ChoiceMenu animates its own cursor while drawing.
   }
 
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-
-    if (this.isTransparent) {
-      // Transparent mode: draw the game map beneath (handled by state stack
-      // transparency). Just draw a semi-transparent overlay so the menu
-      // is readable on top of the map.
-      surf.fillRect(0, 0, vw, vh, 'rgba(0,0,0,0.35)');
-    } else if (this.bgImage) {
-      // Draw panorama scaled to fill viewport
-      const s = surf.scale;
-      const imgW = this.bgImage.naturalWidth || vw;
-      const imgH = this.bgImage.naturalHeight || vh;
-      surf.ctx.imageSmoothingEnabled = false;
-      surf.ctx.drawImage(
-        this.bgImage,
-        0, 0, imgW, imgH,
-        0, 0, Math.round(vw * s), Math.round(vh * s),
-      );
-    } else {
-      // Fallback: dark background
-      surf.fill(16, 16, 32);
-    }
-
-    // Title bar
-    surf.fillRect(0, 0, vw, 18, 'rgba(16,16,48,0.9)');
-    surf.drawText('Base', 4, 4, 'rgba(220,200,128,1)', '10px monospace');
-
-    // Chapter name (top right)
-    const game = getGame();
-    const level = game.currentLevel;
-    if (level) {
-      const name = level.name || level.nid || '';
-      const nameW = name.length * 5;
-      surf.drawText(name, vw - nameW - 4, 5, 'rgba(180,180,220,1)', '7px monospace');
-    }
-
-    // Draw menu
-    if (this.menu) {
-      this.menu.draw(surf);
-    }
-
-    // Description box below menu
-    if (this.menu) {
-      const currentOpt = this.menu.getCurrentOption();
-      if (currentOpt.description) {
-        const descX = 8;
-        const descY = 24 + this.menu.options.length * 16 + 12;
-        surf.fillRect(descX - 2, descY - 2, 110, 16, 'rgba(16,16,48,0.8)');
-        surf.drawText(
-          currentOpt.description,
-          descX + 2,
-          descY + 2,
-          'rgba(180,180,220,1)',
-          '6px monospace',
-        );
-      }
-    }
-
-    // Bottom button hints
-    surf.fillRect(0, vh - 16, vw, 16, 'rgba(16,16,48,0.8)');
-    surf.drawText(
-      'SELECT: Choose  |  B: Continue',
-      4, vh - 12,
-      'rgba(140,140,180,0.8)',
-      '6px monospace',
-    );
-
+    if (!this.transparent) this.bg?.draw(surf);
+    this.menu?.draw(surf);
     return surf;
   }
 
   override takeInput(event: InputEvent): StateResult {
     if (!this.menu) return;
     const game = getGame();
-
-    // Handle mouse click on menu options
     let result: { selected: string } | { back: true } | null = null;
     if (game.input?.mouseClick) {
       const [gx, gy] = game.input.getGameMousePos();
       result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
     }
-    // Handle mouse hover to highlight menu options
     if (game.input?.mouseMoved) {
       const [gx, gy] = game.input.getGameMousePos();
       this.menu.handleMouseHover(gx, gy);
     }
-    // Fall through to keyboard input if mouse didn't produce a result
-    if (!result && event !== null) {
-      result = this.menu.handleInput(event);
-    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
     if (!result) return;
 
     if ('back' in result) {
-      // Back exits the base (same as continue)
-      game.state.back();
+      // Python: BACK only leaves a base opened from the overworld.
+      if (this.isFromOverworld) game.state.back();
       return;
     }
-
-    if ('selected' in result) {
-      switch (result.selected) {
-        case 'manage':
-          game.state.change('base_manage');
-          break;
-
-        case 'convos':
-          game.state.change('base_convos');
-          break;
-
-        case 'supports':
-          game.state.change('base_supports');
-          break;
-
-        case 'codex':
-          game.state.change('base_codex');
-          break;
-
-        case 'market': {
-          // Set up shop data from marketItems and push shop state
-          if (game.marketItems && game.marketItems.size > 0) {
-            const itemNids: string[] = [];
-            const stocks: number[] = [];
-            for (const [nid, stock] of game.marketItems) {
-              itemNids.push(nid);
-              stocks.push(stock);
-            }
-            game.shopItems = itemNids;
-            game.shopStock = stocks;
-            game.shopFlavor = 'market';
-            // Select first available player unit as the shopper
-            game.shopUnit = null;
-            for (const unit of game.units.values()) {
-              if (unit.team === 'player' && !unit.dead) {
-                game.shopUnit = unit;
-                break;
-              }
-            }
-            game.state.change('shop');
-          }
-          break;
+    const selected = result.selected;
+    if (selected.startsWith('custom:')) {
+      const evName = this.eventsOnOptions[Number(selected.slice(7))];
+      if (!evName) return;
+      const levelNid = game.currentLevel?.nid;
+      let queued = false;
+      for (const prefab of game.db.events.values()) {
+        if ((prefab.nid === evName || prefab.name === evName) && (!prefab.level_nid || prefab.level_nid === levelNid)) {
+          if (game.eventManager?.triggerSpecific(prefab.nid, { type: evName, levelNid }, true)) queued = true;
         }
-
-        case 'options':
-          // Settings menu (if registered; otherwise no-op)
-          try {
-            game.state.change('settings_menu');
-          } catch {
-            console.warn('BaseMainState: settings_menu state not registered');
-          }
-          break;
-
-        case 'save':
-          game.state.change('save_menu');
-          break;
-
-        case 'continue':
-          // Exit the base — return to event system
-          game.state.back();
-          break;
       }
+      if (queued) game.state.change('event');
+      return;
+    }
+    switch (selected) {
+      case 'manage': game.state.change('base_manage'); break;
+      case 'market': game.state.change('base_market_select'); break;
+      case 'convos': game.state.change('base_convos'); break;
+      case 'supports': game.state.change('base_supports'); break;
+      case 'codex': game.state.change('base_codex'); break;
+      case 'bonus_exp': game.state.change('base_bexp_select'); break;
+      case 'options': game.state.change('settings_menu'); break;
+      case 'save':
+        game.memory.set('save_kind', 'base');
+        game.state.change('save_menu');
+        break;
+      case 'continue': game.state.back(); break;
     }
   }
+}
+
+/** Python Simple.get_topleft for a child Choice opened from `parent`. */
+function childMenuTopleft(parent: ChoiceMenu | null | undefined): [number, number] {
+  if (!parent) return [80, 36];
+  const [ox] = screenOrigin();
+  if (parent.x - ox < 120) {
+    return [parent.x - 20 + parent.width, parent.y + parent.selectedIndex * 16 + 4];
+  }
+  return [ox + 240 - 40 - parent.width, parent.y + parent.selectedIndex * 16 + 8];
 }
 
 // ============================================================================
@@ -403,25 +262,15 @@ export class BaseConvosState extends State {
       });
     }
 
-    // Position to the right of the parent menu
-    const menuX = 80;
-    const menuY = 28;
+    // Python BaseConvosChildState: a child Choice beside the parent row.
+    const [menuX, menuY] = childMenuTopleft(game.memory.get('option_menu'));
+    const previous = this.menu?.selectedIndex ?? 0;
     this.menu = new ChoiceMenu(options, menuX, menuY);
+    if (options[previous]?.enabled) this.menu.selectedIndex = previous;
   }
 
   override draw(surf: Surface): Surface {
-    // Transparent state — parent draws background beneath
-
-    // Semi-transparent scrim for readability
-    const vw = viewport.width;
-    const vh = viewport.height;
-    surf.fillRect(0, 0, vw, vh, 'rgba(0,0,0,0.2)');
-
-    // Title
-    surf.fillRect(76, 18, 90, 14, 'rgba(16,16,48,0.9)');
-    surf.drawText('Conversations', 80, 21, 'rgba(220,200,128,1)', '7px monospace');
-
-    // Draw menu
+    // Transparent child menu over the base main screen.
     if (this.menu) {
       this.menu.draw(surf);
     }
@@ -483,10 +332,7 @@ export class BaseConvosState extends State {
         }
       }
 
-      // Pop back to base main (event will play on top if triggered above)
-      if (!game.eventManager || !game.eventManager.hasActiveEvents()) {
-        game.state.back();
-      }
+      // Python stays in the child menu; begin() pops once no convos remain.
     }
   }
 }
@@ -704,7 +550,8 @@ export class BaseCodexState extends State {
     if (options.length === 0) {
       options.push({ label: 'No Entries', value: 'empty', enabled: false, description: 'Nothing has been unlocked yet.' });
     }
-    this.menu = new ChoiceMenu(options, 80, 36);
+    const [menuX, menuY] = childMenuTopleft(game.memory.get('option_menu'));
+    this.menu = new ChoiceMenu(options, menuX, menuY);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -737,11 +584,6 @@ export class BaseCodexState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-    surf.fillRect(0, 0, vw, vh, 'rgba(0,0,0,0.28)');
-    surf.fillRect(76, 20, Math.min(150, vw - 82), 14, 'rgba(16,16,48,0.94)');
-    surf.drawText('Codex', 82, 23, 'rgba(220,200,128,1)', '8px monospace');
     this.menu?.draw(surf);
     return surf;
   }
