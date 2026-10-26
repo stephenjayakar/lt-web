@@ -27,8 +27,8 @@ import {
   setItemComponentEntriesEvaluator,
 } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
-import { evaluateEquation } from './combat-calcs';
 import { isForkEngine } from '../engine/engine-flavor';
+import { evaluateEquation, itemIsMagic } from './combat-calcs';
 import {
   alternateSplash,
   additiveHealAmount,
@@ -589,11 +589,11 @@ export function available(
     if (skill.hasComponent('cannot_use_items_except_armor') &&
         weaponType(unit, item) !== 'Gear') return false;
     if (skill.hasComponent('cannot_use_magic_items') &&
-        item.hasComponent('magic')) return false;
+        itemIsMagic(unit, item, 0, db)) return false;
     if (skill.hasComponent('cannot_use_items_enemy') &&
         item.hasComponent('target_enemy')) return false;
     if (skill.hasComponent('cannot_use_magic_items_eval') &&
-        (item.hasComponent('magic') ||
+        (itemIsMagic(unit, item, 0, db) ||
          (item.hasComponent('eval_magic') &&
           evaluatedItemCondition('eval_magic', unit, item, game)) ||
          (item.hasComponent('eval_dragon') &&

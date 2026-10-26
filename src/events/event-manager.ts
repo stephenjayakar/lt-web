@@ -17,7 +17,7 @@ import {
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS, isFavorited, setFavorited } from '../engine/records';
-import { canCounterattack } from '../combat/combat-calcs';
+import { canCounterattack, itemIsMagic } from '../combat/combat-calcs';
 
 type ItemAvailabilityEvaluator = (
   unit: any,
@@ -2539,10 +2539,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       const raw = unwrapUnit(candidate);
       return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
     },
-    is_magic(_unit: any, candidate: any, distance = 0) {
-      const raw = unwrapItem(candidate);
-      return !!raw?.hasComponent?.('magic') ||
-        (!!raw?.hasComponent?.('magic_at_range') && distance > 1);
+    is_magic(candidate: any, item: any, distance = 0) {
+      return itemIsMagic(unwrapUnit(candidate), unwrapItem(item), distance, game.db);
     },
   };
   const skillSystem = {

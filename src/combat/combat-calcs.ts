@@ -384,6 +384,27 @@ function resolveEquation(
 // Damage type helpers
 // ------------------------------------------------------------------
 
+/**
+ * Python `item_funcs.is_magic(unit, item, distance)`: `magic`, or
+ * `magic_at_range` beyond distance 1. EOtF's engine fork also counts
+ * `eval_dragon` items held by a Dragon-tagged unit and `eval_dragon_magic`
+ * items (used by cannot_use_magic_items and eval expressions).
+ */
+export function itemIsMagic(
+  unit: UnitObject | null | undefined,
+  item: ItemObject | null | undefined,
+  distance: number = 0,
+  db?: Database,
+): boolean {
+  if (!item) return false;
+  if (item.hasComponent('magic')) return true;
+  if (item.hasComponent('magic_at_range') && distance > 1) return true;
+  if (!isForkEngine()) return false;
+  if (item.hasComponent('eval_dragon_magic')) return true;
+  return item.hasComponent('eval_dragon') && !!unit &&
+    itemSystem.effectivenessTargetTags(unit, db ?? _eqGameRef?.()?.db).has('Dragon');
+}
+
 export function isMagic(item: ItemObject): boolean {
   // LT convention: if the weapon has a "magic" or "magic_at_range"
   // component it deals magic damage.  Also check weapon_type for
