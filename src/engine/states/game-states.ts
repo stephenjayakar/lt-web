@@ -3760,6 +3760,7 @@ function applyCoreTargetedEffects(
   item: ItemObject,
   position: [number, number],
   targetItem: ItemObject | null = null,
+  requestedHealing?: Map<UnitObject, number>,
 ): boolean {
   const game = getGame();
   if (!game.targetSystem) return false;
@@ -3789,6 +3790,10 @@ function applyCoreTargetedEffects(
         itemHealAmount(unit, item, target, game) ??
         healAmount + empowerHeal(unit, target, game);
       if (customHeal || target.currentHp < target.maxHp) {
+        // Python HealHit(unit, item, target, heal, true_heal): the requested heal.
+        if (requestedHealing && amount > 0) {
+          requestedHealing.set(target, (requestedHealing.get(target) ?? 0) + amount);
+        }
         game.actionLog.doAction(amount < 0
           ? new DamageAction(target, -amount)
           : new SetCurrentHpAction(target, target.currentHp + amount));
@@ -3990,26 +3995,27 @@ export function finishCoreItemUse(
   healingDone: Map<UnitObject, number> = new Map(),
   baseUse: boolean = false,
   resourcesStarted: boolean = false,
+  requestedHealing: Map<UnitObject, number> = new Map(),
 ): void {
   const game = getGame();
   if (!resourcesStarted) applyItemStartResourceHooks(game, unit, item);
   applyItemEndResourceHooks(game, unit, item);
   const uniqueTargets = [...new Map(targets.map((target) => [target.nid, target])).values()];
-  const allyHealing = [...healingDone.entries()]
-    .filter(([target]) => target !== unit)
-    .reduce((total, [, amount]) => total + Math.max(0, amount), 0);
-  // EOtF's fork runs LiveToServe.after_strike on every strike and heals
-  // `_get_heal_amount(int(healed * X), unit, unit)`, so the user's own
-  // empower_heal bonuses and multipliers apply even when no ally was healed.
-  const forkLiveToServe = isForkEngine() && uniqueTargets.length > 0;
-  if (allyHealing > 0 || forkLiveToServe) {
-    for (const skill of unit.skills) {
-      const ratio = skill.getComponent<number>('live_to_serve');
-      if (typeof ratio !== 'number') continue;
-      const base = Math.trunc(allyHealing * ratio);
-      const amount = forkLiveToServe
-        ? modifiedHealAmount(base, unit, unit, game)
-        : base;
+  // Python LiveToServe.after_strike runs after every strike of the one
+  // attacker phase and heals int(X * the requested heal of every ally strike
+  // so far that healed something), the phase's `heal_hit` playback. EOtF's
+  // fork routes it through `_get_heal_amount(amount, unit, unit)`, so the
+  // user's own empower_heal bonuses heal even when no ally was healed.
+  const liveToServe = unit.skills.filter((skill: SkillObject) =>
+    typeof skill.getComponent<unknown>('live_to_serve') === 'number');
+  let allyHealing = 0;
+  for (const target of liveToServe.length > 0 ? uniqueTargets : []) {
+    if (target !== unit && (healingDone.get(target) ?? 0) > 0) {
+      allyHealing += requestedHealing.get(target) ?? healingDone.get(target) ?? 0;
+    }
+    for (const skill of liveToServe) {
+      const base = Math.trunc(allyHealing * skill.getComponent<number>('live_to_serve')!);
+      const amount = isForkEngine() ? modifiedHealAmount(base, unit, unit, game) : base;
       if (amount <= 0) continue;
       game.actionLog.doAction(new HealAction(unit, amount));
       triggerSkillCharge(game, skill);
@@ -4089,14 +4095,15 @@ export function applyCoreTargetedItem(
   applyItemStartResourceHooks(game, unit, item);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
-  if (!applyCoreTargetedEffects(unit, item, position, targetItem)) {
+  const requestedHealing = new Map<UnitObject, number>();
+  if (!applyCoreTargetedEffects(unit, item, position, targetItem, requestedHealing)) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
     return false;
   }
   const healingDone = new Map(
     targets.map((target) => [target, Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp))]),
   );
-  finishCoreItemUse(unit, item, targets, healingDone, false, true);
+  finishCoreItemUse(unit, item, targets, healingDone, false, true, requestedHealing);
   return true;
 }
 
@@ -4112,12 +4119,13 @@ export function applyCoreMultiTargetedItem(
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
+  const requestedHealing = new Map<UnitObject, number>();
   for (const position of positions) {
     for (const target of effectUnits(unit, item, position)) {
       targets.set(target.nid, target);
       if (!hpBefore.has(target)) hpBefore.set(target, target.currentHp);
     }
-    applied = applyCoreTargetedEffects(unit, item, position) || applied;
+    applied = applyCoreTargetedEffects(unit, item, position, null, requestedHealing) || applied;
   }
   if (!applied) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
@@ -4129,7 +4137,7 @@ export function applyCoreMultiTargetedItem(
       Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp)),
     ]),
   );
-  finishCoreItemUse(unit, item, [...targets.values()], healingDone, false, true);
+  finishCoreItemUse(unit, item, [...targets.values()], healingDone, false, true, requestedHealing);
   return true;
 }
 
@@ -6513,7 +6521,9 @@ export function resolveForkMultiTargetGroup(
     for (const target of [resolved.mainTarget, ...resolved.splash]) {
       if (!target) continue;
       const unit = game.board.getUnit(target[0], target[1]) as UnitObject | null;
-      if (unit) splashDefenders.push(unit);
+      // A position chosen again (the AI's `[target] * num_targets`,
+      // allow_same_target) joins the combat once.
+      if (unit && !splashDefenders.includes(unit)) splashDefenders.push(unit);
     }
   }
   return { representative: splashDefenders[0] ?? null, mainDefender: null, splashDefenders };
@@ -8920,6 +8930,18 @@ export class AIState extends MapState {
       game.actionLog.doAction(new BringToTopItemAction(attacker, weapon));
     }
     if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
+    // Python interaction.start_combat aims a multi_target item at
+    // `[target] * num_targets`; EOtF's fork engage merges those positions
+    // into one splash list with no main target: a single counter-less
+    // combat that strikes the target once per phase and spends one use.
+    const wanted = numTargets(attacker, weapon);
+    if (isForkEngine() && wanted > 1 && defender.position) {
+      const [x, y] = defender.position;
+      game.memory.set(
+        'combat_multi_target_positions',
+        Array.from({ length: wanted }, () => [x, y] as [number, number]),
+      );
+    }
 
     // CombatState.begin() reads these to set up the MapCombat instance
     game.selectedUnit = attacker;

@@ -1773,18 +1773,31 @@ export function strikeHasOnHitMovement(
   return false;
 }
 
+/** One on-hit ForcedMovement/Swap, with its destination fixed when planned. */
+export type PlannedForcedMovement =
+  | { kind: 'warp'; unit: UnitObject; to: [number, number] }
+  | {
+    kind: 'swap';
+    first: UnitObject;
+    second: UnitObject;
+    firstPosition: [number, number];
+    secondPosition: [number, number];
+  };
+
 /**
  * Python solver.process -> item_system.on_hit: Shove/Swap/Pivot/DrawBack
- * move units as each hit lands, before the next phase is solved, so later
- * strikes (counter range, terrain) see the new positions.
+ * compute their destination while the strike is solved (against the board
+ * before any of the phase's actions) and append a ForcedMovement/Swap that
+ * MapCombat._apply_actions runs when the hit is shown. Plan them here, as
+ * the phase is solved; applyPlannedForcedMovement moves the units later.
  */
-export function applyOnHitForcedMovement(
+export function planOnHitForcedMovement(
   game: CombatLifecycleGame,
   strike: CombatStrike,
-): number {
-  if (!game.actionLog || !game.db || !game.board || !strike.hit) return 0;
+): PlannedForcedMovement[] {
+  const planned: PlannedForcedMovement[] = [];
+  if (!game.db || !game.board || !strike.hit) return planned;
   const mark = strike;
-  let applied = 0;
   for (const [componentNid, componentValue] of effectiveItemComponents(
     strike.attacker,
     strike.item,
@@ -1801,8 +1814,7 @@ export function applyOnHitForcedMovement(
         { board: game.board, db: game.db, game },
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.defender, to: destination });
       }
     } else if ((componentNid === 'shove_flex_stops' ||
         componentNid === 'shove_flex_stops_event') &&
@@ -1841,8 +1853,7 @@ export function applyOnHitForcedMovement(
           : undefined,
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.defender, to: destination });
       }
     } else if (componentNid === 'self_shove_flex_stops' &&
         mark.defender.position && !ignoreForcedMovement(mark.attacker)) {
@@ -1855,14 +1866,18 @@ export function applyOnHitForcedMovement(
         true,
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.attacker, to: destination });
       }
     } else if (componentNid === 'swap' &&
         mark.attacker.position && mark.defender.position &&
         !ignoreForcedMovement(mark.attacker) && !ignoreForcedMovement(mark.defender)) {
-      game.actionLog.doAction(new SwapUnitsAction(mark.attacker, mark.defender, game.board));
-      applied++;
+      planned.push({
+        kind: 'swap',
+        first: mark.attacker,
+        second: mark.defender,
+        firstPosition: [mark.attacker.position[0], mark.attacker.position[1]],
+        secondPosition: [mark.defender.position[0], mark.defender.position[1]],
+      });
     } else if (componentNid === 'pivot' && mark.defender.position &&
         !ignoreForcedMovement(mark.attacker)) {
       const destination = pivotDestination(
@@ -1872,8 +1887,7 @@ export function applyOnHitForcedMovement(
         { board: game.board, db: game.db, game },
       );
       if (destination) {
-        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
-        applied++;
+        planned.push({ kind: 'warp', unit: mark.attacker, to: destination });
       }
     } else if (componentNid === 'draw_back' && !ignoreForcedMovement(mark.defender)) {
       const destinations = drawBackDestinations(
@@ -1883,13 +1897,57 @@ export function applyOnHitForcedMovement(
         { board: game.board, db: game.db, game },
       );
       if (destinations) {
-        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
-        game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
-        applied += 2;
+        planned.push({ kind: 'warp', unit: mark.attacker, to: destinations[0] });
+        planned.push({ kind: 'warp', unit: mark.defender, to: destinations[1] });
       }
     }
   }
+  return planned;
+}
+
+/**
+ * Python action.ForcedMovement/Swap.do for planned on-hit movement: each
+ * unit goes to the tile fixed when its strike was solved, even if events
+ * between the solve and the hit moved it. Returns the actions applied.
+ */
+export function applyPlannedForcedMovement(
+  game: CombatLifecycleGame,
+  planned: readonly PlannedForcedMovement[],
+): number {
+  if (!game.actionLog || !game.board) return 0;
+  let applied = 0;
+  for (const move of planned) {
+    if (move.kind === 'warp') {
+      // A unit removed from the map since the solve has nowhere to move from.
+      if (!move.unit.position) continue;
+      game.actionLog.doAction(new WarpUnitAction(move.unit, move.to, game.board));
+      applied++;
+      continue;
+    }
+    const { first, second, firstPosition, secondPosition } = move;
+    if (!first.position || !second.position) continue;
+    const unmoved = first.position[0] === firstPosition[0] && first.position[1] === firstPosition[1] &&
+      second.position[0] === secondPosition[0] && second.position[1] === secondPosition[1];
+    if (unmoved) {
+      game.actionLog.doAction(new SwapUnitsAction(first, second, game.board));
+      applied++;
+    } else {
+      // Python Swap arrives each unit at the other's solve-time tile.
+      game.actionLog.doAction(new WarpUnitAction(first, secondPosition, game.board));
+      game.actionLog.doAction(new WarpUnitAction(second, firstPosition, game.board));
+      applied += 2;
+    }
+  }
   return applied;
+}
+
+/** Plan and apply one strike's on-hit movement at once. */
+export function applyOnHitForcedMovement(
+  game: CombatLifecycleGame,
+  strike: CombatStrike,
+): number {
+  if (!game.actionLog) return 0;
+  return applyPlannedForcedMovement(game, planOnHitForcedMovement(game, strike));
 }
 
 /** Apply item end-combat resource hooks once per item that participated. */
