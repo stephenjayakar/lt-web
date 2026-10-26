@@ -165,3 +165,17 @@ The release gate is green: build, all four audits, the full serial suite,
   and `git diff --check` are green.
 - [x] Package the project for browser delivery and document installation,
   licensing/credits, save storage, and intentional deviations.
+
+### P8.5 — Browser playtest follow-ups
+
+- [x] Gallery: fork-only `show_pokedex` opens the ported unit dex
+  (`base_info_menu`), also from `type_dex_unit` choice INFO and manage AUX.
+- [x] Promotion items and non-silent event `promote`/`change_class` play
+  promotion.py's choice, animation, and level screens.
+- [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
+  Python (pinned in `tests/map-hud.spec.ts`).
+- [ ] AI-used promotion items still promote without the screens.
+- [ ] Engine sprites come from upstream; the EOtF fork's differ in places
+  (e.g. its 123x60 `unit_info_bg`).
+- [ ] AnimationCombat's non-fading `screen_blend` flash draws at zero
+  strength (`make_translucent_blend` keeps it at full).
