@@ -87,7 +87,7 @@ Summary: 255/255 parser-recognized; 255/255 with dispatcher cases.
 | kill_unit | KillUnit | kill_unit:1142 | ADD_REMOVE_INTERACT_WITH_UNITS | kill | Unit | immediate | yes | yes | no |  | dispatched-unverified |
 | remove_all_units | RemoveAllUnits | remove_all_units:1171 | ADD_REMOVE_INTERACT_WITH_UNITS |  |  |  | yes | yes | no |  | dispatched-unverified |
 | remove_all_enemies | RemoveAllEnemies | remove_all_enemies:1176 | ADD_REMOVE_INTERACT_WITH_UNITS |  |  |  | yes | yes | no |  | dispatched-unverified |
-| interact_unit | InteractUnit | interact_unit:1181 | ADD_REMOVE_INTERACT_WITH_UNITS | interact | Unit, Position, CombatScript?, Ability?, Rounds? | arena, force_animation, force_no_animation, immediate | yes | yes | no |  | dispatched-unverified |
+| interact_unit | InteractUnit | interact_unit:1181 | ADD_REMOVE_INTERACT_WITH_UNITS | interact | Unit, Position, CombatScript?, Ability?, Rounds? | arena, force_animation, force_no_animation, immediate | yes | yes | no | mention | dispatched-unverified |
 | pose_unit | PoseUnit | pose_unit:1231 | ADD_REMOVE_INTERACT_WITH_UNITS |  | Unit, Pose, Direction? |  | yes | yes | no |  | dispatched-unverified |
 | set_name | SetName | set_name:1270 | MODIFY_UNIT_PROPERTIES |  | Unit, String |  | yes | yes | no | mention | dispatched-unverified |
 | set_variant | SetVariant | set_variant:1277 | MODIFY_UNIT_PROPERTIES |  | Unit, String? |  | yes | yes | no | mention | dispatched-unverified |

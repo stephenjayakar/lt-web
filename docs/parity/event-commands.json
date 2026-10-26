@@ -7,7 +7,7 @@
     "pythonEventNids": 255,
     "parserRecognizedPythonNids": 255,
     "dispatcherPythonNids": 255,
-    "itemReferencedComponentNids": 177,
+    "itemReferencedComponentNids": 178,
     "itemHookMappedComponentNids": 110,
     "skillReferencedComponentNids": 192,
     "skillHookMappedComponentNids": 93,
@@ -1951,7 +1951,7 @@
       "nicknameRecognized": true,
       "dispatcherCase": true,
       "webBlocking": false,
-      "lexicalTestMention": false,
+      "lexicalTestMention": true,
       "status": "dispatched-unverified"
     },
     {
