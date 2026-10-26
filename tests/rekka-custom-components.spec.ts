@@ -476,6 +476,20 @@ test.describe('Rekka project-local item components', () => {
       const sealState: any = new BaseUseState();
       sealState.begin();
       sealState.takeInput('SELECT');
+      // Python Promote: a single class opens the promotion screen; the class
+      // and the seal's use apply around its level screen.
+      const request = game.memory.get('promotion_request');
+      const queuedSeal = {
+        next: request?.nextClass ?? null,
+        baseUse: request?.itemUse?.baseUse ?? null,
+        klass: unit.klass,
+      };
+      for (let i = 0; i < 600; i++) {
+        harness.stepFrames(20, null);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const name = game.state.getCurrentState()?.name;
+        if (unit.klass === 'BladeLord' && name !== 'promotion' && name !== 'event') break;
+      }
       const afterSeal = {
         klass: unit.klass,
         retained: unit.items.includes(seal),
@@ -521,6 +535,7 @@ test.describe('Rekka project-local item components', () => {
         afterRobe,
         undoneRobe,
         beforeSeal,
+        queuedSeal,
         afterSeal,
         undoneSeal,
         masterSeal: {
@@ -550,6 +565,7 @@ test.describe('Rekka project-local item components', () => {
       hasTraded: result.beforeRobe.hasTraded,
       retained: true,
     });
+    expect(result.queuedSeal).toEqual({ next: 'BladeLord', baseUse: true, klass: result.beforeSeal.klass });
     expect(result.afterSeal).toEqual({
       klass: 'BladeLord',
       retained: false,

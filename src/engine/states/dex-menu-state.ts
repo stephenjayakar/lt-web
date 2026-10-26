@@ -820,6 +820,7 @@ export class DexMenuState extends State {
   private glowIdx = 0;
   /** faded_unit_surf_cache (per visit, so late-loading sprites appear). */
   private fadedCache = new Map<string, Surface>();
+  private wheelCache: { key: string; surf: Surface } | null = null;
 
   override start(): StateResult {
     const game = getGame();
@@ -841,6 +842,7 @@ export class DexMenuState extends State {
     this.phase = 'unit_select';
     this.glowIdx = 0;
     this.fadedCache = new Map();
+    this.wheelCache = null;
     this.detailPanel = new DexDetailPanel((nid) => this.isHidden(nid));
     if (nids.length) this.detailPanel.setCurrentUnit(this.currentUnit());
   }
@@ -960,6 +962,15 @@ export class DexMenuState extends State {
     const rad = (deg: number): number => (deg * Math.PI) / 180;
     const xs = angles.map((a) => xRadius * Math.cos(rad(a)) + center[0]);
     const ys = angles.map((a) => -yRadius * Math.sin(rad(a / 2)) + center[1] - UNIT_CHOICE_BONUS_HEIGHT - 8);
+    const active: [number, number] = [xs[selected] ?? 0, ys[selected] ?? 0];
+    // lru_cache(1) on (selected_idx, unit_list, rotation); a late sprite
+    // load (faded cache growth) rebuilds it.
+    const key = `${selected}|${rotation}|${this.fadedCache.size}|${units.join(',')}`;
+    if (this.wheelCache?.key === key) {
+      this.drawSelection(surf, active[1]);
+      surf.blit(this.wheelCache.surf, 0, 0);
+      return active;
+    }
     const wheel = new Surface(WINWIDTH, WINHEIGHT);
     const drawFaded = (idx: number): void => {
       const base = this.fadedUnitChoice(units[idx]);
@@ -969,7 +980,7 @@ export class DexMenuState extends State {
     };
     for (let idx = 0; idx < selected; idx++) drawFaded(idx);
     for (let idx = size - 1; idx > selected; idx--) drawFaded(idx);
-    const active: [number, number] = [xs[selected] ?? 0, ys[selected] ?? 0];
+    this.wheelCache = { key, surf: wheel };
     this.drawSelection(surf, active[1]);
     surf.blit(wheel, 0, 0);
     return active;
