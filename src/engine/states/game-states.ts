@@ -46,6 +46,7 @@ import {
   GameEvent,
   pythonIterationValues,
   pythonLiteral,
+  pythonStr,
   type ConditionContext,
   type EventCommand,
 } from '../../events/event-manager';
@@ -12882,9 +12883,11 @@ export class EventState extends State {
           withDataKeys
             .replace(
               /(['"])\{v:([A-Za-z_][A-Za-z0-9_]*)\}\1/g,
-              (_variableMatch, _quote: string, key: string) => {
+              (_variableMatch, quote: string, key: string) => {
+                // Python substitutes str(value) as text, so a quoted
+                // placeholder stays a string literal: '{v:counter}' -> '1'.
                 const resolved = variableValue(key);
-                return typedVariableLiteral(resolved);
+                return `${quote}${resolved === undefined ? '??' : pythonStr(resolved)}${quote}`;
               },
             )
             .replace(
