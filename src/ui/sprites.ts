@@ -1,0 +1,122 @@
+/**
+ * sprites.ts — Python's SPRITES dictionary (app/sprites.py).
+ *
+ * Python loads every PNG under the engine's sprites/ folder keyed by file
+ * name, then the project's resources/custom_sprites on top (resources.py),
+ * so a project can replace any engine sprite by shipping a PNG of the same
+ * name anywhere in that folder tree. Vite scans both trees at startup and
+ * injects the name -> path index as __LT_SPRITES__ (vite.config.ts
+ * discoverSprites); this module turns a name into a loaded Surface.
+ *
+ * Lookups are synchronous: the first get() starts the load and returns null,
+ * and later frames get the Surface (Python loads them all at boot; callers
+ * draw nothing for a frame or two instead).
+ */
+
+import { Surface, surfaceFromImage } from '../engine/surface';
+
+declare const __LT_SPRITES__: {
+  engine: Record<string, string>;
+  projects: Record<string, Record<string, string>>;
+} | undefined;
+
+const INDEX = typeof __LT_SPRITES__ !== 'undefined' ? __LT_SPRITES__ : { engine: {}, projects: {} };
+
+let engineBase = '/game-data';
+let projectBase = '';
+let projectSprites: Record<string, string> = {};
+
+const loaded: Map<string, Surface | null> = new Map();
+const pending: Map<string, Promise<Surface | null>> = new Map();
+
+/** Point the registry at the engine root and the active project. */
+export function initSprites(engineBaseUrl: string, projectBaseUrl: string): void {
+  engineBase = engineBaseUrl.replace(/\/$/, '');
+  projectBase = projectBaseUrl.replace(/\/$/, '');
+  const projectName = projectBase.split('/').pop() ?? '';
+  projectSprites = INDEX.projects[projectName] ?? {};
+  loaded.clear();
+  pending.clear();
+}
+
+/** URL of a sprite by Python SPRITES name, or null when no such sprite exists. */
+export function spriteUrl(name: string): string | null {
+  const custom = projectSprites[name];
+  if (custom && projectBase) {
+    return `${projectBase}/resources/custom_sprites/${custom.split('/').map(encodeURIComponent).join('/')}`;
+  }
+  const engine = INDEX.engine[name];
+  if (engine) return `${engineBase}/sprites/${engine.split('/').map(encodeURIComponent).join('/')}`;
+  return null;
+}
+
+/** Whether SPRITES has an entry with this name (Python `name in SPRITES`). */
+export function hasSprite(name: string): boolean {
+  return name in projectSprites || name in INDEX.engine;
+}
+
+/** Load a sprite (resolves null when it does not exist or fails to load). */
+export function loadSprite(name: string): Promise<Surface | null> {
+  if (loaded.has(name)) return Promise.resolve(loaded.get(name) ?? null);
+  const inflight = pending.get(name);
+  if (inflight) return inflight;
+  const url = spriteUrl(name);
+  if (!url) {
+    loaded.set(name, null);
+    return Promise.resolve(null);
+  }
+  const promise = new Promise<Surface | null>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const surf = surfaceFromImage(img);
+      loaded.set(name, surf);
+      pending.delete(name);
+      resolve(surf);
+    };
+    img.onerror = () => {
+      loaded.set(name, null);
+      pending.delete(name);
+      resolve(null);
+    };
+    img.src = url;
+  });
+  pending.set(name, promise);
+  return promise;
+}
+
+/**
+ * Python SPRITES.get(name, fallback). Returns null while the image is still
+ * loading. Callers must not draw into the returned Surface; copy() first.
+ */
+export function getSprite(name: string, fallback?: string): Surface | null {
+  if (!hasSprite(name) && fallback !== undefined) return getSprite(fallback);
+  const surf = loaded.get(name);
+  if (surf !== undefined) return surf;
+  void loadSprite(name);
+  return null;
+}
+
+/** Start loading a set of sprites; resolves when all have settled. */
+export async function preloadSprites(names: readonly string[]): Promise<void> {
+  await Promise.all(names.map((name) => loadSprite(name)));
+}
+
+/**
+ * Python image_mods.make_translucent(image, t): multiply every pixel's alpha
+ * by (255 - int(255 * t)) / 255. Unlike Surface.setAlpha this is baked into
+ * the pixels, so text drawn on the result afterwards stays opaque.
+ */
+export function makeTranslucent(surf: Surface, t: number): Surface {
+  const alpha = Math.max(0, Math.min(255, 255 - Math.trunc(255 * t))) / 255;
+  const out = new Surface(surf.width, surf.height);
+  out.ctx.globalAlpha = alpha;
+  out.ctx.drawImage(surf.canvas, 0, 0, surf.width, surf.height);
+  out.ctx.globalAlpha = 1;
+  return out;
+}
+
+/** Python engine.subsurface: a copy of one region of a sprite. */
+export function subsurface(surf: Surface, x: number, y: number, w: number, h: number): Surface {
+  return surf.subsurface(x, y, w, h);
+}

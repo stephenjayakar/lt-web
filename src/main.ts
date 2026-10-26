@@ -30,6 +30,7 @@ import {
 import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
+import { initSprites } from './ui/sprites';
 import { initBaseSurf } from './ui/base-surf';
 import { setMenuAudioManager } from './ui/menu';
 import { setEventChoiceAudio } from './ui/event-choice';
@@ -648,6 +649,7 @@ async function main(): Promise<void> {
   // not inside the .ltproj directory.
   const engineBaseUrl = '/game-data';
   initBaseSurf(engineBaseUrl);
+  initSprites(engineBaseUrl, baseUrl);
   initSpriteLoader(engineBaseUrl);
   // Load bitmap fonts (async, text rendering falls back to Canvas until ready)
   initFonts(baseUrl);
@@ -1092,13 +1094,8 @@ async function main(): Promise<void> {
     display.ctx.clearRect(0, 0, display.canvas.width, display.canvas.height);
     display.ctx.drawImage(gameSurface.canvas, 0, 0);
 
-    // --- HUD overlay (fixed screen-space, not affected by zoom) ---
-    // Python ui_view only shows the unit/terrain/objective panels while the
-    // top state is one of its legal_states; otherwise they slide away (they
-    // used to linger over menus, targeting and event choice windows).
-    const hudTop = game.state.getCurrentState()?.name ?? '';
-    game.hud.drawScreen(display.ctx, window.innerWidth, window.innerHeight, game.db, game.initiative, game.units,
-      ['free', 'prep_formation', 'prep_formation_select'].includes(hudTop));
+    // The on-map UI (src/ui/hud.ts, Python ui_view) is drawn into the scene
+    // by drawMap, as Python's MapView.draw does.
     startupStatus?.remove();
     PerfMonitor.endDraw();
 

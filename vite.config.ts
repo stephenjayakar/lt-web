@@ -29,6 +29,54 @@ function discoverProjects(): string[] {
   return [...projects].sort();
 }
 
+/**
+ * Python SPRITES (app/sprites.py load_sprites): every PNG under a root, keyed
+ * by file name without extension, walked top-down (a directory's own files,
+ * then its subdirectories). Later entries overwrite earlier ones, as in the
+ * Python dict. Values are posix paths relative to the root.
+ */
+function spriteIndex(root: string): Record<string, string> {
+  const index: Record<string, string> = {};
+  const walk = (dir: string, rel: string): void => {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const subdirs: string[] = [];
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      const isDir = entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory());
+      if (isDir) subdirs.push(entry.name);
+      else if (entry.name.endsWith('.png')) index[entry.name.slice(0, -4)] = rel + entry.name;
+    }
+    for (const sub of subdirs) walk(join(dir, sub), `${rel}${sub}/`);
+  };
+  walk(root, '');
+  return index;
+}
+
+/**
+ * Engine sprites (lt-maker/sprites, served at /game-data/sprites/) and each
+ * project's resources/custom_sprites, which Python loads on top of them.
+ */
+function discoverSprites(): { engine: Record<string, string>; projects: Record<string, Record<string, string>> } {
+  const roots = [resolve(__dirname, 'lt-maker'), resolve(__dirname, 'public/game-data')];
+  const engineRoot = roots.map((r) => join(r, 'sprites')).find((r) => existsSync(r));
+  const projects: Record<string, Record<string, string>> = {};
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    for (const name of readdirSync(root)) {
+      if (!name.endsWith('.ltproj') || projects[name]) continue;
+      const custom = join(root, name, 'resources/custom_sprites');
+      if (existsSync(custom)) projects[name] = spriteIndex(custom);
+    }
+  }
+  return { engine: engineRoot ? spriteIndex(engineRoot) : {}, projects };
+}
+
 // MIME types for game assets
 const MIME: Record<string, string> = {
   '.json': 'application/json',
@@ -201,6 +249,7 @@ export default defineConfig({
   define: {
     __AVAILABLE_PROJECTS__: JSON.stringify(siteBuild ? [] : discoverProjects()),
     __LT_HOSTED__: JSON.stringify(siteBuild),
+    __LT_SPRITES__: JSON.stringify(discoverSprites()),
   },
   build: {
     target: 'es2022',

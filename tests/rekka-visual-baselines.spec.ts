@@ -172,7 +172,13 @@ test.describe('Rekka visual baselines', () => {
       attacker.finished = false;
       game.selectedUnit = attacker;
       game.state.change('targeting');
-      (window as any).__harness.stepFrames(2, null);
+      // Python ui_view slides the forecast in 20 px per frame from 80 px.
+      (window as any).__harness.stepFrames(12, null);
+    });
+    // Let the item icon sheets finish loading, then draw one more frame.
+    await page.evaluate(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      (window as any).__harness.stepFrames(1, null);
     });
     expect(await page.evaluate(
       () => (window as any).__gameRef.state.getCurrentState()?.name,

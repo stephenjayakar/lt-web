@@ -335,7 +335,6 @@ function parseEventBool(value: string | undefined): boolean | null {
  * components contain `stat_change` (for DEF) and `avoid` (for AVO).
  */
 // Terrain bonuses imported from shared utility
-import { getTerrainBonuses } from '../../combat/terrain-bonuses';
 
 /**
  * Active combat animation offsets, set by CombatState so that
@@ -558,6 +557,8 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   // UnitSprite damage numbers outlive the combat that spawned them.
   const damageNumberCamera = game.camera.getOffset();
   drawMapDamageNumbers(surf, damageNumberCamera[0], damageNumberCamera[1]);
+  // Python MapView.draw ends with game.ui_view.draw(surf).
+  game.hud.draw(surf, game);
   return surf;
 }
 
@@ -2410,7 +2411,6 @@ export class FreeState extends MapState {
       return;
     }
 
-    // Update HUD hover info
     const pos = game.cursor.getHover();
     const unit = game.board.getUnit(pos.x, pos.y);
     const auraHoverNid = unit?.nid ?? null;
@@ -2420,10 +2420,6 @@ export class FreeState extends MapState {
       );
       this.auraHoverNid = auraHoverNid;
     }
-    const terrainNid = game.board.getTerrain(pos.x, pos.y);
-    const terrainDef = terrainNid ? game.db.terrain.get(terrainNid) : null;
-    const [tDef, tAvo] = getTerrainBonuses(terrainDef, game.db);
-    game.hud.setHover(unit, terrainDef?.name ?? '', tDef, tAvo);
 
     // Auto end-turn logic
     if (game.initiative) {
@@ -4990,8 +4986,34 @@ export class ItemTargetingState extends MapState {
     game.highlight.update();
     const result = drawMap(surf, true);
     this.drawTargetWarnings(result);
+    this.drawSpellForecast(result);
     this.targetItemMenu?.draw(result);
     return result;
+  }
+
+  private spellForecastCursor = '';
+
+  /**
+   * Python CombatTargetingState.draw for a non-weapon item: the spell window
+   * (ui_view.draw_spell_info) for the visible unit under the cursor, rebuilt
+   * whenever the cursor moves (reset_info).
+   */
+  private drawSpellForecast(surf: Surface): void {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    const item = this.activeItem();
+    if (!unit || !item || this.targetItemMenu) return;
+    const [cx, cy] = game.cursor.getPosition();
+    const key = `${cx},${cy}`;
+    if (key !== this.spellForecastCursor) {
+      this.spellForecastCursor = key;
+      game.hud.resetInfo();
+    }
+    const visible = game.board?.inVision([cx, cy], 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits?.()) ||
+      item.hasComponent('ignore_fog_of_war');
+    const targetUnit: UnitObject | null = visible ? game.board?.getUnit?.(cx, cy) ?? null : null;
+    if (!targetUnit || item.isWeapon()) return;
+    game.hud.drawSpellInfo(surf, game, unit, item, targetUnit);
   }
 
   /**
@@ -5028,7 +5050,9 @@ export class ItemTargetingState extends MapState {
     this.targetItemMode = null;
     this.sequenceIndex = 0;
     this.selectedTargets = [];
+    this.spellForecastCursor = '';
     getGame().highlight.clear();
+    getGame().hud.resetInfo();
   }
 }
 
@@ -5942,11 +5966,13 @@ export class TargetingState extends MapState {
     }
 
     // Position cursor on first target
+    game.hud.prepareAttackInfo();
     this.focusTarget();
   }
 
   private focusTarget(): void {
     const game = getGame();
+    game.hud.resetInfo();
     const target = this.targets[this.targetIndex];
     if (target && target.position) {
       game.cursor.setPos(target.position[0], target.position[1]);
@@ -6069,7 +6095,8 @@ export class TargetingState extends MapState {
     game.highlight.update();
     surf = drawMap(surf, true);
 
-    // Draw target info overlay
+    // Python CombatTargetingState.draw: the forecast window for the unit
+    // under the cursor (ui_view.draw_attack_info).
     const target = this.targets[this.targetIndex];
     if (target) {
       const unit: UnitObject = game.selectedUnit;
@@ -6081,76 +6108,7 @@ export class TargetingState extends MapState {
 
         // Highlight target tile
         surf.fillRect(tx, ty, TILEWIDTH, TILEHEIGHT, 'rgba(255,0,0,0.3)');
-
-        const hit = Math.max(0, Math.min(100,
-          combatAccuracy(unit, weapon, game.db) -
-          combatAvoid(target, game.db, game.board, weapon)));
-        const damage = computeDamage(
-          unit, weapon, target, game.db, game.board, game,
-        );
-        const crit = computeCrit(unit, weapon, target, game.db, game);
-        const targetWeapon = getEquippedWeapon(target, game.db, game);
-        const canCounter = !!targetWeapon &&
-          canCounterattack(unit, weapon, target, game.db, game);
-        const counterHit = canCounter ? Math.max(0, Math.min(100,
-          combatAccuracy(target, targetWeapon!, game.db) -
-          combatAvoid(unit, game.db, game.board, targetWeapon))) : 0;
-        const counterDamage = canCounter ? computeDamage(
-          target, targetWeapon!, unit, game.db, game.board, game, 'defense',
-        ) : 0;
-        const counterCrit = canCounter
-          ? computeCrit(target, targetWeapon!, unit, game.db, game, 'defense')
-          : 0;
-        const unitPhases = 1 +
-          computeBlitzPhases(unit, weapon, target, targetWeapon, 'attack', [0, 0], game) +
-          computeExtraAttackPhases(unit, weapon, target, targetWeapon, 'attack', [0, 0], game) +
-          (canDouble(unit, weapon, target, targetWeapon, game.db, game) ? 1 : 0);
-        const unitAttacks = unitPhases * computeStrikeCount(
-          unit, weapon, target, targetWeapon, 'attack', [0, 0], game,
-        );
-        const targetPhases = canCounter && targetWeapon
-          ? 1 +
-            computeBlitzPhases(target, targetWeapon, unit, weapon, 'defense', [0, 0], game) +
-            computeExtraAttackPhases(target, targetWeapon, unit, weapon, 'defense', [0, 0], game) +
-            (canDefenderDouble(
-              unit, weapon, target, targetWeapon, game.db, game,
-            ) ? 1 : 0)
-          : 0;
-        const targetAttacks = canCounter && targetWeapon
-          ? targetPhases * computeStrikeCount(
-            target, targetWeapon, unit, weapon, 'defense', [0, 0], game,
-          )
-          : 0;
-
-        // Compact two-sided forecast. Values use the same combat-calcs layer as
-        // the solver and do not consume either persistent RNG stream.
-        const panelY = viewport.height - 40;
-        surf.fillRect(0, panelY, viewport.width, 40, 'rgba(8,10,30,0.9)');
-        surf.fillRect(Math.floor(viewport.width / 2), panelY, 1, 40, 'rgba(160,170,220,0.65)');
-        surf.drawText(unit.name, 4, panelY + 3, 'white', '8px monospace');
-        surf.drawText(target.name, Math.floor(viewport.width / 2) + 4, panelY + 3, 'white', '8px monospace');
-        surf.drawText(
-          `HP ${unit.currentHp}/${unit.maxHp}  DMG ${damage}${unitAttacks > 1 ? `x${unitAttacks}` : ''}`,
-          4, panelY + 13, 'white', '7px monospace',
-        );
-        surf.drawText(
-          `HIT ${hit}  CRT ${crit}`,
-          4, panelY + 23, 'rgba(220,224,255,1)', '7px monospace',
-        );
-        surf.drawText(
-          `HP ${target.currentHp}/${target.maxHp}  DMG ${canCounter ? counterDamage : '--'}${targetAttacks > 1 ? `x${targetAttacks}` : ''}`,
-          Math.floor(viewport.width / 2) + 4, panelY + 13, 'white', '7px monospace',
-        );
-        surf.drawText(
-          canCounter ? `HIT ${counterHit}  CRT ${counterCrit}` : 'NO COUNTER',
-          Math.floor(viewport.width / 2) + 4, panelY + 23,
-          'rgba(220,224,255,1)', '7px monospace',
-        );
-        if (this.attackerAssist || this.defenderAssist) {
-          const left = this.attackerAssist?.name ?? '-';
-          const right = this.defenderAssist?.name ?? '-';
-          surf.drawText(`Dual: ${left} / ${right}`, 4, 13, 'rgba(245,222,148,1)', '6px monospace');
-        }
+        game.hud.drawAttackInfo(surf, game, unit, weapon, target, this.attackerAssist, this.defenderAssist);
       }
     }
     return surf;
@@ -6159,6 +6117,7 @@ export class TargetingState extends MapState {
   override end(): StateResult {
     const game = getGame();
     game.highlight.clear();
+    game.hud.resetInfo();
     // Clear targets to prevent stale draw (red rectangle) when CombatState
     // draws on top of this transparent state
     this.targets = [];
