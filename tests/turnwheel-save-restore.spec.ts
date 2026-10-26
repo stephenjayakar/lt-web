@@ -485,3 +485,81 @@ test.describe('turnwheel history across save/load: action coverage', () => {
     expect(result.types).toContain('CombatResultAction');
   });
 });
+
+test.describe('turnwheel history: title-screen loads', () => {
+  test('loading a different save from the load menu replaces the action log', async ({ page }) => {
+    await boot(page);
+    await openUnitMenu(page, 'Eirika');
+    await chooseMenuLabel(page, 'Wait');
+    await settleToFree(page, false);
+    const slotA = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const save = await import('/src/engine/save.ts');
+      await save.saveGame(g, 0, 'battle');
+      return g.actionLog.getActions().map((a: any) => a.constructor.name);
+    });
+    // Slot 1: written by an older build (no action log).
+    await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const save = await import('/src/engine/save.ts');
+      const { getSaveStore } = await import('/src/storage/storage.ts');
+      await save.saveGame(g, 1, 'battle');
+      const gameNid = g.db.getConstant('game_nid', 'default');
+      const store = getSaveStore();
+      const dict = await store.get(`${gameNid}-1`);
+      delete dict.actionLog;
+      await store.set(`${gameNid}-1`, dict);
+    });
+    // Keep playing this session so the live log grows past both saves.
+    for (const nid of ['Seth', 'Vanessa']) {
+      await openUnitMenu(page, nid);
+      await chooseMenuLabel(page, 'Wait');
+      await settleToFree(page, false);
+    }
+    const session = await page.evaluate(() => (window as any).__gameRef.actionLog.getLength());
+    expect(session).toBeGreaterThan(slotA.length);
+
+    const loadFromMenu = (slot: number) => page.evaluate(async (idx) => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      g.state.clear();
+      g.state.change('load_menu');
+      h.stepFrames(2, null);
+      for (let i = 0; i < 60; i++) {
+        const s = g.state.getCurrentState() as any;
+        if (s?.name === 'load_menu' && !s.loading) break;
+        await new Promise((r) => setTimeout(r, 0));
+        h.stepFrames(1, null);
+      }
+      h.stepFrames(10, null);
+      const state = g.state.getCurrentState() as any;
+      state.selectSlot(idx);
+      state.takeInput('SELECT');
+      for (let i = 0; i < 100 && state.restoring; i++) await new Promise((r) => setTimeout(r, 10));
+      h.stepFrames(5, null);
+      return {
+        types: g.actionLog.getActions().map((a: any) => a.constructor.name),
+        index: g.actionLog.actionIndex,
+        message: state.message ?? null,
+      };
+    }, slot);
+
+    const loadedA = await loadFromMenu(0);
+    expect(loadedA.message ?? '').not.toMatch(/Load failed/);
+    expect(loadedA.types, 'slot 0 brings back exactly its own history').toEqual(slotA);
+    expect(loadedA.index).toBe(slotA.length - 1);
+
+    const loadedOld = await loadFromMenu(1);
+    // A pre-1.1.0 save starts with an empty history; FreeState.begin then
+    // drops its usual turnwheel anchor into the empty log.
+    expect(loadedOld.types, 'none of the session or slot 0 history leaks in').toEqual(['MarkActionGroupEnd']);
+
+    await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const save = await import('/src/engine/save.ts');
+      const gameNid = g.db.getConstant('game_nid', 'default');
+      await save.deleteSave(gameNid, 0);
+      await save.deleteSave(gameNid, 1);
+    });
+  });
+});
