@@ -1141,3 +1141,14 @@ test('a bare transition toggles the event\'s own state, so close-then-open ends 
   expect(result.alpha).toBe(0);
   expect(result.hold).toBe(false);
 });
+
+test('main_menu returns to the title once its event ends (Python EventState.end_event)', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_main_menu', ['game_var;qa_before;1', 'main_menu', 'game_var;qa_after;1'], 30);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return { after: g.gameVars.get('qa_after'), stack: g.state.getStackNames() };
+  });
+  expect(result.after).toBe(1);
+  expect(result.stack).toEqual(['title']);
+});

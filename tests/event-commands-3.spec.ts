@@ -2069,8 +2069,9 @@ test.describe('Event command batch 3q (change_roam_ai — final command)', () =>
 test.describe('Event command batch 3r (say/dialog alias family)', () => {
   test('say joins text segments; main_menu and change_special_music set state; pop/unpause manage the dialog', async ({ page }) => {
     await boot(page);
+    // main_menu itself returns to the title when its event ends (Python
+    // EventState.end_event); qa-playtest covers that transition.
     await runEvent(page, 'TestAliases', [
-      'main_menu',
       'change_special_music;promotion;Promotion_Theme',
       'speak_style;shout;text_speed=0',
       'game_var;aliases_done;yes',
@@ -2078,13 +2079,11 @@ test.describe('Event command batch 3r (say/dialog alias family)', () => {
     const vars = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       return {
-        mainMenu: g.levelVars.get('_main_menu'),
         promoMusic: g.gameVars.get('_music_promotion'),
         style: !!g.speakStyles?.get?.('shout'),
         done: g.gameVars.get('aliases_done'),
       };
     });
-    expect(vars.mainMenu).toBe(true);
     expect(vars.promoMusic).toBe('Promotion_Theme');
     expect(vars.style).toBe(true);
     expect(vars.done).toBe('yes');

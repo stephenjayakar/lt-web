@@ -11197,6 +11197,16 @@ export class EventState extends State {
       return;
     }
 
+    // Python end_event: `main_menu` returns to the title screen once the
+    // event that ran it ends (EOtF's game-clear event ends this way).
+    if (game.levelVars.get('_main_menu')) {
+      game.levelVars.set('_main_menu', false);
+      this.currentEvent = null;
+      game.state.clear();
+      game.state.change('title');
+      return;
+    }
+
     // --- Fork end_turn: change turns after the event that ran it ---
     if (finishedEvent && this.forcedTurnEndEvents.delete(finishedEvent)) {
       // Events still queued are kept (the fork never clears them) and run
