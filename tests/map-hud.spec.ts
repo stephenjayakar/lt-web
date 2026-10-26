@@ -250,3 +250,67 @@ test('banners are Python menu windows centred on the scene', async ({ page }) =>
   // PhaseIn at ~667 ms: squares close in from the top edge.
   expect(result.phaseTopRow).toBe(true);
 });
+
+test('the unit panel lets map sprites show through like Python (the Act 2 "glyph")', async ({ page }, testInfo) => {
+  // The playtest saw a faint shape before "L. T." on level 87. It is a
+  // Fleet ship's white sail under the panel: unit_info_bg is 75% opaque
+  // (alpha 191) in both the engine and the EOtF fork sprite, and Python's
+  // create_unit_info blits it with per-pixel alpha over the map. The panel
+  // surface itself carries nothing between the chibi and the name.
+  await page.goto('/?harness=true&project=eotf.ltproj&level=87&clean=true&bundle=false');
+  await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, { timeout: 90_000 });
+  for (let i = 0; i < 60; i++) {
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
+    if (await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name) === 'free') break;
+  }
+  await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const harness = (window as any).__harness;
+    game.spawnUnit(game.db.units.get('Player'), 'player', [7, 2], 'None');
+    harness.forceCameraPosition(0, 0);
+    harness.warpUnit('Fleet_2', 3, 1); // sail under the name area
+    game.cursor.setPos(7, 2);
+    harness.stepFrames(30, null);
+  });
+  await page.waitForFunction(async () => {
+    const sprites = await import('/src/ui/sprites.ts');
+    await sprites.preloadSprites(['unit_info_bg']);
+    const fonts = await import('/src/rendering/bmp-font.ts');
+    return fonts.areFontsReady();
+  });
+  await page.waitForTimeout(800);
+
+  const sample = () => page.evaluate(async () => {
+    const game = (window as any).__gameRef;
+    (window as any).__harness.stepFrames(3, null);
+    const sprites = await import('/src/ui/sprites.ts');
+    const bg = sprites.getSprite('unit_info_bg')!;
+    const panel = game.hud.unitInfoDisp;
+    const [px, py] = game.hud.layout.unit;
+    // Between the chibi (x 7..38) and the centred name (x >= 58).
+    const strip: [number, number, number, number] = [41, 6, 15, 14];
+    let panelMatchesBg = true;
+    for (let y = strip[1]; y < strip[1] + strip[3]; y++) {
+      for (let x = strip[0]; x < strip[0] + strip[2]; x++) {
+        if (panel.getPixel(x, y).join() !== bg.getPixel(x, y).join()) panelMatchesBg = false;
+      }
+    }
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    const scale = canvas.width / 240;
+    const data = canvas.getContext('2d')!.getImageData(
+      (px + strip[0]) * scale, (py + strip[1]) * scale, strip[2] * scale, strip[3] * scale).data;
+    return { panelMatchesBg, alpha: bg.getPixel(48, 12)[3], screen: Array.from(data) };
+  });
+
+  const withShip = await sample();
+  await page.locator('canvas').screenshot({ path: testInfo.outputPath('hud-panel-over-ship.png') });
+  await page.evaluate(() => (window as any).__harness.warpUnit('Fleet_2', 12, 8));
+  const withoutShip = await sample();
+  await page.locator('canvas').screenshot({ path: testInfo.outputPath('hud-panel-over-sea.png') });
+
+  expect(withShip.alpha).toBe(191);
+  expect(withShip.panelMatchesBg).toBe(true);
+  expect(withoutShip.panelMatchesBg).toBe(true);
+  const changed = withShip.screen.filter((value, i) => value !== withoutShip.screen[i]).length;
+  expect(changed).toBeGreaterThan(20);
+});
