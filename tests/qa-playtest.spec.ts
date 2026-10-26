@@ -869,3 +869,24 @@ test('{e:} resolves {d:Data.{v:key}.field} with the raw key (EOtF upgrade costs)
   ], 6);
   expect(await gameVar(page, 'qa_cost')).toBe(200);
 });
+
+test('the Mouse setting off ignores mouse clicks (Python InputManager)', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(async () => {
+    const settings = await import('/src/engine/states/settings-state.ts');
+    const g = (window as any).__gameRef;
+    const canvas = document.querySelector('canvas')!;
+    const click = () => canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 20, clientY: 20, bubbles: true }));
+    settings.setSetting('mouse', 0);
+    g.input.mouseClick = null;
+    click();
+    const off = g.input.mouseClick;
+    settings.setSetting('mouse', 1);
+    click();
+    const on = g.input.mouseClick;
+    g.input.mouseClick = null;
+    return { off, on };
+  });
+  expect(result.off).toBeNull();
+  expect(result.on).toBe('SELECT');
+});

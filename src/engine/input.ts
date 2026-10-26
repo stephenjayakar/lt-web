@@ -10,6 +10,7 @@
  */
 
 import { viewport } from './viewport';
+import { getSetting } from './states/settings-state';
 
 export type GameButton =
   | 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
@@ -176,7 +177,12 @@ export class InputManager {
       if (document.hidden) releaseAllInput();
     });
 
+    // Python InputManager: mouse events are ignored entirely when the
+    // 'mouse' setting is off.
+    const mouseEnabled = (): boolean => !!getSetting('mouse');
+
     canvas.addEventListener('mousedown', (e) => {
+      if (!mouseEnabled()) return;
       this.mouseButtons.add(e.button);
 
       // Middle-click (button 1) starts a drag-to-pan
@@ -205,6 +211,7 @@ export class InputManager {
     });
 
     canvas.addEventListener('mousemove', (e) => {
+      if (!mouseEnabled()) return;
       const rect = canvas.getBoundingClientRect();
 
       // Middle-click drag -> pan camera
@@ -226,6 +233,7 @@ export class InputManager {
     // Scroll wheel -> zoom
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+      if (!mouseEnabled()) return;
       // deltaY > 0 = scroll down = zoom out (more tiles visible)
       // Normalize: ~120 per "notch" on most mice
       const delta = -e.deltaY / 120;
