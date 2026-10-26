@@ -13,6 +13,8 @@ import { Surface } from '../engine/surface';
 import { FRAMETIME } from '../engine/constants';
 import { FONT } from '../rendering/bmp-font';
 import { MenuCursor, baseSurf, blitSprite, blitText, getSprite, textWidth } from './menu-chrome';
+import { isForkEngine } from '../engine/engine-flavor';
+import { RECORDS } from '../engine/records';
 
 const CURSOR_ANIM = [0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
 
@@ -244,6 +246,18 @@ export class ModeSelectMenu extends TitleMainMenu {
 }
 
 /** Start loading the title-menu sprites before the first draw. */
+/**
+ * Title panorama nid. The EOtF fork's TitleStartState shows
+ * `title_background_2` once RECORDS has True_Ending_Cleared but not
+ * Extra_Ending_Cleared; the other title states reuse that background.
+ */
+export function titleBackgroundNid(): string {
+  if (isForkEngine() && RECORDS?.get('True_Ending_Cleared') && !RECORDS.get('Extra_Ending_Cleared')) {
+    return 'title_background_2';
+  }
+  return 'title_background';
+}
+
 export function preloadTitleMenuSprites(): void {
   const names = ['cursor_dragon', 'title_menu_dark', 'title_menu_dark_highlight', 'mode_bg', 'mode_bg_highlight',
     'menu_highlight', 'menu_shimmer2'];

@@ -15,7 +15,7 @@ import type { InputEvent } from '../input';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import { Banner } from '../../ui/banner';
 import { MenuBackground, MenuScene } from '../../ui/menu-chrome';
-import { ChapterSelectMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
+import { ChapterSelectMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
 import { autocursorImmediate } from './game-states';
 import {
   saveGame,
@@ -216,7 +216,7 @@ export class LoadMenuState extends State {
     this.positionX = SLIDE_FROM;
 
     const game = getGame();
-    this.bg = new MenuBackground('title_background', game.resources, false);
+    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
     preloadTitleMenuSprites();
     const gameNid = game.db.getConstant('game_nid', 'default') as string;
     const numSlots = game.db.getConstant('num_save_slots', 3) as number;

@@ -181,7 +181,7 @@ import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, ski
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
 import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
-import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
+import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
 import { HelpDialog, getLinkedHelpBoxes, itemHelpBox, type HelpBox } from '../../ui/help-menu';
@@ -1227,12 +1227,13 @@ export class TitleState extends State {
     this.pressStartChecked = false;
     this.pulseTimer = 0;
     // Load the title background panorama (try single file, then frame 0 for animated panoramas)
-    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
+    const bgNid = titleBackgroundNid();
+    game.resources.tryLoadImage(`resources/panoramas/${bgNid}.png`).then((img: HTMLImageElement | null) => {
       if (img) {
         this.bgImage = img;
       } else {
-        // Animated panorama fallback: try title_background0.png
-        game.resources.tryLoadImage('resources/panoramas/title_background0.png').then((img0: HTMLImageElement | null) => {
+        // Animated panorama fallback: try <nid>0.png
+        game.resources.tryLoadImage(`resources/panoramas/${bgNid}0.png`).then((img0: HTMLImageElement | null) => {
           this.bgImage = img0;
         });
       }
@@ -1344,7 +1345,7 @@ export class TitleMainState extends State {
 
   override start(): StateResult {
     const game = getGame();
-    this.bg = new MenuBackground('title_background', game.resources, false);
+    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
     preloadTitleMenuSprites();
     this.phase = 'transition_in';
     this.positionX = -WINWIDTH / 2;
@@ -1381,7 +1382,8 @@ export class TitleMainState extends State {
   private rebuildOptions(): void {
     const opts: string[] = ['New Game', 'Extras'];
     if (this.hasSaveData) {
-      opts.unshift('Restart Level');
+      // The EOtF fork comments out 'Restart Level'.
+      if (!isForkEngine()) opts.unshift('Restart Level');
       opts.unshift('Load Game');
     }
     if (this.hasSuspendData) {
@@ -1702,7 +1704,7 @@ export class TitleModeState extends State {
   /** Python TitleModeState.draw: label box, option description, ModeSelect. */
   override draw(surf: Surface): Surface {
     const game = getGame();
-    if (!this.modeBg) this.modeBg = new MenuBackground('title_background', game.resources, false);
+    if (!this.modeBg) this.modeBg = new MenuBackground(titleBackgroundNid(), game.resources, false);
     this.modeBg.draw(surf);
     const translate = (t: string): string => game.db?.translate?.(t) ?? t;
     if (!this.modeMenu || this.modeMenu.options.join('|') !== this.menuOptions.join('|')) {
@@ -1773,7 +1775,7 @@ export class TitleExtrasState extends State {
       options.push('Sound Room');
     }
     this.menu = new TitleMainMenu(options, 'title_menu_dark', (t) => game.db?.translate?.(t) ?? t);
-    this.bg = new MenuBackground('title_background', game.resources, false);
+    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
     preloadTitleMenuSprites();
     this.phase = 'transition_in';
     this.positionX = Math.floor(WINWIDTH * 1.5);
@@ -1824,7 +1826,16 @@ export class TitleExtrasState extends State {
       if (selection === 'Options') {
         game.state.change('settings_menu');
       } else if (selection === 'Credits') {
-        if (game.db.events.has('Global Credits') && game.eventManager?.triggerSpecific('Global Credits', { type: 'credits' }, true)) {
+        if (isForkEngine()) {
+          // EOtF fork TitleExtrasState: run 'Global Credits_Title' (Error
+          // sfx when the project lacks it).
+          if (game.db.events.has('Global Credits_Title') &&
+              game.eventManager?.triggerSpecific('Global Credits_Title', { type: 'credits' }, true)) {
+            game.state.change('event');
+          } else {
+            game.audioManager.playSfx('Error');
+          }
+        } else if (game.db.events.has('Global Credits') && game.eventManager?.triggerSpecific('Global Credits', { type: 'credits' }, true)) {
           game.state.change('event');
         } else {
           game.state.change('credit');
@@ -1869,7 +1880,7 @@ export class TitleNewState extends State {
     this.menu = null;
     this.phase = 'transition_in';
     this.positionX = Math.floor(WINWIDTH * 1.5);
-    this.bg = new MenuBackground('title_background', game.resources, false);
+    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
     preloadTitleMenuSprites();
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const numSlots = Number(game.db?.getConstant?.('num_save_slots', 3) ?? 3) || 1;
