@@ -242,4 +242,36 @@ test.describe('EOtF fork-parity follow-ups', () => {
     expect(result!.playerPhase.expUnit).toBe('_ExpPlayer');
     expect(result!.playerPhase.expGained).toBe(result!.enemyPhase.expGained);
   });
+
+  test('Tile units (walls, doors) do not keep a team phase from being skipped', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (arenaSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const makeArena = new Function(`${arenaSrc}; return makeArena;`)();
+      const { PhaseController } = await import('/src/engine/phase.ts');
+      const { phaseTeamUnits } = await import('/src/engine/states/game-states.ts');
+      const arena = await makeArena(game, 1);
+      if (!arena.origin) return null;
+      const [x, y] = arena.origin;
+      const teams = game.db.teams.defs.map((def: any) => def.nid);
+      const others = [...game.units.values()].some((unit: any) => unit.position && unit.team === 'enemy2');
+      const wall = arena.make('_PhaseWall', 'enemy2');
+      game.board.setUnit(x, y, wall);
+      const after = (tags: string[]) => {
+        wall.tags = tags;
+        const phase = new PhaseController(teams);
+        phase.setCurrentTeam('enemy');
+        phase.next((team: string) => phaseTeamUnits(game, team));
+        return phase.getCurrent();
+      };
+      const out = { others, tile: after(['Tile']), soldier: after([]) };
+      arena.cleanup();
+      return out;
+    }, ARENA);
+    expect(result).not.toBeNull();
+    expect(result!.others).toBe(false);
+    expect(result!.soldier).toBe('enemy2');
+    expect(result!.tile).not.toBe('enemy2');
+  });
 });

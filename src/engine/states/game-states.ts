@@ -351,6 +351,15 @@ function getBoard(): any {
   return game.board;
 }
 
+/**
+ * Python PhaseController.next/get_next: a team's phase is skipped unless it
+ * has a unit on the map without the Tile tag (walls and doors don't count).
+ */
+export function phaseTeamUnits(game: any, team: string): UnitObject[] {
+  return (game.board?.getTeamUnits(team) ?? [])
+    .filter((unit: UnitObject) => !unitHasTag(unit, 'Tile', game));
+}
+
 /** Match LT's Bool event validator. Invalid values remain invalid. */
 function parseEventBool(value: string | undefined): boolean | null {
   if (value === undefined) return null;
@@ -9012,7 +9021,7 @@ export class TurnChangeState extends State {
     }
 
     // Advance to next phase
-    game.phase.next((team: string) => game.board.getTeamUnits(team));
+    game.phase.next((team: string) => phaseTeamUnits(game, team));
 
     // Sync turnCount to GameState so event conditions like
     // "game.turncount == 2" resolve correctly
@@ -15636,7 +15645,7 @@ export class EventState extends State {
             return false;
           }
           for (let guard = 0; guard < 99 && game.phase.getNext(fieldTeam) !== team; guard += 1) {
-            game.phase.next((nid: string) => game.board.getTeamUnits(nid));
+            game.phase.next((nid: string) => phaseTeamUnits(game, nid));
           }
         }
         if (isForkEngine() && this.currentEvent) {
