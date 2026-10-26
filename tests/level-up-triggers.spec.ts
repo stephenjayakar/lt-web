@@ -124,6 +124,8 @@ async function runCombatLevelUp(page: Page, zeroGrowths: boolean): Promise<Lifec
         ['uses', 5],
         ['min_range', 1],
         ['max_range', 1],
+        // Combat exp comes only from item exp components (both engines).
+        ['exp', 10],
       ],
     });
     attacker.items.push(item);

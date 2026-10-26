@@ -72,7 +72,7 @@ async function runHookCombat(page: Page, fork: boolean): Promise<Entry[]> {
       nid: '_ForkSpell', name: '_ForkSpell', desc: '', icon_nid: '', icon_index: [0, 0],
       components: [
         ['spell', null], ['target_enemy', null], ['damage', 99], ['hit', 100],
-        ['uses', 2], ['min_range', 1], ['max_range', 2],
+        ['uses', 2], ['min_range', 1], ['max_range', 2], ['exp', 30],
         ['event_on_hit', '_ForkOnHit'], ['event_after_combat_even_miss', '_ForkItemAfter'],
       ],
     });
