@@ -1805,6 +1805,28 @@ export class AddMapAnimationAction extends Action {
   }
 }
 
+/** Python action.AIGroupPing: activate an AI group, reversibly. */
+export class AIGroupPingAction extends Action {
+  private game: any;
+  private group: string;
+  private wasActive = false;
+
+  constructor(game: any, group: string) {
+    super();
+    this.game = game;
+    this.group = group;
+  }
+
+  execute(): void {
+    this.wasActive = this.game.activeAiGroups.has(this.group);
+    this.game.activeAiGroups.add(this.group);
+  }
+
+  reverse(): void {
+    if (!this.wasActive) this.game.activeAiGroups.delete(this.group);
+  }
+}
+
 /**
  * Python action.RemoveMapAnim: remove the tilemap animations with this nid
  * placed on `position` (the overlay layer when `overlay`); reversible.

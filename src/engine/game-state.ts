@@ -132,6 +132,8 @@ export class GameState {
   gameVars: Map<string, any>;
   levelVars: Map<string, any>;
   activeAiGroups: Set<string>;
+  /** AIGroupObject.triggered per group (not saved; cleared every AI phase end). */
+  aiGroupTriggered: Map<string, Set<string>> = new Map();
 
   // -- Party system -------------------------------------------------------
   parties: Map<string, PartyObject>;
@@ -703,6 +705,7 @@ export class GameState {
     this.units.clear();
     this.items.clear();
     this.activeAiGroups.clear();
+    this.aiGroupTriggered.clear();
     this.levelVars.clear();
     this.highlight.clear();
     this.actionLog.clear();
@@ -1033,17 +1036,48 @@ export class GameState {
   // AI Group Activation
   // ========================================================================
 
-  /** Check if an AI group is active (empty/null group IDs are always active). */
-  isAiGroupActive(groupId: string): boolean {
-    return !groupId || groupId === '' || this.activeAiGroups.has(groupId);
+  /**
+   * Python game.get_ai_group: the level's AI group (nid, trigger_threshold),
+   * or null for a unit group the level does not define.
+   */
+  getAiGroup(groupId: string | null | undefined): { nid: string; triggerThreshold: number } | null {
+    if (!groupId) return null;
+    const groups = ((this.currentLevel as any)?.ai_groups ?? []) as Array<{ nid: string; trigger_threshold?: number }>;
+    const group = groups.find((candidate) => candidate.nid === groupId);
+    return group ? { nid: group.nid, triggerThreshold: Number(group.trigger_threshold ?? 1) || 1 } : null;
   }
 
-  /** Activate an AI group so its members will act on the next AI turn. */
+  /** Python game.ai_group_active: the level group exists and has been pinged. */
+  isAiGroupActive(groupId: string | null | undefined): boolean {
+    return !!groupId && !!this.getAiGroup(groupId) && this.activeAiGroups.has(groupId);
+  }
+
+  /** AIGroupPing's effect: the group is active for the rest of the level. */
   activateAiGroup(groupId: string): void {
     if (!groupId || groupId === '') return;
-    if (this.activeAiGroups.has(groupId)) return;
     this.activeAiGroups.add(groupId);
-    console.log(`AI Group activated: ${groupId}`);
+  }
+
+  /**
+   * Python AIGroupObject.trigger: record that this unit is ready; true once
+   * min(trigger_threshold, units in the group on the map) are ready.
+   */
+  triggerAiGroup(groupId: string, unitNid: string): boolean {
+    const group = this.getAiGroup(groupId);
+    if (!group) return true;
+    let triggered = this.aiGroupTriggered.get(groupId);
+    if (!triggered) {
+      triggered = new Set();
+      this.aiGroupTriggered.set(groupId, triggered);
+    }
+    triggered.add(unitNid);
+    const members = this.getAllUnits().filter((unit) => unit.position && !unit.isDead() && unit.aiGroup === groupId).length;
+    return triggered.size >= Math.min(group.triggerThreshold, members);
+  }
+
+  /** AIState: every group's triggered set is cleared at the end of an AI phase. */
+  clearAiGroupTriggers(): void {
+    this.aiGroupTriggered.clear();
   }
 
   // ========================================================================

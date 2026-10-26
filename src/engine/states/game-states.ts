@@ -154,6 +154,7 @@ import {
   ShowLayerAction,
   HideLayerAction,
   AddMapAnimationAction,
+  AIGroupPingAction,
   RemoveMapAnimationAction,
   ChangeTeamPaletteAction,
   ChangeRoamAiAction,
@@ -327,6 +328,8 @@ import {
   unitSpriteTint,
   canUnlock as skillCanUnlock,
   unitHasTag,
+  changeAi,
+  checkEnemy,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -2975,10 +2978,6 @@ export class MoveState extends MapState {
           game.actionLog.doAction(moveAction);
           game._moveAction = moveAction;
 
-          // Check if this movement triggers AI group activation
-          if (game.aiController && unit.team === 'player') {
-            game.aiController.checkGroupActivation(destination, game);
-          }
 
           // Python: a Canto move (after attacking/trading) goes to
           // canto_wait instead of the full action menu.
@@ -8206,13 +8205,6 @@ export class CombatState extends State {
           this.heldEndEvents = [];
         }
 
-        // Activate AI groups if an enemy was involved in combat
-        if (game.aiController) {
-          game.aiController.activateGroupOnCombat(activeCombat!.attacker, game);
-          for (const combatDefender of combatDefenders) {
-            game.aiController.activateGroupOnCombat(combatDefender, game);
-          }
-        }
 
         // Python has no engine-side win/loss detection: objectives are text,
         // and projects end levels through events (unit_death / combat_end ->
@@ -8762,6 +8754,54 @@ export class AIState extends MapState {
   private waitingForEvent: boolean = false;
   private pendingCombatTarget: UnitObject | null = null;
   private pendingCombatWeapon: ItemObject | null = null;
+  /** Python unit.has_run_ai for this AI phase. */
+  private ranAi = new Set<UnitObject>();
+  /** Python AIState.cur_group: the last picked unit's AI group. */
+  private curGroup: string | null = null;
+
+  /**
+   * Python AIState.get_next_unit: an unfinished unit of the phase's team on
+   * the map whose AI has not run; members of the last unit's AI group first,
+   * then highest AI priority, then nearest to an enemy.
+   */
+  private pickNextUnit(game: any): UnitObject | null {
+    const team = game.phase.getCurrent();
+    const valid = (game.getAllUnits() as UnitObject[]).filter((unit) =>
+      !!unit.position && !unit.finished && !unit.isDead() && !this.ranAi.has(unit) && unit.team === team);
+    if (valid.length === 0) return null;
+    let pool = valid;
+    if (this.curGroup) {
+      const groupUnits = valid.filter((unit) => unit.aiGroup === this.curGroup);
+      if (groupUnits.length > 0) pool = groupUnits;
+      else this.curGroup = null;
+    }
+    const priority = (unit: UnitObject) => Number(game.db.ai.get(changeAi(unit, unit.ai, game))?.priority ?? 0);
+    const distance = (unit: UnitObject) => {
+      const position = unit.position as [number, number];
+      let best = -1;
+      for (const other of game.getAllUnits() as UnitObject[]) {
+        if (!other.position || other === unit || !checkEnemy(other, unit, game.db, game)) continue;
+        const d = Math.abs(other.position[0] - position[0]) + Math.abs(other.position[1] - position[1]);
+        if (best < 0 || d < best) best = d;
+      }
+      return best;
+    };
+    const ranked = pool
+      .map((unit, index) => ({ unit, index, priority: priority(unit), distance: distance(unit) }))
+      .sort((a, b) => b.priority - a.priority || a.distance - b.distance || a.index - b.index);
+    return ranked[0].unit;
+  }
+
+  /** Python AIState: a unit that did something waits through unit.wait(). */
+  private waitAfterAct(game: any, unit: UnitObject): void {
+    waitUnit(game, unit, false);
+    if (game.eventManager?.hasActiveEvents()) {
+      this.waitingForEvent = true;
+      game.state.change('event');
+      return;
+    }
+    this.advanceToNextUnit();
+  }
 
   private moveWithAction(
     game: any,
@@ -8808,12 +8848,11 @@ export class AIState extends MapState {
         this.aiUnits = [];
       }
     } else {
-      // Standard mode: gather all units for the current team
-      const currentTeam = game.phase.getCurrent();
-      this.aiUnits = game.board
-        .getTeamUnits(currentTeam)
-        .filter((u: UnitObject) => !u.isDead() && u.canStillAct() && game.isAiGroupActive(u.aiGroup));
+      // Standard mode: units are picked one at a time (get_next_unit).
+      this.aiUnits = [];
     }
+    this.ranAi = new Set();
+    this.curGroup = null;
 
     this.currentAiIndex = 0;
     this.frameCounter = 0;
@@ -8920,9 +8959,16 @@ export class AIState extends MapState {
     }
 
     if (this.currentAiIndex >= this.aiUnits.length) {
-      // All AI units processed — advance to turn change
-      game.state.change('turn_change');
-      return;
+      const next = game.initiative ? null : this.pickNextUnit(game);
+      if (!next) {
+        // AI phase complete: clear every AI group's triggered set.
+        game.clearAiGroupTriggers?.();
+        game.state.change('turn_change');
+        return;
+      }
+      this.ranAi.add(next);
+      this.curGroup = next.aiGroup || null;
+      this.aiUnits.push(next);
     }
 
     // Process one AI unit with a short delay between each.
@@ -8953,6 +8999,33 @@ export class AIState extends MapState {
 
     // Get AI decision
     const action = game.aiController.getAction(unit);
+
+    // Python AIController.think: committing to a target (Primary) or to a
+    // move off its tile (Secondary) triggers the unit's AI group. Once
+    // min(threshold, group size) members are ready the group is pinged
+    // active and its unmoved members run their AI again; until then this
+    // unit does nothing.
+    const samePosition = (a?: [number, number] | null, b?: [number, number] | null) =>
+      !!a && !!b && a[0] === b[0] && a[1] === b[1];
+    const commits = action.type === 'attack' || action.type === 'steal' || action.type === 'use_item'
+      ? !!(action.targetUnit || action.targetPosition)
+      : action.type === 'move' || action.type === 'interact'
+        ? !!action.targetPosition && !samePosition(action.targetPosition, unit.position)
+        : false;
+    if (commits && unit.aiGroup && game.getAiGroup(unit.aiGroup)) {
+      if (game.triggerAiGroup(unit.aiGroup, unit.nid)) {
+        game.actionLog.doAction(new AIGroupPingAction(game, unit.aiGroup));
+        for (const mate of game.getAllUnits() as UnitObject[]) {
+          if (mate !== unit && mate.team === unit.team && mate.aiGroup === unit.aiGroup &&
+              !mate.hasMoved && !mate.hasAttacked) {
+            this.ranAi.delete(mate);
+          }
+        }
+      } else {
+        this.advanceToNextUnit();
+        return;
+      }
+    }
 
     // Python UnitPathMovementComponent: the walk stops on the first
     // interrupting tile, and finish(surprise) applies HasAttacked and
@@ -9049,21 +9122,21 @@ export class AIState extends MapState {
             ? [unit.position[0], unit.position[1]]
             : null;
 
-          this.moveWithAction(game, unit, action.targetPosition, action.movePath);
+          const moved = this.moveWithAction(game, unit, action.targetPosition, action.movePath);
 
           if (action.movePath && action.movePath.length > 1 && prevPos) {
             this.waitingForMovement = true;
             game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
-              game.actionLog.doAction(new WaitAction(unit));
               this.waitingForMovement = false;
-              this.advanceToNextUnit();
+              this.waitAfterAct(game, unit);
             });
+          } else if (moved) {
+            this.waitAfterAct(game, unit);
           } else {
-            game.actionLog.doAction(new WaitAction(unit));
+            // A Secondary goal on its own tile: did_something stays False.
             this.advanceToNextUnit();
           }
         } else {
-          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
@@ -9241,28 +9314,8 @@ export class AIState extends MapState {
 
       case 'wait':
       default: {
-        // unit_wait fires before the unit is marked finished, with
-        // actively_chosen=false (matches Python unit_funcs.wait() defaults).
-        if (unit.position && game.eventManager) {
-          const levelNid = game.currentLevel?.nid ?? '';
-          const region = getRegionUnderPos(unit.position[0], unit.position[1]);
-          const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
-          game.eventManager.trigger(
-            {
-              type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
-              position: [unit.position[0], unit.position[1]],
-              region: region ?? undefined,
-              localArgs: new Map<any, any>([['actively_chosen', false]]),
-            },
-            ctx,
-          );
-        }
-        game.actionLog.doAction(new WaitAction(unit));
-        if (game.eventManager?.hasActiveEvents()) {
-          this.waitingForEvent = true;
-          game.state.change('event');
-          return;
-        }
+        // Python AIState: no behaviour found anything, so did_something is
+        // False and the unit does not wait (it stays unfinished).
         this.advanceToNextUnit();
         break;
       }

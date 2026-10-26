@@ -152,6 +152,8 @@ test.describe('AI parity', () => {
       if (!bone) return null;
 
       h.setUnitIdentity('Bone', { aiGroup: '__test_group' });
+      // Python game.ai_group_active needs the level to define the group.
+      g.currentLevel.ai_groups = [{ nid: '__test_group', trigger_threshold: 1 }];
       h.setAiGroupActive('__test_group', false);
 
       const ai = g.aiController;
@@ -240,6 +242,11 @@ test.describe('AI parity', () => {
       if (!path) return null;
       const before = unit.movementLeft;
       const cost = g.pathSystem.getPathCost(unit, path, g.board);
+      // The AI's wait now fires unit_wait (Python unit.wait()); drop the
+      // level's unit_wait events so only the AI's own actions are recorded.
+      for (const [nid, event] of [...g.db.events.entries()]) {
+        if (event.trigger === 'unit_wait') g.db.events.delete(nid);
+      }
       // Only Bone walks: the other AI units must not stand in its path
       // (check_position stops a walk before an enemy, as an ambush).
       g.aiController.getAction = (actor: any) => actor === unit
@@ -312,5 +319,100 @@ test.describe('AI parity', () => {
       'MoveAction',
       'MarkActionGroupStart',
     ]);
+  });
+
+  // Python AIGroupObject / AIController.think / AIState.get_next_unit: a
+  // grouped unit committing to an action triggers its group; below the
+  // trigger threshold it does nothing (no wait). The threshold-th member
+  // pings the group active, the waiting members run their AI again (group
+  // first), and the triggered sets clear when the AI phase ends.
+  test('AI groups: threshold 2 holds the first member until the second triggers', async ({ page }) => {
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const enemies = [...g.units.values()].filter((u: any) => u.position && u.team !== 'player' && !u.isDead());
+      if (enemies.length < 2) return null;
+      const [a, b] = enemies;
+      for (const other of enemies.slice(2)) g.board.removeUnit(other);
+      for (const u of [a, b]) { u.aiGroup = '_G'; u.resetTurnState(); }
+      g.currentLevel.ai_groups = [{ nid: '_G', trigger_threshold: 2 }];
+      g.activeAiGroups.clear();
+      const free = (u: any) => [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => [u.position[0] + dx, u.position[1] + dy])
+        .find(([x, y]) => g.board.inBounds(x, y) && !g.board.getUnit(x, y));
+      const targets = new Map([[a, free(a)], [b, free(b)]]);
+      const order: string[] = [];
+      (window as any).__groupOrder = order;
+      g.aiController.getAction = (unit: any) => {
+        order.push(`${unit.nid}:${g.isAiGroupActive('_G') ? 'active' : 'idle'}`);
+        const target = targets.get(unit);
+        return target ? { type: 'move', unit, targetPosition: target, movePath: [[...unit.position], target] } : { type: 'wait', unit };
+      };
+      g.phase.setCurrentTeam(a.team);
+      g.state.clear();
+      g.state.change('ai');
+      return { a: a.nid, b: b.nid, aStart: [...a.position], bStart: [...b.position] };
+    });
+    expect(setup).not.toBeNull();
+    for (let i = 0; i < 120; i++) {
+      await stepFrames(page, 2);
+      const done = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name !== 'ai');
+      if (done) break;
+    }
+    const result = await page.evaluate(({ a, b }) => {
+      const g = (window as any).__gameRef;
+      const ua = g.units.get(a);
+      const ub = g.units.get(b);
+      return {
+        order: (window as any).__groupOrder,
+        active: g.isAiGroupActive('_G'),
+        triggered: g.aiGroupTriggered.size,
+        aMoved: ua.hasMoved || ua.finished,
+        bMoved: ub.hasMoved || ub.finished,
+      };
+    }, setup!);
+    // The first member asked while idle and held; the second's trigger
+    // pinged the group, and the first ran again while active.
+    expect(result.order.length).toBe(3);
+    expect(result.order[0].endsWith(':idle')).toBe(true);
+    expect(result.order[1].endsWith(':idle')).toBe(true);
+    expect(result.order[2]).toBe(`${result.order[0].split(':')[0]}:active`);
+    expect(result).toMatchObject({ active: true, triggered: 0, aMoved: true, bMoved: true });
+  });
+
+  test('AI groups: Python ai_group_active is false without a level group; guards without one stay put', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = [...g.units.values()].find((u: any) => u.position && u.team !== 'player');
+      unit.aiGroup = '';
+      g.currentLevel.ai_groups = [{ nid: '_Known', trigger_threshold: 1 }];
+      g.activeAiGroups.add('_Unknown');
+      const moves = (g.aiController as any).getValidMovesForBehaviour(unit, -1);
+      return {
+        empty: g.isAiGroupActive(''),
+        unknown: g.isAiGroupActive('_Unknown'),
+        known: g.isAiGroupActive('_Known'),
+        guardMoves: moves.length,
+      };
+    });
+    expect(result).toEqual({ empty: false, unknown: false, known: false, guardMoves: 1 });
+  });
+
+  test('an AI unit that finds nothing does not wait (did_something False)', async ({ page }) => {
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const enemies = [...g.units.values()].filter((u: any) => u.position && u.team !== 'player' && !u.isDead());
+      for (const u of enemies) u.resetTurnState();
+      g.aiController.getAction = (unit: any) => ({ type: 'wait', unit });
+      g.phase.setCurrentTeam(enemies[0].team);
+      g.state.clear();
+      g.state.change('ai');
+      return enemies.map((u: any) => u.nid);
+    });
+    for (let i = 0; i < 120; i++) {
+      await stepFrames(page, 2);
+      if (await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name !== 'ai')) break;
+    }
+    const finished = await page.evaluate((nids) => nids.map((nid: string) => (window as any).__gameRef.units.get(nid).finished), setup);
+    expect(finished.every((value: boolean) => value === false)).toBe(true);
   });
 });
