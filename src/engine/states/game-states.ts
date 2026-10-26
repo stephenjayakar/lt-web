@@ -172,6 +172,7 @@ import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
+import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
 import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
@@ -11606,7 +11607,18 @@ export class EventState extends State {
   }
 
   private executeCommand(cmd: EventCommand, game: any): boolean {
-    const rawArgs = cmd.args ?? [];
+    // Python's parser treats a command's flag tokens as flags wherever they
+    // appear; move them after the positional arguments so an omitted
+    // optional keyword (e.g. give_money's Party) is not filled by a flag.
+    const commandMeta = EVENT_COMMAND_FLAGS[cmd.type];
+    const givenArgs = cmd.args ?? [];
+    const isFlag = (arg: string) => !!commandMeta?.flags.includes(arg.trim().toLowerCase());
+    let rawArgs = givenArgs;
+    if (commandMeta && givenArgs.some(isFlag)) {
+      const positional = givenArgs.filter((arg) => !isFlag(arg));
+      while (positional.length < commandMeta.slots) positional.push('');
+      rawArgs = [...positional, ...givenArgs.filter(isFlag)];
+    }
 
     let args = this.substituteEventArgs(rawArgs, game);
 

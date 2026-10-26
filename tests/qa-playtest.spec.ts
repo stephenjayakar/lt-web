@@ -813,3 +813,23 @@ test('event tables show the text of nid|text entries (Python SimpleMenuUI.parse_
   expect(drawn).toContain('Knight');
   expect(drawn.join(' ')).not.toContain('|');
 });
+
+test('give_money;N;no_banner does not treat the flag as a party (money survived suspend)', async ({ page }) => {
+  await boot(page);
+  const before = await page.evaluate(() => (window as any).__gameRef.getMoney());
+  await runEvent(page, 'qa_give_money_flag', ['give_money;200;no_banner', 'game_var;qa_done;1'], 10);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { buildSaveDict } = await import('/src/engine/save.ts');
+    const saved = buildSaveDict(g);
+    return {
+      money: g.getMoney(),
+      partyKeys: [...g.parties.keys()],
+      savedMoney: saved.parties.filter((p: any) => p.nid === g.currentParty).map((p: any) => p.money),
+    };
+  });
+  expect(await gameVar(page, 'qa_done')).toBe(1);
+  expect(result.money).toBe(before + 200);
+  expect(result.partyKeys).not.toContain('no_banner');
+  expect(result.savedMoney).toEqual([before + 200]);
+});
