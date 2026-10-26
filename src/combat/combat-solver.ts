@@ -105,6 +105,13 @@ export class CombatPhaseSolver {
   private customSurvivalTriggered: Set<SkillObject> = new Set();
   /** Simulated HP for non-target cover units across precomputed strikes. */
   private coverHps: Map<UnitObject, number> = new Map();
+  /** The running combat's simulated HP references, per unit. */
+  private simHps: Map<UnitObject, Array<{ hp: number }>> = new Map();
+  /** Phases still to resolve (Python CombatPhaseSolver states). */
+  private session: Generator<CombatStrike[], void, void> | null = null;
+  private sessionStrikes: CombatStrike[] = [];
+  /** Lifecycle marks already copied into procPlayback. */
+  private syncedMarks = 0;
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -129,18 +136,120 @@ export class CombatPhaseSolver {
     this.miracleRestoreHp.clear();
     this.customSurvivalTriggered.clear();
     this.coverHps.clear();
+    this.simHps.clear();
+    this.syncedMarks = 0;
     for (const unit of [attacker, ...defenders]) {
       this.guardGaugeResults.set(unit, unit.getGuardGauge());
     }
     this.lifecycle = new CombatSkillLifecycle(db, this.randomRoll, this.game);
     this.lifecycle.beginCombat(attacker, attackItem, defenders, defenseItems);
+    this.syncProcPlayback();
+  }
+
+  /** Copy lifecycle marks made so far (pre-procs first) into procPlayback. */
+  private syncProcPlayback(): void {
+    if (!this.lifecycle) return;
+    const marks = this.lifecycle.marks;
+    if (marks.length > this.syncedMarks) this.procPlayback.push(...marks.slice(this.syncedMarks));
+    this.syncedMarks = marks.length;
   }
 
   private finishLifecycle(strikes: CombatStrike[]): void {
     if (!this.lifecycle) return;
     this.lifecycle.endCombat(strikes);
-    this.procPlayback.push(...this.lifecycle.marks);
+    this.syncProcPlayback();
     this.lifecycle = null;
+  }
+
+  /** Register a simulated HP reference so strike events can adjust it. */
+  private trackHp(unit: UnitObject, hp: number): { hp: number } {
+    const ref = { hp };
+    const refs = this.simHps.get(unit);
+    if (refs) refs.push(ref);
+    else this.simHps.set(unit, [ref]);
+    return ref;
+  }
+
+  /**
+   * Begin a combat whose phases resolve one at a time (Python
+   * CombatPhaseSolver.do). The start-combat lifecycle runs now; strikes only
+   * as resolveNextPhase() asks for them, so events between phases see and change
+   * the state later phases are solved against.
+   */
+  beginSession(
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    mainDefender: UnitObject | null,
+    defenseItem: ItemObject | null,
+    splashDefenders: UnitObject[],
+    db: Database,
+    rngMode: RngMode,
+    board?: GameBoard | null,
+    script?: string[] | null,
+  ): void {
+    const splash = [...new Set(splashDefenders)].filter((unit) => unit !== mainDefender);
+    this.sessionStrikes = [];
+    if (splash.length === 0 && mainDefender) {
+      this.beginLifecycle(db, attacker, attackItem, [mainDefender], new Map([[mainDefender, defenseItem]]));
+      this.session = this.coreGen(
+        attacker, attackItem, mainDefender, defenseItem, db, rngMode, board, script,
+      );
+      return;
+    }
+    this.beginLifecycle(
+      db,
+      attacker,
+      attackItem,
+      [...(mainDefender ? [mainDefender] : []), ...splash],
+      new Map([
+        ...(mainDefender ? [[mainDefender, defenseItem] as [UnitObject, ItemObject | null]] : []),
+        ...splash.map((unit) => [unit, null] as [UnitObject, ItemObject | null]),
+      ]),
+    );
+    this.session = this.groupGen(
+      attacker, attackItem, mainDefender, defenseItem, splash, db, rngMode, board, script,
+    );
+  }
+
+  /**
+   * Resolve the next phase: one strike, or a main strike with its splash
+   * strikes. Returns null once the combat has no more phases, after the
+   * end-combat lifecycle has run.
+   */
+  resolveNextPhase(): CombatStrike[] | null {
+    if (!this.session) return null;
+    const step = this.session.next();
+    if (step.done) {
+      this.session = null;
+      this.strikes = this.sessionStrikes;
+      this.finishLifecycle(this.sessionStrikes);
+      return null;
+    }
+    this.sessionStrikes.push(...step.value);
+    this.syncProcPlayback();
+    return step.value;
+  }
+
+  get sessionActive(): boolean {
+    return this.session !== null;
+  }
+
+  /**
+   * Strike events changed these units' HP between phases: shift the
+   * simulated HP the remaining phases are solved against by the same amount.
+   */
+  adjustSimulatedHp(deltas: Map<UnitObject, number>): void {
+    for (const [unit, delta] of deltas) {
+      if (!delta) continue;
+      for (const ref of this.simHps.get(unit) ?? []) ref.hp += delta;
+      const cover = this.coverHps.get(unit);
+      if (cover !== undefined) this.coverHps.set(unit, cover + delta);
+    }
+  }
+
+  private drainSession(): CombatStrike[] {
+    while (this.resolveNextPhase()) { /* resolve every phase */ }
+    return this.strikes;
   }
 
   /**
@@ -760,7 +869,7 @@ export class CombatPhaseSolver {
    * When the script is exhausted, remaining natural strikes play out
    * if there are any.
    */
-  private resolveScripted(
+  private *scriptedGen(
     attacker: UnitObject,
     attackItem: ItemObject,
     defender: UnitObject,
@@ -769,23 +878,22 @@ export class CombatPhaseSolver {
     rngMode: RngMode,
     script: string[],
     board?: GameBoard | null,
-  ): CombatStrike[] {
+  ): Generator<CombatStrike[], void, void> {
     this.strikes = [];
-    let attackerHp = attacker.currentHp;
-    let defenderHp = defender.currentHp;
-    const atkHp = { hp: attackerHp };
-    const defHp = { hp: defenderHp };
+    const solver = this;
+    const atkHp = this.trackHp(attacker, attacker.currentHp);
+    const defHp = this.trackHp(defender, defender.currentHp);
 
     const phases = new Map<UnitObject, number>();
     const partnerUsed = new Set<UnitObject>();
     const limitAttackStance = !!db.getConstant('limit_attack_stance', false);
-    const runPartnerPhase = (
+    function* runPartnerPhase(
       leader: UnitObject,
       target: UnitObject,
       targetHp: { hp: number },
       isCounter: boolean,
       phase: number,
-    ): void => {
+    ): Generator<CombatStrike[], void, void> {
       const partner = leader.strikePartner;
       if (!partner || partner.currentHp <= 0 || targetHp.hp <= 0) return;
       if (limitAttackStance && partnerUsed.has(leader)) return;
@@ -800,7 +908,7 @@ export class CombatPhaseSolver {
         isCounter ? 'defense' : 'attack',
       );
       for (let index = 0; index < count && targetHp.hp > 0; index++) {
-        const strike = this.resolveStrike(
+        const strike = solver.resolveStrike(
           partner,
           partnerItem,
           target,
@@ -813,11 +921,12 @@ export class CombatPhaseSolver {
           undefined,
           true,
         );
-        this.strikes.push(strike);
-        this.applyStrikeDamage(target, targetHp, strike);
+        solver.strikes.push(strike);
+        solver.applyStrikeDamage(target, targetHp, strike);
+        yield [strike];
       }
       partnerUsed.add(leader);
-    };
+    }
     // Process each script token
     for (const rawToken of script) {
       const token = rawToken.toLowerCase().trim();
@@ -836,7 +945,8 @@ export class CombatPhaseSolver {
         );
         this.strikes.push(strike);
         this.applyStrikeDamage(defender, defHp, strike);
-        runPartnerPhase(attacker, defender, defHp, false, phase);
+        yield [strike];
+        yield* runPartnerPhase(attacker, defender, defHp, false, phase);
       } else if (token === 'hit1' || token === 'crit1' || token === 'miss1') {
         // Attacker strikes with forced outcome
         const phase = phases.get(attacker) ?? 0;
@@ -846,7 +956,8 @@ export class CombatPhaseSolver {
         );
         this.strikes.push(strike);
         this.applyStrikeDamage(defender, defHp, strike);
-        runPartnerPhase(attacker, defender, defHp, false, phase);
+        yield [strike];
+        yield* runPartnerPhase(attacker, defender, defHp, false, phase);
       } else if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
         // Defender strikes with forced outcome
         if (!defenseItem) continue; // Defender can't strike without a weapon
@@ -857,14 +968,13 @@ export class CombatPhaseSolver {
         );
         this.strikes.push(strike);
         this.applyStrikeDamage(attacker, atkHp, strike);
-        runPartnerPhase(defender, attacker, atkHp, true, phase);
+        yield [strike];
+        yield* runPartnerPhase(defender, attacker, atkHp, true, phase);
       }
     }
 
     this.applyMiracleCleanup(attacker, atkHp);
     this.applyMiracleCleanup(defender, defHp);
-
-    return this.strikes;
   }
 
   /**
@@ -980,37 +1090,44 @@ export class CombatPhaseSolver {
     board?: GameBoard | null,
     script?: string[] | null,
   ): CombatStrike[] {
-    const splash = [...new Set(splashDefenders)].filter((unit) => unit !== mainDefender);
-    if (splash.length === 0 && mainDefender) {
-      return this.resolve(attacker, attackItem, mainDefender, defenseItem, db, rngMode, board, script);
-    }
+    this.beginSession(
+      attacker, attackItem, mainDefender, defenseItem, splashDefenders, db, rngMode, board, script,
+    );
+    return this.drainSession();
+  }
 
+  /**
+   * Phases of a main+splash encounter. Python's AttackerState resolves the
+   * main defender and then every splash target in one phase, so each
+   * attacker phase yields its main strike together with its splash strikes.
+   */
+  private *groupGen(
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    mainDefender: UnitObject | null,
+    defenseItem: ItemObject | null,
+    splash: UnitObject[],
+    db: Database,
+    rngMode: RngMode,
+    board?: GameBoard | null,
+    script?: string[] | null,
+  ): Generator<CombatStrike[], void, void> {
     const doubleSplash = !!db.getConstant('double_splash', false);
-    const splashHp = new Map(splash.map((unit) => [unit, unit.currentHp]));
+    const splashHp = new Map(splash.map((unit) => [unit, this.trackHp(unit, unit.currentHp)]));
     const result: CombatStrike[] = [];
     let propagatedAttacks = 0;
-
-    this.beginLifecycle(
-      db,
-      attacker,
-      attackItem,
-      [...(mainDefender ? [mainDefender] : []), ...splash],
-      new Map([
-        ...(mainDefender ? [[mainDefender, defenseItem] as [UnitObject, ItemObject | null]] : []),
-        ...splash.map((unit) => [unit, null] as [UnitObject, ItemObject | null]),
-      ]),
-    );
 
     const appendSplash = (
       forcedToken?: string,
       sourceStrike?: CombatStrike,
       explicitAttackInfo?: [number, number],
-    ): void => {
-      if (!doubleSplash && propagatedAttacks > 0) return;
+    ): CombatStrike[] => {
+      const appended: CombatStrike[] = [];
+      if (!doubleSplash && propagatedAttacks > 0) return appended;
       let sharedAttackProcs = sourceStrike?.attackProcs;
       for (const target of splash) {
-        const hp = splashHp.get(target) ?? 0;
-        if (hp <= 0 && !skillSystem.ignoreDyingInCombat(target)) continue;
+        const hpRef = splashHp.get(target) ?? { hp: 0 };
+        if (hpRef.hp <= 0 && !skillSystem.ignoreDyingInCombat(target)) continue;
         const strike = forcedToken
           ? this.resolveScriptedStrike(
             attacker, attackItem, target, db, false, forcedToken, board, 'splash',
@@ -1023,22 +1140,22 @@ export class CombatPhaseSolver {
             sharedAttackProcs,
           );
         result.push(strike);
+        appended.push(strike);
         sharedAttackProcs ??= strike.attackProcs;
-        const hpRef = { hp };
         this.applyStrikeDamage(
           target, hpRef, strike, skillSystem.ignoreDyingInCombat(target),
         );
-        splashHp.set(target, hpRef.hp);
       }
       propagatedAttacks++;
+      return appended;
     };
 
     if (script && script.length > 0) {
-      let attackerHp = attacker.currentHp;
-      let defenderHp = mainDefender?.currentHp ?? 0;
+      const attackerHp = this.trackHp(attacker, attacker.currentHp);
+      const defenderHp = mainDefender ? this.trackHp(mainDefender, mainDefender.currentHp) : { hp: 0 };
       for (const rawToken of script) {
         const token = rawToken.toLowerCase().trim();
-        if (token === 'end' || attackerHp <= 0 || (mainDefender && defenderHp <= 0)) break;
+        if (token === 'end' || attackerHp.hp <= 0 || (mainDefender && defenderHp.hp <= 0)) break;
         if (token === 'hit2' || token === 'crit2' || token === 'miss2') {
           if (!mainDefender || !defenseItem) continue;
           const phase = this.nextPhase(mainDefender);
@@ -1046,9 +1163,8 @@ export class CombatPhaseSolver {
             mainDefender, defenseItem, attacker, db, true, token, board, 'defense', [phase, 0],
           );
           result.push(strike);
-          const attackerHpRef = { hp: attackerHp };
-          this.applyStrikeDamage(attacker, attackerHpRef, strike);
-          attackerHp = attackerHpRef.hp;
+          this.applyStrikeDamage(attacker, attackerHp, strike);
+          yield [strike];
           continue;
         }
         const forcedToken = token === '--' ? undefined : token;
@@ -1062,26 +1178,27 @@ export class CombatPhaseSolver {
               attacker, attackItem, mainDefender, db, rngMode, false, board, 'attack', [phase, 0],
             );
           result.push(strike);
-          const defenderHpRef = { hp: defenderHp };
-          this.applyStrikeDamage(mainDefender, defenderHpRef, strike);
-          defenderHp = defenderHpRef.hp;
-          appendSplash(forcedToken, strike);
+          this.applyStrikeDamage(mainDefender, defenderHp, strike);
+          yield [strike, ...appendSplash(forcedToken, strike)];
         } else {
-          appendSplash(forcedToken, undefined, [this.nextPhase(attacker), 0]);
+          const appended = appendSplash(forcedToken, undefined, [this.nextPhase(attacker), 0]);
+          if (appended.length > 0) yield appended;
         }
       }
       this.strikes = result;
-      this.finishLifecycle(result);
-      return result;
+      return;
     }
 
     if (mainDefender) {
-      const mainStrikes = [...this.resolveCore(
+      for (const phase of this.coreGen(
         attacker, attackItem, mainDefender, defenseItem, db, rngMode, board,
-      )];
-      for (const strike of mainStrikes) {
-        result.push(strike);
-        if (strike.attacker === attacker) appendSplash(undefined, strike);
+      )) {
+        const strikes = [...phase];
+        for (const strike of phase) {
+          result.push(strike);
+          if (strike.attacker === attacker) strikes.push(...appendSplash(undefined, strike));
+        }
+        yield strikes;
       }
     } else {
       const reference = splash[0];
@@ -1090,13 +1207,14 @@ export class CombatPhaseSolver {
           ? calcs.computeStrikeCount(attacker, attackItem, reference, null)
           : 1;
         const phase = this.nextPhase(attacker);
-        for (let idx = 0; idx < strikeCount; idx++) appendSplash(undefined, undefined, [phase, idx]);
+        for (let idx = 0; idx < strikeCount; idx++) {
+          const appended = appendSplash(undefined, undefined, [phase, idx]);
+          if (appended.length > 0) yield appended;
+        }
       }
     }
 
     this.strikes = result;
-    this.finishLifecycle(result);
-    return result;
   }
 
   resolve(
@@ -1109,18 +1227,8 @@ export class CombatPhaseSolver {
     board?: GameBoard | null,
     script?: string[] | null,
   ): CombatStrike[] {
-    this.beginLifecycle(
-      db,
-      attacker,
-      attackItem,
-      [defender],
-      new Map([[defender, defenseItem]]),
-    );
-    const strikes = this.resolveCore(
-      attacker, attackItem, defender, defenseItem, db, rngMode, board, script,
-    );
-    this.finishLifecycle(strikes);
-    return strikes;
+    this.beginSession(attacker, attackItem, defender, defenseItem, [], db, rngMode, board, script);
+    return this.drainSession();
   }
 
   /**
@@ -1141,7 +1249,7 @@ export class CombatPhaseSolver {
    * If `script` is provided, uses resolveScripted() instead of
    * the normal combat flow.
    */
-  private resolveCore(
+  private *coreGen(
     attacker: UnitObject,
     attackItem: ItemObject,
     defender: UnitObject,
@@ -1150,16 +1258,14 @@ export class CombatPhaseSolver {
     rngMode: RngMode,
     board?: GameBoard | null,
     script?: string[] | null,
-  ): CombatStrike[] {
+  ): Generator<CombatStrike[], void, void> {
     // If a combat script is provided, use scripted resolution
     if (script && script.length > 0) {
-      return this.resolveScripted(attacker, attackItem, defender, defenseItem, db, rngMode, script, board);
+      yield* this.scriptedGen(attacker, attackItem, defender, defenseItem, db, rngMode, script, board);
+      return;
     }
     this.strikes = [];
-
-    // Track simulated HP for lethality checks (stop attacking dead units)
-    let attackerHp = attacker.currentHp;
-    let defenderHp = defender.currentHp;
+    const solver = this;
 
     // Determine capabilities
     const defenderCanCounterNow = (): boolean =>
@@ -1222,7 +1328,8 @@ export class CombatPhaseSolver {
     const partnerUsed = new Set<UnitObject>();
     const limitAttackStance = !!db.getConstant('limit_attack_stance', false);
 
-    const doPartnerStrikes = (
+    // Each strike is one Python solver phase: yield it before solving the next.
+    function* doPartnerStrikes(
       leader: UnitObject,
       item: ItemObject,
       target: UnitObject,
@@ -1230,7 +1337,7 @@ export class CombatPhaseSolver {
       targetHpRef: { hp: number },
       targetMiracle: boolean,
       phase: number,
-    ): void => {
+    ): Generator<CombatStrike[], void, void> {
       const partner = leader.strikePartner;
       if (!partner || partner.currentHp <= 0 || targetHpRef.hp <= 0) return;
       if (limitAttackStance && partnerUsed.has(leader)) return;
@@ -1239,22 +1346,23 @@ export class CombatPhaseSolver {
       const targetWeapon = target.items.find((candidate) => candidate.isWeapon()) ?? null;
       const count = calcs.computeStrikeCount(
         partner, partnerWeapon, target, targetWeapon, isCounter ? 'defense' : 'attack',
-        [phase, 0], this.game,
+        [phase, 0], solver.game,
       );
       for (let index = 0; index < count; index++) {
         if (targetHpRef.hp <= 0) break;
-        const strike = this.resolveStrike(
+        const strike = solver.resolveStrike(
           partner, partnerWeapon, target, db, rngMode, isCounter, board,
           isCounter ? 'defense' : 'attack', [phase, index], undefined, true,
         );
-        this.strikes.push(strike);
-        this.applyStrikeDamage(target, targetHpRef, strike, targetMiracle);
+        solver.strikes.push(strike);
+        solver.applyStrikeDamage(target, targetHpRef, strike, targetMiracle);
+        yield [strike];
       }
       partnerUsed.add(leader);
-    };
+    }
 
     // Helper: execute a series of strikes for one side
-    const doStrikes = (
+    function* doStrikes(
       striker: UnitObject,
       item: ItemObject,
       target: UnitObject,
@@ -1263,41 +1371,43 @@ export class CombatPhaseSolver {
       strikerHpRef: { hp: number },
       targetHpRef: { hp: number },
       targetMiracle: boolean,
-    ) => {
-      const phase = this.phaseCounts.get(striker) ?? 0;
+    ): Generator<CombatStrike[], void, void> {
+      const phase = solver.phaseCounts.get(striker) ?? 0;
       for (let i = 0; i < count; i++) {
         if (targetHpRef.hp <= 0) break;
         if (strikerHpRef.hp <= 0) break;
-        const strike = this.resolveStrike(
+        const strike = solver.resolveStrike(
           striker, item, target, db, rngMode, isCounter, board,
           isCounter ? 'defense' : 'attack', [phase, i],
         );
-        this.strikes.push(strike);
-        this.applyStrikeDamage(target, targetHpRef, strike, targetMiracle);
+        solver.strikes.push(strike);
+        solver.applyStrikeDamage(target, targetHpRef, strike, targetMiracle);
+        yield [strike];
       }
-      this.phaseCounts.set(striker, phase + 1);
-      doPartnerStrikes(striker, item, target, isCounter, targetHpRef, targetMiracle, phase);
-    };
+      solver.phaseCounts.set(striker, phase + 1);
+      yield* doPartnerStrikes(striker, item, target, isCounter, targetHpRef, targetMiracle, phase);
+    }
 
-    const atkHp = { hp: attackerHp };
-    const defHp = { hp: defenderHp };
-    const repeatAttacker = (count: number): void => {
+    // Simulated HP for lethality checks (stop attacking dead units)
+    const atkHp = this.trackHp(attacker, attacker.currentHp);
+    const defHp = this.trackHp(defender, defender.currentHp);
+    function* repeatAttacker(count: number): Generator<CombatStrike[], void, void> {
       for (let phase = 0; phase < count; phase++) {
-        doStrikes(
+        yield* doStrikes(
           attacker, attackItem, defender, attackerStrikeCount(), false,
           atkHp, defHp, defenderMiracle,
         );
       }
-    };
-    const repeatDefender = (count: number): void => {
+    }
+    function* repeatDefender(count: number): Generator<CombatStrike[], void, void> {
       if (!defenseItem) return;
       for (let phase = 0; phase < count; phase++) {
-        doStrikes(
+        yield* doStrikes(
           defender, defenseItem, attacker, defenderStrikeCount(), true,
           defHp, atkHp, attackerMiracle,
         );
       }
-    };
+    }
     const attackerBlitzes = (): number => calcs.computeBlitzPhases(
       attacker, attackItem, defender, defenseItem, 'attack',
       [this.phaseCounts.get(attacker) ?? 0, 0], this.game,
@@ -1322,43 +1432,41 @@ export class CombatPhaseSolver {
     // ---- Determine strike ordering based on skills ----
 
     if (defenderHasVantage && defenseItem) {
-      repeatDefender(1 + defenderBlitzes());
-      repeatAttacker(1 + attackerBlitzes());
+      yield* repeatDefender(1 + defenderBlitzes());
+      yield* repeatAttacker(1 + attackerBlitzes());
       if (attackerHasDesperation) {
-        repeatAttacker(attackerRemaining());
+        yield* repeatAttacker(attackerRemaining());
       } else {
-        repeatDefender(defenderRemaining());
-        repeatAttacker(attackerRemaining());
+        yield* repeatDefender(defenderRemaining());
+        yield* repeatAttacker(attackerRemaining());
       }
-      if (attackerHasDesperation) repeatDefender(defenderRemaining());
+      if (attackerHasDesperation) yield* repeatDefender(defenderRemaining());
 
     } else if (attackerHasDisvantage && defenderCanCounter && defenseItem) {
-      repeatDefender(1 + defenderBlitzes());
-      repeatAttacker(1 + attackerBlitzes());
-      repeatDefender(defenderRemaining());
-      repeatAttacker(attackerRemaining());
+      yield* repeatDefender(1 + defenderBlitzes());
+      yield* repeatAttacker(1 + attackerBlitzes());
+      yield* repeatDefender(defenderRemaining());
+      yield* repeatAttacker(attackerRemaining());
 
     } else if (attackerHasDesperation) {
-      repeatAttacker(1 + attackerBlitzes());
-      repeatAttacker(attackerRemaining());
+      yield* repeatAttacker(1 + attackerBlitzes());
+      yield* repeatAttacker(attackerRemaining());
       if (defenderCanCounterNow() && defenseItem) {
-        repeatDefender(1 + defenderBlitzes());
-        repeatDefender(defenderRemaining());
+        yield* repeatDefender(1 + defenderBlitzes());
+        yield* repeatDefender(defenderRemaining());
       }
 
     } else {
-      repeatAttacker(1 + attackerBlitzes());
+      yield* repeatAttacker(1 + attackerBlitzes());
       if (defenderCanCounterNow() && defenseItem) {
-        repeatDefender(1 + defenderBlitzes());
+        yield* repeatDefender(1 + defenderBlitzes());
       }
-      repeatAttacker(attackerRemaining());
-      repeatDefender(defenderRemaining());
+      yield* repeatAttacker(attackerRemaining());
+      yield* repeatDefender(defenderRemaining());
     }
 
     this.applyMiracleCleanup(attacker, atkHp);
     this.applyMiracleCleanup(defender, defHp);
-
-    return this.strikes;
   }
 
   /**
