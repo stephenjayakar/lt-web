@@ -30,7 +30,7 @@ import { unitSpriteTint } from '../../combat/skill-system';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
 import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
-import { fadeInPhaseMusic } from './game-states';
+import { drawUnitMarkers, fadeInPhaseMusic } from './game-states';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -184,6 +184,8 @@ function drawRoamMap(
   );
 
   surf.blit(mapSurf);
+  // Python MapState.draw -> MapView.draw_units: talk/interact markers.
+  drawUnitMarkers(surf);
   return surf;
 }
 
@@ -630,7 +632,7 @@ export class FreeRoamState extends MapState {
   }
 
   /** Find the closest unit within TALK_RANGE of the roam unit. */
-  private getClosestUnit(mustHaveTalk: boolean): UnitObject | null {
+  getClosestUnit(mustHaveTalk: boolean): UnitObject | null {
     const game = getGame();
     if (!game || !this.movementComponent?.roamPosition) return null;
 
@@ -689,7 +691,7 @@ export class FreeRoamState extends MapState {
   }
 
   /** Find an EVENT region at the roam unit's grid position. */
-  private getVisitRegion(): any | null {
+  getVisitRegion(): any | null {
     const game = getGame();
     if (!game || !this.roamUnit?.position || !game.currentLevel?.regions) return null;
 

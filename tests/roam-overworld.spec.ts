@@ -167,6 +167,71 @@ test.describe('Roam talk interaction', () => {
     expect(talked).toBe('yes');
   });
 
+  test('free roam draws talk markers over talk targets and the interact marker in a visit region', async ({ page }) => {
+    // Python FreeRoamState is a MapState: MapView.draw_units runs
+    // UnitSprite.draw_markers, so talk bubbles show over talkable NPCs and
+    // the roam unit shows the interact marker while in a visitable region.
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    const setup = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const roamUnit = game.units.get('Eirika');
+      const npc = [...game.units.values()].find((u: any) => u !== roamUnit && u.position);
+      if (!roamUnit || !npc) return null;
+      game.board.removeUnit(npc);
+      game.board.setUnit(5, 2, npc);
+      game.board.removeUnit(roamUnit);
+      game.board.setUnit(5, 5, roamUnit);
+      game.roamInfo.roam = true;
+      game.roamInfo.roamUnitNid = roamUnit.nid;
+      game.state.change('free_roam');
+      return { roamNid: roamUnit.nid, npcNid: npc.nid };
+    });
+    expect(setup).not.toBeNull();
+    await stepFrames(page, 10);
+
+    // Record which marker sprites get blitted at which tile.
+    await page.evaluate(async () => {
+      const { getSprite } = await import('/src/ui/sprites.ts');
+      const { Surface } = await import('/src/engine/surface.ts');
+      const talk = getSprite('marker_talk');
+      const interact = getSprite('marker_interact');
+      const w = window as any;
+      w.__markerBlits = [];
+      const orig = Surface.prototype.blit;
+      Surface.prototype.blit = function (src: any, dx = 0, dy = 0) {
+        if (src && (src === talk || src === interact)) {
+          const [camX, camY] = w.__gameRef.camera.getOffset();
+          w.__markerBlits.push(`${src === talk ? 'talk' : 'interact'}@${Math.round((dx + 2 + camX) / 16)},${Math.round((dy + 14 + camY) / 16)}`);
+        }
+        return orig.call(this, src, dx, dy);
+      };
+    });
+    const markers = async () => page.evaluate(() => {
+      const w = window as any;
+      w.__markerBlits = [];
+      w.__harness.stepFrames(2);
+      return [...new Set(w.__markerBlits as string[])].sort();
+    });
+
+    expect(await markers()).toEqual([]);
+    await page.evaluate(({ roamNid, npcNid }) => {
+      (window as any).__gameRef.eventManager.addTalkPair(roamNid, npcNid);
+    }, setup!);
+    expect(await markers(), 'talk marker over the NPC').toEqual(['talk@5,2']);
+
+    await page.evaluate(({ roamNid, npcNid }) => {
+      const game = (window as any).__gameRef;
+      game.eventManager.removeTalkPair(roamNid, npcNid);
+      game.currentLevel.regions.push({
+        nid: '_qa_visit', region_type: 'event', position: [5, 5], size: [1, 1],
+        sub_nid: '_qa_visit', condition: 'True', time_left: null, only_once: false, interrupt_move: false,
+      });
+    }, setup!);
+    expect(await markers(), 'interact marker over the roam unit').toEqual(['interact@5,5']);
+  });
+
   test('roam triggers reach level-scoped events, not just global ones', async ({ page }) => {
     await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
     await waitForHarness(page);
