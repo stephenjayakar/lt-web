@@ -1,11 +1,22 @@
 /**
- * roam-movement.ts — Physics-based movement components for free roam mode.
+ * roam-movement.ts — Free-roam movement components (Python
+ * `movement/roam_player_movement_component.py`,
+ * `roam_ai_movement_component.py` and `rationalize_movement_component.py`,
+ * as of EOtF's engine fork; upstream later added the roam_dir_pose idle
+ * poses and the roam AI speed multiplier, which the fork does not have).
  *
- * Contains:
- *   RoamPlayerMovementComponent — Player-controlled pixel movement with
- *     acceleration, deceleration, sprinting, and collision detection.
- *   RationalizeMovementComponent — Slides a unit from a sub-tile roam
- *     position back to the nearest valid grid tile.
+ * Python keeps a roaming unit's float position on its sprite
+ * (`sprite.set_roam_position`) while `unit.position` is the rounded tile.
+ * Here that float position lives in a per-unit registry
+ * (`getRoamPosition` / `setRoamPosition`), which the map renderer reads
+ * for every unit, so NPC roamers and rationalizing units draw between tiles
+ * too.
+ *
+ * Python's board allows several units per tile: the roam unit walks
+ * through allied units, and an NPC may walk onto the player's tile. The web
+ * board keeps one unit per tile, so `quickArrive` leaves the existing
+ * occupant in the grid and only sets the arriving unit's position, and
+ * `quickLeave` puts a stacked unit back into the grid when the tile frees.
  */
 
 import type { UnitObject } from '../objects/unit';
@@ -18,43 +29,177 @@ export interface RoamPosition {
   y: number; // float, in tile units
 }
 
+// ---------------------------------------------------------------------------
+// Sprite roam-position registry (Python UnitSprite._roam_position)
+// ---------------------------------------------------------------------------
+
+const roamPositions = new WeakMap<UnitObject, RoamPosition>();
+
+export function getRoamPosition(unit: UnitObject): RoamPosition | null {
+  return roamPositions.get(unit) ?? null;
+}
+
+export function setRoamPosition(unit: UnitObject, pos: RoamPosition | null): void {
+  if (pos) roamPositions.set(unit, pos);
+  else roamPositions.delete(unit);
+}
+
+/** Draw offset (tiles) of a unit's roam position from its grid tile. */
+export function roamVisualOffset(unit: UnitObject): [number, number] | null {
+  const pos = roamPositions.get(unit);
+  if (!pos || !unit.position) return null;
+  const ox = pos.x - unit.position[0];
+  const oy = pos.y - unit.position[1];
+  if (Math.abs(ox) < 0.001 && Math.abs(oy) < 0.001) return null;
+  return [ox, oy];
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/** Python round(): halves go to the even neighbour. */
+export function pyRound(value: number): number {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
+function roundPos(x: number, y: number): [number, number] {
+  return [pyRound(x), pyRound(y)];
+}
+
+/** Environment the roam components read: board, database and game state. */
+export interface RoamEnv {
+  board: any;
+  db: any;
+  game?: any;
+}
+
+function unitsOf(env: RoamEnv): Iterable<UnitObject> {
+  return env.game?.units?.values?.() ?? [];
+}
+
+/** Python action.QuickLeave: off the board, restoring a unit stacked beneath. */
+export function quickLeave(env: RoamEnv, unit: UnitObject): void {
+  const pos = unit.position;
+  if (!pos) return;
+  if (!env.board) {
+    unit.position = null;
+    return;
+  }
+  env.board.removeUnit(unit);
+  if (!env.board.getUnit(pos[0], pos[1])) {
+    for (const other of unitsOf(env)) {
+      if (other === unit || !other.position || other.isDead?.()) continue;
+      if (other.position[0] === pos[0] && other.position[1] === pos[1]) {
+        env.board.setUnit(pos[0], pos[1], other);
+        break;
+      }
+    }
+  }
+}
+
+/** Python action.QuickArrive: onto the board, stacking over an occupant. */
+export function quickArrive(env: RoamEnv, unit: UnitObject, pos: [number, number]): void {
+  if (!env.board) {
+    unit.position = [pos[0], pos[1]];
+    return;
+  }
+  const occupant = env.board.getUnit(pos[0], pos[1]);
+  if (occupant && occupant !== unit) {
+    unit.position = [pos[0], pos[1]];
+  } else {
+    env.board.setUnit(pos[0], pos[1], unit);
+  }
+}
+
+function movementGroupOf(env: RoamEnv, unit: UnitObject): string {
+  const klassDef = env.db?.classes?.get(unit.klass);
+  return movementType(unit, klassDef?.movement_group || 'Infantry');
+}
+
+/** Python movement_funcs.get_mcost. */
+function mcost(env: RoamEnv, unit: UnitObject, pos: [number, number]): number {
+  if (!env.board?.getMovementCost) return 1;
+  return env.board.getMovementCost(pos[0], pos[1], movementGroupOf(env, unit), env.db) ?? 1;
+}
+
+/** Python movement_funcs.check_traversable: in bounds and mcost <= MOVEMENT. */
+function checkTraversable(env: RoamEnv, unit: UnitObject, pos: [number, number]): boolean {
+  if (!env.board) return true;
+  if (!env.board.checkBounds(pos[0], pos[1])) return false;
+  return mcost(env, unit, pos) <= unit.getMovement();
+}
+
+/** Python DB.teams.get_allies(team) contains `other`. */
+function alliedTeams(env: RoamEnv, team: string, other: string): boolean {
+  if (team === other) return true;
+  const alliances: [string, string][] = env.db?.teams?.alliances ?? [];
+  return alliances.some(([a, b]) => (a === team && b === other) || (a === other && b === team));
+}
+
+function setSpriteMoving(unit: UnitObject, moving: boolean, vx = 0, vy = 0): void {
+  const spr = unit.sprite as any;
+  if (!spr || typeof spr !== 'object' || !('state' in spr)) return;
+  spr.state = moving ? 'moving' : 'standing';
+  if (moving && typeof spr.setDirection === 'function') {
+    spr.setDirection(
+      Math.abs(vx) > Math.abs(vy) ? Math.sign(vx) : 0,
+      Math.abs(vy) >= Math.abs(vx) ? Math.sign(vy) : 0,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RoamPlayerMovementComponent
+// ---------------------------------------------------------------------------
+
 /**
- * RoamPlayerMovementComponent — Physics-based pixel movement for the
- * player's roam unit. Handles acceleration, deceleration, sprinting,
- * and collision detection against terrain and enemy units.
+ * Python RoamPlayerMovementComponent: the player's roam unit, driven by the
+ * input vector, with acceleration, deceleration and sprinting.
  */
 export class RoamPlayerMovementComponent {
   unit: UnitObject;
   active: boolean = true;
+  protected muted: boolean;
 
-  // Physics constants (in tiles/second)
-  private minSpeed = 0.48;
-  private baseMaxSpeed = 6.0;
-  private baseAccel = 30.0;
-  private runningAccel = 36.0;
-  private deceleration = 72.0;
+  protected readonly minSpeed = 0.48;
+  protected readonly baseMaxSpeed = 6.0;
+  protected readonly baseAccel = 30.0;
+  protected readonly runningAccel = 36.0;
+  protected readonly deceleration = 72.0;
 
-  // State
-  private velocityX = 0;
-  private velocityY = 0;
-  private sprinting = false;
-  private accelerationDir: [number, number] = [0, 0]; // -1, 0, or 1 per axis
+  protected velocityX = 0;
+  protected velocityY = 0;
+  protected sprinting = false;
+  /** Python x_mag / y_mag: the requested direction. */
+  protected magX = 0;
+  protected magY = 0;
 
-  // Sub-tile position
-  roamPosition: RoamPosition | null = null;
+  protected env: RoamEnv;
 
-  // Board reference for collision checks
-  private boardRef: any; // GameBoard
-  private dbRef: any; // Database
-
-  constructor(unit: UnitObject, board: any, db: any) {
+  constructor(unit: UnitObject, board: any, db: any, game?: any, muted = false) {
     this.unit = unit;
-    this.boardRef = board;
-    this.dbRef = db;
-    // Initialize roam position from current grid position
-    if (unit.position) {
-      this.roamPosition = { x: unit.position[0], y: unit.position[1] };
-    }
+    this.env = { board, db, game };
+    this.muted = muted;
+    if (unit.position) setRoamPosition(unit, { x: unit.position[0], y: unit.position[1] });
+  }
+
+  /** The unit's float position (Python self.position / sprite roam position). */
+  get roamPosition(): RoamPosition | null {
+    return getRoamPosition(this.unit);
+  }
+
+  set roamPosition(pos: RoamPosition | null) {
+    setRoamPosition(this.unit, pos ? { x: pos.x, y: pos.y } : null);
+  }
+
+  /** Python reset_position. */
+  resetPosition(): void {
+    if (this.unit.position) this.roamPosition = { x: this.unit.position[0], y: this.unit.position[1] };
   }
 
   setSprinting(sprint: boolean): void {
@@ -62,314 +207,357 @@ export class RoamPlayerMovementComponent {
   }
 
   setAcceleration(dx: number, dy: number): void {
-    this.accelerationDir = [dx, dy];
+    this.magX = dx;
+    this.magY = dy;
   }
 
-  private getMaxSpeed(): number {
-    let speed = this.baseMaxSpeed;
-    if (this.sprinting) speed *= 1.5;
-    return speed;
-  }
-
-  private getAcceleration(): number {
+  protected getAcceleration(): number {
     return this.sprinting ? this.runningAccel : this.baseAccel;
   }
 
-  /** Update physics for one frame. */
+  /** Python get_max_speed: sprint x1.5, `_roam_speed` game var, slowed by the tile's mcost. */
+  protected getMaxSpeed(): number {
+    const roamSpeed = Number(this.env.game?.gameVars?.get?.('_roam_speed') ?? 1);
+    let speed = (this.sprinting ? 1.5 : 1) * (Number.isFinite(roamSpeed) ? roamSpeed : 1) * this.baseMaxSpeed;
+    if (this.unit.position) {
+      const cost = mcost(this.env, this.unit, this.unit.position);
+      if (cost > 0) speed /= cost;
+    }
+    return speed;
+  }
+
+  /** Update physics for one frame (dt in seconds). */
   update(dt: number): void {
-    if (!this.active || !this.roamPosition) return;
-
-    // Cap dt to prevent tunneling
+    if (!this.active || !this.roamPosition || !this.unit.position) return;
+    // Python: never let delta time exceed four frames.
     dt = Math.min(dt, 4 / 60);
-
-    this.accelerate(dt);
-
-    const speed = Math.sqrt(
-      this.velocityX * this.velocityX + this.velocityY * this.velocityY,
-    );
-    if (speed > this.minSpeed) {
+    this.kinematics(dt);
+    if (Math.hypot(this.velocityX, this.velocityY) > this.minSpeed) {
       this.move(dt);
-      // Update sprite to moving state
-      this.updateSprite(true);
-      // Python: footsteps while moving (the player's component is not muted).
-      playUnitSound(this.unit);
+      setSpriteMoving(this.unit, true, this.velocityX, this.velocityY);
+      if (!this.muted) playUnitSound(this.unit);
     } else {
-      this.velocityX = 0;
-      this.velocityY = 0;
-      this.updateSprite(false);
+      setSpriteMoving(this.unit, false);
       stopUnitSound(this.unit);
     }
   }
 
-  private accelerate(dt: number): void {
-    const [dx, dy] = this.accelerationDir;
+  protected kinematics(dt: number): void {
+    this.accelerate(dt, this.magX, this.magY);
+  }
+
+  /** Python _accelerate. */
+  protected accelerate(dt: number, magX: number, magY: number): void {
     const maxSpeed = this.getMaxSpeed();
     const accel = this.getAcceleration();
-    const decel = this.deceleration;
-
-    // X axis
-    if (dx !== 0) {
-      this.velocityX += dx * accel * dt;
-    } else {
-      if (Math.abs(this.velocityX) < decel * dt) {
-        this.velocityX = 0;
-      } else {
-        this.velocityX -= Math.sign(this.velocityX) * decel * dt;
-      }
-    }
-
-    // Y axis
-    if (dy !== 0) {
-      this.velocityY += dy * accel * dt;
-    } else {
-      if (Math.abs(this.velocityY) < decel * dt) {
-        this.velocityY = 0;
-      } else {
-        this.velocityY -= Math.sign(this.velocityY) * decel * dt;
-      }
-    }
-
-    // Clamp to max speed
+    if (magX > 0) this.velocityX += accel * dt;
+    else if (magX < 0) this.velocityX -= accel * dt;
+    else if (this.velocityX > 0) this.velocityX = Math.max(0, this.velocityX - this.deceleration * dt);
+    else if (this.velocityX < 0) this.velocityX = Math.min(0, this.velocityX + this.deceleration * dt);
     this.velocityX = Math.max(-maxSpeed, Math.min(maxSpeed, this.velocityX));
+
+    if (magY > 0) this.velocityY += accel * dt;
+    else if (magY < 0) this.velocityY -= accel * dt;
+    else if (this.velocityY > 0) this.velocityY = Math.max(0, this.velocityY - this.deceleration * dt);
+    else if (this.velocityY < 0) this.velocityY = Math.min(0, this.velocityY + this.deceleration * dt);
     this.velocityY = Math.max(-maxSpeed, Math.min(maxSpeed, this.velocityY));
 
-    // Diagonal normalization
-    const mag = Math.sqrt(
-      this.velocityX * this.velocityX + this.velocityY * this.velocityY,
-    );
-    if (mag > maxSpeed) {
-      const scale = maxSpeed / mag;
-      this.velocityX *= scale;
-      this.velocityY *= scale;
+    // Diagonal movement shouldn't be faster than single-axis.
+    const full = Math.hypot(this.velocityX, this.velocityY);
+    if (full > maxSpeed) {
+      this.velocityX *= maxSpeed / full;
+      this.velocityY *= maxSpeed / full;
     }
   }
 
-  private move(dt: number): void {
-    if (!this.roamPosition) return;
-
-    const newX = this.roamPosition.x + this.velocityX * dt;
-    const newY = this.roamPosition.y + this.velocityY * dt;
-
-    // Try full move first
-    if (this.canMoveTo(newX, newY)) {
-      this.roamPosition.x = newX;
-      this.roamPosition.y = newY;
-    } else {
-      // Try horizontal only
-      if (this.canMoveTo(newX, this.roamPosition.y)) {
-        this.roamPosition.x = newX;
-        this.velocityY = 0;
-      }
-      // Try vertical only
-      else if (this.canMoveTo(this.roamPosition.x, newY)) {
-        this.roamPosition.y = newY;
-        this.velocityX = 0;
-      }
-      // Blocked both ways
-      else {
-        this.velocityX = 0;
-        this.velocityY = 0;
-      }
+  /** Python _can_move. */
+  protected canMove(pos: [number, number]): boolean {
+    if (!checkTraversable(this.env, this.unit, pos)) return false;
+    const occupant = this.env.board?.getUnit(pos[0], pos[1]);
+    if (occupant) {
+      // Allies are fine; enemies block.
+      return alliedTeams(this.env, occupant.team, this.unit.team);
     }
-
-    // Sync grid position when crossing tile boundaries
-    this.syncGridPosition();
-  }
-
-  /** Check if a position is traversable. */
-  private canMoveTo(x: number, y: number): boolean {
-    if (!this.boardRef) return true;
-    const tileX = Math.round(x);
-    const tileY = Math.round(y);
-
-    // Bounds check
-    if (
-      tileX < 0 ||
-      tileY < 0 ||
-      tileX >= this.boardRef.width ||
-      tileY >= this.boardRef.height
-    ) {
-      return false;
+    // Diagonal: the two orthogonal neighbours must not both be impassable.
+    const here = this.unit.position;
+    if (here && pos[0] !== here[0] && pos[1] !== here[1]) {
+      if (!this.canMove([pos[0], here[1]]) && !this.canMove([here[0], pos[1]])) return false;
     }
-
-    // Python permits sub-tile movement while the rounded destination is still
-    // the unit's current grid position. This lets authored spawns on normally
-    // impassable tiles move far enough to cross onto an adjacent valid tile.
-    if (this.unit.position?.[0] === tileX && this.unit.position?.[1] === tileY) {
-      return true;
-    }
-
-    // Check terrain traversability. Go through the board helper: it maps the
-    // terrain NID to the terrain's mtype, which is what the mcost grid is
-    // keyed by. Passing the NID straight to db.getMovementCost misses the
-    // lookup and reports every tile as impassable.
-    const klassNid = this.unit.klass;
-    const klassDef = this.dbRef?.classes?.get(klassNid);
-    const moveGroup = movementType(this.unit, klassDef?.movement_group || 'Infantry');
-    const cost = this.boardRef.getMovementCost?.(
-      tileX, tileY, moveGroup, this.dbRef,
-    ) ?? 1;
-    if (cost >= 99) return false;
-
-    // Check for enemy units blocking
-    const blockingUnit = this.boardRef.getUnit(tileX, tileY);
-    if (
-      blockingUnit &&
-      blockingUnit !== this.unit &&
-      blockingUnit.team !== this.unit.team
-    ) {
-      return false;
-    }
-
     return true;
   }
 
-  /** Sync the unit's grid position when the rounded roam position changes. */
-  private syncGridPosition(): void {
-    if (!this.roamPosition || !this.unit.position) return;
-    const roundedX = Math.round(this.roamPosition.x);
-    const roundedY = Math.round(this.roamPosition.y);
-    if (
-      roundedX !== this.unit.position[0] ||
-      roundedY !== this.unit.position[1]
-    ) {
-      // Quick leave/arrive: update board grid
-      if (this.boardRef) {
-        this.boardRef.removeUnit(this.unit);
-        this.boardRef.setUnit(roundedX, roundedY, this.unit);
-      } else {
-        this.unit.position = [roundedX, roundedY];
-      }
+  /**
+   * Python correct_horizontal_movement: stop the sprite from visibly
+   * sliding more than 0.15 tiles into an impassable tile to either side.
+   */
+  protected correctHorizontalMovement(rounded: [number, number], next: [number, number]): boolean {
+    const threshold = 0.15;
+    const half = 0.5;
+    const east: [number, number] = [rounded[0] + 1, rounded[1]];
+    const west: [number, number] = [rounded[0] - 1, rounded[1]];
+    const southeast: [number, number] = [rounded[0] + 1, rounded[1] + 1];
+    const southwest: [number, number] = [rounded[0] - 1, rounded[1] + 1];
+    const toFloor = (d: number) => d - Math.floor(d);
+    const toCeil = (d: number) => Math.abs(d - Math.ceil(d));
+    if (this.velocityX > 0 && !this.canMove(east) && threshold < toFloor(next[0]) && toFloor(next[0]) < half) {
+      this.velocityX = this.minSpeed + 0.001;
+      return false;
+    } else if (this.velocityX > 0 && !this.canMove(southeast) &&
+        threshold < toFloor(next[0]) && toFloor(next[0]) < half &&
+        toFloor(next[1]) > 0 && toFloor(next[1]) < half) {
+      this.velocityX = this.minSpeed + 0.001;
+      return false;
+    } else if (this.velocityX < 0 && !this.canMove(west) && threshold < toCeil(next[0]) && toCeil(next[0]) < half) {
+      this.velocityX = -(this.minSpeed + 0.001);
+      return false;
+    } else if (this.velocityX < 0 && !this.canMove(southwest) &&
+        threshold < toCeil(next[0]) && toCeil(next[0]) < half &&
+        toFloor(next[1]) > 0 && toFloor(next[1]) < half) {
+      this.velocityX = -(this.minSpeed + 0.001);
+      return false;
+    }
+    return true;
+  }
+
+  /** Python correct_vertical_movement: never visibly enter an impassable tile below. */
+  protected correctVerticalMovement(rounded: [number, number], next: [number, number]): boolean {
+    const south: [number, number] = [rounded[0], rounded[1] + 1];
+    const toFloor = next[1] - Math.floor(next[1]);
+    if (this.velocityY > 0 && !this.canMove(south) && toFloor > 0 && toFloor < 0.5) {
+      this.velocityY = this.minSpeed + 0.001;
+      return false;
+    }
+    return true;
+  }
+
+  /** Python move. */
+  protected move(dt: number): void {
+    const pos = this.roamPosition;
+    const here = this.unit.position;
+    if (!pos || !here) return;
+    const dx = this.velocityX * dt;
+    const dy = this.velocityY * dt;
+    const next: [number, number] = [pos.x + dx, pos.y + dy];
+    const altH: [number, number] = [pos.x + dx, pos.y];
+    const altV: [number, number] = [pos.x, pos.y + dy];
+    let rounded = roundPos(next[0], next[1]);
+    const roundedH = roundPos(altH[0], altH[1]);
+    const roundedV = roundPos(altV[0], altV[1]);
+
+    const horizontalClear = this.correctHorizontalMovement(rounded, next);
+    const verticalClear = this.correctVerticalMovement(rounded, next);
+
+    let target: [number, number];
+    const sameTile = rounded[0] === here[0] && rounded[1] === here[1];
+    if ((sameTile || this.canMove(rounded)) && horizontalClear && verticalClear) {
+      target = next;
+    } else if (this.canMove(roundedH) && horizontalClear) {
+      target = altH;
+      rounded = roundedH;
+    } else if (this.canMove(roundedV) && verticalClear) {
+      target = altV;
+      rounded = roundedV;
+    } else {
+      return;
+    }
+    this.roamPosition = { x: target[0], y: target[1] };
+
+    if (rounded[0] !== here[0] || rounded[1] !== here[1]) {
+      quickLeave(this.env, this.unit);
+      quickArrive(this.env, this.unit, rounded);
     }
   }
 
-  private updateSprite(moving: boolean): void {
-    const spr = this.unit.sprite;
-    if (spr && typeof spr === 'object' && 'state' in spr) {
-      (spr as any).state = moving ? 'moving' : 'standing';
-      if (moving && 'setDirection' in (spr as any)) {
-        (spr as any).setDirection(
-          Math.abs(this.velocityX) > Math.abs(this.velocityY)
-            ? Math.sign(this.velocityX)
-            : 0,
-          Math.abs(this.velocityY) >= Math.abs(this.velocityX)
-            ? Math.sign(this.velocityY)
-            : 0,
-        );
-      }
-    }
-  }
-
-  /** Stop all movement and return the final roam position. */
+  /** Python finish: stop moving (the roam position stays until rationalized). */
   finish(): RoamPosition | null {
     this.velocityX = 0;
     this.velocityY = 0;
     this.active = false;
-    this.updateSprite(false);
+    setSpriteMoving(this.unit, false);
     stopUnitSound(this.unit);
     return this.roamPosition;
   }
 
   /** Get the sub-tile visual offset for rendering. */
   getVisualOffset(): [number, number] | null {
-    if (!this.roamPosition || !this.unit.position) return null;
-    const ox = this.roamPosition.x - this.unit.position[0];
-    const oy = this.roamPosition.y - this.unit.position[1];
-    if (Math.abs(ox) < 0.01 && Math.abs(oy) < 0.01) return null;
-    return [ox, oy];
+    return roamVisualOffset(this.unit);
   }
 }
 
+// ---------------------------------------------------------------------------
+// RoamAIMovementComponent
+// ---------------------------------------------------------------------------
+
 /**
- * RationalizeMovementComponent — Slides a unit from a sub-tile roam
- * position back to the nearest valid grid tile. Used when transitioning
- * out of roam mode (e.g., when an event triggers).
+ * Python RoamAIMovementComponent: steers an NPC roamer along the path its
+ * RoamAI hands it (goal first, next waypoint last, like Python).
+ */
+export class RoamAIMovementComponent extends RoamPlayerMovementComponent {
+  private path: [number, number][] = [];
+  /** Upstream scales by the behaviour's roam_speed; the fork never sets it. */
+  private speedModifier = 1;
+
+  constructor(unit: UnitObject, board: any, db: any, game?: any) {
+    super(unit, board, db, game, false);
+  }
+
+  setSpeed(mult: number): void {
+    this.speedModifier = mult;
+  }
+
+  /** Python set_path: drop the current tile from the end. */
+  setPath(path: [number, number][]): void {
+    const here = this.unit.position;
+    if (path.length && here && path[path.length - 1][0] === here[0] && path[path.length - 1][1] === here[1]) {
+      path.pop();
+    }
+    this.path = path;
+  }
+
+  /** Python start: zero velocity and resume. */
+  start(): void {
+    this.velocityX = 0;
+    this.velocityY = 0;
+    this.magX = 0;
+    this.magY = 0;
+    this.active = true;
+  }
+
+  protected override getAcceleration(): number {
+    return this.baseAccel;
+  }
+
+  protected override kinematics(dt: number): void {
+    const pos = this.roamPosition;
+    if (this.path.length && pos) {
+      const [tx, ty] = this.path[this.path.length - 1];
+      const vx = tx - pos.x;
+      const vy = ty - pos.y;
+      const mag = Math.hypot(vx, vy);
+      this.magX = mag ? vx / mag : vx;
+      this.magY = mag ? vy / mag : vy;
+    } else {
+      this.magX = 0;
+      this.magY = 0;
+    }
+    this.accelerate(dt, this.magX, this.magY);
+  }
+
+  /** Python RoamAIMovementComponent.move (no wall-hugging corrections). */
+  protected override move(dt: number): void {
+    const pos = this.roamPosition;
+    const here = this.unit.position;
+    if (!pos || !here) return;
+    const dx = this.velocityX * dt * this.speedModifier;
+    const dy = this.velocityY * dt * this.speedModifier;
+    const next: [number, number] = [pos.x + dx, pos.y + dy];
+    const altH: [number, number] = [pos.x + dx, pos.y];
+    const altV: [number, number] = [pos.x, pos.y + dy];
+    let rounded = roundPos(next[0], next[1]);
+    const roundedH = roundPos(altH[0], altH[1]);
+    const roundedV = roundPos(altV[0], altV[1]);
+
+    let target: [number, number];
+    if ((rounded[0] === here[0] && rounded[1] === here[1]) || this.canMove(rounded)) {
+      target = next;
+    } else if (this.canMove(roundedH)) {
+      target = altH;
+      rounded = roundedH;
+    } else if (this.canMove(roundedV)) {
+      target = altV;
+      rounded = roundedV;
+    } else {
+      this.path.length = 0;
+      return;
+    }
+    this.roamPosition = { x: target[0], y: target[1] };
+
+    if (rounded[0] !== here[0] || rounded[1] !== here[1]) {
+      quickLeave(this.env, this.unit);
+      quickArrive(this.env, this.unit, rounded);
+    }
+    const now = this.unit.position;
+    const last = this.path[this.path.length - 1];
+    if (last && now && now[0] === last[0] && now[1] === last[1]) this.path.pop();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RationalizeMovementComponent
+// ---------------------------------------------------------------------------
+
+/**
+ * Python RationalizeMovementComponent: slides a unit from its roam position
+ * back onto its tile (or the nearest open tile when another unit holds it)
+ * at 6 tiles per second, then clears the roam position.
  */
 export class RationalizeMovementComponent {
   unit: UnitObject;
-  startPos: RoamPosition;
-  targetPos: [number, number];
+  goal: [number, number];
   done: boolean = false;
-  private speed: number = 6; // tiles per second
-  private currentPos: RoamPosition;
+  private readonly speed = 6;
+  private readonly epsilon = 0.01;
+  private velocityX = 0;
+  private velocityY = 0;
+  private env: RoamEnv;
 
-  constructor(unit: UnitObject, roamPos: RoamPosition, board?: any) {
+  constructor(
+    unit: UnitObject,
+    env: RoamEnv,
+    nearestOpenTile: (unit: UnitObject, pos: [number, number]) => [number, number] | null,
+  ) {
     this.unit = unit;
-    this.startPos = { ...roamPos };
-    this.currentPos = { ...roamPos };
-
-    // Target is the nearest valid grid tile
-    let targetX = Math.round(roamPos.x);
-    let targetY = Math.round(roamPos.y);
-
-    // Check if target tile is occupied by another unit
-    if (board) {
-      const existing = board.getUnit(targetX, targetY);
-      if (existing && existing !== unit) {
-        // Try adjacent tiles
-        const dirs: [number, number][] = [
-          [0, -1],
-          [0, 1],
-          [-1, 0],
-          [1, 0],
-        ];
-        for (const [dx, dy] of dirs) {
-          const tx = targetX + dx;
-          const ty = targetY + dy;
-          if (tx >= 0 && ty >= 0 && tx < board.width && ty < board.height) {
-            if (!board.getUnit(tx, ty)) {
-              targetX = tx;
-              targetY = ty;
-              break;
-            }
-          }
-        }
+    this.env = env;
+    const here = unit.position!;
+    // Python: keep the tile if this unit is its only occupant.
+    let alone = true;
+    for (const other of unitsOf(env)) {
+      if (other !== unit && other.position && !other.isDead?.() &&
+          other.position[0] === here[0] && other.position[1] === here[1]) {
+        alone = false;
+        break;
       }
     }
-    this.targetPos = [targetX, targetY];
+    this.goal = alone ? [here[0], here[1]] : (nearestOpenTile(unit, here) ?? nearestOpenTile(unit, [0, 0]) ?? [0, 0]);
+    const pos = getRoamPosition(unit) ?? { x: here[0], y: here[1] };
+    const vx = this.goal[0] - pos.x;
+    const vy = this.goal[1] - pos.y;
+    const mag = Math.hypot(vx, vy);
+    this.velocityX = this.speed * (mag ? vx / mag : vx);
+    this.velocityY = this.speed * (mag ? vy / mag : vy);
+    setSpriteMoving(unit, true, this.velocityX, this.velocityY);
+    // Python QuickLeave(keep_position=True): off the grid, position kept.
+    quickLeave(env, unit);
+    unit.position = [here[0], here[1]];
   }
 
+  /** Advance one frame; returns true once settled. */
   update(dt: number): boolean {
     if (this.done) return true;
-
-    const dx = this.targetPos[0] - this.currentPos.x;
-    const dy = this.targetPos[1] - this.currentPos.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < 0.01) {
-      this.finish();
-      return true;
-    }
-
-    const step = this.speed * dt;
-    if (step >= dist) {
-      this.finish();
-      return true;
-    }
-
-    // Move toward target
-    this.currentPos.x += (dx / dist) * step;
-    this.currentPos.y += (dy / dist) * step;
-    return false;
+    dt = Math.min(dt, 4 / 60);
+    const pos = getRoamPosition(this.unit) ?? { x: this.goal[0], y: this.goal[1] };
+    const [gx, gy] = this.goal;
+    let nx = pos.x + this.velocityX * dt;
+    let ny = pos.y + this.velocityY * dt;
+    if (this.velocityX > 0 && nx > gx) nx = gx;
+    else if (this.velocityX < 0 && nx < gx) nx = gx;
+    if (this.velocityY > 0 && ny > gy) ny = gy;
+    else if (this.velocityY < 0 && ny < gy) ny = gy;
+    setRoamPosition(this.unit, { x: nx, y: ny });
+    if (Math.abs(nx - gx) < this.epsilon && Math.abs(ny - gy) < this.epsilon) this.finish();
+    return this.done;
   }
 
-  private finish(): void {
+  finish(): void {
+    if (this.done) return;
     this.done = true;
-    this.currentPos.x = this.targetPos[0];
-    this.currentPos.y = this.targetPos[1];
-
-    // Update sprite
-    const spr = this.unit.sprite;
-    if (spr && typeof spr === 'object' && 'state' in spr) {
-      (spr as any).state = 'standing';
-    }
+    setSpriteMoving(this.unit, false);
+    setRoamPosition(this.unit, null);
+    this.unit.position = null;
+    quickArrive(this.env, this.unit, this.goal);
   }
 
   getVisualOffset(): [number, number] | null {
-    if (this.done || !this.unit.position) return null;
-    const ox = this.currentPos.x - this.unit.position[0];
-    const oy = this.currentPos.y - this.unit.position[1];
-    if (Math.abs(ox) < 0.01 && Math.abs(oy) < 0.01) return null;
-    return [ox, oy];
+    return roamVisualOffset(this.unit);
   }
 }
