@@ -1066,6 +1066,18 @@
    "repr": "4"
   },
   {
+   "expr": "eval('1 + 2')",
+   "repr": "3"
+  },
+  {
+   "expr": "eval('q * 2', {'q': 4})",
+   "repr": "8"
+  },
+  {
+   "expr": "1 < {eval: 1}",
+   "error": "TypeError"
+  },
+  {
    "expr": "next((i for i in a if i > 5), 'none')",
    "repr": "'none'"
   },

@@ -1535,7 +1535,21 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         selectedRequirement = requirement;
       }
     }
-    return selected;
+    if (!selected) return null;
+    // Python CombatBonus casts every effect to int on load.
+    const effect = (value: unknown) => Math.trunc(Number(value)) || 0;
+    return {
+      weapon_type: selected.weapon_type,
+      weapon_rank: selected.weapon_rank,
+      damage: effect(selected.damage),
+      resist: effect(selected.resist),
+      accuracy: effect(selected.accuracy),
+      avoid: effect(selected.avoid),
+      crit: effect(selected.crit),
+      dodge: effect(selected.dodge),
+      attack_speed: effect(selected.attack_speed),
+      defense_speed: effect(selected.defense_speed),
+    };
   };
   function wrapCatalog(catalog: any, wrapper: (value: any) => any) {
     const rawValues = catalog?.values

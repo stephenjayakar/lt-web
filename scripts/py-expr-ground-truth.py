@@ -135,6 +135,7 @@ CASES = [
     "getattr(unit, 'nid')", "getattr(unit, 'nope', 7)", "getattr(unit, 'nope')",
     "hasattr(unit, 'team')", "hasattr(unit, 'nope')", "chr(65)", "ord('A')",
     "abs(-2.5)", "pow(2, 10)", "pow(2, 10, 1000)", "next(iter([4, 5]))",
+    "eval('1 + 2')", "eval('q * 2', {'q': 4})", "1 < {eval: 1}",
     "next((i for i in a if i > 5), 'none')", "math.floor(2.7)", "math.ceil(2.1)",
     "math.sqrt(16)", "math.floor(-2.5)", "math.pi > 3", "format(3.14159, '.2f')",
     "format(5, '03d')", "format('x', '>3')", "len(range(10))", "min(a) + max(b)",

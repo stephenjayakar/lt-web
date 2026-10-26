@@ -6,7 +6,7 @@
 import { compile, Env, NOT_FOUND, type Code, type RootScope } from './compile';
 import { parsePythonExpression, type Node } from './parser';
 import { PySyntaxError } from './tokenizer';
-import { PyException } from './runtime';
+import { BUILTINS, PyException, pyFunction } from './runtime';
 import { toHostValue } from './values';
 
 export { NOT_FOUND, Env, type RootScope, type Code } from './compile';
@@ -59,6 +59,22 @@ export function evaluatePythonRaw(source: string, root: RootScope): any {
 export function evaluatePython(source: string, root: RootScope): any {
   return toHostValue(evaluatePythonRaw(source, root));
 }
+
+/**
+ * Python's eval() builtin. With an explicit globals dict it evaluates against
+ * that dict; Python's default (the caller's globals) is not reachable from a
+ * builtin here, so without one only builtins are visible.
+ */
+BUILTINS.eval = pyFunction('eval', (args) => {
+  const [source, globals] = args;
+  if (typeof source !== 'string') {
+    throw new PyException('TypeError', 'eval() arg 1 must be a string, bytes or code object');
+  }
+  const record: Record<string, any> = {};
+  if (globals instanceof Map) for (const [key, value] of globals) record[String(key)] = value;
+  else if (globals && typeof globals === 'object') Object.assign(record, globals);
+  return evaluatePythonRaw(source, scopeFromRecord(record));
+});
 
 /** A root scope over a plain name -> value record. */
 export function scopeFromRecord(record: Record<string, any>): RootScope {
