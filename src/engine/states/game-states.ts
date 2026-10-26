@@ -11,6 +11,7 @@ import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import { isForkEngine } from '../engine-flavor';
 import { canGiveExp, getEffectiveLevelCap } from '../leveling';
+import { checkRegionInterrupt, interruptMovePath } from '../../movement/region-interrupt';
 import type { GameState } from '../game-state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
@@ -921,6 +922,25 @@ function waitUnit(game: any, unit: UnitObject, activelyChosen: boolean): void {
     );
   }
   game.actionLog.doAction(new WaitAction(unit));
+}
+
+/** MovementState marker: the player move ended in an interrupt region. */
+const SURPRISE_AFTER_MOVEMENT = '__surprise_wait__';
+
+/**
+ * Python UnitPathMovementComponent.finish(surprise=True) for a player unit:
+ * HasAttacked, then clear to free + wait, whose WaitState waits the unit
+ * (unit_wait with actively_chosen False). The Wait fires the region's
+ * trigger and removes only_once interrupt regions.
+ */
+function finishPlayerSurpriseMove(game: any, unit: UnitObject): void {
+  game.audioManager?.playSfx?.('Surprise');
+  game.actionLog.doAction(new HasAttackedAction(unit));
+  game._moveAction = null;
+  game.state.clear();
+  game.state.change('free');
+  waitUnit(game, unit, false);
+  if (game.eventManager?.hasActiveEvents()) game.state.change('event');
 }
 
 /** Get all adjacent units (any team) at a specific position. */
@@ -2809,12 +2829,21 @@ export class MoveState extends MapState {
           }
 
           // Compute path from the unit's current position (before moving on the board)
-          const path = game.pathSystem.getPath(
+          const fullPath = game.pathSystem.getPath(
             unit,
             pos.x,
             pos.y,
             game.board,
           );
+          // Python UnitPathMovementComponent: the walk stops on the first
+          // interrupt_move region tile, and stopping in one is a surprise.
+          const interrupted = fullPath
+            ? interruptMovePath(unit, fullPath, game)
+            : { path: fullPath, surprise: false };
+          const path = interrupted.path;
+          const destination: [number, number] = path && path.length > 0
+            ? [path[path.length - 1][0], path[path.length - 1][1]]
+            : [pos.x, pos.y];
 
           const movementCost = path
             ? game.pathSystem.getPathCost(unit, path, game.board)
@@ -2822,7 +2851,7 @@ export class MoveState extends MapState {
           const moveAction = new MoveAction(
             unit,
             [origin[0], origin[1]],
-            [pos.x, pos.y],
+            destination,
             game.board,
             movementCost,
           );
@@ -2831,12 +2860,14 @@ export class MoveState extends MapState {
 
           // Check if this movement triggers AI group activation
           if (game.aiController && unit.team === 'player') {
-            game.aiController.checkGroupActivation([pos.x, pos.y], game);
+            game.aiController.checkGroupActivation(destination, game);
           }
 
           // Python: a Canto move (after attacking/trading) goes to
           // canto_wait instead of the full action menu.
-          const nextState = unit.hasAttacked || unit.hasTraded ? 'canto_wait' : 'menu';
+          const nextState = interrupted.surprise
+            ? SURPRISE_AFTER_MOVEMENT
+            : unit.hasAttacked || unit.hasTraded ? 'canto_wait' : 'menu';
           // If we have a path with length > 1, animate movement
           if (path && path.length > 1) {
             game.movementSystem.beginMove(unit, path, undefined, () => {
@@ -2844,6 +2875,8 @@ export class MoveState extends MapState {
             });
             game.state.change('movement');
             game._pendingAfterMovement = nextState;
+          } else if (interrupted.surprise) {
+            finishPlayerSurpriseMove(game, unit);
           } else {
             // Already at destination or single tile, push directly
             game.state.change(nextState);
@@ -8496,11 +8529,53 @@ export class AIState extends MapState {
       return;
     }
 
+    // Python AIController.act: a unit already standing in an interrupt_move
+    // region is interrupted before it thinks; it does nothing and does not
+    // wait (did_something stays False).
+    if (checkRegionInterrupt(unit, game).length > 0) {
+      this.currentAiIndex++;
+      this.frameCounter = 0;
+      return;
+    }
+
     // Mark start of AI unit's action group (turnwheel marker)
     game.actionLog.doAction(new MarkActionGroupStart(unit, 'ai'));
 
     // Get AI decision
     const action = game.aiController.getAction(unit);
+
+    // Python UnitPathMovementComponent: the walk stops on the first
+    // interrupting tile, and finish(surprise) applies HasAttacked and
+    // interrupts the AI (no attack, item, interact or canto); the unit then
+    // waits, which fires the region trigger.
+    if (action.targetPosition && action.movePath && action.movePath.length > 1 && unit.position) {
+      const interrupted = interruptMovePath(unit, action.movePath, game);
+      if (interrupted.surprise) {
+        const stop = interrupted.path[interrupted.path.length - 1];
+        const finish = () => {
+          game.audioManager?.playSfx?.('Surprise');
+          game.actionLog.doAction(new HasAttackedAction(unit));
+          waitUnit(game, unit, false);
+          if (game.eventManager?.hasActiveEvents()) {
+            this.waitingForEvent = true;
+            game.state.change('event');
+            return;
+          }
+          this.advanceToNextUnit();
+        };
+        this.moveWithAction(game, unit, [stop[0], stop[1]], interrupted.path);
+        if (interrupted.path.length > 1) {
+          this.waitingForMovement = true;
+          game.movementSystem.beginMove(unit, interrupted.path, undefined, () => {
+            this.waitingForMovement = false;
+            finish();
+          });
+        } else {
+          finish();
+        }
+        return;
+      }
+    }
 
     switch (action.type) {
       case 'attack':
@@ -9347,7 +9422,11 @@ export class MovementState extends State {
       if (game._pendingAfterMovement) {
         const nextState = game._pendingAfterMovement;
         game._pendingAfterMovement = null;
-        game.state.change(nextState);
+        if (nextState === SURPRISE_AFTER_MOVEMENT) {
+          if (game.selectedUnit) finishPlayerSurpriseMove(game, game.selectedUnit);
+        } else {
+          game.state.change(nextState);
+        }
       }
     }
   }

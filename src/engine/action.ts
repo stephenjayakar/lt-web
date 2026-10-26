@@ -17,6 +17,7 @@ import {
 } from '../combat/skill-system';
 import { skillCondition } from '../combat/item-system';
 import { applyExpGain, autoLevelUnit } from './leveling';
+import { triggerInterruptRegions } from '../movement/region-interrupt';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { GameState } from './game-state';
@@ -2172,6 +2173,7 @@ export class ProcessStatusEffectsAction extends Action {
 export class WaitAction extends Action {
   private unit: UnitObject;
   private previous: boolean = false;
+  private regionRemovals: RemoveRegionAction[] | null = null;
 
   constructor(unit: UnitObject) {
     super();
@@ -2179,11 +2181,24 @@ export class WaitAction extends Action {
   }
 
   execute(): void {
+    // Python Wait.remove_interrupt_regions runs once, when the action is
+    // created: it fires the interrupting regions' triggers and removes the
+    // only_once ones. Turnwheel redo replays only the removals.
+    if (this.regionRemovals === null) {
+      const game = _getGame?.();
+      const regions = game?.currentLevel?.regions;
+      this.regionRemovals = game && regions
+        ? triggerInterruptRegions(this.unit, game)
+          .map((region) => new RemoveRegionAction(region.nid, regions))
+        : [];
+    }
     this.previous = this.unit.finished;
     this.unit.finished = true;
+    for (const removal of this.regionRemovals) removal.execute();
   }
 
   reverse(): void {
+    for (const removal of [...(this.regionRemovals ?? [])].reverse()) removal.reverse();
     this.unit.finished = this.previous;
   }
 }
