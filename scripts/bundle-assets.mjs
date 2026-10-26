@@ -17,7 +17,7 @@
  */
 
 import { readdirSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join, relative, dirname, basename } from 'path';
+import { join, relative, dirname, basename, sep } from 'path';
 import { ZipWriter } from './lib/zip.mjs';
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,8 @@ let fileCount = 0;
 let totalSize = 0;
 
 for (const filePath of walkDir(ltprojPath)) {
-  const relativePath = relative(ltprojPath, filePath);
+  // Zip entry names always use '/' (on Windows, relative() yields '\').
+  const relativePath = relative(ltprojPath, filePath).split(sep).join('/');
   const zipPath = `${projectName}/${relativePath}`;
   const data = readFileSync(filePath);
 
