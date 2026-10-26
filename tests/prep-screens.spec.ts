@@ -215,7 +215,8 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     // Convoy on: Trade, Give all, Optimize and Items open; no restockable
     // items and no market.
     expect(select.ignore).toEqual([false, true, false, false, false, true]);
-    expect(select.layout).toEqual([3, 2, 120, 80]);
+    // The EOtF fork's PrepManageSelectState table sits at (120, 74).
+    expect(select.layout).toEqual([3, 2, 120, 74]);
     await attachShot(page, testInfo, 'manage-select');
 
     // Trade -> PrepTradeSelectState with a fake cursor on Termina.

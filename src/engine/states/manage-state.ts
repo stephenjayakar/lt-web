@@ -29,6 +29,7 @@ import {
 import { ItemObject as ItemObjectClass } from '../../objects/item';
 import { available as itemAvailable, inventoryFull } from '../../combat/item-system';
 import { noTrade } from '../../combat/skill-system';
+import { isForkEngine } from '../engine-flavor';
 import { canUseBaseItem } from './game-states';
 import {
   Choice,
@@ -325,6 +326,7 @@ abstract class ManageBaseState extends State {
     if (event === 'SELECT') {
       const unit = menu.getCurrentUnit();
       if (!unit) return;
+      if (!this.canSelect(unit)) { sfx('Error'); return; }
       game.memory.set('current_unit', unit);
       game.state.change(this.selectState());
       sfx('Select 1');
@@ -372,6 +374,10 @@ abstract class ManageBaseState extends State {
   }
 
   protected abstract selectState(): string;
+  /** EOtF fork PrepManageState: units tagged Temporary cannot be managed. */
+  protected canSelect(unit: UnitObject): boolean {
+    return !(isForkEngine() && unit.tags.includes('Temporary'));
+  }
   protected allowOptimizeAll(): boolean { return true; }
   protected drawQuick(surf: Surface, x: number, y: number): void { drawQuickDisp(surf, x, y); }
 }
@@ -386,6 +392,7 @@ export class ManageState extends ManageBaseState {
 export class MarketSelectState extends ManageBaseState {
   readonly name = 'base_market_select';
   protected selectState(): string { return 'prep_market'; }
+  protected override canSelect(): boolean { return true; }
   protected override allowOptimizeAll(): boolean { return false; }
   /** BaseMarketSelectState.create_quick_disp: one 'Market' button row. */
   protected override drawQuick(surf: Surface, x: number, y: number): void {
@@ -421,7 +428,9 @@ export class ManageSelectState extends State {
     const options = ['Trade', 'Restock', 'Give all', 'Optimize', 'Use', 'Market'];
     if (game.db?.getConstant?.('repair_shop', false)) options[3] = 'Repair';
     if (game.gameVars.get('_convoy')) options[4] = 'Items';
-    this.selectMenu = new Table(game, options.map((text) => ({ kind: 'text' as const, text })), [3, 2], [120, 80]);
+    // The EOtF fork moves the table up to (120, 74) to fit its Gallery hint.
+    const topleft: [number, number] = isForkEngine() ? [120, 74] : [120, 80];
+    this.selectMenu = new Table(game, options.map((text) => ({ kind: 'text' as const, text })), [3, 2], topleft);
     this.selectMenu.setIgnore(this.getIgnore());
   }
 
@@ -436,6 +445,8 @@ export class ManageSelectState extends State {
       const tradeable = tradeableItems(unit);
       if (tradeable.length) ignore[2] = false;
       if (tradeable.some((item) => canRestock(game, item))) ignore[1] = false;
+      // EOtF fork: no convoy access for Temporary units.
+      if (isForkEngine() && unit.tags.includes('Temporary')) ignore[4] = true;
     } else if (unit.items.some((item) => canUseBaseItem(unit, item, game))) {
       ignore[4] = false;
     }
@@ -546,7 +557,8 @@ export class TradeSelectState extends State {
 
     if (event === 'SELECT') {
       const partner = menu.getCurrentUnit();
-      if (!partner || noTrade(partner, game)) {
+      if (!partner || noTrade(partner, game) ||
+          (isForkEngine() && partner.tags.includes('Temporary'))) {
         sfx('Error');
       } else {
         game.memory.set('unit1', this.unit);

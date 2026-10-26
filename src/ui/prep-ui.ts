@@ -25,6 +25,7 @@ import { FONT } from '../rendering/bmp-font';
 import { getMenuBackgroundSync } from './base-surf';
 import { getSprite as getRegistrySprite } from './sprites';
 import { drawIcon16 } from './icons';
+import { isForkEngine } from '../engine/engine-flavor';
 import {
   available as itemAvailable,
   buyPrice as itemBuyPrice,
@@ -1267,11 +1268,21 @@ export function drawUnitItems(
   accessories.forEach((item, idx) => drawItemOption(surf, game, item, x, y + numItems * 16 + idx * 16 + 4));
 }
 
-/** Python prep.draw_funds: "C: Info" and the funds display. */
+/**
+ * Python prep.draw_funds: "C: Info" and the funds display. The EOtF fork
+ * moves the Info line up to y=128 and adds "V: Gallery" (AUX) at y=143.
+ */
 export function drawFunds(surf: Surface, game: any, ox = 0, oy = 0): void {
+  const fork = isForkEngine();
   const helper = 'C';
-  drawText(surf, helper, ox + 123, oy + 143, null, 'text-yellow');
-  drawText(surf, ': Info', ox + 123 + textWidth(helper, 'text-blue'), oy + 143);
+  const infoY = fork ? 128 : 143;
+  drawText(surf, helper, ox + 123, oy + infoY, null, 'text-yellow');
+  drawText(surf, ': Info', ox + 123 + textWidth(helper, 'text-blue'), oy + infoY);
+  if (fork) {
+    const aux = 'V';
+    drawText(surf, aux, ox + 123, oy + 143, null, 'text-yellow');
+    drawText(surf, ': Gallery', ox + 123 + textWidth(aux, 'text-blue'), oy + 143);
+  }
   const funds = getSprite('funds_display');
   if (funds) surf.blitImage(funds, 0, 0, funds.width, funds.height, ox + 168, oy + 137);
   drawTextRight(surf, String(game.getMoney?.() ?? 0), ox + 219, oy + 141, null, 'text-blue');
