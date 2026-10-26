@@ -5,19 +5,19 @@ evidence; semantic status is the strict runtime's reviewed project contract.
 
 ## Summary
 
-- 48 levels, 899 events, 462 items,
-  586 skills, 118 units, 84 classes
-- 105 distinct item component NIDs
+- 48 levels, 892 events, 464 items,
+  588 skills, 118 units, 84 classes
+- 107 distinct item component NIDs
 - 130 distinct skill component NIDs
 - 21/33 custom Python components are
   referenced by current project data
-- 330 event conditions,
+- 329 event conditions,
   69 eval substitutions, and
-  33 event loops
-- 1697 resource files
-- 1442 catalog-backed runtime resource checks,
+  35 event loops
+- 1694 resource files
+- 1437 catalog-backed runtime resource checks,
   0 required files missing,
-  6 unreferenced optional catalog entries
+  3 unreferenced optional catalog entries
   missing, and 26 command-only combat effects
 
 ## Resource audit
@@ -30,7 +30,7 @@ evidence; semantic status is the strict runtime's reviewed project contract.
 | event-map-animation | 56 |
 | event-music | 3 |
 | event-panorama | 6 |
-| event-portrait | 4 |
+| event-portrait | 1 |
 | event-sfx | 43 |
 | icons16 | 125 |
 | icons32 | 9 |
@@ -38,7 +38,7 @@ evidence; semantic status is the strict runtime's reviewed project contract.
 | map-animation | 63 |
 | map-sprite-move | 97 |
 | map-sprite-stand | 97 |
-| music | 58 |
+| music | 56 |
 | panorama | 52 |
 | portrait | 138 |
 | sfx | 255 |
@@ -56,9 +56,6 @@ None.
 | panorama | title_background_1 | optional-catalog-entry |
 | panorama | 213 | optional-catalog-entry |
 | panorama | 321 | optional-catalog-entry |
-| event-portrait | DEBUG Dreams of Home: Eirika | debug-only-fixture |
-| event-portrait | DEBUG Dreams of Home: Seth | debug-only-fixture |
-| event-portrait | DEBUG Trigger: Eirika | debug-only-fixture |
 
 ## Unverified project-used item components
 
@@ -84,7 +81,7 @@ None.
 | skill | second_wind | 1 | end_combat |
 | skill | givebacker | 1 | modify_damage |
 | skill | eval_galeforce | 14 | end_combat |
-| skill | event_after_combat | 13 | end_combat |
+| skill | event_after_combat | 15 | end_combat |
 | skill | true_miracle_event_after_combat | 1 | after_take_strike,end_combat |
 | skill | event_after_combat_when_hit | 1 | after_take_strike,end_combat |
 | skill | event_when_hit | 2 | after_take_strike |
@@ -104,11 +101,12 @@ None.
 | board | 4 |
 | cf | 1 |
 | combat_calcs | 8 |
-| game | 149 |
+| game | 150 |
 | game_vars | 1 |
 | item | 2 |
 | item_funcs | 7 |
 | item_system | 2 |
+| level | 1 |
 | level_vars | 4 |
 | movement_funcs | 4 |
 | region | 58 |
@@ -118,7 +116,7 @@ None.
 | status_on_equip | 1 |
 | target | 24 |
 | target_system | 1 |
-| unit | 88 |
+| unit | 98 |
 | unit2 | 28 |
 
 ## Event commands
@@ -126,20 +124,17 @@ None.
 | Command | Uses |
 |---|---|
 | add | 596 |
-| add_base_convo | 1 |
 | add_group | 8 |
-| add_lore | 1 |
-| add_portrait | 2 |
+| add_portrait | 1 |
 | add_region | 12 |
 | add_skill | 1 |
 | add_skill_component | 2 |
 | add_tag | 3 |
 | add_talk | 17 |
 | add_unit | 719 |
-| add_weather | 3 |
+| add_weather | 2 |
 | alert | 25 |
 | autolevel_to | 23 |
-| base | 1 |
 | break_item | 1 |
 | center_cursor | 317 |
 | change_ai | 70 |
@@ -150,29 +145,29 @@ None.
 | change_objective_simple | 3 |
 | change_party | 14 |
 | change_stats | 10 |
-| change_team | 48 |
+| change_team | 47 |
 | change_tilemap | 1 |
 | choice | 3 |
 | credits | 19 |
-| elif | 61 |
+| elif | 60 |
 | else | 18 |
 | enable_fog_of_war | 1 |
 | enable_turnwheel | 1 |
-| end | 122 |
+| end | 124 |
 | end_turn | 1 |
-| endf | 34 |
+| endf | 36 |
 | equip_item | 1 |
 | finish | 1 |
 | flicker_cursor | 4 |
-| for | 34 |
-| game_var | 57 |
-| give_item | 157 |
+| for | 36 |
+| game_var | 70 |
+| give_item | 156 |
 | give_money | 6 |
 | give_skill | 114 |
 | give_wexp | 8 |
 | has_attacked | 138 |
 | hide_layer | 8 |
-| if | 122 |
+| if | 123 |
 | inc_game_var | 2 |
 | inc_level_var | 33 |
 | interact_unit | 3 |
@@ -184,9 +179,7 @@ None.
 | map_anim | 60 |
 | move_cursor | 12 |
 | move_group | 1 |
-| move_unit | 54 |
-| multi_add_portrait | 1 |
-| multi_remove_portrait | 1 |
+| move_unit | 56 |
 | music | 3 |
 | music_clear | 5 |
 | pair_up | 3 |
@@ -195,26 +188,24 @@ None.
 | remove_all_units | 1 |
 | remove_item | 1 |
 | remove_map_anim | 11 |
-| remove_portrait | 1 |
 | remove_region | 28 |
 | remove_skill | 72 |
-| remove_talk | 20 |
+| remove_talk | 21 |
 | remove_unit | 24 |
 | reset | 12 |
 | resurrect | 16 |
 | separate | 1 |
-| set_current_hp | 26 |
+| set_current_hp | 28 |
 | set_custom_options | 1 |
 | set_fog_of_war | 1 |
 | set_stats | 143 |
-| shop | 41 |
+| shop | 40 |
 | show_layer | 200 |
 | sound | 43 |
 | spawn_group | 1 |
-| speak | 6 |
+| speak | 2 |
 | table | 1 |
-| transition | 12 |
+| transition | 10 |
 | unchoice | 1 |
-| unlock | 1 |
 | wait | 55 |
-| win_game | 54 |
+| win_game | 53 |
