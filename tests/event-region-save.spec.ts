@@ -288,4 +288,26 @@ test.describe('Event + region save-field parity', () => {
     const after = await getRegionNids(page);
     expect(after.sort()).toEqual(prefabRegionNids.sort());
   });
+  test('a region without a position saves and loads (EOtF level 91 Fake_Arrive)', async ({ page }) => {
+    // Python RegionObject.save keeps position None; the web threw building
+    // the save dict, so suspend/save on such a map failed.
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.currentLevel.regions.push({
+        nid: 'Fake_Arrive', region_type: 'event', position: null, size: [1, 1], sub_nid: 'Arrive',
+        condition: 'False', time_left: null, only_once: false, interrupt_move: false, hide_time: false,
+      });
+    });
+    const snapshot = await saveSnapshot(page);
+    expect(snapshot).toBeTruthy();
+    expect(await loadSnapshot(page, JSON.parse(JSON.stringify(snapshot)))).toBe(true);
+    await stepFrames(page, 2);
+    const region = await page.evaluate(() =>
+      (window as any).__gameRef.currentLevel.regions.find((r: any) => r.nid === 'Fake_Arrive'));
+    expect(region?.position).toBeNull();
+    expect(region?.sub_nid).toBe('Arrive');
+  });
 });

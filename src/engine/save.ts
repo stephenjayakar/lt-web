@@ -163,7 +163,7 @@ export interface SkillSaveData {
 export interface RegionSaveData {
   nid: string;
   region_type: string;
-  position: [number, number];
+  position: [number, number] | null;
   size: [number, number];
   sub_nid: string;
   condition: string;
@@ -668,7 +668,9 @@ function serializeLevel(
   const regions: RegionSaveData[] = (level.regions ?? []).map((r) => ({
     nid: r.nid,
     region_type: r.region_type,
-    position: [r.position[0], r.position[1]],
+    // Authored regions may have no position (EOtF level 91 Fake_Arrive);
+    // Python RegionObject.save keeps None.
+    position: r.position ? [r.position[0], r.position[1]] : null,
     size: [r.size[0], r.size[1]],
     sub_nid: r.sub_nid,
     condition: r.condition,
@@ -1714,7 +1716,8 @@ async function restoreLevel(
     // behavior).
     let regions: RegionData[];
     if (levelData.regions) {
-      regions = levelData.regions.map((r) => ({ ...r }));
+      // A null position round-trips as authored (prefab regions carry it too).
+      regions = levelData.regions.map((r) => ({ ...r }) as RegionData);
     } else if ((levelData as any).regionNids) {
       const savedNids: string[] = (levelData as any).regionNids;
       regions = (levelPrefab.regions ?? []).filter((r: RegionData) => savedNids.includes(r.nid));
