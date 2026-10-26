@@ -476,4 +476,119 @@ test.describe('AI parity', () => {
     expect(result.before).toBeLessThan(7);
     expect(result.after).toBe(7);
   });
+
+  // Python PrimaryAI for Steal: only the Steal extra ability, scored by
+  // Steal.ai_priority (0.075 + 0.01 x distance from the strike tile to the
+  // enemies' average), not by the loot's value; AIController.attack then
+  // takes the chosen target's priciest legal item.
+  test('Steal AI picks the strike tile farthest from the enemies, then the priciest item', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const players = [...g.units.values()].filter((u: any) => u.position && u.team === 'player' && !u.isDead());
+      const thief = [...g.units.values()].find((u: any) => u.position && u.team !== 'player' && !u.isDead());
+      if (players.length < 2 || !thief) return null;
+      const [rich, poor] = players;
+      rich.items = [];
+      poor.items = [];
+      thief.skills.push(new SkillObject(g.db.skills.get('Steal')));
+      thief.stats.SPD = 99;
+      const loot = (owner: any, nid: string, value: number) => {
+        const item = new ItemObject({
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [['usable', null], ['value', value]],
+        } as any);
+        item.owner = owner;
+        owner.items.push(item);
+        return item;
+      };
+      loot(rich, '_Gold', 5000);
+      loot(poor, '_Copper', 10);
+      const silver = loot(poor, '_Silver', 50);
+      const avgX = players.reduce((sum: number, u: any) => sum + u.position[0], 0) / players.length;
+      const avgY = players.reduce((sum: number, u: any) => sum + u.position[1], 0) / players.length;
+      const near: [number, number] = [Math.round(avgX), Math.round(avgY)];
+      const far: [number, number] = [Math.max(0, near[0] - 6), Math.max(0, near[1] - 6)];
+      const ai = g.aiController as any;
+      ai.getAttackPositions = (_unit: any, _moves: any, target: any) => (target === rich ? [near] : [far]);
+      const action = ai.stealPrimaryAI(thief, [near, far], [rich, poor]);
+      return {
+        target: action?.targetUnit?.nid ?? null,
+        item: action?.targetItem?.nid ?? null,
+        poor: poor.nid,
+        priciest: silver.nid,
+        ability: action ? !thief.items.includes(action.item) : null,
+      };
+    });
+    expect(result).not.toBeNull();
+    expect(result!.target).toBe(result!.poor);
+    expect(result!.item).toBe(result!.priciest);
+    expect(result!.ability).toBe(true);
+  });
+
+  // Python AIController.act canto step: has_canto(unit, None). Canto needs
+  // "not has_attacked or unit is unit2", so after attacking only Canto_Plus
+  // and Canter (always True) move again; a plain Canto unit just waits.
+  async function runCanto(page: Page, component: string, value: unknown) {
+    await page.evaluate(async ({ component, value }) => {
+      const g = (window as any).__gameRef;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const unit = [...g.units.values()].find((u: any) => u.position && u.team !== 'player' && !u.isDead());
+      unit.resetTurnState();
+      unit.skills = [new SkillObject({
+        nid: '_TestCanto', name: '_TestCanto', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [[component, value]],
+      } as any)];
+      const start = [...unit.position];
+      const dest = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => [start[0] + dx, start[1] + dy])
+        .find(([x, y]) => g.board.inBounds(x, y) && !g.board.getUnit(x, y));
+      let asked = 0;
+      g.aiController.getCantoRetreatAction = (u: any) => {
+        asked++;
+        return u === unit ? { type: 'move', unit: u, targetPosition: dest, movePath: [start, dest] } : null;
+      };
+      g.phase.setCurrentTeam(unit.team);
+      g.state.clear();
+      g.state.change('ai');
+      (window as any).__canto = { unit, start, dest, asked: () => asked };
+      (window as any).__primeCanto = () => {
+        const ai = g.state.getCurrentState();
+        ai.aiUnits = [unit];
+        ai.currentAiIndex = 0;
+        ai.waitingForCombat = true;
+        ai.pendingCombatTarget = null;
+        unit.hasAttacked = true;
+      };
+    }, { component, value });
+    await stepFrames(page, 2);
+    await page.evaluate(() => (window as any).__primeCanto());
+    for (let i = 0; i < 60; i++) {
+      await stepFrames(page, 2);
+      if (await page.evaluate(() => (window as any).__canto.unit.finished)) break;
+    }
+    return page.evaluate(() => {
+      const { unit, start, dest, asked } = (window as any).__canto;
+      const at = unit.position;
+      return {
+        finished: unit.finished,
+        moved: at[0] === dest[0] && at[1] === dest[1],
+        stayed: at[0] === start[0] && at[1] === start[1],
+        asked: asked() > 0,
+      };
+    });
+  }
+
+  test('AI canto retreat: Canto_Plus retreats after attacking', async ({ page }) => {
+    expect(await runCanto(page, 'canto_plus', null)).toEqual({ finished: true, moved: true, stayed: false, asked: true });
+  });
+
+  test('AI canto retreat: Canter retreats after attacking', async ({ page }) => {
+    expect(await runCanto(page, 'canter', 2)).toEqual({ finished: true, moved: true, stayed: false, asked: true });
+  });
+
+  test('AI canto retreat: a plain Canto unit waits in place after attacking', async ({ page }) => {
+    expect(await runCanto(page, 'canto', null)).toEqual({ finished: true, moved: false, stayed: true, asked: false });
+  });
 });
