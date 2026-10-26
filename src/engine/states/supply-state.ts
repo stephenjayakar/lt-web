@@ -241,6 +241,15 @@ abstract class ConvoyItemsState extends State {
     if (event === 'SELECT') {
       sfx('Select 1');
       this.select();
+    } else if (event === 'BACK' && menu.infoFlag) {
+      // Python PrepItemsState: BACK first closes the help box.
+      menu.toggleInfo();
+      sfx('Info Out');
+    } else if (event === 'INFO') {
+      if (this.mode === 'free' || this.mode === 'trade_convoy' || this.mode === 'trade_inventory') {
+        menu.toggleInfo();
+        sfx(menu.infoFlag ? 'Info In' : 'Info Out');
+      }
     } else if (event === 'BACK') {
       if (this.mode === 'free') {
         sfx('Select 4');
@@ -361,6 +370,7 @@ abstract class ConvoyItemsState extends State {
     this.bg?.draw(surf);
     this.menu?.draw(surf, ox, oy);
     this.subMenu?.draw(surf, ox, oy);
+    if (this.menu?.infoFlag) this.menu.drawInfo(surf, ox, oy);
     return surf;
   }
 }

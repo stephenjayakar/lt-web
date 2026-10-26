@@ -15,6 +15,7 @@
  */
 
 import { Surface } from '../engine/surface';
+import { cachedItemHelpBox } from './help-menu';
 import { viewport } from '../engine/viewport';
 import { getFrameCount, TILEWIDTH, TILEHEIGHT } from '../engine/constants';
 import type { UnitObject } from '../objects/unit';
@@ -834,6 +835,26 @@ export class Choice {
     return e?.kind === 'item' ? e.item : null;
   }
 
+  /** Simple.info_flag (INFO help box for the current item). */
+  infoFlag = false;
+
+  /** Simple.toggle_info */
+  toggleInfo(): void {
+    this.infoFlag = !this.infoFlag;
+  }
+
+  /** Choice.vert_draw_info: the current item's help box below its row. */
+  drawInfo(surf: Surface, ox = 0, oy = 0): void {
+    const item = this.getCurrentItem();
+    if (!item) return;
+    const rect = this.getRects(0, 0).find(([idx]) => idx === this.currentIndex);
+    if (!rect) return;
+    const [, rx, ry] = rect;
+    const box = cachedItemHelpBox(item);
+    if (this.getTopleft()[0] < WINWIDTH / 2) box.draw(surf, rx - 4, ry + 16, false, [ox, oy]);
+    else box.draw(surf, rx + this.getMenuWidth(), ry + 16, true, [ox, oy]);
+  }
+
   update(): void {
     if (this.drawCursor === 1) this.cursor.update();
   }
@@ -1385,6 +1406,17 @@ export class TradeMenu {
 
   hasSelection(): boolean { return this.selectedIdx !== null; }
 
+  /** menus.Trade.toggle_info / draw_info for the menu under the selecting hand. */
+  get infoFlag(): boolean { return this.menuFor(this.selectingHand[0]).infoFlag; }
+  toggleInfo(): void {
+    const flag = !this.infoFlag;
+    this.menu1.infoFlag = flag;
+    this.menu2.infoFlag = flag;
+  }
+  drawInfo(surf: Surface, ox = 0, oy = 0): void {
+    if (this.infoFlag) this.menuFor(this.selectingHand[0]).drawInfo(surf, ox, oy);
+  }
+
   /** The selected [owner, item|null] and the hovered [owner, item|null]. */
   selectedItem(): [UnitObject, ItemObject | null] | null {
     if (!this.selectedIdx) return null;
@@ -1739,6 +1771,17 @@ export class ConvoyMenu {
   }
 
   getMenu(): Choice { return this.menus.get(this.order[this.menuIndex])!; }
+
+  /** menus.Convoy.toggle_info */
+  toggleInfo(): void {
+    this.infoFlag = !this.infoFlag;
+  }
+
+  /** menus.Convoy.draw_info: help for the inventory or the open convoy tab. */
+  drawInfo(surf: Surface, ox = 0, oy = 0): void {
+    const menu = this.selectionIndex === 0 ? this.inventory : this.getMenu();
+    menu?.drawInfo(surf, ox, oy);
+  }
   getCurrent(): ItemObject | null {
     return this.selectionIndex === 0 ? this.inventory?.getCurrentItem() ?? null : this.getMenu().getCurrentItem();
   }

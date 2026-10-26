@@ -37,7 +37,16 @@ import type { SkillObject } from '../../objects/skill';
 import type { ItemObject } from '../../objects/item';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
 import {
+  HelpDialog,
+  SkillHelpDialog,
+  StatDialog,
+  itemHelpBox,
+  setHelpMenuGameRef,
+  type HelpBox,
+} from '../../ui/help-menu';
+import {
   MenuBackground,
+  MenuCursor,
   MenuScene,
   ScrollArrow,
   blitSprite,
@@ -350,6 +359,45 @@ const LOGO_FOR: Record<InfoPage, string> = {
   notes: 'info_menu/info_title_notes',
 };
 
+/** Python info_graph.BoundingBox */
+interface InfoBox {
+  aabb: [number, number, number, number];
+  make: () => HelpBox;
+  box?: HelpBox;
+  first: boolean;
+}
+
+function helpOf(info: InfoBox): HelpBox {
+  if (!info.box) info.box = info.make();
+  return info.box;
+}
+
+/** info_graph.find_closest (direction-weighted top-left distance). */
+function findClosest(current: InfoBox, boxes: InfoBox[], horiz: boolean): InfoBox | null {
+  const [hp, vp] = horiz ? [1, 10] : [10, 1];
+  let best: InfoBox | null = null;
+  let max = 1e6;
+  for (const bb of boxes) {
+    const d = hp * (current.aabb[0] - bb.aabb[0]) ** 2 + vp * (current.aabb[1] - bb.aabb[1]) ** 2;
+    if (d < max) {
+      max = d;
+      best = bb;
+    }
+  }
+  if (!best) {
+    const cx = current.aabb[0] + current.aabb[2] / 2;
+    const cy = current.aabb[1] + current.aabb[3] / 2;
+    for (const bb of boxes) {
+      const d = (cx - bb.aabb[0] - bb.aabb[2] / 2) ** 2 + (cy - bb.aabb[1] - bb.aabb[3] / 2) ** 2;
+      if (d < max) {
+        max = d;
+        best = bb;
+      }
+    }
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------------------
 // InfoMenuState
 // ---------------------------------------------------------------------------
@@ -374,6 +422,16 @@ export class InfoMenuState extends State {
   private rightArrow = new ScrollArrow('right', 217, 3, 0.5);
   private logo: InfoLogo | null = null;
   private time = 0;
+
+  // Python InfoGraph: help boxes registered per info state as pages draw.
+  private portraitBoxes: InfoBox[] | null = null;
+  private registry = new Map<string, InfoBox[]>();
+  /** The info state whose boxes the current draw pass is registering. */
+  private collecting: string | null = null;
+  private currentBB: InfoBox | null = null;
+  private lastBB: InfoBox | null = null;
+  private infoFlag = false;
+  private infoCursor = new MenuCursor();
 
   // Transitions (InfoMenuState.update)
   private rescuer: UnitObject | null = null;
@@ -443,6 +501,58 @@ export class InfoMenuState extends State {
     this.scrollOffsetY = 0;
     this.transparency = 0;
     this.resetBlink();
+    setHelpMenuGameRef(game);
+    this.resetGraph();
+    this.infoFlag = false;
+    this.lastBB = null;
+  }
+
+  /** InfoGraph.clear (new unit): boxes rebuild as pages are drawn again. */
+  private resetGraph(): void {
+    this.portraitBoxes = null;
+    this.registry = new Map();
+    this.currentBB = null;
+  }
+
+  private infoState(): string {
+    return this.page === 'personal_data' && this.growthFlag ? 'growths' : this.page;
+  }
+
+  private boxesFor(state: string): InfoBox[] {
+    return [...(this.portraitBoxes ?? []), ...(this.registry.get(state) ?? [])];
+  }
+
+  /** InfoGraph.register for the page currently being built. */
+  private register(aabb: [number, number, number, number], help: string | (() => HelpBox), first = false): void {
+    if (!this.collecting) return;
+    const make = typeof help === 'string' ? () => new HelpDialog(help) : help;
+    const list = this.registry.get(this.collecting) ?? [];
+    list.push({ aabb, make, first });
+    this.registry.set(this.collecting, list);
+  }
+
+  /** InfoGraph.set_transition_in */
+  private graphIn(): void {
+    const boxes = this.boxesFor(this.infoState());
+    if (!boxes.length) return;
+    const last = this.lastBB && boxes.includes(this.lastBB) ? this.lastBB : null;
+    this.currentBB = last ?? boxes.find((bb) => bb.first) ?? boxes[0];
+    helpOf(this.currentBB).setTransitionIn();
+  }
+
+  /** InfoGraph._move toward `dir`. */
+  private graphMove(dir: 'LEFT' | 'RIGHT' | 'UP' | 'DOWN'): boolean {
+    const cur = this.currentBB;
+    if (!cur) return false;
+    const all = this.boxesFor(this.infoState());
+    const boxes = all.filter((bb) => dir === 'LEFT' ? bb.aabb[0] < cur.aabb[0]
+      : dir === 'RIGHT' ? bb.aabb[0] > cur.aabb[0]
+        : dir === 'UP' ? bb.aabb[1] < cur.aabb[1] : bb.aabb[1] > cur.aabb[1]);
+    if (!boxes.length) return false;
+    const next = findClosest(cur, boxes, dir === 'LEFT' || dir === 'RIGHT');
+    if (!next || next === cur) return false;
+    this.currentBB = next;
+    return true;
   }
 
   /** InfoMenuState._init: left/right stat columns from DB.stats positions. */
@@ -496,10 +606,29 @@ export class InfoMenuState extends State {
   // -----------------------------------------------------------------------
 
   override takeInput(event: InputEvent): StateResult {
-    if (event === null || this.transition) return;
+    if (event === null) return;
     const game = getGame();
     const unit = this.unit;
     if (!unit) return;
+    if (this.infoFlag) {
+      if (event === 'INFO' || event === 'BACK') {
+        game.audioManager?.playSfx?.('Info Out');
+        if (this.currentBB) helpOf(this.currentBB).setTransitionOut();
+        this.lastBB = this.currentBB;
+        this.currentBB = null;
+        this.infoFlag = false;
+      } else if (event === 'LEFT' || event === 'RIGHT' || event === 'UP' || event === 'DOWN') {
+        if (this.graphMove(event)) game.audioManager?.playSfx?.('Select 6');
+      }
+      return;
+    }
+    if (this.transition) return;
+    if (event === 'INFO') {
+      game.audioManager?.playSfx?.('Info In');
+      this.graphIn();
+      this.infoFlag = true;
+      return;
+    }
     if (event === 'AUX') {
       if (this.page === 'personal_data' && unit.team === 'player' && constant('growth_info')) {
         game.audioManager?.playSfx?.('Select 3');
@@ -626,6 +755,7 @@ export class InfoMenuState extends State {
           this.unit = this.nextUnit;
           getGame().infoMenuUnit = this.unit;
           this.resetBlink();
+          this.resetGraph();
           this.transitionCounter = 0;
         }
       }
@@ -681,6 +811,13 @@ export class InfoMenuState extends State {
 
     this.drawPortrait(s);
     this.drawSlide(s);
+    // InfoGraph.draw: menu hand on the box, help window below it.
+    if (this.currentBB) {
+      const [bx, by] = this.currentBB.aabb;
+      this.infoCursor.update();
+      this.infoCursor.draw(s, Math.max(0, bx - 4), by);
+      helpOf(this.currentBB).draw(s, Math.max(0, bx - 32), by + 13);
+    }
     this.scene.present(surf);
     return surf;
   }
@@ -704,6 +841,19 @@ export class InfoMenuState extends State {
     blitSprite(p, getSprite('info_menu/status_platform'), 66, 131);
     const affinity = game.db.affinities?.get?.(unit.affinity);
     if (affinity?.icon_nid) drawIcon16(p, affinity.icon_nid, affinity.icon_index ?? [0, 0], 78, 81);
+    if (!this.portraitBoxes) {
+      const boxes: InfoBox[] = [];
+      const add = (aabb: [number, number, number, number], text: string): void => {
+        boxes.push({ aabb, make: () => new HelpDialog(text), first: false });
+      };
+      add([24, 80, 52, 24], unit.desc ?? '');
+      add([8, 104, 72, 16], klass?.desc ?? '');
+      add([8, 120, 30, 16], 'Level_desc');
+      add([38, 120, 30, 16], 'Exp_desc');
+      add([8, 136, 72, 16], 'HP_desc');
+      if (affinity) add([76, 80, 16, 16], affinity.desc ?? '');
+      this.portraitBoxes = boxes;
+    }
 
     // Portrait (InfoMenuPortrait) or the class card fallback.
     const meta = game.db.portraits?.get?.(unit.portraitNid);
@@ -758,6 +908,9 @@ export class InfoMenuState extends State {
       this.rightArrow.draw(top);
     }
 
+    const state = this.infoState();
+    this.collecting = this.registry.has(state) ? null : state;
+    if (this.collecting) this.registry.set(state, []);
     if (this.page === 'personal_data') {
       this.drawPersonalData(main, this.growthFlag);
       this.drawClassSkills(main);
@@ -774,12 +927,36 @@ export class InfoMenuState extends State {
     } else {
       this.drawNotes(main);
     }
+    this.collecting = null;
 
     const offsetX = Math.max(96, 96 - this.scrollOffsetX);
     target.blitFrom(main, offsetX, 0, WINWIDTH - offsetX, WINHEIGHT,
       Math.max(96, 96 + this.scrollOffsetX), this.scrollOffsetY);
     if (this.transparency) top.setAlpha(1 - this.transparency);
     target.blit(top, 0, this.scrollOffsetY);
+  }
+
+  /** help_menu.StatDialog with stat_contribution / growth_contribution. */
+  private statHelp(nid: string, growths: boolean): HelpBox {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    const def = game.db.stats.find((st: any) => st.nid === nid);
+    const desc = def?.desc || `${nid}_desc`;
+    const bonuses: Record<string, number> = {};
+    if (growths) {
+      const klass = game.db.classes.get(unit.klass);
+      bonuses['Base Value'] = unit.growths[nid] ?? 0;
+      const klassBonus = klass?.growth_bonus?.[nid] ?? 0;
+      if (klassBonus) bonuses[klass?.name ?? 'Class'] = klassBonus;
+      const skill = growthChange(unit, nid);
+      if (skill) bonuses.Skills = skill;
+    } else {
+      const base = (unit.stats[nid] ?? 0) + subtleStatBonus(unit, nid);
+      bonuses['Base Value'] = base;
+      const bonus = unit.getStatValue(nid) - base;
+      if (bonus) bonuses.Bonus = bonus;
+    }
+    return new StatDialog(desc, bonuses);
   }
 
   /** create_personal_data_surf + draw_stat_surf, drawn at x = 96. */
@@ -807,6 +984,7 @@ export class InfoMenuState extends State {
         drawStat(surf, nid, unit, ox + 47, y, this.time);
       }
       blitText(surf, `text-${nameColor(nid)}`, def?.name ?? nid, ox + 8, y);
+      this.register([96 + 8, y, 64, 16], () => this.statHelp(nid, growths), idx === 0);
     });
 
     this.rightStats.forEach((nid, idx) => {
@@ -815,6 +993,7 @@ export class InfoMenuState extends State {
       blitText(surf, `text-${nameColor(nid)}`, def?.name ?? nid, ox + 72, y);
       if (growths) drawGrowth(surf, nid, unit, ox + 111, y);
       else drawStat(surf, nid, unit, ox + 111, y, this.time);
+      this.register([96 + 72, y, 64, 16], () => this.statHelp(nid, growths));
     });
 
     const other: string[] = ['RAT'];
@@ -836,6 +1015,11 @@ export class InfoMenuState extends State {
     other.slice(0, Math.max(0, 6 - this.rightStats.length)).forEach((stat, idx) => {
       const y = 16 * (idx + this.rightStats.length) + 24;
       const label = (text: string): void => blitText(surf, 'text-yellow', translate(text), ox + 72, y);
+      const descKey: Record<string, string> = {
+        TRV: 'Trv_desc', AID: growths ? 'HP_desc' : 'Aid_desc', RAT: 'Rating_desc', MANA: 'MANA_desc',
+        GAUGE: 'GAUGE_desc', TALK: 'Talk_desc', LEAD: 'Lead_desc',
+      };
+      if (descKey[stat]) this.register([96 + 72, y, 64, 16], descKey[stat]);
       const equation = (nid: string): number => {
         const expr = game.db.getEquation?.(nid);
         if (!expr) return 0;
@@ -905,6 +1089,8 @@ export class InfoMenuState extends State {
     this.uniqueSkills(classSkills).forEach(({ skill, count }, idx) => {
       const left = 96 + idx * 24;
       drawSkill(surf, skill, left + 8, y + iconY, skillInfoPresentation(skill, unit, game) === 'grey');
+      this.register([left + 8, classSkills ? (this.extraStatRow ? WINHEIGHT - 22 : WINHEIGHT - 32) : WINHEIGHT - 28, 16, 16],
+        () => new SkillHelpDialog(skill));
       if (count > 1) {
         const text = String(count);
         blitText(surf, 'small-white', text, left + 20 - 4 * text.length, y + 6);
@@ -997,6 +1183,7 @@ export class InfoMenuState extends State {
       const sub = item.subitems.find((child) => child === equipped);
       if (sub || item === equipped) blitSprite(surf, highlight, ox + 8, y + 8);
       this.drawItemOption(surf, sub ?? item, ox + 8, y);
+      this.register([96 + 8, y, 120, 16], () => itemHelpBox(sub ?? item, unit), this.registry.get('equipment')?.length === 0);
     };
     nonAccessories.forEach((item, idx) => drawEntry(item, idx, weapon));
     const numItems = inventoryCapacity(unit, false, game.db);
@@ -1012,6 +1199,11 @@ export class InfoMenuState extends State {
     const crit = !!constant('crit');
     blitText(surf, 'text-yellow', translate(crit ? 'Crit' : 'AS'), ox + 78, top + 16);
     blitText(surf, 'text-yellow', translate('Avoid'), ox + 78, top + 32);
+    this.register([96 + 78, top, 56, 16], 'Rng_desc');
+    this.register([96 + 14, top + 16, 64, 16], 'Atk_desc');
+    this.register([96 + 14, top + 32, 64, 16], 'Hit_desc');
+    this.register([96 + 78, top + 16, 56, 16], crit ? 'Crit_desc' : 'AS_desc');
+    this.register([96 + 78, top + 32, 56, 16], 'Avoid_desc');
 
     let rng = '--';
     let dam = '--';
@@ -1079,6 +1271,8 @@ export class InfoMenuState extends State {
       buildGroove(surf, offset + 18, 24 + 10 + y, width - 24, perc);
       const rankFont = FONT['rank'] ? 'rank-blue' : 'text-blue';
       blitTextCenter(surf, rankFont, rank?.rank ?? '', offset + 7 + Math.floor(width / 2), 24 + 4 + y);
+      this.register([offset - 1, 24 + 4 + y, width, 16],
+        `${def?.name ?? wtype} mastery level: ${value}`, counter === 0);
     });
   }
 
@@ -1100,6 +1294,7 @@ export class InfoMenuState extends State {
       if (!other) return;
       const affinity = game.db.affinities?.get?.(other.affinity);
       if (affinity?.icon_nid) drawIcon16(surf, affinity.icon_nid, affinity.icon_index ?? [0, 0], 96 + x * width + 8, y * 16 + top);
+      if (affinity) this.register([96 + x * width + 8, y * 16 + top, WINWIDTH - 120, 16], affinity.desc ?? '');
       blitText(surf, 'narrow', other.name, 96 + x * width + 22, y * 16 + top);
       const highest = pair.unlockedRanks[pair.unlockedRanks.length - 1];
       blitTextRight(surf, 'text-yellow', highest, 96 + x * width + Math.floor((WINWIDTH - 96) / 2) - 2, y * 16 + top);
@@ -1110,6 +1305,11 @@ export class InfoMenuState extends State {
   private drawNotes(surf: Surface): void {
     const unit = this.unit as UnitObject;
     let total = 24;
+    let helpOffset = 0;
+    (unit.notes ?? []).forEach(([category, text], idx) => {
+      this.register([96, 16 * helpOffset + 24, 64, 16], `${category}_desc`, idx === 0);
+      helpOffset += String(text).split(',').length;
+    });
     for (const [category, text] of unit.notes ?? []) {
       blitText(surf, 'text-blue', category, 96 + 10, total);
       const catW = textWidth('text', category);

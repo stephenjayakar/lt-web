@@ -33,6 +33,7 @@ import { initIcons } from './ui/icons';
 import { initSprites } from './ui/sprites';
 import { setBannerAudio } from './ui/banner';
 import { initBaseSurf } from './ui/base-surf';
+import { setHelpMenuGameRef } from './ui/help-menu';
 import { setMenuAudioManager } from './ui/menu';
 import { setEventChoiceAudio } from './ui/event-choice';
 import { initFonts } from './rendering/bmp-font';
@@ -684,6 +685,7 @@ async function main(): Promise<void> {
   setActionGameRef(() => gameState);
   setGameRef(gameState);
   setInfoMenuGameRef(gameState);
+  setHelpMenuGameRef(gameState);
   setMenuAudioManager(audioManager);
   setBannerAudio(audioManager);
   setEventChoiceAudio(audioManager);

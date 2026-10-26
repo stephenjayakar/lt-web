@@ -759,6 +759,10 @@ export class PrepTradeState extends State {
         sfx('Select 1');
         menu.setSelectedOption();
       }
+    } else if (event === 'INFO') {
+      // Python TradeState: INFO toggles the help box on the hovered item.
+      sfx(menu.infoFlag ? 'Info Out' : 'Info In');
+      menu.toggleInfo();
     }
   }
 
@@ -770,6 +774,7 @@ export class PrepTradeState extends State {
     const [ox, oy] = screenOrigin();
     this.bg?.draw(surf);
     this.menu?.draw(surf, ox, oy);
+    this.menu?.drawInfo(surf, ox, oy);
     return surf;
   }
 }
@@ -850,6 +855,15 @@ export class PrepMarketState extends State {
         this.displayMenu = buying ? this.buyMenu : this.sellMenu;
         this.displayMenu?.setTakesInput(true);
       }
+    } else if (event === 'INFO') {
+      // Python PrepMarketState: INFO toggles the item help box.
+      if ((this.mode === 'buy' || this.mode === 'sell') && this.displayMenu) {
+        this.displayMenu.toggleInfo();
+        sfx(this.displayMenu.infoFlag ? 'Info In' : 'Info Out');
+      }
+    } else if (event === 'BACK' && (this.mode === 'buy' || this.mode === 'sell') && this.displayMenu?.infoFlag) {
+      this.displayMenu.toggleInfo();
+      sfx('Info Out');
     } else if (event === 'BACK') {
       sfx('Select 4');
       if (this.mode === 'buy' || this.mode === 'sell') {
@@ -917,6 +931,7 @@ export class PrepMarketState extends State {
     const funds = getSprite('funds_display');
     if (funds) surf.blitImage(funds, 0, 0, funds.width, funds.height, ox + 10, oy + 160 - 24);
     drawTextRight(surf, String(game.getMoney()), ox + 61, oy + 160 - 20, null, 'text-blue');
+    if (this.displayMenu?.infoFlag) this.displayMenu.drawInfo(surf, ox, oy);
     return surf;
   }
 }

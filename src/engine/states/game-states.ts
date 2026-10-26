@@ -5425,6 +5425,9 @@ export class TradeState extends State {
         sfx('Select 1');
         menu.setSelectedOption();
       }
+    } else if (event === 'INFO') {
+      sfx(menu.infoFlag ? 'Info Out' : 'Info In');
+      menu.toggleInfo();
     }
   }
 
@@ -5440,6 +5443,7 @@ export class TradeState extends State {
       // Python TradeState is a MapState: menus.Trade draws over the map.
       const { x, y } = MenuScene.origin();
       this.menu.draw(surf, x, y);
+      this.menu.drawInfo(surf, x, y);
     }
     return surf;
   }
@@ -8939,9 +8943,14 @@ export class ShopState extends State {
         if (this.dialogReady()) this.leave();
         else this.dialog?.handleInput('SELECT');
       } else if (this.phase === 'preview') {
-        sfx('Select 4');
-        this.phase = 'close';
-        this.dialog = this.makeDialog(this.messages.leave);
+        if (this.menu?.infoFlag) {
+          this.menu.toggleInfo();
+          sfx('Info Out');
+        } else {
+          sfx('Select 4');
+          this.phase = 'close';
+          this.dialog = this.makeDialog(this.messages.leave);
+        }
       }
     } else if (event === 'BACK') {
       if (this.phase === 'open' || this.phase === 'close') {
@@ -8951,6 +8960,10 @@ export class ShopState extends State {
         sfx('Select 4');
         this.phase = 'close';
         this.dialog = this.makeDialog(this.messages.leave);
+      } else if ((this.phase === 'buy' || this.phase === 'sell' || this.phase === 'preview') && this.menu?.infoFlag) {
+        // Python ShopState: BACK first closes an open help box.
+        this.menu.toggleInfo();
+        sfx('Info Out');
       } else if (this.phase === 'buy' || this.phase === 'sell') {
         sfx('Select 4');
         this.phase = 'choice';
@@ -8961,6 +8974,11 @@ export class ShopState extends State {
         sfx('Select 4');
         this.phase = 'close';
         this.dialog = this.makeDialog(this.messages.leave);
+      }
+    } else if (event === 'INFO') {
+      if ((this.phase === 'buy' || this.phase === 'sell' || this.phase === 'preview') && this.menu) {
+        this.menu.toggleInfo();
+        sfx(this.menu.infoFlag ? 'Info In' : 'Info Out');
       }
     }
   }
@@ -9045,6 +9063,8 @@ export class ShopState extends State {
       }
     }
     if (this.phase === 'choice' && this.dialogReady()) this.choiceMenu?.draw(surf, ox, oy);
+    if (this.buyMenu?.infoFlag && this.menu === this.buyMenu) this.buyMenu.drawInfo(surf, ox, oy);
+    if (this.sellMenu?.infoFlag && this.menu === this.sellMenu) this.sellMenu.drawInfo(surf, ox, oy);
     return surf;
   }
 }

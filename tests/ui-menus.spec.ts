@@ -121,6 +121,17 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     await press(page, 'LEFT');
     await shot(page, 'info-slide', testInfo);
     await step(page, 20);
+    // INFO opens Python's help boxes (InfoGraph); arrows move between them.
+    await press(page, 'LEFT');
+    await step(page, 20);
+    await press(page, 'INFO');
+    await step(page, 20);
+    await shot(page, 'info-help-item', testInfo);
+    await press(page, 'DOWN', 'DOWN');
+    await step(page, 20);
+    await shot(page, 'info-help-stat', testInfo);
+    await press(page, 'INFO');
+    await step(page, 10);
     expect(await cssText(page)).toEqual([]);
   });
 
@@ -228,6 +239,13 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     await press(page, 'SELECT');
     await step(page, 40);
     await shot(page, 'shop-buy', testInfo);
+    // INFO shows Python's ItemHelpDialog for the hovered weapon.
+    await press(page, 'INFO');
+    await page.waitForTimeout(300);
+    await step(page, 20);
+    await shot(page, 'shop-buy-info', testInfo);
+    await press(page, 'INFO');
+    await step(page, 10);
     const before = await page.evaluate(() => (window as any).__gameRef.getMoney());
     await press(page, 'SELECT');
     await step(page, 30);
@@ -304,6 +322,9 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     await press(page, 'SELECT');
     await step(page, 4);
     await shot(page, 'map-trade', testInfo);
+    await press(page, 'BACK', 'INFO');
+    await step(page, 20);
+    await shot(page, 'map-trade-info', testInfo);
     expect(await cssText(page)).toEqual([]);
   });
 
