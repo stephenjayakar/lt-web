@@ -76,7 +76,8 @@ const PUNCTUATION = new Set(['.', ',', ';', '!', '?']);
 /** Placeholder char standing for an inline <icon> in the visible stream. */
 const ICON_CHAR = '\u0001';
 
-type Glyph = { ch: string; color: string; icon: string | null };
+/** A visible character with its tag-stack colour and font (Python TaggedText chunk). */
+type Glyph = { ch: string; color: string; font: string; icon: string | null };
 
 /** Python dialog.process_dialog_shorthand. */
 function processShorthand(text: string): string {
@@ -253,7 +254,10 @@ export class Dialog {
   // -------------------------------------------------------------------------
 
   private parse(body: string): void {
-    const colorStack = [this.fontColor];
+    // Python styled_text_parser: a font-name tag switches the font, a colour
+    // tag the colour; each `</>` pops one tag.
+    const tagStack: Array<{ color: string; font: string }> = [{ color: this.fontColor, font: this.fontType }];
+    const top = () => tagStack[tagStack.length - 1];
     let i = 0;
     while (i < body.length) {
       if (body[i] === '{') {
@@ -282,14 +286,14 @@ export class Dialog {
       if (body.startsWith('<icon>', i)) {
         const end = body.indexOf('</>', i + 6);
         if (end > i) {
-          this.glyphs.push({ ch: ICON_CHAR, color: colorStack[colorStack.length - 1], icon: body.slice(i + 6, end).trim() });
+          this.glyphs.push({ ch: ICON_CHAR, ...top(), icon: body.slice(i + 6, end).trim() });
           this.textCommands.push(ICON_CHAR);
           i = end + 3;
           continue;
         }
       }
       if (body.startsWith('</>', i)) {
-        if (colorStack.length > 1) colorStack.pop();
+        if (tagStack.length > 1) tagStack.pop();
         i += 3;
         continue;
       }
@@ -297,13 +301,18 @@ export class Dialog {
         const end = body.indexOf('>', i + 1);
         if (end > i) {
           const tag = body.slice(i + 1, end).trim().toLowerCase();
-          const font = fontFor(this.fontType);
-          colorStack.push(font?.hasColor(tag) ? tag : colorStack[colorStack.length - 1]);
+          const current = top();
+          if (!tag.includes('-') && areFontsReady() && FONT[tag]) {
+            tagStack.push({ color: current.color, font: tag });
+          } else {
+            const font = fontFor(current.font);
+            tagStack.push({ color: font?.hasColor(tag) ? tag : current.color, font: current.font });
+          }
           i = end + 1;
           continue;
         }
       }
-      this.glyphs.push({ ch: body[i], color: colorStack[colorStack.length - 1], icon: null });
+      this.glyphs.push({ ch: body[i], ...top(), icon: null });
       this.textCommands.push(body[i]);
       i += 1;
     }
@@ -312,16 +321,22 @@ export class Dialog {
   private glyphWidth(start: number, stop: number): number {
     let width = 0;
     let run = '';
-    for (let g = start; g < stop; g++) {
+    let runFont = this.fontType;
+    for (let g = start; g < stop && g < this.glyphs.length; g++) {
       const glyph = this.glyphs[g];
       if (glyph.icon) {
-        width += measure(this.fontType, run) + 16;
+        width += measure(runFont, run) + 16;
         run = '';
       } else {
+        if (glyph.font !== runFont) {
+          width += measure(runFont, run);
+          run = '';
+          runFont = glyph.font;
+        }
         run += glyph.ch;
       }
     }
-    return width + measure(this.fontType, run);
+    return width + measure(runFont, run);
   }
 
   /** Python Dialog.determine_width for portrait/autosized boxes. */
@@ -558,7 +573,8 @@ export class Dialog {
             if (this.state !== 'process') this.totalUpdates = 0;
           }
         } else {
-          while (this.state === 'process') {
+          // Python stops the burst once {starting_speed} restores a speed.
+          while (this.state === 'process' && this.textSpeedMs * this.speed === 0) {
             this.nextChar();
             if (this.currentState() === 'pause') this.state = 'process';
           }
@@ -643,12 +659,13 @@ export class Dialog {
     let cursorX = x;
     let run = '';
     let runColor = '';
+    let runFont = this.fontType;
     const flush = (): void => {
       if (!run) return;
       if (y >= clip[1] - 8 && y < clip[1] + clip[3]) {
-        surf.drawText(run, cursorX, y, runColor, this.fontType);
+        surf.drawText(run, cursorX, y, runColor, runFont);
       }
-      cursorX += measure(this.fontType, run);
+      cursorX += measure(runFont, run);
       run = '';
     };
     for (let g = start; g < stop && g < this.glyphs.length; g++) {
@@ -659,9 +676,10 @@ export class Dialog {
         cursorX += 16;
         continue;
       }
-      if (glyph.color !== runColor) {
+      if (glyph.color !== runColor || glyph.font !== runFont) {
         flush();
         runColor = glyph.color;
+        runFont = glyph.font;
       }
       run += glyph.ch;
     }
