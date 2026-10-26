@@ -196,5 +196,8 @@ The release gate is green: build, all four audits, the full serial suite,
   solved; each phase is solved against the HP earlier phases left (HP
   formulas, skill conditions, lifelink before a counter); live_to_serve heals
   X of the phase's requested ally heals after every strike; the AI's
-  multi_target items are one counter-less combat on the fork.
+  multi_target items are one counter-less combat on the fork; item heals in
+  combat land on the hit (items without damage deal none); splash-only
+  attackers carry their own HP between phases; shove impact events join
+  the strike's on_hit events in component order.
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.

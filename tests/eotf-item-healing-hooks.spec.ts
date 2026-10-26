@@ -124,6 +124,7 @@ test.describe('Embrace of the Fog item healing and restore hooks', () => {
       const { ActionLog } = await import('/src/engine/action.ts');
       const { applyCombatItemEndHooks } =
         await import('/src/combat/combat-lifecycle.ts');
+      const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
       const healer = game.units.get('Player');
       const target = game.units.get('Keeper');
       const old = {
@@ -158,13 +159,17 @@ test.describe('Embrace of the Fog item healing and restore hooks', () => {
         }
       };
 
+      // Python HealNoTargetRestrict.on_hit: ChangeHP lands with the hit (a
+      // negative strike damage), so the end-of-combat hooks heal nothing.
       target.currentHp = Math.max(1, target.maxHp - 10);
+      const healItem = new ItemObject(game.db.items.get('Make_Friends'));
+      const [healStrike] = new CombatPhaseSolver(() => 0, game).resolveGroup(
+        healer, healItem, null, null, [target], game.db, 'classic', game.board,
+      );
+      const healDamage = healStrike?.damage;
       const healGame = makeLifecycleGame();
       const healBefore = healGame.actionLog.actionIndex;
-      const healActions = applyCombatItemEndHooks(
-        healGame,
-        [mark(new ItemObject(game.db.items.get('Make_Friends')))] as any,
-      );
+      const healActions = applyCombatItemEndHooks(healGame, [mark(healItem)] as any);
       const healed = target.currentHp;
       rewind(healGame, healBefore);
       const healRewound = target.currentHp;
@@ -223,7 +228,7 @@ test.describe('Embrace of the Fog item healing and restore hooks', () => {
       target.finished = old.finished;
       target.hasMoved = old.hasMoved;
       return {
-        healActions, healed, healRewound,
+        healDamage, healActions, healed, healRewound,
         restoreActions, restored, restoreIdentity,
         refreshActions, refreshed, refreshRewound,
         afterCombatActions, pythonBugPreserved,
@@ -231,8 +236,9 @@ test.describe('Embrace of the Fog item healing and restore hooks', () => {
     });
 
     expect(result).toEqual({
-      healActions: 1,
-      healed: result.healRewound + 5,
+      healDamage: -5,
+      healActions: 0,
+      healed: result.healRewound,
       healRewound: result.healRewound,
       restoreActions: 2,
       restored: [0, 0],

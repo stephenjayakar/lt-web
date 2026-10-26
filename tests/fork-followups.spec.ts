@@ -555,4 +555,169 @@ test.describe('Python strike timing: what each phase is solved against', () => {
       combat: { selfHeal: 5 },
     });
   });
+
+  test('item heals in combat land on each hit, not at end of combat', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async ({ arenaSrc }) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const makeArena = new Function(`${arenaSrc}; return makeArena;`)();
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { applyCombatItemEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { healAmount } = await import('/src/combat/item-system.ts');
+      const arena = await makeArena(game, 3);
+      if (!arena.origin) return null;
+      const [x, y] = arena.origin;
+      const healer = arena.make('_HitHealer', 'enemy');
+      const ally = arena.make('_HitHealed', 'enemy');
+      game.board.setUnit(x, y, healer);
+      game.board.setUnit(x + 1, y, ally);
+      // A brave heal: two phases of heal 10 on an ally missing 15 HP.
+      const staff = new ItemObject({
+        nid: '_HitHealStaff', name: '_HitHealStaff', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['spell', null], ['target_ally', null], ['min_range', 1], ['max_range', 1],
+          ['heal', 10], ['brave', null]],
+      } as any);
+      staff.owner = healer;
+      healer.items = [staff];
+      ally.currentHp = 65;
+      const heal = healAmount(healer, staff, ally, game);
+      const before = game.actionLog.actionIndex;
+      const combat = new MapCombat(
+        healer, staff, ally, null, game.db, 'classic', game.board, null,
+        { mainDefender: null, splashDefenders: [ally] }, game,
+      );
+      let guard = 0;
+      while (!combat.update(1000) && guard++ < 500) { /* play out */ }
+      const damages = (combat as any).strikes.map((strike: any) => strike.damage);
+      combat.applyResults(game.actionLog);
+      const afterCombat = ally.currentHp;
+      const endHookActions = applyCombatItemEndHooks(game, (combat as any).strikes);
+      const afterHooks = ally.currentHp;
+      while (game.actionLog.actionIndex > before) game.actionLog.runActionBackward();
+      const rewound = ally.currentHp;
+      arena.cleanup();
+      return { heal, damages, afterCombat, endHookActions, afterHooks, rewound };
+    }, { arenaSrc: ARENA });
+    expect(result).toEqual({
+      heal: 10,
+      damages: [-10, -10],
+      afterCombat: 80,
+      endHookActions: 0,
+      afterHooks: 80,
+      rewound: 65,
+    });
+  });
+
+  test('a splash-only attacker carries its own lifelink HP into later phases', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async ({ arenaSrc, sword }) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const makeArena = new Function(`${arenaSrc}; return makeArena;`)();
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { CombatPhaseSolver } = await import('/src/combat/combat-solver.ts');
+      const arena = await makeArena(game, 3);
+      if (!arena.origin) return null;
+      const [x, y] = arena.origin;
+      const attacker = arena.make('_SplashLeech', 'player');
+      const target = arena.make('_SplashTarget', 'enemy');
+      game.board.setUnit(x, y, attacker);
+      game.board.setUnit(x + 1, y, target);
+      for (const unit of [attacker, target]) {
+        unit.stats.STR = 0;
+        unit.stats.DEF = 0;
+        unit.stats.SKL = 30;
+        unit.stats.LCK = 0;
+      }
+      attacker.skills = [new SkillObject({
+        nid: '_SplashLeechSkill', name: '', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['lifelink', 1.0], ['dynamic_damage', '(unit.get_max_hp() - unit.get_hp()) // 2']],
+      } as any)];
+      const brave = new ItemObject({
+        nid: '_SplashBrave', name: '_SplashBrave', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [...sword.filter(([nid]: [string, unknown]) => nid !== 'damage'),
+          ['damage', 5], ['brave', null]],
+      } as any);
+      brave.owner = attacker;
+      attacker.items = [brave];
+      attacker.equippedWeapon = brave;
+      attacker.currentHp = 40;
+      // No main target: both brave hits are splash-only phases. The first
+      // heals the attacker to full, so the second's HP formula adds nothing.
+      const strikes = new CombatPhaseSolver(() => 0, game).resolveGroup(
+        attacker, brave, null, null, [target], game.db, 'classic', game.board,
+      ).map((strike: any) => strike.damage);
+      const hp = attacker.currentHp;
+      arena.cleanup();
+      return { strikes, hp };
+    }, { arenaSrc: ARENA, sword: SWORD });
+    // EOtF doubles might: 2 * (5 + (80 - 40) // 2) = 50, then 2 * (5 + 0) = 10.
+    expect(result).toEqual({ strikes: [50, 10], hp: 40 });
+  });
+
+  test('a shove impact event joins its strike\'s on_hit events in component order', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async ({ arenaSrc, sword }) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const makeArena = new Function(`${arenaSrc}; return makeArena;`)();
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const { queueStrikeItemEvents } = await import('/src/combat/combat-lifecycle.ts');
+      for (const nid of ['_ShoveImpact', '_ShoveOnHit']) {
+        game.db.events.set(nid, {
+          name: nid, nid, trigger: nid, level_nid: null, condition: 'True',
+          only_once: false, priority: 0, _source: ['wait;1'],
+        });
+      }
+      const arena = await makeArena(game, 4);
+      if (!arena.origin) return null;
+      const [x, y] = arena.origin;
+      const user = arena.make('_ImpactShover', 'player');
+      const target = arena.make('_ImpactTarget', 'enemy');
+      const wall = arena.make('_ImpactWall', 'enemy');
+      game.board.setUnit(x, y, user);
+      game.board.setUnit(x + 1, y, target);
+      game.board.setUnit(x + 2, y, wall);
+      target.items = [];
+      user.stats.SKL = 30;
+      const shove = ['shove_flex_stops_event', { magnitude: 2, impact_event: '_ShoveImpact' }];
+      const onHit = ['event_on_hit', '_ShoveOnHit'];
+      const run = (extra: unknown[][]) => {
+        const item = new ItemObject({
+          nid: '_ImpactItem', name: '_ImpactItem', desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [...sword, ...extra],
+        } as any);
+        item.owner = user;
+        user.items = [item];
+        user.equippedWeapon = item;
+        const combat = new MapCombat(
+          user, item, target, null, game.db, 'grandmaster', game.board, null, undefined, game,
+          { deferSolve: true },
+        );
+        const queue = game.eventManager.eventQueue;
+        combat.strikeEventHook = (phase: any[]) => {
+          const start = queue.length;
+          for (const strike of phase) queueStrikeItemEvents(game, strike, 0);
+          return queue.splice(start);
+        };
+        let guard = 0;
+        while (!(combat as any).pendingStrikeEvents && guard++ < 50) combat.update(1000);
+        const events = ((combat as any).pendingStrikeEvents ?? []).map((event: any) => event.nid);
+        const impact = ((combat as any).pendingStrikeEvents ?? [])
+          .find((event: any) => event.nid === '_ShoveImpact')?.trigger;
+        return { events, occupant: impact?.unit2?.nid ?? null, leftover: queue.length };
+      };
+      const out = { shoveFirst: run([shove, onHit]), onHitFirst: run([onHit, shove]) };
+      arena.cleanup();
+      return out;
+    }, { arenaSrc: ARENA, sword: SWORD });
+    expect(result).toEqual({
+      shoveFirst: { events: ['_ShoveImpact', '_ShoveOnHit'], occupant: '_ImpactWall', leftover: 0 },
+      onHitFirst: { events: ['_ShoveOnHit', '_ShoveImpact'], occupant: '_ImpactWall', leftover: 0 },
+    });
+  });
 });
