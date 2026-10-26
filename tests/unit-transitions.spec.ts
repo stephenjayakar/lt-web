@@ -227,3 +227,24 @@ test('move_unit follows the walking unit with the cursor', async ({ page }) => {
   for (const sample of samples) expect(sample.cursor).toEqual(sample.unit);
   expect(new Set(samples.map((sample) => sample.unit.join(','))).size).toBeGreaterThan(1);
 });
+
+// Python move_unit (normal): no path -> logged error, the unit stays put.
+test('move_unit with no path leaves the unit where it is', async ({ page }) => {
+  await boot(page);
+  const target = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const seth = g.units.get('Seth');
+    for (let y = 0; y < g.board.height; y++) {
+      for (let x = 0; x < g.board.width; x++) {
+        if (g.board.getUnit(x, y)) continue;
+        const path = g.pathSystem.getPath(seth, x, y, g.board);
+        if (!path || path.length === 0) return [x, y];
+      }
+    }
+    return null;
+  });
+  expect(target).not.toBeNull();
+  await startEvent(page, 'TestNoPath', [`move_unit;Seth;${target![0]},${target![1]}`, 'game_var;_after;1']);
+  const state = await fx(page, 'Seth');
+  expect(state).toMatchObject({ position: [4, 4], afterVar: 1 });
+});

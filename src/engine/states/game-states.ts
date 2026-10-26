@@ -12601,8 +12601,10 @@ export class EventState extends State {
       const stop = path[path.length - 1];
       target = [stop[0], stop[1]];
     }
+    // Python Move with no path (event._move_unit) leaves the unit in place.
+    if (!path || path.length === 0) return false;
     game.actionLog.doAction(new WarpUnitAction(unit, target, game.board));
-    if (!path || path.length <= 1) {
+    if (path.length <= 1) {
       if (interrupted.surprise) game.audioManager?.playSfx?.('Surprise');
       return false;
     }
@@ -13735,6 +13737,16 @@ export class EventState extends State {
         if (!targetPos) {
           this.advancePointer();
           return false;
+        }
+        if (movementType === 'normal') {
+          // Python move_unit: a normal move needs a path (even when skipped);
+          // without one it logs an error and the unit stays put.
+          const walk = game.pathSystem?.getPath(unit, targetPos[0], targetPos[1], game.board);
+          if (!walk || walk.length === 0) {
+            console.error(`move_unit: no valid path for ${unit.nid} from ${unit.position} to ${targetPos}`);
+            this.advancePointer();
+            return false;
+          }
         }
         if (this.skipMode || movementType === 'immediate') {
           game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
