@@ -63,6 +63,13 @@ export const ENGINE_ASSETS = [
   'default.ltproj/resources/fonts',
 ];
 
+/**
+ * Engine sprites of EOtF's private engine fork (public/fork-sprites in this
+ * repo), served under /game-data/fork-sprites/ and packed with the engine
+ * assets (src/ui/sprites.ts).
+ */
+export const FORK_SPRITES_PREFIX = 'fork-sprites';
+
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 /**
  * Project resource folders whose media (not their JSON manifests) moves from
@@ -124,11 +131,12 @@ export function loadableMusic(musicDir) {
  * Collect every file the hosted game may request, keyed by its path under
  * /game-data/.
  *
- * @param {{ projectDir: string, engineDir?: string | null }} opts
+ * @param {{ projectDir: string, engineDir?: string | null, forkDir?: string | null }} opts
+ *   forkDir  public/fork-sprites, packed as /game-data/fork-sprites/.
  * @returns {{ project: string, files: { rel: string, abs: string, size: number }[],
  *             excluded: { rel: string, size: number, reason: string }[] }}
  */
-export function collectFiles({ projectDir, engineDir = null }) {
+export function collectFiles({ projectDir, engineDir = null, forkDir = null }) {
   const project = basename(projectDir);
   if (!project.endsWith('.ltproj')) throw new Error(`${projectDir} is not a .ltproj directory`);
   const root = realpathSync(projectDir);
@@ -163,6 +171,16 @@ export function collectFiles({ projectDir, engineDir = null }) {
         if (JUNK.has(basename(abs))) excluded.push({ rel, size, reason: 'os/cache junk' });
         else files.push({ rel, abs, size });
       }
+    }
+  }
+
+  if (forkDir && existsSync(forkDir)) {
+    const forkRoot = realpathSync(forkDir);
+    for (const abs of walk(forkRoot)) {
+      const rel = `${FORK_SPRITES_PREFIX}/${toPosix(relative(forkRoot, abs))}`;
+      const size = statSync(abs).size;
+      if (JUNK.has(basename(abs))) excluded.push({ rel, size, reason: 'os/cache junk' });
+      else files.push({ rel, abs, size });
     }
   }
 
@@ -279,7 +297,7 @@ function makePngOptimizer(cacheDir) {
 /**
  * Build all packs.
  *
- * @param {{ projectDir: string, engineDir?: string | null, pngopt?: boolean,
+ * @param {{ projectDir: string, engineDir?: string | null, forkDir?: string | null, pngopt?: boolean,
  *           pngCacheDir?: string | null, chunkMax?: number,
  *           musicLoad?: 'demand' | 'background',
  *           overrides?: Map<string, Buffer> }} opts
@@ -289,7 +307,7 @@ function makePngOptimizer(cacheDir) {
 export function buildPacks(opts) {
   const { projectDir, engineDir = null, pngopt = true, chunkMax = CHUNK_MAX, musicLoad = 'background' } = opts;
   const pngCacheDir = opts.pngCacheDir === undefined ? join(tmpdir(), 'lt-web-pngopt-v1') : opts.pngCacheDir;
-  const { project, files, excluded } = collectFiles({ projectDir, engineDir });
+  const { project, files, excluded } = collectFiles({ projectDir, engineDir, forkDir: opts.forkDir ?? null });
   const shrinkPng = pngopt ? makePngOptimizer(pngCacheDir) : (b) => b;
 
   const entries = files.map((f) => {

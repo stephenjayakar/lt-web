@@ -55,6 +55,8 @@ const opt = (name, fallback) => {
 
 const projectDir = resolve(root, opt('--project', 'lt-maker/eotf.ltproj'));
 const engineDir = resolve(root, opt('--engine', 'lt-maker'));
+// EOtF engine-fork sprites ship in the engine pack (/game-data/fork-sprites/).
+const forkDir = resolve(root, 'public/fork-sprites');
 const convexUrl = opt('--convex-url', process.env.CONVEX_URL || PROD_CONVEX_URL);
 const pngopt = !flag('--no-pngopt');
 const musicLoad = flag('--music-on-demand') ? 'demand' : 'background';
@@ -144,7 +146,7 @@ if (musicQuality !== null) {
 // --- 3. game data packs -------------------------------------------------------
 console.log(`\nPacking ${projectDir} (+ engine assets from ${engineDir})…`);
 const t0 = Date.now();
-const { project, packs, excluded } = buildPacks({ projectDir, engineDir, pngopt, musicLoad, overrides });
+const { project, packs, excluded } = buildPacks({ projectDir, engineDir, forkDir, pngopt, musicLoad, overrides });
 const packDir = join(dist, 'packs');
 mkdirSync(packDir, { recursive: true });
 const written = new Set();

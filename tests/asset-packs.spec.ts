@@ -151,6 +151,23 @@ test.describe('asset pack builder', () => {
     }
   });
 
+  test('EOtF engine-fork sprites ride in the engine pack under fork-sprites/', () => {
+    const fx = makeFixture();
+    try {
+      const forkDir = join(fx.root, 'fork-sprites');
+      mkdirSync(join(forkDir, 'menus'), { recursive: true });
+      writeFileSync(join(forkDir, 'menus', 'unit_info_bg.png'), rgbaPng(8, 6));
+      writeFileSync(join(forkDir, '.DS_Store'), 'junk');
+      const { packs, excluded } = buildPacks({ ...fx, forkDir, pngCacheDir: null, chunkMax: CHUNK }) as Built;
+      const engine = packs.find((p) => p.name === 'engine')!;
+      expect(engine.load).toBe('boot');
+      expect(engine.files).toContain('fork-sprites/menus/unit_info_bg.png');
+      expect(excluded.map((e) => e.rel)).toContain('fork-sprites/.DS_Store');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
   test('packs are deterministic, chunked under the limit, and content-hashed', () => {
     const fx = makeFixture();
     try {

@@ -39,15 +39,15 @@ test.describe('EOtF engine fork sprites', () => {
       };
     });
     expect(result.fork).toBe(true);
-    expect(result.unitInfo).toBe('/fork-sprites/menus/unit_info_bg.png');
+    expect(result.unitInfo).toBe('/game-data/fork-sprites/menus/unit_info_bg.png');
     // Identical in both engines: stays on the upstream copy.
     expect(result.menuBase).toBe('/game-data/sprites/menus/menu_bg_base.png');
-    expect(result.parchmentUrl).toBe('/fork-sprites/menus/menu_bg_parchment.png');
+    expect(result.parchmentUrl).toBe('/game-data/fork-sprites/menus/menu_bg_parchment.png');
     expect(result.bgSize).toEqual([123, 60]);
     expect(result.parchmentSize).toEqual([48, 30]);
     expect(result.panelSize).toEqual([123, 60]);
-    expect(result.extraPurple).toBe('/fork-sprites/damage_numbers/damage_numbers_extra_purple.png');
-    expect(result.levelScreen2).toBe('/fork-sprites/exp_displays/LevelScreen2.png');
+    expect(result.extraPurple).toBe('/game-data/fork-sprites/damage_numbers/damage_numbers_extra_purple.png');
+    expect(result.levelScreen2).toBe('/game-data/fork-sprites/exp_displays/LevelScreen2.png');
   });
 
   test('upstream projects keep the upstream engine sprites', async ({ page }) => {

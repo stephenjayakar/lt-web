@@ -61,10 +61,11 @@ function spriteIndex(root: string): Record<string, string> {
 /**
  * Engine sprites (lt-maker/sprites, served at /game-data/sprites/) and each
  * project's resources/custom_sprites, which Python loads on top of them.
- * `fork` indexes public/fork-sprites/ (served at /fork-sprites/): engine
- * sprites that only exist in the private engine fork EOtF ships on, such as
- * the unit dex's selector glow. They are used when upstream has no sprite of
- * that name.
+ * `fork` indexes public/fork-sprites/ (served at /game-data/fork-sprites/ and
+ * packed with the engine assets): the private engine fork EOtF ships on has
+ * its own copies of some engine sprites and a few of its own, such as the
+ * unit dex's selector glow. A project on the fork prefers them; other
+ * projects use them only when upstream has no sprite of that name.
  */
 function discoverSprites(): {
   engine: Record<string, string>;
@@ -180,7 +181,8 @@ function swPrecacheManifest(): Plugin {
  * client to src/packs/.
  */
 const siteBuild = process.env.LT_SITE_BUILD === '1';
-const SITE_EXCLUDED_PUBLIC = new Set(['game-data', 'bundles', 'soak-seed.json']);
+// fork-sprites ship inside the engine pack (scripts/lib/asset-packs.mjs).
+const SITE_EXCLUDED_PUBLIC = new Set(['game-data', 'bundles', 'fork-sprites', 'soak-seed.json']);
 
 function copyPublicShell(): Plugin {
   let config: ResolvedConfig;
@@ -235,9 +237,13 @@ export default defineConfig({
       name: 'serve-game-data',
       configureServer(server) {
         const ltMakerDir = resolve(__dirname, 'lt-maker');
+        const forkSpritesDir = resolve(__dirname, 'public/fork-sprites');
 
         server.middlewares.use('/game-data', (req, res, next) => {
-          const filePath = join(ltMakerDir, decodeURIComponent(req.url ?? '/'));
+          const url = decodeURIComponent(req.url ?? '/');
+          const filePath = url.startsWith('/fork-sprites/')
+            ? join(forkSpritesDir, url.slice('/fork-sprites/'.length))
+            : join(ltMakerDir, url);
 
           stat(filePath, (err, stats) => {
             if (err || !stats?.isFile()) {

@@ -18,7 +18,7 @@
 
 import { cpSync, existsSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
-import { ENGINE_ASSETS } from './lib/asset-packs.mjs';
+import { ENGINE_ASSETS, FORK_SPRITES_PREFIX } from './lib/asset-packs.mjs';
 
 const ltMakerDir = resolve(process.argv[2] ?? 'lt-maker');
 const outDir = resolve('public/game-data');
@@ -51,6 +51,13 @@ for (const relPath of ENGINE_ASSETS) {
   cpSync(src, dest, { recursive: true });
   console.log(`  staged: ${relPath}`);
   copied += 1;
+}
+
+// EOtF engine-fork sprites (src/ui/sprites.ts requests /game-data/fork-sprites/).
+const forkDir = resolve('public/fork-sprites');
+if (existsSync(forkDir)) {
+  cpSync(forkDir, join(outDir, FORK_SPRITES_PREFIX), { recursive: true });
+  console.log(`  staged: ${FORK_SPRITES_PREFIX}`);
 }
 
 console.log(`\nStaged ${copied}/${ENGINE_ASSETS.length} engine asset roots into ${outDir}`);

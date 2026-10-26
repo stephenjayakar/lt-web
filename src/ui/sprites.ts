@@ -48,7 +48,7 @@ const encodePath = (path: string): string => path.split('/').map(encodeURICompon
 /** URL of the fork's copy of an engine sprite, or null when the fork has none. */
 function forkUrl(name: string): string | null {
   const fork = FORK[name];
-  return fork ? `/fork-sprites/${encodePath(fork)}` : null;
+  return fork ? `${engineBase}/fork-sprites/${encodePath(fork)}` : null;
 }
 
 /**
