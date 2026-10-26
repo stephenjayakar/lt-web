@@ -288,6 +288,64 @@ test.describe('EOtF engine fork combat hooks', () => {
     });
   });
 
+  test('the AI aims a multi_target item as one counter-less combat that strikes once', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (arenaSrc) => {
+      const game = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      // eslint-disable-next-line no-new-func
+      const makeArena = new Function(`${arenaSrc}; return makeArena;`)();
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const arena = await makeArena(game, 4);
+      if (!arena.origin) return null;
+      const [x, y] = arena.origin;
+      const caster = arena.make('_AiSearCaster', 'enemy');
+      const foe = arena.make('_AiSearFoe', 'player');
+      for (const unit of [caster, foe]) {
+        game.units.set(unit.nid, unit);
+        unit.skills = [];
+        unit.stats.HP = 80;
+        unit.currentHp = 80;
+      }
+      game.board.setUnit(x, y, caster);
+      game.board.setUnit(x + 1, y, foe);
+      // Sear: multi_target 3. The foe's own weapon could counter at range 1.
+      const sear = new ItemObject(game.db.items.get('Sear'));
+      sear.owner = caster;
+      caster.items = [sear];
+      const base = game.units.get('Player').equippedWeapon;
+      const sword = new ItemObject({
+        nid: '_AiSearCounter', name: '_AiSearCounter', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ...[...base.components.entries()].filter(([nid]: [string, unknown]) =>
+            !['min_range', 'max_range', 'prf_unit', 'uses', 'c_uses'].includes(nid)),
+          ['min_range', 1], ['max_range', 1],
+        ],
+      } as any);
+      sword.owner = foe;
+      foe.items = [sword];
+      foe.equippedWeapon = sword;
+      foe.wexp = { ...game.units.get('Player').wexp };
+      const ai = game.state.allStates.get('ai');
+      (ai as any).beginAICombat(caster, foe, sear);
+      h.stepFrames(2, null);
+      const combat = game.state.allStates.get('combat')?.combat;
+      if (!combat) return { combat: null, stack: game.state.getStackNames() };
+      let guard = 0;
+      while (!combat.update(1000) && guard++ < 500) { /* play out */ }
+      return {
+        primary: combat.primaryDefender?.nid ?? null,
+        defenders: combat.defenders.map((unit: any) => unit.nid),
+        strikes: combat.strikes.map((strike: any) => `${strike.attacker.nid}>${strike.defender.nid}`),
+      };
+    }, ARENA);
+    expect(result).toEqual({
+      primary: null,
+      defenders: ['_AiSearFoe'],
+      strikes: ['_AiSearCaster>_AiSearFoe'],
+    });
+  });
+
   test('weapon targeting collects multi_target picks and opens one grouped combat', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(async (arenaSrc) => {

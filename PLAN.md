@@ -191,4 +191,10 @@ The release gate is green: build, all four audits, the full serial suite,
   phase alive; AI canto retreats and event moves stop on interrupt regions;
   `choice;...;expression` re-evaluates every frame; battle animations draw no
   extra-damage digits (the fork's AnimationCombat has none).
+- [x] Strike timing (`tests/fork-followups.spec.ts` "Python strike timing"):
+  on-hit shove/swap/pivot/draw_back destinations are fixed when their phase is
+  solved; each phase is solved against the HP earlier phases left (HP
+  formulas, skill conditions, lifelink before a counter); live_to_serve heals
+  X of the phase's requested ally heals after every strike; the AI's
+  multi_target items are one counter-less combat on the fork.
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.

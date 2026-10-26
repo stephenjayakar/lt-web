@@ -79,14 +79,18 @@ project.
 
 ## Remaining (not changed)
 
-- AI multi_target repeats.
+- (Fixed in `fix/dev-combat`: AI multi_target. Python's AI aims
+  `[target] * num_targets`; the fork merges them into one counter-less splash
+  combat, which the web strikes once per phase. Whether the fork strikes a
+  repeated position more than once is unknown without its source.)
 - Fog ambush doesn't check interrupt regions.
 - Choice/table ignoring an authored bg (EOtF never sets one); `{v:}` None fall-through.
 - (Fixed in `qa/fork-followups`: shove on hit, mid-combat weapon break, defender
   exp, Tile phase skipping, AI canto/event-move interrupts, lazy choice
   expressions, no extra-damage digits in battle animations.)
-- live_to_serve totals HP actually gained (Python totals requested heal);
-  per-sub-combat ally healing; skill conditions see pre-combat HP during a fight.
+- (Fixed in `fix/dev-combat`: live_to_serve totals the phase's requested ally
+  heals after every strike; skill conditions and formulas see the HP earlier
+  phases left; shove destinations are fixed at solve time.)
 - Fork bug kept as a deliberate deviation: the per-unit level-cap modifier survives
   save/load in the web (the fork forgets it).
 

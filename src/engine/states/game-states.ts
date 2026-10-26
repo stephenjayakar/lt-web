@@ -6521,7 +6521,9 @@ export function resolveForkMultiTargetGroup(
     for (const target of [resolved.mainTarget, ...resolved.splash]) {
       if (!target) continue;
       const unit = game.board.getUnit(target[0], target[1]) as UnitObject | null;
-      if (unit) splashDefenders.push(unit);
+      // A position chosen again (the AI's `[target] * num_targets`,
+      // allow_same_target) joins the combat once.
+      if (unit && !splashDefenders.includes(unit)) splashDefenders.push(unit);
     }
   }
   return { representative: splashDefenders[0] ?? null, mainDefender: null, splashDefenders };
@@ -8928,6 +8930,18 @@ export class AIState extends MapState {
       game.actionLog.doAction(new BringToTopItemAction(attacker, weapon));
     }
     if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
+    // Python interaction.start_combat aims a multi_target item at
+    // `[target] * num_targets`; EOtF's fork engage merges those positions
+    // into one splash list with no main target: a single counter-less
+    // combat that strikes the target once per phase and spends one use.
+    const wanted = numTargets(attacker, weapon);
+    if (isForkEngine() && wanted > 1 && defender.position) {
+      const [x, y] = defender.position;
+      game.memory.set(
+        'combat_multi_target_positions',
+        Array.from({ length: wanted }, () => [x, y] as [number, number]),
+      );
+    }
 
     // CombatState.begin() reads these to set up the MapCombat instance
     game.selectedUnit = attacker;
