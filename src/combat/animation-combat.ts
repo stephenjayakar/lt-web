@@ -461,7 +461,10 @@ export class AnimationCombat implements BattleAnimOwner {
     switch (this.state) {
       case 'init': this.updateInit(); break;
       case 'red_cursor':
-        if (skip || this.stateTimer > 400) this.setState('fade_in');
+        if (skip || this.stateTimer > 400) {
+          this.game?.cursor?.combatHide?.();
+          this.setState('fade_in');
+        }
         break;
       case 'fade_in': this.updateFadeIn(); break;
       case 'entrance': this.updateEntrance(); break;
@@ -564,7 +567,13 @@ export class AnimationCombat implements BattleAnimOwner {
     // spritesheets so placeholder frames never show.
     const leftReady = this.leftAnim.getDrawData().mainFrame != null;
     const rightReady = this.rightAnim.getDrawData().mainFrame != null;
-    if ((leftReady && rightReady) || this.stateTimer >= SPRITE_LOAD_WAIT_MS) this.setState('red_cursor');
+    if ((leftReady && rightReady) || this.stateTimer >= SPRITE_LOAD_WAIT_MS) {
+      // red_cursor: the red combat cursor on the defender for 400 ms.
+      const cursor = this.game?.cursor;
+      cursor?.setPos?.(this.viewPos[0], this.viewPos[1]);
+      cursor?.combatShow?.();
+      this.setState('red_cursor');
+    }
   }
 
   /** build_viewbox */

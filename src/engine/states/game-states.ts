@@ -7278,6 +7278,7 @@ export class CombatState extends State {
 
         // Restore cursor and HUD visibility (hidden at combat start)
         game.cursor.visible = true;
+        game.cursor.combatDraw = false;
         game.hud.visible = true;
 
         // Clear combat animation offsets

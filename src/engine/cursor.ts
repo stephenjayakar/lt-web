@@ -63,6 +63,21 @@ export class Cursor {
   /** Whether the cursor is drawn. */
   visible: boolean = true;
 
+  /** LevelCursorDrawState.Combat: the red cursor row (combat_show). */
+  combatDraw: boolean = false;
+
+  /** Python cursor.combat_show(): show the red combat cursor. */
+  combatShow(): void {
+    this.visible = true;
+    this.combatDraw = true;
+  }
+
+  /** Python cursor.hide() after the red cursor; back to the normal row. */
+  combatHide(): void {
+    this.visible = false;
+    this.combatDraw = false;
+  }
+
   /** Loaded sprite sheet image (null until loaded). */
   private spriteSheet: HTMLImageElement | null = null;
 
@@ -154,7 +169,7 @@ export class Cursor {
       // Use the actual cursor sprite sheet
       const frameIdx = ANIM_SEQUENCE[this.animCounter]; // 0, 1, or 2
       const srcX = frameIdx * FRAME_SIZE;
-      const srcY = 0; // Row 0 = passive cursor (default)
+      const srcY = this.combatDraw ? FRAME_SIZE : 0; // Row 1 = red combat cursor
 
       surf.blitImage(
         this.spriteSheet,
