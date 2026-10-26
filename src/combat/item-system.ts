@@ -28,7 +28,6 @@ import {
   setItemComponentEntriesEvaluator,
 } from '../events/event-manager';
 import type { CombatStrike } from './combat-solver';
-import { isForkEngine } from '../engine/engine-flavor';
 import { evaluateEquation, itemIsMagic } from './combat-calcs';
 import {
   alternateSplash,

@@ -12,7 +12,6 @@ import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import { isForkEngine } from '../engine/engine-flavor';
 import { evaluateCondition, evaluateExpression } from '../events/event-manager';
-import { isForkEngine } from '../engine/engine-flavor';
 
 export type SkillFactory = (nid: string) => SkillObject | null;
 
