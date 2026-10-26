@@ -17,8 +17,29 @@ import {
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS, isFavorited, setFavorited } from '../engine/records';
-import { canCounterattack, itemIsMagic } from '../combat/combat-calcs';
-import { unitHasTag, unitTags } from '../combat/skill-system';
+import { itemIsMagic, pythonCombatCalcsModule } from '../combat/combat-calcs';
+import { inventoryCapacityOffsets, movementType, unitHasTag, unitTags } from '../combat/skill-system';
+import { inventoryFull } from '../combat/item-system';
+import {
+  BUILTINS,
+  MATH_MODULE,
+  NOT_FOUND,
+  PyException,
+  pyFunction,
+  typeName,
+  describePythonError,
+  evaluatePythonRaw,
+  isPythonError,
+  makeTuple,
+  markCounter,
+  pyBool,
+  pyRepr,
+  pyStr,
+  scopeFromRecord,
+  toArray,
+  toHostValue,
+  type RootScope,
+} from './py-expr';
 
 type ItemAvailabilityEvaluator = (
   unit: any,
@@ -38,6 +59,14 @@ type ItemComponentEntriesEvaluator = (
 // audit tests. A lexical binding would be in its TDZ at that point.
 var itemAvailabilityEvaluator: ItemAvailabilityEvaluator | null | undefined;
 var itemComponentEntriesEvaluator: ItemComponentEntriesEvaluator | null | undefined;
+var skillConditionEvaluator: SkillConditionEvaluator | null | undefined;
+
+type SkillConditionEvaluator = (skill: any, unit: any, item: any, game?: any) => boolean;
+
+/** Register Python skill_system.condition (see skill-system.ts). */
+export function setSkillConditionEvaluator(evaluator: SkillConditionEvaluator): void {
+  skillConditionEvaluator = evaluator;
+}
 
 /**
  * Register item_system.available without importing the item dispatcher here.
@@ -486,325 +515,17 @@ export class GameEvent {
 }
 
 // ============================================================
-// Condition Evaluator
+// Python expression evaluation
 // ============================================================
-
-function pythonTruthy(value: any): boolean {
-  if (value === null || value === undefined || value === false) return false;
-  if (typeof value === 'number') return value !== 0 && !Number.isNaN(value);
-  if (typeof value === 'string' || Array.isArray(value)) return value.length > 0;
-  if (value instanceof Map || value instanceof Set) return value.size > 0;
-  return true;
-}
-
-/**
- * Evaluate a condition string from event data.
- * 
- * Supports a subset of the Python conditions used in LT:
- * - "True" / "False" / "1" / "0" / ""
- * - "game.turncount == N" / "game.turncount >= N" etc.
- * - "unit.nid == 'Name'" / "unit1.nid == 'Name'"
- * - "unit2.nid == 'Name'" / "unit.team == 'player'"
- * - "game.check_dead('Name')" / "check_dead('Name')"
- * - "not <condition>"
- * - "A and B" / "A or B"
- * - "region.nid == 'Name'"
- * - "check_pair('A', 'B')" — checks if unit1/unit2 match A/B in either order
- * - Simple variable lookups in gameVars/levelVars
- */
-export function evaluateCondition(
-  condition: string,
-  context: ConditionContext,
-): boolean {
-  const trimmed = condition.trim();
-
-  // Empty condition or literal True
-  if (trimmed === '' || trimmed === 'True' || trimmed === 'true' || trimmed === '1') {
-    return true;
-  }
-
-  // Literal False
-  if (trimmed === 'False' || trimmed === 'false' || trimmed === '0') {
-    return false;
-  }
-
-  // Handle 'and' / 'or' (split at top level, respecting parens)
-  const andParts = splitAtTopLevel(trimmed, ' and ');
-  if (andParts.length > 1) {
-    return andParts.every(part => evaluateCondition(part, context));
-  }
-
-  const orParts = splitAtTopLevel(trimmed, ' or ');
-  if (orParts.length > 1) {
-    return orParts.some(part => evaluateCondition(part, context));
-  }
-
-  // Negation: "not <expr>"
-  if (trimmed.toLowerCase().startsWith('not ')) {
-    return !evaluateCondition(trimmed.slice(4), context);
-  }
-
-  // Strip outer parentheses
-  if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
-    const inner = trimmed.slice(1, -1);
-    // Only strip if the parens are balanced
-    if (findMatchingParen(trimmed, 0) === trimmed.length - 1) {
-      return evaluateCondition(inner, context);
-    }
-  }
-
-  // 'X' in unit.tags / 'X' in unit1.tags / 'X' in unit2.tags (Python `in` for lists)
-  const inMatch = trimmed.match(/^['"](.+?)['"]\s+in\s+(.+)$/);
-  if (inMatch) {
-    const needle = inMatch[1];
-    const haystack = resolvePath(inMatch[2], context);
-    if (Array.isArray(haystack)) return haystack.includes(needle);
-    if (typeof haystack === 'string') return haystack.includes(needle);
-    if (haystack instanceof Set || haystack instanceof Map) {
-      return haystack.has(needle);
-    }
-    // Method-call haystacks such as game.game_vars.get('Active_Stratagems')
-    // are outside resolvePath's dotted-property subset. Let the full Python
-    // expression fallback translate their membership instead of silently
-    // treating them as absent.
-    const fallback = evaluateWithJsFallback(trimmed, context, false);
-    if (fallback !== undefined) return !!fallback;
-    return false;
-  }
-
-  // 'X' not in unit.tags
-  const notInMatch = trimmed.match(/^['"](.+?)['"]\s+not\s+in\s+(.+)$/);
-  if (notInMatch) {
-    const needle = notInMatch[1];
-    const haystack = resolvePath(notInMatch[2], context);
-    if (Array.isArray(haystack)) return !haystack.includes(needle);
-    if (typeof haystack === 'string') return !haystack.includes(needle);
-    if (haystack instanceof Set || haystack instanceof Map) {
-      return !haystack.has(needle);
-    }
-    const fallback = evaluateWithJsFallback(trimmed, context, false);
-    if (fallback !== undefined) return !!fallback;
-    return true;
-  }
-
-  // Function calls: game.check_dead('Name'), check_dead('Name'), check_pair('A','B')
-  const funcMatch = trimmed.match(/^(?:game\.)?check_dead\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
-  if (funcMatch) {
-    const unitNid = funcMatch[1];
-    return isUnitDead(unitNid, context);
-  }
-
-  // game.check_alive('Name') / check_alive('Name'): Python returns False for
-  // a unit missing from the registry, like check_dead.
-  const aliveMatch = trimmed.match(/^(?:game\.)?check_alive\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
-  if (aliveMatch) {
-    return isUnitAlive(aliveMatch[1], context);
-  }
-
-  const checkPairMatch = trimmed.match(/^check_pair\s*\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)/);
-  if (checkPairMatch) {
-    const a = checkPairMatch[1];
-    const b = checkPairMatch[2];
-    const u1 = context.unit1?.nid;
-    const u2 = context.unit2?.nid;
-    return (u1 === a && u2 === b) || (u1 === b && u2 === a);
-  }
-
-  const checkDefaultMatch = trimmed.match(/^check_default\s*\(\s*['"](.+?)['"]\s*,\s*\[(.+?)\]\s*\)/);
-  if (checkDefaultMatch) {
-    // check_default("target_nid", ['unit1_nid', 'unit2_nid'])
-    // Returns true if unit2 matches target_nid AND unit1 is NOT in the exception list
-    const targetNid = checkDefaultMatch[1];
-    const exceptionList = checkDefaultMatch[2].split(',').map(s => s.trim().replace(/['"]/g, ''));
-    const u1 = context.unit1?.nid;
-    const u2 = context.unit2?.nid;
-    if (u2 !== targetNid) return false;
-    return !exceptionList.includes(u1 ?? '');
-  }
-
-  // has_item(...) has no fast path: Python has_item(item, nid, team, tag,
-  // party) also searches convoys, so it goes through the query engine.
-
-  // has_skill(unit, 'SkillNid') — Python QueryEngine.has_skill(unit, skill).
-  // Only the simple forms are handled here; anything else (u(...), kwargs,
-  // expressions) falls through to the full evaluator.
-  const hasSkillFuncMatch = trimmed.match(
-    /^has_skill\s*\(\s*(unit1|unit2|unit|target|'[^'"]+'|"[^'"]+")\s*,\s*(?:['"]([^'"]+)['"]|([A-Za-z_]\w*))\s*\)$/,
-  );
-  if (hasSkillFuncMatch) {
-    const unitArg = hasSkillFuncMatch[1];
-    // A bare skill name is a Python variable: an undefined one raises
-    // NameError and the condition is false (EOtF authors
-    // `has_skill({unit},BloodlineCursePlus)` once).
-    const skillArg = hasSkillFuncMatch[2] ?? resolvePath(hasSkillFuncMatch[3], context);
-    const skillNid = typeof skillArg === 'string' ? skillArg : (skillArg as any)?.nid;
-    if (typeof skillNid !== 'string') return false;
-    let targetUnit: any;
-    if (unitArg.startsWith('\'') || unitArg.startsWith('"')) {
-      const nid = unitArg.slice(1, -1);
-      targetUnit = context.game?.units?.get?.(nid) ?? context.game?.getUnit?.(nid);
-    } else {
-      targetUnit = unitArg === 'unit2' || unitArg === 'target' ? context.unit2 : context.unit1;
-    }
-    if (!targetUnit) return false;
-    const skills = targetUnit.skills ?? [];
-    return skills.some((s: any) => s.nid === skillNid);
-  }
-
-  // v('varname') / v('varname', default) — variable lookup (level vars then game vars)
-  const vMatch = trimmed.match(/^v\s*\(\s*['"]([^'"]+)['"]\s*(?:,\s*(.+?))?\s*\)$/);
-  if (vMatch) {
-    const varName = vMatch[1];
-    const fallback = vMatch[2] !== undefined ? resolvePath(vMatch[2], context) : undefined;
-    // Python QueryEngine.v: a level var holding None falls through to the
-    // game vars.
-    const levelValue = context.levelVars?.get(varName);
-    if (levelValue !== undefined && levelValue !== null) {
-      return pythonTruthy(levelValue);
-    }
-    if (context.gameVars?.has(varName)) {
-      return pythonTruthy(context.gameVars.get(varName));
-    }
-    return pythonTruthy(fallback ?? 0);
-  }
-
-  // unit.can_unlock(region) — check if unit has a key/lockpick item
-  const canUnlockMatch = trimmed.match(/^(?:unit\d?\.)?can_unlock\s*\(\s*(\w+)\s*\)/);
-  if (canUnlockMatch) {
-    const unit = context.unit1;
-    const region = context.region;
-    if (!unit) return false;
-    if (typeof unit.canUnlock === 'function') return unit.canUnlock(region);
-    const items = unit.items ?? [];
-
-    const canUnlockByExpr = (expr: unknown): boolean => {
-      if (typeof expr !== 'string') return !!expr;
-      const trimmedExpr = expr.trim();
-      if (!region?.nid) return false;
-
-      // Common LT patterns for key restrictions.
-      const chestMatch = trimmedExpr.match(/^region\.nid\.startswith\(\s*['"]Chest['"]\s*\)$/);
-      if (chestMatch) return String(region.nid).startsWith('Chest');
-      const doorMatch = trimmedExpr.match(/^region\.nid\.startswith\(\s*['"]Door['"]\s*\)$/);
-      if (doorMatch) return String(region.nid).startsWith('Door');
-
-      // Fallback: try generic condition evaluation with current context.
-      return evaluateCondition(trimmedExpr, context);
-    };
-
-    return items.some((item: any) => {
-      const comps = item.components;
-
-      // Runtime ItemObject stores components as Map<string, any>.
-      if (comps instanceof Map) {
-        if (comps.has('can_unlock')) {
-          return canUnlockByExpr(comps.get('can_unlock'));
-        }
-        return comps.has('unlock') || comps.has('lockpick') || comps.has('key') ||
-               comps.has('keys') || comps.has('Key') || comps.has('Keys');
-      }
-
-      // Fallbacks for prefab-like shapes used by tools/tests.
-      if (Array.isArray(comps)) {
-        const canUnlockComp = comps.find((c: any) => (Array.isArray(c) ? c[0] : c?.nid ?? c?.name) === 'can_unlock');
-        if (canUnlockComp) {
-          const expr = Array.isArray(canUnlockComp) ? canUnlockComp[1] : canUnlockComp?.value;
-          return canUnlockByExpr(expr);
-        }
-        return comps.some((c: any) => {
-          const name = Array.isArray(c) ? c[0] : c?.nid ?? c?.name ?? '';
-          return name === 'unlock' || name === 'lockpick' || name === 'key' ||
-                 name === 'keys' || name === 'Key' || name === 'Keys';
-        });
-      }
-
-      if (comps && typeof comps === 'object') {
-        if ('can_unlock' in comps) {
-          return canUnlockByExpr((comps as any).can_unlock);
-        }
-        return 'unlock' in comps || 'lockpick' in comps || 'key' in comps ||
-               'keys' in comps || 'Key' in comps || 'Keys' in comps;
-      }
-
-      return false;
-    });
-  }
-
-  // is_dead('UnitNid') — shorthand for check_dead
-  const isDeadMatch = trimmed.match(/^(?:game\.)?is_dead\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
-  if (isDeadMatch) {
-    return isUnitDead(isDeadMatch[1], context);
-  }
-
-  // len(game.get_enemy_units()) == N
-  const lenEnemyMatch = trimmed.match(/^len\s*\(\s*game\.get_enemy_units\s*\(\s*\)\s*\)\s*(==|!=|>=|<=|>|<)\s*(\d+)/);
-  if (lenEnemyMatch) {
-    const op = lenEnemyMatch[1];
-    const n = parseInt(lenEnemyMatch[2], 10);
-    const enemies = context.game?.board?.getTeamUnits('enemy') ?? [];
-    const count = enemies.filter((u: any) => !u.isDead()).length;
-    return compareNumbers(count, op, n);
-  }
-
-  // any_unit_in_region(...) has no fast path: Python filters through
-  // game.get_all_units() (no dying or 'Tile' units) and takes nid/team/tag
-  // keywords, all handled by the query engine.
-
-  // Common authored existence query. Handle it against raw runtime units
-  // instead of constructing the complete Python-compatible eval scope for
-  // every item_override lookup. EOtF's Gift of Magic evaluates this while
-  // drawing each affected weapon, so the generic wrapper path can otherwise
-  // dominate the renderer.
-  const anyLivingClassMatch = trimmed.match(
-    /^any\(\[\s*\w+\.position\s+for\s+(\w+)\s+in\s+game\.units\s+if\s+\1\.klass\s*==\s*['"]([^'"]+)['"]\s+and\s+not\s+is_dead\(\1\.nid\)\s*\]\)$/,
-  );
-  if (anyLivingClassMatch) {
-    const klass = anyLivingClassMatch[2];
-    const units = context.game?.units?.values?.() ?? [];
-    for (const unit of units) {
-      if ((unit as any).klass !== klass) continue;
-      if ((unit as any).isDead?.() ?? (unit as any).dead ?? false) continue;
-      if ((unit as any).position) return true;
-    }
-    return false;
-  }
-
-  // Comparison operators: resolve dotted paths
-  const comparisonOps = ['==', '!=', '>=', '<=', '>', '<'] as const;
-  for (const op of comparisonOps) {
-    const idx = findTopLevelOperator(trimmed, op);
-    if (idx !== -1) {
-      const lhs = trimmed.slice(0, idx).trim();
-      const rhs = trimmed.slice(idx + op.length).trim();
-      return evaluateComparison(lhs, op, rhs, context);
-    }
-  }
-
-  // Bare variable/path: truthy check
-  const value = resolvePath(trimmed, context);
-  if (value !== undefined) {
-    return pythonTruthy(value);
-  }
-
-  // Fallback: try JavaScript-based evaluation with Python-compatible scope.
-  // This handles complex expressions like:
-  //   game.level.regions.get('EnemyRein').contains(game.get_unit('Eirika').position)
-  //   any(game.level.regions.get('X').contains(u.position) for u in game.get_units_in_party())
-  //   len(game.get_enemy_units()) == 0
-  try {
-    const result = evaluateWithJsFallback(trimmed, context);
-    if (result !== undefined) {
-      return pythonTruthy(result);
-    }
-  } catch (e) {
-    // Fall through to default
-  }
-
-  // Unknown condition — warn and default to false (skip events with un-evaluable conditions;
-  // firing them would cause reinforcements/etc. to trigger at wrong times)
-  reportUnimplemented('expression', trimmed, 'event condition');
-  return false;
-}
+//
+// Every Python expression LT hands to eval() (event conditions, if/elif/for,
+// {e:} text tags, game_var/level_var values, item/skill component
+// expressions, AI and region conditions, #pyev1 expressions, and equations
+// via combat-calcs) is evaluated by src/events/py-expr:
+// a Python tokenizer, a parser with Python's precedence table, and a tree
+// evaluator with Python semantics. This section builds the eval() globals —
+// the equivalent of Python's evaluate.get_context — from the web engine's
+// objects and wrappers.
 
 /** Context object for condition evaluation. */
 export interface ConditionContext {
@@ -819,992 +540,19 @@ export interface ConditionContext {
   localArgs?: Map<string, any>;  // Trigger-specific extra args
 }
 
-/** Evaluate a non-boolean event expression for {e:...}/{eval:...} arguments. */
-export function evaluateExpression(expression: string, context: ConditionContext): any {
-  const direct = resolvePath(expression, context);
-  if (direct !== undefined) {
-    if (/^(?:unit|unit1|unit2)\.(?:wexp|stats|growths)$/.test(expression.trim()) &&
-        direct && typeof direct === 'object' &&
-        typeof direct[Symbol.iterator] !== 'function') {
-      return Object.keys(direct);
-    }
-    return direct;
-  }
-  const value = evaluateWithJsFallback(expression, context);
-  // A Python call that returns None (game.register_item(...),
-  // set.discard(...)) legitimately yields undefined; only a failed
-  // evaluation is unimplemented.
-  if (value === undefined && lastJsEvaluationFailed) {
-    reportUnimplemented('expression', expression, 'event expression');
-  }
-  return value;
+/** Lazily-built, reused query-function dictionary. */
+let queryFuncsCache: Record<string, Function> | null = null;
+function sharedQueryFuncs(): Record<string, Function> {
+  return (queryFuncsCache ??= new GameQueryEngine().getFuncDict());
 }
 
-/** Whether the most recent evaluateWithJsFallback call failed to evaluate. */
-let lastJsEvaluationFailed = false;
-
-/** Resolve a dotted path like "game.turncount", "unit.nid", "region.nid" to a value. */
-function resolvePath(path: string, ctx: ConditionContext): any {
-  const trimmed = path.trim();
-
-  // String literals. The closing quote must be the one that matches the
-  // opening quote, not merely the last character: `'a' + 'b'` also starts and
-  // ends with a quote, and treating it as one literal yielded the raw text
-  // `a' + 'b` instead of concatenating. EotF builds record NIDs this way
-  // (`{e:'Player' + '_skill_slots'}`), so the difference is load-bearing.
-  const quote = trimmed[0];
-  if (quote === "'" || quote === '"') {
-    let closing = -1;
-    for (let index = 1; index < trimmed.length; index += 1) {
-      if (trimmed[index] === '\\') {
-        index += 1;
-        continue;
-      }
-      if (trimmed[index] === quote) {
-        closing = index;
-        break;
-      }
-    }
-    if (closing === trimmed.length - 1) return trimmed.slice(1, -1);
-  }
-
-  // Numeric literals
-  const num = Number(trimmed);
-  if (!isNaN(num) && trimmed !== '') {
-    return num;
-  }
-
-  // Boolean literals
-  if (trimmed === 'True' || trimmed === 'true') return true;
-  if (trimmed === 'False' || trimmed === 'false') return false;
-
-  // Dotted path resolution
-  const parts = trimmed.split('.');
-
-  // game.turncount, game.game_vars, game.level_vars, etc.
-  if (parts[0] === 'game' && ctx.game) {
-    return resolveObject(ctx.game, parts.slice(1));
-  }
-
-  // unit.nid, unit.team, unit.level, etc. (alias for unit1)
-  if ((parts[0] === 'unit' || parts[0] === 'unit1') && ctx.unit1) {
-    return resolveObject(ctx.unit1, parts.slice(1));
-  }
-
-  // unit2.nid, unit2.team, etc.
-  if (parts[0] === 'unit2' && ctx.unit2) {
-    return resolveObject(ctx.unit2, parts.slice(1));
-  }
-
-  // target is the item-component alias for unit2.
-  if (parts[0] === 'target' && ctx.unit2) {
-    return resolveObject(ctx.unit2, parts.slice(1));
-  }
-
-  // region.nid, region.region_type, etc.
-  if (parts[0] === 'region' && ctx.region) {
-    return resolveObject(ctx.region, parts.slice(1));
-  }
-
-  // item.nid, etc.
-  if (parts[0] === 'item' && ctx.item) {
-    return resolveObject(ctx.item, parts.slice(1));
-  }
-
-  // Event expressions use both Python's position and target_pos aliases.
-  if (trimmed === 'position' || trimmed === 'target_pos') return ctx.position;
-
-  // support_rank_nid (from trigger local args)
-  if (ctx.localArgs?.has(trimmed)) {
-    return ctx.localArgs.get(trimmed);
-  }
-
-  // Game vars lookup
-  if (ctx.gameVars?.has(trimmed)) {
-    return ctx.gameVars.get(trimmed);
-  }
-
-  // Level vars lookup
-  if (ctx.levelVars?.has(trimmed)) {
-    return ctx.levelVars.get(trimmed);
-  }
-
-  return undefined;
+/** Python's game_vars / level_vars are Counters: `vars['missing']` is 0. */
+function counterVars(variables: Map<string, any> | undefined): Map<string, any> {
+  const map = variables ?? new Map<string, any>();
+  markCounter(map);
+  return map;
 }
 
-/** Walk an object by property names. */
-function resolveObject(obj: any, parts: string[]): any {
-  let current = obj;
-  for (const part of parts) {
-    if (current == null) return undefined;
-    // Python UnitObject.tags is the own/class/skill tag union.
-    if (part === 'tags' && Array.isArray(current.tags) && Array.isArray(current.skills) &&
-        typeof current.klass === 'string') {
-      current = [...unitTags(current)];
-      continue;
-    }
-    // Handle snake_case -> camelCase mapping for common fields
-    const camelPart = snakeToCamel(part);
-    if (part in current) {
-      current = current[part];
-    } else if (camelPart in current) {
-      current = current[camelPart];
-    } else {
-      // Special cases for GameState
-      if (part === 'turncount' || part === 'turn_count') return current.turnCount ?? current.turncount;
-      if (part === 'game_vars') return current.gameVars ?? current.game_vars;
-      if (part === 'level_vars') return current.levelVars ?? current.level_vars;
-      if (part === 'current_hp') return current.currentHp ?? current.current_hp;
-      if (part === 'max_hp') return current.maxHp ?? current.max_hp;
-      return undefined;
-    }
-  }
-  return current;
-}
-
-function snakeToCamel(s: string): string {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-function isUnitDead(nid: string, ctx: ConditionContext): boolean {
-  if (!ctx.game) return false;
-  const unit = ctx.game.units?.get(nid) ?? ctx.game.getUnit?.(nid);
-  // Python game.check_dead / QueryEngine.is_dead: a unit missing from the
-  // registry (never added, or removed by unload_unit) is not dead.
-  if (!unit) return false;
-  return unit.isDead?.() ?? unit.dead ?? false;
-}
-
-function isUnitAlive(nid: string, ctx: ConditionContext): boolean {
-  if (!ctx.game) return false;
-  const unit = ctx.game.units?.get(nid) ?? ctx.game.getUnit?.(nid);
-  if (!unit) return false;
-  return !(unit.isDead?.() ?? unit.dead ?? false);
-}
-
-function compareNumbers(lhs: number, op: string, rhs: number): boolean {
-  switch (op) {
-    case '==': return lhs === rhs;
-    case '!=': return lhs !== rhs;
-    case '>': return lhs > rhs;
-    case '<': return lhs < rhs;
-    case '>=': return lhs >= rhs;
-    case '<=': return lhs <= rhs;
-    default: return false;
-  }
-}
-
-function evaluateComparison(
-  lhsStr: string,
-  op: string,
-  rhsStr: string,
-  ctx: ConditionContext,
-): boolean {
-  const resolveOperand = (operand: string): any => {
-    const direct = resolvePath(operand, ctx);
-    if (direct !== undefined) return direct;
-    return evaluateWithJsFallback(operand, ctx, false);
-  };
-  const lhsValue = resolveOperand(lhsStr);
-  const rhsValue = resolveOperand(rhsStr);
-  // Python evaluates the whole expression; an operand that cannot be
-  // evaluated raises, and a failing `if` condition is False. Comparing the
-  // raw operand text instead made e.g. `len(??) > 0` (a missing {v:}) true.
-  if (lhsValue === undefined || rhsValue === undefined) {
-    const whole = evaluateWithJsFallback(`${lhsStr} ${op} ${rhsStr}`, ctx, false);
-    return whole === undefined ? false : !!whole;
-  }
-
-  // If both resolve to numbers, compare numerically
-  const lhsNum = typeof lhsValue === 'number' ? lhsValue : Number(lhsValue);
-  const rhsNum = typeof rhsValue === 'number' ? rhsValue : Number(rhsValue);
-  const bothNumeric = !isNaN(lhsNum) && !isNaN(rhsNum) &&
-    lhsValue !== undefined && rhsValue !== undefined &&
-    lhsStr !== '' && rhsStr !== '';
-
-  if (bothNumeric) {
-    return compareNumbers(lhsNum, op, rhsNum);
-  }
-
-  // String comparison
-  const lhsFinal = lhsValue !== undefined ? String(lhsValue) : lhsStr;
-  const rhsFinal = rhsValue !== undefined ? String(rhsValue) : rhsStr;
-
-  switch (op) {
-    case '==': return lhsFinal === rhsFinal;
-    case '!=': return lhsFinal !== rhsFinal;
-    case '>': return lhsFinal > rhsFinal;
-    case '<': return lhsFinal < rhsFinal;
-    case '>=': return lhsFinal >= rhsFinal;
-    case '<=': return lhsFinal <= rhsFinal;
-    default: return false;
-  }
-}
-
-/** Find the index of a comparison operator, skipping operators inside strings/parens. */
-function findTopLevelOperator(str: string, op: string): number {
-  let depth = 0;
-  let inString: string | null = null;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (inString) {
-      if (ch === inString && str[i - 1] !== '\\') inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") { inString = ch; continue; }
-    if (ch === '(') { depth++; continue; }
-    if (ch === ')') { depth--; continue; }
-    if (depth === 0 && str.slice(i, i + op.length) === op) {
-      // Make sure we're not matching a longer operator (e.g., '=' inside '==')
-      if (op === '>' && str[i + 1] === '=') continue;
-      if (op === '<' && str[i + 1] === '=') continue;
-      if (op === '=' && str[i + 1] === '=') continue;
-      if (op === '!' && str[i + 1] === '=') continue;
-      return i;
-    }
-  }
-  return -1;
-}
-
-/** Split a string at a delimiter, but only at the top level (not inside parens/strings). */
-function splitAtTopLevel(str: string, delimiter: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let inString: string | null = null;
-  let start = 0;
-
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (inString) {
-      if (ch === inString && str[i - 1] !== '\\') inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") { inString = ch; continue; }
-    if (ch === '(') { depth++; continue; }
-    if (ch === ')') { depth--; continue; }
-    if (depth === 0 && str.slice(i, i + delimiter.length) === delimiter) {
-      parts.push(str.slice(start, i));
-      start = i + delimiter.length;
-      i += delimiter.length - 1;
-    }
-  }
-  parts.push(str.slice(start));
-  return parts;
-}
-
-/** Find the matching closing paren for the paren at index `start`. */
-/**
- * Query helpers whose Python keyword arguments are passed as one trailing
- * plain object (see query-engine `bindPyArgs`).
- */
-const KWARG_QUERY_FUNCTIONS = new Set([
-  'has_item', 'get_units_within_distance', 'get_allies_within_distance',
-  'get_units_in_region', 'any_unit_in_region', 'get_closest_allies',
-  'get_closest_units', 'get_closest_enemies',
-]);
-
-/** Split call arguments at top-level commas, tracking brackets and strings. */
-function splitCallArguments(str: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let inString: string | null = null;
-  let start = 0;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    if (inString) {
-      if (ch === inString && str[i - 1] !== '\\') inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") inString = ch;
-    else if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if (ch === ',' && depth === 0) {
-      parts.push(str.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(str.slice(start));
-  return parts;
-}
-
-/**
- * Rewrite Python keyword arguments of the query helpers into one trailing
- * object: `get_units_within_distance(p, dist=2, nid='Isaac')` becomes
- * `get_units_within_distance(p, { __kw__: true, dist: 2, nid: 'Isaac' })`.
- */
-function translateQueryKwargs(expr: string): string {
-  const pattern = /(?<![\w.])([A-Za-z_]\w*)\s*\(/g;
-  let out = '';
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(expr)) !== null) {
-    if (!KWARG_QUERY_FUNCTIONS.has(match[1])) continue;
-    const open = match.index + match[0].length - 1;
-    const close = findMatchingParen(expr, open);
-    if (close < 0) break;
-    const args = splitCallArguments(expr.slice(open + 1, close));
-    const positional: string[] = [];
-    const keywords: string[] = [];
-    for (const arg of args) {
-      const keyword = arg.match(/^\s*([A-Za-z_]\w*)\s*=(?!=)\s*([\s\S]+?)\s*$/);
-      if (keyword) keywords.push(`${keyword[1]}: ${translateQueryKwargs(keyword[2])}`);
-      else positional.push(translateQueryKwargs(arg.trim()));
-    }
-    if (keywords.length === 0) continue;
-    const rebuilt = [...positional.filter(Boolean), `{ __kw__: true, ${keywords.join(', ')} }`];
-    out += `${expr.slice(cursor, open + 1)}${rebuilt.join(', ')})`;
-    cursor = close + 1;
-    pattern.lastIndex = close + 1;
-  }
-  return out + expr.slice(cursor);
-}
-
-function findMatchingParen(str: string, start: number): number {
-  let depth = 0;
-  for (let i = start; i < str.length; i++) {
-    if (str[i] === '(') depth++;
-    if (str[i] === ')') {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
-}
-
-/** Start index of the primary expression (receiver) that ends just before `end`. */
-function receiverStart(str: string, end: number): number {
-  let i = end - 1;
-  for (;;) {
-    if (i < 0) return 0;
-    const ch = str[i];
-    let group = false;
-    if (ch === ')' || ch === ']') {
-      const open = ch === ')' ? '(' : '[';
-      let depth = 0;
-      for (; i >= 0; i--) {
-        if (str[i] === ch) depth++;
-        else if (str[i] === open && --depth === 0) break;
-      }
-      if (i < 0) return -1;
-      i -= 1;
-      group = true;
-    } else if (ch === "'" || ch === '"') {
-      i -= 1;
-      while (i >= 0 && str[i] !== ch) i -= 1;
-      if (i < 0) return -1;
-      i -= 1;
-    } else if (/[\w$]/.test(ch)) {
-      while (i >= 0 && /[\w$]/.test(str[i])) i -= 1;
-    } else {
-      return i + 1;
-    }
-    if (i < 0) return 0;
-    // Member chains: `a.b`, and calls/subscripts `f(x)`, `a[0]`.
-    if (str[i] === '.') { i -= 1; continue; }
-    if (group && /[\w$\])]/.test(str[i])) continue;
-    return i + 1;
-  }
-}
-
-/**
- * Python `seq.index(x)` (lists and strings): JavaScript arrays have no
- * `index`, so rewrite to `__pyIndex(seq, x)`, which raises like Python when
- * the value is missing.
- */
-function translatePyIndexCalls(expression: string): string {
-  let translated = expression;
-  for (let pass = 0; pass < 20; pass++) {
-    const match = /\.index\s*\(/.exec(translated);
-    if (!match) break;
-    const start = receiverStart(translated, match.index);
-    const open = translated.indexOf('(', match.index);
-    const close = findMatchingParen(translated, open);
-    if (start < 0 || close < 0 || start >= match.index) break;
-    const receiver = translated.slice(start, match.index);
-    const arg = translated.slice(open + 1, close);
-    translated = `${translated.slice(0, start)}__pyIndex(${receiver}, ${arg})${translated.slice(close + 1)}`;
-  }
-  return translated;
-}
-
-/** End index (exclusive) of the primary expression starting at `start`. */
-function primaryEnd(str: string, start: number): number {
-  let i = start;
-  while (i < str.length && str[i] === ' ') i += 1;
-  const matchGroup = (open: string, close: string): number => {
-    let depth = 0;
-    for (let j = i; j < str.length; j++) {
-      const ch = str[j];
-      if (ch === "'" || ch === '"') {
-        j += 1;
-        while (j < str.length && str[j] !== ch) j += 1;
-        continue;
-      }
-      if (ch === open) depth += 1;
-      else if (ch === close && --depth === 0) return j + 1;
-    }
-    return -1;
-  };
-  const ch = str[i];
-  if (ch === "'" || ch === '"') {
-    let j = i + 1;
-    while (j < str.length && str[j] !== ch) j += 1;
-    i = j + 1;
-  } else if (ch === '(' || ch === '[') {
-    const end = matchGroup(ch, ch === '(' ? ')' : ']');
-    if (end < 0) return -1;
-    i = end;
-  } else if (/[\w$]/.test(ch ?? '')) {
-    while (i < str.length && /[\w$]/.test(str[i])) i += 1;
-  } else {
-    return -1;
-  }
-  for (;;) {
-    if (str[i] === '.' && /[A-Za-z_$]/.test(str[i + 1] ?? '')) {
-      i += 1;
-      while (i < str.length && /[\w$]/.test(str[i])) i += 1;
-    } else if (str[i] === '(' || str[i] === '[') {
-      const end = matchGroup(str[i], str[i] === '(' ? ')' : ']');
-      if (end < 0) return -1;
-      i = end;
-    } else {
-      return i;
-    }
-  }
-}
-
-/**
- * Python membership `x in y` / `x not in y` (already `x ! in y` here) for
- * arbitrary operands, including calls with nested parentheses:
- * rewritten to __pyIn(x, y). A parenthesised tuple haystack becomes a list.
- */
-const ARITHMETIC_OPERATOR = /^(\*\*|\/\/|[+\-*\/%])/;
-
-/** Extend an operand start leftward over binary arithmetic (`a + b`). */
-function extendOperandLeft(str: string, start: number): number {
-  let operandStart = start;
-  while (operandStart > 0) {
-    let j = operandStart - 1;
-    while (j >= 0 && str[j] === ' ') j -= 1;
-    if (j < 0 || !'+-*/%'.includes(str[j])) break;
-    let opStart = j;
-    if ((str[j] === '*' || str[j] === '/') && str[j - 1] === str[j]) opStart = j - 1;
-    let p = opStart - 1;
-    while (p >= 0 && str[p] === ' ') p -= 1;
-    // A preceding operator/opener means this one is unary or a comparison.
-    if (p < 0 || '=<>!&|,([{?:+-*/%'.includes(str[p])) break;
-    const previous = receiverStart(str, p + 1);
-    if (previous < 0 || previous > p) break;
-    operandStart = previous;
-  }
-  return operandStart;
-}
-
-/** Extend an operand end rightward over binary arithmetic (`a + b`). */
-function extendOperandRight(str: string, end: number): number {
-  if (end < 0) return end;
-  let operandEnd = end;
-  for (;;) {
-    let j = operandEnd;
-    while (j < str.length && str[j] === ' ') j += 1;
-    const op = ARITHMETIC_OPERATOR.exec(str.slice(j));
-    if (!op) break;
-    const next = primaryEnd(str, j + op[0].length);
-    if (next < 0) break;
-    operandEnd = next;
-  }
-  return operandEnd;
-}
-
-function translatePyMembership(expression: string): string {
-  let translated = expression;
-  const inString = (str: string, index: number): boolean => {
-    let quote: string | null = null;
-    for (let i = 0; i < index; i++) {
-      const ch = str[i];
-      if (quote) {
-        if (ch === '\\') i += 1;
-        else if (ch === quote) quote = null;
-      } else if (ch === "'" || ch === '"' || ch === '`') {
-        quote = ch;
-      }
-    }
-    return quote !== null;
-  };
-  let searchFrom = 0;
-  for (let pass = 0; pass < 40; pass++) {
-    const pattern = /\s+(!\s*)?in\s+/g;
-    pattern.lastIndex = searchFrom;
-    let match = pattern.exec(translated);
-    while (match && inString(translated, match.index)) match = pattern.exec(translated);
-    if (!match) break;
-    // Python binds arithmetic tighter than `in`: the operands are whole
-    // `a + b` chains, not just the nearest primary.
-    const needleStart = extendOperandLeft(translated, receiverStart(translated, match.index));
-    const hayStart = match.index + match[0].length;
-    const hayEnd = extendOperandRight(translated, primaryEnd(translated, hayStart));
-    if (needleStart < 0 || needleStart >= match.index || hayEnd < 0) {
-      searchFrom = match.index + match[0].length;
-      continue;
-    }
-    const needle = translated.slice(needleStart, match.index);
-    let haystack = translated.slice(hayStart, hayEnd);
-    if (haystack.startsWith('(') && haystack.endsWith(')') &&
-        findMatchingParen(haystack, 0) === haystack.length - 1 &&
-        splitAtTopLevel(haystack.slice(1, -1), ',').length > 1) {
-      haystack = `[${haystack.slice(1, -1)}]`;
-    }
-    const call = `__pyIn(${needle}, ${haystack})`;
-    translated = translated.slice(0, needleStart) + (match[1] ? `!${call}` : call) + translated.slice(hayEnd);
-    searchFrom = needleStart;
-  }
-  return translated;
-}
-
-/** Translate Python any/all generator expressions without losing nested calls. */
-function translateGeneratorExpressions(expression: string): string {
-  let translated = expression;
-  for (let pass = 0; pass < 20; pass++) {
-    const match = /\b(any|all)\s*\(/g.exec(translated);
-    if (!match || match.index === undefined) break;
-    const open = translated.indexOf('(', match.index);
-    const close = findMatchingParen(translated, open);
-    if (close < 0) break;
-    const inner = translated.slice(open + 1, close);
-    const forParts = splitAtTopLevel(inner, ' for ');
-    if (forParts.length !== 2) {
-      // This any/all call is not a generator. Move it out of consideration.
-      const prefix = translated.slice(0, close + 1).replace(
-        new RegExp(`\\b${match[1]}\\s*\\(`),
-        match[1] === 'any' ? '__any__(' : '__all__(',
-      );
-      translated = prefix + translated.slice(close + 1);
-      continue;
-    }
-    const inParts = splitAtTopLevel(forParts[1], ' in ');
-    if (inParts.length < 2) break;
-    const variable = inParts[0].trim();
-    const ifParts = splitAtTopLevel(inParts.slice(1).join(' in '), ' if ');
-    const collection = ifParts[0].trim();
-    const predicate = (ifParts[1] ?? forParts[0]).trim();
-    const method = match[1] === 'any' ? 'some' : 'every';
-    const replacement = `(${collection}).${method}((${variable}) => (${predicate}))`;
-    translated = translated.slice(0, match.index) + replacement + translated.slice(close + 1);
-  }
-  return translated;
-}
-
-function findMatchingBracket(expression: string, start: number): number {
-  let depth = 0;
-  let inString: string | null = null;
-  for (let index = start; index < expression.length; index++) {
-    const char = expression[index];
-    if (inString) {
-      if (char === inString && expression[index - 1] !== '\\') inString = null;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      inString = char;
-      continue;
-    }
-    if (char === '[') depth += 1;
-    if (char === ']') {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
-}
-
-function translateListComprehensions(expression: string): string {
-  let translated = expression;
-  for (let pass = 0; pass < 20; pass++) {
-    let changed = false;
-    for (let open = translated.lastIndexOf('['); open >= 0;) {
-      const close = findMatchingBracket(translated, open);
-      if (close < 0) {
-        if (open === 0) break;
-        open = translated.lastIndexOf('[', open - 1);
-        continue;
-      }
-      const inner = translated.slice(open + 1, close);
-      const forParts = splitAtTopLevel(inner, ' for ');
-      if (forParts.length !== 2) {
-        if (open === 0) break;
-        open = translated.lastIndexOf('[', open - 1);
-        continue;
-      }
-      const inParts = splitAtTopLevel(forParts[1], ' in ');
-      if (inParts.length < 2) {
-        if (open === 0) break;
-        open = translated.lastIndexOf('[', open - 1);
-        continue;
-      }
-      const variable = inParts[0].trim();
-      const ifParts = splitAtTopLevel(inParts.slice(1).join(' in '), ' if ');
-      const collection = ifParts[0].trim();
-      const filter = ifParts[1]?.trim();
-      let projection = forParts[0].trim();
-      if (projection.startsWith('(') && projection.endsWith(')')) {
-        const tupleParts = splitAtTopLevel(projection.slice(1, -1), ',')
-          .map((part) => part.trim())
-          .filter(Boolean);
-        if (tupleParts.length > 1) projection = `[${tupleParts.join(', ')}]`;
-      }
-      const mapped = filter
-        ? `(${collection}).filter((${variable}) => (${filter})).map((${variable}) => (${projection}))`
-        : `(${collection}).map((${variable}) => (${projection}))`;
-      const prefix = translated.slice(0, open);
-      const membership = /((?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s+(not\s+)?in\s*$/
-        .exec(prefix);
-      if (membership?.index !== undefined &&
-          !/\bfor\s+$/.test(prefix.slice(0, membership.index))) {
-        const contains = `(${mapped}).includes(${membership[1]})`;
-        translated = prefix.slice(0, membership.index) +
-          (membership[2] ? `!${contains}` : contains) +
-          translated.slice(close + 1);
-      } else {
-        translated = prefix + mapped + translated.slice(close + 1);
-      }
-      changed = true;
-      break;
-    }
-    if (!changed) break;
-  }
-  return translated;
-}
-
-function replacePythonWords(
-  expression: string,
-  replacements: Record<string, string>,
-): string {
-  let translated = '';
-  let quote: string | null = null;
-  for (let index = 0; index < expression.length;) {
-    const char = expression[index];
-    if (quote) {
-      translated += char;
-      if (char === quote && expression[index - 1] !== '\\') quote = null;
-      index++;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      quote = char;
-      translated += char;
-      index++;
-      continue;
-    }
-    const word = /^[A-Za-z_]\w*/.exec(expression.slice(index))?.[0];
-    if (word) {
-      translated += replacements[word] ?? word;
-      index += word.length;
-      continue;
-    }
-    translated += char;
-    index++;
-  }
-  return translated;
-}
-
-const ADDITION_BOUNDARIES = ['===', '!==', '=>', '==', '!=', '<=', '>=', '&&', '||', '<', '>', '?', ':', ','];
-
-/** Python `a + b` -> `__pyAdd(a, b)` inside one operand segment. */
-function translateAdditionSegment(segment: string): string {
-  const leading = /^\s*/.exec(segment)?.[0] ?? '';
-  const trailing = /\s*$/.exec(segment)?.[0] ?? '';
-  const body = segment.slice(leading.length, segment.length - trailing.length);
-  const parts = splitAtTopLevel(body, ' + ').map((part) => part.trim());
-  if (parts.length < 2) return segment;
-  return leading + parts.slice(1).reduce(
-    (left, right) => `__pyAdd(${left}, ${right})`,
-    parts[0],
-  ) + trailing;
-}
-
-/**
- * Python list/string `+` -> `__pyAdd`. `+` binds tighter than comparisons,
- * boolean operators, ternaries and argument commas, so additions are
- * translated within each operand between those boundaries (and recursively
- * inside brackets), never across them.
- */
-function translateTopLevelAdditions(expression: string): string {
-  let translated = '';
-  let segment = '';
-  const flush = () => {
-    translated += translateAdditionSegment(segment);
-    segment = '';
-  };
-  for (let index = 0; index < expression.length; index++) {
-    const char = expression[index];
-    if (char === "'" || char === '"' || char === '`') {
-      let close = index + 1;
-      while (close < expression.length && !(expression[close] === char && expression[close - 1] !== '\\')) close++;
-      segment += expression.slice(index, close + 1);
-      index = close;
-      continue;
-    }
-    if (char === '(' || char === '[' || char === '{') {
-      const closer = char === '(' ? ')' : char === '[' ? ']' : '}';
-      let depth = 0;
-      let close = -1;
-      let quote: string | null = null;
-      for (let j = index; j < expression.length; j++) {
-        const c = expression[j];
-        if (quote) {
-          if (c === quote && expression[j - 1] !== '\\') quote = null;
-          continue;
-        }
-        if (c === "'" || c === '"' || c === '`') { quote = c; continue; }
-        if (c === char) depth++;
-        else if (c === closer && --depth === 0) { close = j; break; }
-      }
-      if (close > index) {
-        segment += `${char}${translateTopLevelAdditions(expression.slice(index + 1, close))}${closer}`;
-        index = close;
-        continue;
-      }
-    }
-    const boundary = ADDITION_BOUNDARIES.find((op) => expression.startsWith(op, index));
-    if (boundary) {
-      flush();
-      translated += boundary;
-      index += boundary.length - 1;
-      continue;
-    }
-    segment += char;
-  }
-  flush();
-  return translated;
-}
-
-/** Translate Python sorted(values, key=lambda x: ..., reverse=True). */
-function translateSortedCalls(expression: string): string {
-  let translated = expression;
-  for (let pass = 0; pass < 20; pass++) {
-    const match = /\bsorted\s*\(/g.exec(translated);
-    if (!match || match.index === undefined) break;
-    const open = translated.indexOf('(', match.index);
-    const close = findMatchingParen(translated, open);
-    if (close < 0) break;
-    const args = splitAtTopLevel(translated.slice(open + 1, close), ',')
-      .map((part) => part.trim());
-    const values = args[0];
-    const keyArg = args.find((part) => part.startsWith('key='));
-    const reverseArg = args.find((part) => part.startsWith('reverse='));
-    let key = '(value) => value';
-    if (keyArg) {
-      const lambda = keyArg.slice('key='.length).trim();
-      const lambdaMatch = /^lambda\s+([A-Za-z_]\w*)\s*:\s*([\s\S]+)$/.exec(lambda);
-      if (!lambdaMatch) break;
-      let body = lambdaMatch[2].trim();
-      if (body.startsWith('(') && body.endsWith(')')) {
-        const tupleParts = splitAtTopLevel(body.slice(1, -1), ',')
-          .map((part) => part.trim())
-          .filter(Boolean);
-        if (tupleParts.length > 1) body = `[${tupleParts.join(', ')}]`;
-      }
-      key = `(${lambdaMatch[1]}) => (${body})`;
-    }
-    const reverse = reverseArg
-      ? reverseArg.slice('reverse='.length).trim()
-      : 'false';
-    const replacement = `__sorted__(${values}, ${key}, ${reverse})`;
-    translated =
-      translated.slice(0, match.index) +
-      replacement +
-      translated.slice(close + 1);
-  }
-  return translated;
-}
-
-function translateFloorDivision(expression: string): string {
-  let translated = expression;
-  for (let pass = 0; pass < 20; pass++) {
-    const operator = translated.indexOf('//');
-    if (operator < 0) break;
-
-    // Find the operands at the operator's current parenthesis depth. This
-    // avoids a regex greedily consuming an enclosing call such as
-    // min(game.get_unit(...).get_stat('MAG') // 2, 20).
-    let leftStart = 0;
-    let depth = 0;
-    for (let index = operator - 1; index >= 0; index--) {
-      const char = translated[index];
-      if (
-        depth === 0 &&
-        (translated.slice(Math.max(0, index - 5), index + 1) === ' else ' ||
-          translated.slice(Math.max(0, index - 3), index + 1) === ' if ' ||
-          translated.slice(Math.max(0, index - 4), index + 1) === ' and ' ||
-          translated.slice(Math.max(0, index - 3), index + 1) === ' or ')
-      ) {
-        leftStart = index + 1;
-        break;
-      }
-      if (char === ')' || char === ']' || char === '}') {
-        depth++;
-      } else if (char === '(' || char === '[' || char === '{') {
-        if (depth > 0) depth--;
-        else {
-          leftStart = index + 1;
-          break;
-        }
-      } else if (
-        depth === 0 &&
-        (char === ',' || char === '?' || char === ':' ||
-          /[+*%<>=&|]/.test(char))
-      ) {
-        leftStart = index + 1;
-        break;
-      }
-    }
-
-    let rightEnd = translated.length;
-    depth = 0;
-    for (let index = operator + 2; index < translated.length; index++) {
-      const char = translated[index];
-      if (char === '(' || char === '[' || char === '{') {
-        depth++;
-      } else if (char === ')' || char === ']' || char === '}') {
-        if (depth > 0) depth--;
-        else {
-          rightEnd = index;
-          break;
-        }
-      } else if (
-        depth === 0 &&
-        (char === ',' || char === '?' || char === ':' ||
-          /[+*%<>=&|]/.test(char))
-      ) {
-        rightEnd = index;
-        break;
-      } else if (
-        depth === 0 &&
-        (translated.startsWith(' if ', index) ||
-          translated.startsWith(' else ', index) ||
-          translated.startsWith(' and ', index) ||
-          translated.startsWith(' or ', index))
-      ) {
-        rightEnd = index;
-        break;
-      }
-    }
-
-    const left = translated.slice(leftStart, operator).trim();
-    const right = translated.slice(operator + 2, rightEnd).trim();
-    if (!left || !right) break;
-    translated =
-      translated.slice(0, leftStart) +
-      `Math.floor((${left}) / (${right}))` +
-      translated.slice(rightEnd);
-  }
-  return translated;
-}
-
-/**
- * Translate Python conditional expressions at any parenthesis depth.
- *
- * A single regex only handles one top-level `value if condition else other`
- * form. EotF uses both nested conditionals and conditionals embedded inside
- * larger arithmetic expressions, so recursively translate balanced groups
- * before resolving the conditional at the current depth.
- */
-function translateConditionalExpressions(expression: string): string {
-  let grouped = '';
-  let inString: string | null = null;
-  for (let index = 0; index < expression.length; index++) {
-    const char = expression[index];
-    if (inString) {
-      grouped += char;
-      if (char === inString && expression[index - 1] !== '\\') inString = null;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      inString = char;
-      grouped += char;
-      continue;
-    }
-    if (char === '(' || char === '[') {
-      const closeChar = char === '(' ? ')' : ']';
-      let depth = 1;
-      let nestedString: string | null = null;
-      let close = index + 1;
-      for (; close < expression.length; close++) {
-        const nestedChar = expression[close];
-        if (nestedString) {
-          if (nestedChar === nestedString && expression[close - 1] !== '\\') {
-            nestedString = null;
-          }
-          continue;
-        }
-        if (nestedChar === "'" || nestedChar === '"') {
-          nestedString = nestedChar;
-          continue;
-        }
-        if (nestedChar === char) depth += 1;
-        if (nestedChar === closeChar) {
-          depth -= 1;
-          if (depth === 0) break;
-        }
-      }
-      if (depth === 0) {
-        grouped += char +
-          translateConditionalExpressions(expression.slice(index + 1, close)) +
-          closeChar;
-        index = close;
-        continue;
-      }
-    }
-    grouped += char;
-  }
-
-  const findToken = (source: string, token: string, start = 0): number => {
-    let quoted: string | null = null;
-    let depth = 0;
-    for (let index = start; index <= source.length - token.length; index++) {
-      const char = source[index];
-      if (quoted) {
-        if (char === quoted && source[index - 1] !== '\\') quoted = null;
-        continue;
-      }
-      if (char === "'" || char === '"') {
-        quoted = char;
-        continue;
-      }
-      if (char === '(' || char === '[') depth += 1;
-      if (char === ')' || char === ']') depth -= 1;
-      if (depth === 0 && source.slice(index, index + token.length) === token) {
-        return index;
-      }
-    }
-    return -1;
-  };
-
-  const ifIndex = findToken(grouped, ' if ');
-  if (ifIndex < 0) return grouped;
-  const elseIndex = findToken(grouped, ' else ', ifIndex + 4);
-  if (elseIndex < 0) {
-    const whenTrue = grouped.slice(0, ifIndex).trim();
-    const condition = grouped.slice(ifIndex + 4).trim();
-    return `((${translateConditionalExpressions(condition)}) ? ` +
-      `(${translateConditionalExpressions(whenTrue)}) : (0))`;
-  }
-  const whenTrue = grouped.slice(0, ifIndex).trim();
-  const condition = grouped.slice(ifIndex + 4, elseIndex).trim();
-  const whenFalse = grouped.slice(elseIndex + 6).trim();
-  return `((${translateConditionalExpressions(condition)}) ? ` +
-    `(${translateConditionalExpressions(whenTrue)}) : ` +
-    `(${translateConditionalExpressions(whenFalse)}))`;
-}
-
-// ============================================================
-// JavaScript-based fallback evaluator for complex Python conditions
-// ============================================================
-
-/**
- * Build a Python-compatible game object proxy for use in eval.
- * This creates wrapper objects that mirror the Python API so expressions
- * like `game.level.regions.get('X').contains(pos)` work in JavaScript.
- */
 function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   const game = ctx.game;
   if (!game) return {};
@@ -1838,40 +586,14 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     return wrapped;
   }
 
-  function wrapMapping(value: any) {
-    if (value instanceof Map) {
-      return new Proxy(value, {
-        get(target, property: string | symbol) {
-          if (property === 'get') return target.get.bind(target);
-          if (property === 'has') return target.has.bind(target);
-          if (typeof property === 'string' && target.has(property)) {
-            return target.get(property);
-          }
-          const result = target[property as keyof Map<any, any>];
-          return typeof result === 'function' ? result.bind(target) : result;
-        },
-      });
-    }
-    const entries = Object.entries(value ?? {});
-    return {
-      ...(value ?? {}),
-      get(key: string, fallback?: any) {
-        const result = value?.[key];
-        return result === undefined ? fallback : result;
-      },
-      keys() {
-        return entries.map(([key]) => key);
-      },
-      filter(predicate: (key: string, index: number) => boolean) {
-        return entries.map(([key]) => key).filter(predicate);
-      },
-      map(mapper: (key: string, index: number) => any) {
-        return entries.map(([key]) => key).map(mapper);
-      },
-      *[Symbol.iterator]() {
-        for (const [key] of entries) yield key;
-      },
-    };
+  /**
+   * A Python dict view of an engine mapping. Engine Maps are exposed as-is;
+   * plain-object mappings become a Map so dict methods (get with a default,
+   * keys/values/items, `in`, iteration over keys) behave like Python's.
+   */
+  function wrapMapping(value: any): Map<any, any> {
+    if (value instanceof Map) return value;
+    return new Map(Object.entries(value ?? {}));
   }
 
   function wrapRecordValue(value: any): any {
@@ -2148,6 +870,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         ].includes(String(property))) {
           return wrapMapping(Reflect.get(target, property));
         }
+        // Python Klass.get_skills: the learned skill NIDs.
+        if (property === 'get_skills') {
+          return () => ((Reflect.get(target, 'learned_skills') ?? []) as [number, string][])
+            .map((entry) => entry[1]);
+        }
         return Reflect.get(target, property);
       },
     });
@@ -2155,6 +882,38 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     return wrapped;
   }
 
+
+  /**
+   * Python UnitObject.can_unlock -> unit_funcs.can_unlock: a skill or an
+   * available item whose can_unlock component accepts the region.
+   */
+  function unitCanUnlock(unit: any, region: any): boolean {
+    if (!unit) return false;
+    if (typeof unit.canUnlock === 'function') return unit.canUnlock(region);
+    const canUnlockByExpr = (expr: unknown, item: any): boolean => {
+      if (typeof expr !== 'string') return !!expr;
+      if (!region?.nid) return false;
+      return evaluateConditionOr(expr, {
+        ...ctx,
+        unit1: unit,
+        item,
+        region,
+        localArgs: new Map([...(ctx.localArgs ?? []), ['region', region]]),
+      }, false);
+    };
+    return (unit.items ?? []).some((item: any) => {
+      const comps = item.components;
+      if (comps instanceof Map) {
+        if (comps.has('can_unlock')) return canUnlockByExpr(comps.get('can_unlock'), item);
+        return comps.has('unlock') || comps.has('lockpick') || comps.has('key') ||
+          comps.has('keys') || comps.has('Key') || comps.has('Keys');
+      }
+      const entries = componentEntries(item);
+      const canUnlock = entries.find(([nid]) => nid === 'can_unlock');
+      if (canUnlock) return canUnlockByExpr(canUnlock[1], item);
+      return entries.some(([nid]) => ['unlock', 'lockpick', 'key', 'keys', 'Key', 'Keys'].includes(nid));
+    });
+  }
 
   const wrappedUnits = new WeakMap<object, any>();
   function wrapUnit(u: any): any {
@@ -2194,6 +953,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         return memo('tags', () => (Array.isArray(u.skills) ? [...unitTags(u, game)] : (u.tags ?? [])));
       },
       klass: u.klass,
+      // Python UnitObject._tags: the unit's own tags (tags adds class/skill tags).
+      get _tags() { return [...(u.tags ?? [])]; },
       affinity: u.affinity ?? null,
       traveler: u.traveler ?? u.rescuing ?? null,
       get stat_cap_modifiers() {
@@ -2255,6 +1016,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
       get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
+      can_unlock: (region: any) => unitCanUnlock(u, region?._raw ?? region),
       variant: u.variant ?? null,
       desc: u.desc ?? null,
     };
@@ -2351,19 +1113,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 
   // Build the game proxy object
   const regions = game.currentLevel?.regions ?? [];
-  const wrapVars = (variables: Map<string, any> | undefined) => new Proxy(
-    {
-      get(key: string, fallback?: any) {
-        return variables?.has(key) ? variables.get(key) : (fallback ?? null);
-      },
-    } as Record<string, any>,
-    {
-      get(target, property: string | symbol) {
-        if (property in target) return target[property as string];
-        return typeof property === 'string' ? variables?.get(property) : undefined;
-      },
-    },
-  );
   const gameProxy: any = {
     turncount: game.turnCount ?? game.turncount ?? 0,
     turn_count: game.turnCount ?? game.turncount ?? 0,
@@ -2373,8 +1122,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get regions() {
       return regions.map(wrapRegion);
     },
-    game_vars: wrapVars(game.gameVars),
-    level_vars: wrapVars(game.levelVars),
+    // Python game.game_vars / level_vars are Counters over the live state.
+    game_vars: counterVars(game.gameVars),
+    level_vars: counterVars(game.levelVars),
     board: {
       bounds: game.board?.bounds ?? [0, 0, 0, 0],
       get_unit(position: [number, number] | null) {
@@ -2621,11 +1371,17 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   };
 
   gameProxy._current_level = gameProxy.level;
+  gameProxy.level.name = game.currentLevel?.name ?? '';
   const unwrapUnit = (candidate: any) => {
     if (typeof candidate === 'string') return game.units?.get(candidate) ?? null;
     return candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
   };
   const unwrapItem = (candidate: any) => candidate?._raw ?? candidate;
+  /** Python movement_funcs.get_mcost with get_movement_group. */
+  const movementCostFor = (raw: any, pos: [number, number]): number => {
+    const group = movementType(raw, game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot', game);
+    return game.board.getMovementCost(pos[0], pos[1], group, game.db);
+  };
   const itemSystem = {
     available(candidate: any, candidateItem: any) {
       const rawUnit = unwrapUnit(candidate);
@@ -2647,6 +1403,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     get_all_components(candidateUnit: any, candidateItem: any) {
       const rawUnit = unwrapUnit(candidateUnit);
       const rawItem = unwrapItem(candidateItem);
+      // Python get_all_components(unit, None) returns only the skills'
+      // item_override components, which never apply without an item here.
+      if (!rawItem) return [];
       const entries = itemComponentEntriesEvaluator
         ? itemComponentEntriesEvaluator(rawUnit, rawItem, game.db, game)
         : componentEntries(rawItem);
@@ -2658,6 +1417,9 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     is_spell(_unit: any, candidate: any) {
       const raw = unwrapItem(candidate);
       return !!raw?.hasComponent?.('spell') || !!raw?.hasComponent?.('magic');
+    },
+    is_accessory(_unit: any, candidate: any) {
+      return !!unwrapItem(candidate)?.isAccessory?.();
     },
   };
   const itemFuncs = {
@@ -2672,6 +1434,18 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
     is_magic(candidate: any, item: any, distance = 0) {
       return itemIsMagic(unwrapUnit(candidate), unwrapItem(item), distance, game.db);
+    },
+    /** Python item_funcs.get_num_items: num_items + skill num_items_offset. */
+    get_num_items(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      return Number(game.db.getConstant('num_items', 5)) + inventoryCapacityOffsets(raw, game).items;
+    },
+    get_num_accessories(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      return Number(game.db.getConstant('num_accessories', 0)) + inventoryCapacityOffsets(raw, game).accessories;
+    },
+    inventory_full(candidate: any, item: any) {
+      return inventoryFull(unwrapUnit(candidate), unwrapItem(item), game.db);
     },
   };
   const skillSystem = {
@@ -2704,6 +1478,16 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       const raw = unwrapUnit(candidate);
       return raw?.hasCanto ?? false;
     },
+    /** Python skill_system.condition(skill, unit, item=None). */
+    condition(candidateSkill: any, candidate: any, candidateItem?: any) {
+      const rawSkill = candidateSkill?._raw ?? candidateSkill;
+      const rawUnit = unwrapUnit(candidate);
+      if (!rawSkill || !rawUnit) {
+        throw new TypeError('skill_system.condition requires a skill and a unit');
+      }
+      if (!skillConditionEvaluator) return true;
+      return skillConditionEvaluator(rawSkill, rawUnit, unwrapItem(candidateItem) ?? null, game);
+    },
   };
   const unitFuncs = {
     /**
@@ -2728,6 +1512,19 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       }
       return [...usable];
     },
+    /** Python unit_funcs.check_flanked: enemies on both opposite sides. */
+    check_flanked(candidate: any) {
+      const raw = unwrapUnit(candidate);
+      if (!raw?.position || !game.board) return false;
+      const [x, y] = raw.position;
+      const at = (px: number, py: number) => game.board.getUnit(px, py);
+      const up = at(x, y - 1);
+      const down = at(x, y + 1);
+      const left = at(x - 1, y);
+      const right = at(x + 1, y);
+      if (up && down && skillSystem.check_enemy(raw, up) && skillSystem.check_enemy(raw, down)) return true;
+      return !!(left && right && skillSystem.check_enemy(raw, left) && skillSystem.check_enemy(raw, right));
+    },
     check_focus(candidate: any, limit = 3) {
       const raw = unwrapUnit(candidate);
       if (!raw?.position) return 0;
@@ -2738,46 +1535,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         Math.abs(raw.position[0] - other.position[0]) +
           Math.abs(raw.position[1] - other.position[1]) <= limit).length;
     },
-  };
-  const computeAdvantage = (
-    attacker: any,
-    defender: any,
-    attackItem: any,
-    defenseItem: any,
-    advantage = true,
-  ) => {
-    const rawAttacker = unwrapUnit(attacker);
-    const rawAttackItem = unwrapItem(attackItem);
-    const rawDefenseItem = unwrapItem(defenseItem);
-    if (!rawAttackItem || !rawDefenseItem) return null;
-    const attackType = componentValue(rawAttackItem, 'weapon_triangle_override') ??
-      componentValue(rawAttackItem, 'weapon_type');
-    const defenseType = componentValue(rawDefenseItem, 'weapon_triangle_override') ??
-      componentValue(rawDefenseItem, 'weapon_type');
-    if (!attackType || !defenseType) return null;
-    const weapon = game.db?.weapons?.find?.((candidate: any) => candidate.nid === attackType) ??
-      game.db?.weapons?.get?.(attackType);
-    const bonuses = advantage ? weapon?.advantage : weapon?.disadvantage;
-    if (!Array.isArray(bonuses)) return null;
-    const wexp = Number(rawAttacker?.wexp?.[attackType] ?? 0);
-    let selected: any = null;
-    let selectedRequirement = -1;
-    for (const bonus of bonuses) {
-      if (bonus.weapon_type !== 'All' && bonus.weapon_type !== defenseType) continue;
-      const requirement = bonus.weapon_rank === 'All'
-        ? -1
-        : game.db?.weaponRanks?.find?.((rank: any) => rank.rank === bonus.weapon_rank)?.requirement ??
-          game.db?.weaponRanks?.get?.(bonus.weapon_rank)?.requirement ?? Infinity;
-      if (requirement === -1) {
-        selected = bonus;
-        break;
-      }
-      if (wexp >= requirement && requirement > selectedRequirement) {
-        selected = bonus;
-        selectedRequirement = requirement;
-      }
-    }
-    return selected;
   };
   function wrapCatalog(catalog: any, wrapper: (value: any) => any) {
     const rawValues = catalog?.values
@@ -2791,6 +1548,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       },
       values() {
         return rawValues.map(wrapper);
+      },
+      // Python Data.keys(); Data has no __contains__, so `in` iterates values.
+      keys() {
+        return rawValues.map((value: any) => value?.nid);
       },
       filter(predicate: (value: any, index: number) => boolean) {
         return rawValues.map(wrapper).filter(predicate);
@@ -2819,6 +1580,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       if (property === 'items') return wrapCatalog(target.items, wrapItem);
       if (property === 'classes') return wrapCatalog(target.classes, wrapClass);
       if (property === 'units') return wrapCatalog(target.units, wrapUnit);
+      // Python DB.stats: StatPrefab objects keyed by nid.
+      if (property === 'stats') return wrapCatalog(target.stats, (value: unknown) => value);
       if (property === 'levels') return wrapCatalog(
         target.levels,
         (value: unknown) => value,
@@ -2836,7 +1599,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       return target[property as keyof typeof target];
     },
   });
-  return {
+  const scope: Record<string, any> = {
     game: gameProxy,
     wrapUnit,
     wrapItem,
@@ -2857,32 +1620,19 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     item_system: itemSystem,
     skill_system: skillSystem,
     unit_funcs: unitFuncs,
-    combat_calcs: {
-      compute_advantage: computeAdvantage,
-      can_counterattack(
-        attacker: any,
-        attackItem: any,
-        defender: any,
-        _defenseItem?: any,
-      ) {
-        const rawAttacker = unwrapUnit(attacker);
-        const rawDefender = unwrapUnit(defender);
-        const rawAttackItem = unwrapItem(attackItem);
-        return !!rawAttacker && !!rawDefender && !!rawAttackItem &&
-          canCounterattack(rawAttacker, rawAttackItem, rawDefender, game.db, game);
-      },
-      ...(ctx.localArgs?.get('combat_calcs') as Record<string, unknown> ?? {}),
-    },
+    combat_calcs: pythonCombatCalcsModule(game),
     movement_funcs: {
       check_traversable(candidate: any, pos: [number, number] | null) {
         const raw = unwrapUnit(candidate);
         if (!raw || !pos || !game.board?.inBounds?.(pos[0], pos[1])) return false;
-        let movementGroup = game.db?.classes?.get?.(raw.klass)?.movement_group ?? 'Foot';
-        for (const skill of raw.skills ?? []) {
-          const override = componentValue(skill, 'movement_type');
-          if (typeof override === 'string' && override) movementGroup = override;
-        }
-        return game.board.getMovementCost(pos[0], pos[1], movementGroup, game.db) < 99;
+        return movementCostFor(raw, pos) < 99;
+      },
+      /** Python check_weakly_traversable: mcost <= 5 or within the unit's movement. */
+      check_weakly_traversable(candidate: any, pos: [number, number] | null) {
+        const raw = unwrapUnit(candidate);
+        if (!raw || !pos || !game.board?.inBounds?.(pos[0], pos[1])) return false;
+        const mcost = movementCostFor(raw, pos);
+        return mcost <= 5 || mcost <= raw.getMovement();
       },
     },
     target_system: {
@@ -2912,498 +1662,518 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       },
     },
   };
+  // Python Game.target_system is the same module evaluate.py exposes.
+  gameProxy.target_system = scope.target_system;
+  return scope;
 }
 
-/**
- * Attempt to evaluate a Python condition using JavaScript Function().
- * Translates common Python idioms to JS before eval.
- * Returns the evaluation result, or undefined if it fails.
- */
-/**
- * Compiled expression cache.
- *
- * The generated function body depends only on the translated source and the
- * declared local names — every piece of game state arrives as an argument. So
- * a given expression compiles once and is reused for the life of the page.
- * Without this, EotF recompiles the same skill conditions many times per
- * frame, which measured as the single largest cost in the game loop.
- */
-const compiledExpressions = new Map<string, Function>();
+/** Names whose value comes from the context even when a local shadows them. */
+const CONTEXT_NAMES = new Set([
+  'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
+  'target_pos', 'item', 'mode', 'stat_changes', 'support_rank_nid',
+]);
 
-/** Cache of the Python-to-JavaScript translation, keyed by source text. */
-const translatedExpressions = new Map<string, string>();
-
-/** Lazily-built, reused query-function dictionary (see call site). */
-let queryFuncsCache: Record<string, Function> | null = null;
-function sharedQueryFuncs(): Record<string, Function> {
-  return (queryFuncsCache ??= new GameQueryEngine().getFuncDict());
-}
-
-/**
- * Translate one Python expression into JavaScript source.
- *
- * Pure string rewriting: the result depends only on `condition`, which is
- * what makes both this and the compiled function safe to cache.
- */
-function translateExpression(condition: string): string {
-  // Translate Python idioms to JavaScript
-  let jsExpr = condition.trim().replace(/^if\s+/, '');
-  const tupleSource = jsExpr.trim();
-  if (tupleSource.startsWith('(') &&
-      findMatchingParen(tupleSource, 0) === tupleSource.length - 1) {
-    const tupleParts = splitAtTopLevel(tupleSource.slice(1, -1), ',')
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (tupleParts.length > 1) jsExpr = `[${tupleParts.join(', ')}]`;
-    else if (tupleParts.length === 1) jsExpr = tupleParts[0];
-  }
-  const joinMatch = jsExpr.match(/^('[^']*'|"[^"]*")\.join\(([\s\S]*)\)$/);
-  if (joinMatch) jsExpr = `(${joinMatch[2]}).join(${joinMatch[1]})`;
-  jsExpr = jsExpr.replace(/\bf"([^"]*)"/g, (_whole, content) =>
-    `\`${content.replace(/\{/g, '${')}\``);
-  jsExpr = jsExpr.replace(/\bf'([^']*)'/g, (_whole, content) =>
-    `\`${content.replace(/\{/g, '${')}\``);
-  jsExpr = translateListComprehensions(jsExpr);
-  jsExpr = translateSortedCalls(jsExpr);
-  jsExpr = translateFloorDivision(translateGeneratorExpressions(jsExpr));
-  jsExpr = translatePyIndexCalls(jsExpr);
-  jsExpr = jsExpr.replace(
-    /(\b[A-Za-z_]\w*(?:\([^)]*\)|(?:\.[A-Za-z_]\w*)|\[[^\]]+\])*)\[-(\d+)\]/g,
-    '$1.at(-$2)',
-  );
-
-  // Python `len(x)` -> `x.length`
-  jsExpr = jsExpr.replace(/\blen\s*\(/g, '__len__(');
-  jsExpr = jsExpr.replace(/\.startswith\s*\(/g, '.startsWith(');
-  jsExpr = jsExpr.replace(/\.endswith\s*\(/g, '.endsWith(');
-
-  // Python `True`/`False` -> `true`/`false`
-  jsExpr = replacePythonWords(jsExpr, {
-    True: 'true',
-    False: 'false',
-    None: 'null',
-  });
-  jsExpr = jsExpr.replace(/\bis\s+not\b/g, '!==');
-  jsExpr = jsExpr.replace(/\bis\b/g, '===');
-  // Python gives comparisons higher precedence than `not`; JavaScript gives
-  // unary `!` higher precedence. Preserve `not value == other` as
-  // `!(value == other)` before translating remaining boolean operators.
-  jsExpr = jsExpr.replace(
-    /\bnot\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(===|==|!==|!=)\s*('[^']*'|"[^"]*"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|\d+(?:\.\d+)?)/g,
-    '!($1 $2 $3)',
-  );
-  // Python keyword arguments used by EotF query helpers.
-  jsExpr = translateQueryKwargs(jsExpr);
-  jsExpr = jsExpr.replace(
-    /\bteam\s*=\s*(['"][^'"]+['"])/g,
-    '{ team: $1 }',
-  );
-  jsExpr = jsExpr.replace(
-    /\btag\s*=\s*(['"][^'"]+['"])/g,
-    '{ tag: $1 }',
-  );
-  jsExpr = jsExpr.replace(/\bdist\s*=\s*(\d+)/g, '$1');
-  jsExpr = jsExpr.replace(/\bsource_type\s*=/g, '');
-  jsExpr = jsExpr.replace(/\bsource\s*=/g, '');
-  jsExpr = jsExpr.replace(
-    /v\('unit\.nid \+ '([^']+)''\)/g,
-    "v(unit.nid + '$1')",
-  );
-  jsExpr = jsExpr.replace(/\bforce\s*=\s*(true|false)/g, '$1');
-  jsExpr = jsExpr.replace(/\.stats\s*\(\s*([^)]*)\)/g, '.stats.get($1)');
-
-  // Python `and`/`or`/`not` -> `&&`/`||`/`!`
-  jsExpr = replacePythonWords(jsExpr, {
-    and: '&&',
-    or: '||',
-    not: '!',
-  });
-
-  // Python membership inside translated comprehensions/generators. Direct
-  // top-level membership is handled by evaluateCondition before this fallback.
-  jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?|[A-Za-z_]\w*))\s+(!\s*)?in\s+(u\(v\([^)]*\)\)\.[A-Za-z_]\w*)/g,
-    (_whole, needle, negated, haystack) =>
-      `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
-  );
-  jsExpr = translatePyMembership(jsExpr);
-  jsExpr = translateConditionalExpressions(jsExpr);
-  jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"))\.join\s*\((.+)\)$/,
-    '($2).join($1)',
-  );
-  jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"))\s*%\s*([A-Za-z_]\w*(?:\.\w+)*)/g,
-    '__pyFormat($1, $2)',
-  );
-  // Python concatenates lists with `+`; JavaScript coerces them to strings.
-  // EOtF uses this form heavily when extending persistent record lists.
-  jsExpr = jsExpr.replace(
-    /(RECORDS\.get\([^)]*\))\s*\+\s*(\[[^\]]*\])/g,
-    '__pyAdd($1, $2)',
-  );
-  jsExpr = translateTopLevelAdditions(jsExpr);
-  return jsExpr;
-}
-
-function evaluateWithJsFallback(
-  condition: string,
-  ctx: ConditionContext,
-  warnOnFailure = true,
-): any {
-  const game = ctx.game;
-  lastJsEvaluationFailed = true;
-  if (!game) return undefined;
-
-  const cachedTranslation = translatedExpressions.get(condition);
-  let jsExpr: string;
-  if (cachedTranslation === undefined) {
-    jsExpr = translateExpression(condition);
-    translatedExpressions.set(condition, jsExpr);
-  } else {
-    jsExpr = cachedTranslation;
-  }
-
-  // Build scope
-  const evalScope = buildEvalScope(ctx);
-  const gameProxy = evalScope.game;
-
-  // Build check_pair / check_default helpers
-  const unit1 = ctx.unit1;
-  const unit2 = ctx.unit2;
-  const check_pair = (a: string, b: string) => {
-    const u1 = unit1?.nid;
-    const u2 = unit2?.nid;
-    return (u1 === a && u2 === b) || (u1 === b && u2 === a);
-  };
-  const check_default = (targetNid: string, exceptions: string[]) => {
-    if (!unit1 || !unit2) return false;
-    if (unit1.nid === targetNid && unit2.team === 'player') {
-      return !exceptions.includes(unit2.nid);
-    }
-    if (unit2.nid === targetNid && unit1.team === 'player') {
-      return !exceptions.includes(unit1.nid);
-    }
-    return false;
-  };
-
-  // len() helper
-  const __len__ = (x: any) => {
-    if (Array.isArray(x)) return x.length;
-    if (x && typeof x === 'object' && 'size' in x) return x.size;
-    return 0;
-  };
-  const __any__ = (values: any) => Array.from(values ?? []).some(Boolean);
-  const __all__ = (values: any) => Array.from(values ?? []).every(Boolean);
-  const compareSortKeys = (left: any, right: any): number => {
-    if (Array.isArray(left) && Array.isArray(right)) {
-      const length = Math.max(left.length, right.length);
-      for (let index = 0; index < length; index++) {
-        const compared = compareSortKeys(left[index], right[index]);
-        if (compared !== 0) return compared;
-      }
-      return 0;
-    }
-    if (left === right) return 0;
-    if (left === undefined || left === null) return -1;
-    if (right === undefined || right === null) return 1;
-    return left < right ? -1 : 1;
-  };
-  const __sorted__ = (
-    values: Iterable<any> | undefined,
-    key: (value: any) => any = (value) => value,
-    reverse = false,
-  ) => Array.from(values ?? [])
-    .map((value, index) => ({ value, index, key: key(value) }))
-    .sort((left, right) => {
-      const compared = compareSortKeys(left.key, right.key);
-      return compared === 0
-        ? left.index - right.index
-        : (reverse ? -compared : compared);
-    })
-    .map((entry) => entry.value);
-
-  // v() helper: level vars take priority over game vars
-  const v = (varName: string, fallback?: any) => {
-    // Python QueryEngine.v: a level var holding None falls through.
-    const levelValue = ctx.levelVars?.get(varName);
-    if (levelValue !== undefined && levelValue !== null) return levelValue;
-    if (ctx.gameVars?.has(varName)) return ctx.gameVars.get(varName);
-    return fallback ?? 0;
-  };
-
-  // cf proxy (just for cf.SETTINGS['debug'])
-  const cf = { SETTINGS: { debug: false } };
-
-  // Wrap unit/region from context
-  const expressionUnit = ctx.localArgs?.has('unit')
-    ? ctx.localArgs.get('unit')
-    : unit1;
-  const unit = evalScope.wrapUnit?.(expressionUnit?._raw ?? expressionUnit) ?? null;
-  const target = evalScope.wrapUnit?.(unit2) ?? null;
-  const region = ctx.region ? {
-    nid: ctx.region.nid, position: ctx.region.position,
-    size: ctx.region.size, region_type: ctx.region.region_type,
-    sub_nid: ctx.region.sub_nid,
+function regionWrapper(region: any): any {
+  if (!region) return null;
+  return {
+    nid: region.nid,
+    position: region.position,
+    size: region.size,
+    region_type: region.region_type,
+    sub_nid: region.sub_nid,
+    condition: region.condition,
     contains(pos: [number, number] | null) {
-      if (!pos || !ctx.region.position) return false;
+      if (!pos || !region.position) return false;
       const [px, py] = pos;
-      const [rx, ry] = ctx.region.position;
-      const [rw, rh] = ctx.region.size ?? [1, 1];
+      const [rx, ry] = region.position;
+      const [rw, rh] = region.size ?? [1, 1];
       return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
     },
-  } : null;
-  const position = ctx.position;
-  const target_pos = ctx.localArgs?.get('target_pos') ?? target?.position ?? null;
-  const item = evalScope.wrapItem?.(ctx.item) ?? ctx.item ?? null;
-  const mode = ctx.localArgs?.get('mode') ?? null;
-  const stat_changes = ctx.localArgs?.get('stat_changes') ?? null;
-  const extremum = (
-    fn: (...values: number[]) => number,
-    values: any[],
-  ): number => {
-    const source = values.length === 1 &&
-      values[0] != null &&
-      typeof values[0] !== 'number' &&
-      typeof values[0][Symbol.iterator] === 'function'
-      ? Array.from(values[0])
-      : values;
-    return fn(...source.map(Number));
   };
-  const max = (...values: any[]) => extremum(Math.max, values);
-  const min = (...values: any[]) => extremum(Math.min, values);
-  const sum = (values: Iterable<any> | undefined) =>
-    Array.from(values ?? []).reduce((total, value) => total + Number(value), 0);
-  const math = {
-    floor: Math.floor,
-    ceil: Math.ceil,
-    sqrt: Math.sqrt,
-  };
-  const int = (value: any) => Math.trunc(Number(value));
-  const set = (values: Iterable<any> | undefined) => new Set(values ?? []);
-  const str = (value: any) => String(value);
-  const pyFormat = (template: string, value: any) => {
-    const values = Array.isArray(value) ? [...value] : [value];
-    let index = 0;
-    return String(template).replace(/%[sdr]/g, (token) => {
-      const candidate = values[index++];
-      if (token === '%d') return String(Math.trunc(Number(candidate)));
-      if (token === '%r') return JSON.stringify(candidate?._raw ?? candidate);
-      return String(candidate?._raw ?? candidate);
-    });
-  };
-  const pyAdd = (left: any, right: any) =>
-    Array.isArray(left) && Array.isArray(right)
-      ? [...left, ...right]
-      : left + right;
-  const range = (start: number, end?: number) => {
-    const from = end === undefined ? 0 : start;
-    const to = end === undefined ? start : end;
-    return Array.from({ length: Math.max(0, to - from) }, (_, index) => from + index);
-  };
-  const get_stacks = (candidate: any, skillNid: string) => {
-    const raw = typeof candidate === 'string'
-      ? game.units?.get?.(candidate)
-      : candidate?._raw ?? candidate;
-    return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
-  };
-  // EOtF fork get_charge: the last instance with a truthy charge.
-  const get_charge = (candidate: any, skillNid: string) =>
-    sharedQueryFuncs().get_charge(candidate, skillNid);
-  const evaluate = (
-    expression: unknown,
-    candidate?: any,
-    candidateTarget?: any,
-    candidatePosition?: [number, number] | null,
-  ) => evaluateExpression(String(expression ?? '0'), {
-    game,
-    unit1: candidate?._raw ?? candidate ?? unit1,
-    unit2: candidateTarget?._raw ?? candidateTarget ?? unit2,
-    item: ctx.item,
-    position: candidatePosition ?? ctx.position,
-    gameVars: ctx.gameVars,
-    levelVars: ctx.levelVars,
-    localArgs: ctx.localArgs,
-  });
-  const action = {
-    RemoveSkill(
-      candidate: any,
-      skillNid: string,
-      source?: any,
-      sourceType?: string,
-    ) {
-      const rawUnit = candidate?._raw ?? candidate;
-      const skill = rawUnit?.skills?.find?.((entry: any) => {
-        if (entry.nid !== skillNid) return false;
-        if (source !== undefined && source !== null &&
-            entry.data?.get?.('sourceNid') !== source) return false;
-        if (sourceType && entry.data?.get?.('sourceType') !== sourceType) return false;
-        return true;
-      });
-      return rawUnit && skill ? new RemoveSkillAction(rawUnit, skill) : null;
-    },
-    do(candidate: RemoveSkillAction | null) {
-      if (candidate) game.actionLog?.doAction?.(candidate);
-      return null;
-    },
-  };
-  const SourceType = { TRAVELER: 'traveler' };
+}
 
-  // Also inject support_rank_nid from localArgs
-  const support_rank_nid = ctx.localArgs?.get('support_rank_nid') ?? null;
-  const expressionLocals = new Map(ctx.localArgs ?? []);
-  const wrapExpressionLocal = (value: any): any => {
-    if (!value || typeof value !== 'object' || value._raw) return value;
-    if (Array.isArray(value)) return value.map(wrapExpressionLocal);
+/**
+ * Python's evaluate.get_context for one evaluation: the context names,
+ * the query-engine functions, the engine modules evaluate.py imports, and
+ * the trigger's local args. Names are resolved on first use and memoized,
+ * so an expression only pays for the wrappers it reads.
+ */
+function buildPythonGlobals(ctx: ConditionContext): RootScope {
+  const game = ctx.game;
+  let scope: Record<string, any> | null = null;
+  const evalScope = (): Record<string, any> => (scope ??= buildEvalScope(ctx));
+  const wrapUnit = (value: any): any => {
+    if (!game) return value ?? null;
+    return evalScope().wrapUnit(value?._raw ?? value) ?? null;
+  };
+  const wrapItem = (value: any): any => (game ? evalScope().wrapItem(value?._raw ?? value) : value ?? null);
+  const wrapSkill = (value: any): any => (game ? evalScope().wrapSkill(value?._raw ?? value) : value ?? null);
+  const wrapClass = (value: any): any => (game ? evalScope().wrapClass(value) : value ?? null);
+  const units = (values: any): any[] => Array.from(values ?? []).map(wrapUnit);
+  const closest = (values: any): any[] => Array.from(values ?? [])
+    .map((pair: any) => makeTuple([wrapUnit(pair[0]), pair[1]]));
+
+  const wrapLocal = (value: any): any => {
+    if (!game || !value || typeof value !== 'object' || value._raw) return value;
+    if (Array.isArray(value)) return value.map(wrapLocal);
     if (value.components instanceof Map && value.data instanceof Map) {
-      if ('uses' in value && 'subitems' in value) return evalScope.wrapItem(value);
-      if ('uid' in value && 'ownerNid' in value) return evalScope.wrapSkill(value);
+      if ('uses' in value && 'subitems' in value) return wrapItem(value);
+      if ('uid' in value && 'ownerNid' in value) return wrapSkill(value);
     }
-    if ('team' in value && 'items' in value && 'stats' in value) {
-      return evalScope.wrapUnit(value);
-    }
+    if ('team' in value && 'items' in value && 'stats' in value) return wrapUnit(value);
     return value;
   };
-  for (const [name, value] of expressionLocals) {
-    expressionLocals.set(name, wrapExpressionLocal(value));
-  }
-  if (expressionLocals.has('skill')) {
-    expressionLocals.set(
-      'skill',
-      evalScope.wrapSkill?.(expressionLocals.get('skill')) ??
-        expressionLocals.get('skill'),
-    );
-  }
-  if (expressionLocals.has('item2')) {
-    expressionLocals.set(
-      'item2',
-      evalScope.wrapItem?.(expressionLocals.get('item2')) ??
-        expressionLocals.get('item2'),
-    );
-  }
-  const playback = expressionLocals.get('playback');
-  if (Array.isArray(playback)) {
-    expressionLocals.set('playback', playback.map((mark: any) => {
-      if (!mark || typeof mark !== 'object') return mark;
-      return {
-        ...mark,
-        attacker: evalScope.wrapUnit?.(mark.attacker) ?? mark.attacker,
-        defender: evalScope.wrapUnit?.(mark.defender) ?? mark.defender,
-        main_attacker: evalScope.wrapUnit?.(
-          mark.main_attacker ?? mark.mainAttacker,
-        ) ?? mark.main_attacker ?? mark.mainAttacker,
-      };
-    }));
-  }
-  const reservedLocals = new Set([
-    'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position',
-    'target_pos', 'item', 'mode', 'stat_changes', 'support_rank_nid',
-  ]);
-  const localDeclarations = [...(ctx.localArgs?.keys() ?? [])]
-    .filter((name) => /^[A-Za-z_]\w*$/.test(name) && !reservedLocals.has(name))
-    .map((name) => `var ${name} = _locals.get(${JSON.stringify(name)});`)
-    .join('\n');
-
-  // Inject query engine functions (u, v, get_item, has_item, is_dead, etc.).
-  // The engine holds no state — every method resolves the live game when it
-  // runs — so the instance and its function dictionary are built once instead
-  // of on every expression evaluation.
-  const _queryFuncs = sharedQueryFuncs();
-
-  const compileKey = `${localDeclarations} ${jsExpr}`;
-  const alreadyCompiled = compiledExpressions.get(compileKey);
-
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = alreadyCompiled ?? new Function(
-      'game', 'unit', 'unit1', 'unit2', 'target', 'region', 'position', 'target_pos', 'item',
-      'check_pair', 'check_default', '__len__', '__any__', '__all__', '__sorted__', 'v', 'cf',
-      'support_rank_nid', 'mode', 'stat_changes', 'DB', 'RECORDS', 'utils', 'item_funcs',
-      'item_system', 'skill_system', 'unit_funcs', 'combat_calcs', 'movement_funcs', 'target_system',
-      'max', 'min', 'sum', 'math', 'int', 'set', 'str', 'range', 'get_stacks', 'get_charge',
-      '__pyFormat', '__pyAdd', 'static_random', 'evaluate', '_qf', '_locals',
-      '_wrapUnit', '_wrapItem', '_wrapSkill', '_wrapClass', 'action', 'SourceType',
-      `"use strict";
-       ${localDeclarations}
-       var __pyIn = (x, seq) => {
-         if (seq == null) return false;
-         if (typeof seq === 'string') return seq.includes(x);
-         if (Array.isArray(seq)) return seq.includes(x);
-         if (seq instanceof Set || seq instanceof Map) return seq.has(x);
-         if (typeof seq[Symbol.iterator] === 'function') return Array.from(seq).includes(x);
-         if (typeof seq.has === 'function') return !!seq.has(x);
-         return Object.prototype.hasOwnProperty.call(seq, x);
-       };
-       var __pyIndex = (seq, x) => {
-         const i = seq == null ? -1 : seq.indexOf(x);
-         if (i < 0) throw new Error('ValueError: ' + String(x) + ' is not in list');
-         return i;
-       };
-       // Spread query engine functions into local scope
-       var _units = values => Array.from(values || []).map(_wrapUnit),
-           u = (...args) => _wrapUnit(_qf.u(...args)),
-           get_item = (...args) => _wrapItem(_qf.get_item(...args)),
-           find_item = (...args) => _wrapItem(_qf.find_item(...args)),
-           has_item = _qf.has_item,
-           get_subitem = (...args) => _wrapItem(_qf.get_subitem(...args)),
-           get_skill = (...args) => _wrapSkill(_qf.get_skill(...args)),
-           has_skill = _qf.has_skill,
-           get_klass = (...args) => _wrapClass(_qf.get_klass(...args)),
-           get_class = (...args) => _wrapClass(_qf.get_class(...args)),
-           get_closest_allies = (...args) => Array.from(_qf.get_closest_allies(...args) || [])
-             .map(pair => [_wrapUnit(pair[0]), pair[1]]),
-           get_closest_units = (...args) => Array.from(_qf.get_closest_units(...args) || [])
-             .map(pair => [_wrapUnit(pair[0]), pair[1]]),
-           get_closest_enemies = (...args) => Array.from(_qf.get_closest_enemies(...args) || [])
-             .map(pair => [_wrapUnit(pair[0]), pair[1]]),
-           get_units_within_distance = (...args) => _units(_qf.get_units_within_distance(...args)),
-           get_allies_within_distance = (...args) => _units(_qf.get_allies_within_distance(...args)),
-           get_units_in_area = (...args) => _units(_qf.get_units_in_area(...args)),
-           get_debuff_count = _qf.get_debuff_count,
-           get_total_charge = _qf.get_total_charge, check_pivot = _qf.check_pivot,
-           get_units_in_region = (...args) => _units(_qf.get_units_in_region(...args)),
-           any_unit_in_region = _qf.any_unit_in_region,
-           is_dead = _qf.is_dead, check_alive = _qf.check_alive,
-           get_internal_level = _qf.get_internal_level,
-           get_support_rank = _qf.get_support_rank, get_terrain = _qf.get_terrain,
-           has_achievement = _qf.has_achievement, check_shove = _qf.check_shove,
-           get_money = _qf.get_money, get_bexp = _qf.get_bexp,
-           is_roam = _qf.is_roam,
-           get_roam_unit = (...args) => _wrapUnit(_qf.get_roam_unit(...args)),
-           ai_group_active = _qf.ai_group_active,
-           get_team_units = (...args) => _units(_qf.get_team_units(...args)),
-           get_player_units = (...args) => _units(_qf.get_player_units(...args)),
-           get_enemy_units = (...args) => _units(_qf.get_enemy_units(...args)),
-           get_all_units = (...args) => _units(_qf.get_all_units(...args)),
-           get_convoy_inventory = (...args) =>
-             Array.from(_qf.get_convoy_inventory(...args) || []).map(_wrapItem);
-       return (${jsExpr});`,
-    );
-    if (!alreadyCompiled) compiledExpressions.set(compileKey, fn);
-    const result = fn(
-      gameProxy, unit, unit, target, target, region, position, target_pos, item,
-      check_pair, check_default, __len__, __any__, __all__, __sorted__, v, cf,
-      support_rank_nid, mode, stat_changes, evalScope.DB, evalScope.RECORDS, evalScope.utils,
-      evalScope.item_funcs, evalScope.item_system, evalScope.skill_system, evalScope.unit_funcs,
-      evalScope.combat_calcs, evalScope.movement_funcs, evalScope.target_system,
-      max, min, sum, math, int, set, str, range, get_stacks, get_charge,
-      pyFormat, pyAdd, { get_random_choice: gameProxy.get_random_choice }, evaluate,
-      _queryFuncs, expressionLocals,
-      evalScope.wrapUnit, evalScope.wrapItem, evalScope.wrapSkill, evalScope.wrapClass,
-      action, SourceType,
-    );
-    lastJsEvaluationFailed = false;
-    return result;
-  } catch (e) {
-    // Expression evaluation failed — log the error for debugging
-    if (warnOnFailure) {
-      console.warn(
-        `EventCondition JS eval failed for "${condition}" as "${jsExpr}":`,
-        e,
-      );
+  const localValue = (name: string, value: any): any => {
+    if (name === 'skill') return wrapSkill(value);
+    if (name === 'item2') return wrapItem(value);
+    if (name === 'playback' && Array.isArray(value)) {
+      return value.map((mark: any) => {
+        if (!mark || typeof mark !== 'object') return mark;
+        return {
+          ...mark,
+          attacker: wrapUnit(mark.attacker) ?? mark.attacker,
+          defender: wrapUnit(mark.defender) ?? mark.defender,
+          main_attacker: wrapUnit(mark.main_attacker ?? mark.mainAttacker) ??
+            mark.main_attacker ?? mark.mainAttacker,
+        };
+      });
     }
-    return undefined;
+    return wrapLocal(value);
+  };
+
+  const queryFunction = (name: string): any => {
+    const qf = sharedQueryFuncs();
+    switch (name) {
+      case 'u': return (...args: any[]) => wrapUnit(qf.u(...args));
+      case 'get_item': return (...args: any[]) => wrapItem(qf.get_item(...args));
+      case 'find_item': return (...args: any[]) => wrapItem(qf.find_item(...args));
+      case 'get_subitem': return (...args: any[]) => wrapItem(qf.get_subitem(...args));
+      case 'get_skill': return (...args: any[]) => wrapSkill(qf.get_skill(...args));
+      case 'get_klass': return (...args: any[]) => wrapClass(qf.get_klass(...args));
+      case 'get_class': return (...args: any[]) => wrapClass(qf.get_class(...args));
+      case 'get_roam_unit': return (...args: any[]) => wrapUnit(qf.get_roam_unit(...args));
+      case 'get_closest_allies':
+      case 'get_closest_units':
+      case 'get_closest_enemies':
+        return (...args: any[]) => closest(qf[name](...args));
+      case 'get_units_within_distance':
+      case 'get_allies_within_distance':
+      case 'get_units_in_area':
+      case 'get_units_in_region':
+      case 'get_team_units':
+      case 'get_player_units':
+      case 'get_enemy_units':
+      case 'get_all_units':
+        return (...args: any[]) => units(qf[name](...args));
+      case 'get_convoy_inventory':
+        return (...args: any[]) => Array.from(qf.get_convoy_inventory(...args) || []).map(wrapItem);
+      case 'has_item': case 'has_skill': case 'get_debuff_count': case 'get_total_charge':
+      case 'check_pivot': case 'any_unit_in_region': case 'is_dead': case 'check_alive':
+      case 'get_internal_level': case 'get_support_rank': case 'get_terrain':
+      case 'has_achievement': case 'check_shove': case 'get_money': case 'get_bexp':
+      case 'is_roam': case 'ai_group_active':
+        return qf[name];
+    }
+    return NOT_FOUND;
+  };
+
+  const resolve = (name: string): any => {
+    if (!CONTEXT_NAMES.has(name) && ctx.localArgs?.has(name)) {
+      return localValue(name, ctx.localArgs.get(name));
+    }
+    switch (name) {
+      case 'game': return game ? evalScope().game : NOT_FOUND;
+      case 'unit':
+      case 'unit1':
+        return wrapUnit(ctx.localArgs?.has('unit') ? ctx.localArgs.get('unit') : ctx.unit1);
+      case 'unit2':
+      case 'target':
+        return wrapUnit(ctx.unit2);
+      case 'region': return regionWrapper(ctx.region);
+      case 'position': return ctx.position ?? null;
+      case 'target_pos':
+        return ctx.localArgs?.get('target_pos') ?? wrapUnit(ctx.unit2)?.position ?? null;
+      case 'item': return wrapItem(ctx.item) ?? ctx.item ?? null;
+      case 'mode': return ctx.localArgs?.get('mode') ?? null;
+      case 'stat_changes': return ctx.localArgs?.get('stat_changes') ?? null;
+      case 'support_rank_nid': return ctx.localArgs?.get('support_rank_nid') ?? null;
+      case 'check_pair':
+        // Python evaluate.check_pair
+        return (s1: string, s2: string) => {
+          const u1 = ctx.unit1;
+          const u2 = ctx.unit2;
+          if (!u1 || !u2) return false;
+          return (u1.nid === s1 && u2.nid === s2) || (u1.nid === s2 && u2.nid === s1);
+        };
+      case 'check_default':
+        // Python evaluate.check_default
+        return (s1: string, t1: any = []) => {
+          const u1 = ctx.unit1;
+          const u2 = ctx.unit2;
+          if (!u1 || !u2) return false;
+          const exceptions = Array.from(t1 ?? []);
+          if (u1.nid === s1 && u2.team === 'player') return !exceptions.includes(u2.nid);
+          if (u2.nid === s1 && u1.team === 'player') return !exceptions.includes(u1.nid);
+          return false;
+        };
+      case 'v':
+        // Python QueryEngine.v: a level var holding None falls through to
+        // game_vars.get(name, fallback).
+        return (varName: string, fallback: any = null) => {
+          const levelValue = ctx.levelVars?.get(varName);
+          if (levelValue !== undefined && levelValue !== null) return levelValue;
+          if (ctx.gameVars?.has(varName)) return ctx.gameVars.get(varName);
+          return fallback ?? null;
+        };
+      case 'cf': return { SETTINGS: { debug: false } };
+      case 'math': return MATH_MODULE;
+      case 'DB': case 'RECORDS': case 'utils': case 'item_funcs': case 'item_system':
+      case 'skill_system': case 'unit_funcs': case 'combat_calcs': case 'movement_funcs':
+      case 'target_system':
+        return game ? evalScope()[name] : NOT_FOUND;
+      case 'static_random':
+        return game ? { get_random_choice: evalScope().game.get_random_choice } : NOT_FOUND;
+      case 'get_stacks':
+        return (candidate: any, skillNid: string) => {
+          const raw = typeof candidate === 'string'
+            ? game?.units?.get?.(candidate)
+            : candidate?._raw ?? candidate;
+          return raw?.skills?.filter((skill: any) => skill.nid === skillNid).length ?? 0;
+        };
+      case 'get_charge':
+        // EOtF fork get_charge: the last instance with a truthy charge.
+        return (candidate: any, skillNid: string) => sharedQueryFuncs().get_charge(candidate, skillNid);
+      case 'evaluate':
+        // Python evaluate.evaluate(string, unit1=None, unit2=None,
+        // position=None, local_args=None): a fresh context from exactly these
+        // arguments; an exception propagates into the calling expression.
+        return pyFunction('evaluate', (args, kwargs) => {
+          const arg = (index: number, name: string) =>
+            index < args.length ? args[index] : kwargs && name in kwargs ? kwargs[name] : null;
+          const expression = arg(0, 'string');
+          if (typeof expression !== 'string') {
+            throw new PyException('AttributeError', `'${typeName(expression)}' object has no attribute 'strip'`);
+          }
+          const localArgsValue = arg(4, 'local_args');
+          const localArgs = new Map<string, any>();
+          if (localArgsValue instanceof Map) for (const [key, value] of localArgsValue) localArgs.set(key, value);
+          else if (localArgsValue && typeof localArgsValue === 'object' && !Array.isArray(localArgsValue)) {
+            for (const [key, value] of Object.entries(localArgsValue)) localArgs.set(key, value);
+          }
+          const candidate = arg(1, 'unit1');
+          const candidateTarget = arg(2, 'unit2');
+          const position = arg(3, 'position');
+          const outcome = evaluatePythonInContext(expression, {
+            game,
+            unit1: candidate?._raw ?? candidate ?? undefined,
+            unit2: candidateTarget?._raw ?? candidateTarget ?? undefined,
+            position: position ?? undefined,
+            gameVars: ctx.gameVars,
+            levelVars: ctx.levelVars,
+            localArgs,
+          });
+          if (!outcome.ok) throw outcome.error;
+          return outcome.value;
+        });
+      case 'action':
+        return {
+          RemoveSkill(candidate: any, skillNid: string, source?: any, sourceType?: string) {
+            const rawUnit = candidate?._raw ?? candidate;
+            const skill = rawUnit?.skills?.find?.((entry: any) => {
+              if (entry.nid !== skillNid) return false;
+              if (source !== undefined && source !== null &&
+                  entry.data?.get?.('sourceNid') !== source) return false;
+              if (sourceType && entry.data?.get?.('sourceType') !== sourceType) return false;
+              return true;
+            });
+            return rawUnit && skill ? new RemoveSkillAction(rawUnit, skill) : null;
+          },
+          do(candidate: RemoveSkillAction | null) {
+            if (candidate) game?.actionLog?.doAction?.(candidate);
+            return null;
+          },
+        };
+      case 'SourceType': return { TRAVELER: 'traveler' };
+    }
+    return game ? queryFunction(name) : NOT_FOUND;
+  };
+
+  const resolved = new Map<string, any>();
+  return {
+    lookup(name: string): any {
+      if (resolved.has(name)) return resolved.get(name);
+      const value = resolve(name);
+      resolved.set(name, value);
+      return value;
+    },
+  };
+}
+
+type PythonOutcome = { ok: true; value: any } | { ok: false; error: unknown };
+
+/**
+ * Evaluate one Python expression the way Python's evaluate.evaluate does,
+ * reporting success or the raised exception. The value is the raw Python
+ * value (integral floats are PyFloat boxes; see py-expr/values.ts).
+ */
+export function evaluatePythonInContext(expression: string, ctx: ConditionContext): PythonOutcome {
+  try {
+    return { ok: true, value: evaluatePythonRaw(expression, buildPythonGlobals(ctx)) };
+  } catch (error) {
+    return { ok: false, error };
   }
+}
+
+/**
+ * Log a failed evaluation the way the Python engine's except-clauses log
+ * (logging.error / print). Tests key off the `EventCondition JS eval failed`
+ * marker, so it is kept even though no JavaScript is generated any more.
+ * Under ?strict=true this throws via reportUnimplemented.
+ */
+function reportEvaluationFailure(
+  expression: string,
+  error: unknown,
+  where: string,
+  warn: boolean,
+): void {
+  // Exceptions CPython raises for the same expression and values (TypeError
+  // on None, AttributeError on a missing unit, authored SyntaxErrors, ...)
+  // are what Python's except-clauses log: not a gap in the port. A missing
+  // name, or a missing attribute on an engine wrapper or module, may be
+  // unported support instead.
+  const pyError = error as { pyType?: string; hostAttribute?: boolean };
+  if (isPythonError(error) && pyError.pyType !== 'NameError' && !pyError.hostAttribute) {
+    if (warn) {
+      console.warn(`Python evaluation error (Python-equivalent) in "${expression}": ${describePythonError(error)}`);
+    }
+    return;
+  }
+  // A missing name/engine attribute or a JavaScript error from engine code
+  // may be unported support: keep the marker tests watch for and report it
+  // (throws under ?strict=true).
+  if (warn) {
+    console.warn(`EventCondition JS eval failed for "${expression}": ${describePythonError(error)}`);
+  }
+  reportUnimplemented('expression', expression, where);
+}
+
+/** A condition with an anyLivingClass shape (see evaluateCondition). */
+const ANY_LIVING_CLASS = /^any\(\[\s*\w+\.position\s+for\s+(\w+)\s+in\s+game\.units\s+if\s+\1\.klass\s*==\s*['"]([^'"\\]+)['"]\s+and\s+not\s+is_dead\(\1\.nid\)\s*\]\)$/;
+
+/**
+ * Evaluate a condition (Python `bool(eval(condition))`).
+ *
+ * An empty condition is True (callers use '' for "no condition"). A
+ * condition that raises is False, matching Python's except-clauses at the
+ * event, if/elif and component sites; sites with a different except
+ * behaviour use evaluatePythonInContext directly.
+ */
+export function evaluateCondition(
+  condition: string,
+  context: ConditionContext,
+): boolean {
+  const trimmed = condition.trim();
+  if (trimmed === '' || trimmed === 'True' || trimmed === '1') return true;
+  if (trimmed === 'False' || trimmed === '0') return false;
+
+  // Hot path, semantically identical to the generic evaluation: EOtF's Gift
+  // of Magic evaluates this item_override condition while drawing every
+  // affected weapon, and wrapping all of game.units each time dominated the
+  // renderer.
+  const anyLivingClass = ANY_LIVING_CLASS.exec(trimmed);
+  if (anyLivingClass && context.game) {
+    const klass = anyLivingClass[2];
+    for (const unit of context.game.units?.values?.() ?? []) {
+      if ((unit as any).klass !== klass) continue;
+      if ((unit as any).isDead?.() ?? (unit as any).dead ?? false) continue;
+      if ((unit as any).position) return true;
+    }
+    return false;
+  }
+
+  const outcome = evaluatePythonInContext(trimmed, context);
+  if (outcome.ok) return pyBool(outcome.value);
+  reportEvaluationFailure(trimmed, outcome.error, 'event condition', true);
+  return false;
+}
+
+/**
+ * Evaluate an expression and return its value as a plain JS value, or
+ * `undefined` when the expression raised (logged). Python None is `null`.
+ */
+export function evaluateExpression(expression: string, context: ConditionContext): any {
+  const outcome = evaluatePythonInContext(expression, context);
+  if (outcome.ok) return toHostValue(outcome.value) ?? null;
+  reportEvaluationFailure(expression.trim(), outcome.error, 'event expression', true);
+  return undefined;
+}
+
+/**
+ * `int(evaluate(expression))` inside the call site's try-block: Python int()
+ * semantics (floats truncate toward zero; None, non-numeric strings and
+ * other objects raise) and `fallback` when evaluation or conversion raises.
+ */
+export function evaluateInt(expression: string, context: ConditionContext, fallback = 0): number {
+  return convertEvaluated(expression, context, BUILTINS.int, fallback);
+}
+
+/** `float(evaluate(expression))` with the call site's except fallback. */
+export function evaluateFloat(expression: string, context: ConditionContext, fallback: number): number {
+  return convertEvaluated(expression, context, BUILTINS.float, fallback);
+}
+
+/**
+ * `{stat[0]: int(evaluate(stat[1])) for stat in value}` inside one try-block,
+ * as Python's stat_change_expression family does: if any entry raises,
+ * every stat is 0.
+ */
+export function evaluateIntPairs(pairs: unknown, context: ConditionContext): Record<string, number> {
+  const entries = Array.isArray(pairs)
+    ? pairs.filter((entry): entry is [string, unknown] => Array.isArray(entry) && typeof entry[0] === 'string')
+    : [];
+  const result: Record<string, number> = {};
+  for (const [stat, expression] of entries) {
+    const trimmed = typeof expression === 'string' ? expression.trim() : '';
+    const outcome = typeof expression === 'string'
+      ? evaluatePythonInContext(trimmed, context)
+      : { ok: false as const, error: new PyException('AttributeError', `'${typeName(expression)}' object has no attribute 'strip'`) };
+    let failure: unknown = outcome.ok ? null : outcome.error;
+    if (outcome.ok) {
+      try {
+        result[stat] = Number(toHostValue(BUILTINS.int(outcome.value)));
+      } catch (error) {
+        failure = error;
+      }
+    }
+    if (failure) {
+      reportEvaluationFailure(trimmed, failure, 'event expression', true);
+      return Object.fromEntries(entries.map(([name]) => [name, 0]));
+    }
+  }
+  return result;
+}
+
+function convertEvaluated(
+  expression: string,
+  context: ConditionContext,
+  convert: (value: unknown) => unknown,
+  fallback: number,
+): number {
+  const trimmed = String(expression ?? '').trim();
+  const outcome = evaluatePythonInContext(trimmed, context);
+  if (!outcome.ok) {
+    reportEvaluationFailure(trimmed, outcome.error, 'event expression', true);
+    return fallback;
+  }
+  try {
+    return Number(toHostValue(convert(outcome.value)));
+  } catch (error) {
+    reportEvaluationFailure(trimmed, error, 'event expression', true);
+    return fallback;
+  }
+}
+
+/** Evaluate a condition; on failure log like Python and return `fallback`. */
+export function evaluateConditionOr(condition: string, context: ConditionContext, fallback: boolean): boolean {
+  const trimmed = condition.trim();
+  if (trimmed === '') return true;
+  const outcome = evaluatePythonInContext(trimmed, context);
+  if (outcome.ok) return pyBool(outcome.value);
+  reportEvaluationFailure(trimmed, outcome.error, 'event condition', true);
+  return fallback;
+}
+
+/**
+ * Evaluate a Python lambda (e.g. `lambda x, y: ...`) against plain module
+ * globals and return it as a JS function. Throws on syntax errors.
+ */
+export function evaluatePythonLambda(
+  source: string,
+  globals: Record<string, unknown>,
+): (...args: unknown[]) => unknown {
+  const fn = evaluatePythonRaw(source, scopeFromRecord(globals));
+  if (typeof fn !== 'function') {
+    throw new PyException('TypeError', `'${typeName(fn)}' object is not callable`);
+  }
+  return (...args: unknown[]) => fn(...args);
+}
+
+/**
+ * Evaluate equation source (already token-substituted by combat-calcs) in
+ * Python's equation namespace: builtins, `unit` and the given helpers only.
+ * Throws when the expression raises.
+ */
+export function evaluateEquationSource(
+  source: string,
+  unit: any,
+  game: any,
+  globals: Record<string, unknown>,
+): any {
+  let unitWrapper: any;
+  let unitResolved = false;
+  return evaluatePythonRaw(source, {
+    lookup(name: string) {
+      if (Object.prototype.hasOwnProperty.call(globals, name)) return globals[name];
+      if (name === 'unit') {
+        if (!unitResolved) {
+          unitResolved = true;
+          unitWrapper = game
+            ? buildEvalScope({ game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars }).wrapUnit(unit)
+            : unit;
+        }
+        return unitWrapper;
+      }
+      return NOT_FOUND;
+    },
+  });
+}
+
+/** Python truthiness of an evaluated value. */
+export function pythonTruthy(value: unknown): boolean {
+  return pyBool(value);
+}
+
+/** Python iteration over an evaluated value (dict keys, str chars, ...). */
+export function pythonIterationValues(value: unknown): unknown[] {
+  return toArray(value).map(toHostValue);
+}
+
+/**
+ * TextEvaluator._object_to_str: an object's uid, else its nid, else str().
+ */
+export function pythonStr(value: unknown): string {
+  const raw: any = value && typeof value === 'object' && '_raw' in value ? (value as any)._raw : value;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && !(raw instanceof Map) && !(raw instanceof Set)) {
+    if (raw.uid !== undefined && raw.uid !== null) return String(raw.uid);
+    if (raw.nid !== undefined && raw.nid !== null) return String(raw.nid);
+  }
+  return pyStr(value);
+}
+
+/**
+ * TextEvaluator._evaluate_evals for one `{e:...}` tag: `_object_to_str` of
+ * the value, or '??' (logged) when the expression raises.
+ */
+export function evaluateTextTag(expression: string, context: ConditionContext): string {
+  const trimmed = expression.trim();
+  const outcome = evaluatePythonInContext(trimmed, context);
+  if (outcome.ok) return pythonStr(outcome.value);
+  reportEvaluationFailure(trimmed, outcome.error, 'text eval', true);
+  return '??';
+}
+
+/**
+ * A Python literal for a JS value, for substituting a variable's value into
+ * expression source. Engine objects become their uid/nid string, as the
+ * text evaluator's _object_to_str renders them.
+ */
+export function pythonLiteral(value: unknown): string {
+  const raw: any = value && typeof value === 'object' && '_raw' in value ? (value as any)._raw : value;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && !(raw instanceof Map) &&
+      !(raw instanceof Set) && (raw.uid !== undefined || raw.nid !== undefined)) {
+    return pyRepr(String(raw.uid ?? raw.nid));
+  }
+  return pyRepr(toHostValue(value));
 }
 
 setPyevExpressionEvaluator((expression, game, localVars) =>

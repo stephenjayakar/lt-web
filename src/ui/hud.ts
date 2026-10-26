@@ -30,7 +30,7 @@ import { createBaseSurf, getMenuBgSpriteSync } from './base-surf';
 import { drawItemIcon, getIconSheet } from './icons';
 import { getSetting } from '../engine/states/settings-state';
 import { getTerrainBonuses } from '../combat/terrain-bonuses';
-import { evaluateExpression } from '../events/event-manager';
+import { evaluateTextTag } from '../events/event-manager';
 import {
   canCounterattack, canDefenderDouble, canDouble, computeAssistDamage, computeBlitzPhases,
   computeCrit, computeDamage, computeExtraAttackPhases, computeHit, computeStrikeCount,
@@ -122,8 +122,7 @@ export function evaluateText(text: string, game: Game): string {
       return '??';
     }
     try {
-      const value = evaluateExpression(body, { game, gameVars: game.gameVars, levelVars: game.levelVars });
-      return value === undefined ? '??' : String(value);
+      return evaluateTextTag(body, { game, gameVars: game.gameVars, levelVars: game.levelVars });
     } catch {
       return '??';
     }

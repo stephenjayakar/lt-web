@@ -20,7 +20,7 @@ import {
   type CombatProcMark,
 } from './combat-skill-lifecycle';
 import { AddSkillAction, RemoveSkillAction } from '../engine/action';
-import { evaluateExpression } from '../events/event-manager';
+import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from '../engine/engine-flavor';
 import {
   applyPlannedForcedMovement,
@@ -607,7 +607,8 @@ export class CombatPhaseSolver {
     skill: SkillObject,
   ): number {
     try {
-      const value = evaluateExpression(expression, {
+      // EOtF EvalLifelink: int(evaluate(...)), 0 when it raises.
+      return evaluateInt(expression, {
         game: this.game,
         unit1: strike.attacker,
         unit2: strike.defender,
@@ -616,13 +617,12 @@ export class CombatPhaseSolver {
         gameVars: this.game?.gameVars,
         levelVars: this.game?.levelVars,
         localArgs: new Map<string, unknown>([
+          ['item', strike.item],
           ['item2', strike.defender.equippedWeapon],
           ['mode', strike.mode ?? (strike.isCounter ? 'defense' : 'attack')],
           ['skill', skill],
         ]),
-      });
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+      }, 0);
     } catch (error) {
       console.error(`Could not evaluate lifelink component ${expression}`, error);
       return 0;

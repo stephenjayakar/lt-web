@@ -46,8 +46,12 @@ Verified baseline:
 - strict mode count-locks 74 verified item and 270 verified skill component
   NIDs and rejects count drift; and
 - all 4,937 conditions, 249 eval substitutions, and 646 loop expressions execute
-  in strict mode without evaluator fallback, including nested comprehensions,
-  board/target helpers, and list-valued substitutions;
+  in strict mode through the Python expression evaluator (`src/events/py-expr`:
+  tokenizer, CPython-precedence parser, Python-semantics tree evaluator), whose
+  parse trees match CPython's `ast` on all 7,912 distinct EOtF expressions and
+  whose results match CPython on an 810-expression semantics fixture; failures
+  CPython raises too are logged as Python-equivalent, while missing names and
+  missing engine-wrapper attributes are reported as unported support;
 - authored `c. Challenge_Unlocks` and `Item_EssenceRender` payloads run through
   `EventState`, covering unit loading, record/table updates, dynamic skill
   components, nested key/value arguments, parent resume, and currency mutation;
@@ -119,7 +123,7 @@ Verified baseline:
   whether the skill defined a tint at all — no authored skill uses `unit_tint`
   and only 54 use `unit_flickering_tint`. Testing the component first took
   GrigolBoss (56 units) from 213ms to 7.8ms per frame, 5fps to 129fps.
-  Expression compilation and translation are now cached, `wrapSkill` builds
+  Python expressions compile once into closure trees, `wrapSkill` builds
   its component map lazily, and the query-function dictionary is built once;
 - the asset bundle is a production default only. Loading it in dev cost 273MB
   of heap against 73MB without, and Vite already serves the project from disk.
@@ -143,6 +147,14 @@ The release gate is green: build, all four audits, the full serial suite,
   list-valued substitution semantics found by the settlement shards.
 - [x] Verify high-volume generic-unit/group, record/table, dynamic-component,
   and trigger-script flows with real project payloads.
+- [x] Replace the regex Python-to-JavaScript translation (event conditions,
+  evals, loops, variables, component expressions, pyev1, equations) with a real
+  Python expression implementation; differential against CPython on the corpus.
+- [ ] Per-call-site eval context fidelity: Python passes a component-specific
+  subset of unit/target/position/local args; the web still passes all of them.
+- [ ] `item_funcs.has_damage` (combat conditions of Hurricane_Onslaught_Child,
+  Rumbling_Earth_Child_Helper and Critical_Zone_Aura_Helper/Child) does not exist in the lt-maker reference, so those conditions raise
+  and stay False there and here; confirm against EOtF's shipped engine.
 
 ### P8.3 — Roguelite systems and campaign proof
 
