@@ -3091,7 +3091,7 @@
       {
         "nid": "ignore_damage",
         "uses": 22,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
