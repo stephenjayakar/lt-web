@@ -1792,6 +1792,33 @@ test.describe('Event command batch 3l (set_custom_options)', () => {
     await stepFrames(page, 15);
     const fired = await page.evaluate(() => (window as any).__gameRef.gameVars.get('custom_fired'));
     expect(fired).toBe('yes');
+    // Python runs the event over the option menu, which is back on top after.
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('option_menu');
+  });
+
+  test('Objective and Options return to the option menu on BACK', async ({ page }) => {
+    // Python OptionMenuState: transition_to pops only itself, so the option
+    // menu stays beneath objective_menu / settings_menu.
+    await boot(page);
+    const names: string[] = [];
+    for (const value of ['objective', 'options']) {
+      await page.evaluate((value) => {
+        const g = (window as any).__gameRef;
+        g.state.change('option_menu');
+        (window as any).__harness.stepFrames(3);
+        const st: any = g.state.getCurrentState();
+        st.menu.selectedIndex = st.menu.options.findIndex((o: any) => o.value === value);
+      }, value);
+      await stepFrames(page, 1, 'SELECT');
+      await stepFrames(page, 10);
+      names.push(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name));
+      await stepFrames(page, 1, 'BACK');
+      await stepFrames(page, 30);
+      names.push(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name));
+      await stepFrames(page, 1, 'BACK');
+      await stepFrames(page, 10);
+    }
+    expect(names).toEqual(['objective_menu', 'option_menu', 'settings_menu', 'option_menu']);
   });
 });
 
