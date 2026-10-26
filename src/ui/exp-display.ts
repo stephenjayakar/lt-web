@@ -13,6 +13,8 @@ import type { MapAnimation } from '../rendering/map-animation';
 import { FONT } from '../rendering/bmp-font';
 import type { UnitObject } from '../objects/unit';
 import type { StatDef } from '../data/types';
+import { isForkEngine } from '../engine/engine-flavor';
+import { spriteUrl } from './sprites';
 
 // ---------------------------------------------------------------------------
 // Sprite loading
@@ -24,6 +26,8 @@ let expBarBeginSurf: Surface | null = null;
 let expBarMiddleSurf: Surface | null = null;
 let expBarEndSurf: Surface | null = null;
 let levelScreenBgSurf: Surface | null = null;
+/** EOtF fork LevelUpScreen background (`LevelScreen2`, 10 stat rows). */
+let levelScreen2BgSurf: Surface | null = null;
 let statUnderlineSurf: Surface | null = null;
 
 /** Whether sprites have been loaded. */
@@ -39,11 +43,14 @@ export async function loadExpDisplaySprites(): Promise<void> {
   spritesLoading = true;
 
   try {
-    const [expBarImg, levelScreenImg, underlineImg] = await Promise.all([
+    const levelScreen2Url = isForkEngine() ? spriteUrl('LevelScreen2') : null;
+    const [expBarImg, levelScreenImg, underlineImg, levelScreen2Img] = await Promise.all([
       loadImg('/sprites/exp_displays/expbar.png'),
       loadImg('/sprites/exp_displays/level_screen.png'),
       loadImg('/sprites/exp_displays/stat_underline.png'),
+      levelScreen2Url ? loadImg(levelScreen2Url) : Promise.resolve(null),
     ]);
+    if (levelScreen2Img) levelScreen2BgSurf = surfaceFromImage(levelScreen2Img);
 
     if (expBarImg) {
       // expbar.png is 144x31:
@@ -90,7 +97,8 @@ function loadImg(url: string): Promise<HTMLImageElement | null> {
 // ---------------------------------------------------------------------------
 
 /**
- * Faithful port of the Python ExpBar class.
+ * Faithful port of the Python ExpBar class. The EOtF fork crops the bar to
+ * 136px and draws the number 4px (not 8px) in from the right edge.
  *
  * The bar uses the expbar.png sprite sheet:
  * - 144x24 background with decorative frame
@@ -100,7 +108,8 @@ function loadImg(url: string): Promise<HTMLImageElement | null> {
  * - EXP number shown right-aligned using 'number_small3' BMP font
  */
 export class ExpBar {
-  private width = 144;
+  private width = isForkEngine() ? 136 : 144;
+  private numberInset = isForkEngine() ? 4 : 8;
   private height = 24;
   private barMax = 100;
   private pos: [number, number];
@@ -191,10 +200,10 @@ export class ExpBar {
     const numStr = String(Math.floor(this.num));
     const font = FONT['number_small3'];
     if (font) {
-      font.blitRight(barSurf, numStr, this.width - 8, 4);
+      font.blitRight(barSurf, numStr, this.width - this.numberInset, 4);
     } else {
       // Fallback: use canvas text
-      barSurf.drawTextRight(numStr, this.width - 8, 6, 'white', '8px monospace');
+      barSurf.drawTextRight(numStr, this.width - this.numberInset, 6, 'white', '8px monospace');
     }
 
     // Iris transition: subsurface to show only the visible strip
@@ -261,6 +270,10 @@ export class LevelUpScreen {
 
   private width: number;
   private height: number;
+  /** Panel background: EOtF fork `LevelScreen2`, else `level_screen`. */
+  private bg: Surface | null;
+  /** Stats shown before the second column starts (fork 5, upstream 4). */
+  private columnSize: number;
 
   // Animation state
   private state: string = 'scroll_in';
@@ -310,20 +323,25 @@ export class LevelUpScreen {
     this.audioManager = audioManager ?? null;
     this.portraitImg = portraitImg ?? null;
 
-    // Use level_screen sprite dimensions, or fallback
-    this.width = levelScreenBgSurf?.width ?? 133;
-    this.height = levelScreenBgSurf?.height ?? 107;
+    // EOtF fork: LevelScreen2 lists the first 10 stats, 5 per column.
+    const fork = isForkEngine();
+    this.bg = (fork ? levelScreen2BgSurf : null) ?? levelScreenBgSurf;
+    this.columnSize = fork ? 5 : 4;
+    const maxStats = fork ? 10 : 8;
+    // Use the background sprite dimensions, or fallback
+    this.width = this.bg?.width ?? 133;
+    this.height = this.bg?.height ?? (fork ? 123 : 107);
 
     this.screenScrollOffset = this.width + 32;
 
-    // Build stat list from stat definitions (first 8 only, matching Python)
+    // Build stat list from stat definitions (first 8 / fork 10, matching Python)
     this.statNids = [];
     this.statNames = [];
     this.statList = [];
     const statKeys = statDefs.length > 0
       ? statDefs.map(s => s.nid)
       : Object.keys(statChanges);
-    for (let i = 0; i < Math.min(8, statKeys.length); i++) {
+    for (let i = 0; i < Math.min(maxStats, statKeys.length); i++) {
       const nid = statKeys[i];
       this.statNids.push(nid);
       const def = statDefs.find(s => s.nid === nid);
@@ -340,10 +358,11 @@ export class LevelUpScreen {
   /** Get the position of stat row i within the panel. */
   private getPosition(i: number, absolute: boolean = false): [number, number] {
     const tl = absolute ? this.topleft() : [0, 0];
-    if (i >= 4) {
+    const split = this.columnSize;
+    if (i >= split) {
       return [
         Math.floor(this.width / 2) + 8 + tl[0],
-        (i - 4) * 16 + 35 + tl[1],
+        (i - split) * 16 + 35 + tl[1],
       ];
     }
     return [10 + tl[0], i * 16 + 35 + tl[1]];
@@ -523,8 +542,8 @@ export class LevelUpScreen {
   private drawPanel(currentTime: number): Surface {
     // Start with the background sprite or a fallback
     let sprite: Surface;
-    if (levelScreenBgSurf) {
-      sprite = levelScreenBgSurf.copy();
+    if (this.bg) {
+      sprite = this.bg.copy();
     } else {
       sprite = new Surface(this.width, this.height);
       sprite.fill(24, 32, 64, 0.95);
