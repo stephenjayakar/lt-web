@@ -133,7 +133,7 @@ Deviations from Python behavior that are intentional, documented, and covered by
 | Roam region-interact fallback missing | Roam | FIXED 2026-07-18: Shop/Armory regions now fallback from `sub_nid` trigger to `on_region_interact` | `PLAN.md` Recent Changes "Roam talk/shop..." | Verified (fixed) |
 | Roam `press_info`/`press_aux`/`press_start` triggers | Roam | FIXED 2026-07-18: all three triggers now fire before their fallback menus | `PLAN.md` Recent Changes "Roam talk/shop..." | Verified (fixed) |
 | PYEV1 game context missing | Events | FIXED 2026-07-18: `EventManager.setGameGetter()` now threads live GameState into PYEV1 eval context | `PLAN.md` Recent Changes "Trigger payload and EVNT/PYEV1..." | Verified (fixed) |
-| Per-strike combat events run after the last strike | Combat events | Python fires `event_on_hit`/`after_strike`/`after_take_strike` events between solver phases; the web solves every strike up front and applies results at once (an event changing HP mid-presentation would be overwritten), so they run at clean_up0, before combat_death and the exp screen, in Python's stack order | `tests/harness.spec.ts` "CombatState runs item and skill combat hooks in Python stack order..." | Documented |
+| Per-strike combat events run after the last strike | Combat events | FIXED 2026-10-26: map and animation combat resolve phases as the presentation reaches them (`CombatPhaseSolver.beginSession`/`resolveNextPhase`). A phase's `event_on_hit`/`event_on_strike`/after_strike events run (newest first) before its hit, with the strikes before it applied, and later phases are solved against what they changed; `event_before_combat` and `combat_start` run before the first phase is solved. A main+splash phase rolls its splash targets right after the main strike. The `interact_unit ...;immediate` path still solves up front | `tests/combat-strike-events.spec.ts`, `tests/harness.spec.ts` "CombatState runs item and skill combat hooks in Python stack order..." | Verified (fixed) |
 
 ### EOtF engine-version notes
 
@@ -152,6 +152,7 @@ web follows what EOtF's engine does:
 | `heal`, `change_class ...;no_wexp`, level-cap and `unload_unit` commands | absent (parse errors) | fork-only commands | implemented from EOtF usage; `no_wexp` skips the class's starting wexp |
 | `has_finished` | no-op: `action.Wait` lost in `0623423e7` (2026-01-24), restored in `8a5e12750` (2026-03-24) | 2024 base waits the unit | `WaitAction` |
 | `push` placement | occupant's own tile counts as open (`da99faa2d`, 2025-12), so units stack; fixed upstream in `0f96fd6f6` (2026-10-23, `can_stay=False`) | 2024 base pushes the occupant | nearest open tile without the occupant's own, then a forced move |
+| `closest` placement | `get_closest_reachable_tile`: needs a path from the unit, and its own tile counts as open (`da99faa2d`, 2025-12) | `get_nearest_open_tile`: no path check, the unit's own tile is occupied (v1.90 `app/events/event.py`) | EOtF's behaviour |
 
 ---
 
