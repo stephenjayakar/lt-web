@@ -22,6 +22,7 @@ import { OverworldMovementManager } from '../overworld/overworld-movement';
 import type { OverworldNodeObject } from '../overworld/overworld-objects';
 import type { OverworldPrefab, TilemapData } from '../../data/types';
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
+import { blitTextCenter, getSprite } from '../../ui/menu-chrome';
 import { TileMapObject } from '../../rendering/tilemap';
 import { MoveOverworldEntityAction } from '../action';
 
@@ -461,16 +462,19 @@ export class OverworldFreeState extends State {
       game.cursor.draw(surf, cameraOffset);
     }
 
-    // 6. Draw UI: hovered node name
+    // 6. Python OverworldTravelUI: world_map_location_box with the hovered
+    // node's name, hanging top-left or top-right opposite the cursor.
     if (this.hoveredNode && ow.enabledNodes.has(this.hoveredNode.nid)) {
+      const box = getSprite('displays/world_map_location_box');
       const name = this.hoveredNode.name;
-      const textW = name.length * 5;
-      const barW = textW + 12;
-      const barX = Math.floor((viewport.width - barW) / 2);
-      const barY = viewport.height - 20;
-      surf.fillRect(barX, barY, barW, 14, 'rgba(0,0,32,0.8)');
-      surf.drawRect(barX, barY, barW, 14, 'rgba(100,100,180,0.5)');
-      surf.drawText(name, barX + 6, barY + 3, 'white', '8px monospace');
+      const boxW = box?.width ?? 103;
+      const boxH = box?.height ?? 33;
+      const cursorX = game.cursor.getPosition?.()?.[0] ?? 0;
+      const cameraX = Math.floor(cameraOffset[0] / 16);
+      const left = cursorX < Math.floor(viewport.width / 32) + cameraX;
+      const x = left ? 5 : viewport.width - 5 - boxW;
+      if (box) surf.blitImage(box, 0, 0, box.width, box.height, x, 5);
+      blitTextCenter(surf, 'text', name, x + Math.floor(boxW / 2), 5 + Math.floor(boxH / 2) - 8);
     }
 
     // 7. Draw node menu if open
@@ -793,18 +797,6 @@ export class OverworldLevelTransitionState extends State {
     // Draw fade-to-black overlay
     const alpha = Math.min(1, this.fadeProgress);
     surf.fillRect(0, 0, viewport.width, viewport.height, `rgba(0,0,0,${alpha.toFixed(2)})`);
-
-    if (this.loading) {
-      const loadText = 'Loading...';
-      const textW = loadText.length * 5;
-      surf.drawText(
-        loadText,
-        Math.floor((viewport.width - textW) / 2),
-        Math.floor(viewport.height / 2),
-        'white',
-        '8px monospace',
-      );
-    }
 
     return surf;
   }

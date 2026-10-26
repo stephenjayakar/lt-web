@@ -574,3 +574,54 @@ export function formatPlaytime(ms: number): string {
   const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
   return `${hours}:${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
+
+/** Python banner.Pennant: pennant_bg strip with scrolling convo-font text. */
+export class Pennant {
+  private text: string;
+  private width: number;
+  private counter = 0;
+  private spriteOffset = 32;
+
+  constructor(text: string) {
+    this.text = text;
+    this.width = textWidth('convo', text);
+  }
+
+  changeText(text: string): void {
+    this.text = text;
+    this.width = textWidth('convo', text);
+    this.counter = 0;
+  }
+
+  changeTextIfNeeded(text: string): void {
+    if (text !== this.text) this.changeText(text);
+  }
+
+  /** Draw across the viewport bottom (or flipped along the top). */
+  draw(surf: Surface, drawOnTop = false, dtMs = FRAMETIME): void {
+    this.spriteOffset = Math.max(0, this.spriteOffset - 4);
+    const bg = getSprite('pennant_bg');
+    const vw = viewport.width;
+    const y = drawOnTop ? -this.spriteOffset : viewport.height - 16 + this.spriteOffset;
+    if (bg) {
+      const s = surf.scale;
+      const ctx = surf.ctx;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      if (drawOnTop) {
+        ctx.translate(0, Math.round((y + bg.height) * s));
+        ctx.scale(1, -1);
+        ctx.drawImage(bg, 0, 0, bg.width, bg.height, 0, 0, Math.round(vw * s), Math.round(bg.height * s));
+      } else {
+        ctx.drawImage(bg, 0, 0, bg.width, bg.height, 0, Math.round(y * s), Math.round(vw * s), Math.round(bg.height * s));
+      }
+      ctx.restore();
+    }
+    this.width = textWidth('convo', this.text);
+    for (let x = -Math.floor(this.counter); x < vw; x += this.width + 24) {
+      blitText(surf, 'convo-white', this.text, x, y);
+    }
+    this.counter += dtMs / 24;
+    if (this.counter >= this.width + 24) this.counter = 0;
+  }
+}

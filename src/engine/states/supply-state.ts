@@ -37,6 +37,7 @@ import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
+import { Pennant } from '../../ui/menu-chrome';
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
 import {
@@ -385,6 +386,7 @@ interface PendingDiscard {
 
 export class ItemDiscardState extends State {
   readonly name = 'item_discard';
+  private pennant: Pennant | null = null;
   override readonly transparent = true;
 
   private menu: ChoiceMenu | null = null;
@@ -548,14 +550,18 @@ export class ItemDiscardState extends State {
   }
 
   override draw(surf: Surface): Surface {
+    // Python ItemDiscardState: banner.Pennant along the bottom (top when the
+    // cursor sits on the map's last row).
     const label = this.mode === 'storage'
       ? 'Choose item to send to storage'
       : 'Choose item to discard';
-    surf.fillRect(0, 0, viewport.width, 14, 'rgba(64,16,16,0.9)');
-    surf.drawText(
-      `${label} — ${this.unit?.name ?? ''}`,
-      4, 3, 'rgba(255,220,180,1)', '8px monospace',
-    );
+    const game = getGame();
+    const text = game.db?.translate?.(label) ?? label;
+    if (!this.pennant) this.pennant = new Pennant(text);
+    else this.pennant.changeTextIfNeeded(text);
+    const cursorY = game.cursor?.getPosition?.()?.[1] ?? 0;
+    const mapHeight = game.tilemap?.height ?? game.currentLevel?.tilemap?.height ?? Infinity;
+    this.pennant.draw(surf, cursorY >= mapHeight - 1);
     if (this.menu) this.menu.draw(surf);
     return surf;
   }
@@ -564,5 +570,6 @@ export class ItemDiscardState extends State {
     this.menu = null;
     this.unit = null;
     this.newItem = null;
+    this.pennant = null;
   }
 }
