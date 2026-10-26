@@ -195,6 +195,51 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     await open('save_menu');
   });
 
+  test('shop buy and sell', async ({ page }, testInfo) => {
+    await boot(page);
+    await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Termina') ??
+        game.spawnUnit(game.db.units.get('Termina'), 'player', null, 'None');
+      game.getParty().money = 1500;
+      game.shopUnit = unit;
+      game.shopItems = [...game.db.items.values()]
+        .filter((prefab: any) => prefab.components?.some?.((c: any) => (c[0] ?? c.nid) === 'value'))
+        .slice(0, 6)
+        .map((prefab: any) => new ItemObject(prefab));
+      game.shopStock = game.shopItems.map(() => -1);
+      game.shopFlavor = 'armory';
+      game.state.change('shop');
+    });
+    await settleAssets(page, 60);
+    expect(await stateName(page)).toBe('shop');
+    await cssText(page);
+    await step(page, 2);
+    await shot(page, 'shop-open', testInfo);
+    // The opener may span several {w} pages; SELECT advances it like Python.
+    for (let i = 0; i < 6; i++) {
+      if (await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().phase) === 'choice') break;
+      await press(page, 'SELECT');
+      await step(page, 4);
+    }
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().phase)).toBe('choice');
+    await shot(page, 'shop-choice', testInfo);
+    await press(page, 'SELECT');
+    await step(page, 40);
+    await shot(page, 'shop-buy', testInfo);
+    const before = await page.evaluate(() => (window as any).__gameRef.getMoney());
+    await press(page, 'SELECT');
+    await step(page, 30);
+    const after = await page.evaluate(() => (window as any).__gameRef.getMoney());
+    expect(after).toBeLessThan(before);
+    await shot(page, 'shop-bought', testInfo);
+    await press(page, 'BACK', 'RIGHT');
+    await step(page, 30);
+    await shot(page, 'shop-sell-choice', testInfo);
+    expect(await cssText(page)).toEqual([]);
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));

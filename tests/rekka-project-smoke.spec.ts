@@ -1218,6 +1218,10 @@ test.describe('Rekka all-level compatibility', () => {
         game.state.change('event');
       }, scenario);
       await page.evaluate(() => (window as any).__harness.stepFrames(30, null));
+      // The shop's sprites and panorama stream in; settle them before the snapshot.
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(200);
+      await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
 
       const opened = await page.evaluate(() => {
         const game = (window as any).__gameRef;

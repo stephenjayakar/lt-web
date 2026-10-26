@@ -292,15 +292,17 @@ export class HorizontalChoice {
     this.cursor.update();
   }
 
-  draw(surf: Surface, x: number, y: number): void {
+  draw(surf: Surface, x: number, y: number, opts: { background?: boolean; highlight?: boolean } = {}): void {
     const widths = this.options.map((o) => textWidth('text', o));
     const width = widths.reduce((sum, w) => sum + w + 8, 0) + 16;
-    const bg = baseSurf(width, 24, 'menu_bg_base');
-    const prev = bg.getAlpha();
-    bg.setAlpha(0.5);
-    surf.blit(bg, x, y);
-    bg.setAlpha(prev);
-    const highlight = getSprite('menus/menu_highlight');
+    if (opts.background ?? true) {
+      const bg = baseSurf(width, 24, 'menu_bg_base');
+      const prev = bg.getAlpha();
+      bg.setAlpha(0.5);
+      surf.blit(bg, x, y);
+      bg.setAlpha(prev);
+    }
+    const highlight = (opts.highlight ?? opts.background ?? true) ? getSprite('menus/menu_highlight') : null;
     let running = 0;
     this.options.forEach((option, idx) => {
       const left = x + running;
