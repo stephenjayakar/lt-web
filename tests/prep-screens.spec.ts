@@ -265,6 +265,63 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     expect((await stack(page)).at(-1)).toBe('base_manage');
   });
 
+  test('Items opens the Python convoy screen with weapon tabs and the inventory', async ({ page }, testInfo) => {
+    test.slow();
+    await openPrep(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.gameVars.set('_convoy', true);
+      const termina = g.getUnit('Termina');
+      const item = termina.items[0];
+      termina.items.splice(0, 1);
+      item.owner = null;
+      g.getParty().convoy.push(item);
+      const state = g.state.getCurrentState();
+      state.cursor = state.options.indexOf('Manage');
+    });
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      state.menu.moveTo(state.units.findIndex((u: any) => u.nid === 'Termina'));
+    });
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().selectMenu;
+      menu.moveTo(menu.options.findIndex((o: any) => o.entry?.text === 'Items'));
+    });
+    await step(page, 1, 'SELECT');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('prep_items');
+    const convoy = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const menu = g.state.getCurrentState().menu;
+      return {
+        tabs: menu.order,
+        visible: g.db.weapons.filter((w: any) => !w.hide_from_display).map((w: any) => w.nid),
+        topleft: menu.topleft,
+        inventoryTopleft: menu.inventory.getTopleft(),
+        context: menu.getContext(),
+      };
+    });
+    expect(convoy.tabs).toEqual(convoy.visible);
+    expect(convoy.topleft).toEqual([124, 40]);
+    // 12, WINHEIGHT - (total_items * 16 + 8) - 4
+    expect(convoy.inventoryTopleft[0]).toBe(12);
+    expect(convoy.context).toBe('inventory');
+    // RIGHT enters the first weapon tab; the stored sword is there.
+    await step(page, 1, 'RIGHT');
+    await settleImages(page);
+    const tab = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      return { context: menu.getContext(), current: menu.getCurrent()?.nid ?? null };
+    });
+    expect(tab.context).toBe('convoy');
+    expect(tab.current).not.toBeNull();
+    await attachShot(page, testInfo, 'convoy');
+  });
+
   test('Formation selects a unit with the hand marker and moves it to a formation tile', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);

@@ -101,6 +101,7 @@ import {
 } from './engine/states/manage-state';
 import {
   SupplyItemsState,
+  PrepItemsState,
   ItemDiscardState,
   setSupplyGameRef,
 } from './engine/states/supply-state';
@@ -754,6 +755,7 @@ async function main(): Promise<void> {
     new PrepFormationState(),
     new PrepFormationSelectState(),
     new SupplyItemsState(),
+    new PrepItemsState(),
     new ItemDiscardState(),
     new BaseMainState(),
     new BaseConvosState(),

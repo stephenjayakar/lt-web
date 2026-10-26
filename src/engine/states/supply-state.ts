@@ -40,11 +40,32 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
 import {
+  HasTradedAction,
+  MoveItemBetweenUnitsAction,
   StoreItemAction,
   TakeItemFromConvoy,
+  TradeAction,
+  TradeItemWithConvoy,
   RemoveItemFromUnitAction,
 } from '../action';
+import {
+  Choice,
+  ConvoyMenu,
+  ScrollingBackground,
+  WINHEIGHT,
+  WINWIDTH,
+  checkTrade,
+  isFirstPush,
+  preloadPrepSprites,
+  screenOrigin,
+} from '../../ui/prep-ui';
+import { canUseBaseItem, useItemInBase } from './game-states';
+import { canRestock, restock } from './manage-state';
 import { inventoryCapacity, inventoryFull } from '../../combat/item-system';
+
+function sfx(name: string): void {
+  getGame()?.audioManager?.playSfx?.(name);
+}
 
 // Lazy game reference (same pattern as prep-state.ts)
 let _game: any = null;
@@ -126,111 +147,231 @@ export function sortSupplyItems(items: ItemObject[], db: any): ItemObject[] {
 // SupplyItemsState — give/take with the party convoy
 // ============================================================================
 
-export class SupplyItemsState extends State {
-  readonly name = 'supply_items';
-  override readonly transparent = true;
+/** Python prep.PrepItemsState (shared by supply_items and prep_items). */
+abstract class ConvoyItemsState extends State {
+  override readonly showMap = false;
+  override readonly inLevel = false;
 
-  private menu: ChoiceMenu | null = null;
-  private unit: UnitObject | null = null;
-  /** Parallel array: for each menu option, the item + direction. */
-  private rows: Array<{ item: ItemObject; kind: 'give' | 'take' }> = [];
+  unit: UnitObject | null = null;
+  menu: ConvoyMenu | null = null;
+  subMenu: Choice | null = null;
+  /** Python PrepItemsState.state. */
+  mode: 'free' | 'owner_item' | 'convoy_item' | 'trade_convoy' | 'trade_inventory' = 'free';
+  private bg: { draw(surf: Surface): void } | null = null;
+
+  override start(): StateResult {
+    const game = getGame();
+    preloadPrepSprites();
+    this.bg = game.memory.get('prep_bg') ?? new ScrollingBackground(game, 'rune_background');
+    this.unit = game.memory.get('supply_unit') ?? null;
+    const includeOthers = !!game.memory.get('include_other_units') || this.name !== 'supply_items';
+    game.memory.set('include_other_units', false);
+    if (this.unit) {
+      this.menu = new ConvoyMenu(game, this.unit, [WINWIDTH - 116, 40], { includeOtherUnits: includeOthers });
+    }
+    this.mode = 'free';
+    this.subMenu = null;
+  }
 
   override begin(): StateResult {
     const game = getGame();
-    this.unit = game.memory.get('supply_unit') ?? null;
-    if (!this.unit || !game.gameVars?.get('_convoy')) {
+    if (!this.unit || !this.menu || !game.gameVars?.get('_convoy')) {
+      game.memory.delete('supply_unit');
       game.state.back();
       return 'repeat';
     }
-    this.buildMenu();
+    this.menu.updateOptions();
   }
 
-  private buildMenu(): void {
-    const game = getGame();
-    const unit = this.unit!;
-    const convoy: ItemObject[] = game.getParty()?.convoy ?? [];
-    const options: MenuOption[] = [];
-    this.rows = [];
+  private act(action: any): void {
+    getGame().actionLog.doAction(action);
+  }
 
-    for (const item of sortSupplyItems(unit.items, game.db)) {
-      options.push({
-        label: `Give ${item.name}`,
-        value: `row_${options.length}`,
-        enabled: !isLockedToUnit(item),
-      });
-      this.rows.push({ item, kind: 'give' });
+  private useItem(item: ItemObject): void {
+    const game = getGame();
+    this.act(new HasTradedAction(this.unit!));
+    useItemInBase(game, this.unit!, item, 'base_use');
+    this.mode = 'free';
+  }
+
+  /** Python convoy_funcs.trade_items. */
+  private tradeItems(convoyItem: ItemObject | null, unitItem: ItemObject | null): void {
+    const unit = this.unit!;
+    if (!unitItem && convoyItem) {
+      if (convoyItem.owner) this.act(new MoveItemBetweenUnitsAction(convoyItem.owner, unit, convoyItem));
+      else this.act(new TakeItemFromConvoy(unit, convoyItem));
+    } else if (!convoyItem && unitItem) {
+      this.act(new StoreItemAction(unit, unitItem));
+    } else if (convoyItem && unitItem && convoyItem.owner) {
+      const other = convoyItem.owner;
+      this.act(new TradeAction(unit, unit.items.indexOf(unitItem), other, other.items.indexOf(convoyItem)));
+    } else if (convoyItem && unitItem) {
+      this.act(new TradeItemWithConvoy(unit, convoyItem, unitItem));
     }
-    for (const item of sortSupplyItems(convoy, game.db)) {
-      options.push({
-        label: `Take ${item.name}`,
-        value: `row_${options.length}`,
-        // Capacity is enforced here: taking is a no-op (disabled) when the
-        // unit's relevant slot class (accessory vs normal) is full.
-        enabled: !inventoryFull(unit, item, game.db),
-      });
-      this.rows.push({ item, kind: 'take' });
-    }
-    if (options.length === 0) {
-      options.push({ label: '(Nothing)', value: 'nothing', enabled: false });
-    }
-    this.menu = new ChoiceMenu(options, 12, 20);
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (!this.menu) return;
     const game = getGame();
-
-    let result: { selected: string } | { back: true } | null = null;
-    if (game.input?.mouseClick) {
-      const [gx, gy] = game.input.getGameMousePos();
-      result = this.menu.handleClick(gx, gy, game.input.mouseClick as 'SELECT' | 'BACK');
-    }
-    if (game.input?.mouseMoved) {
-      const [gx, gy] = game.input.getGameMousePos();
-      this.menu.handleMouseHover(gx, gy);
-    }
-    if (!result && event !== null) result = this.menu.handleInput(event);
-    if (!result) return;
-
-    if ('back' in result) {
-      game.memory.delete('supply_unit');
-      this.menu = null;
-      game.state.back();
-      return;
+    const menu = this.menu;
+    const unit = this.unit;
+    if (!menu || !unit) return;
+    const [ox, oy] = screenOrigin();
+    const mouseMoved = !!game.input?.mouseMoved;
+    const click = game.input?.mouseClick ?? null;
+    const pos: [number, number] = game.input?.getGameMousePos ? game.input.getGameMousePos() : [0, 0];
+    const target: { handleMouse(x: number, y: number, ox: number, oy: number): number } | null =
+      this.mode === 'free' || this.mode === 'trade_convoy' || this.mode === 'trade_inventory' ? menu : this.subMenu;
+    if (target) {
+      if (mouseMoved) target.handleMouse(pos[0], pos[1], ox, oy);
+      if (click === 'SELECT' && target.handleMouse(pos[0], pos[1], ox, oy) >= 0) event = 'SELECT';
+      else if (click === 'BACK') event = 'BACK';
     }
 
-    if ('selected' in result && result.selected.startsWith('row_')) {
-      const index = Number(result.selected.slice(4));
-      const row = this.rows[index];
-      if (!row || !this.unit) return;
-      if (row.kind === 'give') {
-        game.actionLog.doAction(new StoreItemAction(this.unit, row.item));
+    if (this.mode === 'free' || this.mode === 'trade_convoy' || this.mode === 'trade_inventory') {
+      if (event === 'DOWN') { if (menu.moveDown(isFirstPush(game, 'DOWN'))) sfx('Select 6'); }
+      else if (event === 'UP') { if (menu.moveUp(isFirstPush(game, 'UP'))) sfx('Select 6'); }
+      else if (event === 'LEFT') { if (menu.moveLeft(isFirstPush(game, 'LEFT'))) sfx('TradeRight'); }
+      else if (event === 'RIGHT') { if (menu.moveRight(isFirstPush(game, 'RIGHT'))) sfx('TradeRight'); }
+    } else if (this.subMenu) {
+      if (event === 'DOWN') { if (this.subMenu.moveDown(isFirstPush(game, 'DOWN'))) sfx('Select 6'); }
+      else if (event === 'UP') { if (this.subMenu.moveUp(isFirstPush(game, 'UP'))) sfx('Select 6'); }
+    }
+
+    if (event === 'SELECT') {
+      sfx('Select 1');
+      this.select();
+    } else if (event === 'BACK') {
+      if (this.mode === 'free') {
+        sfx('Select 4');
+        game.memory.delete('supply_unit');
+        game.state.back();
+      } else if (this.mode === 'owner_item' || this.mode === 'convoy_item') {
+        this.subMenu = null;
+        this.mode = 'free';
+      } else if (this.mode === 'trade_convoy') {
+        menu.moveToInventory();
+        menu.unlock();
+        menu.updateOptions();
+        this.mode = 'free';
+      } else if (this.mode === 'trade_inventory') {
+        menu.moveToConvoy();
+        menu.unlock();
+        menu.updateOptions();
+        this.mode = 'free';
+      }
+    }
+  }
+
+  private select(): void {
+    const game = getGame();
+    const menu = this.menu!;
+    const unit = this.unit!;
+    if (this.mode === 'free') {
+      const current = menu.getCurrent();
+      if (menu.getContext() === 'inventory') {
+        if (!current) { menu.moveToConvoy(); return; }
+        const options: string[] = [];
+        if (!current.hasComponent('locked')) options.push('Store', 'Trade');
+        if (this.name !== 'supply_items' && canUseBaseItem(unit, current, game)) options.push('Use');
+        if (canRestock(game, current)) options.push('Restock');
+        if (!options.length) options.push('Nothing');
+        let top = menu.getCurrentIndex() * 16 + 68 - 8 * options.length;
+        top = Math.min(top, WINHEIGHT - 4 - 16 * options.length);
+        this.subMenu = new Choice(game, options, [96, top]);
+        this.mode = 'owner_item';
+      } else if (current) {
+        if (this.name !== 'supply_items' && canUseBaseItem(unit, current, game)) {
+          const top = (menu.getCurrentIndex() - menu.getScrolledIndex()) * 16 + 36;
+          const options = inventoryFull(unit, current, game.db) ? ['Trade', 'Use'] : ['Take', 'Use'];
+          this.subMenu = new Choice(game, options, [80, top]);
+          this.mode = 'convoy_item';
+        } else {
+          this.act(new HasTradedAction(unit));
+          if (inventoryFull(unit, current, game.db)) {
+            this.mode = 'trade_inventory';
+            menu.moveToInventory();
+          } else {
+            this.tradeItems(current, null);
+            menu.updateOptions();
+          }
+        }
+      }
+    } else if (this.mode === 'owner_item') {
+      const choice = this.subMenu?.getCurrentText();
+      const item = menu.getCurrent();
+      this.subMenu = null;
+      this.mode = 'free';
+      if (!item) return;
+      if (choice === 'Store') {
+        this.act(new HasTradedAction(unit));
+        this.act(new StoreItemAction(unit, item));
+        menu.updateOptions();
+        menu.moveToItemType(item);
+      } else if (choice === 'Trade') {
+        this.mode = 'trade_convoy';
+        menu.moveToConvoy();
+        menu.updateOptions();
+      } else if (choice === 'Use') {
+        this.useItem(item);
+        menu.updateOptions();
+      } else if (choice === 'Restock') {
+        this.act(new HasTradedAction(unit));
+        restock(game, item);
+        menu.updateOptions();
+      }
+    } else if (this.mode === 'convoy_item') {
+      const choice = this.subMenu?.getCurrentText();
+      const item = menu.getCurrent();
+      this.subMenu = null;
+      this.mode = 'free';
+      if (!item) return;
+      if (choice === 'Take') {
+        this.act(new HasTradedAction(unit));
+        this.tradeItems(item, null);
+      } else if (choice === 'Trade') {
+        this.mode = 'trade_inventory';
+        menu.moveToInventory();
+      } else if (choice === 'Use') {
+        this.useItem(item);
+      }
+      menu.updateOptions();
+    } else if (this.mode === 'trade_convoy' || this.mode === 'trade_inventory') {
+      const unitItem = menu.getInventoryCurrent();
+      const convoyItem = menu.getConvoyCurrent();
+      if (checkTrade(game, unitItem, unit, convoyItem, null)) {
+        this.act(new HasTradedAction(unit));
+        this.tradeItems(convoyItem, unitItem);
+        menu.unlock();
+        menu.updateOptions();
+        this.mode = 'free';
       } else {
-        if (inventoryFull(this.unit, row.item, game.db)) return; // no-op, like Python
-        game.actionLog.doAction(new TakeItemFromConvoy(this.unit, row.item));
-      }
-      const previousIndex = this.menu.selectedIndex;
-      this.buildMenu();
-      if (this.menu) {
-        this.menu.selectedIndex = Math.min(previousIndex, this.menu.options.length - 1);
+        sfx('Error');
       }
     }
+  }
+
+  override update(): StateResult {
+    this.menu?.update();
+    this.subMenu?.update();
   }
 
   override draw(surf: Surface): Surface {
-    surf.fillRect(0, 0, viewport.width, 14, 'rgba(16,16,48,0.9)');
-    const convoyCount = getGame().getParty()?.convoy?.length ?? 0;
-    surf.drawText(
-      `Supply — ${this.unit?.name ?? ''}  (convoy: ${convoyCount})`,
-      4, 3, 'rgba(220,200,128,1)', '8px monospace',
-    );
-    if (this.menu) this.menu.draw(surf);
+    const [ox, oy] = screenOrigin();
+    this.bg?.draw(surf);
+    this.menu?.draw(surf, ox, oy);
+    this.subMenu?.draw(surf, ox, oy);
     return surf;
   }
+}
 
-  override end(): StateResult {
-    this.menu = null;
-  }
+/** Map Supply (Python 'supply_items'): convoy only, no Use. */
+export class SupplyItemsState extends ConvoyItemsState {
+  readonly name = 'supply_items';
+}
+
+/** Prep/base Items (Python 'prep_items'): includes other units' items and Use. */
+export class PrepItemsState extends ConvoyItemsState {
+  readonly name = 'prep_items';
 }
 
 // ============================================================================

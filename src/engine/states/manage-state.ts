@@ -427,8 +427,7 @@ export class ManageSelectState extends State {
         select.setIgnore(this.getIgnore());
       } else if (choice === 'Items') {
         game.memory.set('supply_unit', unit);
-        game.memory.set('include_other_units', true);
-        game.state.change('supply_items');
+        game.state.change('prep_items');
       } else if (choice === 'Restock') {
         game.state.change('prep_restock');
       } else if (choice === 'Optimize') {

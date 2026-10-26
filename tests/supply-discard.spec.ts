@@ -66,7 +66,7 @@ test.describe('Supply/convoy and item_discard states', () => {
     });
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
-    expect((await getState(page)).currentStateName).toBe('supply_items');
+    expect((await getState(page)).currentStateName).toBe('prep_items');
 
     // Cancel unwinds Supply -> manage select -> unit table -> prep.
     await stepFrames(page, 1, 'BACK');
@@ -105,7 +105,7 @@ test.describe('Supply/convoy and item_discard states', () => {
     });
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
-    expect((await getState(page)).currentStateName).toBe('supply_items');
+    expect((await getState(page)).currentStateName).toBe('prep_items');
 
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
@@ -152,7 +152,10 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
-    // Row 0 is "Give Iron_Sword": give it to the convoy.
+    // Python PrepItemsState: inventory item -> Store/Trade sub menu -> Store.
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 1);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().mode)).toBe('owner_item');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1);
     const afterGive = await page.evaluate(({ unitNid }) => {
@@ -166,8 +169,9 @@ test.describe('Supply/convoy and item_discard states', () => {
     expect(afterGive.unitItems).toEqual([]);
     expect(afterGive.convoy.sort()).toEqual(['Iron_Sword', 'Vulnerary']);
 
-    // Now both items are Take rows; take the first (Iron_Sword sorts before
-    // Vulnerary: weapons first).
+    // RIGHT jumps to the stored item's weapon tab (move_to_item_type);
+    // SELECT on a convoy item takes it (supply_items offers no Use).
+    await stepFrames(page, 1, 'RIGHT');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1);
     const afterTake = await page.evaluate(({ unitNid }) => {
@@ -227,23 +231,22 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
-    // The take row (last row) is disabled; even forcing selection onto it
-    // and pressing SELECT must not transfer.
+    // Python: with a full inventory, selecting a convoy item switches to
+    // trade_inventory (pick an item to swap) instead of transferring.
+    await stepFrames(page, 1, 'LEFT'); // inventory -> last tab (Default)
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 1);
     const attempted = await page.evaluate(({ unitNid }) => {
       const game = (window as any).__gameRef;
-      const state = game.state.getCurrentState();
-      const menu = (state as any).menu;
-      menu.selectedIndex = menu.options.length - 1; // the Take Vulnerary row
-      const takeRowEnabled = menu.options[menu.options.length - 1].enabled;
-      state.takeInput('SELECT');
+      const state: any = game.state.getCurrentState();
       const unit = game.units.get(unitNid);
       return {
-        takeRowEnabled,
+        mode: state.mode,
         unitItemCount: unit.items.length,
         convoyCount: game.getParty().convoy.length,
       };
     }, { unitNid: setup!.unitNid });
-    expect(attempted.takeRowEnabled).toBe(false);
+    expect(attempted.mode).toBe('trade_inventory');
     expect(attempted.unitItemCount).toBe(setup!.numItems);
     expect(attempted.convoyCount).toBe(1);
   });

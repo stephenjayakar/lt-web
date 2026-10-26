@@ -4550,6 +4550,65 @@ export function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): b
   return true;
 }
 
+/**
+ * Python interaction.start_combat(unit, None, item) for items used from the
+ * base/prep screens (PrepUseState, PrepItemsState). Returns 'pushed' when a
+ * follow-up state (promotion choice, item event) was opened.
+ */
+export function useItemInBase(game: any, unit: UnitObject, item: ItemObject, origin: string): 'pushed' | 'done' {
+  if (item.hasComponent('promote')) {
+    const options = [...(game.db.classes.get(unit.klass)?.turns_into ?? [])];
+    if (options.length > 1) {
+      game.memory.set('promotion_choice_unit', unit);
+      game.memory.set('promotion_choice_options', options);
+      game.memory.set('promotion_choice_item', item);
+      game.memory.set('promotion_choice_actor', unit);
+      game.memory.set('promotion_choice_source', 'promote');
+      game.memory.set('promotion_choice_origin', origin);
+      game.state.change('promotion_choice');
+      return 'pushed';
+    }
+    if (options.length === 1) {
+      game.actionLog.doAction(new MarkActionGroupStart(unit, 'item_use'));
+      applyItemStartResourceHooks(game, unit, item);
+      performPromotionOrClassChange(unit, options[0], game, 'promote');
+      finishCoreItemUse(unit, item, [unit], new Map(), true, true);
+    }
+  } else if (item.hasComponent('permanent_stat_change') ||
+      item.hasComponent('permanent_stat_change_early')) {
+    const componentNid = item.hasComponent('permanent_stat_change_early')
+      ? 'permanent_stat_change_early'
+      : 'permanent_stat_change';
+    game.actionLog.doAction(new MarkActionGroupStart(unit, 'item_use'));
+    applyItemStartResourceHooks(game, unit, item);
+    game.actionLog.doAction(new ApplyStatChangesAction(
+      unit,
+      item.getNumericComponentMap(componentNid),
+      unit,
+    ));
+    finishCoreItemUse(unit, item, [unit], new Map(), true, true);
+  } else if (item.hasComponent('event_on_use') || item.hasComponent('event_on_hit') ||
+      item.hasComponent('event_after_use') || item.hasComponent('event_after_combat') ||
+      item.hasComponent('event_after_combat_on_hit') ||
+      item.hasComponent('event_after_combat_even_miss')) {
+    game.actionLog.doAction(new MarkActionGroupStart(unit, 'item_use'));
+    applyItemStartResourceHooks(game, unit, item);
+    queueDirectItemUseEvents(
+      game,
+      unit,
+      item,
+      unit.position ?? [0, 0],
+      unit,
+    );
+    finishCoreItemUse(unit, item, [unit], new Map(), true, true);
+    if (game.eventManager?.hasActiveEvents()) {
+      game.state.change('event');
+      return 'pushed';
+    }
+  }
+  return 'done';
+}
+
 export class BaseUseState extends State {
   readonly name = 'base_use';
   override readonly showMap = false;
@@ -4620,57 +4679,7 @@ export class BaseUseState extends State {
     const index = selected ? this.items.indexOf(selected) : -1;
     const item = this.items[index];
     if (!item || !canUseBaseItem(this.unit, item, game)) return;
-
-    if (item.hasComponent('promote')) {
-      const options = [...(game.db.classes.get(this.unit.klass)?.turns_into ?? [])];
-      if (options.length > 1) {
-        game.memory.set('promotion_choice_unit', this.unit);
-        game.memory.set('promotion_choice_options', options);
-        game.memory.set('promotion_choice_item', item);
-        game.memory.set('promotion_choice_actor', this.unit);
-        game.memory.set('promotion_choice_source', 'promote');
-        game.memory.set('promotion_choice_origin', 'base_use');
-        game.state.change('promotion_choice');
-        return;
-      }
-      if (options.length === 1) {
-        game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
-        applyItemStartResourceHooks(game, this.unit, item);
-        performPromotionOrClassChange(this.unit, options[0], game, 'promote');
-        finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
-      }
-    } else if (item.hasComponent('permanent_stat_change') ||
-        item.hasComponent('permanent_stat_change_early')) {
-      const componentNid = item.hasComponent('permanent_stat_change_early')
-        ? 'permanent_stat_change_early'
-        : 'permanent_stat_change';
-      game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
-      applyItemStartResourceHooks(game, this.unit, item);
-      game.actionLog.doAction(new ApplyStatChangesAction(
-        this.unit,
-        item.getNumericComponentMap(componentNid),
-        this.unit,
-      ));
-      finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
-    } else if (item.hasComponent('event_on_use') || item.hasComponent('event_on_hit') ||
-        item.hasComponent('event_after_use') || item.hasComponent('event_after_combat') ||
-        item.hasComponent('event_after_combat_on_hit') ||
-        item.hasComponent('event_after_combat_even_miss')) {
-      game.actionLog.doAction(new MarkActionGroupStart(this.unit, 'item_use'));
-      applyItemStartResourceHooks(game, this.unit, item);
-      queueDirectItemUseEvents(
-        game,
-        this.unit,
-        item,
-        this.unit.position ?? [0, 0],
-        this.unit,
-      );
-      finishCoreItemUse(this.unit, item, [this.unit], new Map(), true, true);
-      if (game.eventManager?.hasActiveEvents()) {
-        game.state.change('event');
-        return;
-      }
-    }
+    if (useItemInBase(game, this.unit, item, 'base_use') === 'pushed') return;
     this.buildMenu();
   }
 

@@ -22,7 +22,14 @@ import type { ItemObject } from '../objects/item';
 import { FONT } from '../rendering/bmp-font';
 import { getMenuBackgroundSync, loadMenuBgSprite } from './base-surf';
 import { drawIcon16 } from './icons';
-import { available as itemAvailable } from '../combat/item-system';
+import {
+  available as itemAvailable,
+  buyPrice as itemBuyPrice,
+  fullPrice as itemFullPrice,
+  sellPrice as itemSellPrice,
+  weaponType as itemWeaponType,
+} from '../combat/item-system';
+import { priceSkillMultiplier } from '../combat/skill-system';
 
 export const WINWIDTH = 240;
 export const WINHEIGHT = 160;
@@ -739,6 +746,16 @@ export class Choice {
   takesInput = true;
   drawCursor = 1;
   fakeCursorIdx: number | null = null;
+  /** Choice.set_convoy: ConvoyItemOption rows (112 wide) and the owner face. */
+  isConvoy = false;
+  /** menus.Shop disp_value: ValueItemOption rows (152 wide). */
+  dispValue: 'buy' | 'sell' | null = null;
+  /** menus.Shop stock: StockValueItemOption rows (168 wide). */
+  stock: number[] | null = null;
+  /** Choice.set_hard_limit: pad with EmptyOptions up to `limit`. */
+  hardLimit = false;
+  /** Unit at the convoy/shop (ConvoyItemOption colours, shop prices). */
+  owner: UnitObject | null = null;
   readonly cursor = new MenuCursor();
   readonly stationaryCursor = new MenuCursor();
   private scrollBar = new ScrollBar();
@@ -754,7 +771,11 @@ export class Choice {
   setOptions(entries: ChoiceEntry[] | string[]): void {
     const list: ChoiceEntry[] = (entries as any[]).map((e) => typeof e === 'string' ? { kind: 'text', text: e } : e);
     this.options = list.map((entry) => ({ entry, ignore: entry.kind === 'empty' }));
-    if (this.options.length === 0) this.options = [{ entry: { kind: 'text', text: 'Nothing' }, ignore: true }];
+    if (this.hardLimit) {
+      while (this.options.length < this.limit) this.options.push({ entry: { kind: 'empty' }, ignore: true });
+    } else if (this.options.length === 0) {
+      this.options = [{ entry: { kind: 'text', text: 'Nothing' }, ignore: true }];
+    }
     this.currentIndex = Math.max(0, Math.min(this.currentIndex, this.options.length - 1));
   }
 
@@ -866,8 +887,13 @@ export class Choice {
 
   private optionWidth(option: ChoiceOption): number {
     const e = option.entry;
-    if (e.kind === 'item') return 104;
-    if (e.kind === 'empty' || e.kind === 'blank') return 104;
+    if (e.kind === 'item' || e.kind === 'empty') {
+      if (this.stock) return 168;
+      if (this.dispValue) return e.kind === 'empty' ? 104 : 152;
+      if (this.isConvoy) return 112;
+      return 104;
+    }
+    if (e.kind === 'blank') return 104;
     // HorizOption.width is the bare text width; BasicOption adds 24.
     return textWidth(e.text) + (this.horizontal ? 0 : 24);
   }
@@ -933,7 +959,18 @@ export class Choice {
       if (this.gem) blitSprite(surf, getSprite(this.gem === 'brown' ? 'menu_gem_brown' : 'menu_gem_small'), ox + x - 2, oy + y - 4, 0.9);
       if (this.shimmer) {
         const sprite = getSprite(`menu_shimmer${this.shimmer}`);
-        if (sprite) blitSprite(surf, sprite, ox + x + width - sprite.width + 1 - 2, oy + y + height - sprite.height - 1, 0.9);
+        if (sprite) blitSprite(surf, sprite, ox + x + width - sprite.width - 1, oy + y + height - sprite.height - 5, 0.9);
+      }
+      // Choice.show_face: translucent portrait of the hovered item's owner.
+      const owner = (this.isConvoy || this.dispValue === 'sell') ? this.getCurrentItem()?.owner : null;
+      if (owner?.portraitNid) {
+        const sheet = getPortraitSheet(this.game, owner.portraitNid);
+        if (sheet) {
+          const prev = surf.getAlpha();
+          surf.setAlpha(0.45);
+          surf.blitImage(sheet, 0, 0, 96, 80, ox + x + Math.floor((width + 2) / 2) - 46, oy + y + height - 85);
+          surf.setAlpha(prev);
+        }
       }
     }
     let drawScrollBar = false;
@@ -945,10 +982,49 @@ export class Choice {
       const option = this.options[idx];
       const current = this.highlight && idx === this.currentIndex && this.takesInput && !!this.drawCursor;
       if (current) drawMenuHighlight(surf, left, top, drawScrollBar ? width - 8 : width);
-      drawChoiceOption(surf, this.game, option.entry, option.ignore, left, top);
+      this.drawOption(surf, option, idx, left, top);
       if (idx === this.fakeCursorIdx) this.stationaryCursor.draw(surf, left, top);
       if (idx === this.currentIndex && this.takesInput && this.drawCursor) this.cursor.draw(surf, left, top);
     }
+  }
+
+  private drawOption(surf: Surface, option: ChoiceOption, idx: number, x: number, y: number): void {
+    const e = option.entry;
+    if (e.kind === 'item' && (this.dispValue || this.isConvoy)) {
+      const game = this.game;
+      const item = e.item;
+      const [main, usesColor] = itemOptionColors(game, item, option.ignore, this.isConvoy ? this.owner : null, this.isConvoy);
+      if (item.iconNid) drawIcon16(surf, item.iconNid, [Number(item.iconIndex?.[0]) || 0, Number(item.iconIndex?.[1]) || 0], x + 2, y);
+      drawText(surf, item.name, x + 20, y, main, textWidth(item.name) > 60 ? 'narrow' : 'text');
+      if (!this.dispValue) {
+        drawTextRight(surf, itemUsesString(item), x + 99, y, usesColor);
+        return;
+      }
+      drawTextRight(surf, itemUsesString(item), x + 100, y, usesColor);
+      const width = this.stock ? 168 : 152;
+      let valueColor = 'grey';
+      let valueString = '--';
+      if (this.dispValue === 'buy') {
+        const value = shopPrice(game, this.owner, item, 'buy');
+        if (value) {
+          valueString = String(value);
+          if (value <= (game.getMoney?.() ?? 0)) valueColor = 'blue';
+        }
+      } else {
+        const value = shopPrice(game, item.owner ?? this.owner, item, 'sell');
+        if (itemValue(game, item)) {
+          valueString = String(value);
+          valueColor = 'blue';
+        }
+      }
+      drawTextRight(surf, valueString, x + width - 6, y, valueColor);
+      if (this.stock) {
+        const stock = this.stock[idx] ?? -1;
+        drawTextRight(surf, stock >= 0 ? String(stock) : '--', x + 128, y, main);
+      }
+      return;
+    }
+    drawChoiceOption(surf, this.game, e, option.ignore, x, y);
   }
 
   private horizDraw(surf: Surface, ox: number, oy: number): void {
@@ -979,6 +1055,21 @@ function drawChoiceOption(surf: Surface, game: any, entry: ChoiceEntry, ignore: 
 // ItemOption
 // ---------------------------------------------------------------------------
 
+/** Python item.value (raw Value component). */
+function itemValue(game: any, item: ItemObject): number {
+  return Number(itemFullPrice(null, item, game.db, game) ?? 0) || 0;
+}
+
+/** Python item_funcs.buy_price / sell_price (skill-modified, truncated). */
+export function shopPrice(game: any, unit: UnitObject | null, item: ItemObject, kind: 'buy' | 'sell'): number {
+  const raw = kind === 'buy'
+    ? itemBuyPrice(unit, item, game.db, game)
+    : itemSellPrice(unit, item, game.db, game);
+  if (!raw) return 0;
+  const mult = unit ? priceSkillMultiplier(unit, item, kind === 'buy' ? 'change_buy_price' : 'change_sell_price', game) : 1;
+  return Math.trunc(raw * mult);
+}
+
 /** Python ItemOption uses string (uses, parent uses, c_uses, cooldown). */
 export function itemUsesString(item: ItemObject): string {
   const data: Map<string, any> = (item as any).data ?? new Map();
@@ -993,8 +1084,19 @@ export function itemUsesString(item: ItemObject): string {
 }
 
 /** Python ItemOption.get_color -> [mainColor, usesColor]. */
-export function itemOptionColors(game: any, item: ItemObject, ignore: boolean, convoyOwner: UnitObject | null = null): [string | null, string] {
+export function itemOptionColors(
+  game: any, item: ItemObject, ignore: boolean, convoyOwner: UnitObject | null = null, convoy = false,
+): [string | null, string] {
   const owner: UnitObject | null = convoyOwner ?? item.owner ?? null;
+  if (convoy) {
+    // ConvoyItemOption.get_color: availability for the unit at the convoy.
+    const textColor = item.components?.get?.('text_color');
+    if (ignore) return ['grey', 'grey'];
+    if (textColor) return [String(textColor), 'blue'];
+    let ok = true;
+    if (owner) { try { ok = itemAvailable(owner, item, game.db, game); } catch { ok = true; } }
+    return ok ? [null, 'blue'] : ['grey', 'grey'];
+  }
   let main: string | null = 'grey';
   let uses = 'grey';
   const textColor = item.components?.get?.('text_color');
@@ -1373,7 +1475,7 @@ export class TradeMenu {
 
 /** Python trade.check_trade. */
 export function checkTrade(
-  game: any, item1: ItemObject | null, owner1: UnitObject, item2: ItemObject | null, owner2: UnitObject,
+  game: any, item1: ItemObject | null, owner1: UnitObject | null, item2: ItemObject | null, owner2: UnitObject | null,
 ): boolean {
   if (item1 === item2) return false; // same item, or two open slots
 
@@ -1384,11 +1486,367 @@ export function checkTrade(
   const numItems = Number(game.db?.getConstant?.('num_items', 5) ?? 5);
   const numAccessories = Number(game.db?.getConstant?.('num_accessories', 0) ?? 0);
   const count = (u: UnitObject, acc: boolean) => u.items.filter((i) => i.isAccessory() === acc).length;
-  if (item1) {
+  if (item1 && owner2) {
     if (count(owner2, item1.isAccessory()) >= (item1.isAccessory() ? numAccessories : numItems)) return false;
   }
-  if (item2) {
+  if (item2 && owner1) {
     if (count(owner1, item2.isAccessory()) >= (item2.isAccessory() ? numAccessories : numItems)) return false;
   }
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Convoy / Market (menus.Convoy, menus.Market)
+// ---------------------------------------------------------------------------
+
+/** Python gui.ScrollArrow ('left'/'right' page arrows). */
+class PageArrow {
+  private counter: number;
+  private increment: number[] = [];
+  private offset: number[] = [];
+  private direction: 'left' | 'right';
+  private x: number;
+  private y: number;
+
+  constructor(direction: 'left' | 'right', topleft: [number, number], offset = 0) {
+    this.direction = direction;
+    this.x = topleft[0];
+    this.y = topleft[1];
+    this.counter = offset;
+  }
+
+  pulse(): void {
+    this.increment = [1, 1, 1, 1, 1, 1, 1, 1, .5, .5, .5, .5, .25, .25, .25];
+    this.offset = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 1, 1];
+  }
+
+  draw(surf: Surface, ox: number, oy: number): void {
+    this.counter += this.increment.length ? this.increment.pop()! : 0.125;
+    if (this.counter >= 6) this.counter = 0;
+    const sheet = getSprite('page_arrows');
+    if (!sheet) return;
+    const frame = Math.floor(this.counter);
+    const shift = this.offset.length ? this.offset.shift()! : 0;
+    if (this.direction === 'left') {
+      surf.blitImage(sheet, frame * 8, 0, 8, 14, ox + this.x - shift, oy + this.y);
+    } else {
+      // flip_horiz(flip_vert(page_arrows)): rotate the sheet 180 degrees.
+      const ctx = surf.ctx;
+      const s = surf.scale;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(Math.round((ox + this.x + shift + 8) * s), Math.round((oy + this.y + 14) * s));
+      ctx.scale(-1, -1);
+      ctx.drawImage(sheet, (5 - frame) * 8, 0, 8, 14, 0, 0, 8 * s, 14 * s);
+      ctx.restore();
+    }
+  }
+}
+
+/** Python icons.draw_weapon (optionally greyed). */
+function drawWeaponIcon(surf: Surface, game: any, weaponNid: string, x: number, y: number, gray: boolean): void {
+  const def = (game.db?.weapons ?? []).find((w: any) => w.nid === weaponNid);
+  if (!def?.icon_nid) return;
+  const idx: [number, number] = [Number(def.icon_index?.[0]) || 0, Number(def.icon_index?.[1]) || 0];
+  if (!gray) { drawIcon16(surf, def.icon_nid, idx, x, y); return; }
+  const tmp = new Surface(16, 16);
+  drawIcon16(tmp, def.icon_nid, idx, 0, 0);
+  surf.blit(tmp.makeGray(), x, y);
+}
+
+/** menus.Inventory entries for a Choice (items, empty slots, accessories). */
+export function inventoryChoiceEntries(game: any, unit: UnitObject): ChoiceEntry[] {
+  const numItems = Number(game.db?.getConstant?.('num_items', 5) ?? 5);
+  const numAccessories = Number(game.db?.getConstant?.('num_accessories', 0) ?? 0);
+  const items = unit.items.filter((i) => !i.isAccessory());
+  const accessories = unit.items.filter((i) => i.isAccessory());
+  const entries: ChoiceEntry[] = items.map((item) => ({ kind: 'item', item }));
+  for (let n = items.length; n < numItems; n++) entries.push({ kind: 'empty' });
+  for (const item of accessories) entries.push({ kind: 'item', item });
+  for (let n = accessories.length; n < numAccessories; n++) entries.push({ kind: 'empty' });
+  return entries;
+}
+
+export interface ConvoyOptions {
+  includeOtherUnits?: boolean;
+  dispValue?: 'buy' | 'sell' | null;
+  /** Market: fixed item list instead of convoy + party items. */
+  marketItems?: ItemObject[] | null;
+  /** Market: party items including the owner's (Python Market). */
+  market?: boolean;
+  showStock?: boolean;
+  stockOf?: (item: ItemObject) => number;
+}
+
+/**
+ * Python menus.Convoy (and menus.Market when `market` is set): one Choice
+ * per visible weapon type with a weapon-icon tab strip, the unit's
+ * Inventory bottom-left, owner panel and page arrows.
+ */
+export class ConvoyMenu {
+  readonly unit: UnitObject;
+  readonly topleft: [number, number];
+  readonly opts: ConvoyOptions;
+  takesInput = true;
+  order: string[];
+  menus = new Map<string, Choice>();
+  inventory: Choice | null = null;
+  selectionIndex = 0;
+  menuIndex = 0;
+  locked = false;
+  gotoFlag = false;
+  infoFlag = false;
+  private menuWidth: number;
+  private leftArrow: PageArrow;
+  private rightArrow: PageArrow;
+  private game: any;
+
+  constructor(game: any, owner: UnitObject, topleft: [number, number], opts: ConvoyOptions = {}) {
+    this.game = game;
+    this.unit = owner;
+    this.topleft = topleft;
+    this.opts = opts;
+    this.order = (game.db?.weapons ?? []).filter((w: any) => !w.hide_from_display).map((w: any) => w.nid);
+    if (!this.order.includes('Default')) this.order.push('Default');
+    this.menuWidth = opts.dispValue ? 152 : 112;
+    const [x, y] = topleft;
+    this.leftArrow = new PageArrow('left', [x - 4, y - 14]);
+    this.rightArrow = new PageArrow('right', [x + this.menuWidth - 4, y - 14], 0.5);
+    this.buildMenus();
+    if (opts.market) {
+      this.selectionIndex = 1;
+      this.inventory = null;
+    } else {
+      for (const menu of this.menus.values()) menu.takesInput = false;
+    }
+  }
+
+  private allItems(): ItemObject[] {
+    const game = this.game;
+    if (this.opts.market && this.opts.marketItems) return this.opts.marketItems;
+    const items: ItemObject[] = [...(game.getParty?.()?.convoy ?? [])];
+    if (this.opts.market || (this.opts.includeOtherUnits ?? true)) {
+      for (const unit of (game.getUnitsInParty?.() ?? []) as UnitObject[]) {
+        if (!this.opts.market && unit.nid === this.unit.nid) continue;
+        items.push(...unit.items.filter((i) => !i.hasComponent('locked')));
+      }
+    }
+    return items;
+  }
+
+  /** Python Convoy.get_sorted_dict (successive stable sorts). */
+  private sortedDict(): Map<string, ItemObject[]> {
+    const game = this.game;
+    const all = this.allItems();
+    const dict = new Map<string, ItemObject[]>();
+    for (const wType of this.order) {
+      if (wType !== 'Default') dict.set(wType, all.filter((i) => itemWeaponType(this.unit, i) === wType));
+    }
+    dict.set('Default', all.filter((i) => !itemWeaponType(this.unit, i)));
+    const full = (i: ItemObject) => Number(itemFullPrice(this.unit, i, game.db, game) ?? 0) || 0;
+    const sell = (i: ItemObject) => Number(itemSellPrice(this.unit, i, game.db, game) ?? 0) || 0;
+    for (const list of dict.values()) {
+      list.sort((a, b) =>
+        (Number(!!a.owner) - Number(!!b.owner)) || (full(a) - full(b)) || (sell(a) - sell(b)) ||
+        (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    }
+    return dict;
+  }
+
+  private fill(menu: Choice, items: ItemObject[]): void {
+    if (this.opts.showStock) menu.stock = items.map((i) => this.opts.stockOf?.(i) ?? -1);
+    const idx = menu.currentIndex;
+    menu.setOptions(items.map((item) => ({ kind: 'item' as const, item })));
+    menu.currentIndex = Math.min(idx, menu.options.length - 1);
+    menu.scroll = Math.max(0, Math.min(menu.scroll, menu.options.length - menu.limit));
+  }
+
+  private buildMenus(): void {
+    const dict = this.sortedDict();
+    this.menus.clear();
+    for (const wType of this.order) {
+      const menu = new Choice(this.game, [], this.topleft);
+      menu.owner = this.unit;
+      menu.isConvoy = !this.opts.dispValue;
+      menu.dispValue = this.opts.dispValue ?? null;
+      menu.setLimit(7);
+      menu.hardLimit = true;
+      menu.gem = false;
+      menu.shimmer = 2;
+      this.fill(menu, dict.get(wType) ?? []);
+      this.menus.set(wType, menu);
+    }
+    if (!this.opts.market) {
+      const height = totalItemSlots(this.game) * 16 + 8;
+      this.inventory = new Choice(this.game, inventoryChoiceEntries(this.game, this.unit), [12, WINHEIGHT - height - 4]);
+      this.inventory.gem = false;
+      this.inventory.shimmer = 2;
+    }
+  }
+
+  updateOptions(): void {
+    if (this.inventory) {
+      const idx = this.inventory.currentIndex;
+      this.inventory.setOptions(inventoryChoiceEntries(this.game, this.unit));
+      this.inventory.currentIndex = Math.min(idx, this.inventory.options.length - 1);
+    }
+    const dict = this.sortedDict();
+    for (const [name, menu] of this.menus) this.fill(menu, dict.get(name) ?? []);
+  }
+
+  getMenu(): Choice { return this.menus.get(this.order[this.menuIndex])!; }
+  getCurrent(): ItemObject | null {
+    return this.selectionIndex === 0 ? this.inventory?.getCurrentItem() ?? null : this.getMenu().getCurrentItem();
+  }
+  getConvoyCurrent(): ItemObject | null { return this.getMenu().getCurrentItem(); }
+  getInventoryCurrent(): ItemObject | null { return this.inventory?.getCurrentItem() ?? null; }
+  getCurrentIndex(): number {
+    return this.selectionIndex === 0 ? this.inventory?.currentIndex ?? 0 : this.getMenu().currentIndex;
+  }
+  getScrolledIndex(): number { return this.getMenu().scroll; }
+  getContext(): 'inventory' | 'convoy' { return this.selectionIndex === 0 ? 'inventory' : 'convoy'; }
+
+  /** Market stock of the hovered item (-1 when unlimited). */
+  getStock(): number {
+    if (!this.opts.showStock) return -1;
+    const menu = this.getMenu();
+    return menu.stock?.[menu.currentIndex] ?? -1;
+  }
+
+  setTakesInput(value: boolean): void {
+    this.takesInput = value;
+    if (this.opts.market) for (const menu of this.menus.values()) menu.takesInput = value;
+  }
+
+  moveToInventory(): void {
+    this.getMenu().takesInput = false;
+    this.selectionIndex = 0;
+    if (this.inventory) this.inventory.takesInput = true;
+    this.locked = true;
+  }
+
+  moveToConvoy(): void {
+    if (this.inventory) this.inventory.takesInput = false;
+    this.selectionIndex = this.menuIndex + 1;
+    this.getMenu().takesInput = true;
+    this.locked = true;
+  }
+
+  moveToItemType(item: ItemObject): void {
+    const wType = itemWeaponType(this.unit, item);
+    this.menuIndex = wType && this.order.includes(wType) ? this.order.indexOf(wType) : this.order.length - 1;
+    this.gotoFlag = true;
+  }
+
+  unlock(): void { this.locked = false; }
+
+  moveDown(firstPush = true): boolean {
+    return this.selectionIndex === 0 ? !!this.inventory?.moveDown(firstPush) : this.getMenu().moveDown(firstPush);
+  }
+  moveUp(firstPush = true): boolean {
+    return this.selectionIndex === 0 ? !!this.inventory?.moveUp(firstPush) : this.getMenu().moveUp(firstPush);
+  }
+
+  private setActive(selection: number): void {
+    if (!this.opts.market) {
+      if (this.selectionIndex === 0) { if (this.inventory) this.inventory.takesInput = false; }
+      else this.getMenu().takesInput = false;
+    }
+    this.selectionIndex = selection;
+    if (selection > 0) this.menuIndex = selection - 1;
+    if (!this.opts.market) {
+      if (selection === 0) { if (this.inventory) this.inventory.takesInput = true; }
+      else this.getMenu().takesInput = true;
+    }
+  }
+
+  moveLeft(firstPush = true): boolean {
+    const n = this.order.length;
+    if (this.opts.market) {
+      if (this.selectionIndex === 1) this.setActive(firstPush ? n : 1);
+      else { this.setActive(this.selectionIndex - 1); this.leftArrow.pulse(); }
+      return true;
+    }
+    if (this.selectionIndex === 0) {
+      if (this.locked || !firstPush) return false;
+      this.setActive(n);
+    } else if (this.selectionIndex === 1) {
+      this.setActive(this.locked ? n : 0);
+    } else {
+      this.setActive(this.selectionIndex - 1);
+      this.leftArrow.pulse();
+    }
+    return true;
+  }
+
+  moveRight(firstPush = true): boolean {
+    const n = this.order.length;
+    if (this.opts.market) {
+      if (this.selectionIndex === n) this.setActive(firstPush ? 1 : n);
+      else { this.setActive(this.selectionIndex + 1); this.rightArrow.pulse(); }
+      return true;
+    }
+    if (this.selectionIndex === 0) {
+      if (this.locked || !firstPush) return false;
+      const target = this.gotoFlag ? this.menuIndex + 1 : 1;
+      this.gotoFlag = false;
+      this.setActive(target);
+    } else if (this.selectionIndex === n) {
+      this.setActive(this.locked ? 1 : 0);
+    } else {
+      this.setActive(this.selectionIndex + 1);
+      this.rightArrow.pulse();
+    }
+    return true;
+  }
+
+  handleMouse(gx: number, gy: number, ox = 0, oy = 0): number {
+    const main = this.menus.get(this.order[Math.max(0, this.selectionIndex - 1)]);
+    for (const menu of [main, this.inventory]) {
+      if (!menu) continue;
+      for (const [idx, x, y, w, h] of menu.getRects(ox, oy)) {
+        if (gx >= x && gx <= x + w && gy >= y && gy <= y + h) {
+          menu.moveTo(idx);
+          return idx;
+        }
+      }
+    }
+    return -1;
+  }
+
+  update(): void {
+    this.getMenu().update();
+    this.inventory?.update();
+  }
+
+  draw(surf: Surface, ox = 0, oy = 0): void {
+    const game = this.game;
+    const nameSurf = getSprite('trade_name');
+    if (nameSurf) surf.blitImage(nameSurf, 0, 0, nameSurf.width, nameSurf.height, ox - 4, oy - 1);
+    drawText(surf, this.unit.name, ox + 24 - Math.floor(textWidth(this.unit.name) / 2), oy);
+    if (!this.opts.dispValue) drawPortrait(surf, game, this.unit, ox + 18, oy, [0, 0, 96, 68], true);
+    blitTranslucent(surf, baseSurf(96, 24, 'menu_bg_base'), ox + 156, oy, 0.4);
+    const item = this.getCurrent();
+
+    const dist = (this.menuWidth - 10) / this.order.length;
+    const [x, y] = this.topleft;
+    for (let idx = this.order.length - 1; idx >= 0; idx--) {
+      if (idx === this.selectionIndex - 1) continue;
+      drawWeaponIcon(surf, game, this.order[idx], ox + x + 3 + Math.floor(idx * dist), oy + y - 14, true);
+    }
+    const sel = this.selectionIndex - 1;
+    if (sel >= 0 && sel < this.order.length) {
+      const tx = ox + x + 3 + Math.floor(sel * dist);
+      drawWeaponIcon(surf, game, this.order[sel], tx, oy + y - 14, false);
+      const shine = getSprite('weapon_shine');
+      if (shine) surf.blitImage(shine, 0, 0, shine.width, shine.height, tx, oy + y - 14);
+    }
+
+    this.getMenu().draw(surf, ox, oy);
+    this.inventory?.draw(surf, ox, oy);
+    const owner = item?.owner ?? null;
+    drawText(surf, owner && this.takesInput ? `Owner: ${owner.name}` : 'Owner: ---', ox + 160, oy + 4);
+    this.leftArrow.draw(surf, ox, oy);
+    this.rightArrow.draw(surf, ox, oy);
+  }
 }
