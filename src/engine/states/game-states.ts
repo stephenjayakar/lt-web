@@ -562,6 +562,25 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   return surf;
 }
 
+/**
+ * Python Animation(RESOURCES.animations.get(nid), topleft): a resource
+ * animation placed at a pixel top-left (screen or panel space).
+ */
+function createPixelAnimation(nid: string, x: number, y: number, hold = false): MapAnimation | null {
+  const game = getGame();
+  const prefab = game.db.mapAnimations?.get(nid);
+  if (!prefab) return null;
+  const anim = new MapAnimation(prefab, 0, 0, { hold });
+  void game.resources.loadImage(`resources/animations/${nid}.png`).then((img: HTMLImageElement) => {
+    anim.setImage(img);
+    anim.x = x;
+    anim.y = y;
+  }).catch(() => {
+    anim.done = true;
+  });
+  return anim;
+}
+
 /** Move cursor and camera together. */
 function moveCursor(dx: number, dy: number): void {
   const game = getGame();
@@ -6202,6 +6221,22 @@ export class CombatState extends State {
   private levelUpScreen: LevelUpScreenClass | null = null;
   private levelUpSoundPlayed: boolean = false;
   private darkFuzzAlpha: number = 0.34; // 66% translucent = 34% opaque black overlay
+  /** Python ExpState.level_up_animation. */
+  private levelUpLogo: MapAnimation | null = null;
+
+  /** Python ExpState.create_level_up_logo. */
+  private createLevelUpLogo(): MapAnimation | null {
+    const game = getGame();
+    if (!this.combat) return createPixelAnimation('LevelUpBattle', 0, 6);
+    const unit = this.getActiveCombat()?.attacker;
+    if (unit?.position) {
+      const [cx, cy] = game.camera.getPosition();
+      return createPixelAnimation('LevelUpMap',
+        (unit.position[0] - cx / TILEWIDTH - 2) * TILEWIDTH,
+        (unit.position[1] - cy / TILEHEIGHT - 1) * TILEHEIGHT);
+    }
+    return createPixelAnimation('LevelUpMap', Math.floor(viewport.width / 2), Math.floor(viewport.height / 2));
+  }
   private portraitImg: HTMLImageElement | null = null;
 
   // Dying units (Python game.death.dying_units) and whether their fade began
@@ -7048,8 +7083,15 @@ export class CombatState extends State {
           game.audioManager?.playSfx?.('Level Up');
           this.levelUpSoundPlayed = true;
           this.phaseTimer = 0;
+          this.levelUpLogo = this.createLevelUpLogo();
         }
         this.phaseTimer += realDelta;
+        // Python ExpState 'level_up' waits for the LevelUpMap/LevelUpBattle
+        // logo (time-based); without one the 500 ms pause stands in.
+        if (this.levelUpLogo) {
+          this.levelUpLogo.update();
+          if (this.phaseTimer < Math.min(4000, this.levelUpLogo.getDuration())) break;
+        }
         // Brief pause (500ms) to show the "Level Up" moment with dark overlay,
         // then transition to level_screen
         if (this.phaseTimer >= 500) {
@@ -7068,6 +7110,8 @@ export class CombatState extends State {
               statDefs,
               game.audioManager,
               this.portraitImg,
+              game.db.classes?.get(unit.klass)?.name ?? unit.klass,
+              createPixelAnimation,
             );
           }
         }
@@ -7582,7 +7626,8 @@ export class CombatState extends State {
 
     // Dark overlay during level_up phase (before stat screen)
     if (this.phase === 'level_up') {
-      surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, `rgba(0,0,0,${this.darkFuzzAlpha.toFixed(2)})`);
+      surf.fillRect(0, 0, viewport.width, viewport.height, `rgba(0,0,0,${this.darkFuzzAlpha.toFixed(2)})`);
+      this.levelUpLogo?.draw(surf, 0, 0);
     }
 
     // Level-up stat screen
@@ -10272,6 +10317,9 @@ export class EventState extends State {
         unit.level,
         game.db?.stats ?? [],
         game.audioManager,
+        null,
+        game.db.classes?.get(unit.klass)?.name ?? unit.klass,
+        createPixelAnimation,
       ),
     };
     return true;

@@ -7,7 +7,9 @@
  */
 
 import { Surface, surfaceFromImage } from '../engine/surface';
-import { WINWIDTH, WINHEIGHT, FRAMETIME } from '../engine/constants';
+import { FRAMETIME } from '../engine/constants';
+import { viewport } from '../engine/viewport';
+import type { MapAnimation } from '../rendering/map-animation';
 import { FONT } from '../rendering/bmp-font';
 import type { UnitObject } from '../objects/unit';
 import type { StatDef } from '../data/types';
@@ -110,13 +112,13 @@ export class ExpBar {
   constructor(oldExp: number, center: boolean = true) {
     if (center) {
       this.pos = [
-        Math.floor(WINWIDTH / 2 - this.width / 2),
-        Math.floor(WINHEIGHT / 2 - this.height / 2),
+        Math.floor(viewport.width / 2 - this.width / 2),
+        Math.floor(viewport.height / 2 - this.height / 2),
       ];
     } else {
       this.pos = [
-        Math.floor(WINWIDTH / 2 - this.width / 2),
-        WINHEIGHT - this.height,
+        Math.floor(viewport.width / 2 - this.width / 2),
+        viewport.height - this.height,
       ];
     }
 
@@ -241,6 +243,9 @@ export class ExpBar {
  * - Color-cycling underlines (sine wave color blend)
  * - Class name, level number, stat names + values using BMP fonts
  */
+/** Create a resource animation at a pixel top-left; null when absent. */
+export type LevelUpAnimationFactory = (nid: string, x: number, y: number, hold: boolean) => MapAnimation | null;
+
 export type LevelUpScreenUpdateResult =
   | 'animating'
   | 'entered_level_up_wait'
@@ -274,6 +279,17 @@ export class LevelUpScreen {
 
   // Portrait image
   private portraitImg: HTMLImageElement | null = null;
+  private portraitSurf: Surface | null = null;
+  /** DB class display name (Python DB.classes.get(unit.klass).name). */
+  private className: string;
+  /** Builds a resource animation at a pixel top-left (Python Animation). */
+  private makeAnimation: LevelUpAnimationFactory | null;
+  /** Screen-space animations (sparks, numbers); [anim, startTime, delay]. */
+  private animations: [MapAnimation, number, number][] = [];
+  /** Panel-space stat arrows (Python arrow_animations). */
+  private arrowAnimations: MapAnimation[] = [];
+  /** Python simple_nums fallback when no LevelUpNumber animation exists. */
+  private simpleNums: { color: string; text: string; pos: [number, number]; time: number }[] = [];
 
   constructor(
     unit: UnitObject,
@@ -283,8 +299,12 @@ export class LevelUpScreen {
     statDefs: StatDef[],
     audioManager?: { playSfx(name: string): void } | null,
     portraitImg?: HTMLImageElement | null,
+    className?: string | null,
+    makeAnimation?: LevelUpAnimationFactory | null,
   ) {
     this.unit = unit;
+    this.className = className ?? unit.klass ?? 'Unknown';
+    this.makeAnimation = makeAnimation ?? null;
     this.oldLevel = oldLevel;
     this.newLevel = newLevel;
     this.audioManager = audioManager ?? null;
@@ -314,7 +334,7 @@ export class LevelUpScreen {
 
   /** Get the top-left position of the panel. */
   private topleft(): [number, number] {
-    return [6 - this.screenScrollOffset, WINHEIGHT - 8 - this.height];
+    return [6 - this.screenScrollOffset, viewport.height - 8 - this.height];
   }
 
   /** Get the position of stat row i within the panel. */
@@ -341,6 +361,32 @@ export class LevelUpScreen {
     return false;
   }
 
+  private addAnimation(nid: string, x: number, y: number, now: number, hold = false, delay = 0): boolean {
+    const anim = this.makeAnimation?.(nid, x, y, hold) ?? null;
+    if (anim) this.animations.push([anim, now, delay]);
+    return !!anim;
+  }
+
+  /** Python get_next_spark: arrow, spark and number animations for one stat. */
+  private startSpark(now: number): void {
+    const pos = this.getPosition(this.currentSpark);
+    const increase = this.statList[this.currentSpark];
+    const arrowNid = increase > 0 ? 'LevelUpArrow' : 'LevelDownArrow';
+    const arrow = this.makeAnimation?.(arrowNid, pos[0] + 45, pos[1] - 11, true) ?? null;
+    if (arrow) this.arrowAnimations.push(arrow);
+    const offsetPos = this.getPosition(this.currentSpark, true);
+    this.addAnimation('StatUpSpark', offsetPos[0] + 8, offsetPos[1] - 19, now);
+    const numberNid = increase > 0 ? `LevelUpNumber${increase}` : `LevelDownNumber${-increase}`;
+    if (!this.addAnimation(numberNid, offsetPos[0] + 37, offsetPos[1] + 4, now, true, 80)) {
+      this.simpleNums.push({
+        color: increase > 0 ? 'white' : 'purple',
+        text: increase > 0 ? `+${increase}` : String(increase),
+        pos: [offsetPos[0] + 57, offsetPos[1] - 2],
+        time: now,
+      });
+    }
+  }
+
   /**
    * Update the level-up screen animation.
    * `entered_level_up_wait` is emitted exactly once, on the same update that
@@ -365,6 +411,7 @@ export class LevelUpScreen {
             this.state = 'get_next_spark';
           } else {
             this.state = 'first_spark';
+            this.addAnimation('StatUpSpark', 87, 27 + viewport.height - 160, currentTime);
             this.audioManager?.playSfx?.('Level_Up_Level');
           }
           this.startTime = currentTime;
@@ -387,6 +434,7 @@ export class LevelUpScreen {
           this.startTime = currentTime;
           return 'entered_level_up_wait';
         } else {
+          this.startSpark(currentTime);
           this.audioManager?.playSfx?.('Stat Up');
           this.underlineOffset = 36;
           this.state = 'spark_wait';
@@ -404,6 +452,8 @@ export class LevelUpScreen {
 
       case 'level_up_wait': {
         if (currentTime - this.startTime > this.levelUpWait) {
+          this.animations = [];
+          this.simpleNums = [];
           this.state = 'scroll_out';
           this.startTime = currentTime;
         }
@@ -431,20 +481,42 @@ export class LevelUpScreen {
     const panelPos = this.topleft();
     surf.blit(panelSurf, panelPos[0], panelPos[1]);
 
-    // --- Draw unit portrait ---
-    if (this.portraitImg) {
-      const right = WINWIDTH - 4;
-      const bottom = WINHEIGHT + this.unitScrollOffset;
-      // Portrait is typically 96x80; draw so bottom-right is at (right, bottom)
-      const pw = Math.min(this.portraitImg.naturalWidth || 96, 96);
-      const ph = Math.min(this.portraitImg.naturalHeight || 80, 80);
-      surf.drawImageFull(
-        this.portraitImg,
-        right - pw,
-        bottom - ph,
-        pw, ph,
-      );
+    // --- Draw unit portrait (Python icons.draw_portrait, bottomright) ---
+    const portrait = this.getPortrait();
+    if (portrait) {
+      const right = viewport.width - 4;
+      const bottom = viewport.height + this.unitScrollOffset;
+      surf.blit(portrait, right - portrait.width, bottom - portrait.height);
     }
+
+    // --- Screen-space animations and simple numbers ---
+    this.animations = this.animations.filter(([anim, start, delay]) => {
+      if (currentTime - start < delay) return true;
+      return !anim.update();
+    });
+    for (const [anim, start, delay] of this.animations) {
+      if (currentTime - start >= delay) anim.draw(surf, 0, 0);
+    }
+    const stat = FONT['stat'];
+    for (const num of this.simpleNums) {
+      if (currentTime - num.time > 80 && stat) stat.blitRight(surf, num.text, num.pos[0], num.pos[1], num.color);
+    }
+  }
+
+  /** The 96x80 portrait with the LT colorkey removed. */
+  private getPortrait(): Surface | null {
+    if (this.portraitSurf || !this.portraitImg) return this.portraitSurf;
+    const w = Math.min(this.portraitImg.naturalWidth || 96, 96);
+    const h = Math.min(this.portraitImg.naturalHeight || 80, 80);
+    const surf = new Surface(w, h);
+    surf.ctx.drawImage(this.portraitImg, 0, 0, w, h, 0, 0, w, h);
+    const data = surf.getImageData();
+    for (let i = 0; i < data.data.length; i += 4) {
+      if (data.data[i] === 128 && data.data[i + 1] === 160 && data.data[i + 2] === 128) data.data[i + 3] = 0;
+    }
+    surf.putImageData(data);
+    this.portraitSurf = surf;
+    return surf;
   }
 
   /** Render the stat panel onto a surface. */
@@ -466,7 +538,7 @@ export class LevelUpScreen {
     const colorB = Math.round(-40 + (40 - (-40)) * t);
 
     // --- Header: Class name and Level ---
-    const klassName = this.unit.klass ?? 'Unknown';
+    const klassName = this.className;
     const textFont = FONT['text'];
     const narrowFont = FONT['narrow'];
     const yellowFont = FONT['text-yellow'];
@@ -539,6 +611,10 @@ export class LevelUpScreen {
       }
     }
 
+    // Python arrow_animations, drawn on the panel.
+    this.arrowAnimations = this.arrowAnimations.filter((anim) => !anim.update());
+    for (const anim of this.arrowAnimations) anim.draw(sprite, 0, 0);
+
     // --- Stat names and values ---
     for (let idx = 0; idx < this.statNids.length; idx++) {
       if (idx >= this.statList.length) continue;
@@ -567,17 +643,6 @@ export class LevelUpScreen {
         sprite.drawTextRight(String(displayVal), pos[0] + 40, pos[1], 'rgba(128,160,255,1)', '7px monospace');
       }
 
-      // Stat change indicator (after spark)
-      if (this.currentSpark >= idx && change !== 0) {
-        const changeStr = change > 0 ? `+${change}` : `${change}`;
-        const changeColor = change > 0 ? 'rgba(128,255,128,1)' : 'rgba(200,128,255,1)';
-
-        if (textFont) {
-          textFont.blit(sprite, changeStr, pos[0] + 48, pos[1], change > 0 ? 'white' : 'purple');
-        } else {
-          sprite.drawText(changeStr, pos[0] + 48, pos[1], changeColor, '7px monospace');
-        }
-      }
     }
 
     return sprite;
