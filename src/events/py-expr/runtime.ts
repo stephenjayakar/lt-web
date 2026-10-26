@@ -24,6 +24,13 @@ import {
 
 export class PyException extends Error {
   readonly pyType: string;
+  /**
+   * An AttributeError on an engine object (unit/item/game wrapper, module)
+   * rather than a Python value: the real Python object may well have the
+   * attribute, so this can be missing port support instead of an error
+   * Python would raise too.
+   */
+  hostAttribute = false;
   constructor(pyType: string, message: string) {
     super(`${pyType}: ${message}`);
     this.name = 'PyException';
@@ -303,6 +310,9 @@ export function dictKeys(dict: any): any[] {
 function mapFindKey(map: Map<any, any>, key: any): { found: boolean; key: any } {
   const k = hashKey(key);
   if (map.has(k)) return { found: true, key: k };
+  // True == 1 and False == 0 hash alike, so they are the same dict key.
+  if (typeof k === 'boolean' && map.has(k ? 1 : 0)) return { found: true, key: k ? 1 : 0 };
+  if ((k === 0 || k === 1) && map.has(k === 1)) return { found: true, key: k === 1 };
   if (k && typeof k === 'object') {
     for (const existing of map.keys()) if (pyEq(existing, k)) return { found: true, key: existing };
   }
@@ -1004,13 +1014,8 @@ export function pyGetItem(container: any, key: any): any {
   if (container instanceof Map) {
     if (typeof (container as any).get === 'function' && typeof (container as any).has === 'function') {
       // Works for both a Map and a Proxy around one.
-      const found = (container as any).has(hashKey(key));
-      if (found) return (container as any).get(hashKey(key));
-      if (key && typeof key === 'object') {
-        for (const existing of (container as any).keys()) {
-          if (pyEq(existing, key)) return (container as any).get(existing);
-        }
-      }
+      const found = mapFindKey(container, key);
+      if (found.found) return container.get(found.key);
     }
     if (isCounter(container)) return 0;
     return raise('KeyError', pyRepr(key));
@@ -1468,6 +1473,9 @@ function resolveMethod(value: any, name: string): ResolvedMethod {
     if (typeof value === 'function' && name === '__name__') {
       return { fn: (value as PyCallable).pyName ?? value.name, self: undefined, native: false };
     }
+    const error = new PyException('AttributeError', `'${typeName(value)}' object has no attribute '${name}'`);
+    error.hostAttribute = !(value as PyCallable)[PY_CALL] && !isGenerator(value);
+    throw error;
   }
   return raise('AttributeError', `'${typeName(value)}' object has no attribute '${name}'`);
 }

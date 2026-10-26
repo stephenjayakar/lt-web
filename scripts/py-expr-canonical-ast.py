@@ -131,7 +131,9 @@ def gens(generators):
 
 
 def main():
-    expressions = json.load(sys.stdin)
+    # The input is UTF-8 JSON whatever the console code page (Windows' stdin
+    # defaults to the ANSI code page); the output is ASCII-only JSON.
+    expressions = json.loads(sys.stdin.buffer.read().decode('utf-8'))
     result = []
     for expression in expressions:
         try:
