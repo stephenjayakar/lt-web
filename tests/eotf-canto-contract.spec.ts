@@ -392,4 +392,46 @@ test.describe('Embrace of the Fog Canto and Canter contract', () => {
       movementLeft: expect.any(Number),
     });
   });
+
+  test('a map item use moves a Canto user on instead of waiting it (Python handle_state_stack)', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { applyCoreTargetedItem } = await import('/src/engine/states/game-states.ts');
+      const unit = game.units.get('Player');
+      const ally = game.units.get('Keeper');
+      const canto = (nid: string) => new SkillObject(game.db.skills.get(nid));
+      const use = (skills: any[], target: any) => {
+        unit.resetTurnState();
+        unit.skills = skills;
+        unit.movementLeft = 2;
+        unit.currentHp = Math.max(1, unit.currentHp - 5);
+        target.currentHp = Math.max(1, target.currentHp - 5);
+        const vulnerary = new ItemObject(game.db.items.get('Vulnerary'));
+        vulnerary.owner = unit;
+        unit.items = [vulnerary];
+        game.memory.delete('item_use_canto');
+        applyCoreTargetedItem(unit, vulnerary, [...target.position]);
+        return {
+          hasAttacked: unit.hasAttacked,
+          finished: unit.finished,
+          movementLeft: unit.movementLeft,
+          cantoPending: game.memory.get('item_use_canto') === unit,
+        };
+      };
+      // Canto: has_canto = not has_attacked or unit is unit2.
+      const selfCanto = use([canto('Canto')], unit);
+      const allyCanto = use([canto('Canto')], ally);
+      const allyCantoPlus = use([canto('Canto_Plus')], ally);
+      const none = use([], unit);
+      return { selfCanto, allyCanto, allyCantoPlus, none };
+    });
+    // Canto / Canto_Plus canto_movement is the movement left.
+    expect(result.selfCanto).toEqual({ hasAttacked: true, finished: false, movementLeft: 2, cantoPending: true });
+    expect(result.allyCanto).toMatchObject({ finished: true, cantoPending: false });
+    expect(result.allyCantoPlus).toEqual({ hasAttacked: true, finished: false, movementLeft: 2, cantoPending: true });
+    expect(result.none).toMatchObject({ finished: true, cantoPending: false });
+  });
 });

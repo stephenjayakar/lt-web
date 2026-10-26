@@ -2773,6 +2773,7 @@ export class MoveState extends MapState {
     // that attacked or traded but is not finished is in Canto (Python
     // MoveState with has_attacked / has_traded).
     const canto = !unit.finished && (unit.hasAttacked || unit.hasTraded);
+    game.memory.delete(ITEM_USE_CANTO);
     if (unit.finished || (!unit.canStillAct() && !canto)) {
       game.selectedUnit = null;
       game._moveOrigin = null;
@@ -3990,6 +3991,7 @@ export function finishCoreItemUse(
   healingDone: Map<UnitObject, number> = new Map(),
   baseUse: boolean = false,
   resourcesStarted: boolean = false,
+  canto?: number | null,
 ): void {
   const game = getGame();
   if (!resourcesStarted) applyItemStartResourceHooks(game, unit, item);
@@ -4074,8 +4076,51 @@ export function finishCoreItemUse(
   }
   triggerAbilityItemCharge(game, unit, item, 'use');
   if (baseUse) game.actionLog.doAction(new HasTradedAction(unit));
-  else if (!canAttackAfterCombat(unit, item)) game.actionLog.doAction(new WaitAction(unit));
+  else if (!canAttackAfterCombat(unit, item)) {
+    // Python clean_up2: HasAttacked, then handle_state_stack moves a Canto
+    // user on with its canto movement instead of waiting it.
+    const cantoLeft = canto === undefined ? itemUseCantoMovement(game, unit, uniqueTargets[0] ?? null) : canto;
+    game.actionLog.doAction(new HasAttackedAction(unit));
+    if (cantoLeft !== null) {
+      game.actionLog.doAction(new SetMovementLeftAction(unit, cantoLeft));
+      game.memory.set(ITEM_USE_CANTO, unit);
+      if (unit.position) game.cursor?.setPos?.(unit.position[0], unit.position[1]);
+    } else {
+      game.actionLog.doAction(new WaitAction(unit));
+    }
+  }
   game.actionLog.doAction(new MarkActionGroupEnd('item_use'));
+}
+
+/** Memory key: the unit whose map item use left it in Canto. */
+const ITEM_USE_CANTO = 'item_use_canto';
+
+/**
+ * Python simple_combat.handle_state_stack after an item use: with HasAttacked
+ * already applied, has_canto(user, target) gives canto_movement; null when
+ * the user must wait.
+ */
+export function itemUseCantoMovement(game: any, unit: UnitObject, target: UnitObject | null): number | null {
+  if (unit.isDead()) return null;
+  const hadAttacked = unit.hasAttacked;
+  unit.hasAttacked = true;
+  try {
+    return unitHasCanto(unit, target, game) ? cantoMovement(unit, target, game) : null;
+  } finally {
+    unit.hasAttacked = hadAttacked;
+  }
+}
+
+/**
+ * The item menu resumed after an item use that left its user in Canto
+ * swaps itself for the Canto 'move', as Python's handle_state_stack pushes
+ * 'move' over the item menus; MoveState.begin then starts Canto.
+ */
+function enterCantoAfterItemUse(game: any, unit: UnitObject): boolean {
+  if (game.memory.get(ITEM_USE_CANTO) !== unit || !unit.hasAttacked || unit.finished) return false;
+  game.state.back();
+  game.state.change('move');
+  return true;
 }
 
 export function applyCoreTargetedItem(
@@ -4089,6 +4134,7 @@ export function applyCoreTargetedItem(
   applyItemStartResourceHooks(game, unit, item);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
+  const canto = classChangeCanto(game, unit, item, targets[0] ?? null);
   if (!applyCoreTargetedEffects(unit, item, position, targetItem)) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
     return false;
@@ -4096,8 +4142,18 @@ export function applyCoreTargetedItem(
   const healingDone = new Map(
     targets.map((target) => [target, Math.max(0, target.currentHp - (hpBefore.get(target) ?? target.currentHp))]),
   );
-  finishCoreItemUse(unit, item, targets, healingDone, false, true);
+  finishCoreItemUse(unit, item, targets, healingDone, false, true, canto);
   return true;
+}
+
+/**
+ * Python changes class in the item's end_combat, after handle_state_stack
+ * decided Canto, so a class-changing item's Canto uses the old class.
+ */
+function classChangeCanto(game: any, unit: UnitObject, item: ItemObject, target: UnitObject | null): number | null | undefined {
+  const changesClass = ['promote', 'force_promote', 'class_change', 'force_class_change']
+    .some((nid) => item.hasComponent(nid));
+  return changesClass ? itemUseCantoMovement(game, unit, target) : undefined;
 }
 
 /** Apply one multi-target item's effects to each selected main position, consuming it once. */
@@ -4224,6 +4280,7 @@ export class ItemMenuState extends State {
   override begin(): StateResult {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
+    if (unit && enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (!unit || !unit.position || unit.finished) {
       game.state.back();
       return 'repeat';
@@ -4631,6 +4688,7 @@ export class ItemUseState extends State {
       return;
     }
 
+    if (enterCantoAfterItemUse(game, unit)) return 'repeat';
     if (unit.finished) {
       game.state.back();
       return 'repeat';

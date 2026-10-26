@@ -177,7 +177,10 @@ The release gate is green: build, all four audits, the full serial suite,
 - [x] AI-used promotion items: neither engine's AI picks one (Promote has no
   `ai_priority` and no damage, so PrimaryAI never scores it above 0); nothing
   to port. BACK from an item's promotion choice returns to the map with the
-  unit still able to act and the item unspent, as Python's reverse_use.
+  unit still able to act and the item unspent, as Python's reverse_use (a
+  broken crest comes back last; a Canto user lands in the Canto move with
+  canto movement). Map item uses give Canto like combat (handle_state_stack),
+  decided before a class change.
 - [x] Engine sprites: the EOtF fork's copies (123x60 `unit_info_bg`, 48x30
   `menu_bg_parchment`, 15 fork-only) win for EOtF and are packed with the
   engine assets; fonts and platforms match upstream.
