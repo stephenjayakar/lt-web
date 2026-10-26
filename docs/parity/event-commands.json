@@ -12,8 +12,7 @@
     "skillReferencedComponentNids": 192,
     "skillHookMappedComponentNids": 93,
     "structuralStatuses": {
-      "dispatched-unverified": 252,
-      "stub-hint": 3
+      "dispatched-unverified": 255
     }
   },
   "commands": [
@@ -1743,7 +1742,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "create_unit",
@@ -2355,7 +2354,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "spawn_group",
@@ -2594,7 +2593,7 @@
       "dispatcherCase": true,
       "webBlocking": false,
       "lexicalTestMention": false,
-      "status": "stub-hint"
+      "status": "dispatched-unverified"
     },
     {
       "nid": "set_item_uses",

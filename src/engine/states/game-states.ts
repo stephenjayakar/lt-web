@@ -428,6 +428,14 @@ function parsePythonEventArgs(
   return { value: (keyword: string) => values.get(keyword), flags };
 }
 
+/** Python str_utils.get_next_int: `name` if unused, else the first free "1", "2", ... */
+function nextIntNid(name: string, units: Map<string, unknown>): string {
+  if (!units.has(name)) return name;
+  let counter = 1;
+  while (units.has(String(counter))) counter++;
+  return String(counter);
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -10397,7 +10405,10 @@ export class EventState extends State {
     pendingPortraitLoads: number;
     blockingPortraitLoads: number;
     background: HTMLImageElement | null;
+    backgroundPanorama: PanoramaFrames | null;
   }> = new WeakMap();
+  /** The panorama restoreParkedPresentation handed back with its background. */
+  private restoredPanorama: PanoramaFrames | null = null;
   /**
    * Parked events in pause order. Python pushes a new EventState for each
    * triggered sub-event; the paused parents stay on the (transparent) stack
@@ -10597,7 +10608,7 @@ export class EventState extends State {
       const restoredBackground = this.restoreParkedPresentation(nextEvent);
       if (restoredBackground !== undefined) {
         this.background = restoredBackground;
-        this.backgroundPanorama = null;
+        this.backgroundPanorama = this.restoredPanorama;
       }
     }
   }
@@ -11233,6 +11244,30 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   /** Python PanoramaBackground: cover the whole window, centered. */
+  /**
+   * Python PanoramaBackground.draw (also for a paused parent event): the
+   * current frame, scrolled horizontally for change_background;scroll
+   * (ScrollingBackground: unscaled, tiled, time / scroll_speed px), then
+   * update() advances the frame procession.
+   */
+  private drawBackgroundLayer(surf: Surface, image: HTMLImageElement, panorama: PanoramaFrames | null): void {
+    const frame = panorama?.image ?? image;
+    const speed = panorama?.scrollSpeed ?? null;
+    if (speed) {
+      const width = Math.max(1, frame.width);
+      const { x: ox, y: oy } = MenuScene.origin();
+      const counter = ((getFrameCount() * 1000 / 60) / speed) % width;
+      let x = ox - counter;
+      while (x > 0) x -= width;
+      for (; x < viewport.width; x += width) {
+        surf.blitImage(frame, 0, 0, frame.width, frame.height, Math.floor(x), oy);
+      }
+    } else {
+      this.drawEventBackground(surf, frame);
+    }
+    panorama?.update(FRAMETIME);
+  }
+
   private drawEventBackground(surf: Surface, image: HTMLImageElement): void {
     const bw = image.width;
     const bh = image.height;
@@ -11261,7 +11296,7 @@ export class EventState extends State {
       for (const event of this.parkedOrder) {
         const parked = this.parkedEventPresentation.get(event);
         if (!parked) continue;
-        if (parked.background) this.drawEventBackground(surf, parked.background);
+        if (parked.background) this.drawBackgroundLayer(surf, parked.background, parked.backgroundPanorama);
         // Python's paused Event.draw still updates its portraits (blinking,
         // fades) and drops the ones whose removal finished.
         for (const [name, portrait] of [...parked.portraits]) {
@@ -11291,9 +11326,7 @@ export class EventState extends State {
       // Python PanoramaBackground fills the whole 240x160 window. The web
       // viewport can be larger than the authored scene, so scale the panorama
       // to cover it (centered) instead of leaving the map visible around it.
-      this.drawEventBackground(surf, this.backgroundPanorama?.image ?? this.background);
-      // PanoramaBackground.draw ends with update(): the next frame.
-      this.backgroundPanorama?.update(FRAMETIME);
+      this.drawBackgroundLayer(surf, this.background, this.backgroundPanorama);
     }
 
     // Update and draw portraits (sorted by priority, ascending)
@@ -11578,6 +11611,7 @@ export class EventState extends State {
       pendingPortraitLoads: this.pendingPortraitLoads,
       blockingPortraitLoads: this.blockingPortraitLoads,
       background: this.background,
+      backgroundPanorama: this.backgroundPanorama,
     });
     this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
     this.parkedOrder.push(previous);
@@ -11603,6 +11637,7 @@ export class EventState extends State {
     this.portraitPriorityCounter = parked.portraitPriorityCounter;
     this.pendingPortraitLoads = parked.pendingPortraitLoads;
     this.blockingPortraitLoads = parked.blockingPortraitLoads;
+    this.restoredPanorama = parked.backgroundPanorama;
     return parked.background;
   }
 
@@ -11640,9 +11675,10 @@ export class EventState extends State {
       eventResumeBarriers.splice(barrier, 1);
       this.parkPresentation(next);
       this.currentEvent = next;
+      this.restoredPanorama = null;
       const restoredBackground = this.restoreParkedPresentation(next);
       this.background = restoredBackground ?? null;
-      this.backgroundPanorama = null;
+      this.backgroundPanorama = this.restoredPanorama;
       game.state.back();
       return;
     }
@@ -11672,6 +11708,7 @@ export class EventState extends State {
           break;
         }
       }
+      this.restoredPanorama = null;
       const restoredBackground = this.restoreParkedPresentation(next) ?? null;
       if (suspendedIndex >= 0) {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
@@ -11688,7 +11725,7 @@ export class EventState extends State {
         }
       }
       this.background = restoredBackground;
-      this.backgroundPanorama = null;
+      this.backgroundPanorama = this.restoredPanorama;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -14761,11 +14798,16 @@ export class EventState extends State {
       }
 
       case 'add_group': {
-        // Placement: giveup (default), stack, closest, push
-        const groupNid = args[0] ?? '';
-        const startingGroup = args[1] ?? '';
-        // args[2] = entry type (ignored for now — all entries are immediate)
-        const placement = (args[3] ?? 'giveup').toLowerCase().trim();
+        // Python event_functions.add_group: Group, StartingGroup?, EntryType?
+        // (fade), Placement? (giveup), flag `create` (place fresh copies of
+        // the group's level units, Event._copy_unit). The web has no unit
+        // entry transitions, so every EntryType arrives at once, as add_unit
+        // and create_unit do.
+        const agArgs = parsePythonEventArgs(args, ['Group'], ['StartingGroup', 'EntryType', 'Placement'], ['create']);
+        const groupNid = agArgs.value('Group') ?? '';
+        const startingGroup = agArgs.value('StartingGroup') ?? '';
+        const placement = (agArgs.value('Placement') || 'giveup').toLowerCase().trim();
+        const createCopies = agArgs.flags.has('create');
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (!group) {
@@ -14778,11 +14820,13 @@ export class EventState extends State {
         const levelUnits = game.currentLevel?.units ?? [];
 
         for (const uNid of unitNids) {
-          // Skip if already on map or dead
-          const existing = this.findUnit(uNid);
-          if (existing?.position || existing?.isDead()) continue;
-          // If not spawned yet, skip units that are already in the registry
-          if (existing && existing.position) continue;
+          let existing = this.findUnit(uNid);
+          if (createCopies) {
+            existing = this.copyLevelUnit(uNid, game) ?? undefined;
+            if (!existing) continue;
+          } else if (existing?.position || existing?.isDead()) {
+            continue;
+          }
 
           const position = this._getGroupPosition(startingGroup, uNid, group, groups, game);
           if (!position) continue;
@@ -16065,11 +16109,19 @@ export class EventState extends State {
       }
 
       case 'open_convoy': {
-        // open_convoy — opens the convoy/supply UI (stub for now)
-        // This would push a supply_items state; currently just skip
-        console.warn('open_convoy: convoy UI not yet implemented');
+        // Python event_functions.open_convoy;GlobalUnit;[include_other_units]:
+        // pause the event over 'supply_items' for that unit.
+        const ocArgs = parsePythonEventArgs(args, ['GlobalUnit'], [], ['include_other_units']);
+        const ocUnit = this.findUnit(ocArgs.value('GlobalUnit') ?? '');
         this.advancePointer();
-        return false;
+        if (!ocUnit) {
+          console.warn(`open_convoy: Couldn't find unit with nid ${ocArgs.value('GlobalUnit') ?? ''}`);
+          return false;
+        }
+        game.memory.set('supply_unit', ocUnit);
+        game.memory.set('include_other_units', ocArgs.flags.has('include_other_units'));
+        game.state.change('supply_items');
+        return true;
       }
 
       // ----- Talk management -----
@@ -17263,18 +17315,20 @@ export class EventState extends State {
       case 'change_background': {
         // change_background;[PanoramaNid];[keep_portraits];[scroll]
         // No panorama arg = remove background
+        // Python ChangeBackground: Panorama?, Speed? (ms per pixel with the
+        // scroll flag, default 50), flags keep_portraits and scroll.
         const bgKnownFlags = new Set(['keep_portraits', 'scroll']);
         const bgFlagSet = new Set<string>();
-        let bgNid: string | null = null;
-
+        const bgValues: string[] = [];
         for (const a of args) {
           const lower = a.trim().toLowerCase();
-          if (bgKnownFlags.has(lower)) {
-            bgFlagSet.add(lower);
-          } else if (a.trim() && !bgNid) {
-            bgNid = a.trim(); // Keep original case for the panorama NID
-          }
+          if (bgKnownFlags.has(lower)) bgFlagSet.add(lower);
+          else bgValues.push(a.trim());
         }
+        const bgArgs = parsePythonEventArgs(bgValues, [], ['Panorama', 'Speed']);
+        const bgNid: string | null = bgArgs.value('Panorama') || null;
+        const bgSpeed = parseInt(bgArgs.value('Speed') ?? '', 10);
+        const bgScrollSpeed = bgFlagSet.has('scroll') ? (Number.isFinite(bgSpeed) && bgSpeed > 0 ? bgSpeed : 50) : null;
 
         if (!bgNid) {
           // Remove background
@@ -17310,13 +17364,15 @@ export class EventState extends State {
               if (this.backgroundLoadToken === token) {
                 this.background = frames[0];
                 this.backgroundPanorama = new PanoramaFrames(frames);
+                // create_background(panorama, scroll): a single frame scrolls;
+                // multi-frame panoramas animate in place.
+                if (bgScrollSpeed !== null && frames.length === 1) {
+                  this.backgroundPanorama.scrollSpeed = bgScrollSpeed;
+                }
               }
             }).catch(() => {
+              // Python changes nothing for a panorama it doesn't have.
               console.warn(`EventState: panorama "${panoramaNid}" not found`);
-              if (this.backgroundLoadToken === token) {
-                this.background = null;
-                this.backgroundPanorama = null;
-              }
             }).finally(() => {
               if (this.backgroundLoadToken === token) {
                 this.backgroundLoadDone = true;
@@ -17684,30 +17740,30 @@ export class EventState extends State {
       }
 
       case 'make_generic': {
-        // make_generic;NID;Klass;Level;Team;AI;Faction;AnimVariant;ItemList
-        let mgNid = args[0] ?? '';
+        // make_generic;Nid;Klass;Level;Team;AI?;Faction?;AnimationVariant?;
+        // ItemList? (positional or Keyword=value, as Python parses them).
+        const mgArgs = parsePythonEventArgs(
+          args.filter((arg) => arg.toLowerCase() !== 'no_warn'),
+          ['Nid', 'Klass', 'Level', 'Team'],
+          ['AI', 'Faction', 'AnimationVariant', 'ItemList'],
+        );
+        let mgNid = (mgArgs.value('Nid') ?? '').trim();
         const assignCreatedUnit = mgNid.length === 0;
-        const mgKlass = args[1] ?? '';
-        const mgLevel = parseInt(args[2], 10) || 1;
-        const mgTeam = args[3] || 'player';
-        const mgAi = args[4] || 'None';
-        // args[5] = faction (ignored for now)
-        const mgFlags = new Set(['no_warn']);
-        const mgVariant = args[6] && !mgFlags.has(args[6].toLowerCase())
-          ? args[6]
-          : '';
-        const mgItemStr = args[7] && !mgFlags.has(args[7].toLowerCase())
-          ? args[7]
-          : '';
+        const mgKlass = mgArgs.value('Klass') ?? '';
+        const mgLevel = parseInt(mgArgs.value('Level') ?? '', 10) || 1;
+        const mgTeam = mgArgs.value('Team') || 'player';
+        const mgAi = mgArgs.value('AI') || 'None';
+        const mgFaction = mgArgs.value('Faction') ?? '';
+        const mgVariant = mgArgs.value('AnimationVariant') ?? '';
+        const mgItemStr = mgArgs.value('ItemList') ?? '';
         const mgItems: [string, boolean][] = mgItemStr
-          ? mgItemStr.split(',').map((s: string) => [s.trim(), false] as [string, boolean])
+          ? mgItemStr.split(',').map((s: string) => s.trim()).filter(Boolean)
+            .map((nid: string) => [nid, false] as [string, boolean])
           : [];
 
-        // Auto-generate NID if empty
+        // Python str_utils.get_next_int('201', unit nids).
         if (!mgNid) {
-          let counter = 201;
-          while (game.units.has(String(counter))) counter++;
-          mgNid = String(counter);
+          mgNid = nextIntNid('201', game.units);
         } else if (game.units.has(mgNid)) {
           console.warn(`make_generic: Unit "${mgNid}" already exists`);
           this.advancePointer();
@@ -17728,7 +17784,7 @@ export class EventState extends State {
           level: mgLevel,
           klass: mgKlass,
           // Python: a blank faction defaults to the first faction.
-          faction: args[5] || ((game.db.factions?.values?.().next?.().value as any)?.nid ?? ''),
+          faction: mgFaction || ((game.db.factions?.values?.().next?.().value as any)?.nid ?? ''),
           starting_items: mgItems,
           starting_skills: [],
           team: mgTeam,
@@ -18996,6 +19052,32 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
   // Unit spawning helper: handles both unique and generic units from level data
   // -----------------------------------------------------------------------
+
+  /**
+   * Python Event._copy_unit: a fresh off-map copy of a level unit, named by
+   * str_utils.get_next_int(prefab nid, registry) and registered directly.
+   */
+  private copyLevelUnit(unitNid: string, game: any): UnitObject | null {
+    const unitData = (game.currentLevel?.units ?? []).find((candidate: any) => candidate.nid === unitNid);
+    if (!unitData) {
+      console.warn(`EventState: Could not find level unit prefab for unit with nid: ${unitNid}`);
+      return null;
+    }
+    const newNid = nextIntNid(unitData.nid, game.units);
+    if (unitData.generic === true) {
+      game.spawnGenericUnit({ ...unitData, nid: newNid, starting_position: null });
+    } else {
+      const prefab = game.db.units.get(unitData.nid);
+      if (!prefab) return null;
+      game.spawnUnit({ ...prefab, nid: newNid }, unitData.team ?? 'player', null, unitData.ai ?? 'None');
+    }
+    const copy: UnitObject | undefined = game.units.get(newNid);
+    if (!copy) return null;
+    copy.dead = false;
+    if (game.currentParty) copy.party = game.currentParty;
+    this.loadMapSpriteForUnit(copy, game);
+    return copy;
+  }
 
   private spawnUnitFromLevelData(
     unitData: any,
