@@ -108,6 +108,31 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     await attachShot(page, testInfo, 'prep-main');
   });
 
+  test('prep main shows the map, not the held transition of the calling event', async ({ page }) => {
+    test.slow();
+    // EOtF chapters reach `prep` with the event's screen transitioned to
+    // black. Python's PrepMainState (a MapState) draws only the map beneath
+    // its menu, so the event's black overlay must not show through.
+    await openPrep(page, ['transition;close', 'prep;t']);
+    const lit = await page.evaluate(async () => {
+      const data: string = await (window as any).__harness.screenshot();
+      const img = new Image();
+      img.src = data;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const k = img.width / 240;
+      // A strip left of the centred menu, inside focus_fade's lighter area.
+      const px = ctx.getImageData(Math.round(30 * k), Math.round(50 * k), Math.round(30 * k), Math.round(60 * k)).data;
+      let bright = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] > 40) bright++;
+      return bright / (px.length / 4);
+    });
+    expect(lit).toBeGreaterThan(0.5);
+  });
+
   test('Pick Units is the 6x2 position-mode unit table with deploy toggling', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);

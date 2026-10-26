@@ -147,6 +147,7 @@ export class PrepMainState extends State {
   // A MapState in Python: the tactical map (drawn by the free state beneath)
   // shows through focus_fade.
   override readonly transparent = true;
+  override readonly mapBackdrop = true;
   override readonly showMap = true;
 
   menu: Choice | null = null;
@@ -589,6 +590,7 @@ function handleInfo(): void {
 export class PrepFormationState extends State {
   readonly name = 'prep_formation';
   override readonly transparent = true;
+  override readonly mapBackdrop = true;
   override readonly showMap = true;
   override readonly inLevel = true;
 
@@ -648,6 +650,7 @@ export class PrepFormationState extends State {
 export class PrepFormationSelectState extends State {
   readonly name = 'prep_formation_select';
   override readonly transparent = true;
+  override readonly mapBackdrop = true;
   override readonly showMap = true;
   override readonly inLevel = true;
 
@@ -747,6 +750,7 @@ export class PrepFormationSelectState extends State {
 export class PrepMapState extends State {
   readonly name = 'prep_map';
   override readonly transparent = true;
+  override readonly mapBackdrop = true;
   override readonly showMap = true;
   override readonly inLevel = true;
 
