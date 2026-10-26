@@ -27,7 +27,13 @@ import type { InputEvent } from '../input';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
-import { MarkActionGroupEnd, MarkActionGroupStart } from '../action';
+import {
+  GiveItemAction,
+  MarkActionGroupEnd,
+  MarkActionGroupStart,
+  RemoveItemFromUnitAction,
+  SetMovementLeftAction,
+} from '../action';
 import { applyItemStartResourceHooks } from '../../combat/item-resource-lifecycle';
 import { BattleAnimation, fillScreen, type BattleAnimOwner } from '../../combat/battle-animation';
 import type { CombatEffectData, PaletteData, WeaponAnimData } from '../../combat/battle-anim-types';
@@ -55,6 +61,7 @@ import {
 import {
   createPixelAnimation,
   finishCoreItemUse,
+  itemUseCantoMovement,
   performPromotionOrClassChange,
   runEventsBeforeWaiting,
 } from './game-states';
@@ -390,15 +397,26 @@ export class PromotionChoiceState extends State {
         this.childMenu = null;
       } else if (this.request.canGoBack) {
         // Python opens the choice from Promote.end_combat, after the item's
-        // combat cleared the stack to free; BACK pops back to the map with
-        // HasNotAttacked + reverse_use, so the unit can still act. The web
-        // spends nothing before Change, so leaving refunds by itself. A base
-        // (prep) use returns to its screen.
+        // combat spent the use (a broken item is removed), applied
+        // HasAttacked and ran handle_state_stack: Canto pushed 'move' with
+        // SetMovementLeft(canto_movement), otherwise the stack cleared to
+        // free + wait. BACK pops to that state with HasNotAttacked +
+        // reverse_use, so the unit can still act and reverse_use gives the
+        // broken item back at the end of the inventory. The web spends
+        // nothing before Change; it replays those net effects. A base (prep)
+        // use returns to its screen.
         sfx('Select 4');
         game.memory.delete(REQUEST_KEY);
         game.state.back();
         if (this.request.popBelow) {
-          const unit = this.request.itemUse?.actor ?? this.request.unit;
+          const use = this.request.itemUse;
+          const unit = use?.actor ?? this.request.unit;
+          const canto = use ? itemUseCantoMovement(game, unit, this.request.unit) : null;
+          if (use && use.item.maxUses > 0 && use.item.uses <= 1 &&
+              !use.item.hasComponent('no_break_out_of_uses') && unit.items.includes(use.item)) {
+            game.actionLog.doAction(new RemoveItemFromUnitAction(unit, use.item));
+            game.actionLog.doAction(new GiveItemAction(unit, use.item));
+          }
           game.memory.delete('item_use_item');
           game.highlight?.clear?.();
           game._moveOrigin = null;
@@ -407,6 +425,11 @@ export class PromotionChoiceState extends State {
           if (unit.position) game.cursor?.setPos?.(unit.position[0], unit.position[1]);
           game.state.clear();
           game.state.change('free');
+          if (canto !== null) {
+            game.actionLog.doAction(new SetMovementLeftAction(unit, canto));
+            game.selectedUnit = unit;
+            game.state.change('move');
+          }
           game.actionLog.doAction(new MarkActionGroupEnd('menu'));
         }
       } else {
@@ -530,6 +553,8 @@ export class PromotionState extends State {
   private darkenUiBackground = 0;
   private song: Promise<unknown> | null = null;
   private portrait: HTMLImageElement | null = null;
+  /** The map item use's Canto, decided before the class changes (Python handle_state_stack). */
+  private itemUseCanto: number | null = null;
   /** Mirrors EventState's level presentation for diagnostics/tests. */
   levelUpPresentation: { screen: LevelUpScreen; statChanges: Record<string, number>; source: string } | null = null;
 
@@ -624,6 +649,9 @@ export class PromotionState extends State {
     if (use) {
       if (use.baseUse) game.actionLog.doAction(new MarkActionGroupStart(use.actor, 'item_use'));
       applyItemStartResourceHooks(game, use.actor, use.item);
+      // Python decides Canto at combat end, before Promote.end_combat opens
+      // these screens, so the old class's skills count.
+      this.itemUseCanto = use.baseUse ? null : itemUseCantoMovement(game, use.actor, unit);
     }
     const oldLevel = unit.level;
     const { statChanges } = performPromotionOrClassChange(
@@ -682,7 +710,10 @@ export class PromotionState extends State {
       } else if (result === 'done') {
         const use = this.request?.itemUse;
         if (use && this.request) {
-          finishCoreItemUse(use.actor, use.item, [this.request.unit], new Map(), use.baseUse, true);
+          finishCoreItemUse(
+            use.actor, use.item, [this.request.unit], new Map(), use.baseUse, true,
+            new Map(), use.baseUse ? undefined : this.itemUseCanto,
+          );
         }
         this.fireLevelUpTrigger('unit_level_up');
         this.levelUpPresentation = null;

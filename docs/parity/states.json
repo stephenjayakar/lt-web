@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 61,
-    "merged": 52,
+    "exact": 62,
+    "merged": 51,
     "open": 0,
-    "web": 80
+    "web": 82
   },
   "rows": [
     {
@@ -684,8 +684,8 @@
       "name": "status_upkeep",
       "className": "StatusUpkeepState",
       "source": "lt-maker/app/engine/status_upkeep.py",
-      "status": "merged",
-      "webState": "phase_change",
+      "status": "exact",
+      "webState": "status_upkeep",
       "webSource": "src/engine/states/game-states.ts"
     },
     {

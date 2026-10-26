@@ -279,4 +279,149 @@ test.describe('interrupt_move regions', () => {
     });
     expect(result).toEqual({ position: setup!.trap, finished: true, hits: 1 });
   });
+
+  // Python game_board.can_move_through lets the player path through an enemy
+  // it can't see under fog; UnitPathMovementComponent then stops the walk
+  // before it (check_position's enemy clause) as a surprise. check_position
+  // tests the current tile's interrupt regions before the next tile's enemy.
+  async function installAmbush(page: Page, trap: boolean) {
+    return page.evaluate(({ trap }) => {
+      const game = (window as any).__gameRef;
+      const player = game.units.get('Player');
+      const keeper = game.units.get('Keeper');
+      keeper.team = 'enemy';
+      game.levelVars.set('_fog_of_war', true);
+      game.levelVars.set('_fog_of_war_type', 1);
+      game.levelVars.set('_fog_of_war_radius', 1);
+      game.recalculateAllFow();
+      const fog = game.getCurrentFogInfo();
+      const moves: [number, number][] = game.pathSystem.getValidMoves(player, game.board);
+      let chosen: { dest: [number, number]; path: [number, number][] } | null = null;
+      for (const dest of moves) {
+        if (game.board.getUnit(dest[0], dest[1])) continue;
+        if (game.board.inVision(dest, 'player', fog, game.db, game.getAllUnits())) continue;
+        const path = game.pathSystem.getPath(player, dest[0], dest[1], game.board);
+        if (!path || path.length < 4) continue;
+        if (path.some(([x, y]: [number, number], i: number) => i > 0 && game.board.getUnit(x, y))) continue;
+        if (!chosen || path.length < chosen.path.length) chosen = { dest, path };
+      }
+      if (!chosen) return null;
+      game.board.moveUnit(keeper, chosen.dest[0], chosen.dest[1]);
+      game.recalculateAllFow();
+      if (trap) {
+        const tile = chosen.path[1];
+        game.currentLevel.regions.push({
+          nid: '_TestTrap', region_type: 'event', position: [tile[0], tile[1]], size: [1, 1],
+          sub_nid: '_TestTrapHit', condition: 'True', time_left: null, only_once: false,
+          interrupt_move: true, hide_time: false,
+        });
+        game.db.events.set('_TestTrapHit', {
+          name: '_TestTrapHit', nid: '_TestTrapHit', trigger: '_TestTrapHit',
+          level_nid: game.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
+          _source: ['game_var;_test_trap_hits;{e:v("_test_trap_hits", 0) + 1}'],
+        });
+        game.gameVars.set('_test_trap_hits', 0);
+      }
+      const after = game.pathSystem.getValidMoves(player, game.board);
+      return {
+        dest: chosen.dest,
+        path: game.pathSystem.getPath(player, chosen.dest[0], chosen.dest[1], game.board),
+        hiddenSelectable: after.some(([x, y]: [number, number]) => x === chosen!.dest[0] && y === chosen!.dest[1]),
+      };
+    }, { trap });
+  }
+
+  async function walkPlayerTo(page: Page, dest: [number, number]) {
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Player');
+      unit.resetTurnState();
+      game.selectedUnit = unit;
+      game.state.change('move');
+    });
+    await stepFrames(page, 3);
+    await page.evaluate(({ dest }) => (window as any).__gameRef.cursor.setPos(dest[0], dest[1]), { dest });
+    await stepFrames(page, 2, 'SELECT');
+    await stepFrames(page, 180);
+    return page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const unit = game.units.get('Player');
+      return {
+        position: [...unit.position],
+        hasAttacked: unit.hasAttacked,
+        finished: unit.finished,
+        hits: game.gameVars.get('_test_trap_hits') ?? null,
+        state: ['free', 'free_roam'].includes(game.state.getCurrentState()?.name),
+      };
+    });
+  }
+
+  test('fog ambush: the player paths through an unseen enemy and is stopped before it', async ({ page }) => {
+    await bootEotf(page);
+    const setup = await installAmbush(page, false);
+    expect(setup).not.toBeNull();
+    expect(setup!.hiddenSelectable).toBe(true);
+    const path = setup!.path;
+    expect(path[path.length - 1]).toEqual(setup!.dest);
+    const result = await walkPlayerTo(page, setup!.dest);
+    expect(result).toEqual({
+      position: path[path.length - 2],
+      hasAttacked: true,
+      finished: true,
+      hits: null,
+      state: true,
+    });
+  });
+
+  test('fog ambush: an interrupt region earlier on the path stops the walk first', async ({ page }) => {
+    await bootEotf(page);
+    const setup = await installAmbush(page, true);
+    expect(setup).not.toBeNull();
+    const result = await walkPlayerTo(page, setup!.dest);
+    expect(result).toEqual({
+      position: setup!.path[1],
+      hasAttacked: true,
+      finished: true,
+      hits: 1,
+      state: true,
+    });
+  });
+
+  test('check_position order: current-tile region before next-tile enemy; event moves ignore enemies', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { interruptMovePath } = await import('/src/movement/region-interrupt.ts');
+      const player = game.units.get('Player');
+      const keeper = game.units.get('Keeper');
+      keeper.team = 'enemy';
+      const [x, y] = player.position;
+      const path: [number, number][] = [[x, y], [x + 1, y], [x + 2, y], [x + 3, y]];
+      for (const [px, py] of path.slice(1)) {
+        const other = game.board.getUnit(px, py);
+        if (other && other !== keeper) game.board.removeUnit(other);
+      }
+      game.board.moveUnit(keeper, x + 2, y);
+      const ambush = interruptMovePath(player, path, game);
+      const eventMove = interruptMovePath(player, path, game, { event: true });
+      game.currentLevel.regions.push({
+        nid: '_TestTrap4', region_type: 'event', position: [x + 1, y], size: [1, 1],
+        sub_nid: 'Mine', condition: 'True', time_left: null,
+        only_once: false, interrupt_move: true, hide_time: false,
+      });
+      const both = interruptMovePath(player, path, game);
+      const eventTrap = interruptMovePath(player, path, game, { event: true });
+      return { ambush, eventMove, both, eventTrap };
+    });
+    expect(result.ambush).toEqual({ path: result.ambush.path.slice(0, 2), surprise: true });
+    expect(result.ambush.path).toHaveLength(2);
+    expect(result.eventMove.path).toHaveLength(4);
+    expect(result.eventMove.surprise).toBe(false);
+    // The region on tile 1 and the enemy on tile 2 both stop the unit on
+    // tile 1; for an event move only the region does.
+    expect(result.both.path).toHaveLength(2);
+    expect(result.both.surprise).toBe(true);
+    expect(result.eventTrap.path).toHaveLength(2);
+    expect(result.eventTrap.surprise).toBe(true);
+  });
 });

@@ -83,7 +83,9 @@ project.
   `[target] * num_targets`; the fork merges them into one counter-less splash
   combat, which the web strikes once per phase. Whether the fork strikes a
   repeated position more than once is unknown without its source.)
-- Fog ambush doesn't check interrupt regions.
+- (Fixed in `fix/dev-flow`: fog of war lets the player path through unseen
+  enemies and the walk is ambushed before them, after check_position's
+  current-tile interrupt-region test; `tests/fork-region-interrupt.spec.ts`.)
 - (Fixed in `fix/dev-ui`: upstream choice/table draw an authored bg, the fork
   ignores it; `{v:}` prints a None var as `None` with no fall-through, as
   `text_evaluator._evaluate_vars` does, `tests/event-choice-bg.spec.ts`.)

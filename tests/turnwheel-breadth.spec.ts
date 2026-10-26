@@ -391,7 +391,12 @@ test.describe('Turnwheel breadth verification (P2)', () => {
 
       const before = pair.points;
       const { TurnChangeState } = await import('/src/engine/states/game-states.ts');
-      new TurnChangeState().begin();
+      // The first begin pushes status_endstep (Python's stack order); the
+      // turn change proper runs when it resumes.
+      const turnChange = new TurnChangeState();
+      turnChange.start();
+      turnChange.begin();
+      turnChange.begin();
       const changed = pair.points;
       const action = g.actionLog.undo();
       const undone = pair.points;

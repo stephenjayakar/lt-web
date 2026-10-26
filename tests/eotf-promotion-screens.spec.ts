@@ -208,6 +208,108 @@ test('BACK from the item promotion choice returns to the map without spending th
   });
 });
 
+/** Give the selected Mercenary a Canter (canto 1) skill and an Iron Sword after the crest. */
+async function cantoMercenary(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const game = (window as any).__gameRef;
+    const unit = (window as any).__promoUnit;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    const { ItemObject } = (window as any).__itemModule;
+    unit.skills.push(new SkillObject({
+      nid: '_TestCanter', name: '_TestCanter', desc: '', icon_nid: '', icon_index: [0, 0],
+      components: [['canter', 1]],
+    } as any));
+    const sword = new ItemObject(game.db.items.get('Iron_Sword'));
+    sword.owner = unit;
+    unit.items.push(sword);
+    unit.movementLeft = 3;
+    (window as any).__logStart = game.actionLog.actions.length;
+  });
+}
+
+async function openCrestChoice(page: Page): Promise<void> {
+  await page.evaluate(() => (window as any).__gameRef.state.change('item_use'));
+  await step(page, 2);
+  await step(page, 1, 'SELECT');
+  await step(page, 2);
+  await step(page, 1, 'SELECT');
+  await step(page, 2);
+  expect(await stateName(page)).toBe('promotion_choice');
+}
+
+test('BACK from the promotion choice with Canto returns to the Canto move and re-gives the crest last', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(async () => {
+    (window as any).__itemModule = await import('/src/objects/item.ts');
+  });
+  await mercenary(page);
+  await cantoMercenary(page);
+  await openCrestChoice(page);
+  await step(page, 1, 'BACK');
+  await step(page, 2);
+  // Python: the item's combat ran handle_state_stack first (HasAttacked,
+  // Canto -> 'move' + SetMovementLeft(canto_movement)); BACK pops to that
+  // MoveState with HasNotAttacked, and reverse_use GiveItems the broken
+  // crest back at the end of the inventory.
+  expect(await stateName(page)).toBe('move');
+  const result = await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const u = (window as any).__promoUnit;
+    const snapshot = () => ({
+      items: u.items.map((item: any) => item.nid),
+      movementLeft: u.movementLeft,
+      hasAttacked: u.hasAttacked,
+      finished: u.finished,
+    });
+    const after = { ...snapshot(), selected: game.selectedUnit === u, crestFull: u.items[1]?.uses === u.items[1]?.maxUses };
+    const undone = [];
+    while (game.actionLog.actions.length > (window as any).__logStart) undone.push(game.actionLog.undo());
+    const reverted = snapshot();
+    for (const action of undone.reverse()) action?.execute();
+    return { after, reverted, redone: snapshot() };
+  });
+  expect(result.after).toEqual({
+    items: ['Iron_Sword', 'Knight Crest'], movementLeft: 1, hasAttacked: false, finished: false,
+    selected: true, crestFull: true,
+  });
+  expect(result.reverted).toEqual({
+    items: ['Knight Crest', 'Iron_Sword'], movementLeft: 3, hasAttacked: false, finished: false,
+  });
+  expect(result.redone).toEqual({
+    items: ['Iron_Sword', 'Knight Crest'], movementLeft: 1, hasAttacked: false, finished: false,
+  });
+});
+
+test('promoting with Canto ends in the Canto move instead of waiting', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(async () => {
+    (window as any).__itemModule = await import('/src/objects/item.ts');
+  });
+  await mercenary(page);
+  await cantoMercenary(page);
+  await openCrestChoice(page);
+  await step(page, 1, 'SELECT');
+  await step(page, 2);
+  await step(page, 1, 'SELECT');
+  expect(await stateName(page)).toBe('promotion');
+  await runUntil(page, async () => await stateName(page) !== 'promotion', 40_000);
+  // Python handle_state_stack pushed the Canto 'move' before the screens.
+  expect(await stateName(page)).toBe('move');
+  const result = await page.evaluate(() => {
+    const u = (window as any).__promoUnit;
+    return {
+      klass: u.klass,
+      items: u.items.map((item: any) => item.nid),
+      movementLeft: u.movementLeft,
+      hasAttacked: u.hasAttacked,
+      finished: u.finished,
+    };
+  });
+  expect(result).toEqual({
+    klass: 'Hero', items: ['Iron_Sword'], movementLeft: 1, hasAttacked: true, finished: false,
+  });
+});
+
 test('a non-silent event promote plays the promotion screen and resumes the event', async ({ page }) => {
   await boot(page);
   await page.evaluate(async () => {

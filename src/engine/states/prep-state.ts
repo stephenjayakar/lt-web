@@ -393,11 +393,13 @@ export class PrepMainState extends State {
       // popping the last state and leaving a black, empty stack.
       game.state.clear();
       game.state.change('free');
+      game.state.change('status_upkeep');
       game.state.change('phase_change');
       game.state.change('event');
     } else {
       game.state.clear();
       game.state.change('free');
+      game.state.change('status_upkeep');
       game.state.change('phase_change');
     }
   }
