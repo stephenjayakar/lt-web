@@ -253,47 +253,19 @@ export class AIController {
     }
 
     if (action === 'Interact') {
-      // Move to a region/event position
-      const targetPositions = this.getTargetPositions(unit, behaviour);
-      if (targetPositions.length === 0) return null;
-
-      // Check if any target position is directly reachable this turn
-      const targetSpec = typeof behaviour.target_spec === 'string' ? behaviour.target_spec : '';
-      for (const targetPos of targetPositions) {
-        const reachable = validMoves.some(([mx, my]) => mx === targetPos[0] && my === targetPos[1]);
-        if (reachable) {
-          // Find the matching region for this position
-          const regions = this.gameRef?.currentLevel?.regions ?? [];
-          const region = regions.find((r: any) =>
-            r.region_type === 'event' &&
-            r.sub_nid === targetSpec &&
-            targetPos[0] >= r.position[0] && targetPos[0] < r.position[0] + (r.size?.[0] ?? 1) &&
-            targetPos[1] >= r.position[1] && targetPos[1] < r.position[1] + (r.size?.[1] ?? 1),
-          );
-
-          const movePath = this.pathSystem.getPath(unit, targetPos[0], targetPos[1], this.board);
-          return {
-            type: 'interact',
-            unit,
-            targetPosition: targetPos,
-            movePath: movePath ?? (unit.position ? [unit.position, targetPos] : [targetPos]),
-            regionNid: region?.nid,
-            regionSubNid: region?.sub_nid ?? targetSpec,
-          };
-        }
-      }
-
-      // Can't reach target this turn — move toward it
-      return this.moveTowardPosition(unit, validMoves, targetPositions);
+      // Python builds a SecondaryAI for Interact: path to the region tiles.
+      return this.pythonSecondaryAI(unit, behaviour, this.getTargetPositions(unit, behaviour));
     }
 
     if (action === 'Move_to' || action === 'move_to') {
-      const targets = this.getMoveTargets(unit, behaviour);
-      if (targets.length === 0) return null;
-
-      // Secondary AI: move toward targets
-      const secondaryAction = this.secondaryAI(unit, validMoves, targets, behaviour.view_range);
-      return secondaryAction;
+      // Python SecondaryAI over get_targets(): unit, region, position or
+      // terrain target positions alike.
+      const positions = ['Event', 'Terrain'].includes(String(behaviour.target))
+        ? this.getTargetPositions(unit, behaviour)
+        : behaviour.target === 'Position'
+          ? this.getPositionTargets(unit, behaviour)
+          : this.getTargets(unit, behaviour).map((target) => target.position).filter((pos): pos is [number, number] => !!pos);
+      return this.pythonSecondaryAI(unit, behaviour, positions);
     }
 
     if (action === 'Move_away_from' || action === 'move_away_from') {
@@ -314,6 +286,135 @@ export class AIController {
   /**
    * Get target units based on behaviour's target type and spec.
    */
+  /** Python get_targets for target == 'Position' (Starting or a literal point). */
+  private getPositionTargets(unit: UnitObject, behaviour: AiBehavior): [number, number][] {
+    if (behaviour.target_spec === 'Starting') {
+      return unit.startingPosition ? [[unit.startingPosition[0], unit.startingPosition[1]]] : [];
+    }
+    if (Array.isArray(behaviour.target_spec) && behaviour.target_spec.length === 2) {
+      const pos: [number, number] = [Number(behaviour.target_spec[0]), Number(behaviour.target_spec[1])];
+      if (!isNaN(pos[0]) && !isNaN(pos[1])) return [pos];
+    }
+    return [];
+  }
+
+  /**
+   * Python ai_controller.SecondaryAI for Move_to / Interact: filter the target
+   * positions by the view-range limit (view_range -4 first tries double-move
+   * range, then widens to everything), A* to each one (enemies block; adjacent
+   * is good enough only for unit targets), score by compute_priority and travel
+   * as far as possible along the best path. A target without a path is skipped
+   * rather than approached in a straight line. When the best position is the
+   * unit's own tile the AI is done and the unit waits.
+   */
+  private pythonSecondaryAI(
+    unit: UnitObject,
+    behaviour: AiBehavior,
+    allTargets: [number, number][],
+  ): AIAction | null {
+    const start = unit.position;
+    if (!start) return null;
+    const groupActive = !!(unit.aiGroup && this.gameRef?.isAiGroupActive?.(unit.aiGroup));
+    let viewRange = behaviour.view_range === -4 || groupActive ? -3 : behaviour.view_range;
+    const movement = unit.getMovement();
+    const zeroMove = this.getMaxItemRange(unit);
+    const singleMove = zeroMove + movement;
+    const doubleMove = singleMove + movement;
+    let widened = false;
+    const getLimit = (): number => {
+      if (widened || viewRange === -4) return 99;
+      if (viewRange === -3) return doubleMove;
+      if (viewRange === -2) return ['Attack', 'Support', 'Steal'].includes(behaviour.action) ? -1 : singleMove;
+      if (viewRange === -1) return -1;
+      return viewRange;
+    };
+    const unique = allTargets.filter((pos, index) =>
+      allTargets.findIndex((other) => other[0] === pos[0] && other[1] === pos[1]) === index);
+
+    let available = unique.filter((pos) => this.distance(start, pos) <= getLimit());
+    let bestTp: number | null = null;
+    let bestTarget: [number, number] | null = null;
+    let bestPath: [number, number][] | null = null;
+    for (;;) {
+      const target = available.pop();
+      if (target) {
+        const occupant = this.board.getUnit(target[0], target[1]);
+        const adjGoodEnough = behaviour.target === 'Event' || behaviour.target === 'Terrain'
+          ? false
+          : behaviour.target === 'Position' && !occupant ? false : true;
+        const limit = getLimit();
+        const path = this.pathSystem.getPath(unit, target[0], target[1], this.board, {
+          adjGoodEnough,
+          limit: limit > 0 ? limit : undefined,
+          maxMovementLimit: movement,
+        });
+        if (!path || path.length === 0) continue;
+        // compute_priority: distance term (60), plus for Interact a preference
+        // for tiles nobody stands on (15).
+        const terms: Array<[number, number]> = [[1 - Math.log(path.length) / 4, 60]];
+        if (behaviour.action === 'Interact') terms.push([occupant ? 0 : 1, 15]);
+        const weightSum = terms.reduce((sum, [, weight]) => sum + weight, 0);
+        const tp = terms.reduce((sum, [value, weight]) => sum + value * weight, 0) / weightSum;
+        if (bestTp === null || tp > bestTp) {
+          bestTp = tp;
+          bestTarget = target;
+          bestPath = path;
+        }
+        continue;
+      }
+      if (bestTarget && bestPath) break;
+      if ((behaviour.view_range === -4 || groupActive) && !widened) {
+        widened = true;
+        viewRange = -4;
+        available = [...unique];
+        continue;
+      }
+      return null;
+    }
+
+    const destination = this.pathSystem.travelAlgorithm(bestPath, unit, this.board);
+    const stays = destination[0] === start[0] && destination[1] === start[1];
+    const movePath = stays ? [start] : this.pathSystem.getPath(unit, destination[0], destination[1], this.board);
+    if (behaviour.action === 'Interact') {
+      const targetSpec = typeof behaviour.target_spec === 'string' ? behaviour.target_spec : '';
+      const regions = this.gameRef?.currentLevel?.regions ?? [];
+      const region = regions.find((r: any) =>
+        r.region_type === 'event' && r.sub_nid === targetSpec &&
+        destination[0] >= r.position[0] && destination[0] < r.position[0] + (r.size?.[0] ?? 1) &&
+        destination[1] >= r.position[1] && destination[1] < r.position[1] + (r.size?.[1] ?? 1) &&
+        (!r.condition || (() => {
+          try {
+            return evaluateCondition(r.condition, {
+              game: this.gameRef, unit1: unit, region: r, position: destination,
+              gameVars: this.gameRef?.gameVars, levelVars: this.gameRef?.levelVars,
+            });
+          } catch {
+            return false;
+          }
+        })()));
+      if (region) {
+        return {
+          type: 'interact',
+          unit,
+          targetPosition: destination,
+          movePath: movePath ?? [start, destination],
+          regionNid: region.nid,
+          regionSubNid: region.sub_nid ?? targetSpec,
+        };
+      }
+    }
+    // Python: a goal position equal to the unit's own tile ends the AI
+    // without trying further behaviours.
+    if (stays) return { type: 'wait', unit };
+    return {
+      type: 'move',
+      unit,
+      targetPosition: destination,
+      targetUnit: this.board.getUnit(bestTarget![0], bestTarget![1]) ?? undefined,
+      movePath: movePath ?? [start, destination],
+    };
+  }
+
   private getTargets(unit: UnitObject, behaviour: AiBehavior): UnitObject[] {
     const targetType = behaviour.target;
 
@@ -343,67 +444,6 @@ export class AIController {
     }
 
     return candidates;
-  }
-
-  /**
-   * Get move-to target units/positions.
-   * Handles Position/Starting, Ally, Enemy, Terrain, Event targets.
-   */
-  private getMoveTargets(unit: UnitObject, behaviour: AiBehavior): UnitObject[] {
-    const targetType = behaviour.target;
-
-    if (targetType === 'Position') {
-      // Target spec determines the position
-      if (behaviour.target_spec === 'Starting') {
-        // Return to starting position -- create a virtual target
-        if (unit.startingPosition) {
-          // Check if already at starting position
-          if (unit.position &&
-              unit.position[0] === unit.startingPosition[0] &&
-              unit.position[1] === unit.startingPosition[1]) {
-            return []; // Already home
-          }
-          // Create a virtual "target" at the starting position
-          // We'll handle this in secondaryAI by checking position directly
-          return this.createPositionTargets([unit.startingPosition]);
-        }
-        return [];
-      }
-
-      // Literal position from target_spec
-      if (Array.isArray(behaviour.target_spec) && behaviour.target_spec.length === 2) {
-        const pos: [number, number] = [
-          Number(behaviour.target_spec[0]),
-          Number(behaviour.target_spec[1]),
-        ];
-        if (!isNaN(pos[0]) && !isNaN(pos[1])) {
-          return this.createPositionTargets([pos]);
-        }
-      }
-      return [];
-    }
-
-    // For Ally, Enemy, Unit targets -- reuse getTargets
-    return this.getTargets(unit, behaviour);
-  }
-
-  /**
-   * Create virtual "target" objects at positions for move-to AI.
-   * Returns units at those positions if occupied, or creates temporary targets.
-   */
-  private createPositionTargets(positions: [number, number][]): UnitObject[] {
-    const targets: UnitObject[] = [];
-    for (const pos of positions) {
-      const occupant = this.board.getUnit(pos[0], pos[1]);
-      if (occupant && !occupant.isDead()) {
-        targets.push(occupant);
-      } else {
-        // No unit at position -- we need to handle this in secondaryAI
-        // by passing positions directly. For now, return empty and handle
-        // position-based movement separately.
-      }
-    }
-    return targets;
   }
 
   /**
@@ -1177,55 +1217,6 @@ export class AIController {
 
     // Use the standard secondary AI movement toward the best target
     return this.secondaryAI(unit, validMoves, [nearestTarget], viewRange);
-  }
-
-  /**
-   * Move toward a specific set of positions (for Interact, Position targets).
-   */
-  private moveTowardPosition(
-    unit: UnitObject,
-    validMoves: [number, number][],
-    targetPositions: [number, number][],
-  ): AIAction | null {
-    if (!unit.position || validMoves.length === 0) return null;
-
-    let bestMove: [number, number] | null = null;
-    let bestDist = Infinity;
-
-    for (const targetPos of targetPositions) {
-      // Check if we're already at or adjacent to the target
-      const dist = this.distance(unit.position, targetPos);
-      if (dist === 0) return null; // Already there
-
-      const path = this.pathSystem.getPath(unit, targetPos[0], targetPos[1], this.board);
-      if (path && path.length > 0) {
-        if (path.length < bestDist) {
-          bestDist = path.length;
-          bestMove = this.pathSystem.travelAlgorithm(path, unit, this.board);
-        }
-      } else {
-        // Fallback: find closest valid move toward target
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestMove = this.findClosestMoveToward(unit.position, targetPos, validMoves);
-        }
-      }
-    }
-
-    if (!bestMove) return null;
-
-    if (bestMove[0] === unit.position[0] && bestMove[1] === unit.position[1]) {
-      return null;
-    }
-
-    const movePath = this.pathSystem.getPath(unit, bestMove[0], bestMove[1], this.board);
-
-    return {
-      type: 'move',
-      unit,
-      targetPosition: bestMove,
-      movePath: movePath ?? [unit.position, bestMove],
-    };
   }
 
   // ====================================================================

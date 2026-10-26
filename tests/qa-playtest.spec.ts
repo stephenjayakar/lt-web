@@ -1027,3 +1027,62 @@ test('type_chibi tables lay out like Python SimpleIconTable (bg centred on the c
   expect(blits[0]).toEqual([52, 6, 136, 40]);
   expect(images.map((a) => [a[0], a[1]])).toEqual([[56, 10], [88, 10], [120, 10], [152, 10]]);
 });
+
+test('AI Move_to Position Starting walks back to an empty start tile (Python SecondaryAI)', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const bone = g.units.get('Bone');
+    const ai = g.aiController;
+    const moves: [number, number][] = ai.pathSystem.getValidMoves(bone, g.board);
+    const home = moves.find(([x, y]) => (x !== bone.position[0] || y !== bone.position[1]) && !g.board.getUnit(x, y));
+    if (!home) return null;
+    bone.startingPosition = [home[0], home[1]];
+    g.db.ai.set('__qa_home', {
+      nid: '__qa_home', priority: 0, offense_bias: 1,
+      behaviours: [{ action: 'Move_to', target: 'Position', target_spec: 'Starting', view_range: -4,
+        invert_targeting: false, roam_speed: 0, desired_proximity: 0, condition: '' }],
+    });
+    bone.ai = '__qa_home';
+    const action = ai.getAction(bone);
+    return { type: action.type, to: action.targetPosition, home };
+  });
+  expect(result).not.toBeNull();
+  expect(result!.type).toBe('move');
+  expect(result!.to).toEqual(result!.home);
+});
+
+test('AI Interact with no path to the region falls through to the next behaviour (Python SecondaryAI)', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const bone = g.units.get('Bone');
+    const ai = g.aiController;
+    const group = ai.pathSystem.getMovementGroup(bone);
+    let wall: [number, number] | null = null;
+    for (let y = 0; y < g.board.height && !wall; y++) {
+      for (let x = 0; x < g.board.width && !wall; x++) {
+        if (g.board.getMovementCost(x, y, group, g.db) >= 99 && !g.board.getUnit(x, y)) wall = [x, y];
+      }
+    }
+    if (!wall) return null;
+    g.currentLevel.regions.push({ nid: 'qa_wall', region_type: 'event', position: wall, size: [1, 1],
+      sub_nid: 'QA_Wall', condition: 'True', time_left: null, only_once: false, interrupt_move: false });
+    g.db.ai.set('__qa_wall', {
+      nid: '__qa_wall', priority: 0, offense_bias: 1,
+      behaviours: [
+        { action: 'Interact', target: 'Event', target_spec: 'QA_Wall', view_range: -4,
+          invert_targeting: false, roam_speed: 0, desired_proximity: 0, condition: '' },
+        { action: 'Move_to', target: 'Position', target_spec: [bone.position[0], bone.position[1]], view_range: -4,
+          invert_targeting: false, roam_speed: 0, desired_proximity: 0, condition: '' },
+      ],
+    });
+    bone.ai = '__qa_wall';
+    const action = ai.getAction(bone);
+    g.currentLevel.regions = g.currentLevel.regions.filter((r: any) => r.nid !== 'qa_wall');
+    return { type: action.type, to: action.targetPosition ?? null };
+  });
+  test.skip(result === null, 'no impassable tile on the DEBUG map');
+  // The second behaviour targets Bone's own tile, so Python's AI is done and waits.
+  expect(result).toEqual({ type: 'wait', to: null });
+});
