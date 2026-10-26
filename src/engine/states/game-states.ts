@@ -8472,26 +8472,46 @@ export class AIState extends MapState {
         if (unitHasCanto(unit, target, game)) {
           const retreat = game.aiController.getCantoRetreatAction(unit);
           if (retreat?.targetPosition) {
-            this.moveWithAction(
-              game,
-              unit,
-              retreat.targetPosition,
-              retreat.movePath,
-            );
-            if (retreat.movePath && retreat.movePath.length > 1) {
+            // The canto walk is a normal Move: it stops on the first
+            // interrupt_move tile, and the surprise sets HasAttacked before
+            // the unit waits (firing the region trigger).
+            const interrupted = retreat.movePath && retreat.movePath.length > 1 && unit.position
+              ? interruptMovePath(unit, retreat.movePath, game)
+              : { path: retreat.movePath, surprise: false };
+            const movePath = interrupted.path;
+            const stop = interrupted.surprise && movePath && movePath.length > 0
+              ? movePath[movePath.length - 1]
+              : retreat.targetPosition;
+            this.moveWithAction(game, unit, [stop[0], stop[1]], movePath);
+            const finish = (): boolean => {
+              if (!interrupted.surprise) return false;
+              game.audioManager?.playSfx?.('Surprise');
+              game.actionLog.doAction(new HasAttackedAction(unit));
+              game.actionLog.doAction(new WaitAction(unit));
+              if (game.eventManager?.hasActiveEvents()) {
+                this.waitingForEvent = true;
+                game.state.change('event');
+                return true;
+              }
+              this.advanceToNextUnit();
+              return true;
+            };
+            if (movePath && movePath.length > 1) {
               this.waitingForMovement = true;
               game.movementSystem.beginMove(
                 unit,
-                retreat.movePath,
+                movePath,
                 undefined,
                 () => {
                   this.waitingForMovement = false;
+                  if (finish()) return;
                   game.actionLog.doAction(new WaitAction(unit));
                   this.advanceToNextUnit();
                 },
               );
               return;
             }
+            if (finish()) return;
           }
           game.actionLog.doAction(new WaitAction(unit));
         }
@@ -12045,10 +12065,29 @@ export class EventState extends State {
     onComplete: () => void,
   ): boolean {
     if (!unit.position || !game.board || !game.pathSystem) return false;
-    const path = game.pathSystem.getPath(unit, target[0], target[1], game.board);
+    const fullPath = game.pathSystem.getPath(unit, target[0], target[1], game.board);
+    // Python check_position: interrupt_move regions stop even event moves
+    // ("Interruption regions take precedence"). The event finish() Resets the
+    // unit, so only the stop and the Surprise sound remain.
+    const interrupted = fullPath && fullPath.length > 1
+      ? interruptMovePath(unit, fullPath, game)
+      : { path: fullPath, surprise: false };
+    const path = interrupted.path;
+    if (interrupted.surprise && path && path.length > 0) {
+      const stop = path[path.length - 1];
+      target = [stop[0], stop[1]];
+    }
     game.actionLog.doAction(new WarpUnitAction(unit, target, game.board));
     if (!path || path.length <= 1) {
+      if (interrupted.surprise) game.audioManager?.playSfx?.('Surprise');
       return false;
+    }
+    if (interrupted.surprise) {
+      const done = onComplete;
+      onComplete = () => {
+        game.audioManager?.playSfx?.('Surprise');
+        done();
+      };
     }
     const previousHasMoved = unit.hasMoved;
     const previousMovementLeft = unit.movementLeft;

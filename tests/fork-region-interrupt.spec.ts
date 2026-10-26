@@ -203,4 +203,80 @@ test.describe('interrupt_move regions', () => {
     });
     expect(result).toEqual({ afterWait: false, afterUndo: true, afterRedo: false });
   });
+
+  test('an event move_unit walk stops on the trap (check_position runs for event moves)', async ({ page }) => {
+    await bootEotf(page);
+    const setup = await installTrap(page, 'Player', 'True', false);
+    expect(setup).not.toBeNull();
+    await page.evaluate(({ dest }) => {
+      const game = (window as any).__gameRef;
+      game.db.events.set('_TestEventMove', {
+        name: '_TestEventMove', nid: '_TestEventMove', trigger: '_TestEventMove',
+        level_nid: game.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
+        _source: [`move_unit;Player;${dest[0]},${dest[1]}`, 'game_var;_test_moved;1'],
+      });
+      game.eventManager.triggerSpecific('_TestEventMove', { type: '_TestEventMove' }, true);
+      game.state.change('event');
+    }, { dest: setup!.dest });
+    for (let frame = 0; frame < 300; frame += 5) {
+      await stepFrames(page, 5);
+      if (await page.evaluate(() => (window as any).__gameRef.gameVars.get('_test_moved'))) break;
+    }
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return {
+        position: [...game.units.get('Player').position],
+        moved: game.gameVars.get('_test_moved'),
+      };
+    });
+    expect(result).toEqual({ position: setup!.trap, moved: 1 });
+  });
+
+  test('an AI canto retreat stops on the trap, then waits and fires the trigger', async ({ page }) => {
+    await bootEotf(page);
+    const setup = await installTrap(page, 'Keeper', 'True', false);
+    expect(setup).not.toBeNull();
+    await page.evaluate(async ({ dest }) => {
+      const game = (window as any).__gameRef;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const keeper = game.units.get('Keeper');
+      keeper.team = 'enemy';
+      keeper.resetTurnState();
+      keeper.skills = [new SkillObject({
+        nid: '_TestCanto', name: '_TestCanto', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['canto_plus', null]],
+      } as any)];
+      const path = game.pathSystem.getPath(keeper, dest[0], dest[1], game.board);
+      game.aiController.getCantoRetreatAction = (unit: any) =>
+        unit === keeper ? { type: 'move', targetPosition: dest, movePath: path } : null;
+      game.phase.setCurrentTeam('enemy');
+      game.state.clear();
+      game.state.change('ai');
+      (window as any).__setupCanto = () => {
+        const ai = game.state.getCurrentState();
+        ai.aiUnits = [keeper];
+        ai.currentAiIndex = 0;
+        ai.waitingForCombat = true;
+        ai.pendingCombatTarget = null;
+        keeper.hasAttacked = true;
+      };
+    }, { dest: setup!.dest });
+    await stepFrames(page, 2);
+    await page.evaluate(() => (window as any).__setupCanto());
+    for (let frame = 0; frame < 200; frame += 2) {
+      await stepFrames(page, 2);
+      const hit = await page.evaluate(() => (window as any).__gameRef.gameVars.get('_test_trap_hits'));
+      if (hit) break;
+    }
+    const result = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const keeper = game.units.get('Keeper');
+      return {
+        position: [...keeper.position],
+        finished: keeper.finished,
+        hits: game.gameVars.get('_test_trap_hits'),
+      };
+    });
+    expect(result).toEqual({ position: setup!.trap, finished: true, hits: 1 });
+  });
 });
