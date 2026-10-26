@@ -36,7 +36,8 @@ test.describe('fork level cap and exp', () => {
     const result = await page.evaluate(async () => {
       const game = (window as any).__gameRef;
       const { getEffectiveLevelCap } = await import('/src/engine/leveling.ts');
-      const { GainExpAction } = await import('/src/engine/action.ts');
+      const { GainExpAction, setActionGameRef } = await import('/src/engine/action.ts');
+      setActionGameRef(() => game);
       const unit = game.units.get('Player');
       const classCap = game.db.classes.get(unit.klass).max_level;
       game.gameVars.delete('_global_level_cap_bonus');
@@ -178,6 +179,39 @@ test.describe('fork level cap and exp', () => {
     expect(result.growths).toBe('Fixed');
     expect(result.randomCalls).toBe(0);
     expect(result.cappedAfter).toEqual({ exp: 0, level: 40, gained: 0 });
+  });
+
+  test('promotion -97 adds abs(new base - old base) in EOtF and clamps upstream', async ({ page }) => {
+    await boot(page, false);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { PromoteAction, setActionGameRef } = await import('/src/engine/action.ts');
+      const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
+      setActionGameRef(() => game);
+      const unit = game.units.get('Eirika');
+      const template = game.db.classes.get(unit.klass);
+      const oldKlass = unit.klass;
+      game.db.classes.set('_OldK', { ...template, nid: '_OldK', bases: { ...template.bases, MOV: 7 } });
+      game.db.classes.set('_NewK', {
+        ...template, nid: '_NewK', bases: { ...template.bases, MOV: 5 },
+        promotion: { MOV: -97 }, max_stats: { ...template.max_stats, MOV: 20 },
+      });
+      unit.klass = '_OldK';
+      const movChange = (fork: boolean) => {
+        setForkEngine(fork);
+        try {
+          return new PromoteAction(unit, '_NewK').statChanges.MOV;
+        } finally {
+          setForkEngine(false);
+        }
+      };
+      const out = { upstream: movChange(false), fork: movChange(true) };
+      unit.klass = oldKlass;
+      game.db.classes.delete('_OldK');
+      game.db.classes.delete('_NewK');
+      return out;
+    });
+    expect(result).toEqual({ upstream: -2, fork: 2 });
   });
 
   test('default project still caps at the class max_level', async ({ page }) => {

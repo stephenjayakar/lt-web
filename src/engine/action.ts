@@ -18,6 +18,7 @@ import {
 import { skillCondition } from '../combat/item-system';
 import { applyExpGain, autoLevelUnit } from './leveling';
 import { triggerInterruptRegions } from '../movement/region-interrupt';
+import { isForkEngine } from './engine-flavor';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { GameState } from './game-state';
@@ -4810,7 +4811,9 @@ export class RemoveLoreAction extends Action {
  * Sentinel values in promotion dict:
  *   -99 = use new class base as the stat value
  *   -98 = max(0, new base - current stat) — only increase
- *   -97 = clamp(new base - old base, -current, max - current)
+ *   -97 = clamp(new base - old base, -current, max - current);
+ *         EOtF's engine adds abs(new base - old base) unclamped
+ *         (EOtF fork: abs(new base - old base), unclamped)
  *
  * Port of Python's action.Promote from app/engine/action.py.
  */
@@ -4883,9 +4886,12 @@ export class PromoteAction extends Action {
         // Use new class base only if bigger
         change = Math.max(0, newBase - currentStat);
       } else if (promoValue === -97) {
-        // Base difference, clamped
+        // Base difference: upstream clamps the signed difference, while
+        // EOtF's engine adds abs(new base - old base) unclamped.
         const diff = newBase - oldBase;
-        change = Math.max(-currentStat, Math.min(diff, newMax - currentStat));
+        change = isForkEngine()
+          ? Math.abs(diff)
+          : Math.max(-currentStat, Math.min(diff, newMax - currentStat));
       } else {
         // Normal promotion bonus, capped by new max
         const maxGainPossible = newMax - currentStat;
