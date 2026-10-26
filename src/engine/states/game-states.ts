@@ -19,6 +19,7 @@ import {
   TILEHEIGHT,
   FRAMETIME,
   COLORKEY,
+  getFrameCount,
 } from '../constants';
 import { viewport, isSmallScreen } from '../viewport';
 
@@ -157,6 +158,7 @@ import {
 import { ChoiceMenu, type MenuItemRow, type MenuOption } from '../../ui/menu';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
+import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
 import { getSetting } from './settings-state';
@@ -554,12 +556,69 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   );
 
   surf.blit(mapSurf);
+  drawUnitMarkers(surf);
   // UnitSprite damage numbers outlive the combat that spawned them.
   const damageNumberCamera = game.camera.getOffset();
   drawMapDamageNumbers(surf, damageNumberCamera[0], damageNumberCamera[1]);
   // Python MapView.draw ends with game.ui_view.draw(surf).
   game.hud.draw(surf, game);
   return surf;
+}
+
+/** States in which Python UnitSprite.draw_markers uses the cursor's unit. */
+const MARKER_CUR_UNIT_STATES = new Set([
+  'move', 'menu', 'item', 'item_child', 'item_discard', 'weapon_choice', 'spell_choice',
+  'targeting', 'combat_targeting', 'item_targeting',
+]);
+
+/**
+ * Python UnitSprite.draw_markers: talk / interact / item target_icon
+ * ('warning', 'danger') markers from SPRITES['marker_<name>'] above each
+ * unit at (left - 2, top - 14) with a bob, cycling every 500 ms.
+ */
+function drawUnitMarkers(surf: Surface): void {
+  const game = getGame();
+  const stateName: string = game.state.getCurrentState()?.name ?? '';
+  let curUnit: UnitObject | null = null;
+  if (stateName === 'free') {
+    const [cx, cy] = game.cursor.getPosition();
+    const hover: UnitObject | null = game.board.getUnit(cx, cy);
+    if (hover && !hover.tags.includes('Tile') &&
+        game.board.inVision([cx, cy], 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits())) {
+      curUnit = hover;
+    }
+  } else if (MARKER_CUR_UNIT_STATES.has(stateName)) {
+    curUnit = game.selectedUnit ?? null;
+  } else if (stateName === 'free_roam') {
+    curUnit = game.roamInfo?.roamUnitNid ? game.getUnit(game.roamInfo.roamUnitNid) ?? null : null;
+  }
+  if (!curUnit) return;
+  const now = getFrameCount() * FRAMETIME;
+  const offset = [0, 0, 0, 1, 2, 2, 2, 1][Math.floor(now / 100) % 8];
+  const [camX, camY] = game.camera.getOffset();
+  const talkPairs: [string, string][] = game.eventManager?.getTalkPairs?.() ?? [];
+  const fogInfo = game.getCurrentFogInfo?.();
+  for (const unit of game.units.values() as Iterable<UnitObject>) {
+    if (!unit.position || unit.isDead() || unit === curUnit) continue;
+    if (unit.team !== 'player' && !game.board.inVision(unit.position, 'player', fogInfo, game.db, game.getAllUnits())) continue;
+    const markers: string[] = [];
+    if (talkPairs.some(([a, b]) => a === curUnit!.nid && b === unit.nid) &&
+        !game.eventManager?.isTalkHidden?.(curUnit.nid, unit.nid)) {
+      markers.push('talk');
+    }
+    if (curUnit.team === 'player') {
+      for (const item of unit.items) {
+        const icon = computeTargetIcon(unit, item, curUnit, game.db, game);
+        if (icon) markers.push(icon);
+      }
+    }
+    const sprites = markers.map((name) => getSprite(`marker_${name}`)).filter((sprite): sprite is Surface => !!sprite);
+    if (!sprites.length) continue;
+    const icon = sprites[Math.floor(now / 500) % sprites.length];
+    const left = unit.position[0] * TILEWIDTH - camX;
+    const top = unit.position[1] * TILEHEIGHT - camY;
+    surf.blit(icon, left - 2, top - 14 + offset);
+  }
 }
 
 /**
@@ -5004,7 +5063,6 @@ export class ItemTargetingState extends MapState {
     const game = getGame();
     game.highlight.update();
     const result = drawMap(surf, true);
-    this.drawTargetWarnings(result);
     this.drawSpellForecast(result);
     this.targetItemMenu?.draw(result);
     return result;
@@ -5033,33 +5091,6 @@ export class ItemTargetingState extends MapState {
     const targetUnit: UnitObject | null = visible ? game.board?.getUnit?.(cx, cy) ?? null : null;
     if (!targetUnit || item.isWeapon()) return;
     game.hud.drawSpellInfo(surf, game, unit, item, targetUnit);
-  }
-
-  /**
-   * Python `Warning.target_icon` / `EvalWarning.target_icon`: a yellow '!'
-   * (warning) or red '!' (danger) drawn above enemy units currently in the
-   * item's target list, when the wielded item carries the corresponding
-   * aesthetic component. Approximated with a small colored triangle since
-   * the web has no bespoke icon sprite sheet wired in for this marker.
-   */
-  private drawTargetWarnings(surf: Surface): void {
-    const game = getGame();
-    const unit = game.selectedUnit;
-    const item = this.activeItem();
-    if (!unit || !item || !this.targets.length) return;
-    if (!item.hasComponent('warning') && !item.hasComponent('eval_warning')) return;
-    const cameraOffset = game.camera.getOffset();
-    for (const target of this.targets) {
-      const targetUnit = game.board?.getUnit?.(target[0], target[1]) ?? null;
-      if (!targetUnit) continue;
-      const icon = computeTargetIcon(unit, item, targetUnit, game.db, game);
-      if (!icon) continue;
-      const x = target[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
-      const y = target[1] * TILEHEIGHT - cameraOffset[1] - 4;
-      const color = icon === 'danger' ? 'rgb(224,32,32)' : 'rgb(248,216,0)';
-      surf.fillRect(x - 1, y - 8, 2, 6, color);
-      surf.fillRect(x - 1, y - 1, 2, 2, color);
-    }
   }
 
   override end(): StateResult {

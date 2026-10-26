@@ -155,6 +155,36 @@ test('minimap is built from Minimap_Tiles cells like minimap.py', async ({ page 
   await page.locator('canvas').screenshot({ path: testInfo.outputPath('minimap.png') });
 });
 
+test('warning markers sit above enemies holding warning items (draw_markers)', async ({ page }) => {
+  await bootLevel(page);
+  await page.waitForFunction(async () => {
+    const sprites = await import('/src/ui/sprites.ts');
+    await sprites.preloadSprites(['marker_warning']);
+    return true;
+  });
+  const changed = await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const harness = (window as any).__harness;
+    harness.setUnitIdentity('104', { team: 'player' });
+    game.cursor.setPos(...game.getUnit('104').position);
+    const enemy = game.getUnit('105');
+    const [ex, ey] = enemy.position;
+    const region = () => {
+      harness.stepFrames(1, null);
+      const ctx = (document.querySelector('canvas') as HTMLCanvasElement).getContext('2d')!;
+      // Marker box: (left - 2, top - 14) + 16x16 (+2 px bob), canvas at 2x.
+      return Array.from(ctx.getImageData((ex * 16 - 2) * 2, (ey * 16 - 14) * 2, 32, 36).data);
+    };
+    const before = region();
+    enemy.klass = 'Lord';
+    enemy.wexp.Sword = 999;
+    harness.giveItem('105', 'Killing_Edge');
+    const after = region();
+    return before.filter((value, i) => value !== after[i]).length;
+  });
+  expect(changed).toBeGreaterThan(50);
+});
+
 test('project custom_sprites override engine sprites like Python SPRITES', async ({ page }) => {
   await bootLevel(page);
   const urls = await page.evaluate(async () => {

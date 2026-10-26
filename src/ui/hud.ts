@@ -51,6 +51,7 @@ const HUD_SPRITES = [
     `health_${color}`, `combat_stats_${color}`, `combat_stats_guard_${color}`, `combat_gem_${color}`,
   ]),
   'Minimap_Tiles', 'Minimap_Sprites', 'Minimap_Cursor',
+  'marker_talk', 'marker_interact', 'marker_warning', 'marker_danger', 'marker_steal',
 ];
 
 type Game = any;
