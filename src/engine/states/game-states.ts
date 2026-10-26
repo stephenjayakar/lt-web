@@ -11078,6 +11078,9 @@ export class EventState extends State {
   /** Track whether we are in the middle of handling a level end sequence. */
   private isHandlingLevelEnd: boolean = false;
 
+  /** Events that ran the EOtF fork's non-terminating end_turn. */
+  private forcedTurnEndEvents = new WeakSet<GameEvent>();
+
   /**
    * Finish the current event, dequeue it, and either load the next queued
    * event or pop the state.
@@ -11087,6 +11090,7 @@ export class EventState extends State {
    */
   private finishAndDequeue(): void {
     const game = getGame();
+    const finishedEvent = this.currentEvent;
     if (this.currentEvent) {
       this.currentEvent.finish();
     }
@@ -11145,6 +11149,16 @@ export class EventState extends State {
       console.warn('GAME OVER — loss condition met via lose_game flag');
       game.state.clear();
       game.state.change('game_over');
+      return;
+    }
+
+    // --- Fork end_turn: change turns after the event that ran it ---
+    if (finishedEvent && this.forcedTurnEndEvents.delete(finishedEvent)) {
+      // Events still queued are kept (the fork never clears them) and run
+      // from the EventState that turn_change pushes for its own triggers.
+      this.currentEvent = null;
+      game.state.back();
+      game.state.change('turn_change');
       return;
     }
 
@@ -13250,6 +13264,11 @@ export class EventState extends State {
         newUnit.generic = true;
         newUnit.faction = baseFaction || null;
         if (copyStats && templateUnit) {
+          // The EOtF fork also copies the template's stat cap modifiers
+          // (change_stat_cap_modifiers on summon/clone templates).
+          if (isForkEngine()) {
+            newUnit.statCapModifiers = { ...templateUnit.statCapModifiers };
+          }
           newUnit.stats = { ...templateUnit.stats };
         }
         if (game.currentParty) {
@@ -15615,6 +15634,15 @@ export class EventState extends State {
           for (let guard = 0; guard < 99 && game.phase.getNext(fieldTeam) !== team; guard += 1) {
             game.phase.next((nid: string) => game.board.getTeamUnits(nid));
           }
+        }
+        if (isForkEngine() && this.currentEvent) {
+          // EOtF fork end_turn only queues the turn-change states
+          // (turn_change, status_endstep, ai); the event keeps running its
+          // remaining commands (Countdown_Proc, Round_Change) and queued
+          // events survive. Change turns once this event has finished.
+          this.forcedTurnEndEvents.add(this.currentEvent);
+          this.advancePointer();
+          return false;
         }
         if (this.currentEvent) this.currentEvent.finish();
         if (game.eventManager) game.eventManager.eventQueue.length = 0;

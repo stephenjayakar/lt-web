@@ -2,11 +2,15 @@ import type { ActionLog } from './action';
 import {
   AddSkillAction,
   ChangeManaAction,
+  DeathAction,
   RemoveSkillAction,
   SetCurrentHpAction,
   SetSkillDataAction,
+  UpdateRecordsAction,
 } from './action';
 import type { UnitObject } from '../objects/unit';
+import type { GameBoard } from '../objects/game-board';
+import type { InitiativeTracker } from './initiative';
 import { SkillObject } from '../objects/skill';
 import type { EventManager } from '../events/event-manager';
 import type { Database } from '../data/database';
@@ -36,6 +40,31 @@ interface SkillTurnGame {
   levelVars?: Map<string, unknown>;
   eventManager?: EventManager | null;
   units?: Map<string, UnitObject>;
+  board?: GameBoard | null;
+  initiative?: InitiativeTracker | null;
+  currentLevel?: { nid?: string } | null;
+}
+
+/**
+ * Python StatusUpkeepState.check_death: upkeep/endstep HP loss that leaves
+ * the unit at 0 HP kills it, records a killer-less death, and fires
+ * UnitDeath(unit, None, position).
+ */
+function dieFromTurnDamage(game: SkillTurnGame, unit: UnitObject): void {
+  if (!game.board || !unit.position) return;
+  const position: [number, number] = [unit.position[0], unit.position[1]];
+  game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative ?? null));
+  game.actionLog.doAction(new UpdateRecordsAction('death', null, unit.nid));
+  game.eventManager?.trigger(
+    {
+      type: 'unit_death',
+      unit1: unit,
+      unitNid: unit.nid,
+      position,
+      levelNid: game.currentLevel?.nid,
+    },
+    { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars } as any,
+  );
 }
 
 function componentOption(rawValue: unknown, key: string): unknown {
@@ -133,6 +162,7 @@ export function applySkillTurnHooks(
 ): SkillTurnEffect[] {
   const effects: SkillTurnEffect[] = [];
   for (const unit of units) {
+    const aliveBefore = !unit.dead && unit.currentHp > 0;
     for (const skill of [...unit.skills]) {
       let removeAfterHooks = false;
       const conditional = isConditionActive(game, unit, skill);
@@ -305,6 +335,7 @@ export function applySkillTurnHooks(
         game.actionLog.doAction(new RemoveSkillAction(unit, skill));
       }
     }
+    if (aliveBefore && unit.currentHp <= 0) dieFromTurnDamage(game, unit);
   }
   return effects;
 }
