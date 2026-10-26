@@ -833,3 +833,25 @@ test('give_money;N;no_banner does not treat the flag as a party (money survived 
   expect(result.partyKeys).not.toContain('no_banner');
   expect(result.savedMoney).toEqual([before + 200]);
 });
+
+test('title menu starts on Continue when a suspend exists (Python menus.Main index 0)', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(async () => {
+    const { suspendGame } = await import('/src/engine/save.ts');
+    const g = (window as any).__gameRef;
+    await suspendGame(g);
+    g.state.clear();
+    g.state.change('title_main');
+  });
+  let info: { options: string[]; current: string | null } = { options: [], current: null };
+  for (let i = 0; i < 40 && !info.options.includes('Continue'); i++) {
+    await stepFrames(page, 2);
+    await page.waitForTimeout(25);
+    info = await page.evaluate(() => {
+      const s = (window as any).__gameRef.state.getCurrentState() as any;
+      return { options: s.options ?? [], current: s.menu?.getCurrent?.() ?? null };
+    });
+  }
+  expect(info.options[0]).toBe('Continue');
+  expect(info.current).toBe('Continue');
+});

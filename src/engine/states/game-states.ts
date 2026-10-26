@@ -1331,6 +1331,8 @@ export class TitleMainState extends State {
   private selection: string | null = null;
   private hasSaveData: boolean = false;
   private hasSuspendData: boolean = false;
+  /** The player moved the cursor before the async slot check finished. */
+  private cursorMoved = false;
   private suspendWarned: boolean = false;
   private banner: Banner | null = null;
   private busy: boolean = false;
@@ -1350,6 +1352,7 @@ export class TitleMainState extends State {
     const numSlots = game.db?.getConstant?.('num_save_slots', 3) ?? 3;
     this.hasSaveData = false;
     this.hasSuspendData = false;
+    this.cursorMoved = false;
     this.suspendWarned = false;
     this.banner = null;
     this.busy = false;
@@ -1382,7 +1385,10 @@ export class TitleMainState extends State {
     const current = this.menu.getCurrent();
     this.options = opts;
     this.menu = new TitleMainMenu(opts, 'title_menu_dark', (t) => getGame().db?.translate?.(t) ?? t);
-    const keep = opts.indexOf(current);
+    // Python menus.Main starts on the first option (Continue when a suspend
+    // exists); only keep a selection the player made before the async save
+    // check filled in the list.
+    const keep = this.cursorMoved ? opts.indexOf(current) : -1;
     if (keep >= 0) this.menu.currentIndex = keep;
   }
 
@@ -1448,8 +1454,10 @@ export class TitleMainState extends State {
     if (this.phase !== 'normal' || this.busy) return;
 
     if (event === 'DOWN') {
+      this.cursorMoved = true;
       if (this.menu.moveDown()) game.audioManager.playSfx('Select 6');
     } else if (event === 'UP') {
+      this.cursorMoved = true;
       if (this.menu.moveUp()) game.audioManager.playSfx('Select 6');
     } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
       const selected = this.menu.getCurrent();
