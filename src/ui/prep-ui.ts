@@ -47,7 +47,7 @@ export function screenOrigin(): [number, number] {
 // ---------------------------------------------------------------------------
 
 /** Engine sprites that live directly under sprites/ rather than sprites/menus/. */
-const ROOT_SPRITES = new Set(['focus_fade', 'buttons', 'scroll_bar', 'bg_black_tile', 'page_arrows']);
+const ROOT_SPRITES = new Set(['focus_fade', 'buttons', 'scroll_bar', 'bg_black_tile', 'page_arrows', 'weapon_shine']);
 const spriteCache = new Map<string, HTMLImageElement | null>();
 
 function loadImage(url: string): Promise<HTMLImageElement | null> {
@@ -66,7 +66,9 @@ export function getSprite(nid: string): HTMLImageElement | null {
     spriteCache.set(nid, null);
     const load = ROOT_SPRITES.has(nid)
       ? loadImage(`/game-data/sprites/${nid}.png`)
-      : loadMenuBgSprite(nid);
+      : nid.endsWith('_portrait')
+        ? loadImage(`/game-data/sprites/extra_portraits/${nid}.png`)
+        : loadMenuBgSprite(nid);
     void load.then((img) => spriteCache.set(nid, img));
   }
   return spriteCache.get(nid) ?? null;
@@ -756,6 +758,8 @@ export class Choice {
   hardLimit = false;
   /** Unit at the convoy/shop (ConvoyItemOption colours, shop prices). */
   owner: UnitObject | null = null;
+  /** Choice.set_color with a font nid (e.g. the shop's 'convo-white'). */
+  textFont = 'text';
   readonly cursor = new MenuCursor();
   readonly stationaryCursor = new MenuCursor();
   private scrollBar = new ScrollBar();
@@ -1024,6 +1028,10 @@ export class Choice {
       }
       return;
     }
+    if (e.kind === 'text' && this.textFont !== 'text') {
+      drawText(surf, e.text, x + 5, y, option.ignore ? 'grey' : null, this.textFont);
+      return;
+    }
     drawChoiceOption(surf, this.game, e, option.ignore, x, y);
   }
 
@@ -1036,7 +1044,7 @@ export class Choice {
       const option = this.options[idx];
       const current = idx === this.currentIndex && this.takesInput && !!this.drawCursor;
       if (this.highlight && (current || idx === this.fakeCursorIdx)) drawMenuHighlight(surf, left, top, w + 14);
-      drawChoiceOption(surf, this.game, option.entry, option.ignore, left, top);
+      this.drawOption(surf, option, idx, left, top);
       if (idx === this.fakeCursorIdx) this.stationaryCursor.draw(surf, left, top);
       if (current) this.cursor.draw(surf, left, top);
     }

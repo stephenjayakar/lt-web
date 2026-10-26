@@ -156,7 +156,16 @@ import {
 } from '../action';
 
 import { ChoiceMenu, type MenuItemRow, type MenuOption } from '../../ui/menu';
-import { Choice as PrepChoice, screenOrigin as prepScreenOrigin, isFirstPush as prepIsFirstPush } from '../../ui/prep-ui';
+import {
+  Choice as PrepChoice,
+  ScrollingBackground as PrepScrollingBackground,
+  baseSurf as prepBaseSurf,
+  getSprite as prepGetSprite,
+  isFirstPush as prepIsFirstPush,
+  screenOrigin as prepScreenOrigin,
+  shopPrice as prepShopPrice,
+  textWidth as prepTextWidth,
+} from '../../ui/prep-ui';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { getSprite } from '../../ui/sprites';
@@ -8767,377 +8776,308 @@ export class MovementState extends State {
 // ShopState — Buy/sell items at a shop
 // ===================================================================
 
-type ShopPhase = 'choice' | 'buy' | 'sell' | 'done';
-
+/**
+ * Python general_states.ShopState: shopkeeper portrait, convo-white dialog
+ * over menu_bg_clear, horizontal Buy/Sell choice, menus.Shop buy/sell lists
+ * (ValueItemOption / StockValueItemOption), money_bg funds.
+ */
 export class ShopState extends State {
   readonly name = 'shop';
   override readonly transparent = false;
 
-  private phase: ShopPhase = 'choice';
-  private unit: UnitObject | null = null;
-  private shopItems: ItemObject[] = [];
-  private shopStock: number[] = []; // -1 = unlimited
+  /** Python ShopState.state. */
+  phase: 'open' | 'choice' | 'buy' | 'sell' | 'close' | 'preview' = 'open';
+  unit: UnitObject | null = null;
+  shopItems: ItemObject[] = [];
+  private stock: number[] | null = null;
   private shopId: string | null = null;
-  private shopFlavor: string = 'armory';
-  private money: number = 0;
+  private flavor: string | null = null;
+  private preview = false;
+  buyMenu: PrepChoice | null = null;
+  sellMenu: PrepChoice | null = null;
+  choiceMenu: PrepChoice | null = null;
+  private menu: PrepChoice | null = null;
+  private dialog: Dialog | null = null;
+  private bg: PrepScrollingBackground | null = null;
+  private messages: Record<string, string> = {};
 
-  // Buy/sell menu selection
-  private menuIndex: number = 0;
-  private sellIndex: number = 0;
-
-  // Choice menu (Buy/Sell)
-  private choiceIndex: number = 0; // 0=Buy, 1=Sell
-
-  // Message display
-  private message: string = '';
-  private messageTimer: number = 0;
-
-  override begin(): StateResult {
+  override start(): StateResult {
     const game = getGame();
-    this.unit = game.shopUnit ?? game.selectedUnit;
+    this.unit = game.shopUnit ?? game.selectedUnit ?? null;
     this.shopItems = game.shopItems ?? [];
-    this.shopStock = game.shopStock ?? this.shopItems.map(() => -1);
-    this.shopId = game.shopId;
-    this.shopFlavor = game.shopFlavor ?? 'armory';
-    this.money = Number(game.getMoney());
-    this.phase = 'choice';
-    this.menuIndex = 0;
-    this.sellIndex = 0;
-    this.choiceIndex = 0;
-    this.message = '';
-    this.messageTimer = 0;
-
-    // Clear transient shop data
+    this.stock = game.shopStock ?? null;
+    this.shopId = game.shopId ?? null;
+    this.flavor = game.shopFlavor ?? null;
+    this.preview = !!game.shopPreview;
     game.shopUnit = null;
     game.shopItems = null;
     game.shopStock = null;
     game.shopId = null;
     game.shopFlavor = null;
+    game.shopPreview = false;
+
+    const keys = ['opener', 'buy', 'back', 'leave', 'buy_again', 'convoy', 'no_stock', 'no_money',
+      'max_inventory', 'sell_again', 'again', 'no_value', 'preview'];
+    const armoryDefaults: Record<string, string> = { opener: 'armory', buy: 'armory', back: 'armory', leave: 'armory' };
+    for (const key of keys) {
+      if (this.flavor) {
+        const flavored = `${this.flavor}_${key}`;
+        this.messages[key] = game.db.translations?.has(flavored) ? flavored : `shop_${key}`;
+      } else {
+        this.messages[key] = `${armoryDefaults[key] ?? 'shop'}_${key}`;
+      }
+    }
+
+    const unit = this.unit;
+    let topleft: [number, number] = [44, 160 - 16 * 5 - 8 - 4];
+    if (!this.preview && unit) {
+      this.sellMenu = this.makeShopMenu(unit.items.filter((i) => !i.hasComponent('locked')), topleft, 'sell', null);
+    }
+    if (this.stock) topleft = [36, topleft[1] + 4];
+    this.buyMenu = this.makeShopMenu(this.shopItems, topleft, 'buy', this.stock);
+    this.choiceMenu = new PrepChoice(game, ['Buy', 'Sell'], [120, 32], null);
+    this.choiceMenu.horizontal = true;
+    this.choiceMenu.highlight = false;
+    this.choiceMenu.textFont = 'convo-white';
+    this.menu = null;
+    this.phase = 'open';
+    this.dialog = this.makeDialog(this.preview ? this.messages.preview : this.messages.opener);
+    this.bg = new PrepScrollingBackground(game, 'rune_background');
+  }
+
+  get shopFlavor(): string { return this.flavor || 'armory'; }
+  get shopStock(): number[] { return this.stock ?? this.shopItems.map(() => -1); }
+  getFullPrice(item: ItemObject): number {
+    const game = getGame();
+    return itemFullPrice(this.unit, item, game.db, game) ?? 0;
+  }
+  getBuyPrice(item: ItemObject): number { return prepShopPrice(getGame(), this.unit, item, 'buy'); }
+  getSellPrice(item: ItemObject): number { return prepShopPrice(getGame(), this.unit, item, 'sell'); }
+  /** Buy the highlighted buy-menu item (Python ShopState 'buy' SELECT). */
+  tryBuyItem(_game?: any): void {
+    if (this.unit && this.buyMenu) this.buy(this.unit, this.buyMenu);
+  }
+  /** Sell the highlighted sell-menu item (Python ShopState 'sell' SELECT). */
+  trySellItem(_game?: any, _items?: ItemObject[]): void {
+    if (!this.sellMenu) return;
+    const phase = this.phase;
+    this.phase = 'sell';
+    this.takeInput('SELECT');
+    this.phase = phase === 'sell' ? 'sell' : phase;
+  }
+
+  private makeShopMenu(items: ItemObject[], topleft: [number, number], disp: 'buy' | 'sell', stock: number[] | null): PrepChoice {
+    const menu = new PrepChoice(getGame(), [], topleft);
+    menu.owner = this.unit;
+    menu.dispValue = disp;
+    menu.stock = stock;
+    menu.setLimit(5);
+    menu.hardLimit = true;
+    menu.gem = true;
+    menu.takesInput = false;
+    menu.setOptions(items.map((item) => ({ kind: 'item' as const, item })));
+    return menu;
+  }
+
+  /** Python ShopState.get_dialog: position (60, 8), 160px text, convo-white. */
+  private makeDialog(nid: string): Dialog {
+    const game = getGame();
+    const [ox, oy] = prepScreenOrigin();
+    const text = game.db.translate ? game.db.translate(nid) : nid;
+    return new Dialog(text, undefined, undefined, undefined, undefined, false, {
+      position: [ox + 60, oy + 8], width: 176, background: null, messageTail: null,
+      fontType: 'convo', fontColor: 'white',
+    });
+  }
+
+  private sellables(): ItemObject[] {
+    return this.unit ? this.unit.items.filter((i) => !i.hasComponent('locked')) : [];
+  }
+
+  private updateSellOptions(): void {
+    if (!this.sellMenu) return;
+    const idx = this.sellMenu.currentIndex;
+    this.sellMenu.setOptions(this.sellables().map((item) => ({ kind: 'item' as const, item })));
+    this.sellMenu.currentIndex = Math.min(idx, this.sellMenu.options.length - 1);
+  }
+
+  private dialogReady(): boolean {
+    return !this.dialog || this.dialog.isDone() || this.dialog.isWaiting();
+  }
+
+  private leave(): void {
+    const game = getGame();
+    if (this.unit?.hasTraded) game.actionLog.doAction(new HasAttackedAction(this.unit));
+    game.state.back();
   }
 
   override takeInput(event: InputEvent): StateResult {
-    if (!event) return;
     const game = getGame();
-
-    // Dismiss message
-    if (this.messageTimer > 0) {
-      if (event === 'SELECT' || event === 'BACK') {
-        this.messageTimer = 0;
-        this.message = '';
+    const sfx = (name: string) => game.audioManager?.playSfx?.(name);
+    if (this.menu) {
+      if (event === 'DOWN' || event === 'RIGHT') {
+        if (this.menu.moveDown(prepIsFirstPush(game, event))) sfx('Select 6');
+      } else if (event === 'UP' || event === 'LEFT') {
+        if (this.menu.moveUp(prepIsFirstPush(game, event))) sfx('Select 6');
       }
-      return;
     }
-
-    switch (this.phase) {
-      case 'choice': {
-        if (event === 'LEFT') this.choiceIndex = 0;
-        if (event === 'RIGHT') this.choiceIndex = 1;
-        if (event === 'SELECT') {
-          if (this.choiceIndex === 0) {
-            this.phase = 'buy';
-            this.menuIndex = 0;
+    const unit = this.unit;
+    if (event === 'SELECT') {
+      if (this.phase === 'open') {
+        sfx('Select 1');
+        this.dialog?.handleInput('SELECT');
+        if (this.dialogReady()) {
+          if (this.preview) {
+            this.phase = 'preview';
+            this.menu = this.buyMenu;
+            if (this.buyMenu) this.buyMenu.takesInput = true;
           } else {
-            this.phase = 'sell';
-            this.sellIndex = 0;
+            this.phase = 'choice';
+            this.menu = this.choiceMenu;
           }
         }
-        if (event === 'BACK') {
-          game.state.back();
+      } else if (this.phase === 'choice') {
+        sfx('Select 1');
+        const current = this.choiceMenu?.getCurrentText();
+        if (current === 'Buy') {
+          this.menu = this.buyMenu;
+          this.phase = 'buy';
+          this.dialog = this.makeDialog(this.messages.buy);
+          if (this.buyMenu) this.buyMenu.takesInput = true;
+        } else if (current === 'Sell' && this.sellables().length) {
+          this.menu = this.sellMenu;
+          this.phase = 'sell';
+          if (this.sellMenu) this.sellMenu.takesInput = true;
         }
-        return;
+      } else if (this.phase === 'buy' && unit && this.buyMenu) {
+        this.buy(unit, this.buyMenu);
+      } else if (this.phase === 'sell' && unit && this.sellMenu) {
+        const item = this.sellMenu.getCurrentItem();
+        if (!item) { sfx('Select 4'); return; }
+        const value = prepShopPrice(game, unit, item, 'sell');
+        if (Number(itemFullPrice(null, item, game.db, game) ?? 0)) {
+          const party = game.getParty();
+          game.actionLog.doAction(new HasTradedAction(unit));
+          sfx('GoldExchange');
+          game.actionLog.doAction(new GainMoneyAction(value, party?.nid));
+          game.actionLog.doAction(new UpdateRecordsAction('money', party?.nid, value));
+          game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
+          this.dialog = this.makeDialog(this.messages.sell_again);
+          this.updateSellOptions();
+        } else {
+          sfx('Select 4');
+          this.dialog = this.makeDialog(this.messages.no_value);
+        }
+      } else if (this.phase === 'close') {
+        sfx('Select 1');
+        if (this.dialogReady()) this.leave();
+        else this.dialog?.handleInput('SELECT');
+      } else if (this.phase === 'preview') {
+        sfx('Select 4');
+        this.phase = 'close';
+        this.dialog = this.makeDialog(this.messages.leave);
       }
+    } else if (event === 'BACK') {
+      if (this.phase === 'open' || this.phase === 'close') {
+        sfx('Select 4');
+        this.leave();
+      } else if (this.phase === 'choice') {
+        sfx('Select 4');
+        this.phase = 'close';
+        this.dialog = this.makeDialog(this.messages.leave);
+      } else if (this.phase === 'buy' || this.phase === 'sell') {
+        sfx('Select 4');
+        this.phase = 'choice';
+        if (this.menu) this.menu.takesInput = false;
+        this.menu = this.choiceMenu;
+        this.dialog = this.makeDialog(this.messages.again);
+      } else if (this.phase === 'preview') {
+        sfx('Select 4');
+        this.phase = 'close';
+        this.dialog = this.makeDialog(this.messages.leave);
+      }
+    }
+  }
 
-      case 'buy': {
-        if (event === 'UP') {
-          this.menuIndex = (this.menuIndex - 1 + this.shopItems.length) % this.shopItems.length;
-        }
-        if (event === 'DOWN') {
-          this.menuIndex = (this.menuIndex + 1) % this.shopItems.length;
-        }
-        if (event === 'SELECT') {
-          this.tryBuyItem(game);
-        }
-        if (event === 'BACK') {
-          this.phase = 'choice';
-        }
-        return;
+  private buy(unit: UnitObject, menu: PrepChoice): void {
+    const game = getGame();
+    const sfx = (name: string) => game.audioManager?.playSfx?.(name);
+    const item = menu.getCurrentItem();
+    if (!item) { sfx('Select 4'); return; }
+    const value = prepShopPrice(game, unit, item, 'buy');
+    const stockIdx = menu.currentIndex;
+    const stock = this.stock ? this.stock[stockIdx] ?? -1 : -1;
+    const prefab = game.db?.items?.get(item.nid);
+    const newItem: ItemObject | null = prefab ? new ItemObjectClass(prefab) : null;
+    const full = newItem ? itemInventoryFull(unit, newItem, game.db) : true;
+    const convoy = !!game.gameVars.get('_convoy');
+    if (newItem && game.getMoney() - value >= 0 && stock !== 0 && (!full || convoy)) {
+      const party = game.getParty();
+      game.actionLog.doAction(new HasTradedAction(unit));
+      sfx('GoldExchange');
+      game.actionLog.doAction(new GainMoneyAction(-value, party?.nid));
+      game.actionLog.doAction(new UpdateRecordsAction('money', party?.nid, -value));
+      const marker = `__shop_${this.shopId}_${item.nid}`;
+      game.actionLog.doAction(new SetGameVarAction(game.gameVars, marker, Number(game.gameVars.get(marker) ?? 0) + 1));
+      if (this.stock && stock > 0) this.stock[stockIdx] = stock - 1;
+      if (!full) {
+        game.actionLog.doAction(new GiveItemAction(unit, newItem));
+        this.dialog = this.makeDialog(this.messages.buy_again);
+      } else {
+        game.actionLog.doAction(new PutItemInConvoy(newItem, party?.nid));
+        this.dialog = this.makeDialog(this.messages.convoy);
       }
-
-      case 'sell': {
-        if (!this.unit || this.unit.items.length === 0) {
-          this.phase = 'choice';
-          return;
-        }
-        const sellableItems = this.unit.items.filter((item) => this.getFullPrice(item) > 0);
-        if (sellableItems.length === 0) {
-          this.showMessage('Nothing to sell.');
-          this.phase = 'choice';
-          return;
-        }
-        if (event === 'UP') {
-          this.sellIndex = (this.sellIndex - 1 + sellableItems.length) % sellableItems.length;
-        }
-        if (event === 'DOWN') {
-          this.sellIndex = (this.sellIndex + 1) % sellableItems.length;
-        }
-        if (event === 'SELECT') {
-          this.trySellItem(game, sellableItems);
-        }
-        if (event === 'BACK') {
-          this.phase = 'choice';
-        }
-        return;
-      }
+      this.updateSellOptions();
+    } else if (stock === 0) {
+      sfx('Select 4');
+      this.dialog = this.makeDialog(this.messages.no_stock);
+    } else if (game.getMoney() - value < 0) {
+      sfx('Select 4');
+      this.dialog = this.makeDialog(this.messages.no_money);
+    } else {
+      sfx('Select 4');
+      this.dialog = this.makeDialog(this.messages.max_inventory);
     }
   }
 
   override update(): StateResult {
-    if (this.messageTimer > 0) {
-      this.messageTimer -= FRAMETIME;
-      if (this.messageTimer <= 0) {
-        this.message = '';
-        this.messageTimer = 0;
-      }
-    }
+    this.dialog?.update();
+    this.menu?.update();
   }
 
   override draw(surf: Surface): Surface {
-    // Dark background
-    surf.fillRect(0, 0, surf.width, surf.height, 'rgba(8, 8, 24, 0.95)');
-
-    const FONT = '8px monospace';
-    const SMALL = '7px monospace';
-    const W = surf.width;
-
-    // Title
-    surf.drawText(this.shopFlavor.toUpperCase(), 4, 4, '#FFD700', FONT);
-
-    // Money display
-    const moneyStr = `Gold: ${this.money}`;
-    surf.drawTextRight(moneyStr, W - 4, 4, '#FFD700', FONT);
-
-    // Unit name
-    if (this.unit) {
-      surf.drawText(this.unit.name, 4, 16, 'white', FONT);
+    const game = getGame();
+    const [ox, oy] = prepScreenOrigin();
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    surf.blit(prepBaseSurf(240 + 8, 48, 'menu_bg_clear'), ox - 4, oy + 8);
+    // Python keeps drawing current_msg after it finishes.
+    this.dialog?.draw(surf, true);
+    const portrait = prepGetSprite(`${this.flavor || 'armory'}_portrait`) ?? prepGetSprite('armory_portrait');
+    if (portrait) surf.blitImage(portrait, 0, 0, portrait.width, portrait.height, ox + 3, oy);
+    const moneyBg = prepGetSprite('money_bg');
+    if (moneyBg) {
+      const prev = surf.getAlpha();
+      surf.setAlpha(0.9);
+      surf.blitImage(moneyBg, 0, 0, moneyBg.width, moneyBg.height, ox + 172, oy + 48);
+      surf.setAlpha(prev);
     }
+    surf.drawTextRight(String(game.getMoney()), ox + 223, oy + 48, 'white', 'text-blue');
 
-    if (this.message) {
-      // Show message centered
-      const mx = Math.floor((W - this.message.length * 5) / 2);
-      surf.fillRect(mx - 4, 70, this.message.length * 5 + 8, 16, 'rgba(40, 40, 80, 0.95)');
-      surf.drawText(this.message, mx, 74, '#FFD700', FONT);
-      return surf;
-    }
-
-    switch (this.phase) {
-      case 'choice': {
-        // Buy/Sell choice
-        const cx = Math.floor(W / 2);
-        const cy = 50;
-        surf.fillRect(cx - 50, cy, 100, 20, 'rgba(32, 32, 64, 0.9)');
-        surf.drawRect(cx - 50, cy, 100, 20, 'rgba(180, 180, 220, 0.6)');
-        const buyColor = this.choiceIndex === 0 ? '#FFD700' : 'rgba(160,160,160,1)';
-        const sellColor = this.choiceIndex === 1 ? '#FFD700' : 'rgba(160,160,160,1)';
-        surf.drawText('Buy', cx - 40, cy + 6, buyColor, FONT);
-        surf.drawText('Sell', cx + 15, cy + 6, sellColor, FONT);
-        break;
-      }
-
-      case 'buy': {
-        this.drawBuyMenu(surf, FONT, SMALL);
-        break;
-      }
-
-      case 'sell': {
-        this.drawSellMenu(surf, FONT, SMALL);
-        break;
+    if (this.phase === 'sell' || (this.phase === 'choice' && this.choiceMenu?.getCurrentText() === 'Sell')) {
+      this.sellMenu?.draw(surf, ox, oy);
+    } else {
+      this.buyMenu?.draw(surf, ox, oy);
+      if (this.stock) {
+        for (const [label, x] of [['Item', 80], ['Uses', 128], ['Stock', 156], ['Price', 186]] as [string, number][]) {
+          const text = game.db.translate ? game.db.translate(label) : label;
+          const w = prepTextWidth(text);
+          surf.drawText(text, ox + x - Math.floor(w / 2), oy + 64, 'yellow', 'text');
+        }
       }
     }
-
+    if (this.phase === 'choice' && this.dialogReady()) this.choiceMenu?.draw(surf, ox, oy);
     return surf;
-  }
-
-  private drawBuyMenu(surf: Surface, FONT: string, SMALL: string): void {
-    const startY = 28;
-    const rowH = 14;
-    const W = surf.width;
-
-    // Column headers
-    surf.drawText('Item', 20, startY, 'rgba(180,180,220,1)', SMALL);
-    surf.drawText('Price', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
-
-    for (let i = 0; i < this.shopItems.length; i++) {
-      const item = this.shopItems[i] as ItemObject;
-      const y = startY + 10 + i * rowH;
-      const stock = this.shopStock[i] ?? -1;
-      const price = this.getBuyPrice(item);
-      const canAfford = this.money >= price && stock !== 0;
-
-      // Highlight selected row
-      if (i === this.menuIndex) {
-        surf.fillRect(2, y - 2, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
-      }
-
-      // Draw item icon (16x16)
-      drawItemIcon(surf, item, 2, y - 2);
-
-      const textColor = canAfford ? 'white' : 'rgba(128,128,128,1)';
-      surf.drawText(item.name, 20, y + 1, textColor, SMALL);
-
-      // Price
-      const priceStr = String(price);
-      surf.drawText(priceStr, W - 6 - priceStr.length * 4, y + 1,
-        canAfford ? '#90D0FF' : 'rgba(128,128,128,1)', SMALL);
-
-      // Stock (if limited)
-      if (stock >= 0) {
-        const stockStr = `x${stock}`;
-        surf.drawText(stockStr, W - 50 - stockStr.length * 4, y + 1,
-          stock > 0 ? 'rgba(200,200,200,1)' : 'rgba(128,128,128,1)', SMALL);
-      }
-    }
-
-    // Item description at bottom
-    if (this.shopItems[this.menuIndex]) {
-      const desc = this.shopItems[this.menuIndex].desc || '';
-      if (desc) {
-        surf.fillRect(0, surf.height - 14, W, 14, 'rgba(16,16,32,0.9)');
-        surf.drawText(desc.slice(0, Math.floor(W / 4)), 4, surf.height - 11, 'rgba(200,200,200,1)', SMALL);
-      }
-    }
-  }
-
-  private drawSellMenu(surf: Surface, FONT: string, SMALL: string): void {
-    const startY = 28;
-    const rowH = 14;
-    const W = surf.width;
-    const sellableItems = this.unit?.items.filter((item) => this.getFullPrice(item) > 0) ?? [];
-
-    surf.drawText('Item', 20, startY, 'rgba(180,180,220,1)', SMALL);
-    surf.drawText('Value', W - 35, startY, 'rgba(180,180,220,1)', SMALL);
-
-    for (let i = 0; i < sellableItems.length; i++) {
-      const item = sellableItems[i];
-      const y = startY + 10 + i * rowH;
-      const price = this.getSellPrice(item);
-
-      if (i === this.sellIndex) {
-        surf.fillRect(2, y - 2, W - 4, rowH, 'rgba(80, 80, 140, 0.7)');
-      }
-
-      // Draw item icon (16x16)
-      drawItemIcon(surf, item, 2, y - 2);
-
-      surf.drawText(item.name, 20, y + 1, 'white', SMALL);
-      const priceStr = String(price);
-      surf.drawText(priceStr, W - 6 - priceStr.length * 4, y + 1, '#90D0FF', SMALL);
-    }
-
-    if (sellableItems.length === 0) {
-      surf.drawText('No items to sell', 20, startY + 12, 'rgba(160,160,160,1)', SMALL);
-    }
-  }
-
-  private tryBuyItem(game: any): void {
-    const item = this.shopItems[this.menuIndex];
-    if (!item || !this.unit) return;
-    const price = this.getBuyPrice(item);
-    const stock = this.shopStock[this.menuIndex] ?? -1;
-
-    if (stock === 0) {
-      this.showMessage('Out of stock!');
-      return;
-    }
-    if (this.money < price) {
-      this.showMessage('Not enough gold!');
-      return;
-    }
-    if (this.unit.items.length >= 5) {
-      this.showMessage('Inventory full!');
-      return;
-    }
-
-    const party = game.getParty();
-    if (!party) return;
-    game.actionLog.doAction(new HasTradedAction(this.unit));
-    game.actionLog.doAction(new GainMoneyAction(-price, party.nid));
-    game.actionLog.doAction(new UpdateRecordsAction('money', party.nid, -price));
-    this.money = game.getMoney();
-    game.actionLog.doAction(new SetGameVarAction(game.gameVars, 'money', this.money));
-
-    if (stock > 0) {
-      this.shopStock[this.menuIndex] = stock - 1;
-      if (this.shopId) {
-        const boughtKey = `__shop_${this.shopId}_${item.nid}`;
-        const bought = Number(game.gameVars.get(boughtKey) ?? 0);
-        game.actionLog.doAction(new SetGameVarAction(game.gameVars, boughtKey, bought + 1));
-      }
-    }
-
-    const prefab = game.db?.items?.get(item.nid);
-    if (prefab) {
-      const newItem = new ItemObjectClass(prefab);
-      game.actionLog.doAction(new GiveItemAction(this.unit, newItem));
-      this.showMessage(`Bought ${item.name}!`);
-    }
-  }
-
-  private trySellItem(game: any, sellableItems: ItemObject[]): void {
-    const item = sellableItems[this.sellIndex];
-    if (!item || !this.unit) return;
-    const price = this.getSellPrice(item);
-
-    const party = game.getParty();
-    if (!party) return;
-    game.actionLog.doAction(new HasTradedAction(this.unit));
-    game.actionLog.doAction(new GainMoneyAction(price, party.nid));
-    game.actionLog.doAction(new UpdateRecordsAction('money', party.nid, price));
-    this.money = game.getMoney();
-    game.actionLog.doAction(new SetGameVarAction(game.gameVars, 'money', this.money));
-    game.actionLog.doAction(new RemoveItemFromUnitAction(this.unit, item));
-
-    this.showMessage(`Sold ${item.name}!`);
-
-    // Adjust sell index
-    const remaining = this.unit.items.filter((candidate) => this.getFullPrice(candidate) > 0);
-    if (this.sellIndex >= remaining.length) {
-      this.sellIndex = Math.max(0, remaining.length - 1);
-    }
-    if (remaining.length === 0) {
-      this.phase = 'choice';
-    }
-  }
-
-  private getFullPrice(item: ItemObject): number {
-    const game = getGame();
-    return itemFullPrice(this.unit, item, game.db, game) ?? 0;
-  }
-
-  private getBuyPrice(item: ItemObject): number {
-    const game = getGame();
-    const value = itemBuyPrice(this.unit, item, game.db, game);
-    if (!value) return 0;
-    return Math.trunc(value * this.getPriceSkillMultiplier(item, 'change_buy_price'));
-  }
-
-  private getSellPrice(item: ItemObject): number {
-    const game = getGame();
-    const value = itemSellPrice(this.unit, item, game.db, game);
-    if (!value) return 0;
-    return Math.trunc(value * this.getPriceSkillMultiplier(item, 'change_sell_price'));
-  }
-
-  private getPriceSkillMultiplier(
-    item: ItemObject,
-    componentNid: 'change_buy_price' | 'change_sell_price',
-  ): number {
-    if (!this.unit) return 1;
-    return priceSkillMultiplier(this.unit, item, componentNid, getGame());
-  }
-
-  private showMessage(msg: string): void {
-    this.message = msg;
-    this.messageTimer = 1500;
   }
 }
 
@@ -15916,9 +15856,11 @@ export class EventState extends State {
         // Set up transient data for ShopState
         game.shopUnit = shopUnit;
         game.shopItems = shopItems;
-        game.shopStock = shopStock;
+        // Python ShopState shows stock columns only when a stock list is given.
+        game.shopStock = shopStockStr ? shopStock : null;
         game.shopId = shopId || null;
-        game.shopFlavor = shopFlavor;
+        game.shopFlavor = args[2] || null;
+        game.shopPreview = shopPreview;
 
         // Push shop state
         game.state.change('shop');

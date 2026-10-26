@@ -294,16 +294,23 @@ test.describe('Roam shop interaction', () => {
     // Complete an actual purchase: SELECT on the 'Buy' choice, then SELECT
     // on the first (only) item to buy it -- verifies "purchasing works",
     // not just that the vendor UI opened.
-    await stepFrames(page, 3, 'SELECT'); // choice -> buy phase
+    // Python ShopState: page through the opener dialog to the Buy/Sell
+    // choice, choose Buy, then buy the highlighted item.
+    for (let i = 0; i < 12; i++) {
+      if (await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().phase) === 'choice') break;
+      await stepFrames(page, 1, 'SELECT');
+      await stepFrames(page, 20);
+    }
+    await stepFrames(page, 1, 'SELECT'); // choice -> buy phase
     await stepFrames(page, 3);
-    await stepFrames(page, 3, 'SELECT'); // buy the highlighted item
+    await stepFrames(page, 1, 'SELECT'); // buy the highlighted item
     await stepFrames(page, 5);
 
     const afterBuy = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       const eirika = game.units.get('Eirika');
       return {
-        money: Number(game.gameVars.get('money') ?? 0),
+        money: Number(game.getMoney()),
         itemNids: eirika.items.map((it: any) => it.nid),
       };
     });
@@ -412,9 +419,9 @@ test.describe('Roam shop interaction', () => {
       const depletedBuy = itemSystem.buyPrice(null, depletedItem, game.db, game);
 
       Reflect.get(shopState, 'tryBuyItem').call(shopState, game);
-      const moneyAfterBuy = Number(game.gameVars.get('money'));
+      const moneyAfterBuy = Number(game.getMoney());
       Reflect.get(shopState, 'trySellItem').call(shopState, game, [sellItem]);
-      const moneyAfterSell = Number(game.gameVars.get('money'));
+      const moneyAfterSell = Number(game.getMoney());
 
       return {
         stateName: shopState.name,

@@ -322,6 +322,90 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     await attachShot(page, testInfo, 'convoy');
   });
 
+  test('EOtF shop event uses the Python ShopState layout, buy and sell', async ({ page }, testInfo) => {
+    test.slow();
+    await openPrep(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.getParty().money = 3000;
+      g.db.events.set('qa_shop', {
+        name: 'qa_shop', nid: 'qa_shop', trigger: 'qa_shop', level_nid: null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: ['shop;Gorbat;Iron_Sword,Steel_Sword,Epee;armory;1,1,0;qa'],
+      });
+      g.eventManager.triggerSpecific('qa_shop', { type: 'qa_shop' }, true);
+      g.state.change('event');
+    });
+    for (let i = 0; i < 20 && (await stack(page)).at(-1) !== 'shop'; i++) await step(page, 3);
+    expect((await stack(page)).at(-1)).toBe('shop');
+    const layout = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      return {
+        buyTopleft: state.buyMenu.getTopleft(),
+        buyWidth: state.buyMenu.getMenuWidth(),
+        sellTopleft: state.sellMenu.getTopleft(),
+        choiceTopleft: state.choiceMenu.getTopleft(),
+        stock: state.shopStock,
+      };
+    });
+    // Stocked shops shift the buy list to (36, 72) and widen it to 168.
+    expect(layout).toEqual({
+      buyTopleft: [36, 72], buyWidth: 168, sellTopleft: [44, 68], choiceTopleft: [120, 32], stock: [1, 1, 0],
+    });
+    // Page through the opener until the Buy/Sell choice appears.
+    for (let i = 0; i < 12; i++) {
+      if (await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().phase) === 'choice') break;
+      await step(page, 1, 'SELECT');
+      await step(page, 20);
+    }
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().phase)).toBe('choice');
+    await settleImages(page);
+    await attachShot(page, testInfo, 'shop-choice');
+
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    await step(page, 1, 'DOWN'); // Steel Sword
+    await step(page, 1, 'SELECT');
+    await step(page, 30);
+    const bought = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const state = g.state.getCurrentState();
+      const gorbat = g.getUnit('Gorbat');
+      return {
+        phase: state.phase,
+        money: g.getMoney(),
+        price: state.getBuyPrice(state.shopItems[1]),
+        hasSteel: gorbat.items.some((i: any) => i.nid === 'Steel_Sword') ||
+          g.getParty().convoy.some((i: any) => i.nid === 'Steel_Sword'),
+        stock: state.shopStock,
+        marker: g.gameVars.get('__shop_qa_Steel_Sword'),
+      };
+    });
+    expect(bought.phase).toBe('buy');
+    expect(bought.money).toBe(3000 - bought.price);
+    expect(bought.hasSteel).toBe(true);
+    expect(bought.stock).toEqual([1, 0, 0]);
+    expect(bought.marker).toBe(1);
+    await settleImages(page);
+    await attachShot(page, testInfo, 'shop-bought');
+
+    // Out-of-stock Épée is refused.
+    await step(page, 1, 'DOWN');
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.getMoney())).toBe(3000 - bought.price);
+
+    // BACK -> choice, RIGHT -> Sell, SELECT -> sell list, SELECT sells.
+    await step(page, 1, 'BACK');
+    await step(page, 2);
+    await step(page, 1, 'RIGHT');
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().phase)).toBe('sell');
+    await settleImages(page);
+    await attachShot(page, testInfo, 'shop-sell');
+  });
+
   test('Formation selects a unit with the hand marker and moves it to a formation tile', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);
