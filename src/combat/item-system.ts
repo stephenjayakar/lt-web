@@ -1996,15 +1996,35 @@ export function canDouble(_unit: UnitObject, item: ItemObject): boolean {
 // Formula hooks (UNIQUE)
 // ============================================================
 
+/**
+ * Python item_system formula hooks are UNIQUE: the last of the item's
+ * components that defines the hook wins, in component order. Components
+ * only an item_override skill grants count after the item's own.
+ */
+function lastItemFormula(
+  item: ItemObject,
+  sources: Record<string, () => string | undefined>,
+): string | undefined {
+  const present = Object.keys(sources).filter((nid) => item.hasComponent(nid));
+  if (present.length === 0) return undefined;
+  const order = [...item.components.keys()];
+  const rank = (nid: string): number => {
+    const index = order.indexOf(nid);
+    return index < 0 ? order.length : index;
+  };
+  present.sort((a, b) => rank(a) - rank(b));
+  return sources[present[present.length - 1]]();
+}
+
 export function damageFormula(unit: UnitObject, item: ItemObject, game?: any): string | undefined {
-  if (item.hasComponent('eval_magic')) {
-    return evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE';
-  }
-  if (item.hasComponent('eval_dragon')) {
-    return evaluatedItemCondition('eval_dragon', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE';
-  }
-  if (item.hasComponent('eval_dragon_magic')) return 'MAGIC_DAMAGE';
-  return item.getComponent<string>('alternate_damage_formula');
+  return lastItemFormula(item, {
+    // weapon_components.Magic.damage_formula
+    magic: () => 'MAGIC_DAMAGE',
+    alternate_damage_formula: () => item.getComponent<string>('alternate_damage_formula'),
+    eval_magic: () => evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE',
+    eval_dragon: () => evaluatedItemCondition('eval_dragon', unit, item, game) ? 'MAGIC_DAMAGE' : 'DAMAGE',
+    eval_dragon_magic: () => 'MAGIC_DAMAGE',
+  });
 }
 
 export function damageFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {
@@ -2028,18 +2048,16 @@ export function avoidFormulaOverride(_unit: UnitObject, item: ItemObject): strin
 }
 
 export function resistFormula(unit: UnitObject, item: ItemObject, game?: any): string | undefined {
-  if (item.hasComponent('eval_magic')) {
-    return evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DEFENSE' : 'DEFENSE';
-  }
-  if (item.hasComponent('eval_dragon')) {
-    return evaluatedItemCondition('eval_dragon', unit, item, game) ? 'WORSE_DEFENSE' : 'DEFENSE';
-  }
-  if (item.hasComponent('eval_dragon_magic')) {
-    return evaluatedItemCondition('eval_dragon_magic', unit, item, game)
+  return lastItemFormula(item, {
+    // weapon_components.Magic.resist_formula
+    magic: () => 'MAGIC_DEFENSE',
+    alternate_resist_formula: () => item.getComponent<string>('alternate_resist_formula'),
+    eval_magic: () => evaluatedItemCondition('eval_magic', unit, item, game) ? 'MAGIC_DEFENSE' : 'DEFENSE',
+    eval_dragon: () => evaluatedItemCondition('eval_dragon', unit, item, game) ? 'WORSE_DEFENSE' : 'DEFENSE',
+    eval_dragon_magic: () => evaluatedItemCondition('eval_dragon_magic', unit, item, game)
       ? 'WORSE_DEFENSE'
-      : 'MAGIC_DEFENSE';
-  }
-  return item.getComponent<string>('alternate_resist_formula');
+      : 'MAGIC_DEFENSE',
+  });
 }
 
 export function resistFormulaOverride(_unit: UnitObject, item: ItemObject): string | undefined {

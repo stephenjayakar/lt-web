@@ -5,6 +5,7 @@ import type { GameBoard } from '../objects/game-board';
 import * as itemSystem from './item-system';
 import * as skillSystem from './skill-system';
 import type { SupportEffect } from '../engine/support-system';
+import { isForkEngine } from '../engine/engine-flavor';
 
 // ============================================================
 // CombatCalcs - All combat calculation formulas.
@@ -413,6 +414,33 @@ export function isMagic(item: ItemObject): boolean {
 // Core formulas (now with component dispatch)
 // ------------------------------------------------------------------
 
+/**
+ * EOtF's engine fork (combat_calcs.py, 2024 base) asks the item first:
+ * `item_system.X_formula` (UNIQUE, defaulting to the stat's own equation),
+ * and only when that is the default does `skill_system.X_formula` apply.
+ * Upstream later put skill overrides and skill alternates ahead of the
+ * item's formula (combat_calcs_utils.resolve_*_formula), so a skill like
+ * Perfect_Balance_Proc beats a tome's MAGIC_DEFENSE there but not in EOtF.
+ */
+function forkFormula(
+  itemFormula: string | undefined,
+  fallback: string,
+  skillFormula: () => string | undefined,
+): string {
+  if (itemFormula && itemFormula !== fallback) return itemFormula;
+  return skillFormula() ?? fallback;
+}
+
+/**
+ * The item a defender's skill modify hooks (modify_avoid / modify_resist /
+ * modify_crit_avoid / modify_defense_speed) see. The fork passes the
+ * attacker's weapon (`item_to_avoid`), falling back to the defender's own
+ * weapon; upstream passes the defender's weapon.
+ */
+function defensiveSkillItem(item: ItemObject | null, itemToAvoid: ItemObject | null | undefined): ItemObject | null {
+  return isForkEngine() ? itemToAvoid ?? item : item;
+}
+
 /** Calculate hit rate for an attacker. */
 export function accuracy(
   unit: UnitObject,
@@ -427,11 +455,14 @@ export function accuracy(
   game ??= _eqGameRef?.();
   // Python precedence: skill override > item override > skill alternate > item alternate > default.
   const formulaContext = { game, item, target };
-  const eqName = skillSystem.accuracyFormulaOverride(unit) ??
-    itemSystem.accuracyFormulaOverride(unit, item) ??
-    skillSystem.accuracyFormula(unit, formulaContext) ??
-    itemSystem.accuracyFormula(unit, item) ??
-    'HIT';
+  const eqName = isForkEngine()
+    ? forkFormula(itemSystem.accuracyFormula(unit, item), 'HIT',
+      () => skillSystem.accuracyFormula(unit, formulaContext))
+    : skillSystem.accuracyFormulaOverride(unit) ??
+      itemSystem.accuracyFormulaOverride(unit, item) ??
+      skillSystem.accuracyFormula(unit, formulaContext) ??
+      itemSystem.accuracyFormula(unit, item) ??
+      'HIT';
 
   const baseHit = resolveEquation(db, eqName, 'SKL * 2 + LCK // 2', unit);
   const itemHit = itemSystem.hit(unit, item, game) ?? 0;
@@ -459,11 +490,14 @@ export function avoid(
   game ??= _eqGameRef?.();
   // Defensive item formulas come from the attacking item in LT.
   const formulaContext = { game, item: itemToAvoid, target };
-  const eqName = skillSystem.avoidFormulaOverride(unit) ??
-    (itemToAvoid ? itemSystem.avoidFormulaOverride(unit, itemToAvoid) : undefined) ??
-    skillSystem.avoidFormula(unit, formulaContext) ??
-    (itemToAvoid ? itemSystem.avoidFormula(unit, itemToAvoid) : undefined) ??
-    'AVOID';
+  const eqName = isForkEngine()
+    ? forkFormula(itemToAvoid ? itemSystem.avoidFormula(unit, itemToAvoid) : undefined, 'AVOID',
+      () => skillSystem.avoidFormula(unit, formulaContext))
+    : skillSystem.avoidFormulaOverride(unit) ??
+      (itemToAvoid ? itemSystem.avoidFormulaOverride(unit, itemToAvoid) : undefined) ??
+      skillSystem.avoidFormula(unit, formulaContext) ??
+      (itemToAvoid ? itemSystem.avoidFormula(unit, itemToAvoid) : undefined) ??
+      'AVOID';
 
   // Python evaluates the AVOID equation against the unit's raw SPD and then
   // adds item_system.modify_avoid, which subtracts twice the weight penalty.
@@ -479,7 +513,7 @@ export function avoid(
     ? itemSystem.modifyAvoid(unit, equippedWeapon, game)
     : 0;
   const skillMod = skillSystem.modifyAvoid(
-    unit, equippedWeapon, game, target, itemToAvoid, mode, attackInfo,
+    unit, defensiveSkillItem(equippedWeapon, itemToAvoid), game, target, itemToAvoid, mode, attackInfo,
   );
 
   // Terrain avoid arrives through the tile's terrain status skill, which
@@ -507,11 +541,14 @@ export function damage(
       !item.hasComponent('equation_damage')) return 0;
   game ??= _eqGameRef?.();
   const formulaContext = { game, item, target };
-  const eqName = skillSystem.damageFormulaOverride(unit) ??
-    itemSystem.damageFormulaOverride(unit, item) ??
-    skillSystem.damageFormula(unit, formulaContext) ??
-    itemSystem.damageFormula(unit, item, game) ??
-    'DAMAGE';
+  const eqName = isForkEngine()
+    ? forkFormula(itemSystem.damageFormula(unit, item, game), 'DAMAGE',
+      () => skillSystem.damageFormula(unit, formulaContext))
+    : skillSystem.damageFormulaOverride(unit) ??
+      itemSystem.damageFormulaOverride(unit, item) ??
+      skillSystem.damageFormula(unit, formulaContext) ??
+      itemSystem.damageFormula(unit, item, game) ??
+      'DAMAGE';
 
   const magic = isMagic(item);
   const defaultExpr = magic ? 'MAG' : 'STR';
@@ -543,10 +580,14 @@ export function defense(
   // Python precedence mirrors the other formula hooks: defensive skill
   // override, attacking item override, defensive skill alternate, item alternate.
   const formulaContext = { game, item: attackItem, target };
-  const formulaOverride = skillSystem.resistFormulaOverride(unit) ??
-    itemSystem.resistFormulaOverride(unit, attackItem) ??
-    skillSystem.resistFormula(unit, formulaContext) ??
-    itemSystem.resistFormula(unit, attackItem, game);
+  // The fork evaluates the attacking item's formula for the attacker.
+  const formulaOverride = isForkEngine()
+    ? forkFormula(itemSystem.resistFormula(target ?? unit, attackItem, game), 'DEFENSE',
+      () => skillSystem.resistFormula(unit, formulaContext))
+    : skillSystem.resistFormulaOverride(unit) ??
+      itemSystem.resistFormulaOverride(unit, attackItem) ??
+      skillSystem.resistFormula(unit, formulaContext) ??
+      itemSystem.resistFormula(unit, attackItem, game);
 
   const magic = isMagic(attackItem);
   const defaultExpr = magic ? 'RES' : 'DEF';
@@ -555,7 +596,7 @@ export function defense(
 
   // Add skill static modifier for resist
   const skillMod = skillSystem.modifyResist(
-    unit, item ?? null, game, target, attackItem, mode, attackInfo,
+    unit, defensiveSkillItem(item ?? null, attackItem), game, target, attackItem, mode, attackInfo,
   );
 
   // Terrain DEF/RES come from the terrain status skill's stat_change.
@@ -574,11 +615,14 @@ export function attackSpeed(
   attackInfo: [number, number] = [0, 0],
 ): number {
   game ??= _eqGameRef?.();
-  const formula = skillSystem.attackSpeedFormulaOverride(unit) ??
-    itemSystem.attackSpeedFormulaOverride(unit, item) ??
-    skillSystem.attackSpeedFormula(unit) ??
-    itemSystem.attackSpeedFormula(unit, item) ??
-    'ATTACK_SPEED';
+  const formula = isForkEngine()
+    ? forkFormula(itemSystem.attackSpeedFormula(unit, item), 'ATTACK_SPEED',
+      () => skillSystem.attackSpeedFormula(unit))
+    : skillSystem.attackSpeedFormulaOverride(unit) ??
+      itemSystem.attackSpeedFormulaOverride(unit, item) ??
+      skillSystem.attackSpeedFormula(unit) ??
+      itemSystem.attackSpeedFormula(unit, item) ??
+      'ATTACK_SPEED';
 
   // Python evaluates the ATTACK_SPEED equation on its own and applies weight
   // through item_system.modify_attack_speed below, so the equation itself is
@@ -609,11 +653,14 @@ export function defenseSpeed(
   attackInfo: [number, number] = [0, 0],
 ): number {
   game ??= _eqGameRef?.();
-  const formula = skillSystem.defenseSpeedFormulaOverride(unit) ??
-    (itemToAvoid ? itemSystem.defenseSpeedFormulaOverride(unit, itemToAvoid) : undefined) ??
-    skillSystem.defenseSpeedFormula(unit) ??
-    (itemToAvoid ? itemSystem.defenseSpeedFormula(unit, itemToAvoid) : undefined) ??
-    'DEFENSE_SPEED';
+  const formula = isForkEngine()
+    ? forkFormula(itemToAvoid ? itemSystem.defenseSpeedFormula(unit, itemToAvoid) : undefined, 'DEFENSE_SPEED',
+      () => skillSystem.defenseSpeedFormula(unit))
+    : skillSystem.defenseSpeedFormulaOverride(unit) ??
+      (itemToAvoid ? itemSystem.defenseSpeedFormulaOverride(unit, itemToAvoid) : undefined) ??
+      skillSystem.defenseSpeedFormula(unit) ??
+      (itemToAvoid ? itemSystem.defenseSpeedFormula(unit, itemToAvoid) : undefined) ??
+      'DEFENSE_SPEED';
 
   // As with attack speed, weight arrives via modify_defense_speed below.
   const speedExpr = db.getEquation(formula);
@@ -623,7 +670,7 @@ export function defenseSpeed(
   return base +
     itemSystem.modifyDefenseSpeed(unit, item, game) +
     skillSystem.modifyDefenseSpeed(
-      unit, item, game, target, itemToAvoid, mode, attackInfo,
+      unit, defensiveSkillItem(item, itemToAvoid)!, game, target, itemToAvoid, mode, attackInfo,
     );
 }
 
@@ -639,11 +686,14 @@ export function critAccuracy(
 ): number {
   game ??= _eqGameRef?.();
   const formulaContext = { game, item, target };
-  const formula = skillSystem.critAccuracyFormulaOverride(unit) ??
-    itemSystem.critAccuracyFormulaOverride(unit, item) ??
-    skillSystem.critAccuracyFormula(unit, formulaContext) ??
-    itemSystem.critAccuracyFormula(unit, item) ??
-    'CRIT_HIT';
+  const formula = isForkEngine()
+    ? forkFormula(itemSystem.critAccuracyFormula(unit, item), 'CRIT_HIT',
+      () => skillSystem.critAccuracyFormula(unit, formulaContext))
+    : skillSystem.critAccuracyFormulaOverride(unit) ??
+      itemSystem.critAccuracyFormulaOverride(unit, item) ??
+      skillSystem.critAccuracyFormula(unit, formulaContext) ??
+      itemSystem.critAccuracyFormula(unit, item) ??
+      'CRIT_HIT';
   const base = resolveEquation(db, formula, 'SKL // 2', unit);
   return base + (item.getComponent<number>('crit') ?? 0) +
     itemSystem.modifyCritAccuracy(unit, item) +
@@ -664,14 +714,17 @@ export function critAvoid(
 ): number {
   game ??= _eqGameRef?.();
   const formulaContext = { game, item: itemToAvoid, target };
-  const formula = skillSystem.critAvoidFormulaOverride(unit) ??
-    (itemToAvoid ? itemSystem.critAvoidFormulaOverride(unit, itemToAvoid) : undefined) ??
-    skillSystem.critAvoidFormula(unit, formulaContext) ??
-    (itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined) ??
-    'CRIT_AVOID';
+  const formula = isForkEngine()
+    ? forkFormula(itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined, 'CRIT_AVOID',
+      () => skillSystem.critAvoidFormula(unit, formulaContext))
+    : skillSystem.critAvoidFormulaOverride(unit) ??
+      (itemToAvoid ? itemSystem.critAvoidFormulaOverride(unit, itemToAvoid) : undefined) ??
+      skillSystem.critAvoidFormula(unit, formulaContext) ??
+      (itemToAvoid ? itemSystem.critAvoidFormula(unit, itemToAvoid) : undefined) ??
+      'CRIT_AVOID';
   return resolveEquation(db, formula, 'LCK', unit) +
     skillSystem.modifyCritAvoid(
-      unit, item, game, target, itemToAvoid, mode, attackInfo,
+      unit, defensiveSkillItem(item, itemToAvoid), game, target, itemToAvoid, mode, attackInfo,
     );
 }
 
