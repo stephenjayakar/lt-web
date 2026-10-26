@@ -6049,6 +6049,81 @@ export class WeaponChoiceState extends State {
 }
 
 // ============================================================================
+// UnlockSelectState — pick which key opens a region (find_unlock)
+// ============================================================================
+
+/**
+ * Python general_states.UnlockSelectState: find_unlock pushes this when a
+ * player unit carries more than one item able to open the region. A
+ * menus.Choice over memory['all_unlock_items'] with the item description
+ * panel; SELECT stores memory['unlock_item'] and pops, BACK cannot cancel.
+ */
+export class UnlockSelectState extends State {
+  readonly name = 'unlock_select';
+  override readonly transparent = true;
+
+  private menu: ChoiceMenu | null = null;
+  private unit: UnitObject | null = null;
+  private items: ItemObject[] = [];
+
+  override start(): StateResult {
+    const game = getGame();
+    this.unit = (game.memory.get('current_unit') as UnitObject | undefined) ?? null;
+    this.items = [...((game.memory.get('all_unlock_items') as ItemObject[] | undefined) ?? [])];
+    if (!this.unit || this.items.length === 0) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.menu = new ChoiceMenu(this.items.map((item, index) => ({
+      label: item.name,
+      value: String(index),
+      enabled: true,
+      itemRow: itemMenuRow(this.unit!, item, game),
+    })), 0, 8);
+    placeAutoMenu(this.menu, game);
+  }
+
+  override begin(): StateResult {
+    const game = getGame();
+    if (game.cursor) game.cursor.visible = false;
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    if (!this.menu) return;
+    const game = getGame();
+    if (game.input?.mouseMoved) {
+      const [gx, gy] = game.input.getGameMousePos();
+      this.menu.handleMouseHover(gx, gy);
+    }
+    let result: { selected: string } | { back: true } | null = null;
+    if (game.input?.mouseClick === 'SELECT') {
+      const [gx, gy] = game.input.getGameMousePos();
+      result = this.menu.handleClick(gx, gy, 'SELECT');
+    }
+    if (!result && event === 'BACK') {
+      // Python plays Error: the key has to be chosen.
+      game.audioManager?.playSfx?.('Error');
+      return;
+    }
+    if (!result && event !== null) result = this.menu.handleInput(event);
+    if (!result || !('selected' in result)) return;
+    const chosen = this.items[Number(result.selected)];
+    if (!chosen) return;
+    game.memory.set('unlock_item', chosen);
+    this.menu = null;
+    game.state.back();
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    const current = this.items[this.menu?.selectedIndex ?? -1];
+    if (current && this.menu) drawItemDescriptionPanel(surf, game, this.unit, current);
+    this.menu?.draw(surf);
+    return surf;
+  }
+}
+
+// ============================================================================
 // 5b. TargetingState
 // ============================================================================
 
@@ -9415,6 +9490,8 @@ export class EventState extends State {
   private choiceNid: string | null = null;
   /** Whether the active choice accepts BACK as a 'BACK' selection. */
   private choiceBackable = false;
+  /** `unlock` paused on unlock_select; spend the chosen key when it resumes. */
+  private unlockAwaitingSpend = false;
   /** Event to run on each selection, from the choice's `EventNid` keyword. */
   private choiceEventNid: string | null = null;
   /** Parent choices paused while their EventNid selection event runs. */
@@ -16114,12 +16191,15 @@ export class EventState extends State {
         // that is available and whose can_unlock condition accepts this
         // region (chest keys only open chests). Spending procs its uses and
         // breaks it at zero; the unit cannot die from it.
-        // Deviation: with several valid player items Python opens an item
-        // choice (unlock_select); the web uses the first.
+        // With several valid items a player unit chooses one in
+        // unlock_select (the event pauses); other teams take the first.
         const unlockUnit = this.findUnit(args[0]?.trim() ?? '');
         const region = this.currentEvent?.trigger?.region ?? null;
-        if (cmd.type !== 'spend_unlock') game.memory.delete('unlock_item');
-        if (unlockUnit && cmd.type !== 'spend_unlock') {
+        // `unlock` re-runs after unlock_select pops; its find half is done.
+        const resumingUnlock = cmd.type === 'unlock' && this.unlockAwaitingSpend;
+        this.unlockAwaitingSpend = false;
+        if (cmd.type !== 'spend_unlock' && !resumingUnlock) game.memory.delete('unlock_item');
+        if (unlockUnit && cmd.type !== 'spend_unlock' && !resumingUnlock) {
           if (!region) {
             console.warn('find_unlock: can only find_unlock within a region event');
           } else if (!skillCanUnlock(unlockUnit, region, game)) {
@@ -16131,9 +16211,22 @@ export class EventState extends State {
               }
             };
             walk(unlockUnit.items);
-            const valid = allItems.find((item) =>
+            const valid = allItems.filter((item) =>
               itemAvailable(unlockUnit, item, game.db, game) && itemCanUnlock(unlockUnit, item, region, game));
-            if (valid) game.memory.set('unlock_item', valid);
+            if (valid.length > 1 && unlockUnit.team === 'player') {
+              game.memory.set('current_unit', unlockUnit);
+              game.memory.set('all_unlock_items', valid);
+              game.state.change('unlock_select');
+              if (cmd.type === 'unlock') {
+                // Python queues find_unlock then spend_unlock; spend after
+                // the choice by re-running this command when the event resumes.
+                this.unlockAwaitingSpend = true;
+              } else {
+                this.advancePointer();
+              }
+              return true;
+            }
+            if (valid[0]) game.memory.set('unlock_item', valid[0]);
           }
         }
         if (unlockUnit && cmd.type !== 'find_unlock') {

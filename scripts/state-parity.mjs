@@ -74,7 +74,6 @@ const MERGED = {
   transition_to: 'state-machine',
   transition_to_with_pop: 'state-machine',
   unit_menu: 'menu',
-  unlock_select: 'item_targeting',
   wait: 'menu',
 };
 
