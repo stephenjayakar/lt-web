@@ -1190,3 +1190,17 @@ test('`+` binds tighter than comparisons and argument commas (Python precedence)
   });
   expect(vars).toEqual([true, 3, true, 3]);
 });
+
+test('adjacent fillRects leave no seam at a fractional render scale (fog of war tiles)', async ({ page }) => {
+  await boot(page);
+  const seam = await page.evaluate(async () => {
+    const { Surface } = await import('/src/engine/surface.ts');
+    const surf = Surface.frame(240, 160, 3.7);
+    for (let x = 0; x < 240; x += 16) surf.fillRect(x, 0, 16, 16, 'rgba(0,0,0,1)');
+    const data = surf.ctx.getImageData(0, 0, Math.round(240 * 3.7), 1).data;
+    const gaps: number[] = [];
+    for (let px = 0; px < data.length / 4; px++) if (data[px * 4 + 3] === 0) gaps.push(px);
+    return gaps;
+  });
+  expect(seam).toEqual([]);
+});

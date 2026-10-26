@@ -319,12 +319,11 @@ export class Surface {
   fillRect(x: number, y: number, w: number, h: number, color: string): void {
     const s = this.scale;
     this._ctx.fillStyle = color;
-    this._ctx.fillRect(
-      Math.round(x * s),
-      Math.round(y * s),
-      Math.round(w * s),
-      Math.round(h * s),
-    );
+    // Round both edges (not origin and size separately) so adjacent rects
+    // abut exactly at fractional scales instead of leaving 1px seams.
+    const left = Math.round(x * s);
+    const top = Math.round(y * s);
+    this._ctx.fillRect(left, top, Math.round((x + w) * s) - left, Math.round((y + h) * s) - top);
   }
 
   /** Draw a line */
