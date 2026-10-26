@@ -1638,14 +1638,20 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       this.barOffset = 1;
     }
     this.drawCombatUi(surf);
+    this.drawForeground(surf);
+  }
 
-    // Foreground screen flash (always additive)
+  /** Foreground.draw: the screen_blend flash, always additive. */
+  private drawForeground(surf: Surface): void {
     if (this.foregroundColor || this.foregroundFadeFrames) {
       if (this.foregroundColor) {
-        let alpha = 1;
-        if (this.foregroundFadeOut) alpha = 1 - this.foregroundFrames / this.foregroundFadeFrames;
-        // make_translucent_blend(color, alpha*255) darkens the added color.
-        fillScreen(surf, this.foregroundColor, 'add', Math.max(0, Math.min(1, 1 - alpha)));
+        // Python Foreground.draw: the flash is added at full strength; only
+        // while fading out does make_translucent_blend(color, alpha*255)
+        // scale it by 1 - alpha = frames left / fade frames.
+        const strength = this.foregroundFadeOut && this.foregroundFadeFrames
+          ? this.foregroundFrames / this.foregroundFadeFrames
+          : 1;
+        fillScreen(surf, this.foregroundColor, 'add', Math.max(0, Math.min(1, strength)));
       }
       this.foregroundFrames--;
       if (this.foregroundFrames <= 0) {

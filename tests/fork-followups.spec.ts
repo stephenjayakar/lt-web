@@ -313,6 +313,39 @@ test.describe('EOtF fork-parity follow-ups', () => {
     expect(result.sheets).toEqual(String(result.damage).split('').map(() => 'damage_numbers_red'));
   });
 
+  test('a battle-scene screen_blend flash without fade-out draws at full strength', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { AnimationCombat } = await import('/src/combat/animation-combat.ts');
+      const { Surface } = await import('/src/engine/surface.ts');
+      const attacker = game.units.get('Player');
+      const defender = game.units.get('Keeper');
+      const item = attacker.items.find((candidate: any) => candidate.isWeapon()) ?? attacker.items[0];
+      const combat = new AnimationCombat(
+        attacker, item, defender, null, game.db, 'classic',
+        {} as any, {} as any, true, game.board, ['miss1', 'end'], game,
+      ) as any;
+      const red = (frames: number, fade: number) => {
+        const surf = new Surface(8, 8);
+        combat.screenFlash(frames, [200, 0, 0], fade);
+        const reds: number[] = [];
+        for (let i = 0; i < frames + fade + 1; i++) {
+          surf.ctx.fillStyle = 'rgb(0,0,0)';
+          surf.ctx.fillRect(0, 0, 8, 8);
+          combat.drawForeground(surf);
+          reds.push(surf.ctx.getImageData(1, 1, 1, 1).data[0]);
+        }
+        return reds;
+      };
+      return { plain: red(2, 0), fading: red(1, 2) };
+    });
+    // screen_blend: full colour for its frames, then gone.
+    expect(result.plain).toEqual([200, 200, 0]);
+    // screen_blend_with_fade_out: full, then frames-left/fade-frames.
+    expect(result.fading).toEqual([200, 200, 100, 0]);
+  });
+
   test('an expression choice re-evaluates its options while it is open', async ({ page }) => {
     await bootEotf(page);
     await page.evaluate(() => {
