@@ -901,6 +901,16 @@ export class AIController {
           const targetUnit = this.board.getUnit(targetPos[0], targetPos[1]);
           // The AI state can only start combat against a unit.
           if (!targetUnit || targetUnit === unit || targetUnit.isDead()) continue;
+          // Python AIController.attack: an item that targets items steals the
+          // target's most expensive legal item.
+          let stealTarget: ItemObject | null = null;
+          if (isStealItem(item)) {
+            const legal = targetUnit.items.filter((candidate) =>
+              stealItemRestrict(unit, item, targetUnit, candidate, this.db));
+            if (legal.length === 0) continue;
+            stealTarget = legal.reduce((most, candidate) =>
+              candidate.getValue() >= most.getValue() ? candidate : most);
+          }
           let moves = possibleMoves;
           if (many) {
             const farthest = farthestAwayPos(origin, possibleMoves, enemyPositions);
@@ -925,11 +935,12 @@ export class AIController {
               maxTp = tp;
               const path = this.pathSystem.getPath(unit, move[0], move[1], this.board);
               bestAction = {
-                type: 'attack',
+                type: stealTarget ? 'steal' : 'attack',
                 unit,
                 targetPosition: move,
                 targetUnit,
                 item,
+                ...(stealTarget ? { targetItem: stealTarget } : {}),
                 movePath: path ?? [move],
                 combatArt: variant.combatArt,
               };

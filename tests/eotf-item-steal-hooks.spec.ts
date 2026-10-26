@@ -203,10 +203,14 @@ test.describe('Embrace of the Fog custom theft items', () => {
         (item: any) => item.nid,
       );
 
-      const aiAction = (game.aiController as any).stealPrimaryAI(
+      // Python's Steal behaviour only tries the 'Steal' ability; an inventory
+      // theft item is an Attack PrimaryAI item, and AIController.attack then
+      // takes the target's most expensive legal item.
+      const aiAction = (game.aiController as any).primaryAI(
         attacker,
         [attacker.position],
         [defender],
+        0,
       );
       const ai = {
         type: aiAction?.type ?? null,
