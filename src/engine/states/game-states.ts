@@ -9443,6 +9443,9 @@ export class TurnChangeState extends State {
     game.turnCount = game.phase.turnCount;
 
     const currentTeam = game.phase.getCurrent();
+    // Python TurnChangeState.end: entering player phase, IncrementTurn then
+    // UpdateRecords('turn') (the records screen's turns per chapter).
+    if (currentTeam === 'player') game.actionLog.doAction(new UpdateRecordsAction('turn'));
     const turnCount = game.phase.turnCount;
     const levelNid = game.currentLevel?.nid;
 

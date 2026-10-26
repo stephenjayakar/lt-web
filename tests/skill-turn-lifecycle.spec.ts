@@ -196,4 +196,71 @@ test.describe('skill turn lifecycle', () => {
       'MarkPhase',
     ]);
   });
+
+  // Python TurnChangeState.end: IncrementTurn, then UpdateRecords('turn'),
+  // at level start and on every player phase (records screen turn counts).
+  test('level start and each player phase record a turn', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
+    await page.evaluate(() => (window as any).__harness.settle(600));
+    const before = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const turns = g.records.turnsTaken.map((r: any) => r.turn);
+      g.phase.setCurrentTeam('enemy');
+      g.state.clear();
+      g.state.change('turn_change');
+      return { turns, level: g.currentLevel.nid, counts: g.records.getTurncounts([g.currentLevel.nid]) };
+    });
+    expect(before.turns).toEqual([1]);
+    expect(before.counts).toEqual([1]);
+    await page.evaluate(() => (window as any).__harness.settle(1200));
+    const after = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { turns: g.records.turnsTaken.map((r: any) => r.turn), counts: g.records.getTurncounts([g.currentLevel.nid]) };
+    });
+    expect(after).toEqual({ turns: [1, 2], counts: [2] });
+  });
+
+  // Python level start: TurnChangeState.end records the turn and fires
+  // PhaseChange, TurnChange, LevelStart (run newest first), then
+  // PhaseChangeState locks the turnwheel and ResetAlls, then status_upkeep
+  // marks the phase.
+  test('level start runs level_start, turn_change, phase_change, then ResetAll and MarkPhase', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
+    await page.evaluate(() => (window as any).__harness.settle(600));
+    await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const log: string[] = [];
+      (window as any).__order = log;
+      for (const trigger of ['level_start', 'turn_change', 'phase_change']) {
+        g.db.events.set(`_Ord_${trigger}`, {
+          name: `_Ord_${trigger}`, nid: `_Ord_${trigger}`, trigger, level_nid: null,
+          condition: 'True', only_once: false, priority: 0, _source: [`game_var;_ord_${trigger};1`],
+        });
+      }
+      const set = g.gameVars.set.bind(g.gameVars);
+      g.gameVars.set = (key: string, value: unknown) => {
+        if (String(key).startsWith('_ord_')) log.push(`event:${key.slice(5)}`);
+        return set(key, value);
+      };
+      const doAction = g.actionLog.doAction.bind(g.actionLog);
+      g.actionLog.doAction = (action: any) => {
+        const name = action.constructor.name;
+        if (['ResetAllAction', 'MarkPhase', 'LockTurnwheel'].includes(name)) log.push(name);
+        else if (name === 'UpdateRecordsAction' && action.recordType === 'turn') log.push('record:turn');
+        return doAction(action);
+      };
+      const { enterStartedLevel } = await import('/src/engine/states/game-states.ts');
+      g.cleanUpLevel?.();
+      await g.loadLevel('0');
+      enterStartedLevel(g);
+    });
+    await page.evaluate(() => (window as any).__harness.settle(1200));
+    const order: string[] = await page.evaluate(() => (window as any).__order);
+    expect(order).toEqual([
+      'record:turn', 'event:level_start', 'event:turn_change', 'event:phase_change',
+      'LockTurnwheel', 'ResetAllAction', 'MarkPhase',
+    ]);
+  });
 });

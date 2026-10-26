@@ -30,6 +30,7 @@ import {
   RemoveSkillAction,
   RegisterItemTreeAction,
   SetSkillDataAction,
+  UpdateRecordsAction,
   type MoveAction,
 } from './action';
 import { GameBoard } from '../objects/game-board';
@@ -926,6 +927,9 @@ export class GameState {
     // Our event queue is FIFO, so enqueue in reverse: level_start, then
     // turn_change, then phase_change. EOtF's level_start removes stale
     // Deployed tags and turn_change then restores them for the actual sortie.
+    // Python TurnChangeState.end at level start: IncrementTurn, then
+    // UpdateRecords('turn') before the phase/turn/level-start triggers.
+    this.actionLog.doAction(new UpdateRecordsAction('turn'));
     if (this.eventManager) {
       this.levelVars.set('_initial_turn_events_after_level_start', true);
       const eventContext = {

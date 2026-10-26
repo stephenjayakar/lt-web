@@ -398,7 +398,10 @@ test.describe('Turnwheel breadth verification (P2)', () => {
       turnChange.begin();
       turnChange.begin();
       const changed = pair.points;
-      const action = g.actionLog.undo();
+      // Entering a player phase also records the turn after the supports
+      // (Python UpdateRecords('turn')); undo back to the support action.
+      let action = g.actionLog.undo();
+      while (action && action.constructor.name !== 'IncrementSupportPointsAction') action = g.actionLog.undo();
       const undone = pair.points;
       action?.execute();
       const redone = pair.points;
