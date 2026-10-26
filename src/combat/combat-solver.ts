@@ -17,6 +17,7 @@ import {
 } from './combat-skill-lifecycle';
 import { AddSkillAction, RemoveSkillAction } from '../engine/action';
 import { evaluateExpression } from '../events/event-manager';
+import { isForkEngine } from '../engine/engine-flavor';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
@@ -277,7 +278,7 @@ export class CombatPhaseSolver {
     ignoreDying: boolean = false,
   ): void {
     if (!strike.hit && !hasDamageOnMiss(strike.item)) {
-      strike.selfSkillHpChange = 0;
+      this.applyMissSelfHealing(strike);
       this.applyPostStrikeSkillEffects(target, strike, hp.hp);
       return;
     }
@@ -461,10 +462,45 @@ export class CombatPhaseSolver {
     }
   }
 
-  private applySelfLifelink(strike: CombatStrike, trueDamage: number): void {
+  /**
+   * Skill `lifelink` / `live_to_serve` after_strike on a miss. Both Python
+   * engines run Lifelink.after_strike on every strike (a miss heals 0 and
+   * still triggers the charge). EOtF's fork routes the heal through
+   * `_get_heal_amount(amount, unit, unit)`, so the striker's own
+   * empower_heal bonuses (and multipliers) heal even on a miss; its
+   * LiveToServe does the same whenever that result is positive.
+   */
+  private applyMissSelfHealing(strike: CombatStrike): void {
     strike.selfSkillHpChange = 0;
     strike.allySkillHpChanges = [];
-    if (!strike.hit) return;
+    const fork = isForkEngine();
+    for (const skill of [...strike.attacker.skills]) {
+      if (!this.combatSkillActive(strike.attacker, skill, strike)) continue;
+      const heal = (): number => fork
+        ? skillSystem.modifiedHealAmount(0, strike.attacker, strike.attacker, this.game)
+        : 0;
+      if (typeof skill.getComponent<unknown>('lifelink') === 'number') {
+        strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + heal();
+        skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
+      }
+      if (fork && typeof skill.getComponent<unknown>('live_to_serve') === 'number') {
+        const amount = heal();
+        if (amount > 0) {
+          strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + amount;
+          skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
+        }
+      }
+    }
+  }
+
+  private applySelfLifelink(strike: CombatStrike, trueDamage: number): void {
+    if (!strike.hit) {
+      this.applyMissSelfHealing(strike);
+      return;
+    }
+    strike.selfSkillHpChange = 0;
+    strike.allySkillHpChanges = [];
+    const fork = isForkEngine();
     for (const skill of [...strike.attacker.skills]) {
       if (!this.combatSkillActive(strike.attacker, skill, strike)) continue;
       const apply = (
@@ -486,7 +522,17 @@ export class CombatPhaseSolver {
       };
       const lifelink = skill.getComponent<unknown>('lifelink');
       if (typeof lifelink === 'number') {
-        apply(Math.trunc(trueDamage * lifelink), true);
+        // EOtF fork: `_get_heal_amount(true_damage, unit, unit)`.
+        apply(Math.trunc(trueDamage * lifelink), true, fork);
+      }
+      // EOtF fork LiveToServe.after_strike runs on every strike: weapon
+      // strikes heal nobody, but `_get_heal_amount(0, unit, unit)` still adds
+      // the unit's own empower_heal bonuses.
+      if (fork && typeof skill.getComponent<unknown>('live_to_serve') === 'number') {
+        const amount = skillSystem.modifiedHealAmount(
+          0, strike.attacker, strike.attacker, this.game,
+        );
+        if (amount > 0) apply(amount);
       }
       const unbounded = skill.getComponent<unknown>('shitty_lifelink');
       if (typeof unbounded === 'number') {

@@ -302,6 +302,7 @@ import {
   priceSkillMultiplier,
   skillConditionActive,
   empowerHeal,
+  modifiedHealAmount,
   unitSpriteTint,
   canUnlock as skillCanUnlock,
 } from '../../combat/skill-system';
@@ -3899,11 +3900,18 @@ export function finishCoreItemUse(
   const allyHealing = [...healingDone.entries()]
     .filter(([target]) => target !== unit)
     .reduce((total, [, amount]) => total + Math.max(0, amount), 0);
-  if (allyHealing > 0) {
+  // EOtF's fork runs LiveToServe.after_strike on every strike and heals
+  // `_get_heal_amount(int(healed * X), unit, unit)`, so the user's own
+  // empower_heal bonuses and multipliers apply even when no ally was healed.
+  const forkLiveToServe = isForkEngine() && uniqueTargets.length > 0;
+  if (allyHealing > 0 || forkLiveToServe) {
     for (const skill of unit.skills) {
       const ratio = skill.getComponent<number>('live_to_serve');
       if (typeof ratio !== 'number') continue;
-      const amount = Math.trunc(allyHealing * ratio);
+      const base = Math.trunc(allyHealing * ratio);
+      const amount = forkLiveToServe
+        ? modifiedHealAmount(base, unit, unit, game)
+        : base;
       if (amount <= 0) continue;
       game.actionLog.doAction(new HealAction(unit, amount));
       triggerSkillCharge(game, skill);

@@ -97,11 +97,14 @@ export function healAmount(
   if (typeof equationNid === 'string') {
     const expression = game.db.getEquation(equationNid) ?? equationNid;
     const base = evaluateEquation(expression, unit, { db: game.db, item });
-    return Math.trunc(additiveHealAmount(base, target, unit, game));
+    return modifiedHealAmount(base, target, unit, game);
   }
+  // Heal / EquationHeal `_get_heal_amount` (EOtF fork): int(multiplier *
+  // received_multiplier * (value + empower_heal + empower_heal_received)).
+  // Upstream has no multiplier hooks, so this equals the additive amount there.
   const direct = item.getComponent<unknown>('heal');
   return typeof direct === 'number'
-    ? Math.trunc(additiveHealAmount(direct, target, unit, game))
+    ? modifiedHealAmount(direct, target, unit, game)
     : null;
 }
 

@@ -1250,7 +1250,18 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
 
     for (; this.walked < upTo; this.walked++) {
       const strike = this.strikes[this.walked];
-      if (!strike.hit && !hasDamageOnMiss(strike.item)) continue;
+      if (!strike.hit && !hasDamageOnMiss(strike.item)) {
+        // Skill lifelink / live_to_serve can heal on a miss (EOtF fork).
+        const missHeal = strike.selfSkillHpChange ?? 0;
+        if (missHeal !== 0) {
+          if (strike.attacker === this.attacker) {
+            atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + missHeal));
+          } else {
+            defHp = Math.max(0, Math.min(this.defender.maxHp, defHp + missHeal));
+          }
+        }
+        continue;
+      }
       let damage = strike.damage;
       if (strike.hit && (hasEclipseFe7(strike.item) || hasEclipse(strike.item))) {
         const targetHp = strike.attacker === this.attacker ? defHp : atkHp;

@@ -17,6 +17,7 @@ import {
   skillConditionActive,
 } from '../combat/skill-system';
 import { evaluateExpression } from '../events/event-manager';
+import { isForkEngine } from './engine-flavor';
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
 
@@ -242,7 +243,12 @@ export function applySkillTurnHooks(
           setData(game, skill, 'counter', value);
           effects.push({ unit, skill, component, value });
         } else if (phase === 'upkeep' && component === 'regeneration' && conditional) {
-          const amount = Math.trunc(unit.maxHp * Number(rawValue ?? 0));
+          const base = Math.trunc(unit.maxHp * Number(rawValue ?? 0));
+          // EOtF fork: `_get_heal_amount(hp_change, unit, None)` adds the
+          // unit's received bonus and applies its received multiplier.
+          const amount = isForkEngine() && unit.currentHp < unit.maxHp
+            ? modifiedHealAmount(base, unit, null, game)
+            : base;
           if (amount !== 0 && unit.currentHp < unit.maxHp) {
             applyHpChange(game, unit, amount);
             effects.push({ unit, skill, component, value: amount });
