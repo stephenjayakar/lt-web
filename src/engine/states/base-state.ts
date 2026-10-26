@@ -24,6 +24,7 @@ import { canTradeWith } from '../../combat/skill-system';
 import { getEffectiveLevelCap } from '../leveling';
 import {
   Choice as PrepChoice,
+  Table as PrepTable,
   baseSurf as prepBaseSurf,
   createBaseBackground,
   getPortraitSheet as prepPortraitSheet,
@@ -1225,20 +1226,24 @@ export class BaseSoundRoomState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
-  private trackNids: string[] = [];
-  private lockedFlags: boolean[] = [];
-  private selectedIndex: number = 0;
-  private scrollOffset: number = 0;
-  private playing: boolean = false;
+  trackNids: string[] = [];
+  private battleVariant: boolean[] = [];
+  private unlocked: number[] = [];
+  menu: PrepTable | null = null;
+  playing = false;
+  loaded = false;
   private previousMusic: string | null = null;
-  private loaded: boolean = false;
+  private bg: { draw(surf: Surface): void } | null = null;
+
+  get selectedIndex(): number { return this.menu?.currentIndex ?? 0; }
 
   override start(): StateResult {
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
+    const game = getGame();
+    preloadPrepSprites();
+    this.bg = game.memory.get('base_bg')?.draw ? game.memory.get('base_bg') : null;
     this.playing = false;
     this.loaded = false;
-    this.previousMusic = null;
+    this.menu = null;
     void this.loadTrackList();
   }
 
@@ -1252,15 +1257,11 @@ export class BaseSoundRoomState extends State {
   }
 
   override finish(): void {
-    // Restore whatever base music was playing before entering the sound room
-    // (matches Python: fade back in to _base_music on BACK).
+    // Python BACK: fade back to _base_music (or stop).
     const game = getGame();
-    const musicNid = this.previousMusic ?? (game.gameVars.get('_base_music') as string | undefined);
-    if (musicNid) {
-      void game.audioManager?.playMusic?.(musicNid);
-    } else {
-      game.audioManager?.stopMusic?.();
-    }
+    const musicNid = (game.gameVars.get('_base_music') as string | undefined) ?? this.previousMusic;
+    if (musicNid) void game.audioManager?.playMusic?.(musicNid);
+    else game.audioManager?.stopMusic?.();
   }
 
   private async loadTrackList(): Promise<void> {
@@ -1268,120 +1269,103 @@ export class BaseSoundRoomState extends State {
     const data: MusicJsonEntry[] | null = await game.resources.tryLoadJson('resources/music/music.json');
     const entries = data ?? [];
     this.trackNids = entries.map((e: MusicJsonEntry) => e[0]);
-    const lockedConstant = !!game.db.getConstant?.('locked_soundroom', false);
-    this.lockedFlags = this.trackNids.map((nid) => lockedConstant && !RECORDS?.checkSongUnlocked?.(nid));
+    this.battleVariant = entries.map((e: MusicJsonEntry) => !!e[2]);
+    // Python: Table((6, 4)) of track numbers at (80, 48); locked songs ignored.
+    this.menu = new PrepTable(game, this.trackNids.map((_, i) => ({ kind: 'text' as const, text: String(i + 1) })), [6, 4], [80, 48]);
+    this.menu.gem = true;
+    this.menu.shimmer = 2;
+    if (game.db.getConstant?.('locked_soundroom', false)) {
+      const ignore = this.trackNids.map((nid) => !RECORDS?.checkSongUnlocked?.(nid));
+      this.menu.setIgnore(ignore);
+      this.unlocked = ignore.map((ig, i) => (ig ? -1 : i)).filter((i) => i >= 0);
+    } else {
+      this.unlocked = this.trackNids.map((_, i) => i);
+    }
     this.loaded = true;
   }
 
-  private getVisibleRowCount(): number {
-    const footerTop = viewport.height - 18;
-    const available = footerTop - SOUND_LIST_Y;
-    return Math.max(1, Math.min(SOUND_VISIBLE_ROWS, Math.floor(available / SOUND_ROW_H)));
-  }
-
-  private keepSelectionVisible(): void {
-    const visibleRows = this.getVisibleRowCount();
-    if (this.selectedIndex < this.scrollOffset) {
-      this.scrollOffset = this.selectedIndex;
-    } else if (this.selectedIndex >= this.scrollOffset + visibleRows) {
-      this.scrollOffset = this.selectedIndex - visibleRows + 1;
-    }
-  }
-
-  private moveSelection(delta: number): void {
-    if (this.trackNids.length === 0) return;
-    this.selectedIndex = (this.selectedIndex + delta + this.trackNids.length) % this.trackNids.length;
-    this.keepSelectionVisible();
-  }
-
-  private playSelected(): void {
-    const game = getGame();
-    if (this.trackNids.length === 0) return;
-    if (this.lockedFlags[this.selectedIndex]) return;
-    const nid = this.trackNids[this.selectedIndex];
-    void game.audioManager?.playMusic?.(nid);
-    this.playing = true;
-  }
-
-  private stopPlaying(): void {
-    const game = getGame();
-    game.audioManager?.stopMusic?.();
-    this.playing = false;
+  private current(): string | null {
+    if (!this.menu || !this.unlocked.length) return null;
+    return this.trackNids[this.menu.currentIndex] ?? null;
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-    if (game.input?.mouseClick === 'BACK' || event === 'BACK') {
-      game.audioManager?.playSfx?.('Select 4');
+    const sfx = (name: string) => game.audioManager?.playSfx?.(name);
+    if (game.input?.mouseClick === 'BACK') event = 'BACK';
+    const menu = this.menu;
+    if (menu) {
+      const [ox, oy] = screenOrigin();
+      if (game.input?.mouseMoved) {
+        const [mx, my] = game.input.getGameMousePos();
+        menu.handleMouse(mx, my, ox, oy);
+      }
+      if (event === 'DOWN') { if (menu.moveDown(prepIsFirstPush(game, 'DOWN'))) sfx('Select 5'); }
+      else if (event === 'UP') { if (menu.moveUp(prepIsFirstPush(game, 'UP'))) sfx('Select 5'); }
+      else if (event === 'LEFT') { if (menu.moveLeft()) sfx('Select 5'); }
+      else if (event === 'RIGHT') { if (menu.moveRight()) sfx('Select 5'); }
+    }
+    if (event === 'BACK') {
+      sfx('Select 4');
       game.state.back();
       return;
     }
-
-    if (game.input?.mouseMoved || game.input?.mouseClick === 'SELECT') {
-      const [mx, my] = game.input.getGameMousePos();
-      const row = Math.floor((my - SOUND_LIST_Y) / SOUND_ROW_H);
-      const index = this.scrollOffset + row;
-      if (mx >= 7 && mx <= viewport.width - 7 && row >= 0 && row < this.getVisibleRowCount() && index < this.trackNids.length) {
-        if (index !== this.selectedIndex) game.audioManager?.playSfx?.('Select 6');
-        this.selectedIndex = index;
-      }
-    }
-
-    if (event === 'UP') {
-      this.moveSelection(-1);
-      game.audioManager?.playSfx?.('Select 6');
-    } else if (event === 'DOWN') {
-      this.moveSelection(1);
-      game.audioManager?.playSfx?.('Select 6');
-    } else if (event === 'SELECT') {
-      if (this.playing) {
-        this.stopPlaying();
-      } else {
-        this.playSelected();
+    if (!event || !this.unlocked.length || !menu) return;
+    if (event === 'SELECT') {
+      const nid = this.current();
+      if (nid) {
+        void game.audioManager?.playMusic?.(nid);
+        this.playing = true;
+        game.gameVars.set('_soundroom_choice', nid);
       }
     } else if (event === 'START') {
-      this.stopPlaying();
+      game.audioManager?.stopMusic?.();
+      this.playing = false;
+    } else if (event === 'INFO') {
+      const idx = this.unlocked[Math.floor(Math.random() * this.unlocked.length)];
+      menu.moveTo(idx);
+      void game.audioManager?.playMusic?.(this.trackNids[idx]);
+      this.playing = true;
     }
   }
 
+  override update(): StateResult {
+    this.menu?.update();
+  }
+
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-    surf.fill(9, 13, 30);
-
-    surf.fillRect(0, 0, vw, SOUND_HEADER_H, 'rgba(10,15,42,0.94)');
-    surf.fillRect(0, SOUND_HEADER_H - 2, vw, 2, 'rgba(218,177,75,0.85)');
-    surf.drawText('SOUND ROOM', 7, 5, 'rgba(245,222,148,1)', '10px monospace');
-    if (this.playing) {
-      surf.drawText('(playing)', vw - 62, 6, 'rgba(140,220,150,1)', '7px monospace');
-    }
-
-    if (!this.loaded) {
-      surf.drawText('Loading...', 30, 40, 'rgba(181,191,220,1)', '8px monospace');
-    } else if (this.trackNids.length === 0) {
-      surf.fillRect(22, 54, vw - 44, 34, 'rgba(12,18,48,0.88)');
-      surf.drawRect(22, 54, vw - 44, 34, 'rgba(112,130,190,0.55)');
-      surf.drawText('No music tracks available.', 30, 68, 'rgba(181,191,220,1)', '8px monospace');
-    } else {
-      const visibleRows = this.getVisibleRowCount();
-      const end = Math.min(this.trackNids.length, this.scrollOffset + visibleRows);
-      for (let index = this.scrollOffset; index < end; index++) {
-        const nid = this.trackNids[index];
-        const locked = this.lockedFlags[index];
-        const y = SOUND_LIST_Y + (index - this.scrollOffset) * SOUND_ROW_H;
-        const selected = index === this.selectedIndex;
-        surf.fillRect(7, y, vw - 14, SOUND_ROW_H - 2,
-          selected ? 'rgba(55,73,131,0.94)' : 'rgba(12,18,48,0.82)');
-        const label = locked ? '??? (locked)' : nid;
-        surf.drawText(label.slice(0, 42), 12, y + 3,
-          locked ? 'rgba(118,125,151,1)' : 'rgba(218,224,241,1)', '7px monospace');
-      }
-    }
-
-    surf.fillRect(0, vh - 18, vw, 18, 'rgba(8,12,34,0.96)');
-    surf.drawText('SELECT: Play/Stop', 7, vh - 14, 'rgba(137,153,198,1)', '6px monospace');
-    surf.drawText('B: Back', vw - 48, vh - 14, 'rgba(245,222,148,1)', '6px monospace');
+    const [ox, oy] = screenOrigin();
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    const nid = this.current();
+    const idx = this.menu?.currentIndex ?? 0;
+    const player = prepGetSprite(nid && this.battleVariant[idx] ? 'sound_player_variant' : 'sound_player');
+    if (player) surf.blitImage(player, 0, 0, player.width, player.height, ox + 8, oy + 56);
+    if (this.playing) this.drawVolume(surf, ox, oy);
+    this.menu?.draw(surf, ox, oy);
+    // draw_sound_room_title: chapter_select_green centred at (120, 22).
+    const title = prepGetSprite('chapter_select_green');
+    if (title) surf.blitImage(title, 0, 0, title.width, title.height, ox + 120 - Math.floor(title.width / 2), oy + 22 - Math.floor(title.height / 2));
+    const name = nid ?? '';
+    surf.drawText(name, ox + 120 - Math.floor(prepTextWidth(name, 'convo') / 2), oy + 22 - 8, 'white', 'convo');
     return surf;
+  }
+
+  /** Python BaseSoundRoomState.draw_volume. */
+  private drawVolume(surf: Surface, ox: number, oy: number): void {
+    const sheet = prepGetSprite('sound_room_volume');
+    if (!sheet) return;
+    const scale = 1500;
+    const t = performance.now() / scale;
+    const n = 13;
+    const t2 = t + 20 / scale;
+    const wave = (x: number) => n * Math.sin(n * (x + 1)) + n * 0.5 * Math.sin(n * 2 * (x + 2)) + n * 0.25 * Math.sin(n * 4 * (x + 3));
+    [Math.trunc(Math.abs(wave(t))) + 4, Math.trunc(Math.abs(wave(t2))) + 4].forEach((vol, row) => {
+      for (let i = 0; i < vol; i++) {
+        const sx = i > 22 ? 4 : i > 12 ? 2 : 0;
+        surf.blitImage(sheet, sx, 0, 2, 8, ox + 9 + i * 2, oy + 60 + row * 8);
+      }
+    });
   }
 }
 

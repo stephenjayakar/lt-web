@@ -251,8 +251,8 @@ test.describe('Base submenus (Records / Library / Guide / Sound Room)', () => {
     const played = await page.evaluate(() => (window as any).__playedMusic.slice());
     expect(played.length).toBe(1);
 
-    // SELECT again stops it (toggle behavior).
-    await stepFrames(page, 1, 'SELECT');
+    // Python: START stops playback (SELECT always plays the highlighted song).
+    await stepFrames(page, 1, 'START');
     const stoppedCount = await page.evaluate(() => (window as any).__stoppedMusic);
     expect(stoppedCount).toBeGreaterThanOrEqual(1);
 
