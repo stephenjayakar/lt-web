@@ -203,7 +203,8 @@ async function runCombatLevelUp(page: Page, zeroGrowths: boolean): Promise<Lifec
     const game = (window as any).__gameRef;
     const harness = (window as any).__harness;
     const trace = (window as any).__levelTriggerTrace as TriggerTrace[];
-    for (let frame = 0; frame < 300; frame++) {
+    // Python map combat timing (~1.3 s per strike) precedes the exp screen.
+    for (let frame = 0; frame < 600; frame++) {
       (window as any).__levelTriggerNow += 400;
       harness.stepFrames(1, null);
       if (game.state.getCurrentState()?.name === 'event' &&
