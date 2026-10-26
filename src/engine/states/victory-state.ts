@@ -18,6 +18,7 @@ import {
   blitTextCenter,
   getSprite,
   preloadSprites,
+  type SpriteImage,
 } from '../../ui/menu-chrome';
 
 let _game: any = null;
@@ -131,7 +132,7 @@ export class VictoryState extends State {
 
 /** engine.transform_scale + blit with opacity. */
 function stretch(
-  surf: Surface, img: HTMLImageElement, x: number, y: number, w: number, h: number, alpha: number,
+  surf: Surface, img: SpriteImage, x: number, y: number, w: number, h: number, alpha: number,
 ): void {
   if (alpha <= 0) return;
   const s = surf.scale;

@@ -171,7 +171,7 @@ export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
-import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth } from '../../ui/menu-chrome';
+import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
@@ -1073,7 +1073,7 @@ function imageHasVisiblePixels(image: HTMLImageElement): boolean {
 
 function drawTitleAssetFrame(
   surf: Surface,
-  image: HTMLImageElement,
+  image: HTMLImageElement | SpriteImage,
   sx: number,
   sy: number,
   sw: number,
@@ -1200,8 +1200,8 @@ export class TitleState extends State {
     if (logo) {
       // Python TitleStartState: gui.Logo(logo, (WINWIDTH//2, clamp(WINHEIGHT//2 - 40,
       // logo_h//2, WINHEIGHT//2)), num_frames=1) blitted 1:1, centered.
-      const logoW = logo.naturalWidth || logo.width;
-      const logoH = logo.naturalHeight || logo.height;
+      const logoW = logo.width;
+      const logoH = logo.height;
       const centerY = Math.max(80 - 40, Math.min(Math.floor(logoH / 2), 80));
       drawTitleAssetFrame(surf, logo, 0, 0, logoW, logoH,
         scene.x + 120 - Math.floor(logoW / 2), scene.y + centerY - Math.floor(logoH / 2));
@@ -1211,8 +1211,8 @@ export class TitleState extends State {
     if (pressStart) {
       // Python gui.Logo(press_start, (WINWIDTH//2, 4*WINHEIGHT//5)): an
       // 8-frame vertical strip played 0,0,1..6,7,7,6..1 at 64ms per frame.
-      const sheetW = pressStart.naturalWidth || pressStart.width;
-      const sheetH = pressStart.naturalHeight || pressStart.height;
+      const sheetW = pressStart.width;
+      const sheetH = pressStart.height;
       const numFrames = 8;
       const frameH = Math.floor(sheetH / numFrames);
       const anim = [0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1];
@@ -10670,7 +10670,7 @@ export class EventState extends State {
     const { x: ox, y: oy } = MenuScene.origin();
     const s = surf.scale;
     const ctx = surf.ctx;
-    const blitAlpha = (img: HTMLImageElement, sx: number, sy: number, sw: number, sh: number,
+    const blitAlpha = (img: SpriteImage, sx: number, sy: number, sw: number, sh: number,
       dx: number, dy: number, alpha: number): void => {
       if (alpha <= 0 || sw <= 0 || sh <= 0) return;
       ctx.save();

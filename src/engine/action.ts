@@ -860,11 +860,20 @@ export class ActionLog {
     return false; // Assume not locked
   }
 
+  /** Python ActionLog.hover_on: game.cursor.set_turnwheel_sprite(). */
   private hoverOn(unit: UnitObject): void {
+    const cursor = _getGame?.()?.cursor;
+    if (cursor) {
+      cursor.visible = true;
+      cursor.drawState = 'turnwheel';
+    }
     this.hoveredUnit = unit;
   }
 
+  /** Python ActionLog.hover_off: game.cursor.hide(). */
   private hoverOff(): void {
+    const cursor = _getGame?.()?.cursor;
+    if (cursor) cursor.visible = false;
     this.hoveredUnit = null;
   }
 }

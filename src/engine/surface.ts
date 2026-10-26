@@ -164,7 +164,7 @@ export class Surface {
 
   /** Blit an HTMLImageElement or ImageBitmap directly */
   blitImage(
-    image: HTMLImageElement | ImageBitmap | HTMLCanvasElement,
+    image: HTMLImageElement | ImageBitmap | HTMLCanvasElement | OffscreenCanvas,
     sx: number, sy: number, sw: number, sh: number,
     dx: number, dy: number
   ): void {

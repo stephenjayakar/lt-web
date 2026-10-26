@@ -16,59 +16,36 @@ import { FRAMETIME, WINHEIGHT, WINWIDTH } from '../engine/constants';
 import { viewport } from '../engine/viewport';
 import { FONT } from '../rendering/bmp-font';
 import { getMenuBackgroundSync } from './base-surf';
+import { getSprite as getRegistrySprite } from './sprites';
 
 // ---------------------------------------------------------------------------
 // SPRITES
 // ---------------------------------------------------------------------------
 
-interface SpriteResources {
-  loadImage?(path: string): Promise<HTMLImageElement>;
-}
-
-const spriteCache: Map<string, HTMLImageElement | null> = new Map();
-
-function loadUrl(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-}
+/** A loaded sprite image (the SPRITES Surface's canvas). */
+export type SpriteImage = OffscreenCanvas | HTMLImageElement | HTMLCanvasElement;
 
 /**
- * Python SPRITES.get(nid). `path` is relative to the engine `sprites/`
- * folder (e.g. 'menus/menu_hand', 'info_menu/info_hp'); Python indexes the
- * folder recursively by basename, so the project `custom_sprites/<basename>`
- * override is tried first when resources are supplied.
+ * Python SPRITES.get(nid) via the shared registry (src/ui/sprites.ts), which
+ * indexes engine sprites and project custom_sprites by file name. `path`
+ * may carry the engine sub-folder ('menus/menu_hand'); only the basename
+ * matters. Returns null until the image has loaded.
  */
-export function getSprite(path: string, resources?: SpriteResources | null): HTMLImageElement | null {
-  if (spriteCache.has(path)) return spriteCache.get(path) ?? null;
-  spriteCache.set(path, null);
-  const base = path.split('/').pop() ?? path;
-  const load = async (): Promise<HTMLImageElement | null> => {
-    if (resources?.loadImage) {
-      const custom = await resources.loadImage(`resources/custom_sprites/${base}.png`).catch(() => null);
-      if (custom) return custom;
-    }
-    return loadUrl(`/game-data/sprites/${path}.png`);
-  };
-  void load().then((img) => {
-    if (img) spriteCache.set(path, img);
-  });
-  return null;
+export function getSprite(path: string, _resources?: unknown): SpriteImage | null {
+  const name = path.split('/').pop() ?? path;
+  const surf = getRegistrySprite(name);
+  return surf ? surf.canvas : null;
 }
 
 /** Start loading sprites ahead of their first draw. */
-export function preloadSprites(paths: string[], resources?: SpriteResources | null): void {
-  for (const path of paths) getSprite(path, resources);
+export function preloadSprites(paths: string[], _resources?: unknown): void {
+  for (const path of paths) getSprite(path);
 }
 
 /** Blit a sub-rectangle of a sprite (engine.subsurface + blit). */
 export function blitSub(
   surf: Surface,
-  img: HTMLImageElement | null,
+  img: SpriteImage | null,
   sx: number, sy: number, sw: number, sh: number,
   dx: number, dy: number,
 ): void {
@@ -77,7 +54,7 @@ export function blitSub(
 }
 
 /** Blit a whole sprite at (x, y). */
-export function blitSprite(surf: Surface, img: HTMLImageElement | null, x: number, y: number): void {
+export function blitSprite(surf: Surface, img: SpriteImage | null, x: number, y: number): void {
   if (!img) return;
   surf.blitImage(img, 0, 0, img.width, img.height, x, y);
 }
@@ -85,7 +62,7 @@ export function blitSprite(surf: Surface, img: HTMLImageElement | null, x: numbe
 /** Blit a sprite with Python make_translucent(t): t=0 opaque, t=1 invisible. */
 export function blitTranslucent(
   surf: Surface,
-  img: HTMLImageElement | null,
+  img: SpriteImage | null,
   x: number, y: number, transparency: number,
 ): void {
   if (!img) return;
@@ -209,7 +186,7 @@ export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 
 /** Draw a sprite region rotated 180 degrees (flip_horiz(flip_vert(...))). */
 function blitRotated180(
-  surf: Surface, img: HTMLImageElement,
+  surf: Surface, img: SpriteImage,
   sx: number, sy: number, sw: number, sh: number, dx: number, dy: number,
 ): void {
   const ctx = surf.ctx;

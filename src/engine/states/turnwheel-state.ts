@@ -22,7 +22,7 @@ import { MapState, type StateResult } from '../state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
-import { baseSurf, blitSub, blitText, blitTextRight, getSprite, preloadSprites, textWidth } from '../../ui/menu-chrome';
+import { baseSurf, blitSub, blitText, blitTextRight, getSprite, preloadSprites, textWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { drawStyledText } from '../../ui/styled-text';
 
 // ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ function translucentBox(): Surface {
 }
 
 /** Blit a WINWIDTH x WINHEIGHT overlay stretched to cover the viewport. */
-function drawCover(surf: Surface, img: HTMLImageElement | null, alpha: number): void {
+function drawCover(surf: Surface, img: SpriteImage | null, alpha: number): void {
   if (!img || alpha <= 0) return;
   const s = surf.scale;
   const ctx = surf.ctx;
@@ -324,6 +324,8 @@ export class TurnwheelState extends MapState {
 
   override end(): void {
     const game = getGame();
+    // Leave the green turnwheel cursor (set by ActionLog.hover_on) behind.
+    game.cursor?.show?.();
     if (this.normalVolume !== null) {
       game.audioManager?.setMusicVolume?.(this.normalVolume);
       this.normalVolume = null;
