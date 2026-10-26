@@ -1162,6 +1162,100 @@ function translatePyIndexCalls(expression: string): string {
   return translated;
 }
 
+/** End index (exclusive) of the primary expression starting at `start`. */
+function primaryEnd(str: string, start: number): number {
+  let i = start;
+  while (i < str.length && str[i] === ' ') i += 1;
+  const matchGroup = (open: string, close: string): number => {
+    let depth = 0;
+    for (let j = i; j < str.length; j++) {
+      const ch = str[j];
+      if (ch === "'" || ch === '"') {
+        j += 1;
+        while (j < str.length && str[j] !== ch) j += 1;
+        continue;
+      }
+      if (ch === open) depth += 1;
+      else if (ch === close && --depth === 0) return j + 1;
+    }
+    return -1;
+  };
+  const ch = str[i];
+  if (ch === "'" || ch === '"') {
+    let j = i + 1;
+    while (j < str.length && str[j] !== ch) j += 1;
+    i = j + 1;
+  } else if (ch === '(' || ch === '[') {
+    const end = matchGroup(ch, ch === '(' ? ')' : ']');
+    if (end < 0) return -1;
+    i = end;
+  } else if (/[\w$]/.test(ch ?? '')) {
+    while (i < str.length && /[\w$]/.test(str[i])) i += 1;
+  } else {
+    return -1;
+  }
+  for (;;) {
+    if (str[i] === '.' && /[A-Za-z_$]/.test(str[i + 1] ?? '')) {
+      i += 1;
+      while (i < str.length && /[\w$]/.test(str[i])) i += 1;
+    } else if (str[i] === '(' || str[i] === '[') {
+      const end = matchGroup(str[i], str[i] === '(' ? ')' : ']');
+      if (end < 0) return -1;
+      i = end;
+    } else {
+      return i;
+    }
+  }
+}
+
+/**
+ * Python membership `x in y` / `x not in y` (already `x ! in y` here) for
+ * arbitrary operands, including calls with nested parentheses:
+ * rewritten to __pyIn(x, y). A parenthesised tuple haystack becomes a list.
+ */
+function translatePyMembership(expression: string): string {
+  let translated = expression;
+  const inString = (str: string, index: number): boolean => {
+    let quote: string | null = null;
+    for (let i = 0; i < index; i++) {
+      const ch = str[i];
+      if (quote) {
+        if (ch === '\\') i += 1;
+        else if (ch === quote) quote = null;
+      } else if (ch === "'" || ch === '"' || ch === '`') {
+        quote = ch;
+      }
+    }
+    return quote !== null;
+  };
+  let searchFrom = 0;
+  for (let pass = 0; pass < 40; pass++) {
+    const pattern = /\s+(!\s*)?in\s+/g;
+    pattern.lastIndex = searchFrom;
+    let match = pattern.exec(translated);
+    while (match && inString(translated, match.index)) match = pattern.exec(translated);
+    if (!match) break;
+    const needleStart = receiverStart(translated, match.index);
+    const hayStart = match.index + match[0].length;
+    const hayEnd = primaryEnd(translated, hayStart);
+    if (needleStart < 0 || needleStart >= match.index || hayEnd < 0) {
+      searchFrom = match.index + match[0].length;
+      continue;
+    }
+    const needle = translated.slice(needleStart, match.index);
+    let haystack = translated.slice(hayStart, hayEnd);
+    if (haystack.startsWith('(') && haystack.endsWith(')') &&
+        findMatchingParen(haystack, 0) === haystack.length - 1 &&
+        splitAtTopLevel(haystack.slice(1, -1), ',').length > 1) {
+      haystack = `[${haystack.slice(1, -1)}]`;
+    }
+    const call = `__pyIn(${needle}, ${haystack})`;
+    translated = translated.slice(0, needleStart) + (match[1] ? `!${call}` : call) + translated.slice(hayEnd);
+    searchFrom = needleStart;
+  }
+  return translated;
+}
+
 /** Translate Python any/all generator expressions without losing nested calls. */
 function translateGeneratorExpressions(expression: string): string {
   let translated = expression;
@@ -2425,6 +2519,28 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     },
   };
   const unitFuncs = {
+    /**
+     * Python unit_funcs.usable_wtypes: the class's usable weapon types plus
+     * wexp_usable_skill grants, minus wexp_unusable_skill bans.
+     */
+    usable_wtypes(candidate: any): string[] {
+      const raw = unwrapUnit(candidate);
+      if (!raw) return [];
+      const klass = game.db?.classes?.get?.(raw.klass);
+      const usable = new Set<string>(Object.entries(klass?.wexp_gain ?? {})
+        .filter(([, entry]: [string, any]) => Array.isArray(entry) ? !!entry[0] : !!entry?.usable)
+        .map(([nid]) => nid));
+      const listOf = (value: unknown): string[] => Array.isArray(value)
+        ? value.map(String)
+        : typeof value === 'string' ? value.split(',').map((part) => part.trim()).filter(Boolean) : [];
+      for (const skill of raw.skills ?? []) {
+        for (const nid of listOf(skill.getComponent?.('wexp_usable_skill'))) usable.add(nid);
+      }
+      for (const skill of raw.skills ?? []) {
+        for (const nid of listOf(skill.getComponent?.('wexp_unusable_skill'))) usable.delete(nid);
+      }
+      return [...usable];
+    },
     check_focus(candidate: any, limit = 3) {
       const raw = unwrapUnit(candidate);
       if (!raw?.position) return 0;
@@ -2520,6 +2636,16 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         target.levels,
         (value: unknown) => value,
       );
+      // Python DB.weapon_ranks: WeaponRank objects keyed by rank nid.
+      if (property === 'weapon_ranks') {
+        const ranks: any[] = (target.weaponRanks ?? []).map((rank: any) => ({ ...rank, nid: rank.rank }));
+        return {
+          get: (nid: string) => ranks.find((rank) => rank.nid === nid),
+          values: () => ranks,
+          keys: () => ranks.map((rank) => rank.nid),
+          [Symbol.iterator]: () => ranks[Symbol.iterator](),
+        };
+      }
       return target[property as keyof typeof target];
     },
   });
@@ -2712,16 +2838,7 @@ function translateExpression(condition: string): string {
     (_whole, needle, negated, haystack) =>
       `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
   );
-  jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\))|(?:\[[^\]]+\]))*))\s+(!\s*)?in\s+(\[[^\]]*\]|[A-Za-z_]\w*(?:(?:\.[A-Za-z_]\w*)|(?:\([^()]*\)))*)/g,
-    (_whole, needle, negated, haystack) =>
-      `${negated ? '!' : ''}(${haystack}).includes(${needle})`,
-  );
-  jsExpr = jsExpr.replace(
-    /((?:'[^']*'|"[^"]*"|[\w.()[\]'"]+))\s+(!\s*)?in\s+\(([^()]*)\)/g,
-    (_whole, needle, negated, values) =>
-      `${negated ? '!' : ''}[${values}].includes(${needle})`,
-  );
+  jsExpr = translatePyMembership(jsExpr);
   jsExpr = translateConditionalExpressions(jsExpr);
   jsExpr = jsExpr.replace(
     /((?:'[^']*'|"[^"]*"))\.join\s*\((.+)\)$/,
@@ -3021,6 +3138,15 @@ function evaluateWithJsFallback(
       '_wrapUnit', '_wrapItem', '_wrapSkill', '_wrapClass', 'action', 'SourceType',
       `"use strict";
        ${localDeclarations}
+       var __pyIn = (x, seq) => {
+         if (seq == null) return false;
+         if (typeof seq === 'string') return seq.includes(x);
+         if (Array.isArray(seq)) return seq.includes(x);
+         if (seq instanceof Set || seq instanceof Map) return seq.has(x);
+         if (typeof seq[Symbol.iterator] === 'function') return Array.from(seq).includes(x);
+         if (typeof seq.has === 'function') return !!seq.has(x);
+         return Object.prototype.hasOwnProperty.call(seq, x);
+       };
        var __pyIndex = (seq, x) => {
          const i = seq == null ? -1 : seq.indexOf(x);
          if (i < 0) throw new Error('ValueError: ' + String(x) + ' is not in list');

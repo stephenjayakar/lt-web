@@ -239,7 +239,12 @@ export class EventChoiceMenu {
       return;
     }
     if (entry.kind === 'sprite') {
+      // Python parse_unit: the unit's 'passive' image, never the grey one.
+      const sprite = entry.sprite as any;
+      const previous = sprite?.state;
+      if (sprite && previous === 'gray') sprite.state = 'standing';
       entry.sprite?.draw(surf, x + 4, y - 1, 0, 0);
+      if (sprite) sprite.state = previous;
     } else if (entry.icon) {
       drawIcon16(surf, entry.icon.sheet, entry.icon.index, x + 2, y);
     }

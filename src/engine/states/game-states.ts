@@ -10920,7 +10920,7 @@ export class EventState extends State {
         ? table.rowWidth
         : entryType === 'type_portrait' ? 96
           : entryType === 'type_chibi' ? 32
-            : Math.max(24, ...values.map(value => measureStyledText(value, 'text') + 8 + (hasIcon ? 18 : 0)));
+            : Math.max(24, ...values.map(value => measureStyledText(value.includes('|') ? value.slice(value.indexOf('|') + 1) : value, 'text') + 8 + (hasIcon || entryType === 'type_unit' ? 18 : 0)));
       const rowHeight = entryType === 'type_portrait' ? 80
         : entryType === 'type_chibi' ? 32
           : values.some(value => value.includes('<icon>')) ? 18 : 16;
@@ -10979,23 +10979,45 @@ export class EventState extends State {
           }
           return;
         }
-        let label = value;
+        // Python SimpleMenuUI.parse_data: entries are 'nid' or 'nid|text'.
+        const pipe = value.indexOf('|');
+        const nid = pipe >= 0 ? value.slice(0, pipe) : value;
+        const text = pipe >= 0 ? value.slice(pipe + 1) : null;
+        let label = text ?? nid;
         let icon: { sheet: string; index: [number, number] } | null = null;
+        let unitSprite: { draw(surf: Surface, x: number, y: number, a: number, b: number): void } | null = null;
         if (entryType === 'type_base_item' || entryType === 'type_skill') {
-          const prefab = entryType === 'type_skill' ? getGame().db.skills.get(value) : getGame().db.items.get(value);
-          label = prefab?.name ?? value;
+          const prefab = entryType === 'type_skill' ? getGame().db.skills.get(nid) : getGame().db.items.get(nid);
+          label = text ?? prefab?.name ?? nid;
           if (prefab?.icon_nid && Array.isArray(prefab.icon_index)) icon = { sheet: prefab.icon_nid, index: prefab.icon_index };
         } else if (entryType === 'type_game_item') {
-          const item = getGame().getItem?.(value);
-          label = item?.name ?? value;
+          const item = getGame().getItem?.(nid) ?? getGame().getItem?.(Number(nid));
+          label = text ?? item?.name ?? nid;
           if (item?.iconNid) icon = { sheet: item.iconNid, index: item.iconIndex };
         } else if (entryType === 'type_unit') {
-          label = getGame().units.get(value)?.name ?? getGame().db.units.get(value)?.name ?? value;
+          // parse_unit: the unit's passive map sprite as a 16px icon.
+          const unit = getGame().units.get(nid);
+          label = text ?? unit?.name ?? getGame().db.units.get(nid)?.name ?? nid;
+          if (unit?.sprite && typeof unit.sprite.draw === 'function') unitSprite = unit.sprite;
         } else if (entryType === 'type_class') {
-          label = getGame().db.classes.get(value)?.name ?? value;
+          label = text ?? getGame().db.classes.get(nid)?.name ?? nid;
+        } else if (entryType === 'type_icon') {
+          const parts = nid.split('-');
+          if (parts.length >= 4) {
+            icon = { sheet: parts[0], index: [Number(parts[1]) || 0, Number(parts[2]) || 0] };
+            label = text ?? parts.slice(3).join('-');
+          }
         }
-        const textX0 = icon ? left + 18 : left;
+        const textX0 = icon || unitSprite ? left + 18 : left;
         if (icon) drawIcon16(surf, icon.sheet, icon.index, left, textY);
+        if (unitSprite) {
+          // parse_unit uses the 'passive' image, never the grey finished one.
+          const sprite = unitSprite as any;
+          const previous = sprite.state;
+          if (previous === 'gray') sprite.state = 'standing';
+          unitSprite.draw(surf, left + 2, textY - 1, 0, 0);
+          sprite.state = previous;
+        }
         const textAlignment = table.textAlignment.toLowerCase();
         const textWidth = measureStyledText(label, 'text');
         if (textAlignment === 'right' || table.background === 'funds_display') {

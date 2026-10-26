@@ -773,3 +773,43 @@ test('suspend saves the stack beneath the menu and Continue restores it with aut
   expect(after.stack).toEqual(['free']);
   expect(after.cursor).toEqual(after.lord);
 });
+
+test('expressions expose DB.weapon_ranks and unit_funcs.usable_wtypes (EOtF reward Availability table)', async ({ page }) => {
+  await boot(page);
+  const values = await page.evaluate(async () => {
+    const { evaluateExpression } = await import('/src/events/event-manager.ts');
+    const g = (window as any).__gameRef;
+    const ctx = { game: g, gameVars: g.gameVars, levelVars: g.levelVars };
+    const firstRank = g.db.weaponRanks[0];
+    return {
+      rank: evaluateExpression(`DB.weapon_ranks.get('${firstRank.rank}').requirement`, ctx),
+      expected: firstRank.requirement,
+      sword: evaluateExpression("'Sword' in unit_funcs.usable_wtypes(game.get_unit('Eirika'))", ctx),
+      axe: evaluateExpression("'Axe' in unit_funcs.usable_wtypes(game.get_unit('Eirika'))", ctx),
+    };
+  });
+  expect(values.rank).toBe(values.expected);
+  expect(values.sword).toBe(true);
+  expect(values.axe).toBe(false);
+});
+
+test('event tables show the text of nid|text entries (Python SimpleMenuUI.parse_data)', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_table_split', [
+    'table;qa_split;[\'Eirika|<green>Hero</>\', \'Seth|Knight\'];Title;2,1;80;EntryType=type_unit;expression',
+    'speak;;hold',
+  ], 6);
+  const drawn = await page.evaluate(async () => {
+    const { Surface } = await import('/src/engine/surface.ts');
+    const s = (window as any).__gameRef.state.getCurrentState() as any;
+    const surf = new Surface(240, 160);
+    const texts: string[] = [];
+    const original = surf.drawText.bind(surf);
+    (surf as any).drawText = (text: string, ...rest: any[]) => { texts.push(text); return original(text, ...rest); };
+    s.drawEventTables(surf);
+    return texts;
+  });
+  expect(drawn).toContain('Hero');
+  expect(drawn).toContain('Knight');
+  expect(drawn.join(' ')).not.toContain('|');
+});
