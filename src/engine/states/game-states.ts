@@ -192,7 +192,7 @@ import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
-import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
+import { MenuBackground, MenuScene, PanoramaFrames, loadPanoramaFrames, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
@@ -4149,6 +4149,16 @@ export function pushAlert(game: any, banner: Banner): void {
   game.state.change('alert');
 }
 
+/**
+ * Open an item use's queued events (its end_combat events, then unit_wait)
+ * with its broken-item alerts above them: Python alerts in clean_up1, before
+ * clean_up2's events and WaitState.
+ */
+function openItemUseEvents(game: any): void {
+  if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+  showPendingAlerts(game);
+}
+
 /** The resumed item menu shows the item use's pending broken-item alerts first. */
 function showPendingAlerts(game: any): boolean {
   const pending: Banner[] = game.memory.get(PENDING_ALERTS) ?? [];
@@ -5394,7 +5404,7 @@ export class ItemTargetingState extends MapState {
         finishCoreItemUse(unit, activeItem, [], new Map(), false, true);
         game.memory.delete('item_use_item');
         game.highlight.clear();
-        if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+        if (game.eventManager?.hasActiveEvents()) openItemUseEvents(game);
         else game.state.back();
         return;
       }
@@ -5456,7 +5466,7 @@ export class ItemTargetingState extends MapState {
       game.memory.delete('item_use_item');
       game.highlight.clear();
       game.state.back();
-      if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+      openItemUseEvents(game);
     }
   }
 
@@ -10443,6 +10453,8 @@ export class EventState extends State {
 
   // Background panorama image (drawn behind portraits, on top of map)
   private background: HTMLImageElement | null = null;
+  /** Python PanoramaBackground frame procession for `background`. */
+  private backgroundPanorama: PanoramaFrames | null = null;
   private pendingBackgroundLoad: boolean = false;
   private backgroundLoadDone: boolean = false;
   private backgroundLoadToken: number = 0;
@@ -10572,6 +10584,7 @@ export class EventState extends State {
       this.speakingPortrait = null;
       this.wasDialogTyping = false;
       this.background = null;
+      this.backgroundPanorama = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -10582,7 +10595,10 @@ export class EventState extends State {
       this.isHandlingLevelEnd = false;
       this.levelTransitionInProgress = false;
       const restoredBackground = this.restoreParkedPresentation(nextEvent);
-      if (restoredBackground !== undefined) this.background = restoredBackground;
+      if (restoredBackground !== undefined) {
+        this.background = restoredBackground;
+        this.backgroundPanorama = null;
+      }
     }
   }
 
@@ -11275,7 +11291,9 @@ export class EventState extends State {
       // Python PanoramaBackground fills the whole 240x160 window. The web
       // viewport can be larger than the authored scene, so scale the panorama
       // to cover it (centered) instead of leaving the map visible around it.
-      this.drawEventBackground(surf, this.background);
+      this.drawEventBackground(surf, this.backgroundPanorama?.image ?? this.background);
+      // PanoramaBackground.draw ends with update(): the next frame.
+      this.backgroundPanorama?.update(FRAMETIME);
     }
 
     // Update and draw portraits (sorted by priority, ascending)
@@ -11624,6 +11642,7 @@ export class EventState extends State {
       this.currentEvent = next;
       const restoredBackground = this.restoreParkedPresentation(next);
       this.background = restoredBackground ?? null;
+      this.backgroundPanorama = null;
       game.state.back();
       return;
     }
@@ -11669,6 +11688,7 @@ export class EventState extends State {
         }
       }
       this.background = restoredBackground;
+      this.backgroundPanorama = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -11686,6 +11706,7 @@ export class EventState extends State {
       this.eventTables.clear();
       this.eventTextboxes.clear();
       this.background = null;
+      this.backgroundPanorama = null;
       this.pendingBackgroundLoad = false;
       this.backgroundLoadDone = false;
       this.backgroundLoadToken++;
@@ -17258,6 +17279,7 @@ export class EventState extends State {
         if (!bgNid) {
           // Remove background
           this.background = null;
+          this.backgroundPanorama = null;
           this.pendingBackgroundLoad = false;
           this.backgroundLoadDone = false;
           this.backgroundLoadToken++;
@@ -17275,18 +17297,25 @@ export class EventState extends State {
           this.pendingBackgroundLoad = true;
           this.backgroundLoadDone = false;
 
-          const resourcePromise = game.resources?.loadPanorama(panoramaNid);
+          // Python create_background(panorama, False): a PanoramaBackground
+          // over every frame of the panorama.
+          const resourcePromise = game.resources
+            ? loadPanoramaFrames(panoramaNid, game.resources)
+              .then((frames) => frames.length ? frames : Promise.reject(new Error('missing')))
+            : null;
           if (!resourcePromise) {
             this.backgroundLoadDone = true;
           } else {
-            resourcePromise.then((img: HTMLImageElement) => {
+            resourcePromise.then((frames: HTMLImageElement[]) => {
               if (this.backgroundLoadToken === token) {
-                this.background = img;
+                this.background = frames[0];
+                this.backgroundPanorama = new PanoramaFrames(frames);
               }
             }).catch(() => {
               console.warn(`EventState: panorama "${panoramaNid}" not found`);
               if (this.backgroundLoadToken === token) {
                 this.background = null;
+                this.backgroundPanorama = null;
               }
             }).finally(() => {
               if (this.backgroundLoadToken === token) {
@@ -17801,9 +17830,25 @@ export class EventState extends State {
 
       case 'hide_combat_ui':
       case 'show_combat_ui':
-      case 'pause_background':
+        // Python event_functions: game_vars['_hide_ui'] (read by
+        // AnimationCombat.ui_should_be_hidden), set directly, not an action.
+        game.gameVars.set('_hide_ui', cmd.type === 'hide_combat_ui');
+        this.advancePointer();
+        return false;
+
+      case 'pause_background': {
+        // pause_background;[PauseAt]: PanoramaBackground.pause(pause_at).
+        const pauseArg = (args[0] ?? '').trim();
+        const pauseAt = pauseArg ? parseInt(pauseArg, 10) : NaN;
+        if (!this.backgroundPanorama) console.warn('Event pause_background: No current background to pause!');
+        else this.backgroundPanorama.pause(Number.isFinite(pauseAt) ? pauseAt : null);
+        this.advancePointer();
+        return false;
+      }
+
       case 'unpause_background':
-        // Visual/UI commands — skip for now to allow event progression
+        if (!this.backgroundPanorama) console.warn('Event unpause_background: No current background to unpause');
+        else this.backgroundPanorama.unpause();
         this.advancePointer();
         return false;
 

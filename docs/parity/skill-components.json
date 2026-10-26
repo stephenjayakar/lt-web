@@ -474,7 +474,7 @@
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 795
+          "line": 804
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -522,11 +522,11 @@
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 795
+          "line": 804
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 795
+          "line": 804
         },
         {
           "source": "src/combat/combat-skill-lifecycle.ts",
@@ -574,11 +574,11 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 657
+          "line": 666
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 663
+          "line": 672
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
@@ -630,11 +630,11 @@
       "webReferences": [
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 657
+          "line": 666
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 664
+          "line": 673
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
@@ -1373,19 +1373,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14587
+          "line": 14608
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16257
+          "line": 16278
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18675
+          "line": 18720
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18688
+          "line": 18733
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1652,27 +1652,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14338
+          "line": 14359
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14343
+          "line": 14364
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14355
+          "line": 14376
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14367
+          "line": 14388
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18856
+          "line": 18901
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 18925
+          "line": 18970
         },
         {
           "source": "src/events/event-command-flags.ts",
@@ -2206,7 +2206,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15510
+          "line": 15531
         },
         {
           "source": "src/events/event-manager.ts",
@@ -5118,15 +5118,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10170
+          "line": 10180
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15597
+          "line": 15618
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16287
+          "line": 16308
         },
         {
           "source": "src/main.ts",
@@ -5698,7 +5698,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5249
+          "line": 5259
         },
         {
           "source": "src/main.ts",
@@ -5748,7 +5748,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5249
+          "line": 5259
         },
         {
           "source": "src/objects/item.ts",
@@ -5926,11 +5926,11 @@
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1534
+          "line": 1543
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1766
+          "line": 1779
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -5978,7 +5978,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4659
+          "line": 4669
         },
         {
           "source": "src/engine/states/info-menu-state.ts",

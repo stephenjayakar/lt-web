@@ -258,4 +258,69 @@ test.describe('Embrace of the Fog item event hooks', () => {
       localKeys: ['item'],
     }]);
   });
+
+  // Python: the item's map combat alerts its broken item in clean_up1, then
+  // clean_up2 runs its events and WaitState's unit_wait comes last.
+  test('a tile-targeted last use alerts "broke." before its after-use event and unit_wait', async ({ page }) => {
+    await bootEotf(page);
+    const setup = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = game.units.get('Player');
+      const [x, y] = unit.position;
+      const tile = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].find(([tx, ty]) =>
+        game.board.inBounds(tx, ty) && !game.board.getUnit(tx, ty));
+      if (!tile) return null;
+      const event = (nid: string, trigger: string, condition: string, key: string) => game.db.events.set(nid, {
+        name: nid, nid, trigger, level_nid: game.currentLevel?.nid ?? null, condition,
+        only_once: false, priority: 0, _source: [`game_var;${key};{e:v('_ord_step', 0)}`, `game_var;_ord_step;{e:v('_ord_step', 0) + 1}`],
+      });
+      event('_OrdAfterUse', '_OrdAfterUse', 'True', '_ord_after_use');
+      event('_OrdWait', 'unit_wait', "unit1.nid == 'Player' and not actively_chosen", '_ord_wait');
+      game.gameVars.set('_ord_step', 1);
+      const item = new ItemObject({
+        nid: '_OrdFlare', name: 'Flare', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [
+          ['spell', null], ['target_tile', null], ['uses', 1], ['min_range', 1], ['max_range', 1],
+          ['event_after_use', '_OrdAfterUse'],
+        ],
+      });
+      item.owner = unit;
+      unit.items = [item];
+      unit.resetTurnState();
+      game.selectedUnit = unit;
+      game.memory.set('item_use_item', item);
+      game.state.change('item_targeting');
+      (window as any).__ordTile = tile;
+      return tile;
+    });
+    expect(setup).not.toBeNull();
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    const order = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const state = game.state.getCurrentState();
+      const [tx, ty] = (window as any).__ordTile;
+      state.selectTarget(state.targets.findIndex(([x, y]: [number, number]) => x === tx && y === ty));
+      let alertAt: number | null = null;
+      let text: string | null = null;
+      for (let frame = 0; frame < 600; frame++) {
+        harness.stepFrames(1, null);
+        if (alertAt === null && game.state.getCurrentState()?.name === 'alert') {
+          alertAt = Number(game.gameVars.get('_ord_step'));
+          const alerts = game.memory.get('alerts') ?? [];
+          text = alerts[alerts.length - 1]?.text ?? null;
+        }
+        if (game.gameVars.get('_ord_wait') !== undefined) break;
+      }
+      return {
+        alertAt, text,
+        afterUse: game.gameVars.get('_ord_after_use'),
+        wait: game.gameVars.get('_ord_wait'),
+        finished: game.units.get('Player').finished,
+      };
+    });
+    // The alert shows while nothing has run (step 1), then the event, then unit_wait.
+    expect(order).toEqual({ alertAt: 1, text: '<blue>Flare</> broke.', afterUse: 1, wait: 2, finished: true });
+  });
 });
