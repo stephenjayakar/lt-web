@@ -1805,6 +1805,50 @@ export class AddMapAnimationAction extends Action {
   }
 }
 
+/**
+ * Python action.RemoveMapAnim: remove the tilemap animations with this nid
+ * placed on `position` (the overlay layer when `overlay`); reversible.
+ */
+export class RemoveMapAnimationAction extends Action {
+  private tilemap: any;
+  private nid: string;
+  private position: [number, number];
+  private overlay: boolean;
+  private removed: Array<{ animation: any; index: number }> = [];
+
+  constructor(tilemap: any, nid: string, position: [number, number], overlay: boolean) {
+    super();
+    this.tilemap = tilemap;
+    this.nid = nid;
+    this.position = position;
+    this.overlay = overlay;
+  }
+
+  private collection(): any[] {
+    return this.overlay ? this.tilemap.highAnimations : this.tilemap.animations;
+  }
+
+  execute(): void {
+    const collection = this.collection();
+    this.removed = [];
+    for (let index = collection.length - 1; index >= 0; index--) {
+      const animation = collection[index];
+      const at = animation.tilePosition as [number, number] | undefined;
+      if (animation.nid === this.nid && at && at[0] === this.position[0] && at[1] === this.position[1]) {
+        this.removed.unshift({ animation, index });
+        collection.splice(index, 1);
+      }
+    }
+  }
+
+  reverse(): void {
+    const collection = this.collection();
+    for (const { animation, index } of this.removed) {
+      if (!collection.includes(animation)) collection.splice(Math.min(index, collection.length), 0, animation);
+    }
+  }
+}
+
 /** ChangeTeamPaletteAction - Python action.ChangeTeamPalette: overrides a
  * team's map-sprite palette / combat color at runtime, reversibly, and
  * rebuilds affected map sprites (cache-keyed by palette, so a lazy reload

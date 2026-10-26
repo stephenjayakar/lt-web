@@ -2792,4 +2792,23 @@ test.describe('choice and textbox commands', () => {
     }
     expect(seen.size).toBeGreaterThan(1);
   });
+
+  // Python remove_map_anim;MapAnim;FloatPosition;[overlay] (action.RemoveMapAnim)
+  // removes only the animation at that position, reversibly.
+  test('remove_map_anim removes the animation at its position only and undoes', async ({ page }) => {
+    await boot(page);
+    const nid = await page.evaluate(() => [...(window as any).__gameRef.db.mapAnimations.keys()][0]);
+    await runEvent(page, 'TestMapAnims', [
+      `map_anim;${nid};2,2;permanent`, `map_anim;${nid};3,3;permanent`, `remove_map_anim;${nid};2,2`,
+    ]);
+    const result = await page.evaluate((nid) => {
+      const g = (window as any).__gameRef;
+      const positions = () => g.tilemap.animations.filter((a: any) => a.nid === nid).map((a: any) => a.tilePosition);
+      const after = positions();
+      g.actionLog.undo();
+      return { after, undone: positions() };
+    }, nid);
+    expect(result.after).toEqual([[3, 3]]);
+    expect(result.undone).toHaveLength(2);
+  });
 });

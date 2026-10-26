@@ -153,6 +153,7 @@ import {
   ShowLayerAction,
   HideLayerAction,
   AddMapAnimationAction,
+  RemoveMapAnimationAction,
   ChangeTeamPaletteAction,
   ChangeRoamAiAction,
   ChangeTeamAction,
@@ -349,7 +350,26 @@ export function setGameRef(g: any): void {
     anim: (nid) => transitionAnimSheet(g, nid),
     flowerSprite: () => getSprite('particle_warp_flower'),
   });
+  preloadTransitionArt(g);
+}
+
+/**
+ * Load the warp petal sprite and the Warp / Swoosh sheets as soon as a
+ * project is known, so the first transition has them from its first frame.
+ */
+export function preloadTransitionArt(game: any): void {
   void preloadSprites(['particle_warp_flower']);
+  transitionAnimSheet(game, 'Warp');
+  transitionAnimSheet(game, 'Swoosh');
+}
+
+/** Whether the transition art (petals and both sheets) is ready (tests). */
+export function transitionArtReady(): boolean {
+  const ready = (nid: string) => {
+    const sheet = transitionSheets.get(nid);
+    return !!sheet && sheet !== 'loading';
+  };
+  return !!getSprite('particle_warp_flower') && ready('Warp') && ready('Swoosh');
 }
 
 const transitionSheets = new Map<string, TransitionAnimSheet | null | 'loading'>();
@@ -360,10 +380,8 @@ function transitionAnimSheet(game: any, nid: 'Warp' | 'Swoosh'): TransitionAnimS
   if (cached === 'loading') return null;
   if (cached !== undefined) return cached;
   const prefab = game?.db?.mapAnimations?.get?.(nid);
-  if (!prefab || !game?.resources?.loadImage) {
-    transitionSheets.set(nid, null);
-    return null;
-  }
+  // Not cached: the project's animations may not be loaded yet.
+  if (!prefab || !game?.resources?.loadImage) return null;
   transitionSheets.set(nid, 'loading');
   void game.resources.loadImage(`resources/animations/${nid}.png`).then((image: HTMLImageElement) => {
     transitionSheets.set(nid, {
@@ -12568,6 +12586,7 @@ export class EventState extends State {
     speedMs: number,
     game: GameState,
     onComplete: () => void,
+    follow: boolean = false,
   ): boolean {
     if (!unit.position || !game.board || !game.pathSystem) return false;
     const fullPath = game.pathSystem.getPath(unit, target[0], target[1], game.board);
@@ -12605,6 +12624,14 @@ export class EventState extends State {
         unit.movementLeft = previousMovementLeft;
         onComplete();
       },
+      // Python MovementSystem.update: a following event move puts the
+      // cursor on the unit and centers the camera on it at every tile.
+      follow
+        ? (position) => {
+          game.cursor?.setPos(position[0], position[1]);
+          game.camera?.focusTile(position[0], position[1]);
+        }
+        : undefined,
     );
     return true;
   }
@@ -13709,7 +13736,6 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        if (!noFollow) game.camera?.focusTile(targetPos[0], targetPos[1]);
         if (this.skipMode || movementType === 'immediate') {
           game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
           this.advancePointer();
@@ -13732,7 +13758,7 @@ export class EventState extends State {
             this.blockingEventMovements = 0;
             this.advancePointer();
           }
-        });
+        }, !noFollow);
         if (!started) {
           this.blockingEventMovements = 0;
           this.advancePointer();
@@ -15031,12 +15057,15 @@ export class EventState extends State {
 
           const spawnedUnit = this.findUnit(unitNid);
           if (!spawnedUnit || !game.board) continue;
-          if (this.skipMode || movementType !== 'normal') {
+          if (movementType === 'swoosh' && !this.skipMode) {
+            // Python Event._move_unit has no swoosh branch: the unit stays
+            // where it arrived on the map edge.
+          } else if (this.skipMode || movementType !== 'normal') {
             const from: [number, number] | null = spawnedUnit.position
               ? [spawnedUnit.position[0], spawnedUnit.position[1]]
               : null;
             game.actionLog.doAction(new ArriveOnMapAction(game, spawnedUnit, finalDestination));
-            if (!this.skipMode && from && movementType !== 'swoosh') this.moveTransition(spawnedUnit, movementType, from);
+            if (!this.skipMode && from) this.moveTransition(spawnedUnit, movementType, from);
           } else {
             moves.push({ unit: spawnedUnit, target: finalDestination });
           }
@@ -15046,20 +15075,18 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        if (!noFollow) {
-          const target = moves[moves.length - 1].target;
-          game.camera?.focusTile(target[0], target[1]);
-        }
         const blocks = !noBlock;
         if (blocks) this.blockingEventMovements = moves.length;
         let startedMoves = 0;
         for (const move of moves) {
+          // Python's camera follows the last following mover.
+          const followMove = !noFollow && move === moves[moves.length - 1];
           const started = this.beginEventMove(move.unit, move.target, 120, game, () => {
             if (blocks) {
               this.blockingEventMovements--;
               if (this.blockingEventMovements === 0) this.advancePointer();
             }
-          });
+          }, followMove);
           if (started) startedMoves++;
           else if (blocks) this.blockingEventMovements--;
         }
@@ -15135,10 +15162,12 @@ export class EventState extends State {
           if (!destination) continue;
           const finalPosition = this._checkPlacement(destination, placement, game, unit);
           if (!finalPosition) continue;
-          if (this.skipMode || movementType !== 'normal') {
+          if (movementType === 'swoosh' && !this.skipMode) {
+            // Python Event._move_unit has no swoosh branch: no move.
+          } else if (this.skipMode || movementType !== 'normal') {
             const from: [number, number] = [unit.position[0], unit.position[1]];
             game.actionLog.doAction(new WarpUnitAction(unit, finalPosition, game.board));
-            if (!this.skipMode && movementType !== 'swoosh') this.moveTransition(unit, movementType, from);
+            if (!this.skipMode) this.moveTransition(unit, movementType, from);
           } else {
             moves.push({ unit, target: finalPosition });
           }
@@ -15148,20 +15177,18 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
-        if (!noFollow) {
-          const target = moves[moves.length - 1].target;
-          game.camera?.focusTile(target[0], target[1]);
-        }
         const blocks = !noBlock;
         if (blocks) this.blockingEventMovements = moves.length;
         let startedMoves = 0;
         for (const move of moves) {
+          // Python's camera follows the last following mover.
+          const followMove = !noFollow && move === moves[moves.length - 1];
           const started = this.beginEventMove(move.unit, move.target, 120, game, () => {
             if (blocks) {
               this.blockingEventMovements--;
               if (this.blockingEventMovements === 0) this.advancePointer();
             }
-          });
+          }, followMove);
           if (started) startedMoves++;
           else if (blocks) this.blockingEventMovements--;
         }
@@ -16940,7 +16967,7 @@ export class EventState extends State {
           game.tilemap.animations.push(mapAnim);
         }
 
-        if (maNoBlock || maPermanent) {
+        if (maNoBlock || maPermanent || this.skipMode) {
           this.advancePointer();
           return false;
         }
@@ -16951,11 +16978,20 @@ export class EventState extends State {
       }
 
       case 'remove_map_anim': {
-        // remove_map_anim;AnimNid
+        // Python remove_map_anim;MapAnim;FloatPosition;[overlay]:
+        // action.RemoveMapAnim drops the animations with that nid on that
+        // position, from the overlay layer with the flag.
         const rmaAnimNid = args[0] ?? '';
-        if (game.tilemap) {
-          game.tilemap.animations = game.tilemap.animations.filter((a: MapAnimation) => a.nid !== rmaAnimNid);
-          game.tilemap.highAnimations = game.tilemap.highAnimations.filter((a: MapAnimation) => a.nid !== rmaAnimNid);
+        const rmaPosArg = args[1] ?? '';
+        const rmaMatch = rmaPosArg.match(/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/);
+        const rmaPos: [number, number] | null = rmaMatch
+          ? [parseFloat(rmaMatch[1]), parseFloat(rmaMatch[2])]
+          : this.resolvePosition(rmaPosArg, game);
+        if (!rmaPos) {
+          console.warn(`remove_map_anim: Could not find position ${rmaPosArg}`);
+        } else if (game.tilemap) {
+          const overlay = args.slice(2).some((arg) => arg.toLowerCase().trim() === 'overlay');
+          game.actionLog.doAction(new RemoveMapAnimationAction(game.tilemap, rmaAnimNid, rmaPos, overlay));
         }
         this.advancePointer();
         return false;

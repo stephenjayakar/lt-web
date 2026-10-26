@@ -175,3 +175,55 @@ test('open_convoy opens supply_items even without the _convoy game var', async (
   await step(page, 5);
   expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('supply_items');
 });
+
+test('the Warp/Swoosh sheets and warp petals load with the project', async ({ page }) => {
+  await boot(page);
+  await page.waitForFunction(async () => {
+    const { transitionArtReady } = await import('/src/engine/states/game-states.ts');
+    return transitionArtReady();
+  }, undefined, { timeout: 10_000 });
+});
+
+// Python Event._move_unit has no swoosh branch: move_group / spawn_group
+// with MovementType swoosh leave the unit where it is.
+test('move_group with swoosh does not move the unit, as Python', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.currentLevel.unit_groups.push({ nid: '_SwooshGroup', units: ['Seth'], positions: { Seth: [6, 4] } });
+  });
+  await startEvent(page, 'TestSwooshGroup', ['move_group;_SwooshGroup;;swoosh']);
+  await step(page, 10);
+  const state = await fx(page, 'Seth');
+  expect(state).toMatchObject({ position: [4, 4], transition: null });
+});
+
+// Python MovementSystem.update: a following event move keeps the cursor on
+// the unit and centers the camera on it tile by tile (not on the target).
+test('move_unit follows the walking unit with the cursor', async ({ page }) => {
+  await boot(page);
+  const target = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    g.cursor.setPos(0, 0);
+    const seth = g.units.get('Seth');
+    let best: number[] | null = null;
+    for (const [x, y] of g.pathSystem.getValidMoves(seth, g.board)) {
+      const path = g.pathSystem.getPath(seth, x, y, g.board);
+      if (path && path.length >= 4 && !g.board.getUnit(x, y)) { best = [x, y]; break; }
+    }
+    return best;
+  });
+  expect(target).not.toBeNull();
+  await startEvent(page, 'TestFollow', [`move_unit;Seth;${target![0]},${target![1]}`]);
+  const samples: Array<{ unit: number[]; cursor: number[] }> = [];
+  for (let i = 0; i < 6; i++) {
+    await step(page, 4);
+    samples.push(await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const hover = g.cursor.getHover();
+      return { unit: [...g.units.get('Seth').position], cursor: [hover.x, hover.y] };
+    }));
+  }
+  for (const sample of samples) expect(sample.cursor).toEqual(sample.unit);
+  expect(new Set(samples.map((sample) => sample.unit.join(','))).size).toBeGreaterThan(1);
+});
