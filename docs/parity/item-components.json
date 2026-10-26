@@ -152,27 +152,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3376
+          "line": 3390
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4255
+          "line": 4269
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4719
+          "line": 4733
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14795
+          "line": 14855
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14813
+          "line": 14873
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15813
+          "line": 15879
         },
         {
           "source": "src/objects/item.ts",
@@ -190,27 +190,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3376
+          "line": 3390
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4255
+          "line": 4269
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4719
+          "line": 4733
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14795
+          "line": 14855
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14813
+          "line": 14873
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15813
+          "line": 15879
         },
         {
           "source": "src/objects/item.ts",
@@ -243,13 +243,13 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4720
+          "line": 4734
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4720
+          "line": 4734
         }
       ],
       "matchingWebHooks": [],
@@ -278,31 +278,31 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4139
+          "line": 4153
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4738
+          "line": 4752
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4992
+          "line": 5010
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5012
+          "line": 5030
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5022
+          "line": 5040
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5239
+          "line": 5257
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5246
+          "line": 5264
         },
         {
           "source": "src/engine/target-system.ts",
@@ -328,31 +328,31 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4139
+          "line": 4153
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4738
+          "line": 4752
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4992
+          "line": 5010
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5012
+          "line": 5030
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5022
+          "line": 5040
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5239
+          "line": 5257
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5246
+          "line": 5264
         },
         {
           "source": "src/engine/target-system.ts",
@@ -393,7 +393,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1240
+          "line": 1242
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -403,7 +403,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1240
+          "line": 1242
         }
       ],
       "matchingWebHooks": [
@@ -430,7 +430,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1244
+          "line": 1246
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -440,7 +440,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1244
+          "line": 1246
         }
       ],
       "matchingWebHooks": [
@@ -467,7 +467,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1248
+          "line": 1250
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -477,7 +477,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1248
+          "line": 1250
         }
       ],
       "matchingWebHooks": [
@@ -510,7 +510,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4162
+          "line": 4176
         },
         {
           "source": "src/objects/item.ts",
@@ -520,7 +520,7 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4162
+          "line": 4176
         },
         {
           "source": "src/objects/item.ts",
@@ -551,7 +551,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1663
+          "line": 1665
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -559,19 +559,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4166
+          "line": 4180
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14318
+          "line": 14378
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 134
+          "line": 163
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 240
+          "line": 269
         },
         {
           "source": "src/objects/item.ts",
@@ -581,11 +581,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1663
+          "line": 1665
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4166
+          "line": 4180
         },
         {
           "source": "src/objects/item.ts",
@@ -637,7 +637,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 672
+          "line": 674
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -647,7 +647,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 672
+          "line": 674
         }
       ],
       "matchingWebHooks": [
@@ -1066,19 +1066,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2775
+          "line": 2798
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2792
+          "line": 2815
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2796
+          "line": 2819
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2797
+          "line": 2820
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1086,7 +1086,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 678
+          "line": 688
         },
         {
           "source": "src/harness.ts",
@@ -1100,7 +1100,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2796
+          "line": 2819
         }
       ],
       "matchingWebHooks": [],
@@ -1125,11 +1125,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2800
+          "line": 2823
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2801
+          "line": 2824
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1139,11 +1139,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2800
+          "line": 2823
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2801
+          "line": 2824
         }
       ],
       "matchingWebHooks": [],
@@ -1327,11 +1327,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1020
+          "line": 1022
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1150
+          "line": 1152
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1341,11 +1341,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1020
+          "line": 1022
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1150
+          "line": 1152
         }
       ],
       "matchingWebHooks": [
@@ -1375,19 +1375,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1021
+          "line": 1023
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1037
+          "line": 1039
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1151
+          "line": 1153
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1167
+          "line": 1169
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1401,19 +1401,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1021
+          "line": 1023
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1037
+          "line": 1039
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1151
+          "line": 1153
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1167
+          "line": 1169
         }
       ],
       "matchingWebHooks": [
@@ -1442,15 +1442,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1022
+          "line": 1024
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1040
+          "line": 1042
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1152
+          "line": 1154
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1464,15 +1464,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1022
+          "line": 1024
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1040
+          "line": 1042
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1152
+          "line": 1154
         }
       ],
       "matchingWebHooks": [
@@ -1502,23 +1502,23 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1023
+          "line": 1025
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1038
+          "line": 1040
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1041
+          "line": 1043
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1153
+          "line": 1155
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1168
+          "line": 1170
         },
         {
           "source": "src/main.ts",
@@ -1528,23 +1528,23 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1023
+          "line": 1025
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1038
+          "line": 1040
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1041
+          "line": 1043
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1153
+          "line": 1155
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1168
+          "line": 1170
         }
       ],
       "matchingWebHooks": [
@@ -1571,21 +1571,21 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1026
+          "line": 1028
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1156
+          "line": 1158
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1026
+          "line": 1028
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1156
+          "line": 1158
         }
       ],
       "matchingWebHooks": [
@@ -1613,15 +1613,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1027
+          "line": 1029
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1040
+          "line": 1042
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1157
+          "line": 1159
         },
         {
           "source": "src/main.ts",
@@ -1631,15 +1631,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1027
+          "line": 1029
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1040
+          "line": 1042
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1157
+          "line": 1159
         }
       ],
       "matchingWebHooks": [
@@ -1671,23 +1671,23 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 961
+          "line": 963
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1060
+          "line": 1062
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1061
+          "line": 1063
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1177
+          "line": 1179
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1178
+          "line": 1180
         },
         {
           "source": "src/main.ts",
@@ -1697,23 +1697,23 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 961
+          "line": 963
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1060
+          "line": 1062
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1061
+          "line": 1063
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1177
+          "line": 1179
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1178
+          "line": 1180
         }
       ],
       "matchingWebHooks": [
@@ -1743,11 +1743,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1070
+          "line": 1072
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1181
+          "line": 1183
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1757,11 +1757,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1070
+          "line": 1072
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1181
+          "line": 1183
         }
       ],
       "matchingWebHooks": [
@@ -1791,11 +1791,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1087
+          "line": 1089
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1200
+          "line": 1202
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1805,11 +1805,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1087
+          "line": 1089
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1200
+          "line": 1202
         }
       ],
       "matchingWebHooks": [
@@ -1839,15 +1839,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1087
+          "line": 1089
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1088
+          "line": 1090
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1200
+          "line": 1202
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1857,15 +1857,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1087
+          "line": 1089
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1088
+          "line": 1090
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1200
+          "line": 1202
         }
       ],
       "matchingWebHooks": [
@@ -1895,11 +1895,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1097
+          "line": 1099
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1205
+          "line": 1207
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1909,11 +1909,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1097
+          "line": 1099
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1205
+          "line": 1207
         }
       ],
       "matchingWebHooks": [
@@ -1943,11 +1943,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1074
+          "line": 1076
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1190
+          "line": 1192
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1957,11 +1957,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1074
+          "line": 1076
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1190
+          "line": 1192
         }
       ],
       "matchingWebHooks": [
@@ -1991,19 +1991,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1074
-        },
-        {
-          "source": "src/combat/item-system.ts",
           "line": 1076
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1190
+          "line": 1078
         },
         {
           "source": "src/combat/item-system.ts",
           "line": 1192
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1194
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2013,19 +2013,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1074
-        },
-        {
-          "source": "src/combat/item-system.ts",
           "line": 1076
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1190
+          "line": 1078
         },
         {
           "source": "src/combat/item-system.ts",
           "line": 1192
+        },
+        {
+          "source": "src/combat/item-system.ts",
+          "line": 1194
         }
       ],
       "matchingWebHooks": [
@@ -2081,19 +2081,19 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2036
+          "line": 2059
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2041
+          "line": 2064
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2048
+          "line": 2071
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2055
+          "line": 2078
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2101,15 +2101,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6992
+          "line": 7010
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7570
+          "line": 7588
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2589
+          "line": 1419
         },
         {
           "source": "src/objects/item.ts",
@@ -2133,7 +2133,7 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 970
+          "line": 969
         }
       ],
       "directReads": [
@@ -2147,23 +2147,23 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2036
+          "line": 2059
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2041
+          "line": 2064
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2048
+          "line": 2071
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2055
+          "line": 2078
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6992
+          "line": 7010
         },
         {
           "source": "src/objects/item.ts",
@@ -2210,19 +2210,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2021
+          "line": 2044
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2043
+          "line": 2066
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2050
+          "line": 2073
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2059
+          "line": 2082
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2230,7 +2230,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2585
+          "line": 1415
         },
         {
           "source": "src/objects/item.ts",
@@ -2260,19 +2260,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2021
+          "line": 2044
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2043
+          "line": 2066
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2050
+          "line": 2073
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2059
+          "line": 2082
         },
         {
           "source": "src/objects/item.ts",
@@ -2319,19 +2319,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2035
+          "line": 2058
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2041
+          "line": 2064
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2048
+          "line": 2071
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2059
+          "line": 2082
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2345,19 +2345,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2035
+          "line": 2058
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2041
+          "line": 2064
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2048
+          "line": 2071
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2059
+          "line": 2082
         },
         {
           "source": "src/objects/item.ts",
@@ -2396,7 +2396,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4769
+          "line": 4786
         },
         {
           "source": "src/objects/item.ts",
@@ -2410,7 +2410,7 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4769
+          "line": 4786
         },
         {
           "source": "src/objects/item.ts",
@@ -2445,13 +2445,13 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4769
+          "line": 4786
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4769
+          "line": 4786
         }
       ],
       "matchingWebHooks": [],
@@ -2476,19 +2476,19 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 920
+          "line": 910
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 700
+          "line": 702
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1292
+          "line": 1294
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2070
+          "line": 2038
         },
         {
           "source": "src/engine/states/manage-state.ts",
@@ -2506,19 +2506,19 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 920
+          "line": 910
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 700
+          "line": 702
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1292
+          "line": 1294
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2070
+          "line": 2038
         },
         {
           "source": "src/engine/states/manage-state.ts",
@@ -2547,7 +2547,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 961
+          "line": 963
         },
         {
           "source": "src/main.ts",
@@ -2557,7 +2557,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 961
+          "line": 963
         }
       ],
       "matchingWebHooks": [],
@@ -2586,11 +2586,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1805
+          "line": 1831
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1807
+          "line": 1833
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2645,11 +2645,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3369
+          "line": 3383
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2150
+          "line": 982
         },
         {
           "source": "src/main.ts",
@@ -2690,7 +2690,7 @@
       "webReferences": [
         {
           "source": "src/events/event-manager.ts",
-          "line": 2151
+          "line": 983
         },
         {
           "source": "src/objects/item.ts",
@@ -2737,7 +2737,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 682
+          "line": 684
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2747,7 +2747,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 682
+          "line": 684
         }
       ],
       "matchingWebHooks": [
@@ -2787,7 +2787,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 794
+          "line": 796
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2795,11 +2795,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1953
+          "line": 746
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1954
+          "line": 747
         },
         {
           "source": "src/objects/item.ts",
@@ -2809,7 +2809,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 794
+          "line": 796
         }
       ],
       "matchingWebHooks": [],
@@ -2836,7 +2836,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1596
+          "line": 1598
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -2844,67 +2844,67 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3715
+          "line": 3729
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3715
+          "line": 3729
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3719
+          "line": 3733
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3736
+          "line": 3750
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3857
+          "line": 3871
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3870
+          "line": 3884
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4735
+          "line": 4749
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4795
+          "line": 4813
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4808
+          "line": 4826
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4815
+          "line": 4833
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5078
+          "line": 5096
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5100
+          "line": 5118
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9845
+          "line": 9863
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15939
+          "line": 16005
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15968
+          "line": 16034
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15976
+          "line": 16042
         },
         {
           "source": "src/engine/states/promotion-state.ts",
@@ -2952,11 +2952,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 159
+          "line": 188
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 265
+          "line": 294
         },
         {
           "source": "src/objects/item.ts",
@@ -2966,27 +2966,27 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1596
+          "line": 1598
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3857
+          "line": 3871
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4735
+          "line": 4749
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4795
+          "line": 4813
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4808
+          "line": 4826
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5078
+          "line": 5096
         },
         {
           "source": "src/objects/item.ts",
@@ -3016,27 +3016,27 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1603
+          "line": 1605
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3857
+          "line": 3871
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3858
+          "line": 3872
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4736
+          "line": 4750
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5078
+          "line": 5096
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5082
+          "line": 5100
         },
         {
           "source": "src/objects/item.ts",
@@ -3046,27 +3046,27 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1603
+          "line": 1605
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3857
+          "line": 3871
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3858
+          "line": 3872
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4736
+          "line": 4750
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5078
+          "line": 5096
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5082
+          "line": 5100
         },
         {
           "source": "src/objects/item.ts",
@@ -3096,35 +3096,35 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1608
+          "line": 1610
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3875
+          "line": 3889
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4737
+          "line": 4751
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5079
+          "line": 5097
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5083
+          "line": 5101
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5100
+          "line": 5118
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9845
+          "line": 9863
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16028
+          "line": 16094
         },
         {
           "source": "src/engine/states/promotion-state.ts",
@@ -3170,23 +3170,23 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1608
+          "line": 1610
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3875
+          "line": 3889
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4737
+          "line": 4751
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5079
+          "line": 5097
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5083
+          "line": 5101
         },
         {
           "source": "src/objects/item.ts",
@@ -3216,7 +3216,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3887
+          "line": 3901
         },
         {
           "source": "src/objects/item.ts",
@@ -3226,7 +3226,7 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3887
+          "line": 3901
         },
         {
           "source": "src/objects/item.ts",
@@ -3285,33 +3285,33 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2265
+          "line": 2256
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2354
+          "line": 2345
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4158
+          "line": 4172
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4836
+          "line": 4854
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5180
+          "line": 5198
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4836
+          "line": 4854
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5180
+          "line": 5198
         }
       ],
       "matchingWebHooks": [],
@@ -3338,11 +3338,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2290
+          "line": 2281
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2356
+          "line": 2347
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3350,21 +3350,21 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4837
+          "line": 4855
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5182
+          "line": 5200
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4837
+          "line": 4855
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5182
+          "line": 5200
         }
       ],
       "matchingWebHooks": [],
@@ -3399,11 +3399,11 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2291
+          "line": 2282
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2357
+          "line": 2348
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3411,21 +3411,21 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4837
+          "line": 4855
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5183
+          "line": 5201
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4837
+          "line": 4855
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5183
+          "line": 5201
         }
       ],
       "matchingWebHooks": [],
@@ -3458,7 +3458,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2361
+          "line": 2384
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3472,7 +3472,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2361
+          "line": 2384
         }
       ],
       "matchingWebHooks": [],
@@ -3497,13 +3497,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2356
+          "line": 2379
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2356
+          "line": 2379
         }
       ],
       "matchingWebHooks": [],
@@ -3553,7 +3553,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2352
+          "line": 2375
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3659,15 +3659,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4028
+          "line": 4042
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 6538
+          "line": 6556
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7578
+          "line": 7596
+        },
+        {
+          "source": "src/events/py-expr/runtime.ts",
+          "line": 1792
         }
       ],
       "directReads": [
@@ -3681,7 +3685,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4028
+          "line": 4042
         }
       ],
       "matchingWebHooks": [],
@@ -3741,13 +3745,13 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4041
+          "line": 4055
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4041
+          "line": 4055
         }
       ],
       "matchingWebHooks": [],
@@ -3784,11 +3788,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4015
+          "line": 4029
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2139
+          "line": 971
         }
       ],
       "directReads": [
@@ -3802,7 +3806,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4015
+          "line": 4029
         }
       ],
       "matchingWebHooks": [],
@@ -3827,15 +3831,15 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2130
+          "line": 2120
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4059
+          "line": 4073
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 13770
+          "line": 13824
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -3853,11 +3857,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2130
+          "line": 2120
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4059
+          "line": 4073
         }
       ],
       "matchingWebHooks": [],
@@ -3896,7 +3900,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2340
+          "line": 2363
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3928,7 +3932,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2520
+          "line": 2543
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3960,7 +3964,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2521
+          "line": 2544
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4000,7 +4004,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2754
+          "line": 2777
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4022,7 +4026,7 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2754
+          "line": 2777
         }
       ],
       "matchingWebHooks": [],
@@ -4047,11 +4051,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2697
+          "line": 2720
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2704
+          "line": 2727
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4061,7 +4065,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2697
+          "line": 2720
         }
       ],
       "matchingWebHooks": [],
@@ -4086,7 +4090,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2721
+          "line": 2744
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4096,7 +4100,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2721
+          "line": 2744
         }
       ],
       "matchingWebHooks": [],
@@ -4121,13 +4125,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2691
+          "line": 2714
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2691
+          "line": 2714
         }
       ],
       "matchingWebHooks": [],
@@ -4152,15 +4156,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2056
+          "line": 2079
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2057
+          "line": 2080
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 753
+          "line": 746
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4170,11 +4174,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2057
+          "line": 2080
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 753
+          "line": 746
         }
       ],
       "matchingWebHooks": [
@@ -4201,11 +4205,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2042
+          "line": 2065
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1032
+          "line": 1025
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4219,11 +4223,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2042
+          "line": 2065
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1032
+          "line": 1025
         }
       ],
       "matchingWebHooks": [
@@ -4250,7 +4254,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2049
+          "line": 2072
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4260,7 +4264,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2049
+          "line": 2072
         }
       ],
       "matchingWebHooks": [
@@ -4287,7 +4291,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2186
+          "line": 2209
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4297,7 +4301,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2186
+          "line": 2209
         }
       ],
       "matchingWebHooks": [
@@ -4324,7 +4328,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2197
+          "line": 2220
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4356,7 +4360,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2198
+          "line": 2221
         }
       ],
       "directReads": [],
@@ -4384,7 +4388,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2199
+          "line": 2222
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4416,21 +4420,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2190
-        },
-        {
-          "source": "src/events/event-manager.ts",
-          "line": 2682
-        },
-        {
-          "source": "src/events/event-manager.ts",
-          "line": 2684
+          "line": 2213
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2190
+          "line": 2213
         }
       ],
       "matchingWebHooks": [
@@ -4459,7 +4455,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2588
+          "line": 2611
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4473,7 +4469,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2588
+          "line": 2611
         }
       ],
       "matchingWebHooks": [],
@@ -4500,7 +4496,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2590
+          "line": 2613
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4510,7 +4506,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2590
+          "line": 2613
         }
       ],
       "matchingWebHooks": [],
@@ -4537,7 +4533,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2663
+          "line": 2686
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4547,7 +4543,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2663
+          "line": 2686
         }
       ],
       "matchingWebHooks": [],
@@ -4574,7 +4570,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2665
+          "line": 2688
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4584,7 +4580,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2665
+          "line": 2688
         }
       ],
       "matchingWebHooks": [],
@@ -4609,13 +4605,13 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2136
+          "line": 2126
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2136
+          "line": 2126
         }
       ],
       "matchingWebHooks": [],
@@ -4640,11 +4636,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2105
+          "line": 2128
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2502
+          "line": 2458
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4658,7 +4654,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2105
+          "line": 2128
         }
       ],
       "matchingWebHooks": [
@@ -4685,11 +4681,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2114
+          "line": 2137
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2508
+          "line": 2464
         },
         {
           "source": "src/main.ts",
@@ -4699,7 +4695,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2114
+          "line": 2137
         }
       ],
       "matchingWebHooks": [
@@ -4726,11 +4722,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2138
+          "line": 2161
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2518
+          "line": 2474
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4744,7 +4740,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2138
+          "line": 2161
         }
       ],
       "matchingWebHooks": [
@@ -4771,11 +4767,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2149
+          "line": 2172
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2524
+          "line": 2480
         },
         {
           "source": "src/main.ts",
@@ -4785,7 +4781,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2149
+          "line": 2172
         }
       ],
       "matchingWebHooks": [
@@ -4812,11 +4808,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2118
+          "line": 2141
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2534
+          "line": 2490
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4830,7 +4826,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2118
+          "line": 2141
         }
       ],
       "matchingWebHooks": [
@@ -4857,11 +4853,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2122
+          "line": 2145
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2540
+          "line": 2496
         },
         {
           "source": "src/main.ts",
@@ -4871,7 +4867,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2122
+          "line": 2145
         }
       ],
       "matchingWebHooks": [
@@ -4898,11 +4894,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2126
+          "line": 2149
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2550
+          "line": 2506
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4916,7 +4912,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2126
+          "line": 2149
         }
       ],
       "matchingWebHooks": [
@@ -4943,11 +4939,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2130
+          "line": 2153
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2556
+          "line": 2512
         },
         {
           "source": "src/main.ts",
@@ -4957,7 +4953,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2130
+          "line": 2153
         }
       ],
       "matchingWebHooks": [
@@ -4984,11 +4980,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2153
+          "line": 2176
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2565
+          "line": 2521
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -4998,7 +4994,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2153
+          "line": 2176
         }
       ],
       "matchingWebHooks": [
@@ -5025,17 +5021,17 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2157
+          "line": 2180
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2571
+          "line": 2527
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2157
+          "line": 2180
         }
       ],
       "matchingWebHooks": [
@@ -5062,11 +5058,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2161
+          "line": 2184
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2580
+          "line": 2536
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5076,7 +5072,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2161
+          "line": 2184
         }
       ],
       "matchingWebHooks": [
@@ -5103,17 +5099,17 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2165
+          "line": 2188
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2586
+          "line": 2542
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2165
+          "line": 2188
         }
       ],
       "matchingWebHooks": [
@@ -5140,11 +5136,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2169
+          "line": 2192
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2592
+          "line": 2548
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5154,7 +5150,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2169
+          "line": 2192
         }
       ],
       "matchingWebHooks": [
@@ -5181,17 +5177,17 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2173
+          "line": 2196
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2596
+          "line": 2552
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2173
+          "line": 2196
         }
       ],
       "matchingWebHooks": [
@@ -5218,11 +5214,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2177
+          "line": 2200
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2602
+          "line": 2558
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5232,7 +5228,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2177
+          "line": 2200
         }
       ],
       "matchingWebHooks": [
@@ -5259,17 +5255,17 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2181
+          "line": 2204
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 2606
+          "line": 2562
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2181
+          "line": 2204
         }
       ],
       "matchingWebHooks": [
@@ -5302,11 +5298,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1618
+          "line": 1620
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1619
+          "line": 1621
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5314,23 +5310,23 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3905
+          "line": 3919
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4786
+          "line": 4804
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4787
+          "line": 4805
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4823
+          "line": 4841
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4827
+          "line": 4845
         },
         {
           "source": "src/objects/item.ts",
@@ -5352,15 +5348,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1618
+          "line": 1620
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4786
+          "line": 4804
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4823
+          "line": 4841
         },
         {
           "source": "src/objects/item.ts",
@@ -5399,7 +5395,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3913
+          "line": 3927
         },
         {
           "source": "src/objects/item.ts",
@@ -5434,7 +5430,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3921
+          "line": 3935
         },
         {
           "source": "src/objects/item.ts",
@@ -5469,7 +5465,7 @@
       "webReferences": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3929
+          "line": 3943
         },
         {
           "source": "src/objects/item.ts",
@@ -5548,11 +5544,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3797
+          "line": 3811
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5051
+          "line": 5069
         },
         {
           "source": "src/main.ts",
@@ -5578,11 +5574,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3797
+          "line": 3811
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5051
+          "line": 5069
         },
         {
           "source": "src/objects/item.ts",
@@ -5725,11 +5721,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3798
+          "line": 3812
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5051
+          "line": 5069
         },
         {
           "source": "src/objects/item.ts",
@@ -5747,11 +5743,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3798
+          "line": 3812
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5051
+          "line": 5069
         },
         {
           "source": "src/objects/item.ts",
@@ -5784,11 +5780,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1754
+          "line": 1744
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1795
+          "line": 1785
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5820,11 +5816,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2017
+          "line": 2007
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2022
+          "line": 2012
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5858,11 +5854,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1698
+          "line": 1700
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1699
+          "line": 1701
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5872,11 +5868,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1698
+          "line": 1700
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1699
+          "line": 1701
         }
       ],
       "matchingWebHooks": [
@@ -5903,11 +5899,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1755
+          "line": 1745
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1861
+          "line": 1851
         },
         {
           "source": "src/engine/action.ts",
@@ -5949,11 +5945,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2018
+          "line": 2008
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2049
+          "line": 2039
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -5983,11 +5979,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1756
+          "line": 1746
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1866
+          "line": 1856
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6021,11 +6017,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1706
+          "line": 1708
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1707
+          "line": 1709
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6035,11 +6031,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1706
+          "line": 1708
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1707
+          "line": 1709
         }
       ],
       "matchingWebHooks": [
@@ -6066,11 +6062,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1757
+          "line": 1747
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1878
+          "line": 1868
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6104,11 +6100,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1714
+          "line": 1716
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1715
+          "line": 1717
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6118,11 +6114,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1714
+          "line": 1716
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1715
+          "line": 1717
         }
       ],
       "matchingWebHooks": [
@@ -6179,15 +6175,15 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1671
+          "line": 1661
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 737
+          "line": 739
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 774
+          "line": 776
         },
         {
           "source": "src/engine/records.ts",
@@ -6199,23 +6195,23 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4970
+          "line": 4988
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5143
+          "line": 5161
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5292
+          "line": 5310
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8615
+          "line": 8633
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8623
+          "line": 8641
         },
         {
           "source": "src/objects/item.ts",
@@ -6229,11 +6225,11 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 737
+          "line": 739
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 774
+          "line": 776
         },
         {
           "source": "src/objects/item.ts",
@@ -6280,15 +6276,15 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 737
+          "line": 739
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 774
+          "line": 776
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 777
+          "line": 779
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6310,15 +6306,15 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 737
+          "line": 739
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 774
+          "line": 776
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 777
+          "line": 779
         },
         {
           "source": "src/objects/item.ts",
@@ -6350,11 +6346,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2265
+          "line": 2256
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2354
+          "line": 2345
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6362,25 +6358,25 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4158
+          "line": 4172
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4836
+          "line": 4854
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5181
+          "line": 5199
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4836
+          "line": 4854
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5181
+          "line": 5199
         }
       ],
       "matchingWebHooks": [],
@@ -6407,11 +6403,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2292
+          "line": 2283
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2358
+          "line": 2349
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6419,21 +6415,21 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4838
+          "line": 4856
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5184
+          "line": 5202
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4838
+          "line": 4856
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5184
+          "line": 5202
         }
       ],
       "matchingWebHooks": [],
@@ -6462,11 +6458,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2313
+          "line": 2304
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 2359
+          "line": 2350
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6474,21 +6470,21 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4839
+          "line": 4857
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5185
+          "line": 5203
         }
       ],
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4839
+          "line": 4857
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5185
+          "line": 5203
         }
       ],
       "matchingWebHooks": [],
@@ -6681,7 +6677,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 186
+          "line": 187
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6695,7 +6691,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 186
+          "line": 187
         }
       ],
       "matchingWebHooks": [
@@ -6722,7 +6718,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 201
+          "line": 202
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6736,7 +6732,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 201
+          "line": 202
         }
       ],
       "matchingWebHooks": [
@@ -6763,27 +6759,27 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 202
+          "line": 203
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 595
+          "line": 597
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 955
+          "line": 957
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1038
+          "line": 1040
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1168
+          "line": 1170
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1227
+          "line": 1229
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6797,27 +6793,27 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 202
+          "line": 203
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 595
+          "line": 597
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 955
+          "line": 957
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1038
+          "line": 1040
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1168
+          "line": 1170
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1227
+          "line": 1229
         }
       ],
       "matchingWebHooks": [
@@ -6844,15 +6840,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 203
+          "line": 204
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 956
+          "line": 958
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1041
+          "line": 1043
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6870,15 +6866,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 203
+          "line": 204
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 956
+          "line": 958
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1041
+          "line": 1043
         },
         {
           "source": "src/objects/item.ts",
@@ -6911,7 +6907,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 152
+          "line": 153
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6921,7 +6917,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 152
+          "line": 153
         }
       ],
       "matchingWebHooks": [
@@ -6952,7 +6948,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1762
+          "line": 1791
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -6962,7 +6958,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1762
+          "line": 1791
         }
       ],
       "matchingWebHooks": [
@@ -6992,7 +6988,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1737
+          "line": 1739
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7000,17 +6996,17 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4773
+          "line": 4792
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1737
+          "line": 1739
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4773
+          "line": 4792
         }
       ],
       "matchingWebHooks": [
@@ -7037,7 +7033,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1683
+          "line": 1685
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7047,7 +7043,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1683
+          "line": 1685
         }
       ],
       "matchingWebHooks": [
@@ -7074,7 +7070,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1688
+          "line": 1690
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7084,7 +7080,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1688
+          "line": 1690
         }
       ],
       "matchingWebHooks": [
@@ -7111,13 +7107,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1252
+          "line": 1254
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1252
+          "line": 1254
         }
       ],
       "matchingWebHooks": [
@@ -7144,13 +7140,13 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1256
+          "line": 1258
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1256
+          "line": 1258
         }
       ],
       "matchingWebHooks": [
@@ -7178,21 +7174,21 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1260
+          "line": 1262
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5396
+          "line": 5414
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1260
+          "line": 1262
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5396
+          "line": 5414
         }
       ],
       "matchingWebHooks": [
@@ -7220,7 +7216,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1949
+          "line": 1972
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7238,7 +7234,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1949
+          "line": 1972
         },
         {
           "source": "src/objects/item.ts",
@@ -7269,15 +7265,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1985
+          "line": 2008
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1986
+          "line": 2009
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2001
+          "line": 2024
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7295,11 +7291,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1986
+          "line": 2009
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2001
+          "line": 2024
         },
         {
           "source": "src/objects/item.ts",
@@ -7330,19 +7326,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1982
+          "line": 2005
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1983
+          "line": 2006
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1998
+          "line": 2021
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1999
+          "line": 2022
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7352,15 +7348,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1983
+          "line": 2006
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1998
+          "line": 2021
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1999
+          "line": 2022
         }
       ],
       "matchingWebHooks": [
@@ -7387,11 +7383,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1976
+          "line": 1999
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1994
+          "line": 2017
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7401,7 +7397,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1994
+          "line": 2017
         }
       ],
       "matchingWebHooks": [
@@ -7444,11 +7440,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 921
+          "line": 911
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 466
+          "line": 467
         },
         {
           "source": "src/engine/action.ts",
@@ -7476,7 +7472,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17044
+          "line": 17116
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -7488,15 +7484,15 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1959
+          "line": 752
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1961
+          "line": 754
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 3188
+          "line": 1720
         },
         {
           "source": "src/main.ts",
@@ -7538,7 +7534,7 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17044
+          "line": 17116
         },
         {
           "source": "src/ui/hud.ts",
@@ -7587,11 +7583,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 922
+          "line": 912
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 466
+          "line": 467
         },
         {
           "source": "src/engine/action.ts",
@@ -7619,11 +7615,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4396
+          "line": 4410
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17044
+          "line": 17116
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -7685,11 +7681,11 @@
       "directReads": [
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4396
+          "line": 4410
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17044
+          "line": 17116
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -7726,11 +7722,11 @@
       "webReferences": [
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 919
+          "line": 909
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1264
+          "line": 1266
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7740,7 +7736,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1264
+          "line": 1266
         }
       ],
       "matchingWebHooks": [
@@ -7803,7 +7799,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4067
+          "line": 4081
         }
       ],
       "directReads": [
@@ -7821,7 +7817,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4067
+          "line": 4081
         }
       ],
       "matchingWebHooks": [],
@@ -7852,7 +7848,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 471
+          "line": 472
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -7900,7 +7896,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 478
+          "line": 479
         },
         {
           "source": "src/main.ts",
@@ -7936,7 +7932,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 480
+          "line": 481
         },
         {
           "source": "src/main.ts",
@@ -8026,11 +8022,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-resource-lifecycle.ts",
+          "line": 128
+        },
+        {
+          "source": "src/combat/item-resource-lifecycle.ts",
           "line": 129
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 130
+          "line": 187
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
@@ -8038,27 +8038,23 @@
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 193
+          "line": 212
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 215
+          "line": 213
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 216
+          "line": 218
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 221
+          "line": 228
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 231
-        },
-        {
-          "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 235
+          "line": 232
         },
         {
           "source": "src/engine/action.ts",
@@ -8104,11 +8100,11 @@
       "directReads": [
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 216
+          "line": 213
         },
         {
           "source": "src/combat/item-resource-lifecycle.ts",
-          "line": 231
+          "line": 228
         }
       ],
       "matchingWebHooks": [
@@ -8135,7 +8131,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 526
+          "line": 528
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8184,7 +8180,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 528
+          "line": 530
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8233,7 +8229,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 530
+          "line": 532
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8273,7 +8269,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 532
+          "line": 534
         },
         {
           "source": "src/main.ts",
@@ -8323,15 +8319,15 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 722
+          "line": 724
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 732
+          "line": 734
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 801
+          "line": 803
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8339,15 +8335,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4267
+          "line": 4281
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9539
+          "line": 9557
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9599
+          "line": 9617
         },
         {
           "source": "src/engine/states/manage-state.ts",
@@ -8381,27 +8377,27 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 722
+          "line": 724
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 732
+          "line": 734
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 801
+          "line": 803
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4267
+          "line": 4281
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9539
+          "line": 9557
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9599
+          "line": 9617
         },
         {
           "source": "src/engine/states/manage-state.ts",
@@ -8453,7 +8449,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 722
+          "line": 724
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8467,7 +8463,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 722
+          "line": 724
         }
       ],
       "matchingWebHooks": [
@@ -8494,21 +8490,21 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 801
+          "line": 803
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4271
+          "line": 4285
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 801
+          "line": 803
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4271
+          "line": 4285
         }
       ],
       "matchingWebHooks": [],
@@ -8533,7 +8529,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 535
+          "line": 537
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8579,11 +8575,11 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 106
+          "line": 107
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1571
+          "line": 1573
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8599,15 +8595,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3773
+          "line": 3787
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3774
+          "line": 3788
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14968
+          "line": 15028
         },
         {
           "source": "src/engine/states/manage-state.ts",
@@ -8615,11 +8611,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 145
+          "line": 174
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 251
+          "line": 280
         },
         {
           "source": "src/objects/item.ts",
@@ -8653,19 +8649,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 106
+          "line": 107
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1571
+          "line": 1573
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3773
+          "line": 3787
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3774
+          "line": 3788
         },
         {
           "source": "src/objects/item.ts",
@@ -8713,11 +8709,11 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 97
+          "line": 98
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1571
+          "line": 1573
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8725,11 +8721,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3773
+          "line": 3787
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3775
+          "line": 3789
         },
         {
           "source": "src/objects/item.ts",
@@ -8751,19 +8747,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 97
+          "line": 98
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1571
+          "line": 1573
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3773
+          "line": 3787
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3775
+          "line": 3789
         },
         {
           "source": "src/objects/item.ts",
@@ -8804,7 +8800,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1575
+          "line": 1577
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8812,7 +8808,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3833
+          "line": 3847
         },
         {
           "source": "src/objects/item.ts",
@@ -8822,11 +8818,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1575
+          "line": 1577
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3833
+          "line": 3847
         },
         {
           "source": "src/objects/item.ts",
@@ -8859,7 +8855,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1579
+          "line": 1581
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8867,7 +8863,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3816
+          "line": 3830
         },
         {
           "source": "src/objects/item.ts",
@@ -8877,11 +8873,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1579
+          "line": 1581
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3816
+          "line": 3830
         },
         {
           "source": "src/objects/item.ts",
@@ -8911,11 +8907,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1579
+          "line": 1581
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1580
+          "line": 1582
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -8923,11 +8919,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3816
+          "line": 3830
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3818
+          "line": 3832
         },
         {
           "source": "src/objects/item.ts",
@@ -8937,19 +8933,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1579
+          "line": 1581
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1580
+          "line": 1582
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3816
+          "line": 3830
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3818
+          "line": 3832
         },
         {
           "source": "src/objects/item.ts",
@@ -8988,15 +8984,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 215
+          "line": 216
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 987
+          "line": 989
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1634
+          "line": 1636
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9010,15 +9006,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 215
+          "line": 216
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 987
+          "line": 989
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1634
+          "line": 1636
         }
       ],
       "matchingWebHooks": [
@@ -9047,15 +9043,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 218
+          "line": 219
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 627
+          "line": 629
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1637
+          "line": 1639
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9063,25 +9059,21 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 697
+          "line": 907
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 698
+          "line": 907
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 706
-        },
-        {
-          "source": "src/events/event-manager.ts",
-          "line": 719
+          "line": 912
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 627
+          "line": 629
         }
       ],
       "matchingWebHooks": [
@@ -9120,7 +9112,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1591
+          "line": 1593
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9128,27 +9120,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3843
+          "line": 3857
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4970
+          "line": 4988
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4974
+          "line": 4992
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5118
+          "line": 5136
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5123
+          "line": 5141
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5322
+          "line": 5340
         },
         {
           "source": "src/objects/item.ts",
@@ -9158,15 +9150,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 1591
+          "line": 1593
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3843
+          "line": 3857
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5118
+          "line": 5136
         },
         {
           "source": "src/objects/item.ts",
@@ -9207,35 +9199,35 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 906
+          "line": 916
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3234
+          "line": 3248
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3385
+          "line": 3399
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3387
+          "line": 3401
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4347
+          "line": 4361
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5421
+          "line": 5439
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7949
+          "line": 7967
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14157
+          "line": 14217
         }
       ],
       "directReads": [
@@ -9266,7 +9258,7 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 657
+          "line": 659
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9274,21 +9266,21 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3079
+          "line": 3093
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 3080
+          "line": 3094
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7952
+          "line": 7970
         }
       ],
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 657
+          "line": 659
         }
       ],
       "matchingWebHooks": [
@@ -9317,11 +9309,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 658
+          "line": 660
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 663
+          "line": 665
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9331,11 +9323,11 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 658
+          "line": 660
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 663
+          "line": 665
         }
       ],
       "matchingWebHooks": [
@@ -9363,15 +9355,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 468
+          "line": 469
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 677
+          "line": 679
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 841
+          "line": 834
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9385,7 +9377,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 677
+          "line": 679
         }
       ],
       "matchingWebHooks": [
@@ -9430,15 +9422,15 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1406
+          "line": 1396
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 490
+          "line": 492
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1849
+          "line": 1875
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9446,23 +9438,23 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4014
+          "line": 4028
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4487
+          "line": 4501
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7539
+          "line": 7557
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8166
+          "line": 8184
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 12258
+          "line": 12292
         },
         {
           "source": "src/engine/states/supply-state.ts",
@@ -9470,19 +9462,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2566
+          "line": 1393
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2683
-        },
-        {
-          "source": "src/events/event-manager.ts",
-          "line": 2685
-        },
-        {
-          "source": "src/events/event-manager.ts",
-          "line": 3458
+          "line": 2299
         },
         {
           "source": "src/main.ts",
@@ -9516,27 +9500,27 @@
         },
         {
           "source": "src/combat/combat-lifecycle.ts",
-          "line": 1406
+          "line": 1396
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1849
+          "line": 1875
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4014
+          "line": 4028
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4487
+          "line": 4501
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7539
+          "line": 7557
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 8166
+          "line": 8184
         },
         {
           "source": "src/engine/states/supply-state.ts",
@@ -9574,11 +9558,11 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 517
+          "line": 519
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2006
+          "line": 2029
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9586,7 +9570,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2573
+          "line": 1400
         },
         {
           "source": "src/main.ts",
@@ -9604,7 +9588,7 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 2006
+          "line": 2029
         },
         {
           "source": "src/objects/item.ts",
@@ -9642,15 +9626,15 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 400
+          "line": 223
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 409
+          "line": 232
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 412
+          "line": 235
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9658,11 +9642,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7148
+          "line": 7166
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2589
+          "line": 1419
         },
         {
           "source": "src/main.ts",
@@ -9680,11 +9664,11 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 400
+          "line": 223
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 412
+          "line": 235
         },
         {
           "source": "src/objects/item.ts",
@@ -9716,19 +9700,19 @@
       "webReferences": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 401
+          "line": 224
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 409
+          "line": 232
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 412
+          "line": 235
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2369
+          "line": 2392
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9736,7 +9720,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 7148
+          "line": 7166
         },
         {
           "source": "src/main.ts",
@@ -9746,11 +9730,11 @@
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 401
+          "line": 224
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 412
+          "line": 235
         }
       ],
       "matchingWebHooks": [
@@ -9789,11 +9773,11 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1931
+          "line": 1954
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1563
+          "line": 1527
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9825,7 +9809,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5050
+          "line": 5068
         },
         {
           "source": "src/main.ts",
@@ -9853,7 +9837,7 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 882
+          "line": 881
         }
       ],
       "directReads": [
@@ -9871,11 +9855,11 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1931
+          "line": 1954
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 5050
+          "line": 5068
         },
         {
           "source": "src/objects/item.ts",
@@ -9891,7 +9875,7 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 882
+          "line": 881
         }
       ],
       "matchingWebHooks": [
@@ -9930,39 +9914,39 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 558
+          "line": 381
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1257
+          "line": 1093
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1265
+          "line": 1101
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1269
+          "line": 1105
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 1273
+          "line": 1109
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1565
+          "line": 1567
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1921
+          "line": 1944
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2319
+          "line": 2342
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1522
+          "line": 1486
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9982,7 +9966,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 2569
+          "line": 1396
         },
         {
           "source": "src/objects/item.ts",
@@ -9998,25 +9982,25 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 879
+          "line": 878
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 925
+          "line": 924
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 558
+          "line": 381
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1565
+          "line": 1567
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1921
+          "line": 1944
         },
         {
           "source": "src/objects/item.ts",
@@ -10024,11 +10008,11 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 879
+          "line": 878
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 925
+          "line": 924
         }
       ],
       "matchingWebHooks": [
@@ -10068,7 +10052,7 @@
         },
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 719
+          "line": 542
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -10076,11 +10060,11 @@
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1941
+          "line": 1964
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1599
+          "line": 1563
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -10112,7 +10096,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 4466
+          "line": 4480
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -10136,29 +10120,29 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 657
+          "line": 656
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 801
+          "line": 800
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 885
+          "line": 884
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 885
+          "line": 884
         }
       ],
       "directReads": [
         {
           "source": "src/combat/combat-calcs.ts",
-          "line": 719
+          "line": 542
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 1941
+          "line": 1964
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -10166,7 +10150,7 @@
         },
         {
           "source": "src/ui/hud.ts",
-          "line": 885
+          "line": 884
         }
       ],
       "matchingWebHooks": [
@@ -10197,15 +10181,15 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 781
+          "line": 783
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2012
+          "line": 2035
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2257
+          "line": 2280
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -10231,15 +10215,15 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 781
+          "line": 783
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2012
+          "line": 2035
         },
         {
           "source": "src/combat/item-system.ts",
-          "line": 2257
+          "line": 2280
         },
         {
           "source": "src/objects/item.ts",
@@ -10295,19 +10279,19 @@
       "webReferences": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 687
+          "line": 689
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1165
+          "line": 1149
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1185
+          "line": 1169
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1215
+          "line": 1199
         },
         {
           "source": "src/combat/terrain-bonuses.ts",
@@ -10323,15 +10307,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 9845
+          "line": 9863
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15224
+          "line": 15284
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15908
+          "line": 15974
         },
         {
           "source": "src/main.ts",
@@ -10341,19 +10325,19 @@
       "directReads": [
         {
           "source": "src/combat/item-system.ts",
-          "line": 687
+          "line": 689
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1165
+          "line": 1149
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1185
+          "line": 1169
         },
         {
           "source": "src/combat/skill-system.ts",
-          "line": 1215
+          "line": 1199
         }
       ],
       "matchingWebHooks": [
