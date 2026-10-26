@@ -1828,6 +1828,7 @@ async function restoreLevel(
 
     // Create PhaseController
     game.phase = new PhaseController(teamOrder);
+    game.phase.turnCount = game.turnCount;
 
     // Create EventManager
     game.eventManager = new EventManager(game.db?.events);

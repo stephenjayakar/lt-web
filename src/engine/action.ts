@@ -116,6 +116,27 @@ export class MarkPhase extends Action {
 }
 
 /**
+ * IncrementTurn - Python action.IncrementTurn: the turn counter advances as a
+ * logged action, so turning the wheel back past a turn change restores it.
+ * The phase controller keeps its own copy of the count in sync.
+ */
+export class IncrementTurnAction extends Action {
+  execute(): void {
+    const game = _getGame?.();
+    if (!game) return;
+    game.turnCount += 1;
+    if (game.phase) game.phase.turnCount = game.turnCount;
+  }
+
+  reverse(): void {
+    const game = _getGame?.();
+    if (!game) return;
+    game.turnCount -= 1;
+    if (game.phase) game.phase.turnCount = game.turnCount;
+  }
+}
+
+/**
  * LockTurnwheel - Marks a turnwheel lock/unlock point.
  * When locked, the turnwheel cannot be activated at this point.
  * Non-player phases lock the turnwheel.
