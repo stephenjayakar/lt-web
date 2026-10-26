@@ -21,7 +21,6 @@ const MERGED = {
   combat_trade: 'trade',
   defender: 'combat',
   defender_partner: 'combat',
-  dying: 'combat',
   exp: 'combat',
   feat_choice: 'promotion_choice',
   init: 'combat',

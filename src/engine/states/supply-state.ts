@@ -181,7 +181,9 @@ abstract class ConvoyItemsState extends State {
 
   override begin(): StateResult {
     const game = getGame();
-    if (!this.unit || !this.menu || !game.gameVars?.get('_convoy')) {
+    // Python PrepItemsState opens regardless of `_convoy`; only the menu
+    // options that lead here (Supply, prep Items) check it.
+    if (!this.unit || !this.menu) {
       game.memory.delete('supply_unit');
       game.state.back();
       return 'repeat';

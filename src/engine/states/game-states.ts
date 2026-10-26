@@ -188,7 +188,7 @@ import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
-import { getSprite } from '../../ui/sprites';
+import { getSprite, preloadSprites } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
@@ -249,11 +249,18 @@ import { procCueMotion, type CombatProcCue } from '../../combat/proc-presentatio
 import {
   clearUnitFx,
   drawMapDamageNumbers,
+  drawUnitTransitionOverlay,
+  getTransitionPosition,
   getUnitFx,
   isUnitDying,
   markDying,
+  offBoardTransitionUnits,
+  setTransitionEnv,
+  setUnitTransition,
   startDyingFade,
   DEFAULT_TRANSITION_TIME,
+  type TransitionAnimSheet,
+  type UnitTransitionState,
 } from '../../combat/map-unit-fx';
 import {
   accuracy as combatAccuracy,
@@ -337,6 +344,38 @@ import { reportUnimplemented } from '../strict-mode';
 let _game: any = null;
 export function setGameRef(g: any): void {
   _game = g;
+  setTransitionEnv({
+    playSfx: (nid) => g?.audioManager?.playSfx?.(nid),
+    anim: (nid) => transitionAnimSheet(g, nid),
+    flowerSprite: () => getSprite('particle_warp_flower'),
+  });
+  void preloadSprites(['particle_warp_flower']);
+}
+
+const transitionSheets = new Map<string, TransitionAnimSheet | null | 'loading'>();
+
+/** The project's Warp / Swoosh map animation sheet, loaded on first use. */
+function transitionAnimSheet(game: any, nid: 'Warp' | 'Swoosh'): TransitionAnimSheet | null {
+  const cached = transitionSheets.get(nid);
+  if (cached === 'loading') return null;
+  if (cached !== undefined) return cached;
+  const prefab = game?.db?.mapAnimations?.get?.(nid);
+  if (!prefab || !game?.resources?.loadImage) {
+    transitionSheets.set(nid, null);
+    return null;
+  }
+  transitionSheets.set(nid, 'loading');
+  void game.resources.loadImage(`resources/animations/${nid}.png`).then((image: HTMLImageElement) => {
+    transitionSheets.set(nid, {
+      image,
+      frameWidth: Math.floor(image.width / prefab.frame_x),
+      frameHeight: Math.floor(image.height / prefab.frame_y),
+      frameX: prefab.frame_x,
+      numFrames: prefab.num_frames,
+      speed: Number(prefab.speed) || 25,
+    });
+  }).catch(() => transitionSheets.set(nid, null));
+  return null;
 }
 
 function parsePyevCommandValue(value: string): any {
@@ -485,10 +524,13 @@ function collectVisibleUnits(): {
   showHp: boolean;
   fx: MapSpriteFx | null;
   poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+  overlay: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
 }[] {
   const game = getGame();
   if (!game.board) return [];
-  const allUnits: UnitObject[] = game.board.getAllUnits();
+  // Python map_view draws every unit with a sprite position: on the map, or
+  // still on its fake tile while a departure transition plays.
+  const allUnits: UnitObject[] = [...game.board.getAllUnits(), ...offBoardTransitionUnits()];
   const currentTeam = game.phase.getCurrent();
   const result: {
     x: number;
@@ -508,10 +550,12 @@ function collectVisibleUnits(): {
     showHp: boolean;
     fx: MapSpriteFx | null;
     poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+    overlay: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
   }[] = [];
 
   for (const u of allUnits) {
-    if (!u.position) continue;
+    const drawPosition = getTransitionPosition(u);
+    if (!drawPosition) continue;
     // Python keeps an is_dying unit on the map until DeathManager's fade
     // ends; its HP already reached 0 when the combat results applied.
     if (u.isDead() && !isUnitDying(u)) continue;
@@ -587,8 +631,8 @@ function collectVisibleUnits(): {
     // downstream renderers (placeholder overlays, etc.) don't grey out
     // units from other teams.
     result.push({
-      x: u.position[0],
-      y: u.position[1],
+      x: drawPosition[0],
+      y: drawPosition[1],
       visualOffsetX,
       visualOffsetY,
       sprite: u.sprite,
@@ -600,6 +644,8 @@ function collectVisibleUnits(): {
       // (Python's map_view likewise draws HP only for culled units).
       get maxHp() { return u.maxHp; },
       get showHp() {
+        // UnitSprite.draw_hp: only with transition_state 'normal'.
+        if (unitFx?.transitioning) return false;
         return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: unitFx?.dying, dead: u.dead });
       },
       specialTag,
@@ -611,6 +657,7 @@ function collectVisibleUnits(): {
       poseOverride: unitFx?.direction
         ? { state: 'moving', direction: unitFx.direction }
         : null,
+      overlay: (s, left, top, cameraX, cameraY) => drawUnitTransitionOverlay(s, u, left, top, cameraX, cameraY),
     });
   }
   return result;
@@ -9637,6 +9684,49 @@ export class StatusEndstepState extends StatusUpkeepState {
 }
 
 // ============================================================================
+// 8d. DyingState
+// ============================================================================
+
+/**
+ * Port of Python DyingState / DeathManager for deaths outside combat
+ * (kill_unit): 'Death' sfx, a white flicker and the fade_out transition,
+ * then Die once default_transition_time - 50 ms have passed.
+ */
+export class DyingState extends State {
+  readonly name = 'dying';
+  override readonly transparent = true;
+
+  private units: UnitObject[] = [];
+  private startFrame = -1;
+
+  override start(): StateResult {
+    const game = getGame();
+    this.units = (game.memory.get('dying_units') as UnitObject[] | undefined) ?? [];
+    game.memory.delete('dying_units');
+    this.startFrame = -1;
+  }
+
+  override update(): StateResult {
+    const game = getGame();
+    if (this.startFrame < 0) {
+      this.startFrame = getFrameCount();
+      for (const unit of this.units) {
+        game.audioManager?.playSfx?.('Death');
+        startDyingFade(unit);
+      }
+    }
+    if ((getFrameCount() - this.startFrame) * FRAMETIME < DEFAULT_TRANSITION_TIME - 50) return;
+    for (const unit of this.units) {
+      clearUnitFx(unit);
+      if (unit.position) game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
+    }
+    this.units = [];
+    game.state.back();
+    return 'repeat';
+  }
+}
+
+// ============================================================================
 // 9. PhaseChangeState
 // ============================================================================
 
@@ -10409,6 +10499,8 @@ export class EventState extends State {
   }> = new WeakMap();
   /** The panorama restoreParkedPresentation handed back with its background. */
   private restoredPanorama: PanoramaFrames | null = null;
+  /** kill_unit's dying unit, waiting for its UnitDeath events to finish. */
+  private pendingDyingUnits = new WeakMap<GameEvent, UnitObject>();
   /**
    * Parked events in pause order. Python pushes a new EventState for each
    * triggered sub-event; the paused parents stay on the (transparent) stack
@@ -11155,6 +11247,18 @@ export class EventState extends State {
       }
 
       const ev = this.currentEvent;
+
+      // kill_unit pushed 'dying' under the UnitDeath events it triggered;
+      // with those done, the dying fade plays before this event goes on.
+      const dyingUnit = this.pendingDyingUnits.get(ev);
+      if (dyingUnit) {
+        this.pendingDyingUnits.delete(ev);
+        if (dyingUnit.position && isUnitDying(dyingUnit)) {
+          game.memory.set('dying_units', [dyingUnit]);
+          game.state.change('dying');
+          return;
+        }
+      }
 
       // Check if event is complete
       if (ev.isDone()) {
@@ -13614,7 +13718,9 @@ export class EventState extends State {
         if (movementType !== 'normal') {
           // Python Warp/FadeMove/Swoosh actions update position and begin their
           // sprite transition without pausing the event command stream.
+          const from: [number, number] = [unit.position[0], unit.position[1]];
           game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
+          this.moveTransition(unit, movementType, from);
           this.advancePointer();
           return false;
         }
@@ -13640,9 +13746,13 @@ export class EventState extends State {
       }
 
       case 'add_unit': {
-        const unitNid = args[0] ?? '';
-        const posArg = args[1] ?? 'starting';
-        const placement = (args[3] || 'giveup').toLowerCase().trim();
+        // add_unit;Unit;Position?;EntryType? (fade);Placement?;AnimationType?
+        const auArgs = parsePythonEventArgs(args, ['Unit'], ['Position', 'EntryType', 'Placement', 'AnimationType']);
+        const unitNid = auArgs.value('Unit') ?? '';
+        const posArg = auArgs.value('Position') ?? 'starting';
+        const placement = (auArgs.value('Placement') || 'giveup').toLowerCase().trim();
+        const entryType = auArgs.value('EntryType') || 'fade';
+        const fadeDirection = this.fadeDirection(auArgs.value('AnimationType'));
         const existing = game.units.get(unitNid);
         if (existing?.position || existing?.isDead()) {
           this.advancePointer();
@@ -13663,6 +13773,7 @@ export class EventState extends State {
             : null;
           if (finalPosition && game.board) {
             game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPosition, true));
+            this.entryTransition(existing, entryType, fadeDirection, game);
           } else {
             console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
           }
@@ -13687,6 +13798,8 @@ export class EventState extends State {
           : null;
         if (finalPosition) {
           this.spawnUnitFromLevelData(unitData, finalPosition, game);
+          const placed = this.findUnit(unitNid);
+          if (placed) this.entryTransition(placed, entryType, fadeDirection, game);
         } else {
           console.warn(`EventState add_unit: no valid position for "${unitNid}"`);
         }
@@ -13802,10 +13915,9 @@ export class EventState extends State {
           const parsed = this.resolvePosition(posArg, game);
           if (parsed) targetPos = this._checkPlacement(parsed, placement, game, newUnit);
         }
-        void entryType; // Placement animation type is cosmetic-only in this port.
-
         game.actionLog.doAction(new CreateUnitAction(game, newUnit, targetPos));
         this.loadMapSpriteForUnit(newUnit, game);
+        if (targetPos) this.entryTransition(newUnit, entryType, null, game);
 
         // Mirror Python's {created_unit} substitution when Nid was left blank:
         // subsequent {e:created_unit} lookups in this event resolve to the
@@ -14737,9 +14849,11 @@ export class EventState extends State {
         // from the unit registry. Persistent player units must remain in
         // game.units (as off-map reserve members) so they carry over to
         // future levels; only the map/board presence is cleared here.
-        const unitNid = args[0] ?? '';
-        const unit = this.findUnit(unitNid);
+        // remove_unit;Unit;RemoveType? (fade);AnimationType?
+        const ruArgs = parsePythonEventArgs(args, ['Unit'], ['RemoveType', 'AnimationType']);
+        const unit = this.findUnit(ruArgs.value('Unit') ?? '');
         if (unit?.position) {
+          this.exitTransition(unit, ruArgs.value('RemoveType') || 'fade', this.fadeDirection(ruArgs.value('AnimationType')), game);
           game.actionLog.doAction(new LeaveMapAction(game, unit));
         }
         this.advancePointer();
@@ -14772,7 +14886,13 @@ export class EventState extends State {
           ? [unit.position[0], unit.position[1]] as [number, number]
           : undefined;
         game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
-        game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
+        // Python: an on-map unit goes through game.death.should_die and the
+        // DyingState (Death sfx, white flicker, fade; Die after 400 ms) once
+        // the UnitDeath events it triggers have run; `immediate` and off-map
+        // units die at once.
+        const animatedDeath = wasOnMap && !immediate && !this.skipMode;
+        if (animatedDeath) markDying(unit);
+        else game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
         const queue = game.eventManager.eventQueue as GameEvent[];
         const priorLength = queue.length;
         game.eventManager.trigger(
@@ -14784,17 +14904,13 @@ export class EventState extends State {
           },
           { game, unit1: unit, gameVars: game.gameVars, levelVars: game.levelVars },
         );
+        if (animatedDeath && this.currentEvent) this.pendingDyingUnits.set(this.currentEvent, unit);
         if (queue.length > priorLength && this.currentEvent) {
           this.advancePointer();
           return this.runEventsQueuedSince(priorLength, game);
         }
-        if (this.skipMode || immediate || !wasOnMap) {
-          this.advancePointer();
-          return false;
-        }
-        this.waiting = true;
-        this.waitTimer = 500;
-        return true;
+        this.advancePointer();
+        return false;
       }
 
       case 'add_group': {
@@ -14808,6 +14924,7 @@ export class EventState extends State {
         const startingGroup = agArgs.value('StartingGroup') ?? '';
         const placement = (agArgs.value('Placement') || 'giveup').toLowerCase().trim();
         const createCopies = agArgs.flags.has('create');
+        const groupEntryType = agArgs.value('EntryType') || 'fade';
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (!group) {
@@ -14846,9 +14963,12 @@ export class EventState extends State {
               }
             }
             this.spawnUnitFromLevelData(unitData, finalPos, game);
+            const placed = this.findUnit(uNid);
+            if (placed) this.entryTransition(placed, groupEntryType, null, game);
           } else {
             // Unit exists but not on map — place them
             game.actionLog.doAction(new ArriveOnMapAction(game, existing, finalPos, true));
+            this.entryTransition(existing, groupEntryType, null, game);
           }
         }
         this.advancePointer();
@@ -14912,7 +15032,11 @@ export class EventState extends State {
           const spawnedUnit = this.findUnit(unitNid);
           if (!spawnedUnit || !game.board) continue;
           if (this.skipMode || movementType !== 'normal') {
+            const from: [number, number] | null = spawnedUnit.position
+              ? [spawnedUnit.position[0], spawnedUnit.position[1]]
+              : null;
             game.actionLog.doAction(new ArriveOnMapAction(game, spawnedUnit, finalDestination));
+            if (!this.skipMode && from && movementType !== 'swoosh') this.moveTransition(spawnedUnit, movementType, from);
           } else {
             moves.push({ unit: spawnedUnit, target: finalDestination });
           }
@@ -14962,6 +15086,9 @@ export class EventState extends State {
         // fix and rationale (persistent player units must survive as
         // off-map reserve members).
         const groupNid = args[0] ?? '';
+        // Python remove_group: warp -> WarpOut, fade (default) -> FadeOut,
+        // anything else leaves at once.
+        const removeType = (args[1] || 'fade').toLowerCase();
         const groups: any[] = game.currentLevel?.unit_groups ?? [];
         const group = groups.find((g: any) => g.nid === groupNid);
         if (group) {
@@ -14969,6 +15096,7 @@ export class EventState extends State {
           for (const uNid of unitNids) {
             const unit = this.findUnit(uNid);
             if (unit?.position) {
+              if (removeType === 'warp' || removeType === 'fade') this.exitTransition(unit, removeType, null, game);
               game.actionLog.doAction(new LeaveMapAction(game, unit));
             }
           }
@@ -15008,7 +15136,9 @@ export class EventState extends State {
           const finalPosition = this._checkPlacement(destination, placement, game, unit);
           if (!finalPosition) continue;
           if (this.skipMode || movementType !== 'normal') {
+            const from: [number, number] = [unit.position[0], unit.position[1]];
             game.actionLog.doAction(new WarpUnitAction(unit, finalPosition, game.board));
+            if (!this.skipMode && movementType !== 'swoosh') this.moveTransition(unit, movementType, from);
           } else {
             moves.push({ unit, target: finalPosition });
           }
@@ -16626,6 +16756,8 @@ export class EventState extends State {
         // unit registry. See 'remove_unit' above for rationale.
         const enemies = game.board?.getTeamUnits('enemy') ?? [];
         for (const enemy of enemies) {
+          // action.FadeOut
+          this.exitTransition(enemy, 'fade', null, game);
           game.actionLog.doAction(new LeaveMapAction(game, enemy));
         }
         this.advancePointer();
@@ -19052,6 +19184,70 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
   // Unit spawning helper: handles both unique and generic units from level data
   // -----------------------------------------------------------------------
+
+  /** Python add_unit/remove_unit AnimationType: a fade direction, unless 'fade'. */
+  private fadeDirection(animationType: string | undefined): string | null {
+    const value = (animationType ?? '').trim().toLowerCase();
+    return value && value !== 'fade' ? value : null;
+  }
+
+  /**
+   * Python Event._place_unit's presentation once the unit is on its tile:
+   * warp -> WarpIn, swoosh -> SwooshIn, fade -> FadeIn (sliding in from a
+   * map edge or a fade direction), immediate -> nothing. Skipped events
+   * arrive at once. Nothing here blocks the event.
+   */
+  private entryTransition(unit: UnitObject, entryType: string, fadeDirection: string | null, game: any): void {
+    if (this.skipMode || !unit.position) return;
+    const type = entryType.trim().toLowerCase();
+    if (type === 'warp') setUnitTransition(unit, 'warp_in');
+    else if (type === 'swoosh') setUnitTransition(unit, 'swoosh_in');
+    else if (type === 'fade') this.fadeTransition(unit, fadeDirection, true, game);
+  }
+
+  /**
+   * Python remove_unit's presentation, before the unit leaves: warp ->
+   * WarpOut, swoosh -> SwooshOut, fade -> FadeOut, else LeaveMap alone.
+   */
+  private exitTransition(unit: UnitObject, removeType: string, fadeDirection: string | null, game: any): void {
+    if (this.skipMode || !unit.position) return;
+    const type = removeType.trim().toLowerCase();
+    if (type === 'warp') setUnitTransition(unit, 'warp_out');
+    else if (type === 'swoosh') setUnitTransition(unit, 'swoosh_out');
+    else if (type === 'fade') this.fadeTransition(unit, fadeDirection, false, game);
+  }
+
+  /**
+   * action.FadeIn / FadeOut: on a map edge (or with a fade direction) the
+   * sprite slides a tile in (2 px out) as fake_in/fake_out, else it fades.
+   */
+  private fadeTransition(unit: UnitObject, fadeDirection: string | null, arriving: boolean, game: any): void {
+    const [x, y] = unit.position as [number, number];
+    const width = game.tilemap?.width ?? 0;
+    const height = game.tilemap?.height ?? 0;
+    const onBorder = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+    if (!onBorder && !fadeDirection) {
+      setUnitTransition(unit, arriving ? 'fade_in' : 'fade_out');
+      return;
+    }
+    const distance = arriving ? TILEWIDTH : 2;
+    let offset: [number, number] = [0, 0];
+    if (x === 0 || fadeDirection === 'west') offset = [-distance, 0];
+    else if (x === width - 1 || fadeDirection === 'east') offset = [distance, 0];
+    else if (y === 0 || fadeDirection === 'north') offset = [0, -distance];
+    else if (y === height - 1 || fadeDirection === 'south') offset = [0, distance];
+    setUnitTransition(unit, arriving ? 'fake_in' : 'fake_out', { offset });
+  }
+
+  /** action.Warp / FadeMove / Swoosh: the move transition from `from`. */
+  private moveTransition(unit: UnitObject, movementType: string, from: [number, number]): void {
+    const type = movementType.trim().toLowerCase();
+    const state: UnitTransitionState | null = type === 'warp' ? 'warp_move'
+      : type === 'fade' ? 'fade_move'
+        : type === 'swoosh' ? 'swoosh_move'
+          : null;
+    if (state && !this.skipMode) setUnitTransition(unit, state, { from });
+  }
 
   /**
    * Python Event._copy_unit: a fresh off-map copy of a level unit, named by

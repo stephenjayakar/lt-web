@@ -54,6 +54,71 @@ interface UnitFxState {
   fadeOut: { start: number; duration: number } | null;
   /** `unit.is_dying`: still drawn (stationary, no map HP bar) until Die. */
   dying: boolean;
+  /** `set_transition`: an arrival/departure/move transition. */
+  transition: TransitionFx | null;
+  /** The transition's Warp/Swoosh animations (UnitSprite.animations). */
+  anims: TransitionAnim[];
+  /** add_warp_flowers particle bursts (UnitSprite.particles). */
+  flowers: WarpFlowers[];
+}
+
+/** UnitSprite.set_transition states for arriving, leaving and moving. */
+export type UnitTransitionState =
+  | 'fade_in' | 'fade_out' | 'fade_move'
+  | 'warp_in' | 'warp_out' | 'warp_move'
+  | 'swoosh_in' | 'swoosh_out' | 'swoosh_move'
+  | 'fake_in' | 'fake_out';
+
+interface TransitionFx {
+  state: UnitTransitionState;
+  /** Engine frame the transition began (transition_counter = 450 then). */
+  startFrame: number;
+  /** `_fake_position`: where the sprite draws while it leaves. */
+  fakePosition: [number, number] | null;
+  /** fake_in/fake_out sprite offset, moved 2 px per frame. */
+  slide: [number, number];
+  slideFrame: number;
+}
+
+interface TransitionAnim {
+  nid: 'Warp' | 'Swoosh';
+  startFrame: number;
+  reverse: boolean;
+  offset: [number, number];
+  /** Warp draws a 33%-translucent copy and an additive copy. */
+  mode: 'translucent' | 'add' | 'normal';
+}
+
+interface WarpFlowers {
+  startFrame: number;
+  reverse: boolean;
+  /** Pixel center of the tile the burst started on. */
+  x: number;
+  y: number;
+}
+
+/** Map animation sheet the transitions draw (resources/animations). */
+export interface TransitionAnimSheet {
+  image: CanvasImageSource;
+  frameWidth: number;
+  frameHeight: number;
+  frameX: number;
+  numFrames: number;
+  /** ms per frame (constant timing). */
+  speed: number;
+}
+
+interface TransitionEnv {
+  playSfx?(nid: string): void;
+  anim?(nid: 'Warp' | 'Swoosh'): TransitionAnimSheet | null;
+  flowerSprite?(): Surface | null;
+}
+
+let transitionEnv: TransitionEnv = {};
+
+/** Sound, animation and particle sources for the transitions. */
+export function setTransitionEnv(env: TransitionEnv): void {
+  transitionEnv = env;
 }
 
 /** What the renderer applies to one unit this frame. */
@@ -70,6 +135,10 @@ export interface UnitFxVisual {
   stationary: boolean;
   /** `unit.is_dying`: drawn although its HP reached 0; hides the map HP bar. */
   dying: boolean;
+  /** Swoosh transitions stretch the sprite upward by this factor. */
+  stretchY: number;
+  /** A transition is running (UnitSprite.draw_hp shows no HP bar then). */
+  transitioning: boolean;
 }
 
 /** UnitSprite.default_transition_time. */
@@ -87,7 +156,10 @@ export function fxNow(): number {
 function stateFor(unit: UnitObject): UnitFxState {
   let state = states.get(unit);
   if (!state) {
-    state = { flickers: [], vibrates: [], damageNumbers: [], pose: null, fadeOut: null, dying: false };
+    state = {
+      flickers: [], vibrates: [], damageNumbers: [], pose: null, fadeOut: null, dying: false,
+      transition: null, anims: [], flowers: [],
+    };
     states.set(unit, state);
   }
   return state;
@@ -212,8 +284,35 @@ export function getUnitFx(unit: UnitObject, now: number = fxNow()): UnitFxVisual
     const progress = Math.max(0, Math.min(1, (now - state.fadeOut.start) / state.fadeOut.duration));
     opacity = 1 - progress;
   }
-  if (!tints.length && !state.pose && !state.fadeOut && !state.dying && offsetX === 0) {
-    if (!state.flickers.length && !state.vibrates.length && !state.damageNumbers.length) {
+  advanceTransition(unit, state);
+  const transition = state.transition;
+  let stretchY = 1;
+  let direction: FacingDirection | null = state.pose?.direction ?? null;
+  let finalOffsetY = offsetY;
+  if (transition) {
+    const progress = transitionProgress(transition);
+    const t = transition.state;
+    const leaving = t === 'fade_out' || t === 'warp_out' || t === 'swoosh_out' ||
+      t === 'fade_move' || t === 'warp_move' || t === 'swoosh_move' || t === 'fake_out';
+    // unit_sprite.draw: make_translucent(image, progress) while leaving,
+    // (1 - progress) while arriving.
+    opacity *= leaving ? 1 - progress : progress;
+    if (t === 'swoosh_out' || t === 'swoosh_move') stretchY = Math.max(0, progress - 0.4) * 3 + 1;
+    else if (t === 'swoosh_in') stretchY = Math.max(0, (1 - progress) - 0.4) * 3 + 1;
+    offsetX += transition.slide[0];
+    finalOffsetY += transition.slide[1];
+    if (t === 'fake_in' || t === 'fake_out') {
+      // change_state('fake_transition_*'): face the way the unit slides.
+      const sx = Math.sign(transition.slide[0]);
+      const sy = Math.sign(transition.slide[1]);
+      direction = t === 'fake_in' ? facingFor(-sx, -sy) : facingFor(sx, sy);
+    } else if (t === 'swoosh_in') {
+      direction = 'down';
+    }
+  }
+  const hasOverlay = state.anims.length > 0 || state.flowers.length > 0;
+  if (!tints.length && !state.pose && !state.fadeOut && !state.dying && offsetX === 0 && !transition) {
+    if (!state.flickers.length && !state.vibrates.length && !state.damageNumbers.length && !hasOverlay) {
       states.delete(unit);
     }
     return null;
@@ -221,11 +320,243 @@ export function getUnitFx(unit: UnitObject, now: number = fxNow()): UnitFxVisual
   return {
     tints,
     opacity,
-    offset: [offsetX, offsetY],
-    direction: state.pose?.direction ?? null,
+    offset: [offsetX, finalOffsetY],
+    direction,
     stationary: state.dying,
     dying: state.dying,
+    stretchY,
+    transitioning: !!transition,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Arrival / departure transitions (UnitSprite.set_transition)
+// ---------------------------------------------------------------------------
+
+const WARP_FLOWER_FRAMES = 40;
+
+function transitionProgress(transition: TransitionFx): number {
+  const elapsed = (getFrameCount() - transition.startFrame) * FRAMETIME;
+  return Math.max(0, Math.min(1, elapsed / DEFAULT_TRANSITION_TIME));
+}
+
+/**
+ * UnitSprite.set_transition. Moves (`*_move`) start on `from`, the tile the
+ * unit left; leaving transitions draw on the unit's current tile. Sounds,
+ * Warp/Swoosh animations, the white warp flicker and warp flowers start
+ * here, as in Python.
+ */
+export function setUnitTransition(
+  unit: UnitObject,
+  transitionState: UnitTransitionState,
+  opts: { from?: [number, number] | null; offset?: [number, number] } = {},
+): void {
+  const state = stateFor(unit);
+  const frame = getFrameCount();
+  const here: [number, number] | null = unit.position ? [unit.position[0], unit.position[1]] : null;
+  const transition: TransitionFx = {
+    state: transitionState, startFrame: frame, fakePosition: null,
+    slide: [0, 0], slideFrame: frame,
+  };
+  const anim = (nid: 'Warp' | 'Swoosh', reverse: boolean) => {
+    if (nid === 'Warp') {
+      state.anims.push({ nid, startFrame: frame, reverse, offset: [-7, -24], mode: 'translucent' });
+      state.anims.push({ nid, startFrame: frame, reverse, offset: [-7, -24], mode: 'add' });
+    } else {
+      state.anims.push({ nid, startFrame: frame, reverse, offset: [-12, -40], mode: 'normal' });
+    }
+  };
+  const flowers = (at: [number, number] | null, reverse: boolean) => {
+    if (!at) return;
+    state.flowers.push({
+      startFrame: frame, reverse,
+      x: at[0] * TILEWIDTH + TILEWIDTH / 2,
+      y: at[1] * TILEHEIGHT + TILEHEIGHT / 2,
+    });
+  };
+  const sfx = (nid: string) => transitionEnv.playSfx?.(nid);
+  switch (transitionState) {
+    case 'fake_in':
+      transition.slide = opts.offset ? [opts.offset[0], opts.offset[1]] : [0, 0];
+      break;
+    case 'fake_out':
+      transition.fakePosition = here;
+      transition.slide = opts.offset ? [opts.offset[0], opts.offset[1]] : [0, 0];
+      break;
+    case 'fade_in':
+      break;
+    case 'fade_out':
+      transition.fakePosition = here;
+      break;
+    case 'fade_move':
+      transition.fakePosition = opts.from ?? here;
+      break;
+    case 'warp_in':
+      sfx('WarpEnd');
+      anim('Warp', false);
+      flowers(here, true);
+      break;
+    case 'warp_out':
+    case 'warp_move':
+      sfx('Warp');
+      transition.fakePosition = transitionState === 'warp_move' ? opts.from ?? here : here;
+      anim('Warp', false);
+      state.flickers.push({ start: fxNow(), duration: DEFAULT_TRANSITION_TIME, color: [255, 255, 255], mode: 'add', fadeOut: false });
+      flowers(transition.fakePosition, false);
+      break;
+    case 'swoosh_in':
+      sfx('Sword Whoosh');
+      anim('Swoosh', false);
+      break;
+    case 'swoosh_out':
+    case 'swoosh_move':
+      sfx('Sword Whoosh');
+      transition.fakePosition = transitionState === 'swoosh_move' ? opts.from ?? here : here;
+      anim('Swoosh', true);
+      break;
+  }
+  state.transition = transition;
+}
+
+/** UnitSprite.update_state / update_transition, caught up to this frame. */
+function advanceTransition(unit: UnitObject, state: UnitFxState): void {
+  const transition = state.transition;
+  if (!transition) return;
+  const frame = getFrameCount();
+  if (transition.state === 'fake_in' || transition.state === 'fake_out') {
+    const growing = transition.state === 'fake_out';
+    while (transition.slideFrame < frame) {
+      transition.slideFrame++;
+      for (const axis of [0, 1]) {
+        const value = transition.slide[axis];
+        if (value === 0) continue;
+        transition.slide[axis] = value + (growing ? Math.sign(value) * 2 : -Math.sign(value) * 2);
+      }
+      const [x, y] = transition.slide;
+      if (growing ? Math.abs(x) > TILEWIDTH || Math.abs(y) > TILEHEIGHT : x === 0 && y === 0) {
+        state.transition = null;
+        return;
+      }
+    }
+    return;
+  }
+  const elapsed = (frame - transition.startFrame) * FRAMETIME;
+  if (DEFAULT_TRANSITION_TIME - elapsed >= 0) return;
+  // transition_counter ran out: _fake_position clears, then the next state.
+  state.transition = null;
+  if (transition.state === 'fade_move') setUnitTransition(unit, 'fade_in');
+  else if (transition.state === 'warp_move') setUnitTransition(unit, 'warp_in');
+  else if (transition.state === 'swoosh_move') setUnitTransition(unit, 'swoosh_in');
+}
+
+/** Where a transitioning unit draws (its fake position while it leaves). */
+export function getTransitionPosition(unit: UnitObject): [number, number] | null {
+  const state = states.get(unit);
+  if (!state) return unit.position;
+  advanceTransition(unit, state);
+  return state.transition?.fakePosition ?? unit.position;
+}
+
+/** Units drawn off the board: leaving units still on their fake tile. */
+export function offBoardTransitionUnits(): UnitObject[] {
+  const units: UnitObject[] = [];
+  for (const [unit, state] of states) {
+    advanceTransition(unit, state);
+    if (!unit.position && state.transition?.fakePosition) units.push(unit);
+  }
+  return units;
+}
+
+/** The unit's transition state, or null (tests and draw_hp). */
+export function getUnitTransition(unit: UnitObject): UnitTransitionState | null {
+  const state = states.get(unit);
+  if (!state) return null;
+  advanceTransition(unit, state);
+  return state.transition?.state ?? null;
+}
+
+/**
+ * Draw a unit's transition animations and warp flowers (UnitSprite.draw:
+ * animations at the sprite's tile top-left, then its particle systems).
+ */
+export function drawUnitTransitionOverlay(
+  surf: Surface,
+  unit: UnitObject,
+  left: number,
+  top: number,
+  cameraX: number,
+  cameraY: number,
+): void {
+  const state = states.get(unit);
+  if (!state || (!state.anims.length && !state.flowers.length)) return;
+  const frame = getFrameCount();
+  state.anims = state.anims.filter((anim) => {
+    const sheet = transitionEnv.anim?.(anim.nid) ?? null;
+    if (!sheet) return (frame - anim.startFrame) * FRAMETIME < 1000;
+    const counter = Math.floor(((frame - anim.startFrame) * FRAMETIME) / Math.max(1, sheet.speed));
+    if (counter >= sheet.numFrames) return false;
+    const index = anim.reverse ? sheet.numFrames - 1 - counter : counter;
+    const sx = (index % sheet.frameX) * sheet.frameWidth;
+    const sy = Math.floor(index / sheet.frameX) * sheet.frameHeight;
+    const ctx = surf.ctx;
+    const scale = surf.scale;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (anim.mode === 'translucent') ctx.globalAlpha = 1 - 0.33;
+    else if (anim.mode === 'add') ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(
+      sheet.image, sx, sy, sheet.frameWidth, sheet.frameHeight,
+      Math.round((left + anim.offset[0]) * scale), Math.round((top + anim.offset[1]) * scale),
+      sheet.frameWidth * scale, sheet.frameHeight * scale,
+    );
+    ctx.restore();
+    return true;
+  });
+  const sprite = transitionEnv.flowerSprite?.() ?? null;
+  state.flowers = state.flowers.filter((burst) => {
+    const age = frame - burst.startFrame;
+    if (age >= WARP_FLOWER_FRAMES) return false;
+    if (sprite) {
+      for (const [x, y] of warpFlowerPositions(burst, age)) surf.blit(sprite, Math.floor(x - cameraX), Math.floor(y - cameraY));
+    }
+    return true;
+  });
+}
+
+/**
+ * particles.WarpFlower / ReverseWarpFlower: 16 petals at speed 4.5 from the
+ * tile center, angle num*pi/8 + pi/16, turning pi/64 a frame for 40 frames
+ * (the reverse burst pre-runs 40 frames and flies back in).
+ */
+export function warpFlowerPositions(burst: { x: number; y: number; reverse: boolean }, age: number): Array<[number, number]> {
+  const speed = 4.5;
+  const step = Math.PI / 8;
+  const positions: Array<[number, number]> = [];
+  for (let num = 0; num < 16; num++) {
+    let angle = num * step + step / 2;
+    let x = burst.x;
+    let y = burst.y;
+    if (burst.reverse) {
+      for (let i = 0; i < WARP_FLOWER_FRAMES; i++) {
+        angle -= Math.PI / 64;
+        x += speed * Math.cos(angle);
+        y += speed * Math.sin(angle);
+      }
+      for (let i = 0; i < age; i++) {
+        angle += Math.PI / 64;
+        x -= speed * Math.cos(angle);
+        y -= speed * Math.sin(angle);
+      }
+    } else {
+      for (let i = 0; i < age; i++) {
+        angle -= Math.PI / 64;
+        x += speed * Math.cos(angle);
+        y += speed * Math.sin(angle);
+      }
+    }
+    positions.push([x, y]);
+  }
+  return positions;
 }
 
 /** True while any unit still has floating damage numbers to draw. */

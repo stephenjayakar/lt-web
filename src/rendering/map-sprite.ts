@@ -9,6 +9,8 @@ export interface MapSpriteFx {
   tints: Array<{ color: [number, number, number]; mode: 'add' | 'sub' }>;
   opacity: number;
   stationary: boolean;
+  /** Swoosh transitions: scale the frame's height by this, growing upward. */
+  stretchY?: number;
 }
 
 const DIRECTION_ROW: Record<Direction, number> = {
@@ -210,14 +212,20 @@ export class MapSprite {
     const px = worldX - offsetX + anchorDx;
     const py = worldY - offsetY + anchorDy;
 
-    if (fx && (fx.tints.length > 0 || fx.opacity < 1)) {
-      // unit_sprite.draw: the fade transition first, then every active
-      // flicker as an RGB add/sub tint (alpha untouched).
+    const stretch = fx?.stretchY ?? 1;
+    if (fx && (fx.tints.length > 0 || fx.opacity < 1 || stretch > 1)) {
+      // unit_sprite.draw: the transition (swoosh stretch, fade) first, then
+      // every active flicker as an RGB add/sub tint (alpha untouched).
       for (const tint of fx.tints) frame = this.getRgbTintedFrame(frame, tint.color, tint.mode);
       if (fx.opacity <= 0) return;
       const previous = frame.getAlpha();
       frame.setAlpha(previous * fx.opacity);
-      surf.blit(frame, px, py);
+      if (stretch > 1) {
+        const height = Math.trunc(frame.height * stretch);
+        surf.blitScaled(frame, 0, 0, frame.width, frame.height, px, py - (height - frame.height), frame.width, height);
+      } else {
+        surf.blit(frame, px, py);
+      }
       frame.setAlpha(previous);
       return;
     }
