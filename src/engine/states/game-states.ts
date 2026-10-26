@@ -10,6 +10,7 @@
 import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import { isForkEngine } from '../engine-flavor';
+import { canGiveExp, getEffectiveLevelCap } from '../leveling';
 import type { GameState } from '../game-state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
@@ -14804,21 +14805,25 @@ export class EventState extends State {
         const silent = args.some(arg => arg.toLowerCase().trim() === 'silent');
         if (unit && silent) {
           // Python event_functions.give_exp silent branch: clamp, cap at the
-          // class max level, and level through autolevel_to so the unit
+          // level cap, and level through autolevel_to so the unit
           // fires unit_level_up and learns skills, keeping its current HP.
-          const klass = game.db.classes.get(unit.klass);
-          const maxLevel = Number(klass?.max_level ?? 20);
-          const autoPromote = (game.db.getConstant('auto_promote', false) ||
-            unit.tags.includes('AutoPromote')) && (klass?.turns_into?.length ?? 0) > 0 &&
-            !unit.tags.includes('NoAutoPromote');
+          const maxLevel = getEffectiveLevelCap(unit, game);
           let exp = Math.max(-100, Math.min(100, parseInt(args[1], 10) || 0));
-          const canGive = unit.level < maxLevel || exp < 0 || autoPromote;
-          const cap = 100 * ((canGive ? maxLevel + 1 : maxLevel) - unit.level) - unit.exp;
-          exp = Math.min(exp, cap);
+          const fork = isForkEngine();
+          // The fork has no max-exp clamp or can_give_exp gate here: below
+          // get_level_cap it levels up, at the cap it parks exp at 99, and
+          // otherwise it just sets exp (Endless_Growth relies on this).
+          const canGive = fork ? unit.level < maxLevel : canGiveExp(unit, exp, game);
+          if (!fork) {
+            const cap = 100 * ((canGive ? maxLevel + 1 : maxLevel) - unit.level) - unit.exp;
+            exp = Math.min(exp, cap);
+          }
           const oldExp = unit.exp;
           let queueMarker = -1;
           if (oldExp + exp >= 100) {
-            if (canGive) {
+            if (fork && !canGive) {
+              game.actionLog.doAction(new SetUnitExpAction(unit, 99));
+            } else if (canGive) {
               game.actionLog.doAction(new SetUnitExpAction(unit, (oldExp + exp) % 100));
               // AutoLevel refills HP (mana is untouched by the web action).
               const oldHp = unit.currentHp;
@@ -14832,7 +14837,7 @@ export class EventState extends State {
             } else {
               game.actionLog.doAction(new SetUnitExpAction(unit, 0));
             }
-          } else if (exp > 0) {
+          } else if (exp > 0 && !fork) {
             if (canGive) game.actionLog.doAction(new SetUnitExpAction(unit, oldExp + exp));
           } else {
             game.actionLog.doAction(new SetUnitExpAction(unit, oldExp + exp));
@@ -14841,8 +14846,9 @@ export class EventState extends State {
           return queueMarker >= 0 && this.runEventsQueuedSince(queueMarker, game);
         }
         if (unit) {
+          const exp = Math.max(-100, Math.min(100, parseInt(args[1], 10) || 0));
           game.actionLog.doAction(
-            new GainExpAction(unit, parseInt(args[1], 10) || 0, game.currentMode?.growths ?? 'random'),
+            new GainExpAction(unit, exp, game.currentMode?.growths ?? 'random'),
           );
         }
         if (!silent && !this.skipMode) {

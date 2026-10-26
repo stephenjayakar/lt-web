@@ -15,6 +15,7 @@ import {
 } from './item-system';
 import {
   applyGroupCombatComponents,
+  combatComponentExp,
   grantPartnerCombatWexp,
   type WeaponRankUp,
 } from './combat-components';
@@ -32,7 +33,7 @@ import {
   isProcIconVisible,
   type CombatProcCue,
 } from './proc-presentation';
-import { levelUpUnit } from '../engine/leveling';
+import { applyExpGain } from '../engine/leveling';
 import { applyPermanentDamage, checkEnemy } from './skill-system';
 import { canCounterattack, computeCrit, computeDamage, computeHit, weaponTriangle } from './combat-calcs';
 import { MapCombatInfo, type MapCombatInfoMethod, type MapCombatStats } from './map-combat-info';
@@ -875,43 +876,42 @@ export class MapCombat implements StrikeEventCombat {
       );
     }
 
-    // Fixed staff EXP replaces the ordinary level-difference combat formula.
-    const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, deadDefenders);
-
-    // Grant EXP and perform level-ups with growth rolls
+    // Python simple_combat.calculate_exp is item_system.exp only: items with
+    // no exp/level_exp component grant nothing. ExpState then clamps the
+    // gain at the level cap and levels with the unit's growth method.
+    let expGained = componentResults.fixedExp ?? 0;
     let levelUps: Record<string, number>[] = [];
-    const growthMode = (this.db.getConstant('growths_choice', 'random') as string) || 'random';
-
     if (!attackerDead && this.attacker.team === 'player' && expGained > 0) {
-      this.attacker.exp += expGained;
-      while (this.attacker.exp >= 100) {
-        this.attacker.exp -= 100;
-        const gains = this.game
-          ? levelUpUnit(this.attacker, growthMode, this.game)
-          : this.attacker.levelUp(growthMode);
-        levelUps.push(gains);
-      }
+      ({ applied: expGained, levelUps } = applyExpGain(this.attacker, expGained, undefined, this.game));
     }
-    if (attackerPartner && !attackerPartner.isDead() && attackerPartner.team === 'player') {
+    // handle_paired_exp only runs with the pairup constant; a plain rescue
+    // traveler earns no guard-stance exp.
+    const pairup = Boolean(this.db.getConstant('pairup', false));
+    if (!pairup) {
+      // No partner or guard-stance exp.
+    } else if (attackerPartner && !attackerPartner.isDead() && attackerPartner.team === 'player') {
       this.grantPairedExp(
         attackerPartner,
-        Math.floor(this.calculateExpFor(attackerPartner, deadDefenders) / 2),
-        growthMode,
+        Math.floor(combatComponentExp(
+          attackerPartner, attackerPartnerItem ?? attackerPartner.equippedWeapon,
+          this.strikes, false, deadDefenders, this.db,
+        ) / 2),
       );
     } else if (this.attacker.rescuing && this.attacker.rescuing.team === 'player') {
-      this.grantGuardExp(this.attacker, this.attacker.rescuing, growthMode);
+      this.grantGuardExp(this.attacker, this.attacker.rescuing);
     }
-    if (defenderPartner && defenderPartner.team === 'player') {
+    if (!pairup) {
+      // No partner or guard-stance exp.
+    } else if (defenderPartner && defenderPartner.team === 'player') {
       this.grantPairedExp(
         defenderPartner,
-        Math.floor(this.calculateExpFor(
-          defenderPartner,
-          new Set(attackerDead ? [this.attacker] : []),
+        Math.floor(combatComponentExp(
+          defenderPartner, defenderPartnerItem ?? defenderPartner.equippedWeapon,
+          this.strikes, false, new Set(attackerDead ? [this.attacker] : []), this.db,
         ) / 2),
-        growthMode,
       );
     } else if (this.primaryDefender?.rescuing && this.primaryDefender.rescuing.team === 'player') {
-      this.grantGuardExp(this.primaryDefender, this.primaryDefender.rescuing, growthMode);
+      this.grantGuardExp(this.primaryDefender, this.primaryDefender.rescuing);
     }
 
     // Python (simple_combat.handle_item_gain): every droppable item on a killed
@@ -1298,71 +1298,19 @@ export class MapCombat implements StrikeEventCombat {
   }
 
   // ------------------------------------------------------------------
-  // EXP calculation
+  // EXP (Python simple_combat.handle_paired_exp)
   // ------------------------------------------------------------------
 
-  /**
-   * Calculate experience gained.
-   * Base 30 exp for combat, +50 bonus for kill.
-   * Scaled by level difference between attacker and defender.
-   */
-  private calculateExp(attackerDead: boolean, deadDefenders: Set<UnitObject>): number {
-    if (attackerDead) return 0;
-
-    const BASE_EXP = 30;
-    const KILL_BONUS = 50;
-
-    const damagedDefenders = new Set(this.strikes
-      .filter((strike) =>
-        strike.attacker === this.attacker && strike.hit &&
-        strike.damage + (strike.extraDamage ?? 0) > 0 &&
-        !strike.defender.tags.includes('Tile'),
-      )
-      .map((strike) => strike.defender));
-    let exp = 0;
-    for (const defender of damagedDefenders) {
-      // Level difference scaling: higher-level enemies give more exp
-      const levelDiff = defender.level - this.attacker.level;
-      const levelScale = Math.max(0.1, 1 + levelDiff * 0.1);
-      let defenderExp = Math.round(BASE_EXP * levelScale);
-      if (deadDefenders.has(defender)) defenderExp += Math.round(KILL_BONUS * levelScale);
-      exp += defenderExp;
-    }
-
-    // Python aggregates unique damaged defenders, then clamps the encounter.
-    return damagedDefenders.size > 0 ? Math.max(1, Math.min(100, exp)) : 0;
-  }
-
-  private calculateExpFor(unit: UnitObject, deadDefenders: Set<UnitObject>): number {
-    const damagedDefenders = new Set(this.strikes
-      .filter((strike) => strike.attacker === unit && strike.hit &&
-        strike.damage + (strike.extraDamage ?? 0) > 0 &&
-        !strike.defender.tags.includes('Tile'))
-      .map((strike) => strike.defender));
-    let exp = 0;
-    for (const defender of damagedDefenders) {
-      const levelScale = Math.max(0.1, 1 + (defender.level - unit.level) * 0.1);
-      exp += Math.round(30 * levelScale);
-      if (deadDefenders.has(defender)) exp += Math.round(50 * levelScale);
-    }
-    return damagedDefenders.size > 0 ? Math.max(1, Math.min(100, exp)) : 0;
-  }
-
-  private grantPairedExp(unit: UnitObject, amount: number, growthMode: string): void {
+  private grantPairedExp(unit: UnitObject, amount: number): void {
     if (amount <= 0) return;
-    unit.exp += Math.max(0, Math.min(100, amount));
-    while (unit.exp >= 100) {
-      unit.exp -= 100;
-      if (this.game) levelUpUnit(unit, growthMode, this.game);
-      else unit.levelUp(growthMode);
-    }
+    applyExpGain(unit, Math.max(0, Math.min(100, amount)), undefined, this.game);
   }
 
-  private grantGuardExp(leader: UnitObject, follower: UnitObject, growthMode: string): void {
+  private grantGuardExp(leader: UnitObject, follower: UnitObject): void {
     const guardedHits = this.strikes.filter((strike) => strike.guarded && strike.defender === leader).length;
     const minExp = Number(this.db.getConstant('min_exp', 0));
     const magnitude = Number(this.db.getConstant('exp_magnitude', 10));
     const amount = Math.max(minExp, Math.min(100, guardedHits * magnitude));
-    this.grantPairedExp(follower, amount, growthMode);
+    this.grantPairedExp(follower, amount);
   }
 }

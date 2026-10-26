@@ -40,7 +40,7 @@ import {
   PROC_CUE_DURATION_MS,
   type CombatProcCue,
 } from './proc-presentation';
-import { levelUpUnit } from '../engine/leveling';
+import { applyExpGain } from '../engine/leveling';
 import { getCombatRandom, type RandomGameState } from '../engine/static-random';
 import { Surface } from '../engine/surface';
 import { WINWIDTH, WINHEIGHT, TILEWIDTH, TILEHEIGHT, TILEX, TILEY, FRAMETIME, getFrameCount } from '../engine/constants';
@@ -1436,27 +1436,22 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       this.game,
     );
 
-    // Fixed staff EXP replaces the ordinary level-difference combat formula.
-    const expGained = componentResults.fixedExp ?? this.calculateExp(attackerDead, defenderDead);
-
+    // Python simple_combat.calculate_exp is item_system.exp only: items with
+    // no exp/level_exp component grant nothing. ExpState then clamps the
+    // gain at the level cap and levels with the unit's growth method.
+    let expGained = componentResults.fixedExp ?? 0;
     let levelUps: Record<string, number>[] = [];
-    const growthMode = (this.db.getConstant?.('growths_choice', 'random') as string) || 'random';
-
     if (!attackerDead && this.attacker.team === 'player' && expGained > 0) {
-      this.attacker.exp += expGained;
-      while (this.attacker.exp >= 100) {
-        this.attacker.exp -= 100;
-        const gains = this.game
-          ? levelUpUnit(this.attacker, growthMode, this.game)
-          : this.attacker.levelUp(growthMode);
-        levelUps.push(gains);
+      ({ applied: expGained, levelUps } = applyExpGain(this.attacker, expGained, undefined, this.game));
+    }
+    // handle_paired_exp (guard stance) only runs with the pairup constant.
+    if (this.db.getConstant?.('pairup', false)) {
+      if (this.attacker.rescuing && this.attacker.rescuing.team === 'player') {
+        this.grantGuardFollowerExp(this.attacker, this.attacker.rescuing);
       }
-    }
-    if (this.attacker.rescuing && this.attacker.rescuing.team === 'player') {
-      this.grantGuardFollowerExp(this.attacker, this.attacker.rescuing, growthMode);
-    }
-    if (this.defender.rescuing && this.defender.rescuing.team === 'player') {
-      this.grantGuardFollowerExp(this.defender, this.defender.rescuing, growthMode);
+      if (this.defender.rescuing && this.defender.rescuing.team === 'player') {
+        this.grantGuardFollowerExp(this.defender, this.defender.rescuing);
+      }
     }
 
     // Python (simple_combat.handle_item_gain): every droppable item on the
@@ -1492,38 +1487,14 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     };
   }
 
-  private calculateExp(attackerDead: boolean, defenderDead: boolean): number {
-    if (attackerDead) return 0;
-
-    const BASE_EXP = 30;
-    const KILL_BONUS = 50;
-    const levelDiff = this.defender.level - this.attacker.level;
-    const levelScale = Math.max(0.1, 1 + levelDiff * 0.1);
-
-    let exp = Math.round(BASE_EXP * levelScale);
-    if (defenderDead) {
-      exp += Math.round(KILL_BONUS * levelScale);
-    }
-    return Math.max(1, Math.min(100, exp));
-  }
-
-  private grantGuardFollowerExp(
-    leader: UnitObject,
-    follower: UnitObject,
-    growthMode: string,
-  ): void {
+  private grantGuardFollowerExp(leader: UnitObject, follower: UnitObject): void {
     const guardedHits = this.strikes.filter(
       (strike) => strike.guarded && strike.defender === leader,
     ).length;
     if (guardedHits <= 0) return;
     const minimum = Number(this.db.getConstant('min_exp', 0));
     const magnitude = Number(this.db.getConstant('exp_magnitude', 10));
-    follower.exp += Math.max(minimum, Math.min(100, guardedHits * magnitude));
-    while (follower.exp >= 100) {
-      follower.exp -= 100;
-      if (this.game) levelUpUnit(follower, growthMode, this.game);
-      else follower.levelUp(growthMode);
-    }
+    applyExpGain(follower, Math.max(minimum, Math.min(100, guardedHits * magnitude)), undefined, this.game);
   }
 
 

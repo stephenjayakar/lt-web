@@ -15,7 +15,7 @@ import {
   skillConditionActive,
 } from '../combat/skill-system';
 import { skillCondition } from '../combat/item-system';
-import { autoLevelUnit, getEffectiveLevelCap, levelUpUnit } from './leveling';
+import { applyExpGain, autoLevelUnit } from './leveling';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { GameState } from './game-state';
@@ -2312,6 +2312,7 @@ export class GainExpAction extends Action {
   private startStats: Record<string, number> = {};
   private startGrowthPoints: Record<string, number> = {};
   private startHp: number = 0;
+  private applied: number = 0;
 
   constructor(unit: UnitObject, amount: number, growthMode: string = 'random') {
     super();
@@ -2326,21 +2327,11 @@ export class GainExpAction extends Action {
     this.startStats = { ...this.unit.stats };
     this.startGrowthPoints = { ...this.unit.growthPoints };
     this.startHp = this.unit.currentHp;
-    this.levelUps = [];
-
-    this.unit.exp += this.amount;
-    const game = _getGame?.();
-    const levelCap = game
-      ? getEffectiveLevelCap(this.unit, game)
-      : Number.POSITIVE_INFINITY;
-    while (this.unit.exp >= 100 && this.unit.level < levelCap) {
-      this.unit.exp -= 100;
-      const gains = game
-        ? levelUpUnit(this.unit, this.growthMode, game)
-        : this.unit.levelUp(this.growthMode);
-      this.levelUps.push(gains);
-    }
-    if (this.unit.level >= levelCap && this.unit.exp >= 100) this.unit.exp = 0;
+    // Python routes exp through ExpState, which clamps the gain at the level
+    // cap (get_level_cap) and grants nothing when can_give_exp fails.
+    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.());
+    this.applied = result.applied;
+    this.levelUps = result.levelUps;
   }
 
   reverse(): void {
@@ -2357,7 +2348,7 @@ export class GainExpAction extends Action {
   }
 
   getExpGained(): number {
-    return this.amount;
+    return this.applied;
   }
 }
 

@@ -9,21 +9,80 @@ export interface AutoLevelResult {
   growthPoints: Record<string, number>;
 }
 
-/** Runtime cap used by ordinary EXP gain and base-training availability. */
-export function getEffectiveLevelCap(
-  unit: UnitObject,
-  game: {
-    db: { classes: Map<string, { max_level?: number }> };
-    gameVars: Map<string, unknown>;
-  },
-): number {
-  const classCap = game.db.classes.get(unit.klass)?.max_level ?? 20;
+type LevelCapGame = {
+  db: {
+    classes: Map<string, { max_level?: number; turns_into?: string[] }>;
+    getConstant?: (nid: string, fallback?: any) => unknown;
+  };
+  gameVars: Map<string, unknown>;
+};
+
+/**
+ * Fork unit_funcs.get_level_cap: class max_level + game.level_cap_modifier +
+ * unit.level_cap_modifier, with no other ceiling. Upstream lt-maker reads
+ * max_level only; the modifiers are only changed by the fork's
+ * change_global_level_cap / change_unit_level_cap commands, so other
+ * projects still cap at max_level.
+ */
+export function getEffectiveLevelCap(unit: UnitObject, game: LevelCapGame): number {
+  const classCap = Number(game.db.classes.get(unit.klass)?.max_level ?? 20);
   const globalBonus = Number(game.gameVars.get('_global_level_cap_bonus') ?? 0);
   const unitBonus = Number(unit.fields.get('_level_cap_bonus') ?? 0);
-  const globalCap = 20 +
+  return classCap +
     (Number.isFinite(globalBonus) ? globalBonus : 0) +
     (Number.isFinite(unitBonus) ? unitBonus : 0);
-  return Math.max(1, Math.min(classCap, globalCap));
+}
+
+/** Python ExpState.has_autopromote / exp_funcs.has_autopromote. */
+export function hasAutoPromote(unit: UnitObject, game: LevelCapGame): boolean {
+  const klass = game.db.classes.get(unit.klass);
+  const tags = unit.tags ?? [];
+  return Boolean(game.db.getConstant?.('auto_promote', false) || tags.includes('AutoPromote')) &&
+    (klass?.turns_into?.length ?? 0) > 0 && !tags.includes('NoAutoPromote');
+}
+
+/** Python ExpState.can_give_exp (with the fork's get_level_cap). */
+export function canGiveExp(unit: UnitObject, exp: number, game: LevelCapGame): boolean {
+  return unit.level < getEffectiveLevelCap(unit, game) || exp < 0 || hasAutoPromote(unit, game);
+}
+
+/**
+ * The exp an ExpState actually grants. Python clamps the gain to
+ * `100 * (level_cap - level) - exp` unless the unit auto-promotes, and the
+ * state backs out without granting anything when can_give_exp fails.
+ */
+export function cappedExpGain(unit: UnitObject, exp: number, game: LevelCapGame): number {
+  let gain = exp;
+  if (!hasAutoPromote(unit, game)) {
+    gain = Math.min(gain, 100 * (getEffectiveLevelCap(unit, game) - unit.level) - unit.exp);
+  }
+  return canGiveExp(unit, gain, game) ? gain : 0;
+}
+
+/**
+ * Grant exp in place the way ExpState + GainExp do: clamp at the level cap,
+ * then level up (one growth roll per level, with the unit's leveling method
+ * unless `customMethod` is given) until the exp is below 100 or the cap is
+ * reached. Returns the exp actually granted and each level's stat changes.
+ */
+export function applyExpGain(
+  unit: UnitObject,
+  amount: number,
+  customMethod: string | undefined,
+  game: any,
+): { applied: number; levelUps: Record<string, number>[] } {
+  const applied = game ? cappedExpGain(unit, amount, game) : amount;
+  const levelUps: Record<string, number>[] = [];
+  unit.exp += applied;
+  const levelCap = game ? getEffectiveLevelCap(unit, game) : Number.POSITIVE_INFINITY;
+  while (unit.exp >= 100 && unit.level < levelCap) {
+    unit.exp -= 100;
+    levelUps.push(game
+      ? levelUpUnit(unit, customMethod, game)
+      : unit.levelUp(customMethod ?? 'random'));
+  }
+  if (unit.level >= levelCap && unit.exp >= 100) unit.exp = 0;
+  return { applied, levelUps };
 }
 
 const MD5_SHIFTS = [

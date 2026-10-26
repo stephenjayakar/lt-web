@@ -281,6 +281,22 @@ function groupComponentExp(
   return Math.max(-100, Math.min(100, Math.trunc(total)));
 }
 
+/**
+ * Python simple_combat.calculate_exp: item_system.exp only. An item without
+ * an `exp` / `level_exp` component grants no combat exp in either engine.
+ */
+export function combatComponentExp(
+  unit: UnitObject,
+  item: ItemObject | null,
+  strikes: CombatStrike[],
+  unitDead: boolean,
+  deadTargets: Set<UnitObject>,
+  db: Database,
+): number {
+  if (!item) return 0;
+  return groupComponentExp(unit, item, strikes, unitDead, deadTargets, db) ?? 0;
+}
+
 function resolveStolenItem(
   attacker: UnitObject,
   item: ItemObject,
