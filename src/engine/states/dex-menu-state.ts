@@ -27,7 +27,9 @@ import { UnitObject } from '../../objects/unit';
 import { SkillObject } from '../../objects/skill';
 import { createItemTree, type ItemObject } from '../../objects/item';
 import { drawIcon16, drawIconByAlias, resolveIconAlias } from '../../ui/icons';
-import { HelpDialog, ItemHelpDialog, type HelpBox } from '../../ui/help-menu';
+import {
+  HelpDialog, ItemHelpDialog, drawHelpPageCounter, getLinkedHelpBoxes, type HelpBox,
+} from '../../ui/help-menu';
 import {
   MenuBackground,
   MenuCursor,
@@ -91,8 +93,6 @@ const BOSS_RECORDS: Record<string, string> = {
   Machine: 'sydney_assimilation', Trinity: 'trinity_boss', Serpens: 'serpens_defeated',
   Solfrid: 'solfrid_defeated', GrigolBoss: 'grigol_boss_defeated', Final: 'game_clear',
 };
-
-const COLORTEXT_PATTERN = /<(.*?)>([^<>]*?)<\/>/g;
 
 function record(nid: string): unknown {
   return RECORDS?.get(nid) ?? null;
@@ -321,11 +321,7 @@ class DexInfoGraph {
     this.cursor.draw(surf, Math.max(0, bb.aabb[0] - 4), bb.aabb[1]);
     const box = this.helpBox(bb);
     box.draw(surf, pos[0], pos[1], false);
-    if (bb.boxes.length > 1 && !box.transitioningIn) {
-      const [tx, ty] = box.topLeftAt(pos[0], pos[1]);
-      blitTextRight(surf, 'small-yellow', `${bb.page + 1}/${bb.boxes.length}`,
-        tx + box.width - 16, ty + box.height - 8);
-    }
+    drawHelpPageCounter(surf, box, pos[0], pos[1], bb.page, bb.boxes.length);
   }
 }
 
@@ -726,46 +722,7 @@ class DexDetailPanel {
 
   /** get_help_boxes: a help box per lore/item/skill colour tag in `desc`. */
   private getHelpBoxes(desc: string): HelpBox[] {
-    const game = getGame();
-    const boxes: HelpBox[] = [];
-    const dupes: string[] = [];
-    for (const match of desc.matchAll(COLORTEXT_PATTERN)) {
-      const color = match[1];
-      const word = match[2];
-      let text = '';
-      let name = '';
-      let nid = '';
-      if (color === 'green' || color === 'brown') {
-        const lore = [...(game.db.lore?.values?.() ?? [])].find((entry: any) => !dupes.includes(entry.nid) &&
-          (entry.nid === word || entry.name === word || String(entry.aliases ?? '').split(',').includes(word)));
-        if (lore) {
-          text = lore.text;
-          name = lore.title ?? '';
-          nid = lore.nid;
-        }
-      } else if (color === 'red' || color === 'indigo') {
-        const prefab = [...game.db.items.values()].find((entry: any) => !dupes.includes(entry.nid) &&
-          (entry.nid === word || entry.name === word));
-        if (prefab) {
-          dupes.push(prefab.nid);
-          const item = createItemTree(prefab, (n: string) => game.db.items.get(n));
-          boxes.push(new ItemHelpDialog(item, null, false));
-        }
-      } else if (color === 'blue') {
-        const skill = [...game.db.skills.values()].find((entry: any) => !dupes.includes(entry.nid) &&
-          (entry.nid === word || entry.name === word));
-        if (skill) {
-          text = skill.desc ?? '';
-          name = skill.name;
-          nid = skill.nid;
-        }
-      }
-      if (nid) {
-        dupes.push(nid);
-        boxes.push(new HelpDialog(text, `<${color}>${name}</>`));
-      }
-    }
-    return boxes;
+    return getLinkedHelpBoxes(desc);
   }
 
   draw(surf: Surface): void {

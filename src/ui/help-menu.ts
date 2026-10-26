@@ -16,7 +16,7 @@ import { drawIcon16 } from './icons';
 import { drawStyledText, measureStyledText } from './styled-text';
 import { baseSurf, blitText, blitTextRight, getSprite, lineWrap, textWidth } from './menu-chrome';
 import { loadMenuBgSprite } from './base-surf';
-import type { ItemObject } from '../objects/item';
+import { createItemTree, type ItemObject } from '../objects/item';
 import type { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 
@@ -340,4 +340,71 @@ export function cachedItemHelpBox(item: ItemObject): HelpBox {
     itemBoxes.set(item, box);
   }
   return box;
+}
+
+/** Colour-tagged keyword in a description (EOtF fork `colortext_pattern`). */
+const COLORTEXT_PATTERN = /<(.*?)>([^<>]*?)<\/>/g;
+
+/**
+ * EOtF fork get_help_boxes (info_menu_state / player_choice /
+ * base_copy_info_menu): every colour-tagged keyword in `desc` that names a
+ * lore entry (`<green>`/`<brown>`, by nid, name or alias), an item
+ * (`<red>`/`<indigo>`) or a skill (`<blue>`) adds a help page for it, each
+ * linked entry at most once.
+ */
+export function getLinkedHelpBoxes(desc: string | null | undefined): HelpBox[] {
+  const db = _game?.db;
+  if (!desc || !db) return [];
+  const boxes: HelpBox[] = [];
+  const dupes: string[] = [];
+  for (const match of desc.matchAll(COLORTEXT_PATTERN)) {
+    const color = match[1];
+    const word = match[2];
+    let text = '';
+    let name = '';
+    let nid = '';
+    if (color === 'green' || color === 'brown') {
+      const lore = [...(db.lore?.values?.() ?? [])].find((entry: any) => !dupes.includes(entry.nid) &&
+        (entry.nid === word || entry.name === word || String(entry.aliases ?? '').split(',').includes(word)));
+      if (lore) {
+        text = lore.text;
+        name = lore.title ?? '';
+        nid = lore.nid;
+      }
+    } else if (color === 'red' || color === 'indigo') {
+      const prefab = [...(db.items?.values?.() ?? [])].find((entry: any) => !dupes.includes(entry.nid) &&
+        (entry.nid === word || entry.name === word));
+      if (prefab) {
+        dupes.push(prefab.nid);
+        const item = createItemTree(prefab, (n: string) => db.items.get(n));
+        boxes.push(new ItemHelpDialog(item, null, false));
+      }
+    } else if (color === 'blue') {
+      const skill = [...(db.skills?.values?.() ?? [])].find((entry: any) => !dupes.includes(entry.nid) &&
+        (entry.nid === word || entry.name === word));
+      if (skill) {
+        text = skill.desc ?? '';
+        name = skill.name;
+        nid = skill.nid;
+      }
+    }
+    if (nid) {
+      dupes.push(nid);
+      boxes.push(new HelpDialog(text, `<${color}>${name}</>`));
+    }
+  }
+  return boxes;
+}
+
+/**
+ * info_graph.InfoGraph.draw page counter: once a multi-page box has grown
+ * in, a small-yellow `n/m` sits 16px in from its right edge, 8px up from its
+ * bottom.
+ */
+export function drawHelpPageCounter(
+  surf: Surface, box: HelpBox, x: number, y: number, page: number, total: number, right = false,
+): void {
+  if (total <= 1 || box.transitioningIn) return;
+  const [tx, ty] = box.topLeftAt(x, y, right);
+  blitTextRight(surf, 'small-yellow', `${page + 1}/${total}`, tx + box.width - 16, ty + box.height - 8);
 }

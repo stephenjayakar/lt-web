@@ -27,6 +27,7 @@ import {
 } from '../../combat/combat-calcs';
 import { FONT } from '../../rendering/bmp-font';
 import {
+  additionalTags,
   growthChange,
   modifiedMaximumRange,
   modifiedMinimumRange,
@@ -35,11 +36,14 @@ import {
 import { available as itemAvailable, inventoryCapacity } from '../../combat/item-system';
 import type { SkillObject } from '../../objects/skill';
 import type { ItemObject } from '../../objects/item';
+import { isForkEngine } from '../engine-flavor';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
 import {
   HelpDialog,
   SkillHelpDialog,
   StatDialog,
+  drawHelpPageCounter,
+  getLinkedHelpBoxes,
   itemHelpBox,
   setHelpMenuGameRef,
   type HelpBox,
@@ -359,17 +363,41 @@ const LOGO_FOR: Record<InfoPage, string> = {
   notes: 'info_menu/info_title_notes',
 };
 
-/** Python info_graph.BoundingBox */
+/** EOtF fork TYPE row: tag -> row of the 16px `type_icons` strip (max 8 icons, 3 per line). */
+const TYPE_ICON_ROWS: Record<string, number> = {
+  Beast: 1, Horse: 2, Flying: 3, Armor: 4, Monster: 5, Infantry: 6,
+  Wyvern: 7, Dragon: 8, Magical: 9, Female: 10, Chess: 11, Mech: 12,
+};
+
+/** Python UnitObject.tags: own tags | class tags | skill additional_tags. */
+function unitTags(unit: UnitObject, game: any): string[] {
+  const tags = new Set<string>(unit.tags ?? []);
+  for (const tag of game.db.classes.get(unit.klass)?.tags ?? []) tags.add(tag);
+  for (const tag of additionalTags(unit, game)) tags.add(tag);
+  return [...tags];
+}
+
+/** Python info_graph.BoundingBox: one help box, or a list of pages AUX cycles. */
 interface InfoBox {
   aabb: [number, number, number, number];
-  make: () => HelpBox;
-  box?: HelpBox;
+  make: () => HelpBox | HelpBox[];
+  boxes?: HelpBox[];
+  page: number;
   first: boolean;
 }
 
+function pagesOf(info: InfoBox): HelpBox[] {
+  if (!info.boxes) {
+    const made = info.make();
+    info.boxes = Array.isArray(made) ? made : [made];
+  }
+  return info.boxes;
+}
+
+/** BoundingBox.help_box: the page currently shown. */
 function helpOf(info: InfoBox): HelpBox {
-  if (!info.box) info.box = info.make();
-  return info.box;
+  const pages = pagesOf(info);
+  return pages[info.page] ?? pages[0];
 }
 
 /** info_graph.find_closest (direction-weighted top-left distance). */
@@ -464,6 +492,7 @@ export class InfoMenuState extends State {
       'info_menu/info_title_notes', 'info_menu/groove_back', 'info_menu/groove_fill', 'info_menu/battle_info',
       'info_menu/equipment_logo', 'info_menu/equipment_highlight', 'info_menu/status_logo', 'info_menu/aid_icons',
       'page_arrows', 'icon_cooldown',
+      ...(isForkEngine() ? ['type_icons', 'class_skills', 'statuses', 'accessory_splitter'] : []),
     ]);
     for (const weapon of game.db.weapons ?? []) if (weapon.icon_nid) getIconSheet(weapon.icon_nid);
     this.unit = game.infoMenuUnit ?? game.memory?.get?.('current_unit') ?? null;
@@ -523,11 +552,13 @@ export class InfoMenuState extends State {
   }
 
   /** InfoGraph.register for the page currently being built. */
-  private register(aabb: [number, number, number, number], help: string | (() => HelpBox), first = false): void {
+  private register(
+    aabb: [number, number, number, number], help: string | (() => HelpBox | HelpBox[]), first = false,
+  ): void {
     if (!this.collecting) return;
     const make = typeof help === 'string' ? () => new HelpDialog(help) : help;
     const list = this.registry.get(this.collecting) ?? [];
-    list.push({ aabb, make, first });
+    list.push({ aabb, make, page: 0, first });
     this.registry.set(this.collecting, list);
   }
 
@@ -552,7 +583,16 @@ export class InfoMenuState extends State {
     const next = findClosest(cur, boxes, dir === 'LEFT' || dir === 'RIGHT');
     if (!next || next === cur) return false;
     this.currentBB = next;
+    next.page = 0;
     return true;
+  }
+
+  /** InfoGraph.switch_info: AUX shows a multi-page box's next page, wrapping. */
+  private switchInfo(): void {
+    const bb = this.currentBB;
+    if (!bb) return;
+    const pages = pagesOf(bb);
+    if (pages.length > 1) bb.page = bb.page < pages.length - 1 ? bb.page + 1 : 0;
   }
 
   /** InfoMenuState._init: left/right stat columns from DB.stats positions. */
@@ -568,6 +608,9 @@ export class InfoMenuState extends State {
   }
 
   private hasNotes(unit: UnitObject | null): boolean {
+    // EOtF fork: the fourth page lists class skills and statuses instead of
+    // notes, so it is there for every unit whenever unit_notes is on.
+    if (isForkEngine()) return !!constant('unit_notes');
     return !!(constant('unit_notes') && unit?.notes?.length);
   }
 
@@ -619,6 +662,9 @@ export class InfoMenuState extends State {
         this.infoFlag = false;
       } else if (event === 'LEFT' || event === 'RIGHT' || event === 'UP' || event === 'DOWN') {
         if (this.graphMove(event)) game.audioManager?.playSfx?.('Select 6');
+      } else if (event === 'AUX') {
+        game.audioManager?.playSfx?.('Select 6');
+        this.switchInfo();
       }
       return;
     }
@@ -816,7 +862,9 @@ export class InfoMenuState extends State {
       const [bx, by] = this.currentBB.aabb;
       this.infoCursor.update();
       this.infoCursor.draw(s, Math.max(0, bx - 4), by);
-      helpOf(this.currentBB).draw(s, Math.max(0, bx - 32), by + 13);
+      const box = helpOf(this.currentBB);
+      box.draw(s, Math.max(0, bx - 32), by + 13);
+      drawHelpPageCounter(s, box, Math.max(0, bx - 32), by + 13, this.currentBB.page, pagesOf(this.currentBB).length);
     }
     this.scene.present(surf);
     return surf;
@@ -844,7 +892,7 @@ export class InfoMenuState extends State {
     if (!this.portraitBoxes) {
       const boxes: InfoBox[] = [];
       const add = (aabb: [number, number, number, number], text: string): void => {
-        boxes.push({ aabb, make: () => new HelpDialog(text), first: false });
+        boxes.push({ aabb, make: () => new HelpDialog(text), page: 0, first: false });
       };
       add([24, 80, 52, 24], unit.desc ?? '');
       add([8, 104, 72, 16], klass?.desc ?? '');
@@ -911,19 +959,26 @@ export class InfoMenuState extends State {
     const state = this.infoState();
     this.collecting = this.registry.has(state) ? null : state;
     if (this.collecting) this.registry.set(state, []);
+    const fork = isForkEngine();
     if (this.page === 'personal_data') {
       this.drawPersonalData(main, this.growthFlag);
-      this.drawClassSkills(main);
+      // EOtF fork: class skills moved to the fourth page.
+      if (!fork) this.drawClassSkills(main);
       if (constant('fatigue') && unit.team === 'player' && getGame().gameVars?.get?.('_fatigue')) {
         this.drawFatigue(main);
       }
     } else if (this.page === 'equipment') {
       this.drawEquipment(main);
     } else if (this.page === 'support_skills') {
-      blitSprite(main, getSprite('info_menu/status_logo'), 100, WINHEIGHT - 42);
-      this.drawSkills(main);
+      // EOtF fork: up to 10 weapon ranks fill the page; no skill strip.
+      if (!fork) {
+        blitSprite(main, getSprite('info_menu/status_logo'), 100, WINHEIGHT - 42);
+        this.drawSkills(main);
+      }
       this.drawWexp(main);
       this.drawSupports(main);
+    } else if (fork) {
+      this.drawForkSkillsPage(main);
     } else {
       this.drawNotes(main);
     }
@@ -978,8 +1033,14 @@ export class InfoMenuState extends State {
         const maxStat = unit.getStatCap(nid);
         if (maxStat > 0 && highest > 0) {
           const total = Math.floor((maxStat / highest) * 42);
-          const base = (unit.stats[nid] ?? 0) + subtleStatBonus(unit, nid);
-          buildGroove(surf, ox + 27, 16 * idx + 32, total, Math.max(0, Math.min(1, base / maxStat)));
+          if (isForkEngine()) {
+            // EOtF fork: the bar never outgrows 42px and fills from the raw base stat.
+            const frac = Math.max(0, Math.min(1, (unit.stats[nid] ?? 0) / maxStat));
+            buildGroove(surf, ox + 27, 16 * idx + 32, Math.min(total, 42), frac);
+          } else {
+            const base = (unit.stats[nid] ?? 0) + subtleStatBonus(unit, nid);
+            buildGroove(surf, ox + 27, 16 * idx + 32, total, Math.max(0, Math.min(1, base / maxStat)));
+          }
         }
         drawStat(surf, nid, unit, ox + 47, y, this.time);
       }
@@ -996,7 +1057,8 @@ export class InfoMenuState extends State {
       this.register([96 + 72, y, 64, 16], () => this.statHelp(nid, growths));
     });
 
-    const other: string[] = ['RAT'];
+    // EOtF fork: a TYPE row of tag icons replaces the RAT (rating) row.
+    const other: string[] = [isForkEngine() ? 'TYPE' : 'RAT'];
     if (constant('talk_display')) other.unshift('TALK');
     if (!(constant('pairup') && constant('attack_stance_only'))) other.unshift('TRV', 'AID');
     const manaExpr = game.db.getEquation?.('MANA');
@@ -1016,7 +1078,7 @@ export class InfoMenuState extends State {
       const y = 16 * (idx + this.rightStats.length) + 24;
       const label = (text: string): void => blitText(surf, 'text-yellow', translate(text), ox + 72, y);
       const descKey: Record<string, string> = {
-        TRV: 'Trv_desc', AID: growths ? 'HP_desc' : 'Aid_desc', RAT: 'Rating_desc', MANA: 'MANA_desc',
+        TRV: 'Trv_desc', AID: growths ? 'HP_desc' : 'Aid_desc', RAT: 'Rating_desc', TYPE: 'Type_desc', MANA: 'MANA_desc',
         GAUGE: 'GAUGE_desc', TALK: 'Talk_desc', LEAD: 'Lead_desc',
       };
       if (descKey[stat]) this.register([96 + 72, y, 64, 16], descKey[stat]);
@@ -1032,6 +1094,7 @@ export class InfoMenuState extends State {
       if (stat === 'TRV') {
         const traveler = unit.traveler ? game.units.get(unit.traveler) : null;
         if (traveler) blitText(surf, 'text-blue', traveler.name, ox + 96, y);
+        else if (isForkEngine()) blitText(surf, 'text-blue', '--', ox + 96, y);
         else blitTextRight(surf, 'text-blue', '--', ox + 111, y);
         label('Trv');
       } else if (stat === 'AID') {
@@ -1040,15 +1103,29 @@ export class InfoMenuState extends State {
           blitText(surf, `text-${nameColor('HP')}`, translate('HP'), ox + 72, y);
         } else {
           blitTextRight(surf, 'text-blue', String(equation('RESCUE_AID')), ox + 111, y);
-          const tags: string[] = unit.tags ?? [];
+          const tags = unitTags(unit, game);
           const icons = getSprite('info_menu/aid_icons');
-          const row = tags.includes('Dragon') ? 3 : tags.includes('Flying') ? 2 : tags.includes('Mounted') ? 1 : 0;
+          // EOtF fork: the third aid icon marks Wyvern riders (upstream: Dragon).
+          const top = isForkEngine() ? 'Wyvern' : 'Dragon';
+          const row = tags.includes(top) ? 3 : tags.includes('Flying') ? 2 : tags.includes('Mounted') ? 1 : 0;
           blitSub(surf, icons, 0, row * 16, 16, 16, ox + 112, y);
           label('Aid');
         }
       } else if (stat === 'RAT') {
         blitTextRight(surf, 'text-blue', String(equation('RATING')), ox + 111, y);
         label('Rat');
+      } else if (stat === 'TYPE') {
+        const icons = getSprite('type_icons');
+        let counter = 0;
+        for (const tag of unitTags(unit, game)) {
+          const row = TYPE_ICON_ROWS[tag];
+          if (row === undefined) continue;
+          const line = Math.floor(counter / 3);
+          blitSub(surf, icons, 0, 16 * row, 16, 16, ox + 96 + 16 * (counter % 3), y + 16 * line);
+          counter += 1;
+          if (counter >= 8) break;
+        }
+        label('Type');
       } else if (stat === 'MANA') {
         blitTextRight(surf, 'text-blue', String(unit.currentMana ?? 0), ox + 111, y);
         label('MANA');
@@ -1178,28 +1255,42 @@ export class InfoMenuState extends State {
     const highlight = getSprite('info_menu/equipment_highlight');
     const nonAccessories = unit.items.filter((item) => !item.isAccessory());
     const accessories = unit.items.filter((item) => item.isAccessory());
-    const drawEntry = (item: ItemObject, idx: number, equipped: ItemObject | null): void => {
-      const y = idx * 16 + 24;
+    const fork = isForkEngine();
+    const drawEntry = (item: ItemObject, idx: number, equipped: ItemObject | null, y: number): void => {
       const sub = item.subitems.find((child) => child === equipped);
       if (sub || item === equipped) blitSprite(surf, highlight, ox + 8, y + 8);
       this.drawItemOption(surf, sub ?? item, ox + 8, y);
-      this.register([96 + 8, y, 120, 16], () => itemHelpBox(sub ?? item, unit), this.registry.get('equipment')?.length === 0);
+      // EOtF fork: colour-tagged keywords in the description add help pages.
+      this.register([96 + 8, y, 120, 16],
+        () => fork ? [itemHelpBox(sub ?? item, unit), ...getLinkedHelpBoxes(item.desc)] : itemHelpBox(sub ?? item, unit),
+        this.registry.get('equipment')?.length === 0);
     };
-    nonAccessories.forEach((item, idx) => drawEntry(item, idx, weapon));
+    nonAccessories.forEach((item, idx) => drawEntry(item, idx, weapon, idx * 16 + 24));
     const numItems = inventoryCapacity(unit, false, game.db);
-    accessories.forEach((item, idx) => drawEntry(item, numItems + idx, accessory));
+    if (fork) {
+      // accessory_splitter centred between the item and accessory slots;
+      // accessories sit 4px lower to make room for it.
+      const splitter = getSprite('accessory_splitter');
+      if (splitter) {
+        blitSprite(surf, splitter, ox + 72 - Math.floor(splitter.width / 2),
+          numItems * 16 + 26 - Math.floor(splitter.height / 2));
+      }
+    }
+    accessories.forEach((item, idx) =>
+      drawEntry(item, numItems + idx, accessory, (numItems + idx) * 16 + (fork ? 28 : 24)));
 
-    const top = 104;
+    // EOtF fork: battle box 4px lower, attack speed in the top-right slot instead of range.
+    const top = fork ? 108 : 104;
     const left = 12;
     blitSprite(surf, getSprite('info_menu/battle_info'), ox + left, top);
     blitSprite(surf, getSprite('info_menu/equipment_logo'), ox + 14, top + 4);
-    blitText(surf, 'text-yellow', translate('Rng'), ox + 78, top);
+    blitText(surf, 'text-yellow', translate(fork ? 'AS' : 'Rng'), ox + 78, top);
     blitText(surf, 'text-yellow', translate('Atk'), ox + 22, top + 16);
     blitText(surf, 'text-yellow', translate('Hit'), ox + 22, top + 32);
     const crit = !!constant('crit');
     blitText(surf, 'text-yellow', translate(crit ? 'Crit' : 'AS'), ox + 78, top + 16);
     blitText(surf, 'text-yellow', translate('Avoid'), ox + 78, top + 32);
-    this.register([96 + 78, top, 56, 16], 'Rng_desc');
+    this.register([96 + 78, top, 56, 16], fork ? 'AS_desc' : 'Rng_desc');
     this.register([96 + 14, top + 16, 64, 16], 'Atk_desc');
     this.register([96 + 14, top + 32, 64, 16], 'Hit_desc');
     this.register([96 + 78, top + 16, 56, 16], crit ? 'Crit_desc' : 'AS_desc');
@@ -1224,7 +1315,7 @@ export class InfoMenuState extends State {
       as = String(unit.getStatValue('SPD'));
     }
     const avo = String(avoid(unit, game.db, game.board, null, game));
-    blitTextRight(surf, 'text-blue', rng, ox + 127, top);
+    blitTextRight(surf, 'text-blue', fork ? as : rng, ox + 127, top);
     blitTextRight(surf, 'text-blue', dam, ox + 71, top + 16);
     blitTextRight(surf, 'text-blue', acc, ox + 71, top + 32);
     blitTextRight(surf, 'text-blue', crit ? crt : as, ox + 127, top + 16);
@@ -1252,7 +1343,8 @@ export class InfoMenuState extends State {
 
   private drawWexp(surf: Surface): void {
     const game = getGame();
-    const entries = this.wexpEntries().slice(0, 4);
+    // EOtF fork: five rows of weapon ranks (upstream two).
+    const entries = this.wexpEntries().slice(0, isForkEngine() ? 10 : 4);
     const width = Math.floor((WINWIDTH - 102) / 2);
     const ranks = [...(game.db.weaponRanks ?? [])].sort((a: any, b: any) => a.requirement - b.requirement);
     entries.forEach(([wtype, value], counter) => {
@@ -1285,7 +1377,8 @@ export class InfoMenuState extends State {
     const pairs = game.supports.getPairsForUnit(unit.nid)
       .filter((pair: any) => pair.unlockedRanks?.length)
       .slice(0, 6);
-    const top = 16 * 2 + 4 + 24;
+    // Below the weapon-rank surface (fork: 5 rows, upstream: 2).
+    const top = 16 * (isForkEngine() ? 5 : 2) + 4 + 24;
     pairs.forEach((pair: any, idx: number) => {
       const x = idx % 2;
       const y = Math.floor(idx / 2);
@@ -1299,6 +1392,41 @@ export class InfoMenuState extends State {
       const highest = pair.unlockedRanks[pair.unlockedRanks.length - 1];
       blitTextRight(surf, 'text-yellow', highest, 96 + x * width + Math.floor((WINWIDTH - 96) / 2) - 2, y * 16 + top);
     });
+  }
+
+  /**
+   * EOtF fork fourth page: `class_skills` and `statuses` headers over up to
+   * 12 class skills (create_class_skill_surf, at y 36) and 12 other visible
+   * skills (create_skill_surf, at y 108), six per row. Unit notes are not drawn.
+   */
+  private drawForkSkillsPage(surf: Surface): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    blitSprite(surf, getSprite('statuses'), 100, 96);
+    blitSprite(surf, getSprite('class_skills'), 100, 24);
+    const grid = (classSkills: boolean, top: number): void => {
+      const counts = new Map<string, { skill: SkillObject; count: number }>();
+      for (const skill of unit.skills) {
+        if (skill.hasComponent('class_skill') !== classSkills) continue;
+        if (skillInfoPresentation(skill, unit, game) === 'hidden') continue;
+        const entry = counts.get(skill.nid);
+        if (entry) entry.count += 1;
+        else counts.set(skill.nid, { skill, count: 1 });
+      }
+      [...counts.values()].slice(0, 12).forEach(({ skill, count }, idx) => {
+        const left = (idx % 6) * 24;
+        const vert = Math.floor(idx / 6) * 24;
+        drawSkill(surf, skill, 96 + left + 2, top + 4 + vert, skillInfoPresentation(skill, unit, game) === 'grey');
+        if (count > 1) {
+          const text = String(count);
+          blitText(surf, 'small-white', text, 96 + left + 20 - 4 * text.length, top + 6 + vert);
+        }
+        this.register([96 + left + 2, top + vert, 16, 16],
+          () => [new SkillHelpDialog(skill), ...getLinkedHelpBoxes(skill.desc)]);
+      });
+    };
+    grid(true, 36);
+    grid(false, 108);
   }
 
   /** create_notes_surf */
