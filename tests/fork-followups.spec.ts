@@ -183,4 +183,63 @@ test.describe('EOtF fork-parity follow-ups', () => {
       oneLossPerCombat: 'ADA',
     });
   });
+
+  test('a player unit countering on enemy phase earns its weapon exp', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async ({ arenaSrc, sword }) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const makeArena = new Function(`${arenaSrc}; return makeArena;`)();
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { MapCombat } = await import('/src/combat/map-combat.ts');
+      const arena = await makeArena(game, 3);
+      if (!arena.origin) return null;
+      const [x, y] = arena.origin;
+      const enemy = arena.make('_ExpEnemy', 'enemy');
+      const player = arena.make('_ExpPlayer', 'player');
+      game.board.setUnit(x, y, enemy);
+      game.board.setUnit(x + 1, y, player);
+      const arm = (unit: any, nid: string) => {
+        const item = new ItemObject({
+          nid, name: nid, desc: '', icon_nid: '', icon_index: [0, 0],
+          components: [...sword, ['level_exp', null]],
+        } as any);
+        unit.items = [item];
+        item.owner = unit;
+        unit.equippedWeapon = item;
+        return item;
+      };
+      const enemyItem = arm(enemy, '_EnemySword');
+      const playerItem = arm(player, '_PlayerSword');
+      player.exp = 0;
+      const fight = (attacker: any, atkItem: any, defender: any, defItem: any) => {
+        const before = game.actionLog.actionIndex;
+        const combat = new MapCombat(
+          attacker, atkItem, defender, defItem, game.db, 'grandmaster', game.board,
+          null, undefined, game,
+        );
+        let guard = 0;
+        while (!combat.update(1000) && guard++ < 500) { /* play out */ }
+        const results = combat.applyResults(game.actionLog);
+        const out = {
+          expUnit: results.expUnit?.nid ?? null,
+          expGained: results.expGained,
+          playerExp: player.exp,
+        };
+        while (game.actionLog.actionIndex > before) game.actionLog.runActionBackward();
+        return { ...out, rewoundExp: player.exp };
+      };
+      const enemyPhase = fight(enemy, enemyItem, player, playerItem);
+      const playerPhase = fight(player, playerItem, enemy, enemyItem);
+      arena.cleanup();
+      return { enemyPhase, playerPhase };
+    }, { arenaSrc: ARENA, sword: SWORD });
+    expect(result).not.toBeNull();
+    expect(result!.enemyPhase.expUnit).toBe('_ExpPlayer');
+    expect(result!.enemyPhase.expGained).toBeGreaterThan(0);
+    expect(result!.enemyPhase.playerExp).toBe(result!.enemyPhase.expGained);
+    expect(result!.enemyPhase.rewoundExp).toBe(0);
+    expect(result!.playerPhase.expUnit).toBe('_ExpPlayer');
+    expect(result!.playerPhase.expGained).toBe(result!.enemyPhase.expGained);
+  });
 });

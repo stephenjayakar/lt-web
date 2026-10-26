@@ -7579,7 +7579,7 @@ export class CombatState extends State {
           // clean_up0: combat_death runs over the combat before the exp
           // screen (the strikes' own events already ran between strikes).
           const pausedForEvents = this.runMidCombatEvents();
-          const gainsExp = this.results.expGained > 0 && activeCombat.attacker.team === 'player';
+          const gainsExp = this.results.expGained > 0 && this.expUnit() !== null;
           // The fork's map combat pushes ExpState in its one clean_up, under
           // the dying and end_combat states, so the bar shows after them.
           this.deferredExp = gainsExp && this.forkCleanup && !this.isAnimationCombat;
@@ -7763,8 +7763,7 @@ export class CombatState extends State {
           this.phase = 'level_screen';
           this.phaseTimer = 0;
           // Create the LevelUpScreen
-          const activeCombat = this.getActiveCombat();
-          const unit = activeCombat?.attacker;
+          const unit = this.expUnit();
           if (unit && this.levelUpGains) {
             const statDefs = game.db?.stats ?? [];
             this.levelUpScreen = new LevelUpScreenClass(
@@ -7962,12 +7961,18 @@ export class CombatState extends State {
     }
   }
 
+  /** The unit whose combat exp is shown (Python handle_exp's attacker or defender). */
+  private expUnit(): UnitObject | null {
+    if (this.results?.expUnit !== undefined) return this.results.expUnit;
+    const attacker = this.getActiveCombat()?.attacker ?? null;
+    return attacker?.team === 'player' ? attacker : null;
+  }
+
   private startExpPhase(): void {
     const game = getGame();
     // Calculate EXP bar parameters (faithful to Python ExpState.start)
     const totalExp = this.results!.expGained;
-    const activeCombat = this.getActiveCombat();
-    const currentExp = activeCombat!.attacker.exp;
+    const currentExp = this.expUnit()?.exp ?? 0;
     const hasLevelUp = this.results!.levelUps.length > 0;
 
     // Calculate old EXP (before gain was applied by applyResults)
@@ -7990,8 +7995,9 @@ export class CombatState extends State {
     this.expBar = null;
 
     // Start loading portrait for potential level-up screen
-    if (hasLevelUp && activeCombat?.attacker) {
-      const unit = activeCombat.attacker;
+    const expUnit = this.expUnit();
+    if (hasLevelUp && expUnit) {
+      const unit = expUnit;
       const portraitNid = (unit as any).portraitNid ?? unit.nid;
       game.resources?.loadPortrait?.(portraitNid)?.then?.((img: HTMLImageElement) => {
         this.portraitImg = img;
@@ -8009,8 +8015,7 @@ export class CombatState extends State {
    */
   private fireDuringUnitLevelUpTrigger(): void {
     const game = getGame();
-    const activeCombat = this.getActiveCombat();
-    const unit = activeCombat?.attacker;
+    const unit = this.expUnit();
     if (!game?.eventManager || !unit || !this.levelUpGains) return;
     const gains = { ...this.levelUpGains };
     const events = this.captureEvents(() => game.eventManager.trigger(
@@ -8050,8 +8055,7 @@ export class CombatState extends State {
    */
   private fireUnitLevelUpTrigger(): boolean {
     const game = getGame();
-    const activeCombat = this.getActiveCombat();
-    const unit = activeCombat?.attacker;
+    const unit = this.expUnit();
     if (!game?.eventManager || !unit || !this.levelUpGains) return false;
     const gains = { ...this.levelUpGains };
     const events = this.captureEvents(() => game.eventManager.trigger(

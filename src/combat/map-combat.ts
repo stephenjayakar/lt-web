@@ -16,6 +16,7 @@ import {
 import {
   applyGroupCombatComponents,
   combatComponentExp,
+  combatExpShare,
   grantPartnerCombatWexp,
   type WeaponRankUp,
 } from './combat-components';
@@ -71,6 +72,8 @@ export interface CombatResults {
   attackerDead: boolean;
   defenderDead: boolean;
   expGained: number;
+  /** Who earned expGained (Python handle_exp: player attacker, else player defender). */
+  expUnit?: UnitObject | null;
   /** Stat gains from each level-up (may be empty). */
   levelUps: Record<string, number>[];
   /** Whether the attacker's weapon broke. */
@@ -882,10 +885,16 @@ export class MapCombat implements StrikeEventCombat {
     // Python simple_combat.calculate_exp is item_system.exp only: items with
     // no exp/level_exp component grant nothing. ExpState then clamps the
     // gain at the level cap and levels with the unit's growth method.
-    let expGained = componentResults.fixedExp ?? 0;
+    const expShare = combatExpShare(
+      this.attacker, componentResults.fixedExp ?? 0, attackerDead,
+      this.primaryDefender, this.defenseItem,
+      !!this.primaryDefender && deadDefenders.has(this.primaryDefender),
+      this.strikes, this.db,
+    );
+    let expGained = expShare.amount;
     let levelUps: Record<string, number>[] = [];
-    if (!attackerDead && this.attacker.team === 'player' && expGained > 0) {
-      ({ applied: expGained, levelUps } = applyExpGain(this.attacker, expGained, undefined, this.game));
+    if (expShare.unit && expGained > 0) {
+      ({ applied: expGained, levelUps } = applyExpGain(expShare.unit, expGained, undefined, this.game));
     }
     // handle_paired_exp only runs with the pairup constant; a plain rescue
     // traveler earns no guard-stance exp.
@@ -942,6 +951,7 @@ export class MapCombat implements StrikeEventCombat {
       attackerDead,
       defenderDead,
       expGained,
+      expUnit: expShare.unit,
       levelUps,
       attackWeaponBroke,
       defenseWeaponBroke,

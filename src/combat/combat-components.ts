@@ -298,6 +298,33 @@ export function combatComponentExp(
   return groupComponentExp(unit, item, strikes, unitDead, deadTargets, db) ?? 0;
 }
 
+/**
+ * Python simple_combat.handle_exp: a living player attacker earns its item's
+ * exp; otherwise a living player defender earns its own weapon's exp
+ * (clamped to 0..100), e.g. a player unit countering on enemy phase.
+ */
+export function combatExpShare(
+  attacker: UnitObject,
+  attackerExp: number,
+  attackerDead: boolean,
+  defender: UnitObject | null,
+  defenseItem: ItemObject | null,
+  defenderDead: boolean,
+  strikes: CombatStrike[],
+  db: Database,
+): { unit: UnitObject | null; amount: number } {
+  if (attacker.team === 'player' && !attackerDead) {
+    return { unit: attacker, amount: attackerExp };
+  }
+  if (defender && defender.team === 'player' && !defenderDead) {
+    const amount = combatComponentExp(
+      defender, defenseItem, strikes, false, new Set(attackerDead ? [attacker] : []), db,
+    );
+    return { unit: defender, amount: Math.max(0, Math.min(100, amount)) };
+  }
+  return { unit: null, amount: 0 };
+}
+
 function resolveStolenItem(
   attacker: UnitObject,
   item: ItemObject,

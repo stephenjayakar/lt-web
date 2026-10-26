@@ -26,7 +26,7 @@ import {
 } from './item-system';
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
-import { applyCombatComponents } from './combat-components';
+import { applyCombatComponents, combatExpShare } from './combat-components';
 import { applyPermanentDamage, checkEnemy, unitHasTag } from './skill-system';
 import {
   CombatLifecycleRecord,
@@ -1442,10 +1442,14 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     // Python simple_combat.calculate_exp is item_system.exp only: items with
     // no exp/level_exp component grant nothing. ExpState then clamps the
     // gain at the level cap and levels with the unit's growth method.
-    let expGained = componentResults.fixedExp ?? 0;
+    const expShare = combatExpShare(
+      this.attacker, componentResults.fixedExp ?? 0, attackerDead,
+      this.defender, this.defenseItem, defenderDead, this.strikes, this.db,
+    );
+    let expGained = expShare.amount;
     let levelUps: Record<string, number>[] = [];
-    if (!attackerDead && this.attacker.team === 'player' && expGained > 0) {
-      ({ applied: expGained, levelUps } = applyExpGain(this.attacker, expGained, undefined, this.game));
+    if (expShare.unit && expGained > 0) {
+      ({ applied: expGained, levelUps } = applyExpGain(expShare.unit, expGained, undefined, this.game));
     }
     // handle_paired_exp (guard stance) only runs with the pairup constant.
     if (this.db.getConstant?.('pairup', false)) {
@@ -1475,6 +1479,7 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       attackerDead,
       defenderDead,
       expGained,
+      expUnit: expShare.unit,
       levelUps,
       attackWeaponBroke,
       defenseWeaponBroke,
