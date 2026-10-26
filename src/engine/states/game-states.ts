@@ -38,7 +38,17 @@ import type {
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { SkillObject } from '../../objects/skill';
-import { evaluateCondition, evaluateExpression, GameEvent, type ConditionContext, type EventCommand } from '../../events/event-manager';
+import {
+  evaluateCondition,
+  evaluateConditionOr,
+  evaluateExpression,
+  evaluateTextTag,
+  GameEvent,
+  pythonIterationValues,
+  pythonLiteral,
+  type ConditionContext,
+  type EventCommand,
+} from '../../events/event-manager';
 import {
   activateCombatArt,
   deactivateCombatArts,
@@ -4769,21 +4779,25 @@ export class ItemUseState extends State {
 // 4b2. BaseUseState - Use usable_in_base items on the managed unit
 // ============================================================================
 
+/** A game_var/level_var expression that raised (Python aborts the command). */
+const VARIABLE_EVALUATION_FAILED: unique symbol = Symbol('variableEvaluationFailed');
+
 export function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): boolean {
   if (!item.hasComponent('usable_in_base') || !item.hasComponent('usable')) return false;
   if (!itemAvailable(unit, item, game.db, game)) return false;
   if (item.maxUses > 0 && item.uses <= 0) return false;
 
+  // Python EvalTargetRestrict2.simple_target_restrict:
+  // evaluate(value, unit, local_args={'item': item}); an exception passes.
   const expression = item.getComponent<string>('eval_target_restrict_2');
-  if (expression && !evaluateCondition(expression, {
+  if (expression && !evaluateConditionOr(expression, {
     game,
     unit1: unit,
-    unit2: unit,
     item,
-    position: unit.position ?? undefined,
     gameVars: game.gameVars,
     levelVars: game.levelVars,
-  })) return false;
+    localArgs: new Map([['item', item]]),
+  }, true)) return false;
 
   const permanentStatComponent = item.hasComponent('permanent_stat_change_early')
     ? 'permanent_stat_change_early'
@@ -12148,7 +12162,7 @@ export class EventState extends State {
   }
 
   /** Evaluate LT game_var/level_var expressions while preserving bare-string shorthand. */
-  private evaluateVariableExpression(source: string): any {
+  private evaluateVariableExpression(source: string, literalFallback = true): any {
     const trimmed = source.trim();
     if (/^-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)+$/.test(trimmed)) {
       return source;
@@ -12173,12 +12187,17 @@ export class EventState extends State {
       }
       return source;
     }
+    // Python's _eval_expr raises EvaluateException (fatal to the event).
+    // Web deviation for game_var/level_var: keep the raw text as a string
+    // value (event authors and tests accumulate text this way); callers that
+    // need a number get a failure marker and skip the write.
     try {
       const evaluated = evaluateExpression(trimmed, this.buildConditionContext());
-      return evaluated === undefined ? source : evaluated;
+      if (evaluated !== undefined) return evaluated;
     } catch {
-      return source;
+      // handled below
     }
+    return literalFallback ? source : VARIABLE_EVALUATION_FAILED;
   }
 
   /** Evaluate a variable command, preserving the typed result of a whole {e:...} argument. */
@@ -12193,7 +12212,8 @@ export class EventState extends State {
         if (context.localArgs?.has(key)) value = context.localArgs.get(key);
         else if (context.levelVars?.has(key)) value = context.levelVars.get(key);
         else if (context.gameVars?.has(key)) value = context.gameVars.get(key);
-        return value === undefined ? 'undefined' : JSON.stringify(value);
+        // Python substitutes str(value); a missing variable is '??'.
+        return value === undefined ? '??' : pythonLiteral(value);
       },
     );
     try {
@@ -12674,7 +12694,7 @@ export class EventState extends State {
             return trimmed;
           }
         }
-        return JSON.stringify(resolved) ?? 'null';
+        return resolved === undefined ? 'None' : pythonLiteral(resolved);
       };
 
       // Resolve typed {v:...} placeholders inside an eval before evaluating the
@@ -12750,12 +12770,12 @@ export class EventState extends State {
         const bareName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(typedExpression);
         const contextName = /^(?:game|unit1?|unit2|target|region|position|target_pos|item)$/
           .test(typedExpression);
-        const result = bareName && !contextName
-          ? variableValue(typedExpression) ?? ''
-          : evaluateExpression(typedExpression, expressionContext);
-        value = value.slice(0, start) +
-          eventObjectToString(result) +
-          value.slice(close + 1);
+        // Python TextEvaluator._evaluate_evals: _object_to_str(value), or '??'
+        // when the expression raises.
+        const text = bareName && !contextName
+          ? eventObjectToString(variableValue(typedExpression) ?? '')
+          : evaluateTextTag(typedExpression, expressionContext);
+        value = value.slice(0, start) + text + value.slice(close + 1);
       }
       // Python TextEvaluator._evaluate_vars: a missing variable becomes '??'
       // (so `if;len({v:missing}) > 0` fails to evaluate and is False).
@@ -13967,6 +13987,8 @@ export class EventState extends State {
           this.advancePointer();
           return false;
         }
+        // Python _eval_expr raises when the value expression fails and the
+        // command does not run (evaluateExpression returns undefined).
         if (cmd.type === 'add_item_component') {
           const rawValue = args[3];
           const value = rawValue !== undefined &&
@@ -13975,7 +13997,7 @@ export class EventState extends State {
               ? parsePyevCommandValue(rawValue)
               : evaluateExpression(rawValue, this.buildConditionContext())
             : null;
-          game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
+          if (value !== undefined) game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
         } else if (cmd.type === 'modify_item_component') {
           if (!item.components.has(compNid)) {
             console.warn(`modify_item_component: item lacks component ${compNid}`);
@@ -13984,9 +14006,11 @@ export class EventState extends State {
               ? parsePyevCommandValue(args[3] ?? '')
               : evaluateExpression(args[3] ?? '', this.buildConditionContext());
             const property = args[4] && !['additive', 'recursive'].includes(args[4]) ? args[4] : null;
-            game.actionLog.doAction(new ModifyObjComponentAction(
-              item, compNid, value, property, args.includes('additive'),
-            ));
+            if (value !== undefined) {
+              game.actionLog.doAction(new ModifyObjComponentAction(
+                item, compNid, value, property, args.includes('additive'),
+              ));
+            }
           }
         } else {
           game.actionLog.doAction(new RemoveObjComponentAction(item, compNid));
@@ -14018,6 +14042,7 @@ export class EventState extends State {
                 !['stack', 'from_python', 'no_warn'].includes(rawValue)
               ? evaluateExpression(rawValue, this.buildConditionContext())
               : null;
+            if (value === undefined) break;
             game.actionLog.doAction(new AddObjComponentAction(skill, compNid, value));
           } else if (cmd.type === 'modify_skill_component') {
             if (!skill.components.has(compNid)) {
@@ -14025,6 +14050,7 @@ export class EventState extends State {
               continue;
             }
             const value = evaluateExpression(args[3] ?? '', this.buildConditionContext());
+            if (value === undefined) break;
             const property = args[4] && !['additive', 'stack'].includes(args[4]) ? args[4] : null;
             game.actionLog.doAction(new ModifyObjComponentAction(
               skill, compNid, value, property, args.includes('additive'),
@@ -15290,7 +15316,9 @@ export class EventState extends State {
           rawArgs[1] ?? 'True',
           args[1] ?? 'True',
         );
-        if (!isPrimitiveOrPrimitiveCollection(value)) {
+        if (value === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`game_var: could not evaluate ${args[1]}`);
+        } else if (!isPrimitiveOrPrimitiveCollection(value)) {
           // Python rejects units/items and keeps the previous value.
           console.warn(`game_var: ${args[1]} is not a valid variable`);
         } else if (varName && game.gameVars) {
@@ -15302,11 +15330,12 @@ export class EventState extends State {
 
       case 'inc_game_var': {
         const varName = args[0] ?? '';
-        if (varName && game.gameVars) {
+        const evaluatedIncrement = args[1] === undefined ? 1 : this.evaluateVariableExpression(args[1], false);
+        if (evaluatedIncrement === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`inc_game_var: could not evaluate ${args[1]}`);
+        } else if (varName && game.gameVars) {
           const current = Number(game.gameVars.get(varName) ?? 0);
-          const increment = args[1] === undefined
-            ? 1
-            : Number(this.evaluateVariableExpression(args[1]));
+          const increment = Number(evaluatedIncrement);
           game.actionLog.doAction(new SetGameVarAction(
             game.gameVars,
             varName,
@@ -15338,7 +15367,9 @@ export class EventState extends State {
           rawArgs[1] ?? 'True',
           args[1] ?? 'True',
         );
-        if (!isPrimitiveOrPrimitiveCollection(value)) {
+        if (value === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`level_var: could not evaluate ${args[1]}`);
+        } else if (!isPrimitiveOrPrimitiveCollection(value)) {
           // Python rejects units/items and keeps the previous value.
           console.warn(`level_var: ${args[1]} is not a valid variable`);
         } else if (varName && game.levelVars) {
@@ -15350,11 +15381,12 @@ export class EventState extends State {
 
       case 'inc_level_var': {
         const varName = args[0] ?? '';
-        if (varName && game.levelVars) {
+        const evaluatedIncrement = args[1] === undefined ? 1 : this.evaluateVariableExpression(args[1], false);
+        if (evaluatedIncrement === VARIABLE_EVALUATION_FAILED) {
+          console.warn(`inc_level_var: could not evaluate ${args[1]}`);
+        } else if (varName && game.levelVars) {
           const current = Number(game.levelVars.get(varName) ?? 0);
-          const increment = args[1] === undefined
-            ? 1
-            : Number(this.evaluateVariableExpression(args[1]));
+          const increment = Number(evaluatedIncrement);
           game.actionLog.doAction(new SetLevelVarAction(
             game.levelVars,
             varName,
@@ -16521,11 +16553,17 @@ export class EventState extends State {
         if (typedForExpression.trim().startsWith('[') ||
             typedForExpression.includes(' for ') ||
             typedForExpression.startsWith('range') ||
-            typedForExpression.includes('(')) {
+            typedForExpression.includes('(') ||
+            /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(typedForExpression.trim())) {
+          // Python's for evaluates the expression and iterates it (a dict
+          // such as unit.wexp yields its keys).
           const evaluated = evaluateExpression(typedForExpression, this.buildConditionContext());
-          if (Array.isArray(evaluated)) forValues = evaluated;
-          else if (evaluated && typeof evaluated[Symbol.iterator] === 'function') {
-            forValues = Array.from(evaluated);
+          if (evaluated !== undefined && evaluated !== null) {
+            try {
+              forValues = pythonIterationValues(evaluated);
+            } catch {
+              forValues = [];
+            }
           }
         } else {
           forValues = (args[1] ?? '').split(',')
@@ -18246,9 +18284,11 @@ export class EventState extends State {
         // create_record;nid;expression
         try {
           const nid = args[0];
-          const value = args[1] ?? 'true';
+          const value = args[1] ?? 'True';
           if (nid && RECORDS) {
-            RECORDS.create(nid, evaluateExpression(value, this.buildConditionContext()));
+            // Python create_record: an expression that raises is logged and skipped.
+            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            if (evaluated !== undefined) RECORDS.create(nid, evaluated);
           }
         } catch (e) { console.warn('create_record error:', e); }
         this.advancePointer();
@@ -18257,9 +18297,11 @@ export class EventState extends State {
       case 'update_record': {
         try {
           const nid = args[0];
-          const value = args[1] ?? 'true';
+          const value = args[1] ?? 'True';
           if (nid && RECORDS) {
-            RECORDS.update(nid, evaluateExpression(value, this.buildConditionContext()));
+            // Python update_record: an expression that raises is logged and skipped.
+            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            if (evaluated !== undefined) RECORDS.update(nid, evaluated);
           }
         } catch (e) { console.warn('update_record error:', e); }
         this.advancePointer();
@@ -18268,9 +18310,11 @@ export class EventState extends State {
       case 'replace_record': {
         try {
           const nid = args[0];
-          const value = args[1] ?? 'true';
+          const value = args[1] ?? 'True';
           if (nid && RECORDS) {
-            RECORDS.replace(nid, evaluateExpression(value, this.buildConditionContext()));
+            // Python replace_record: an expression that raises is logged and skipped.
+            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            if (evaluated !== undefined) RECORDS.replace(nid, evaluated);
           }
         } catch (e) { console.warn('replace_record error:', e); }
         this.advancePointer();

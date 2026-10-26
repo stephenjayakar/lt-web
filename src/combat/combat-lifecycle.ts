@@ -1,6 +1,6 @@
 import {
   evaluateCondition,
-  evaluateExpression,
+  evaluateInt,
   type EventManager,
   type EventTrigger,
 } from '../events/event-manager';
@@ -618,27 +618,23 @@ function combatComponentNumber(
 ): number {
   if (typeof rawValue === 'number') return Math.trunc(rawValue);
   if (typeof rawValue !== 'string' || rawValue.length === 0) return 0;
-  try {
-    const value = evaluateExpression(rawValue, {
-      game,
-      unit1: unit,
-      unit2: target,
-      position: unit.position ?? undefined,
-      item,
-      gameVars: game.gameVars,
-      levelVars: game.levelVars,
-      localArgs: new Map<string, unknown>([
-        ['item2', equippedWeapon(target)],
-        ['mode', mode],
-        ['skill', skill],
-      ]),
-    });
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
-  } catch (error) {
-    console.error(`Could not evaluate combat component ${rawValue}`, error);
-    return 0;
-  }
+  // EOtF eval_post_combat_* / eval_heal_on_kill / eval_lifelink:
+  // int(evaluate(...)), 0 when it raises.
+  return evaluateInt(rawValue, {
+    game,
+    unit1: unit,
+    unit2: target,
+    position: unit.position ?? undefined,
+    item,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map<string, unknown>([
+      ['item', item],
+      ['item2', equippedWeapon(target)],
+      ['mode', mode],
+      ['skill', skill],
+    ]),
+  }, 0);
 }
 
 function componentOption(rawValue: unknown, key: string): unknown {
@@ -659,32 +655,26 @@ function eotfSelfShoveMagnitude(
 ): number {
   if (typeof expression === 'number') return Math.trunc(expression);
   if (typeof expression !== 'string' || !expression) return 0;
-  try {
-    const targetPosition = strike.defender.position
-      ? [...strike.defender.position] as [number, number]
-      : null;
-    const value = evaluateExpression(expression, {
-      game,
-      unit1: strike.attacker,
-      unit2: strike.defender,
-      item: strike.item,
-      position: strike.attacker.position ?? undefined,
-      gameVars: game.gameVars,
-      levelVars: game.levelVars,
-      localArgs: new Map<string, unknown>([
-        ['item', strike.item],
-        ['item2', equippedWeapon(strike.defender)],
-        ['mode', strikeMode(strike)],
-        ['target', strike.defender],
-        ['target_pos', targetPosition],
-      ]),
-    });
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
-  } catch (error) {
-    console.error(`Could not evaluate self shove component ${expression}`, error);
-    return 0;
-  }
+  const targetPosition = strike.defender.position
+    ? [...strike.defender.position] as [number, number]
+    : null;
+  // EOtF ShoveFlexibleStops: int(evaluate(...)), 0 when it raises.
+  return evaluateInt(expression, {
+    game,
+    unit1: strike.attacker,
+    unit2: strike.defender,
+    item: strike.item,
+    position: strike.attacker.position ?? undefined,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map<string, unknown>([
+      ['item', strike.item],
+      ['item2', equippedWeapon(strike.defender)],
+      ['mode', strikeMode(strike)],
+      ['target', strike.defender],
+      ['target_pos', targetPosition],
+    ]),
+  }, 0);
 }
 
 function legacyMultipleOption(
@@ -2136,7 +2126,8 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
     const expression = strike.item.getComponent<unknown>('gain_mana_after_combat');
     if (typeof expression === 'string' && expression.length > 0) {
       try {
-        const amount = Math.trunc(Number(evaluateExpression(expression, {
+        // Python GainManaAfterCombat: int(evaluate(...)); skipped when it raises.
+        const amount = evaluateInt(expression, {
           game,
           unit1: strike.attacker,
           unit2: strike.defender,
@@ -2144,7 +2135,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
           item: strike.item,
           gameVars: game.gameVars,
           levelVars: game.levelVars,
-        })));
+        }, Number.NaN);
         if (!Number.isFinite(amount)) continue;
         const manaExpression = game.db.getEquation('MANA') ?? '0';
         const maximum = Math.max(

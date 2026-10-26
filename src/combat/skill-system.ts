@@ -11,7 +11,16 @@ import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import { isForkEngine } from '../engine/engine-flavor';
-import { evaluateCondition, evaluateExpression } from '../events/event-manager';
+import {
+  evaluateCondition,
+  evaluateExpression,
+  evaluateFloat,
+  evaluateInt,
+  evaluateIntPairs,
+  evaluatePythonInContext,
+  pythonTruthy,
+  setSkillConditionEvaluator,
+} from '../events/event-manager';
 
 export type SkillFactory = (nid: string) => SkillObject | null;
 
@@ -199,32 +208,14 @@ export function initializeSkillData(
   if (!skill.hasComponent('stat_change_at_apply_expression') ||
       skill.data.has('stat_changes')) return;
 
-  const configured = skill.getComponent<unknown>('stat_change_at_apply_expression');
-  const changes: Record<string, number> = {};
-  if (Array.isArray(configured)) {
-    for (const entry of configured) {
-      if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
-      const expression = entry[1];
-      let value = 0;
-      if (typeof expression === 'string') {
-        try {
-          const evaluated = Number(evaluateExpression(expression, {
-            game,
-            gameVars: game?.gameVars,
-            levelVars: game?.levelVars,
-            localArgs: new Map<string, unknown>([['skill', skill]]),
-          }));
-          if (Number.isFinite(evaluated)) value = Math.trunc(evaluated);
-        } catch (error) {
-          console.error(
-            `Could not initialize stat changes for ${skill.nid}: ${expression}`,
-            error,
-          );
-        }
-      }
-      changes[entry[0]] = value;
-    }
-  }
+  // EOtF StatChangeAtApplyExpression.init: no unit, local skill only; one
+  // failing entry zeroes every stat.
+  const changes = evaluateIntPairs(skill.getComponent<unknown>('stat_change_at_apply_expression'), {
+    game,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+    localArgs: new Map<string, unknown>([['skill', skill]]),
+  });
   skill.data.set('stat_changes', changes);
 }
 
@@ -459,9 +450,10 @@ export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): nu
     if (raw === undefined) continue;
     const localArgs = new Map<string, unknown>([['skill', skill]]);
     if (!evaluatedSkillActive(skill, unit, { game, target }, localArgs)) continue;
+    // Python EmpowerHeal: int(evaluate(...)), 0 when it raises.
     const value = typeof raw === 'number'
       ? raw
-      : evaluateExpression(String(raw), {
+      : evaluateInt(String(raw), {
         game,
         unit1: unit,
         unit2: target,
@@ -469,7 +461,7 @@ export function empowerHeal(unit: UnitObject, target: UnitObject, game: any): nu
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
         localArgs,
-      });
+      }, 0);
     const numeric = Number(value);
     if (Number.isFinite(numeric)) total += Math.trunc(numeric);
   }
@@ -492,9 +484,10 @@ function healingSkillValue(
     { game, target: other },
     localArgs,
   )) return null;
+  // Python int(evaluate(...)), 0 when it raises.
   const value = typeof raw === 'number'
     ? raw
-    : evaluateExpression(String(raw), {
+    : evaluateInt(String(raw), {
       game,
       unit1: owner,
       unit2: other,
@@ -502,7 +495,7 @@ function healingSkillValue(
       gameVars: game?.gameVars,
       levelVars: game?.levelVars,
       localArgs,
-    });
+    }, 0);
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 }
@@ -1107,24 +1100,15 @@ export function cantoMovement(
     }
     const expression = skill.getComponent<unknown>('eval_canter');
     if (typeof expression === 'string' && expression.length > 0) {
-      try {
-        const evaluated = Number(evaluateExpression(expression, {
-          game,
-          unit1: unit,
-          unit2: target ?? undefined,
-          position: unit.position ?? undefined,
-          gameVars: game?.gameVars,
-          levelVars: game?.levelVars,
-        }));
-        if (Number.isFinite(evaluated)) {
-          maximum = Math.max(
-            maximum,
-            nullCanto ? Math.min(1, Math.trunc(evaluated)) : Math.trunc(evaluated),
-          );
-        }
-      } catch (error) {
-        console.error(`Could not evaluate EvalCanter movement ${expression}`, error);
-      }
+      // EOtF EvalCanter: int(evaluate(value, unit, unit2)), 0 when it raises.
+      const evaluated = evaluateInt(expression, {
+        game,
+        unit1: unit,
+        unit2: target ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+      }, 0);
+      maximum = Math.max(maximum, nullCanto ? Math.min(1, evaluated) : evaluated);
     }
   }
   return Math.max(0, maximum);
@@ -1258,17 +1242,16 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
     const expressionChanges = skill.getComponent<unknown>('stat_change_expression');
     if (!reentrant && Array.isArray(expressionChanges) &&
         skillConditionActive(skill, unit, { game })) {
-      for (const entry of expressionChanges) {
-        if (!Array.isArray(entry) || entry[0] !== statNid) continue;
-        const value = Number(evaluateExpression(String(entry[1] ?? '0'), {
+      // Python StatChangeExpression.stat_change: every entry is evaluated
+      // as evaluate(expr, unit) inside one try; any failure zeroes all.
+      if (expressionChanges.some((entry) => Array.isArray(entry) && entry[0] === statNid)) {
+        const changes = evaluateIntPairs(expressionChanges, {
           game,
           unit1: unit,
-          position: unit.position ?? undefined,
           gameVars: game?.gameVars,
           levelVars: game?.levelVars,
-          localArgs: new Map<string, unknown>([['skill', skill]]),
-        }));
-        if (Number.isFinite(value)) total += Math.trunc(value);
+        });
+        total += changes[statNid] ?? 0;
       }
     }
     const multipliers = skill.getComponent<unknown>('stat_multiplier');
@@ -1333,25 +1316,17 @@ export function prepareDynamicStatChanges(
       if (!enabled) continue;
     }
     if (!skillConditionActive(skill, unit, { game, item, target, localArgs })) continue;
-    const changes = new Map<string, number>();
-    for (const entry of configured) {
-      if (!Array.isArray(entry) || typeof entry[0] !== 'string') continue;
-      const raw = typeof entry[1] === 'number'
-        ? entry[1]
-        : typeof entry[1] === 'string'
-          ? Number(evaluateExpression(entry[1], {
-            game,
-            unit1: unit,
-            unit2: target,
-            item: item ?? undefined,
-            position: unit.position ?? undefined,
-            gameVars: game?.gameVars,
-            levelVars: game?.levelVars,
-            localArgs,
-          }))
-          : 0;
-      changes.set(entry[0], Number.isFinite(raw) ? Math.trunc(raw) : 0);
-    }
+    // EOtF DynamicStatChange: evaluate(expr, unit, target, local_args=...)
+    // for every entry in one try; any failure zeroes all stats.
+    const changes = new Map<string, number>(Object.entries(evaluateIntPairs(configured, {
+      game,
+      unit1: unit,
+      unit2: target,
+      item: item ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs,
+    })));
     skill.data.set('_dynamic_stat_changes', changes);
   }
 }
@@ -1383,25 +1358,15 @@ export function growthChange(
     }
     const expressions = skill.getComponent<unknown>('growth_change_expression');
     if (!Array.isArray(expressions)) continue;
-    for (const entry of expressions) {
-      if (!Array.isArray(entry) || entry[0] !== statNid ||
-          typeof entry[1] !== 'string') continue;
-      try {
-        const value = Number(evaluateExpression(entry[1], {
-          game,
-          unit1: unit,
-          position: unit.position ?? undefined,
-          gameVars: game?.gameVars,
-          levelVars: game?.levelVars,
-          localArgs: new Map([['skill', skill]]),
-        }));
-        if (Number.isFinite(value)) total += Math.trunc(value);
-      } catch (error) {
-        console.error(
-          `Could not evaluate growth change for ${skill.nid}: ${entry[1]}`,
-          error,
-        );
-      }
+    // EOtF GrowthChangeExpression: {stat: int(evaluate(expr, unit))} in one
+    // try; any failure zeroes all.
+    if (expressions.some((entry) => Array.isArray(entry) && entry[0] === statNid)) {
+      total += evaluateIntPairs(expressions, {
+        game,
+        unit1: unit,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+      })[statNid] ?? 0;
     }
   }
   return total;
@@ -1490,9 +1455,10 @@ function evaluatedStaticSkillTotal(
     ]);
     if (context.combatCalcs) localArgs.set('combat_calcs', context.combatCalcs);
     if (!evaluatedSkillActive(skill, unit, context, localArgs)) continue;
+    // Python eval_* components: int(evaluate(...)), 0 when it raises.
     const value = typeof expression === 'number'
       ? expression
-      : Number(evaluateExpression(expression, {
+      : evaluateInt(expression, {
         game: context.game,
         unit1: unit,
         unit2: context.target ?? undefined,
@@ -1501,7 +1467,7 @@ function evaluatedStaticSkillTotal(
         gameVars: context.game?.gameVars,
         levelVars: context.game?.levelVars,
         localArgs,
-      }));
+      }, 0);
     if (Number.isFinite(value)) total += Math.trunc(value);
   }
   return total;
@@ -1635,7 +1601,7 @@ export function modifyCritDamage(
   for (const skill of unit.skills) {
     const expression = skill.getComponent<string>('eval_crit_additional');
     if (!expression || !skillConditionActive(skill, unit, { game, item })) continue;
-    const value = evaluateExpression(expression, {
+    const value = evaluateInt(expression, {
       game,
       unit1: unit,
       item: item ?? undefined,
@@ -1646,7 +1612,7 @@ export function modifyCritDamage(
         ['item', item],
         ['skill', skill],
       ]),
-    });
+    }, 0);
     const numeric = Number(value);
     if (Number.isFinite(numeric)) total += Math.trunc(numeric);
   }
@@ -1687,7 +1653,7 @@ export function dynamicCritDamageAddition(
       target,
       localArgs,
     })) continue;
-    const value = evaluateExpression(expression, {
+    const value = evaluateInt(expression, {
       game,
       unit1: unit,
       unit2: target,
@@ -1696,7 +1662,7 @@ export function dynamicCritDamageAddition(
       gameVars: game?.gameVars,
       levelVars: game?.levelVars,
       localArgs,
-    });
+    }, 0);
     const numeric = Number(value);
     if (Number.isFinite(numeric)) total += Math.trunc(numeric);
   }
@@ -1821,7 +1787,7 @@ export function modifiedMaximumRange(
     for (const componentNid of ['eval_max_range', 'eval_range']) {
       const expression = skill.getComponent<string>(componentNid);
       if (typeof expression !== 'string' || !expression) continue;
-      const value = evaluateExpression(expression, {
+      const value = evaluateInt(expression, {
         game,
         unit1: unit,
         item,
@@ -1829,7 +1795,7 @@ export function modifiedMaximumRange(
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
         localArgs,
-      });
+      }, 0);
       if (Number.isFinite(Number(value))) maximum += Math.trunc(Number(value));
     }
     const configuredLimit = skill.getComponent<number>('limit_maximum_range');
@@ -1855,7 +1821,7 @@ export function modifiedMinimumRange(
     if (typeof flat === 'number') minimum += flat;
     const expression = skill.getComponent<string>('eval_min_range');
     if (typeof expression !== 'string' || !expression) continue;
-    const value = evaluateExpression(expression, {
+    const value = evaluateInt(expression, {
       game,
       unit1: unit,
       item,
@@ -1863,7 +1829,7 @@ export function modifiedMinimumRange(
       gameVars: game?.gameVars,
       levelVars: game?.levelVars,
       localArgs,
-    });
+    }, 0);
     if (Number.isFinite(Number(value))) minimum += Math.trunc(Number(value));
   }
   return minimum;
@@ -2035,7 +2001,9 @@ export function witchWarpPositions(
     if (source.component === 'witch_warp' && target.team !== unit.team) continue;
     if (source.component === 'witch_warp_expression') {
       if (typeof source.value !== 'string' || !source.value) continue;
-      const allowed = evaluateCondition(source.value, {
+      // Python WitchWarpExpression: an exception logs and returns the
+      // positions collected so far.
+      const outcome = evaluatePythonInContext(source.value, {
         game,
         unit1: target,
         unit2: unit,
@@ -2044,7 +2012,11 @@ export function witchWarpPositions(
         levelVars: game?.levelVars,
         localArgs: new Map([['skill', source.skill]]),
       });
-      if (!allowed) continue;
+      if (!outcome.ok) {
+        console.error(`witch_warp_expression failed for "${source.value}"`, outcome.error);
+        return result;
+      }
+      if (!pythonTruthy(outcome.value)) continue;
     }
     const [x, y] = target.position;
     const directions: [number, number][] = source.component === 'witch_warp'
@@ -2255,7 +2227,8 @@ function evaluatedCombatSkillTotal(
     const value = typeof configured === 'number'
       ? configured
       : typeof configured === 'string'
-        ? Number(evaluateExpression(configured, {
+        // Python dynamic_*: int(evaluate(...)), 0 when it raises.
+        ? evaluateInt(configured, {
           game,
           unit1: unit,
           unit2: target,
@@ -2264,7 +2237,7 @@ function evaluatedCombatSkillTotal(
           gameVars: game?.gameVars,
           levelVars: game?.levelVars,
           localArgs,
-        }))
+        }, 0)
         : markerValue;
     if (Number.isFinite(value)) total += Math.trunc(value);
   }
@@ -2393,7 +2366,9 @@ export function damageMultiplier(
     if (typeof fixed === 'number') result *= fixed;
     const expression = skill.getComponent<string>('dynamic_damage_multiplier');
     if (expression) {
-      const value = Number(evaluateExpression(expression, {
+      // EOtF's fork DynamicDamageMultiplier: float(evaluate(...)), 1 when it
+      // raises (upstream LT int-casts; the fork keeps the fraction).
+      const value = evaluateFloat(expression, {
         game,
         unit1: unit,
         unit2: target,
@@ -2402,13 +2377,8 @@ export function damageMultiplier(
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
         localArgs,
-      }));
-      // LT's checked-in DynamicDamageMultiplier accidentally int-casts the
-      // result even though the component is documented as a fractional
-      // multiplier. EotF authors six fractional expressions (0.5, 0.75,
-      // 1.25, and stack-scaled values), so retain the evaluated float as the
-      // deliberate project-compatible behavior.
-      result *= Number.isFinite(value) ? value : 0;
+      }, 1);
+      result *= value;
     }
   }
   return result;
@@ -2472,7 +2442,8 @@ export function resistMultiplier(
     if (typeof followUp === 'number' && attackInfo[0] > 0) result *= followUp;
     const expression = skill.getComponent<string>('dynamic_resist_multiplier');
     if (expression) {
-      const value = Number(evaluateExpression(expression, {
+      // EOtF DynamicResistMultiplier: float(evaluate(...)), 1 when it raises.
+      const value = evaluateFloat(expression, {
         game,
         unit1: unit,
         unit2: target,
@@ -2481,8 +2452,8 @@ export function resistMultiplier(
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
         localArgs,
-      }));
-      result *= Number.isFinite(value) ? value : 1;
+      }, 1);
+      result *= value;
     }
   }
   return result;
@@ -2682,3 +2653,7 @@ export function sightRange(
   if (isForkEngine()) return values.length > 0 ? values[values.length - 1] : 0;
   return values.reduce((total, value) => total + value, 0);
 }
+
+// Python skill_system.condition, exposed to evaluated expressions.
+setSkillConditionEvaluator((skill, unit, item, game) =>
+  skillConditionActive(skill, unit, { game, item: item ?? unit.equippedWeapon ?? null }));

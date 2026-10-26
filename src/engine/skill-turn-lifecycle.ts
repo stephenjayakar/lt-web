@@ -20,7 +20,7 @@ import {
   modifiedHealAmount,
   skillConditionActive,
 } from '../combat/skill-system';
-import { evaluateExpression } from '../events/event-manager';
+import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from './engine-flavor';
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
@@ -126,20 +126,16 @@ function evaluatedTurnAmount(
   expression: unknown,
 ): number {
   if (typeof expression !== 'string') return 0;
-  try {
-    const value = Number(evaluateExpression(expression, {
-      game,
-      unit1: unit,
-      position: unit.position ?? undefined,
-      gameVars: game.gameVars,
-      levelVars: game.levelVars,
-      localArgs: new Map([['skill', skill]]),
-    }));
-    return Number.isFinite(value) ? Math.trunc(value) : 0;
-  } catch (error) {
-    console.error(`Could not evaluate skill turn amount ${expression}`, error);
-    return 0;
-  }
+  // EOtF EvalRegeneration / EvalUpkeepDamage: int(evaluate(value, unit)),
+  // 0 when it raises.
+  return evaluateInt(expression, {
+    game,
+    unit1: unit,
+    position: unit.position ?? undefined,
+    gameVars: game.gameVars,
+    levelVars: game.levelVars,
+    localArgs: new Map([['skill', skill]]),
+  }, 0);
 }
 
 function applyHpChange(

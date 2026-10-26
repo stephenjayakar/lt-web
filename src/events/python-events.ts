@@ -12,10 +12,11 @@
  *   3. Extracts `$command` lines into EventCommand objects
  *   4. Evaluates Python-like expressions via Function() with a game context
  *
- * Exports: isPyev1, PythonEventProcessor, tokenizePyevLine, translatePythonToJs
+ * Exports: isPyev1, PythonEventProcessor, tokenizePyevLine
  */
 
 import type { EventCommand, EventCommandType } from './event-manager';
+import { evaluatePython, pyBinary, pyBool, pyRepr, scopeFromRecord, toArray, toHostValue } from './py-expr';
 
 // ============================================================
 // Detection
@@ -497,8 +498,16 @@ export class PythonEventProcessor {
       };
     }
     // Tokenize respecting quotes and parentheses
-    const tokens = tokenizePyevLine(line);
-    const name = tokens[0]?.toLowerCase() ?? '';
+    const rawTokens = tokenizePyevLine(line, true);
+    const name = (rawTokens[0] ? stripQuotes(rawTokens[0]) : '').toLowerCase();
+    // Python passes #pyev1 values with from_python, so a quoted value for an
+    // expression argument stays a string: re-quote it as a Python literal for
+    // the command handler, which evaluates that argument.
+    const expressionArg = PYEV_EXPRESSION_ARGS[resolveAlias(name)];
+    const tokens = rawTokens.map((token, index) => {
+      const value = stripQuotes(token);
+      return index - 1 === expressionArg && value !== token ? pyRepr(value) : value;
+    });
 
     // Find flag separator (comma token)
     let flagStart = tokens.length;
@@ -597,14 +606,19 @@ export class PythonEventProcessor {
       return;
     }
 
-    if (iterable == null || typeof iterable[Symbol.iterator] !== 'function') {
+    // Python iteration: lists, tuples, dict keys, str characters, ...
+    let values: unknown[];
+    try {
+      if (iterable == null) throw new Error('not iterable');
+      values = toArray(iterable).map(toHostValue);
+    } catch {
       // Not iterable -- skip block
       this.pointer = bodyStart;
       this.skipBlock(startIndent);
       return;
     }
 
-    for (const value of iterable) {
+    for (const value of values) {
       this.localVars.set(varName, value);
       this.pointer = bodyStart;
       this.executeBlock(startIndent);
@@ -661,11 +675,11 @@ export class PythonEventProcessor {
   private handleAugAssign(line: PyLine): void {
     const current = this.getAssignmentTarget(line.assignTarget!);
     const value = this.evalExpr(line.assignValue!);
-    const next = line.assignOperator === '-='
-      ? Number(current) - Number(value)
-      : Array.isArray(current)
-        ? [...current, ...Array.from(value ?? [])]
-        : current + value;
+    // Python augmented assignment: `list += iterable` extends; otherwise the
+    // binary operator's semantics (`+` concatenates sequences, adds numbers).
+    const next = line.assignOperator === '+=' && Array.isArray(current)
+      ? [...current, ...toArray(value)]
+      : toHostValue(pyBinary(line.assignOperator === '-=' ? '-' : '+', current, value));
     this.setAssignmentTarget(line.assignTarget!, next);
   }
 
@@ -811,138 +825,30 @@ export class PythonEventProcessor {
   // Expression evaluation
   // ------------------------------------------------------------------
 
+  /**
+   * Globals for evaluating without the engine's evaluator (no game wired):
+   * the event's locals plus game/DB/u/v. Python builtins come from py-expr.
+   */
   private buildEvalContext(): Record<string, any> {
     const game = this.gameGetter ? this.gameGetter() : null;
     const ctx: Record<string, any> = {};
-
-    // Inject local variables
-    for (const [k, v] of this.localVars) {
-      ctx[k] = v;
-    }
-
-    // Python boolean/None constants
-    ctx.True = true;
-    ctx.False = false;
-    ctx.None = null;
-
-    // Python builtins
-    ctx.len = (x: any) => {
-      if (x == null) return 0;
-      if (typeof x === 'object' && 'size' in x) return x.size;
-      return x.length ?? 0;
-    };
-    ctx.range = (...args: number[]) => {
-      const start = args.length >= 2 ? args[0] : 0;
-      const end = args.length >= 2 ? args[1] : args[0];
-      const step = args[2] ?? 1;
-      const result: number[] = [];
-      if (step > 0) {
-        for (let i = start; i < end; i += step) result.push(i);
-      } else if (step < 0) {
-        for (let i = start; i > end; i += step) result.push(i);
-      }
-      return result;
-    };
-    ctx.str = String;
-    ctx.int = (x: any) => {
-      const n = parseInt(x, 10);
-      return isNaN(n) ? 0 : n;
-    };
-    ctx.float = (x: any) => {
-      const n = parseFloat(x);
-      return isNaN(n) ? 0.0 : n;
-    };
-    ctx.abs = Math.abs;
-    ctx.max = Math.max;
-    ctx.min = Math.min;
-    ctx.round = Math.round;
-    ctx.any = (iter: any) => {
-      if (!iter) return false;
-      for (const x of iter) { if (x) return true; }
-      return false;
-    };
-    ctx.all = (iter: any) => {
-      if (!iter) return true;
-      for (const x of iter) { if (!x) return false; }
-      return true;
-    };
-    ctx.sum = (iter: any, start?: number) => {
-      let s = start ?? 0;
-      if (iter) {
-        for (const x of iter) s += x;
-      }
-      return s;
-    };
-    ctx.sorted = (iter: any, opts?: any) => {
-      const arr = Array.from(iter ?? []);
-      if (opts && typeof opts === 'function') {
-        // sorted(iterable, key=fn) -- Python kwarg, but JS callers pass fn directly
-        arr.sort((a: any, b: any) => opts(a) - opts(b));
-      } else if (opts && opts.key) {
-        arr.sort((a: any, b: any) => opts.key(a) - opts.key(b));
-      } else {
-        arr.sort();
-      }
-      if (opts && opts.reverse) arr.reverse();
-      return arr;
-    };
-    ctx.list = (iter: any) => Array.from(iter ?? []);
-    ctx.tuple = (iter: any) => Array.from(iter ?? []);
-    ctx.set = (iter: any) => new Set(iter ?? []);
-    ctx.dict = (iter: any) => {
-      if (!iter) return new Map();
-      return new Map(iter);
-    };
-    ctx.enumerate = (iter: any, start?: number) => {
-      const s = start ?? 0;
-      const arr = Array.from(iter ?? []);
-      return arr.map((v: any, i: number) => [i + s, v]);
-    };
-    ctx.zip = (...iters: any[]) => {
-      const arrays = iters.map((it: any) => Array.from(it ?? []));
-      const minLen = Math.min(...arrays.map((a: any[]) => a.length));
-      const result: any[][] = [];
-      for (let i = 0; i < minLen; i++) {
-        result.push(arrays.map((a: any[]) => a[i]));
-      }
-      return result;
-    };
-    ctx.isinstance = (obj: any, cls: any) => {
-      if (cls === ctx.int || cls === Number) return typeof obj === 'number';
-      if (cls === ctx.str || cls === String) return typeof obj === 'string';
-      if (cls === ctx.list || cls === Array) return Array.isArray(obj);
-      return false;
-    };
-    ctx.print = (...args: any[]) => {
-      console.log('PYEV1 print:', ...args);
-    };
-    ctx.Math = Math;
-    ctx.math = Math;
-
-    // Inject game state if available
+    for (const [k, v] of this.localVars) ctx[k] = v;
     if (game) {
       ctx.game = game;
       ctx.DB = game.db ?? null;
-
-      // Unit context (set by event trigger, may be overridden)
       ctx.unit = ctx.unit ?? null;
       ctx.unit1 = ctx.unit1 ?? null;
       ctx.unit2 = ctx.unit2 ?? null;
       ctx.target = ctx.target ?? null;
-
-      // Query engine functions
-      ctx.u = (nid: string) => {
-        return game.getUnit?.(nid) ?? game.allUnits?.get(nid) ?? game.units?.get(nid) ?? null;
-      };
-      ctx.v = (varname: string, fallback?: any) => {
+      ctx.u = (nid: string) =>
+        game.getUnit?.(nid) ?? game.allUnits?.get(nid) ?? game.units?.get(nid) ?? null;
+      ctx.v = (varname: string, fallback: any = null) => {
         const lv = game.levelVars?.get(varname);
-        if (lv !== undefined) return lv;
-        const gv = game.gameVars?.get(varname);
-        if (gv !== undefined) return gv;
-        return fallback ?? null;
+        if (lv !== undefined && lv !== null) return lv;
+        if (game.gameVars?.has(varname)) return game.gameVars.get(varname);
+        return fallback;
       };
     }
-
     return ctx;
   }
 
@@ -955,16 +861,7 @@ export class PythonEventProcessor {
       if (pyevExpressionEvaluator && game) {
         return pyevExpressionEvaluator(expr, game, this.localVars);
       }
-      // Translate Python syntax to JS
-      const jsExpr = translatePythonToJs(expr);
-
-      const ctx = this.buildEvalContext();
-      const keys = Object.keys(ctx);
-      const values = Object.values(ctx);
-
-      // eslint-disable-next-line no-new-func
-      const fn = new Function(...keys, `"use strict"; return (${jsExpr});`);
-      return fn(...values);
+      return evaluatePython(expr, scopeFromRecord(this.buildEvalContext()));
     } catch (e) {
       console.warn(`PYEV1 eval error for expression: "${expr}"`, e);
       return undefined;
@@ -989,11 +886,17 @@ export class PythonEventProcessor {
       'add_item_component',
       'modify_item_component',
     ].includes(command.type);
+    // Python passes #pyev1 values with the from_python flag, so commands that
+    // evaluate an expression argument store the value itself. The command
+    // handlers re-evaluate that argument, so hand them a Python literal that
+    // evaluates back to the same value ('123' stays the string '123').
+    const expressionArg = PYEV_EXPRESSION_ARGS[command.type];
     const args = evaluated.map((value, index) => {
       if (componentMutation && index === 3) {
         const raw = value?._raw ?? value;
         return JSON.stringify(raw);
       }
+      if (index === expressionArg) return pythonValueLiteral(value);
       return stringify(value);
     });
     return {
@@ -1012,8 +915,26 @@ export class PythonEventProcessor {
    */
   private evalCondition(expr: string): boolean {
     const result = this.evalExpr(expr);
-    return !!result;
+    return pyBool(result);
   }
+}
+
+/** Event commands whose argument at this index is a Python expression. */
+const PYEV_EXPRESSION_ARGS: Record<string, number> = {
+  game_var: 1, inc_game_var: 1, level_var: 1, inc_level_var: 1,
+  set_unit_field: 2, set_item_data: 3, set_skill_data: 3,
+  add_skill_component: 3, modify_skill_component: 3,
+  create_record: 1, update_record: 1, replace_record: 1,
+};
+
+/** A Python literal for an evaluated #pyev1 value (objects become their nid). */
+function pythonValueLiteral(value: any): string {
+  const raw = value?._raw ?? value;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && !(raw instanceof Map) &&
+      !(raw instanceof Set) && (raw.uid !== undefined || raw.nid !== undefined)) {
+    return pyRepr(String(raw.uid ?? raw.nid));
+  }
+  return pyRepr(toHostValue(raw));
 }
 
 // ============================================================
@@ -1025,7 +946,8 @@ export class PythonEventProcessor {
  * respecting quoted strings and parenthesized/bracketed groups.
  * Commas are returned as separate tokens to serve as flag separators.
  */
-export function tokenizePyevLine(line: string): string[] {
+export function tokenizePyevLine(line: string, keepQuotes = false): string[] {
+  const finish = (token: string) => (keepQuotes ? token : stripQuotes(token));
   const tokens: string[] = [];
   let current = '';
   let inQuote: string | null = null;
@@ -1060,7 +982,7 @@ export function tokenizePyevLine(line: string): string[] {
     // Space separator (only at top level)
     if (ch === ' ' && parenDepth === 0 && bracketDepth === 0) {
       if (current.length > 0) {
-        tokens.push(stripQuotes(current));
+        tokens.push(finish(current));
         current = '';
       }
       continue;
@@ -1069,7 +991,7 @@ export function tokenizePyevLine(line: string): string[] {
     // Comma as flag separator (only at top level)
     if (ch === ',' && parenDepth === 0 && bracketDepth === 0) {
       if (current.length > 0) {
-        tokens.push(stripQuotes(current));
+        tokens.push(finish(current));
         current = '';
       }
       tokens.push(',');
@@ -1080,7 +1002,7 @@ export function tokenizePyevLine(line: string): string[] {
   }
 
   if (current.length > 0) {
-    tokens.push(stripQuotes(current));
+    tokens.push(finish(current));
   }
 
   return tokens;
@@ -1098,117 +1020,6 @@ function stripQuotes(s: string): string {
   return s;
 }
 
-// ============================================================
-// Python -> JavaScript expression translation
-// ============================================================
-
-/**
- * Translate common Python syntax idioms to JavaScript equivalents.
- * This is a best-effort translation for simple expressions.
- */
-export function translatePythonToJs(expr: string): string {
-  let s = expr;
-
-  // 1. Python boolean / None constants
-  s = s.replace(/\bTrue\b/g, 'true');
-  s = s.replace(/\bFalse\b/g, 'false');
-  s = s.replace(/\bNone\b/g, 'null');
-
-  // 2. Integer division: // -> Math.floor(x / y)
-  //    Must happen before logical operators so '//' isn't confused
-  s = replaceIntegerDivision(s);
-
-  // 3. Python power: ** -> Math.pow(x, y)
-  s = replacePowerOperator(s);
-
-  // 4. Logical operators
-  s = s.replace(/\band\b/g, '&&');
-  s = s.replace(/\bor\b/g, '||');
-
-  // 5. 'not in' and 'in' operators (must run before standalone 'not')
-  s = replacePythonInOperator(s);
-
-  // 6. Standalone 'not' -> '!'
-  s = s.replace(/\bnot\s+/g, '!');
-
-  // 7. Python f-strings: f"text {expr}" -> `text ${expr}`
-  s = s.replace(/f"([^"]*?)"/g, (_match, content) => {
-    const converted = content.replace(/\{/g, '${');
-    return '`' + converted + '`';
-  });
-  s = s.replace(/f'([^']*?)'/g, (_match, content) => {
-    const converted = content.replace(/\{/g, '${');
-    return '`' + converted + '`';
-  });
-
-  return s;
-}
-
-/**
- * Replace Python 'in' and 'not in' operators with JS .includes() calls.
- * Handles simple cases like: 'x' in y, x not in y, 'x' in ['a', 'b']
- */
-function replacePythonInOperator(s: string): string {
-  // 'X' not in Y -> !(Y).includes('X')
-  s = s.replace(/(\S+)\s+not\s+in\s+(\S+)/g, '!($2).includes($1)');
-  // 'X' in Y -> (Y).includes('X')
-  // Be careful not to match 'for X in Y' -- but those shouldn't appear
-  // inside expressions (they appear at statement level)
-  s = s.replace(/(\S+)\s+in\s+(\S+)/g, '($2).includes($1)');
-  return s;
-}
-
-/**
- * Replace Python // integer division with Math.floor(x / y).
- */
-function replaceIntegerDivision(s: string): string {
-  // Match patterns like: expr // expr
-  // Simple approach: replace all occurrences of '//' with a marker,
-  // then wrap in Math.floor. This is imperfect for complex expressions
-  // but handles common cases.
-  const parts = s.split('//');
-  if (parts.length <= 1) return s;
-
-  // For simple "a // b" cases
-  let result = parts[0];
-  for (let i = 1; i < parts.length; i++) {
-    // Find the rightmost operand of the left side and leftmost of the right
-    const leftTrimmed = result.trimEnd();
-    const rightTrimmed = parts[i].trimStart();
-
-    // Extract the last token from left side
-    const leftMatch = leftTrimmed.match(/(\S+)$/);
-    const rightMatch = rightTrimmed.match(/^(\S+)/);
-
-    if (leftMatch && rightMatch) {
-      const leftOperand = leftMatch[1];
-      const rightOperand = rightMatch[1];
-      const prefix = leftTrimmed.slice(0, leftTrimmed.length - leftOperand.length);
-      const suffix = rightTrimmed.slice(rightOperand.length);
-      result = prefix + `Math.floor(${leftOperand} / ${rightOperand})` + suffix;
-    } else {
-      // Fallback: just replace with regular division
-      result = result + ' / ' + parts[i];
-    }
-  }
-
-  return result;
-}
-
-/**
- * Replace Python ** power operator with Math.pow(x, y).
- */
-function replacePowerOperator(s: string): string {
-  // Match patterns like: x ** y
-  // Simple regex approach for common cases
-  return s.replace(/(\w+(?:\.\w+)*)\s*\*\*\s*(\w+(?:\.\w+)*)/g, 'Math.pow($1, $2)');
-}
-
-// ============================================================
-// Command name alias resolution
-// ============================================================
-
-/** Map of PYEV1 short aliases to canonical command names. */
 const PYEV1_ALIASES: Record<string, string> = {
   // Portrait shortcuts
   'u': 'add_portrait',

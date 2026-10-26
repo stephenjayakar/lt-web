@@ -349,6 +349,11 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
       ];
       game.levelVars.set('bonus_units', [unit.nid]);
       game.levelVars.set('in_combat', 1);
+      // State a real run has: Python raises on None arithmetic just as the
+      // evaluator does, so give the authored counters/records values.
+      game.gameVars.set('Infusing_Bolt_Count', 8);
+      const { RECORDS } = await import('/src/engine/records.ts');
+      if (!RECORDS.has('current_density')) RECORDS.create('current_density', 3);
       const expressions = [...game.db.skills.values()].flatMap((prefab: any) =>
         prefab.components.flatMap(([component, value]: [string, unknown]) => {
           if (!componentNids.includes(component)) return [];
@@ -439,7 +444,17 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
     }, COMPONENTS);
 
     expect(result.total).toBeGreaterThan(647);
-    expect(failures).toEqual([]);
-    expect(result.invalid).toEqual([]);
+    // Authored expressions that CPython itself cannot evaluate: two
+    // conditional expressions missing `else` (SyntaxError) and
+    // `unit.stats('MAG')` calling a dict (TypeError). Python's call sites
+    // catch these and use 0, as the web now does.
+    const pythonErrors = [
+      "-2 * item2.damage.value if any([tag == 'Dragon' for tag in item2.effective_damage.tags])",
+      "unit.stats('MAG') // 5",
+      "-2 * item2.damage.value if item_system.weapon_type(target, item2) == 'Dark'",
+    ];
+    expect(failures.filter((text) =>
+      !pythonErrors.some((expression) => text.includes(`"${expression}"`)))).toEqual([]);
+    expect(result.invalid.filter(({ expression }) => !pythonErrors.includes(expression))).toEqual([]);
   });
 });

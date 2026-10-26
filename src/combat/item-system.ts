@@ -24,6 +24,10 @@ import type { Database } from '../data/database';
 import {
   evaluateCondition,
   evaluateExpression,
+  evaluateInt,
+  evaluatePythonInContext,
+  evaluatePythonLambda,
+  pythonTruthy,
   setItemAvailabilityEvaluator,
   setItemComponentEntriesEvaluator,
 } from '../events/event-manager';
@@ -70,7 +74,9 @@ export function healAmount(
   const evaluated = item.getComponent<unknown>('eval_heal');
   if (typeof evaluated === 'string') {
     try {
-      const value = Number(evaluateExpression(evaluated, {
+      // EOtF EvalHeal: int(evaluate(value, unit, local_args={'target': ...})),
+      // 0 when it raises.
+      const value = evaluateInt(evaluated, {
         game,
         unit1: unit,
         unit2: target,
@@ -79,13 +85,8 @@ export function healAmount(
         gameVars: game?.gameVars,
         levelVars: game?.levelVars,
         localArgs: new Map([['target', target]]),
-      }));
-      return modifiedHealAmount(
-        Number.isFinite(value) ? Math.trunc(value) : 0,
-        target,
-        unit,
-        game,
-      );
+      }, 0);
+      return modifiedHealAmount(value, target, unit, game);
     } catch {
       return modifiedHealAmount(0, target, unit, game);
     }
@@ -479,11 +480,12 @@ function itemComponentsAvailable(
   if (typeof manaCost === 'number' && mana < manaCost) return false;
   const evalManaCost = components.get('eval_mana_cost');
   if (typeof evalManaCost === 'string') {
-    const cost = Number(evaluateExpression(evalManaCost, {
+    // Python EvalManaCost: int(evaluate(...)), 0 when it raises.
+    const cost = evaluateInt(evalManaCost, {
       game, unit1: unit, item, position: unit.position ?? undefined,
       gameVars: game?.gameVars, levelVars: game?.levelVars,
-    }));
-    if (Number.isFinite(cost) && mana < cost) return false;
+    }, 0);
+    if (mana < cost) return false;
   }
 
   const exemptWeaponType = components.get('weapon_type_exempt') as string | undefined;
@@ -1736,22 +1738,49 @@ export function targetRestrict(
 
   const expression = item.getComponent<string>('eval_target_restrict_2');
   if (expression) {
-    const positions = [defPos, ...splash];
-    const passes = positions.some((targetPos) => evaluateCondition(expression, {
-      game: context.game,
-      unit1: unit,
-      unit2: context.board.getUnit(targetPos[0], targetPos[1]),
-      position: unit.position ?? undefined,
-      item,
-      gameVars: context.game?.gameVars,
-      levelVars: context.game?.levelVars,
-      localArgs: new Map([['target_pos', targetPos]]),
-    }));
+    // Python EvalTargetRestrict2.target_restrict: the defense position, then
+    // each splash position, in order; the first truthy result passes, and an
+    // exception (logged) also lets the target through.
+    let passes = false;
+    for (const targetPos of [defPos, ...splash]) {
+      const outcome = evaluatePythonInContext(expression, {
+        game: context.game,
+        unit1: unit,
+        unit2: context.board.getUnit(targetPos[0], targetPos[1]),
+        position: unit.position ?? undefined,
+        item,
+        gameVars: context.game?.gameVars,
+        levelVars: context.game?.levelVars,
+        localArgs: new Map<string, unknown>([['target_pos', targetPos], ['item', item]]),
+      });
+      if (!outcome.ok) {
+        console.warn(`Couldn't evaluate conditional {${expression}}`, outcome.error);
+        passes = true;
+        break;
+      }
+      if (pythonTruthy(outcome.value)) {
+        passes = true;
+        break;
+      }
+    }
     if (!passes) return false;
   }
 
   return true;
 }
+
+/** Module globals of Python's target_components that a range lambda can see. */
+const RANGE_RESTRICT_GLOBALS = {
+  utils: {
+    calculate_distance(left: [number, number] | null, right: [number, number] | null) {
+      if (!left || !right) return 0;
+      return Math.abs(left[0] - right[0]) + Math.abs(left[1] - right[1]);
+    },
+    clamp(value: number, minimum: number, maximum: number) {
+      return Math.max(minimum, Math.min(maximum, value));
+    },
+  },
+};
 
 /** Relative positions allowed by eval_special_range, or null when unrestricted. */
 export function rangeRestrict(
@@ -1762,18 +1791,15 @@ export function rangeRestrict(
   const expression = item.getComponent<string>('eval_special_range');
   if (!expression) return null;
 
+  // Python EvalSpecialRange.calculate_range_restrict:
+  // eval('lambda x, y:' + condition) in target_components' module globals,
+  // tested for every offset; an exception keeps the squares found so far.
   const allowed = new Set<string>();
   try {
-    const jsExpression = expression
-      .replace(/\bTrue\b/g, 'true')
-      .replace(/\bFalse\b/g, 'false')
-      .replace(/\band\b/g, '&&')
-      .replace(/\bor\b/g, '||')
-      .replace(/\bnot\b/g, '!');
-    const predicate = new Function('x', 'y', `"use strict"; return Boolean(${jsExpression});`);
+    const predicate = evaluatePythonLambda(`lambda x, y:${expression}`, RANGE_RESTRICT_GLOBALS);
     for (let x = -maxRange; x <= maxRange; x++) {
       for (let y = -maxRange; y <= maxRange; y++) {
-        if (predicate(x, y)) allowed.add(`${x},${y}`);
+        if (pythonTruthy(predicate(x, y))) allowed.add(`${x},${y}`);
       }
     }
   } catch (error) {
@@ -1859,15 +1885,16 @@ function evaluatedItemNumber(
 ): number {
   if (typeof expression === 'number') return Math.trunc(expression);
   if (typeof expression !== 'string') return fallback;
-  const value = Number(evaluateExpression(expression, {
+  // Python int(evaluate(value, unit, local_args={'item': item})); the site's
+  // except value (0, or 80 for EOtF's eval_hit) when it raises.
+  return evaluateInt(expression, {
     game,
     unit1: unit,
     item,
     position: unit.position ?? undefined,
     gameVars: game?.gameVars,
     levelVars: game?.levelVars,
-  }));
-  return Number.isFinite(value) ? Math.trunc(value) : fallback;
+  }, fallback);
 }
 
 /**
@@ -1878,19 +1905,15 @@ export function evalWeightForHelp(item: ItemObject, unit: UnitObject | null, gam
   const expression = item.getComponent('eval_weight');
   if (typeof expression === 'number') return Math.trunc(expression);
   if (typeof expression !== 'string') return null;
-  try {
-    const value = Number(evaluateExpression(expression, {
-      game,
-      unit1: unit ?? undefined,
-      item,
-      position: unit?.position ?? undefined,
-      gameVars: game?.gameVars,
-      levelVars: game?.levelVars,
-    }));
-    return Number.isFinite(value) ? Math.trunc(value) : null;
-  } catch {
-    return null;
-  }
+  const value = evaluateInt(expression, {
+    game,
+    unit1: unit ?? undefined,
+    item,
+    position: unit?.position ?? undefined,
+    gameVars: game?.gameVars,
+    levelVars: game?.levelVars,
+  }, Number.NaN);
+  return Number.isFinite(value) ? value : null;
 }
 
 function evaluatedItemCondition(
