@@ -18,6 +18,7 @@ import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS, isFavorited, setFavorited } from '../engine/records';
 import { canCounterattack, itemIsMagic } from '../combat/combat-calcs';
+import { unitHasTag, unitTags } from '../combat/skill-system';
 
 type ItemAvailabilityEvaluator = (
   unit: any,
@@ -960,6 +961,12 @@ function resolveObject(obj: any, parts: string[]): any {
   let current = obj;
   for (const part of parts) {
     if (current == null) return undefined;
+    // Python UnitObject.tags is the own/class/skill tag union.
+    if (part === 'tags' && Array.isArray(current.tags) && Array.isArray(current.skills) &&
+        typeof current.klass === 'string') {
+      current = [...unitTags(current)];
+      continue;
+    }
     // Handle snake_case -> camelCase mapping for common fields
     const camelPart = snakeToCamel(part);
     if (part in current) {
@@ -2063,7 +2070,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       team: u.team,
       position: u.position,
       previous_position: u.previousPosition ?? u.previous_position ?? null,
-      tags: u.tags ?? [],
+      // Python UnitObject.tags: own tags | class tags | skill additional_tags.
+      get tags() {
+        return memo('tags', () => (Array.isArray(u.skills) ? [...unitTags(u, game)] : (u.tags ?? [])));
+      },
       klass: u.klass,
       affinity: u.affinity ?? null,
       traveler: u.traveler ?? u.rescuing ?? null,
@@ -2159,7 +2169,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       .filter((unit) => !onlyOnField || (
         !!unit.position &&
         !isDeadOrDying(unit) &&
-        !(unit.tags ?? []).includes('Tile')
+        !unitHasTag(unit, 'Tile', game)
       ))
       .map(wrapUnit);
   }

@@ -11,7 +11,7 @@ import type { ItemObject } from '../objects/item';
 import type { SkillObject } from '../objects/skill';
 import { ACHIEVEMENTS } from './records';
 import { getInternalLevel } from './leveling';
-import { movementType } from '../combat/skill-system';
+import { movementType, unitHasTag } from '../combat/skill-system';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (avoids circular imports)
@@ -896,7 +896,7 @@ export class GameQueryEngine {
   private _matchesFilter(unit: UnitObject, opts: UnitFilterOpts): boolean {
     if (opts.nid !== undefined && unit.nid !== opts.nid) return false;
     if (opts.team !== undefined && unit.team !== opts.team) return false;
-    if (opts.tag !== undefined && !unit.tags.includes(opts.tag)) return false;
+    if (opts.tag !== undefined && !unitHasTag(unit, opts.tag, getGame())) return false;
     if (opts.party !== undefined && unit.party !== opts.party) return false;
     return true;
   }

@@ -10,6 +10,7 @@ import {
   expMultiplier,
   initializeSkillData,
   wexpMultiplier,
+  unitHasTag,
 } from './skill-system';
 import { effectiveItemComponents } from './item-system';
 
@@ -233,7 +234,7 @@ function modifyExp(
   let result = value * selfMultiplier * enemyMultiplier;
   if (deadTargets.has(target)) {
     result *= Number(db.getConstant('kill_multiplier', 1));
-    if (target.tags.includes('Boss')) {
+    if (unitHasTag(target, 'Boss')) {
       result += Math.trunc(Number(db.getConstant('boss_bonus', 0)) * selfMultiplier * enemyMultiplier);
     }
   }
@@ -255,12 +256,12 @@ function groupComponentExp(
   const hitDefenders = new Set(strikes
     .filter((strike) => strike.attacker === attacker && strike.item === item && strike.hit)
     .map((strike) => strike.defender)
-    .filter((target) => !target.tags.includes('Tile')));
+    .filter((target) => !unitHasTag(target, 'Tile')));
   const damagedDefenders = new Set(strikes
     .filter((strike) => strike.attacker === attacker && strike.item === item &&
       strike.hit && strike.damage > 0 && checkEnemy(attacker, strike.defender, db))
     .map((strike) => strike.defender)
-    .filter((target) => !target.tags.includes('Tile')));
+    .filter((target) => !unitHasTag(target, 'Tile')));
   let total = 0;
   const minExp = Number(db.getConstant('min_exp', 0));
   if (hasFixed) {

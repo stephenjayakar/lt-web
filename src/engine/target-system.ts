@@ -8,6 +8,7 @@ import {
   checkAlly,
   modifiedMaximumRange,
   modifiedMinimumRange,
+  unitHasTag,
 } from '../combat/skill-system';
 import { getLine } from './line-of-sight';
 import {
@@ -120,7 +121,7 @@ export class TargetSystem {
     const visible = (candidate: TargetPosition): boolean => {
       if (candidate[0] === unit.position?.[0] && candidate[1] === unit.position?.[1]) return true;
       const target = this.board.getUnit(candidate[0], candidate[1]);
-      if (target?.tags.includes('Tile')) return true;
+      if (target && unitHasTag(target, 'Tile')) return true;
       return this.board.inVision(
         candidate,
         unit.team,

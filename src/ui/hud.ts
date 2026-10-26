@@ -36,7 +36,7 @@ import {
   computeCrit, computeDamage, computeExtraAttackPhases, computeHit, computeStrikeCount,
   getEquippedWeapon, damage as itemDamage, weaponTriangle,
 } from '../combat/combat-calcs';
-import { checkEnemy } from '../combat/skill-system';
+import { checkEnemy, unitHasTag } from '../combat/skill-system';
 
 /** Sprites the HUD needs on the first map frame (Python loads all at boot). */
 const HUD_SPRITES = [
@@ -72,7 +72,7 @@ function blit(surf: Surface, src: Surface | null, x: number, y: number): void {
 function cursorHover(game: Game): UnitObject | null {
   const [x, y] = game.cursor.getPosition();
   const unit: UnitObject | null = game.board?.getUnit(x, y) ?? null;
-  if (!unit || unit.tags?.includes('Tile') || !unit.position) return null;
+  if (!unit || unitHasTag(unit, 'Tile') || !unit.position) return null;
   return inVision(game, [x, y]) ? unit : null;
 }
 
@@ -536,7 +536,7 @@ export class HUD {
     const currentUnit: UnitObject | null = game.board.getUnit(coord[0], coord[1]);
     const small = font('small');
     let bgSurf: Surface;
-    if (currentUnit && currentUnit.tags?.includes('Tile')) {
+    if (currentUnit && unitHasTag(currentUnit, 'Tile')) {
       const base = getSprite('tile_info_destructible_opaque');
       if (!base) return null;
       bgSurf = makeTranslucent(base, 0.1);

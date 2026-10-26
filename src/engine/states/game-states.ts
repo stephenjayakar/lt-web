@@ -306,6 +306,7 @@ import {
   modifiedHealAmount,
   unitSpriteTint,
   canUnlock as skillCanUnlock,
+  unitHasTag,
 } from '../../combat/skill-system';
 import { loadBattlePlatforms, loadAndConvertWeaponAnim, selectPalette, selectWeaponAnim } from '../../combat/sprite-loader';
 import { handleBaseEventCommand } from './base-state';
@@ -534,9 +535,9 @@ function collectVisibleUnits(): {
     // Boss/Elite/Protect blink icon (unit_sprite.py draw_hp -- elif chain,
     // so Boss takes priority over Elite over Protect).
     let specialTag: 'Boss' | 'Elite' | 'Protect' | null = null;
-    if (u.tags.includes('Boss')) specialTag = 'Boss';
-    else if (u.tags.includes('Elite')) specialTag = 'Elite';
-    else if (u.tags.includes('Protect')) specialTag = 'Protect';
+    if (unitHasTag(u, 'Boss')) specialTag = 'Boss';
+    else if (unitHasTag(u, 'Elite')) specialTag = 'Elite';
+    else if (unitHasTag(u, 'Protect')) specialTag = 'Protect';
 
     // Rescue/pairup marker: colored by the *carried* unit's team combat_color.
     // Suppressed when the 'pairup' constant is on (Python draws a paired
@@ -609,7 +610,7 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
       // Python get_image: the active frame over a visible, unfinished player unit.
       const hover = game.cursor.getHover();
       const unit: UnitObject | null = game.board.getUnit(hover.x, hover.y);
-      const activeUnit = !!unit && unit.team === 'player' && !unit.finished && !unit.tags.includes('Tile') &&
+      const activeUnit = !!unit && unit.team === 'player' && !unit.finished && !unitHasTag(unit, 'Tile') &&
         game.board.inVision([hover.x, hover.y], 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits());
       // LevelCursor formation frame: which half depends on the tile being a
       // formation spot (prep_formation_select uses formation_show).
@@ -674,7 +675,7 @@ function drawUnitMarkers(surf: Surface): void {
   if (stateName === 'free') {
     const [cx, cy] = game.cursor.getPosition();
     const hover: UnitObject | null = game.board.getUnit(cx, cy);
-    if (hover && !hover.tags.includes('Tile') &&
+    if (hover && !unitHasTag(hover, 'Tile') &&
         game.board.inVision([cx, cy], 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits())) {
       curUnit = hover;
     }
@@ -2652,7 +2653,7 @@ export class FreeState extends MapState {
       // and every selectable player unit has finished.
       const playerUnits: UnitObject[] = game.board.getTeamUnits('player');
       if (playerUnits.length > 0 && getSetting('autoend_turn')) {
-        const allFinished = playerUnits.every((u) => u.finished || u.isDead() || u.tags.includes('Tile'));
+        const allFinished = playerUnits.every((u) => u.finished || u.isDead() || unitHasTag(u, 'Tile'));
         if (allFinished) {
           game.state.change('turn_change');
           return;
@@ -3931,7 +3932,7 @@ function effectUnits(
   for (const targetPosition of [resolved.mainTarget, ...resolved.splash]) {
     if (!targetPosition) continue;
     const target = game.board.getUnit(targetPosition[0], targetPosition[1]);
-    if (target && !target.tags.includes('Tile')) units.set(target.nid, target);
+    if (target && !unitHasTag(target, 'Tile')) units.set(target.nid, target);
   }
   return [...units.values()];
 }
@@ -7011,8 +7012,8 @@ export class CombatState extends State {
       // init_pause, and finish() fades back when the fade_out ends.
       this.animCombat.onStartBattleMusic = () => {
         const levelMusic = (game.currentLevel?.music ?? {}) as unknown as Record<string, string | null | undefined>;
-        const attackerBattle = attacker.tags.includes('Boss') ? levelMusic.boss_battle : null;
-        const defenderBattle = defender?.tags?.includes('Boss') ? levelMusic.boss_battle : null;
+        const attackerBattle = unitHasTag(attacker, 'Boss') ? levelMusic.boss_battle : null;
+        const defenderBattle = defender && unitHasTag(defender, 'Boss') ? levelMusic.boss_battle : null;
         const teamBattle = levelMusic[`${attacker.team}_battle`];
         const battleTrack = attackerBattle || defenderBattle || teamBattle;
         if (battleTrack) {
@@ -15511,7 +15512,7 @@ export class EventState extends State {
         // event (Python event_state end_turn_flag), and change turns.
         const team = args[0];
         const fieldTeam = (nid: string) => [...game.units.values()].some((unit: UnitObject) =>
-          unit.team === nid && !!unit.position && !unit.tags.includes('Tile'));
+          unit.team === nid && !!unit.position && !unitHasTag(unit, 'Tile'));
         if (team) {
           const teamExists = game.db.teams?.defs?.some((def: { nid: string }) => def.nid === team);
           if (!teamExists || !fieldTeam(team)) {

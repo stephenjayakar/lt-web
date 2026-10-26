@@ -14,6 +14,7 @@ import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { Surface as SurfaceClass } from '../surface';
 import { viewport } from '../viewport';
+import { unitHasTag } from '../../combat/skill-system';
 import { TILEWIDTH, TILEHEIGHT, FRAMETIME, getFrameCount } from '../constants';
 import { getSprite, makeTranslucent } from '../../ui/sprites';
 
@@ -379,7 +380,7 @@ class MiniMap {
     const teams: string[] = game.db.teams.defs.map((team: { nid: string }) => team.nid);
     const fogInfo = game.getCurrentFogInfo?.();
     for (const unit of (game.units as Map<string, any>).values()) {
-      if (!unit.position || unit.dead || unit.isDead?.() || unit.tags?.includes('Tile')) continue;
+      if (!unit.position || unit.dead || unit.isDead?.() || unitHasTag(unit, 'Tile')) continue;
       if (!game.board.inVision(unit.position, 'player', fogInfo, game.db, game.getAllUnits())) continue;
       let idx = teams.indexOf(unit.team);
       if (idx < 0 || idx * SCALE >= pins.width) idx = 0;

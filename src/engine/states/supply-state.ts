@@ -64,6 +64,7 @@ import {
 import { canUseBaseItem, useItemInBase } from './game-states';
 import { canRestock, restock } from './manage-state';
 import { inventoryCapacity, inventoryFull } from '../../combat/item-system';
+import { unitHasTag } from '../../combat/skill-system';
 
 function sfx(name: string): void {
   getGame()?.audioManager?.playSfx?.(name);
@@ -95,17 +96,20 @@ export function tooMuchInInventory(unit: UnitObject, db: any): boolean {
 /**
  * Python abilities.SupplyAbility.targets: the map 'Supply' command is
  * available when `_convoy` is enabled and the unit itself has the 'Convoy'
- * tag, or an adjacent same-team ally has the 'AdjConvoy' tag.
+ * tag, or an adjacent same-team ally has the 'AdjConvoy' tag. Tags are the
+ * full UnitObject.tags union (EOtF grants Convoy/AdjConvoy via skill
+ * has_tags), and the fork also refuses 'Temporary' units (summons).
  */
 export function supplyAvailableOnMap(unit: UnitObject, game: any): boolean {
   if (!game.gameVars?.get('_convoy')) return false;
   if (!unit.position) return false;
-  if (unit.tags?.includes('Convoy')) return true;
+  if (isForkEngine() && unitHasTag(unit, 'Temporary', game)) return false;
+  if (unitHasTag(unit, 'Convoy', game)) return true;
   const [ux, uy] = unit.position;
   const deltas = [[0, 1], [0, -1], [1, 0], [-1, 0]];
   for (const [dx, dy] of deltas) {
     const ally = game.board?.getUnit(ux + dx, uy + dy);
-    if (ally && ally.team === unit.team && ally.tags?.includes('AdjConvoy')) {
+    if (ally && ally.team === unit.team && unitHasTag(ally, 'AdjConvoy', game)) {
       return true;
     }
   }

@@ -29,11 +29,14 @@ test.describe('Embrace of the Fog item calculation hooks', () => {
         skills: unit.skills,
         tags: [...unit.tags],
         stats: { ...unit.stats },
+        klass: unit.klass,
       };
 
       unit.items = [tri1, tri2];
       unit.skills = [];
       unit.tags = [];
+      // Python unit.tags includes class tags; Manakete_Lord carries 'Dragon'.
+      unit.klass = 'Mercenary';
       unit.stats.STR = 9;
       unit.stats.MAG = 4;
       unit.stats.CON = 6;
@@ -71,6 +74,7 @@ test.describe('Embrace of the Fog item calculation hooks', () => {
       unit.skills = old.skills;
       unit.tags = old.tags;
       unit.stats = old.stats;
+      unit.klass = old.klass;
       return { mundane, transformed };
     });
 

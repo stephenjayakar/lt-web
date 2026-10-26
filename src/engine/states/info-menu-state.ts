@@ -33,6 +33,7 @@ import {
   modifiedMaximumRange,
   modifiedMinimumRange,
   skillConditionActive,
+  unitHasTag,
 } from '../../combat/skill-system';
 import { available as itemAvailable, inventoryCapacity } from '../../combat/item-system';
 import type { SkillObject } from '../../objects/skill';
@@ -512,7 +513,7 @@ export class InfoMenuState extends State {
         units = units.filter((u) => u.position && (game.board?.inVision?.(u.position) ?? true));
       }
     }
-    this.scrollUnits = units.filter((u) => !(u.tags ?? []).includes('Tile'));
+    this.scrollUnits = units.filter((u) => !unitHasTag(u, 'Tile'));
     if (!this.scrollUnits.includes(this.unit)) this.scrollUnits.unshift(this.unit);
     game.memory?.set?.('scroll_units', null);
 

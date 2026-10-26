@@ -21,7 +21,7 @@ import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
 import type { LoreEntry } from '../../data/types';
 import { canTradeWith } from '../../combat/skill-system';
-import { getEffectiveLevelCap } from '../leveling';
+import { getEffectiveLevelCap, hasAutoPromote } from '../leveling';
 import {
   Choice as PrepChoice,
   Table as PrepTable,
@@ -1501,11 +1501,7 @@ export class BaseBexpSelectState extends State {
     for (const unit of game.units.values()) {
       if (unit.team !== 'player' || unit.dead) continue;
       if (partyNid && unit.party && unit.party !== partyNid) continue;
-      const klass = game.db.classes.get(unit.klass);
-      const maxLevel = getEffectiveLevelCap(unit, game);
-      const autoPromote = (game.db.getConstant('auto_promote', false) || unit.tags?.includes('AutoPromote'))
-        && (klass?.turns_into?.length ?? 0) > 0 && !unit.tags?.includes('NoAutoPromote');
-      const maxed = unit.level >= maxLevel && !autoPromote;
+      const maxed = unit.level >= getEffectiveLevelCap(unit, game) && !hasAutoPromote(unit, game);
       options.push({
         label: `${unit.name} Lv${unit.level} (${unit.exp} exp)`,
         value: unit.nid,

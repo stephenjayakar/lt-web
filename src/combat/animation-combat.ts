@@ -27,7 +27,7 @@ import {
 import type { ActionLog } from '../engine/action';
 import { CombatResultAction } from './combat-result-action';
 import { applyCombatComponents } from './combat-components';
-import { applyPermanentDamage, checkEnemy } from './skill-system';
+import { applyPermanentDamage, checkEnemy, unitHasTag } from './skill-system';
 import {
   CombatLifecycleRecord,
   type CombatProcMark,
@@ -917,7 +917,7 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
   private specialBossCrit(defender: UnitObject, afterAttack: boolean): boolean {
     const strike = this.currentStrike();
     if (!strike || !this.db?.getConstant?.('boss_crit', false) || !strike.hit || strike.crit) return false;
-    if (!defender.tags.includes('Boss')) return false;
+    if (!unitHasTag(defender, 'Boss')) return false;
     const hp = defender === this.leftUnit ? this.leftTargetHp : this.rightTargetHp;
     return afterAttack ? hp <= 0 : this.getDamage() >= hp;
   }

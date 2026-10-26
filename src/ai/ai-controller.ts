@@ -35,6 +35,7 @@ import {
   checkEnemy,
   modifiedMaximumRange,
   modifiedMinimumRange,
+  unitHasTag,
 } from '../combat/skill-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
@@ -438,7 +439,7 @@ export class AIController {
       const allUnits = this.gameRef?.getAllUnits?.() ?? this.board.getAllUnits();
       candidates = candidates.filter((target) => {
         if (!target.position) return false;
-        if (target.tags.includes('Tile')) return true;
+        if (unitHasTag(target, 'Tile', this.gameRef)) return true;
         return this.board.inVision(target.position, unit.team, fogInfo, this.db, allUnits);
       });
     }
@@ -548,7 +549,7 @@ export class AIController {
 
       switch (specType) {
         case 'Tag':
-          matches = u.tags.includes(specValue);
+          matches = unitHasTag(u, specValue, this.gameRef);
           break;
         case 'Class':
           matches = u.klass === specValue;

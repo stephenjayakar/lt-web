@@ -1,5 +1,5 @@
 import type { UnitObject } from '../objects/unit';
-import { growthChange } from '../combat/skill-system';
+import { growthChange, unitHasTag } from '../combat/skill-system';
 import { Lcg } from './static-random';
 
 export type GrowthMethod = 'Fixed' | 'Random' | 'Dynamic' | 'Lucky' | 'Bexp';
@@ -36,9 +36,8 @@ export function getEffectiveLevelCap(unit: UnitObject, game: LevelCapGame): numb
 /** Python ExpState.has_autopromote / exp_funcs.has_autopromote. */
 export function hasAutoPromote(unit: UnitObject, game: LevelCapGame): boolean {
   const klass = game.db.classes.get(unit.klass);
-  const tags = unit.tags ?? [];
-  return Boolean(game.db.getConstant?.('auto_promote', false) || tags.includes('AutoPromote')) &&
-    (klass?.turns_into?.length ?? 0) > 0 && !tags.includes('NoAutoPromote');
+  return Boolean(game.db.getConstant?.('auto_promote', false) || unitHasTag(unit, 'AutoPromote', game)) &&
+    (klass?.turns_into?.length ?? 0) > 0 && !unitHasTag(unit, 'NoAutoPromote', game);
 }
 
 /** Python ExpState.can_give_exp (with the fork's get_level_cap). */

@@ -232,18 +232,60 @@ export function initializeSkillData(
 export function additionalTags(unit: UnitObject, game?: any): Set<string> {
   const tags = new Set<string>();
   for (const skill of unit.skills) {
-    if (!skillConditionActive(skill, unit, { game })) continue;
+    // Python only evaluates the condition of skills that define
+    // additional_tags, so unrelated conditions never run here.
     const configured = skill.getComponent<unknown>('has_tags');
+    const redirect = skill.hasComponent('redirect_damage');
+    const ignoring = skill.hasComponent('ignore_damage') && isForkEngine();
+    if (!Array.isArray(configured) && !redirect && !ignoring) continue;
+    if (!skillConditionActive(skill, unit, { game })) continue;
     if (Array.isArray(configured)) {
       for (const tag of configured) {
         if (typeof tag === 'string') tags.add(tag);
       }
     }
-    if (skill.hasComponent('redirect_damage')) tags.add('IgnoringDamage');
     // EOtF fork IgnoreDamage.additional_tags returns ['IgnoringDamage'].
-    if (skill.hasComponent('ignore_damage') && isForkEngine()) tags.add('IgnoringDamage');
+    if (redirect || ignoring) tags.add('IgnoringDamage');
   }
   return tags;
+}
+
+const resolvingUnitTags = new Set<UnitObject>();
+
+/**
+ * Python `UnitObject.tags`: the unit's own tags, its class tags, and the
+ * tags its active skills add (skill_system.additional_tags). `unit.tags`
+ * in the web holds only the unit's own (mutable, saved) tags.
+ */
+export function unitTags(unit: UnitObject, game: any = skillGameRef?.()): Set<string> {
+  const tags = new Set<string>(unit.tags ?? []);
+  const classTags = game?.db?.classes?.get?.(unit.klass)?.tags;
+  if (Array.isArray(classTags)) {
+    for (const tag of classTags) tags.add(tag);
+  }
+  // A skill condition that reads unit.tags would otherwise recurse forever.
+  if (resolvingUnitTags.has(unit)) return tags;
+  resolvingUnitTags.add(unit);
+  try {
+    for (const tag of additionalTags(unit, game)) tags.add(tag);
+  } finally {
+    resolvingUnitTags.delete(unit);
+  }
+  return tags;
+}
+
+/** `tag in unit.tags` with Python's union semantics (see unitTags). */
+export function unitHasTag(unit: UnitObject, tag: string, game: any = skillGameRef?.()): boolean {
+  if (unit.tags?.includes(tag)) return true;
+  const classTags = game?.db?.classes?.get?.(unit.klass)?.tags;
+  if (Array.isArray(classTags) && classTags.includes(tag)) return true;
+  if (!unit.skills?.length || resolvingUnitTags.has(unit)) return false;
+  resolvingUnitTags.add(unit);
+  try {
+    return additionalTags(unit, game).has(tag);
+  } finally {
+    resolvingUnitTags.delete(unit);
+  }
 }
 
 /** EotF SelfNihil condition hook, including inherited multi-skill gates. */

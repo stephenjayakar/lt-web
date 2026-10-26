@@ -328,11 +328,11 @@ export function evaluateEquationCondition(
   // so compound conditions like `'Mounted' in unit.tags and LCK > 3` work.
   processed = processed.replace(
     /['"]([^'"]+)['"]\s+not\s+in\s+unit\.tags/g,
-    (_m, tag) => `(${!(unit.tags?.includes(tag) ?? false)})`,
+    (_m, tag) => `(${!skillSystem.unitHasTag(unit, tag)})`,
   );
   processed = processed.replace(
     /['"]([^'"]+)['"]\s+in\s+unit\.tags/g,
-    (_m, tag) => `(${unit.tags?.includes(tag) ?? false})`,
+    (_m, tag) => `(${skillSystem.unitHasTag(unit, tag)})`,
   );
 
   // Shared substitutions: equation nids, stat tokens, unit.X, DB.constants.

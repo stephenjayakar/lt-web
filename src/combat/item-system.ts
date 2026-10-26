@@ -45,6 +45,7 @@ import {
   noAttackAfterMove as skillNoAttackAfterMove,
   skillConditionActive,
   type AlternateSplash,
+  unitHasTag,
 } from './skill-system';
 import {
   itemResourcesAvailable,
@@ -120,7 +121,7 @@ export function solomonHpChange(
 ): number | null {
   const raw = item.getComponent<unknown>('solomon_heal');
   if (typeof raw !== 'number') return null;
-  if (target.tags.includes('Monster')) return 8;
+  if (unitHasTag(target, 'Monster', game)) return 8;
   const resistanceDelta =
     unit.getStatValue('RES') - target.getStatValue('RES');
   return -Math.max(
@@ -516,7 +517,7 @@ function itemComponentsAvailable(
   const rank = (components.get('weapon_rank') as string | undefined) ?? magicRank;
   if (rank && weaponType) {
     const requirement = db.weaponRanks.find((candidate) => candidate.rank === rank)?.requirement;
-    const magicianBypass = !!magicRank && unit.tags.includes('Magician');
+    const magicianBypass = !!magicRank && unitHasTag(unit, 'Magician');
     if (!magicianBypass &&
         requirement !== undefined &&
         Number(unit.wexp[weaponType] ?? 0) < requirement) return false;
@@ -527,7 +528,7 @@ function itemComponentsAvailable(
   const allowedClasses = components.get('prf_class');
   if (allowedClasses !== undefined && !componentList(allowedClasses).includes(unit.klass)) return false;
   const allowedTags = components.get('prf_tags');
-  if (allowedTags !== undefined && !componentList(allowedTags).some((tag) => unit.tags.includes(tag))) return false;
+  if (allowedTags !== undefined && !componentList(allowedTags).some((tag) => unitHasTag(unit, tag))) return false;
   const allowedAffinities = components.get('prf_affinity');
   if (allowedAffinities !== undefined && !componentList(allowedAffinities).includes(unit.affinity)) return false;
 

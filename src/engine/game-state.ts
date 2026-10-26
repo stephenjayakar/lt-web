@@ -50,6 +50,7 @@ import {
   activeUnitAnimations,
   changeVariant,
   isCantoSkill,
+  unitHasTag,
 } from '../combat/skill-system';
 import { refreshAuras } from '../combat/aura-system';
 import { refreshPositionStatuses } from './position-status-system';
@@ -1069,7 +1070,7 @@ export class GameState {
       for (const unit of this.units.values()) {
         if (
           unit.team === 'enemy' &&
-          unit.tags.includes('Boss') &&
+          unitHasTag(unit, 'Boss', this) &&
           !unit.isDead()
         ) {
           return false;
@@ -1078,7 +1079,7 @@ export class GameState {
       // If we had at least one boss and they're all dead
       let hadBoss = false;
       for (const unit of this.units.values()) {
-        if (unit.team === 'enemy' && unit.tags.includes('Boss')) {
+        if (unit.team === 'enemy' && unitHasTag(unit, 'Boss', this)) {
           hadBoss = true;
           break;
         }
@@ -1154,7 +1155,7 @@ export class GameState {
       for (const unit of this.units.values()) {
         if (
           unit.team === 'player' &&
-          unit.tags.includes('Lord') &&
+          unitHasTag(unit, 'Lord', this) &&
           unit.isDead()
         ) {
           return true;
@@ -1174,7 +1175,7 @@ export class GameState {
     for (const unit of this.units.values()) {
       if (
         unit.team === 'player' &&
-        unit.tags.includes('Lord') &&
+        unitHasTag(unit, 'Lord', this) &&
         unit.isDead()
       ) {
         return true;

@@ -13,6 +13,7 @@ import {
   onSeparate,
   isCantoSkill,
   skillConditionActive,
+  unitHasTag,
 } from '../combat/skill-system';
 import { skillCondition } from '../combat/item-system';
 import { applyExpGain, autoLevelUnit } from './leveling';
@@ -4044,8 +4045,8 @@ export class AddSkillAction extends Action {
               if (effectPrefabs.every((prefab: unknown) => !!prefab)) {
                 for (const candidate of game.units.values() as Iterable<UnitObject>) {
                   if (candidate.team !== 'player' || !candidate.position ||
-                      candidate.isDead() || candidate.tags.includes('Tile') ||
-                      !candidate.tags.includes('Beast')) continue;
+                      candidate.isDead() || unitHasTag(candidate, 'Tile', game) ||
+                      !unitHasTag(candidate, 'Beast', game)) continue;
                   for (const prefab of effectPrefabs) {
                     const effect = new SkillObject(prefab!);
                     effect.initiatorNid = candidate.nid;
@@ -4065,7 +4066,7 @@ export class AddSkillAction extends Action {
               for (const candidate of game.units.values() as Iterable<UnitObject>) {
                 if (candidate === this.unit || candidate.team !== 'player' ||
                     !candidate.position || candidate.isDead() ||
-                    candidate.tags.includes('Tile') ||
+                    unitHasTag(candidate, 'Tile', game) ||
                     !candidate.skills.some(
                       (skill: SkillObject) => skill.nid === 'Ride_the_Lightning',
                     ) ||
@@ -4331,7 +4332,7 @@ export class RefreshUnitAction extends Action {
     this.unit.resetTurnState();
     if (!this.initialized) {
       const game = _getGame?.();
-      this.blocked = !this.unit.tags.includes('AlwaysRefresh') &&
+      this.blocked = !unitHasTag(this.unit, 'AlwaysRefresh', game) &&
         this.unit.skills.some((skill) =>
           skill.hasComponent('null_refresh') &&
           skillConditionActive(skill, this.unit, { game }));
