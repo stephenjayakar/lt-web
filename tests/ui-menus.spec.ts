@@ -265,6 +265,27 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     expect(await cssText(page)).toEqual([]);
   });
 
+  test('chapter title card', async ({ page }, testInfo) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('UiMenusChapterTitle', {
+        name: 'UiMenusChapterTitle', nid: 'UiMenusChapterTitle', trigger: 'UiMenusChapterTitle',
+        level_nid: g.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
+        _source: ['chapter_title;;The Fog Rises'],
+      });
+      g.eventManager.triggerSpecific('UiMenusChapterTitle', { type: 'UiMenusChapterTitle' }, true);
+      g.state.change('event');
+    });
+    await settleAssets(page, 10);
+    await cssText(page);
+    await step(page, 240);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.chapterTitlePhase))
+      .toBe('wait');
+    await shot(page, 'chapter-title', testInfo);
+    expect(await cssText(page)).toEqual([]);
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));

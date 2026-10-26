@@ -9386,9 +9386,18 @@ export class EventState extends State {
   private backgroundLoadToken: number = 0;
 
   // Chapter title overlay state
-  private chapterTitlePhase: 'none' | 'fade_in' | 'hold' | 'fade_out' = 'none';
+  /** Python ChapterTitleState.state ('none' when no title card is up). */
+  private chapterTitlePhase: 'none' | 'begin' | 'sigil' | 'banner_grow_x' | 'banner_grow_y' |
+    'ribbon_fade_in' | 'wait' | 'sigil_out' | 'ribbon_close' = 'none';
+  /** Milliseconds since the current chapter-title phase began. */
   private chapterTitleTimer: number = 0;
   private chapterTitleText: string = '';
+  private chapterTitleSigilFade = 0;
+  private chapterTitleBannerX = 0;
+  private chapterTitleBannerY = 6;
+  private chapterTitleBannerFade = 0;
+  /** TransitionBackground(chapter_title_bg) scroll counter, in pixels. */
+  private chapterTitleBgCounter = 0;
 
   // Location card state
   private locationCard: { text: string; timer: number; phase: 'fade_in' | 'hold' | 'fade_out'; alpha: number } | null = null;
@@ -9566,9 +9575,9 @@ export class EventState extends State {
       return;
     }
 
-    // Allow skipping chapter title
+    // Python ChapterTitleState.take_input: START/SELECT/BACK end the card.
     if (this.chapterTitlePhase !== 'none') {
-      if (effective === 'SELECT' || effective === 'BACK') {
+      if (effective === 'SELECT' || effective === 'BACK' || effective === 'START') {
         this.chapterTitlePhase = 'none';
         this.chapterTitleTimer = 0;
         this.advancePointer();
@@ -9971,35 +9980,14 @@ export class EventState extends State {
       return;
     }
 
-    // Chapter title overlay animation
+    // Chapter title card (Python ChapterTitleState.update)
     if (this.chapterTitlePhase !== 'none') {
       if (this.skipMode) {
         this.chapterTitlePhase = 'none';
         this.chapterTitleTimer = 0;
         this.advancePointer();
       } else {
-        this.chapterTitleTimer += FRAMETIME;
-        switch (this.chapterTitlePhase) {
-          case 'fade_in':
-            if (this.chapterTitleTimer >= 1000) {
-              this.chapterTitlePhase = 'hold';
-              this.chapterTitleTimer = 0;
-            }
-            break;
-          case 'hold':
-            if (this.chapterTitleTimer >= 3000) {
-              this.chapterTitlePhase = 'fade_out';
-              this.chapterTitleTimer = 0;
-            }
-            break;
-          case 'fade_out':
-            if (this.chapterTitleTimer >= 1000) {
-              this.chapterTitlePhase = 'none';
-              this.chapterTitleTimer = 0;
-              this.advancePointer();
-            }
-            break;
-        }
+        this.updateChapterTitle();
         return;
       }
     }
@@ -10211,37 +10199,8 @@ export class EventState extends State {
       this.choiceMenu.draw(surf);
     }
 
-    // Chapter title overlay (drawn on top of everything)
-    if (this.chapterTitlePhase !== 'none') {
-      let ctAlpha = 1;
-      if (this.chapterTitlePhase === 'fade_in') {
-        ctAlpha = Math.min(1, this.chapterTitleTimer / 1000);
-      } else if (this.chapterTitlePhase === 'fade_out') {
-        ctAlpha = Math.max(0, 1 - this.chapterTitleTimer / 1000);
-      }
-
-      // Black background
-      surf.fillRect(0, 0, surf.width, surf.height, `rgba(0,0,0,${ctAlpha})`);
-
-      if (ctAlpha > 0.1) {
-        // Horizontal banner bar across the middle
-        const bannerY = Math.floor(surf.height / 2) - 16;
-        const bannerH = 32;
-        surf.fillRect(0, bannerY, surf.width, bannerH, `rgba(40,20,10,${ctAlpha * 0.9})`);
-        // Gold border lines
-        surf.fillRect(0, bannerY, surf.width, 1, `rgba(200,170,80,${ctAlpha * 0.8})`);
-        surf.fillRect(0, bannerY + bannerH - 1, surf.width, 1, `rgba(200,170,80,${ctAlpha * 0.8})`);
-
-        // Chapter title text (centered)
-        const titleColor = `rgba(255,230,120,${ctAlpha})`;
-        const titleFont = '10px monospace';
-        // Approximate centering
-        const textW = this.chapterTitleText.length * 6; // ~6px per char at 10px mono
-        const tx = Math.floor((surf.width - textW) / 2);
-        const ty = bannerY + Math.floor((bannerH - 10) / 2);
-        surf.drawText(this.chapterTitleText, tx, ty, titleColor, titleFont);
-      }
-    }
+    // Chapter title card (drawn on top of everything)
+    if (this.chapterTitlePhase !== 'none') this.drawChapterTitle(surf);
 
     // Python dialog.LocationCard: text-font line on menu_bg_brown at (10, 1),
     // at most 90% opaque while fading in and out.
@@ -10656,6 +10615,112 @@ export class EventState extends State {
         : card.elapsedMs - card.pauseMs;
     }
     return Math.floor(startY - motionMs * speed);
+  }
+
+  private updateChapterTitle(): void {
+    this.chapterTitleTimer += FRAMETIME;
+    this.chapterTitleBgCounter += FRAMETIME / 25;
+    const ribbon = getMenuSprite('chapter_title_ribbon');
+    const ribbonH = ribbon?.height ?? 32;
+    const next = (phase: typeof this.chapterTitlePhase): void => {
+      this.chapterTitlePhase = phase;
+      this.chapterTitleTimer = 0;
+    };
+    switch (this.chapterTitlePhase) {
+      case 'begin':
+        if (this.chapterTitleTimer > 50 * 16) next('sigil');
+        break;
+      case 'sigil':
+        this.chapterTitleSigilFade = Math.min(1, this.chapterTitleTimer / 1100);
+        if (this.chapterTitleSigilFade >= 1) next('banner_grow_x');
+        break;
+      case 'banner_grow_x':
+        this.chapterTitleBannerX = Math.min(WINWIDTH, this.chapterTitleBannerX + 10);
+        if (this.chapterTitleBannerX >= WINWIDTH) next('banner_grow_y');
+        break;
+      case 'banner_grow_y':
+        this.chapterTitleBannerY = Math.min(ribbonH, this.chapterTitleBannerY + 2);
+        if (this.chapterTitleBannerY >= ribbonH) next('ribbon_fade_in');
+        break;
+      case 'ribbon_fade_in':
+        this.chapterTitleBannerFade = Math.min(1, this.chapterTitleBannerFade + 0.02);
+        if (this.chapterTitleBannerFade >= 1) next('wait');
+        break;
+      case 'wait':
+        if (this.chapterTitleTimer > 5000) next('sigil_out');
+        break;
+      case 'sigil_out':
+        this.chapterTitleSigilFade = Math.max(0, this.chapterTitleSigilFade - 0.02);
+        if (this.chapterTitleSigilFade <= 0) next('ribbon_close');
+        break;
+      case 'ribbon_close':
+        this.chapterTitleBannerY = Math.max(0, this.chapterTitleBannerY - 2);
+        if (this.chapterTitleBannerY <= 0) {
+          next('none');
+          this.advancePointer();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Python ChapterTitleState.draw: scrolling bg, sigils, ribbon and banner. */
+  private drawChapterTitle(surf: Surface): void {
+    surf.fill(0, 0, 0);
+    const { x: ox, y: oy } = MenuScene.origin();
+    const s = surf.scale;
+    const ctx = surf.ctx;
+    const blitAlpha = (img: HTMLImageElement, sx: number, sy: number, sw: number, sh: number,
+      dx: number, dy: number, alpha: number): void => {
+      if (alpha <= 0 || sw <= 0 || sh <= 0) return;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.drawImage(img, sx, sy, sw, sh, Math.round(dx * s), Math.round(dy * s), Math.round(sw * s), Math.round(sh * s));
+      ctx.restore();
+    };
+    // TransitionBackground: tiles scrolling diagonally up-left.
+    const bg = getMenuSprite('chapter_title_bg');
+    if (bg) {
+      const cx = this.chapterTitleBgCounter % bg.width;
+      const cy = this.chapterTitleBgCounter % bg.height;
+      for (let x = -cx; x < viewport.width; x += bg.width) {
+        for (let y = -cy; y < viewport.height; y += bg.height) {
+          blitAlpha(bg, 0, 0, bg.width, bg.height, x, y, 1);
+        }
+      }
+    }
+    const sigil1 = getMenuSprite('chapter_title_sigil');
+    const sigil2 = getMenuSprite('chapter_title_sigil2');
+    if (sigil1) {
+      const x = ox + Math.floor(WINWIDTH / 2) - Math.floor(sigil1.width / 2);
+      const y = oy + Math.floor(WINHEIGHT / 2) - Math.floor(sigil1.height / 2);
+      blitAlpha(sigil1, 0, 0, sigil1.width, sigil1.height, x + 1, y + 1, this.chapterTitleSigilFade);
+      if (sigil2) blitAlpha(sigil2, 0, 0, sigil2.width, sigil2.height, x, y, this.chapterTitleSigilFade);
+    }
+    const ribbon = getMenuSprite('chapter_title_ribbon');
+    const ribbonPhases = new Set(['ribbon_fade_in', 'wait', 'ribbon_close', 'sigil_out']);
+    if (ribbon && ribbonPhases.has(this.chapterTitlePhase)) {
+      const strip = new Surface(ribbon.width, ribbon.height);
+      strip.blitImage(ribbon, 0, 0, ribbon.width, ribbon.height, 0, 0);
+      const nameW = menuTextWidth('chapter-yellow', this.chapterTitleText);
+      blitMenuText(strip, 'chapter-yellow', this.chapterTitleText,
+        Math.floor(ribbon.width / 2) - Math.floor(nameW / 2), Math.floor(ribbon.height / 2) - 6);
+      const h = this.chapterTitleBannerY;
+      const top = Math.floor((ribbon.height - h) / 2);
+      if (h > 0) {
+        surf.blitFrom(strip, 0, top, ribbon.width, h,
+          Math.floor(viewport.width / 2) - Math.floor(ribbon.width / 2), Math.floor(viewport.height / 2) - Math.floor(h / 2));
+      }
+    }
+    const banner = getMenuSprite('chapter_title_banner');
+    if (banner) {
+      const w = Math.min(banner.width, this.chapterTitleBannerX);
+      const h = Math.min(banner.height, this.chapterTitleBannerY);
+      blitAlpha(banner, 0, 0, w, h, Math.floor(viewport.width / 2) - Math.floor(w / 2),
+        Math.floor(viewport.height / 2) - Math.floor(h / 2), 1 - this.chapterTitleBannerFade);
+    }
   }
 
   /**
@@ -15456,8 +15521,15 @@ export class EventState extends State {
         // Determine title text
         const game2 = getGame();
         this.chapterTitleText = ctTitle || game2.currentLevel?.name || 'Chapter';
-        this.chapterTitlePhase = 'fade_in';
+        this.chapterTitlePhase = 'begin';
         this.chapterTitleTimer = 0;
+        this.chapterTitleSigilFade = 0;
+        this.chapterTitleBannerX = 0;
+        this.chapterTitleBannerY = 6;
+        this.chapterTitleBannerFade = 0;
+        this.chapterTitleBgCounter = 0;
+        for (const nid of ['chapter_title_bg', 'chapter_title_ribbon', 'chapter_title_banner',
+          'chapter_title_sigil', 'chapter_title_sigil2']) getMenuSprite(nid);
 
         // Disable skip mode (player must watch or manually skip)
         this.skipMode = false;
