@@ -61,8 +61,16 @@ function spriteIndex(root: string): Record<string, string> {
 /**
  * Engine sprites (lt-maker/sprites, served at /game-data/sprites/) and each
  * project's resources/custom_sprites, which Python loads on top of them.
+ * `fork` indexes public/fork-sprites/ (served at /fork-sprites/): engine
+ * sprites that only exist in the private engine fork EOtF ships on, such as
+ * the unit dex's selector glow. They are used when upstream has no sprite of
+ * that name.
  */
-function discoverSprites(): { engine: Record<string, string>; projects: Record<string, Record<string, string>> } {
+function discoverSprites(): {
+  engine: Record<string, string>;
+  fork: Record<string, string>;
+  projects: Record<string, Record<string, string>>;
+} {
   const roots = [resolve(__dirname, 'lt-maker'), resolve(__dirname, 'public/game-data')];
   const engineRoot = roots.map((r) => join(r, 'sprites')).find((r) => existsSync(r));
   const projects: Record<string, Record<string, string>> = {};
@@ -74,7 +82,12 @@ function discoverSprites(): { engine: Record<string, string>; projects: Record<s
       if (existsSync(custom)) projects[name] = spriteIndex(custom);
     }
   }
-  return { engine: engineRoot ? spriteIndex(engineRoot) : {}, projects };
+  const forkRoot = resolve(__dirname, 'public/fork-sprites');
+  return {
+    engine: engineRoot ? spriteIndex(engineRoot) : {},
+    fork: existsSync(forkRoot) ? spriteIndex(forkRoot) : {},
+    projects,
+  };
 }
 
 // MIME types for game assets

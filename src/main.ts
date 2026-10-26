@@ -85,6 +85,7 @@ import {
   ObjectiveMenuState,
   setObjectiveDialogGameRef,
 } from './engine/states/objective-dialog-states';
+import { DexMenuState, setDexMenuGameRef } from './engine/states/dex-menu-state';
 import {
   PrepMainState,
   PrepPickUnitsState,
@@ -687,6 +688,7 @@ async function main(): Promise<void> {
   setActionGameRef(() => gameState);
   setGameRef(gameState);
   setInfoMenuGameRef(gameState);
+  setDexMenuGameRef(gameState);
   setHelpMenuGameRef(gameState);
   setMenuAudioManager(audioManager);
   setBannerAudio(audioManager);
@@ -757,6 +759,7 @@ async function main(): Promise<void> {
     new EventState(),
     new ShopState(),
     new InfoMenuState(),
+    new DexMenuState(),
     new PrepMainState(),
     new PrepPickUnitsState(),
     new PrepMapState(),

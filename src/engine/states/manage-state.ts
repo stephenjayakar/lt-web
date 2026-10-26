@@ -333,6 +333,17 @@ abstract class ManageBaseState extends State {
       sfx('Select 4');
     } else if (event === 'INFO') {
       openInfo(game, menu.getCurrentUnit());
+    } else if (event === 'AUX') {
+      // Engine fork (EOtF): AUX opens the unit dex on a Playable unit.
+      const unit = menu.getCurrentUnit();
+      if (unit?.tags.includes('Playable')) {
+        sfx('Select 1');
+        game.memory.set('scroll_units', partyUnits(game));
+        game.memory.set('curr_unit_info', unit.nid);
+        game.state.change('base_info_menu');
+      } else {
+        sfx('Error');
+      }
     } else if (event === 'START' && this.allowOptimizeAll()) {
       sfx('Select 1');
       if (game.gameVars.get('_convoy')) game.state.change('optimize_all_choice');

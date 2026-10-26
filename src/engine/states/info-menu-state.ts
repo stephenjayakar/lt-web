@@ -271,7 +271,7 @@ function skillCooldown(skill: SkillObject): number | null {
 }
 
 /** icons.draw_skill(compact=False) */
-function drawSkill(surf: Surface, skill: SkillObject, x: number, y: number, grey: boolean): void {
+export function drawSkill(surf: Surface, skill: SkillObject, x: number, y: number, grey: boolean): void {
   if (!skill.iconNid) return;
   if (grey) {
     const tmp = new Surface(16, 16);
@@ -373,9 +373,9 @@ function helpOf(info: InfoBox): HelpBox {
 }
 
 /** info_graph.find_closest (direction-weighted top-left distance). */
-function findClosest(current: InfoBox, boxes: InfoBox[], horiz: boolean): InfoBox | null {
+export function findClosest<T extends { aabb: [number, number, number, number] }>(current: T, boxes: T[], horiz: boolean): T | null {
   const [hp, vp] = horiz ? [1, 10] : [10, 1];
-  let best: InfoBox | null = null;
+  let best: T | null = null;
   let max = 1e6;
   for (const bb of boxes) {
     const d = hp * (current.aabb[0] - bb.aabb[0]) ** 2 + vp * (current.aabb[1] - bb.aabb[1]) ** 2;

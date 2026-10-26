@@ -17,10 +17,13 @@ import { Surface, surfaceFromImage } from '../engine/surface';
 
 declare const __LT_SPRITES__: {
   engine: Record<string, string>;
+  /** public/fork-sprites: engine sprites only the EOtF engine fork ships. */
+  fork?: Record<string, string>;
   projects: Record<string, Record<string, string>>;
 } | undefined;
 
 const INDEX = typeof __LT_SPRITES__ !== 'undefined' ? __LT_SPRITES__ : { engine: {}, projects: {} };
+const FORK: Record<string, string> = INDEX.fork ?? {};
 
 let engineBase = '/game-data';
 let projectBase = '';
@@ -47,12 +50,14 @@ export function spriteUrl(name: string): string | null {
   }
   const engine = INDEX.engine[name];
   if (engine) return `${engineBase}/sprites/${engine.split('/').map(encodeURIComponent).join('/')}`;
+  const fork = FORK[name];
+  if (fork) return `/fork-sprites/${fork.split('/').map(encodeURIComponent).join('/')}`;
   return null;
 }
 
 /** Whether SPRITES has an entry with this name (Python `name in SPRITES`). */
 export function hasSprite(name: string): boolean {
-  return name in projectSprites || name in INDEX.engine;
+  return name in projectSprites || name in INDEX.engine || name in FORK;
 }
 
 /** Load a sprite (resolves null when it does not exist or fails to load). */

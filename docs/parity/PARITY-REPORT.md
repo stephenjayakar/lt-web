@@ -150,6 +150,7 @@ web follows what EOtF's engine does:
 | Behaviour | Reference (`2026.02.17a`) | EOtF's engine | Web |
 |---|---|---|---|
 | `heal`, `change_class ...;no_wexp`, level-cap and `unload_unit` commands | absent (parse errors) | fork-only commands | implemented from EOtF usage; `no_wexp` skips the class's starting wexp |
+| Unit dex (`show_pokedex`, `type_dex_unit` choice INFO, prep/base manage AUX, `game.is_favorited`) | absent | `base_info_menu` (`info_menu/base_copy_info_menu.py`); favourites are `__is_favorited__<nid>__` records | `src/engine/states/dex-menu-state.ts`, ported from the v1.90 build's source; fork-only sprites (unit select glow/bar, type icons) ship in `public/fork-sprites/`. No fade transitions, like the web's other full-screen menus |
 | `has_finished` | no-op: `action.Wait` lost in `0623423e7` (2026-01-24), restored in `8a5e12750` (2026-03-24) | 2024 base waits the unit | `WaitAction` |
 | `push` placement | occupant's own tile counts as open (`da99faa2d`, 2025-12), so units stack; fixed upstream in `0f96fd6f6` (2026-10-23, `can_stay=False`) | 2024 base pushes the occupant | nearest open tile without the occupant's own, then a forced move |
 

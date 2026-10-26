@@ -104,6 +104,16 @@ export abstract class HelpBox {
     this.transitionOut = this.time || 1;
   }
 
+  /** True while the box is still growing in (Python dlg TRANSITION_IN). */
+  get transitioningIn(): boolean {
+    return this.transitionIn;
+  }
+
+  /** Public HelpDialog.top_left for callers that decorate the box. */
+  topLeftAt(x: number, y: number, right = false): [number, number] {
+    return this.topLeft(x, y, right);
+  }
+
   /** HelpDialog.top_left: keep the box on screen. */
   protected topLeft(x: number, y: number, right: boolean): [number, number] {
     if (right) x -= this.width;
@@ -175,7 +185,9 @@ export class HelpDialog extends HelpBox {
     let greatest = built.length ? Math.max(...built.map((l) => measureStyledText(l, FONT))) : 8;
     let numLines = built.length;
     if (name) {
-      greatest = Math.max(greatest, textWidth(FONT, name));
+      // Python render_text parses colour tags in the name (EOtF's dex names
+      // linked lore/skills as '<blue>Name</>').
+      greatest = Math.max(greatest, measureStyledText(name, FONT));
       numLines += 1;
     }
     const dlgWidth = greatest + 16 + ((greatest + 16) % 8 ? 8 - ((greatest + 16) % 8) : 0);
@@ -190,7 +202,7 @@ export class HelpDialog extends HelpBox {
   protected paint(surf: Surface): void {
     let y = 8;
     if (this.name) {
-      blitText(surf, `${FONT}-${TEXT_COLOR}`, this.name, 8, 8);
+      drawStyledText(surf, this.name, 8, 8, TEXT_COLOR, FONT);
       y += 16;
     }
     this.lines.forEach((line, i) => drawStyledText(surf, line, 8, y + i * LINE_H, TEXT_COLOR, FONT));

@@ -898,6 +898,19 @@ export let RECORDS: PersistentRecordManager;
 export let ACHIEVEMENTS: AchievementManager;
 
 /**
+ * GameState.is_favorited from the engine fork EOtF ships on: a unit's dex
+ * favourite is the persistent record `__is_favorited__<nid>__`.
+ */
+export function isFavorited(unitNid: string): boolean {
+  return !!RECORDS?.get(`__is_favorited__${unitNid}__`);
+}
+
+/** Fork GameState.set_favorited (RECORDS.create_or_update). */
+export function setFavorited(unitNid: string, value: boolean): void {
+  RECORDS?.replace(`__is_favorited__${unitNid}__`, value);
+}
+
+/**
  * Initialize the persistent systems (persistent records + achievements)
  * from the sync store. Call once at engine startup after the game NID is known.
  */

@@ -173,6 +173,7 @@ import {
 } from '../../ui/prep-ui';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
+import { dexOptionUnit } from './dex-menu-state';
 import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
@@ -9680,6 +9681,9 @@ export class EventState extends State {
   private unlockAwaitingSpend = false;
   /** Event to run on each selection, from the choice's `EventNid` keyword. */
   private choiceEventNid: string | null = null;
+  /** The active choice's EntryType and stored values (PlayerChoiceState data). */
+  private choiceEntryType = 'str';
+  private choiceValues: string[] = [];
   /** Parent choices paused while their EventNid selection event runs. */
   /** Presentation of events paused by a nested trigger_script/choice event. */
   private parkedEventPresentation: WeakMap<GameEvent, {
@@ -9976,6 +9980,7 @@ export class EventState extends State {
         const [gx, gy] = game.input.getGameMousePos();
         this.choiceMenu.handleMouseHover(gx, gy);
       }
+      if (!result && effective === 'INFO' && this.openChoiceInfo(game)) return;
       if (!result && effective !== null) {
         result = this.choiceMenu.handleInput(effective);
       }
@@ -11913,6 +11918,43 @@ export class EventState extends State {
   }
 
   /**
+   * PlayerChoiceState INFO: a `type_unit` choice opens the info menu on the
+   * hovered unit (scrolling through the listed units), and the engine fork's
+   * `type_dex_unit` opens the unit dex on it. Returns false when INFO does
+   * nothing for this entry type.
+   */
+  private openChoiceInfo(game: any): boolean {
+    const menu = this.choiceMenu;
+    if (!menu) return false;
+    const selected = menu.getCurrentOption()?.value ?? '';
+    if (this.choiceEntryType === 'type_unit') {
+      const unit = game.units.get(selected);
+      if (!unit) {
+        game.audioManager?.playSfx?.('Error');
+        return true;
+      }
+      const units = this.choiceValues
+        .map((nid) => game.units.get(nid))
+        .filter((candidate: UnitObject | undefined): candidate is UnitObject => !!candidate);
+      game.memory.set('scroll_units', units);
+      game.memory.set('current_unit', unit);
+      game.infoMenuUnit = unit;
+      game.state.change('info_menu');
+      return true;
+    }
+    if (this.choiceEntryType === 'type_dex_unit') {
+      if (!selected) {
+        game.audioManager?.playSfx?.('Error');
+        return true;
+      }
+      game.memory.set('curr_unit_info', selected);
+      game.state.change('base_info_menu');
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Build one `choice` entry the way Python's GridChoiceMenu option classes
    * render it: items/skills with their icon and name, units with their map
    * sprite and name, classes by name, `type_icon` as `sheet-x-y-text`.
@@ -11942,6 +11984,17 @@ export class EventState extends State {
         const prefab = unit ?? game.db.units.get(value);
         const sprite = unit?.sprite && typeof unit.sprite.draw === 'function' ? unit.sprite : null;
         return { value, kind: 'sprite', text: display ?? prefab?.name ?? value, sprite };
+      }
+      case 'type_dex_unit': {
+        // Engine fork: BasicUnitOption.from_nid, so units that are not
+        // loaded show their prefab's map sprite.
+        const unit = dexOptionUnit(game, value);
+        const sprite = unit ? {
+          draw: (surf: Surface, x: number, y: number, ox: number, oy: number) => {
+            (unit.sprite as any)?.draw?.(surf, x, y, ox, oy);
+          },
+        } : null;
+        return { value, kind: 'sprite', text: display ?? game.db.units.get(value)?.name ?? value, sprite };
       }
       case 'type_class': {
         const klass = game.db.classes.get(value);
@@ -13530,6 +13583,12 @@ export class EventState extends State {
         queue.unshift(...nestedEvents, owner);
         this.loadNextEvent(game);
         return true;
+      }
+
+      case 'show_pokedex': {
+        // Engine fork (event_functions.show_pokedex): pause into the unit dex
+        // through a transition.
+        return this.openStateWithTransition('base_info_menu', args, game);
       }
 
       case 'records_screen': {
@@ -15546,6 +15605,8 @@ export class EventState extends State {
             screenHeight: viewport.height,
           });
           this.choiceNid = choiceNid;
+          this.choiceEntryType = entryType;
+          this.choiceValues = entries.map((entry: EventChoiceEntry) => entry.value);
           this.choiceBackable = flags.has('backable');
           this.choicePersist = flags.has('persist');
           const remembered = this.choiceCursorMemory.get(choiceNid);

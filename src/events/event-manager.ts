@@ -16,7 +16,7 @@ import {
 } from '../engine/action';
 import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
-import { RECORDS } from '../engine/records';
+import { RECORDS, isFavorited, setFavorited } from '../engine/records';
 import { canCounterattack } from '../combat/combat-calcs';
 
 type ItemAvailabilityEvaluator = (
@@ -134,7 +134,7 @@ export type EventCommandType =
   | 'add_unit' | 'move_unit' | 'remove_unit' | 'kill_unit' | 'remove_all_units' | 'remove_all_enemies'
   | 'interact_unit' | 'resurrect' | 'set_position'
   | 'set_skill_data' | 'set_mode_rng' | 'set_mode_autolevels' | 'show_minimap'
-  | 'records_screen' | 'open_library' | 'open_guide' | 'open_credits' | 'soundroom' | 'open_trade'
+  | 'records_screen' | 'open_library' | 'open_guide' | 'open_credits' | 'soundroom' | 'open_trade' | 'show_pokedex'
   | 'change_roaming' | 'change_roaming_unit' | 'clean_up_roaming' | 'trigger_script' | 'trigger_script_with_args'
   | 'recruit_generic' | 'merge_parties' | 'loop_units' | 'add_fatigue' | 'remove_generics_from_region' | 'add_unit_map_anim' | 'remove_unit_map_anim' | 'enable_repair_shop' | 'force_chapter_clean_up' | 'arrange_formation' | 'text_entry' | 'change_bg_tilemap' | 'change_team_palette' | 'set_custom_options' | 'pose_unit' | 'open_bexp_menu' | 'party_transfer' | 'open_unit_management' | 'change_roam_ai'
   | 'add_item_component' | 'modify_item_component' | 'remove_item_component'
@@ -240,7 +240,7 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'add_unit', 'move_unit', 'remove_unit', 'kill_unit', 'remove_all_units', 'remove_all_enemies',
   'interact_unit', 'resurrect', 'set_position',
   'set_skill_data', 'set_mode_rng', 'set_mode_autolevels', 'show_minimap',
-  'records_screen', 'open_library', 'open_guide', 'open_credits', 'soundroom', 'open_trade',
+  'records_screen', 'open_library', 'open_guide', 'open_credits', 'soundroom', 'open_trade', 'show_pokedex',
   'change_roaming', 'change_roaming_unit', 'clean_up_roaming', 'trigger_script', 'trigger_script_with_args',
   'recruit_generic', 'merge_parties', 'loop_units', 'add_fatigue', 'remove_generics_from_region', 'add_unit_map_anim', 'remove_unit_map_anim', 'enable_repair_shop', 'force_chapter_clean_up', 'arrange_formation', 'text_entry', 'change_bg_tilemap', 'change_team_palette', 'set_custom_options', 'pose_unit', 'open_bexp_menu', 'party_transfer', 'open_unit_management', 'change_roam_ai',
   'add_item_component', 'modify_item_component', 'remove_item_component',
@@ -2312,11 +2312,13 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
         ? game.units?.get(candidate) ?? game.getUnit?.(candidate)
         : candidate?._raw ?? candidate;
       const nid = rawCandidate?.nid ?? (typeof candidate === 'string' ? candidate : '');
-      const favoriteUnits = game.favoriteUnits ?? game.favorites;
-      if (favoriteUnits?.has?.(nid)) return true;
-      const fieldValue = rawCandidate?.fields?.get?.('Favorite') ??
-        rawCandidate?.fields?.get?.('favorite');
-      return fieldValue === true || fieldValue === 1 || fieldValue === 'true';
+      // Engine-fork API (EOtF sorts its run-start roster by it): favourites
+      // are the persistent records the unit dex toggles.
+      return isFavorited(String(nid));
+    },
+    set_favorited(candidate: string | { nid?: string; _raw?: { nid?: string } }, value: unknown) {
+      const nid = typeof candidate === 'string' ? candidate : candidate?._raw?.nid ?? candidate?.nid ?? '';
+      setFavorited(String(nid), !!value);
     },
     get_item(uid: number | string | unknown[]) {
       const requested = Array.isArray(uid) ? uid[0] : uid;
