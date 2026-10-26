@@ -2524,6 +2524,62 @@ function checkEffectiveNegate(
 }
 
 /**
+ * Python `item_system.item_icon_mod` whiteness for the combat-preview and
+ * animation-combat item icons. Every component whose hook fires applies
+ * `image_mods.make_white(sprite, abs(250 - engine.get_time() % 500) / 250)`
+ * in turn; make_white is an RGB add, so stacked hooks add up. Hooks:
+ * `effective_damage` with `show_effectiveness_flash` when the item is
+ * effective against the target (`EffectiveDamage._check_effective`), the
+ * deprecated `effective_tag`/`effective_icon` tag check, and
+ * `item_icon_flash` (its expression gets `unit`, `target`/`unit2`, the
+ * unit's position and `item`; Python passes `item` as `item2` too).
+ * Returns 0..1 (0 = draw the icon unchanged).
+ */
+export function itemIconWhiteness(
+  unit: UnitObject,
+  item: ItemObject,
+  target: UnitObject | null | undefined,
+  _item2: ItemObject | null | undefined,
+  game: any,
+  timeMs: number,
+): number {
+  if (!target) return 0;
+  const db = game?.db as Database | undefined;
+  const fork = isForkEngine();
+  let hooks = 0;
+  for (const [nid, value] of resolvedItemComponents(unit, item, db, game)) {
+    if (nid === 'effective_damage') {
+      const eff = (value ?? {}) as EffectiveDamageValue;
+      if (eff.show_effectiveness_flash === false) continue;
+      const tags = Array.isArray(eff.effective_tags) ? eff.effective_tags : [];
+      if (checkEffectiveNegate(target, tags, game, !fork)) continue;
+      if (isEffectiveAgainstTags(target, tags, db)) hooks++;
+    } else if (nid === 'effective_tag' || nid === 'effective_icon') {
+      const tags = Array.isArray(value) ? value as string[] : [];
+      if (isEffectiveAgainstTags(target, tags, db) &&
+          !checkEffectiveNegate(target, tags, game, false)) hooks++;
+    } else if (nid === 'item_icon_flash') {
+      const expression = typeof value === 'string' ? value : 'True';
+      const outcome = evaluatePythonInContext(expression, {
+        game,
+        unit1: unit,
+        unit2: target,
+        item,
+        position: unit.position ?? undefined,
+        gameVars: game?.gameVars,
+        levelVars: game?.levelVars,
+        localArgs: new Map<string, any>([['item', item], ['item2', item]]),
+      });
+      // Python prints the error and leaves the sprite unchanged.
+      if (outcome.ok && pythonTruthy(outcome.value)) hooks++;
+    }
+  }
+  if (hooks === 0) return 0;
+  const step = Math.abs(250 - (((Math.trunc(timeMs) % 500) + 500) % 500)) / 250;
+  return Math.min(1, hooks * step);
+}
+
+/**
  * Dynamic extra attacks (e.g., brave weapons).
  * Returns the number of additional multi-attacks (0 = normal).
  */

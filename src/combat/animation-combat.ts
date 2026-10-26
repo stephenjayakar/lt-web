@@ -22,6 +22,7 @@ import {
   hasEclipse,
   hasEclipseFe7,
   lifelinkHealForStrike,
+  itemIconWhiteness,
   usesConsumedByStrikes,
 } from './item-system';
 import type { ActionLog } from '../engine/action';
@@ -1808,7 +1809,8 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       }
       this.drawCombatHpBar(surfBar, bar, max, hpX, 30 + critY);
       if (item) {
-        drawItemIcon(surfBar, item as any, itemX + 2, 2 + critY + 4);
+        drawItemIcon(surfBar, item as any, itemX + 2, 2 + critY + 4,
+          itemIconWhiteness(unit, item, target, other, this.game, performance.now()));
         if (checkEnemy(unit, target, this.db, this.game)) {
           const arrows = getCombatSprite('arrow_advantage');
           const triangle = weaponTriangle(item, other, this.db, unit, target);

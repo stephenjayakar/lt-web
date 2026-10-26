@@ -37,6 +37,7 @@ import {
   getEquippedWeapon, damage as itemDamage, weaponTriangle,
 } from '../combat/combat-calcs';
 import { checkEnemy, unitHasTag } from '../combat/skill-system';
+import { itemIconWhiteness } from '../combat/item-system';
 
 /** Sprites the HUD needs on the first map frame (Python loads all at boot). */
 const HUD_SPRITES = [
@@ -819,8 +820,16 @@ export class HUD {
     this.place(surf, 'attack', this.attackInfoDisp, topleft[0], topleft[1]);
 
     const rowShift = (critFlag ? 0 : -16) + (grandmaster ? -16 : 0) + (guardFlag ? 16 : 0);
-    if (weapon.iconNid) drawItemIcon(surf, weapon, topleft[0] + 26, topleft[1] + 4);
-    if (defWeapon?.iconNid) drawItemIcon(surf, defWeapon, topleft[0] + 74, topleft[1] + 83 + rowShift);
+    // Python item_system.item_icon_mod: effective / item_icon_flash icons pulse white.
+    const now = performance.now();
+    if (weapon.iconNid) {
+      drawItemIcon(surf, weapon, topleft[0] + 26, topleft[1] + 4,
+        itemIconWhiteness(attacker, weapon, defender, defWeapon ?? null, game, now));
+    }
+    if (defWeapon?.iconNid) {
+      drawItemIcon(surf, defWeapon, topleft[0] + 74, topleft[1] + 83 + rowShift,
+        itemIconWhiteness(defender, defWeapon, attacker, weapon, game, now));
+    }
 
     if (checkEnemy(attacker, defender, db, game)) {
       this.drawAdvArrows(surf, game, attacker, defender, weapon, defWeapon, topleft[0] + 37, topleft[1] + 8);
@@ -968,7 +977,12 @@ export class HUD {
     }
     this.place(surf, 'spell', disp, topleft[0], topleft[1]);
     if (unitSurf) surf.blit(unitSurf, uTopleft[0], uTopleft[1]);
-    if (spell.iconNid) drawItemIcon(surf, spell, topleft[0] + 8, topleft[1] + disp.height - 20);
+    if (spell.iconNid) {
+      const whiteness = defender
+        ? itemIconWhiteness(attacker, spell, defender, getEquippedWeapon(defender, game.db, game) ?? null, game, performance.now())
+        : 0;
+      drawItemIcon(surf, spell, topleft[0] + 8, topleft[1] + disp.height - 20, whiteness);
+    }
     return surf;
   }
 }

@@ -220,9 +220,48 @@ export function drawItemIcon(
   item: { iconNid: string; iconIndex: [number, number] },
   dx: number,
   dy: number,
+  whiteness: number = 0,
 ): void {
   if (!item.iconNid) return;
-  drawIcon16(surf, item.iconNid, item.iconIndex, dx, dy);
+  if (whiteness <= 0) {
+    drawIcon16(surf, item.iconNid, item.iconIndex, dx, dy);
+    return;
+  }
+  const img = getIconSheet(item.iconNid, '16');
+  if (!img) return;
+  surf.blitImage(whiteIcon(img, item.iconIndex, whiteness), 0, 0, ICON_SIZE_16, ICON_SIZE_16, dx, dy);
+}
+
+let whiteIconCanvas: HTMLCanvasElement | OffscreenCanvas | null = null;
+
+/**
+ * Python image_mods.make_white(icon, white): BLEND_RGB_ADD of
+ * (int(255 * white),) * 3 onto the icon's colour, alpha untouched. Drawn on
+ * one reusable 16x16 canvas, so the result must be blitted immediately.
+ */
+function whiteIcon(
+  img: HTMLImageElement | ImageBitmap | HTMLCanvasElement | OffscreenCanvas,
+  iconIndex: [number, number],
+  whiteness: number,
+): HTMLCanvasElement | OffscreenCanvas {
+  if (!whiteIconCanvas) {
+    whiteIconCanvas = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(ICON_SIZE_16, ICON_SIZE_16)
+      : Object.assign(document.createElement('canvas'), { width: ICON_SIZE_16, height: ICON_SIZE_16 });
+  }
+  const ctx = whiteIconCanvas.getContext('2d') as CanvasRenderingContext2D;
+  const sx = iconIndex[0] * ICON_SIZE_16;
+  const sy = iconIndex[1] * ICON_SIZE_16;
+  const white = Math.max(0, Math.min(255, Math.trunc(255 * whiteness)));
+  ctx.globalCompositeOperation = 'copy';
+  ctx.drawImage(img, sx, sy, ICON_SIZE_16, ICON_SIZE_16, 0, 0, ICON_SIZE_16, ICON_SIZE_16);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = `rgb(${white},${white},${white})`;
+  ctx.fillRect(0, 0, ICON_SIZE_16, ICON_SIZE_16);
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.drawImage(img, sx, sy, ICON_SIZE_16, ICON_SIZE_16, 0, 0, ICON_SIZE_16, ICON_SIZE_16);
+  ctx.globalCompositeOperation = 'source-over';
+  return whiteIconCanvas;
 }
 
 /**
