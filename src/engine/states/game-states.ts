@@ -13077,9 +13077,12 @@ export class EventState extends State {
           withDataKeys
             .replace(
               /(['"])\{v:([A-Za-z_][A-Za-z0-9_]*)\}\1/g,
-              (_variableMatch, _quote: string, key: string) => {
+              (_variableMatch, quote: string, key: string) => {
+                // Python substitutes the var's text inside the quotes, so
+                // `'room' + '{v:counter}'` stays a str + str concatenation
+                // even when counter holds an int.
                 const resolved = variableValue(key);
-                return typedVariableLiteral(resolved);
+                return quote + (resolved === undefined ? '??' : eventObjectToString(resolved)) + quote;
               },
             )
             .replace(
