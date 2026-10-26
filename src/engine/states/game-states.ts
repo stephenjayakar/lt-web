@@ -1010,12 +1010,13 @@ function getAdjacentEmptyTiles(x: number, y: number, traveler?: UnitObject | nul
 
 /**
  * Enter a freshly loaded level the way Python's TurnChangeState.end does at
- * level start: free, then the player phase_change (banner, unit reset,
- * status upkeep, autocursor), with the level_start events on top.
+ * level start: free, status_upkeep, then the player phase_change (banner,
+ * unit reset, autocursor), with the level_start events on top.
  */
 export function enterStartedLevel(game: any): void {
   game.state.clear();
   game.state.change('free');
+  game.state.change('status_upkeep');
   game.state.change('phase_change');
   if (game.eventManager?.hasActiveEvents()) game.state.change('event');
 }
@@ -9029,8 +9030,26 @@ export class AIState extends MapState {
 export class TurnChangeState extends State {
   readonly name = 'turn_change';
 
+  /** Python pushes status_endstep above turn_change; it has run this turn change. */
+  private endstepDone = false;
+
+  override start(): StateResult {
+    // A fresh turn change (a cleared one may have left the flag set).
+    this.endstepDone = false;
+  }
+
   override begin(): StateResult {
     const game = getGame();
+
+    // Python: turn_change, then status_endstep on top, so the ending
+    // phase's endstep hooks (and the events they queue) finish before
+    // TurnChangeState.begin/end advance the phase.
+    if (!this.endstepDone) {
+      this.endstepDone = true;
+      game.state.change('status_endstep');
+      return 'repeat';
+    }
+    this.endstepDone = false;
 
     // --- Initiative mode ---
     // Python: TurnChangeState.begin() calls refresh() + back() -> 'repeat'
@@ -9050,9 +9069,6 @@ export class TurnChangeState extends State {
 
       // Save cursor position to memory
       game.memory.set('previous_cursor_position', game.cursor.getPosition());
-
-      const endingUnit = curUnitNid ? game.getUnit(curUnitNid) : null;
-      if (endingUnit) applySkillTurnHooks(game, [endingUnit], 'endstep');
 
       // Advance initiative to next unit
       game.initiative.next();
@@ -9093,15 +9109,6 @@ export class TurnChangeState extends State {
       game.memory.set('previous_cursor_position', game.cursor.getPosition());
     }
 
-    const endingTeam = game.phase?.getCurrent();
-    if (endingTeam) {
-      applySkillTurnHooks(
-        game,
-        game.getTeamUnits(endingTeam).filter((unit: UnitObject) => unit.position),
-        'endstep',
-      );
-    }
-
     // Advance to next phase
     game.phase.next((team: string) => phaseTeamUnits(game, team));
 
@@ -9113,18 +9120,6 @@ export class TurnChangeState extends State {
     const turnCount = game.phase.turnCount;
     const levelNid = game.currentLevel?.nid;
 
-    const upkeepUnits = game.getTeamUnits(currentTeam).filter(
-      (candidate: UnitObject) => candidate.position,
-    );
-    for (const unit of upkeepUnits) {
-      applySkillTurnHooks(game, [unit], 'upkeep');
-      applyItemUpkeepResourceHooks(
-        game,
-        unit,
-        getSkillAbilityOptions(game, unit).map((ability) => ability.item),
-      );
-    }
-
     // Clear highlights before clearing the state stack (the clear() calls
     // finish() not end(), so FreeState.end() won't run to clean up highlights)
     game.highlight.clear();
@@ -9133,15 +9128,12 @@ export class TurnChangeState extends State {
     // then push the appropriate states fresh.
     game.state.clear();
 
-    if (currentTeam === 'player') {
-      // Player phase: push free, then phase banner on top
-      game.state.change('free');
-      game.state.change('phase_change');
-    } else {
-      // AI phase: push ai, then phase banner on top
-      game.state.change('ai');
-      game.state.change('phase_change');
-    }
+    // Python TurnChangeState.end: free/ai, status_upkeep, phase_change. The
+    // phase events (pushed above) run first, then PhaseChangeState (ResetAll,
+    // banner), then the new phase's upkeep hooks.
+    game.state.change(currentTeam === 'player' ? 'free' : 'ai');
+    game.state.change('status_upkeep');
+    game.state.change('phase_change');
 
     // Python TurnChangeState.end: on entering player phase after turn one,
     // count timed regions down and remove expired ones before the phase
@@ -9269,25 +9261,12 @@ export class InitiativeUpkeepState extends State {
       game.phase.setCurrentTeam(unit.team);
     }
 
-    applySkillTurnHooks(game, [unit], 'upkeep');
-    applyItemUpkeepResourceHooks(
-      game,
-      unit,
-      getSkillAbilityOptions(game, unit).map((ability) => ability.item),
-    );
-
     // Pop self
     game.state.back();
 
-    // Push the appropriate state
-    if (unit.team === 'player') {
-      game.state.change('free');
-    } else {
-      game.state.change('ai');
-    }
-
-    // Push phase_change banner on top for visual feedback
-    // (Python pushes status_upkeep too, but we don't have that yet)
+    // Python InitiativeUpkeep.end: free/ai, status_upkeep, phase_change.
+    game.state.change(unit.team === 'player' ? 'free' : 'ai');
+    game.state.change('status_upkeep');
     game.state.change('phase_change');
 
     return 'repeat';
@@ -9340,6 +9319,82 @@ export function fadeInPhaseMusic(game: any, atTurnChange: boolean = false): void
 }
 
 // ============================================================================
+// 8c. StatusUpkeepState / StatusEndstepState
+// ============================================================================
+
+/**
+ * Port of Python status_upkeep.StatusUpkeepState ('status_upkeep' and
+ * 'status_endstep'). The phase team's units on the map are processed last
+ * to first (Python pops them off the list), one per pass: the unit's skill
+ * hooks, then its item hooks, then a lethal-damage death. Events a unit's
+ * hooks queue (upkeep_event, unit_death) run before the next unit. Upkeep
+ * ends by marking the phase for the turnwheel.
+ */
+export class StatusUpkeepState extends State {
+  readonly name: string = 'status_upkeep';
+  override readonly transparent = true;
+
+  private units: UnitObject[] = [];
+
+  protected turnPhase(): 'upkeep' | 'endstep' {
+    return 'upkeep';
+  }
+
+  override start(): StateResult {
+    const game = getGame();
+    if (game.initiative) {
+      const nid = game.initiative.getCurrentUnitNid();
+      const unit = nid ? game.getUnit(nid) : null;
+      this.units = unit ? [unit] : [];
+    } else {
+      const team = game.phase.getCurrent();
+      this.units = (game.getAllUnits() as UnitObject[]).filter((unit) =>
+        !!unit.position && unit.team === team && !unit.isDead());
+    }
+    // The level start reaches the player phase_change from several entry
+    // points; its turn-one upkeep runs once per level.
+    if (this.turnPhase() === 'upkeep' && !game.initiative &&
+        game.phase.getCurrent() === 'player' && game.turnCount === 1) {
+      if (game.levelVars.get('_turn1_upkeep_done')) this.units = [];
+      else game.levelVars.set('_turn1_upkeep_done', true);
+    }
+  }
+
+  override update(): StateResult {
+    const game = getGame();
+    const phase = this.turnPhase();
+    while (this.units.length > 0) {
+      const unit = this.units.pop() as UnitObject;
+      if (!unit.position || unit.isDead()) continue;
+      applySkillTurnHooks(game, [unit], phase);
+      if (phase === 'upkeep') {
+        applyItemUpkeepResourceHooks(
+          game,
+          unit,
+          getSkillAbilityOptions(game, unit).map((ability) => ability.item),
+        );
+      }
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+        return 'repeat';
+      }
+    }
+    // Python: "About to begin the real phase"
+    if (phase === 'upkeep') game.actionLog.doAction(new MarkPhase(game.phase.getCurrent()));
+    game.state.back();
+    return 'repeat';
+  }
+}
+
+export class StatusEndstepState extends StatusUpkeepState {
+  override readonly name: string = 'status_endstep';
+
+  protected override turnPhase(): 'upkeep' | 'endstep' {
+    return 'endstep';
+  }
+}
+
+// ============================================================================
 // 9. PhaseChangeState
 // ============================================================================
 
@@ -9354,7 +9409,6 @@ export class PhaseChangeState extends State {
   override begin(): StateResult {
     const game = getGame();
     const currentTeam = game.phase.getCurrent();
-    const turnCount = game.phase.turnCount;
     // States are singletons: re-arm the end-of-banner music fade per phase.
     this.fadedIn = false;
     // Python PhaseChangeState.is_roam: free roam skips the banner and music.
@@ -9371,9 +9425,8 @@ export class PhaseChangeState extends State {
       game.audioManager?.playSfx?.('Next Turn');
     }
 
-    // Turnwheel markers: lock during non-player phases, mark phase change
+    // Turnwheel lock during non-player phases (status_upkeep marks the phase).
     game.actionLog.doAction(new LockTurnwheel(currentTeam !== 'player'));
-    game.actionLog.doAction(new MarkPhase(currentTeam));
 
     // Python PhaseIn.begin (player): autocursor setting -> first 'Lord'
     // tagged player unit (else first player unit); otherwise return to the
@@ -9404,20 +9457,6 @@ export class PhaseChangeState extends State {
     const dbColor = game.db.teams.defs.find((t: { nid: string }) => t.nid === currentTeam)?.combatColor;
     const color = game.getTeamCombatColor?.(currentTeam) ?? dbColor;
     this.banner = this.roamSkip ? null : new PhaseIn(currentTeam, color !== dbColor ? color : null);
-
-    // Python TurnChangeState.end -> status_upkeep also runs for the player
-    // on turn 1 (the level start never passes through the web turn_change).
-    if (currentTeam === 'player' && turnCount === 1 && !game.levelVars.get('_turn1_upkeep_done')) {
-      game.levelVars.set('_turn1_upkeep_done', true);
-      for (const unit of game.getTeamUnits('player').filter((candidate: UnitObject) => candidate.position)) {
-        applySkillTurnHooks(game, [unit], 'upkeep');
-        applyItemUpkeepResourceHooks(
-          game,
-          unit,
-          getSkillAbilityOptions(game, unit).map((ability) => ability.item),
-        );
-      }
-    }
 
     // Reset units for the new phase and process status effects
     if (game.initiative) {
