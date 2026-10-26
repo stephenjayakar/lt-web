@@ -2207,10 +2207,14 @@ export class OptionMenuState extends State {
       { label: 'Objective', value: 'objective', enabled: !!game.currentLevel },
       { label: 'Options', value: 'options', enabled: true },
     ];
-    if (game.currentMode?.permadeath) {
-      options.push({ label: 'Suspend', value: 'suspend', enabled: true });
-    } else {
-      options.push({ label: 'Save', value: 'save', enabled: true });
+    // EOtF fork: no Save/Suspend on level 'X' (the Safe Location roam hub
+    // saves through its own System_Menu event).
+    if (!(isForkEngine() && game.currentLevel?.nid === 'X')) {
+      if (game.currentMode?.permadeath) {
+        options.push({ label: 'Suspend', value: 'suspend', enabled: true });
+      } else {
+        options.push({ label: 'Save', value: 'save', enabled: true });
+      }
     }
     const roam = !!game.roamInfo?.roam;
     if (!roam) options.push({ label: 'End', value: 'end_turn', enabled: true });
@@ -2782,6 +2786,14 @@ export class MoveState extends MapState {
           const unit: UnitObject = game.selectedUnit;
           const origin = this.previousPosition ?? unit.position;
           if (!origin) break;
+          // EOtF fork MoveState: selecting a Canto unit's own tile waits it
+          // at once (upstream goes to canto_wait).
+          if (isForkEngine() && (unit.hasAttacked || unit.hasTraded) &&
+              origin[0] === pos.x && origin[1] === pos.y) {
+            game.audioManager?.playSfx?.('Select 2');
+            this.forkCantoWait(unit);
+            break;
+          }
 
           // Compute path from the unit's current position (before moving on the board)
           const path = game.pathSystem.getPath(
@@ -2830,8 +2842,14 @@ export class MoveState extends MapState {
       case 'BACK': {
         const deselectedUnit: UnitObject | null = game.selectedUnit;
         // Python MoveState: a Canto unit cannot cancel its committed action.
+        // The EOtF fork instead ends the unit's turn (waits it) on BACK.
         if (deselectedUnit && (deselectedUnit.hasAttacked || deselectedUnit.hasTraded)) {
-          game.audioManager?.playSfx?.('Error');
+          if (isForkEngine()) {
+            game.audioManager?.playSfx?.('Select 4');
+            this.forkCantoWait(deselectedUnit);
+          } else {
+            game.audioManager?.playSfx?.('Error');
+          }
           break;
         }
         game.highlight.clear();
@@ -2891,6 +2909,25 @@ export class MoveState extends MapState {
     const game = getGame();
     game.highlight.clear();
   }
+
+  /**
+   * EOtF fork MoveState (BACK, or SELECT on its own tile, during Canto):
+   * clear to free and wait the unit (actively_chosen=False).
+   */
+  private forkCantoWait(unit: UnitObject): void {
+    const game = getGame();
+    if (unit.position) game.cursor.setPos(unit.position[0], unit.position[1]);
+    game.highlight.clear();
+    game._moveOrigin = null;
+    game._moveAction = null;
+    game.state.clear();
+    game.state.change('free');
+    if (!unit.finished) {
+      game.actionLog.doAction(new MarkActionGroupEnd('menu'));
+      waitUnit(game, unit, false);
+    }
+    if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+  }
 }
 
 // ============================================================================
@@ -2912,7 +2949,8 @@ export class CantoWaitState extends State {
     const unit: UnitObject | null = game.selectedUnit;
     game.audioManager?.playSfx?.('Select 2');
     const options: MenuOption[] = [{ label: 'Wait', value: 'wait', enabled: true }];
-    if (unit && supplyAvailableOnMap(unit, game)) {
+    // The EOtF fork's CantoWaitState offers only Wait (no Supply).
+    if (unit && !isForkEngine() && supplyAvailableOnMap(unit, game)) {
       options.unshift({ label: 'Supply', value: 'supply', enabled: true });
     }
     this.menu = new ChoiceMenu(options, 0, 8);
@@ -2957,7 +2995,8 @@ export class CantoWaitState extends State {
     game.state.change('free');
     if (unit) {
       game.actionLog.doAction(new MarkActionGroupEnd('menu'));
-      waitUnit(game, unit, true);
+      // The EOtF fork calls cur_unit.wait() here (actively_chosen=False).
+      waitUnit(game, unit, !isForkEngine());
     }
     if (game.eventManager?.hasActiveEvents()) game.state.change('event');
   }
