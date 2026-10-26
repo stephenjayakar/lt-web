@@ -2126,9 +2126,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
       get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
       check_flanking: checkFlanking,
-      portrait_nid: u.portraitNid ?? u.portrait_nid ?? null,
-      party: u.party ?? null,
-      persistent: u.persistent ?? false,
       variant: u.variant ?? null,
       desc: u.desc ?? null,
     };
