@@ -890,3 +890,41 @@ test('the Mouse setting off ignores mouse clicks (Python InputManager)', async (
   expect(result.off).toBeNull();
   expect(result.on).toBe('SELECT');
 });
+
+test('dialog talk boops follow the talk_boop setting and no_sound flag (Python Dialog.play_talk_boop)', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    (window as any).__qaPlayed = [];
+    const original = g.audioManager.playSfx.bind(g.audioManager);
+    g.audioManager.playSfx = (nid: string) => { (window as any).__qaPlayed.push(nid); return original(nid); };
+  });
+  const reset = async () => page.evaluate(() => { (window as any).__qaPlayed = []; });
+  const played = async () => page.evaluate(() => [...(window as any).__qaPlayed] as string[]);
+  const setTalkBoop = async (value: number) => page.evaluate(async (v) => {
+    const settings = await import('/src/engine/states/settings-state.ts');
+    settings.setSetting('talk_boop', v);
+  }, value);
+
+  await setTalkBoop(1);
+  await reset();
+  await runEvent(page, 'qa_boop_on', ['speak;Narrator;Hello there my friend'], 40);
+  // Throttled to one boop per 32 ms of real time (Python get_true_time).
+  expect(await played()).toContain('Talk_Boop');
+  await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().takeInput('BACK'));
+  await stepFrames(page, 10);
+
+  await reset();
+  await runEvent(page, 'qa_boop_flag', ['speak;Narrator;Hello there my friend;no_sound'], 40);
+  expect(await played()).not.toContain('Talk_Boop');
+  await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().takeInput('BACK'));
+  await stepFrames(page, 10);
+
+  await setTalkBoop(0);
+  await reset();
+  await runEvent(page, 'qa_boop_off', ['speak;Narrator;Hello there my friend'], 40);
+  expect(await played()).not.toContain('Talk_Boop');
+  await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().takeInput('SELECT'));
+  expect(await played()).toContain('Select 1');
+  await setTalkBoop(1);
+});

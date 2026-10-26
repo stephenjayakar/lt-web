@@ -20,6 +20,13 @@ import type { EventPortrait } from '../events/event-portrait';
 import { FONT, areFontsReady } from '../rendering/bmp-font';
 import { getMenuBackgroundSync, loadMenuBgSprite } from './base-surf';
 import { drawIconByAlias } from './icons';
+import { getSetting } from '../engine/states/settings-state';
+
+/** Audio for Python Dialog.play_talk_boop. */
+let _dialogAudio: { playSfx(name: string): void } | null = null;
+export function setDialogAudio(am: { playSfx(name: string): void } | null): void {
+  _dialogAudio = am;
+}
 
 export type DialogState =
   | 'transition_in'
@@ -45,6 +52,10 @@ export interface DialogStyle {
   nameTagBg?: string | null;
   autosize?: boolean;
   hold?: boolean;
+  /** Speak style boop_sound (Python default styles use 'Talk_Boop'). */
+  boopSound?: string | null;
+  /** The `no_sound` speak flag: no boops for this dialog. */
+  noSound?: boolean;
 }
 
 const FRAME_MS = 1000 / 60;
@@ -103,6 +114,10 @@ export class Dialog {
   private transparency: number;
   private nameTagBg: string;
   private hold: boolean;
+  private boopSound: string | null;
+  /** Python should_speak_sound ({tgs} toggles it). */
+  private shouldSpeakSound: boolean;
+  private lastSoundUpdate = -Infinity;
 
   /** Commands and visible characters in typing order. */
   private textCommands: string[] = [];
@@ -154,6 +169,8 @@ export class Dialog {
     this.transparency = style.transparency ?? 0.05;
     this.nameTagBg = style.nameTagBg || 'name_tag';
     this.hold = !!style.hold;
+    this.boopSound = style.boopSound && style.boopSound !== 'None' ? style.boopSound : null;
+    this.shouldSpeakSound = !style.noSound;
     if (this.backgroundName) void loadMenuBgSprite(this.backgroundName);
     if (this.messageTail) void loadMenuBgSprite(this.messageTail);
 
@@ -421,7 +438,16 @@ export class Dialog {
     this.glyphCursor += 1;
   }
 
-  private nextChar(): void {
+  /** Python Dialog.play_talk_boop. */
+  private playTalkBoop(): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (getSetting('talk_boop') && now - this.lastSoundUpdate > 32 && this.shouldSpeakSound) {
+      this.lastSoundUpdate = now;
+      if (this.boopSound) _dialogAudio?.playSfx(this.boopSound);
+    }
+  }
+
+  private nextChar(sound: boolean = false): void {
     if (this.doneProcessing()) {
       this.pauseBeforeWait();
       return;
@@ -445,8 +471,10 @@ export class Dialog {
       this.speed = this.startingSpeed;
     } else if (/^\{speed:(\d+(?:\.\d+)?)\}$/.test(command)) {
       this.speed = Number(command.slice(7, -1));
+    } else if (command === '{tgs}') {
+      this.shouldSpeakSound = !this.shouldSpeakSound;
     } else if (command.startsWith('{')) {
-      // Unknown / presentation-only command ({tgm}, {tgs}, ...)
+      // Unknown / presentation-only command ({tgm}, ...)
     } else if (command === ' ') {
       const last = this.textIndices[this.textIndices.length - 1];
       const nextWidth = this.glyphWidth(last.start, last.stop + this.nextWord().length + 1);
@@ -455,12 +483,14 @@ export class Dialog {
         this.glyphCursor += 1; // the discarded space
       } else {
         this.increment();
+        if (sound) this.playTalkBoop();
       }
     } else if (PUNCTUATION.has(command)) {
       this.increment();
       this.pause();
     } else {
       this.increment();
+      if (sound) this.playTalkBoop();
     }
     this.textIndex += 1;
   }
@@ -513,7 +543,7 @@ export class Dialog {
           this.totalUpdates += deltaMs / msPerChar;
           while (this.totalUpdates >= 1 && this.state === 'process') {
             this.totalUpdates -= 1;
-            this.nextChar();
+            this.nextChar(this.totalUpdates < 2);
             if (this.state !== 'process') this.totalUpdates = 0;
           }
         } else {
@@ -521,6 +551,7 @@ export class Dialog {
             this.nextChar();
             if (this.currentState() === 'pause') this.state = 'process';
           }
+          this.playTalkBoop();
         }
         break;
       }

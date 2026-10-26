@@ -36,6 +36,7 @@ import { initBaseSurf } from './ui/base-surf';
 import { setHelpMenuGameRef } from './ui/help-menu';
 import { setMenuAudioManager } from './ui/menu';
 import { setEventChoiceAudio } from './ui/event-choice';
+import { setDialogAudio } from './ui/dialog';
 import { initFonts } from './rendering/bmp-font';
 import { initSpriteLoader } from './combat/sprite-loader';
 import { loadExpDisplaySprites } from './ui/exp-display';
@@ -690,6 +691,7 @@ async function main(): Promise<void> {
   setMenuAudioManager(audioManager);
   setBannerAudio(audioManager);
   setEventChoiceAudio(audioManager);
+  setDialogAudio(audioManager);
   setPrepGameRef(gameState);
   setManageGameRef(gameState);
   setSupplyGameRef(gameState);

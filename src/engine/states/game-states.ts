@@ -9513,15 +9513,16 @@ type SpeakStyleDef = {
   messageTail?: string | null;
   transparency?: number | null;
   nameTagBg?: string | null;
+  boopSound?: string | null;
   flags?: Set<string>;
 };
 
 /** Python SpeakStyleLibrary built-ins (WINWIDTH = 240). */
 const BUILTIN_SPEAK_STYLES: Record<string, SpeakStyleDef> = {
   __default: { speed: 1, fontType: 'convo', background: 'message_bg_base', numLines: 2, drawCursor: true,
-    messageTail: 'message_bg_tail', nameTagBg: 'name_tag', transparency: 0.05 },
+    messageTail: 'message_bg_tail', nameTagBg: 'name_tag', transparency: 0.05, boopSound: 'Talk_Boop' },
   __default_text: { speed: 0.5, fontType: 'text', background: 'menu_bg_base', numLines: 0,
-    nameTagBg: 'menu_bg_base', transparency: 0.05 },
+    nameTagBg: 'menu_bg_base', transparency: 0.05, boopSound: 'Talk_Boop' },
   __default_help: { speed: 0.5, fontType: 'convo', background: 'None', drawCursor: false, numLines: 8,
     nameTagBg: 'name_tag', transparency: 0.05 },
   noir: { background: 'menu_bg_dark', fontColor: 'white', messageTail: 'None' },
@@ -9907,6 +9908,7 @@ export class EventState extends State {
         return;
       }
       if (effective === 'BACK' || effective === 'START') {
+        game.audioManager?.playSfx?.('Select 4');
         // Enable skip mode — dismiss this dialog and auto-skip all
         // remaining speak/narrate commands in the current event.
         // Python Event.take_input: START or BACK -> skip(super_skip=START).
@@ -9923,6 +9925,11 @@ export class EventState extends State {
           this.advancePointer();
         }
         return;
+      }
+      // Python Event.take_input: the SELECT click only sounds when talk
+      // boops are off.
+      if ((effective === 'SELECT' || effective === 'RIGHT' || effective === 'DOWN') && !getSetting('talk_boop')) {
+        game.audioManager?.playSfx?.('Select 1');
       }
       const done = this.dialog.handleInput(effective);
       if (done) {
@@ -10087,6 +10094,7 @@ export class EventState extends State {
     // This handles the case where the user presses Escape during wait,
     // transition, screen_shake, or between instant commands.
     if (effective === 'BACK' || effective === 'START') {
+      game.audioManager?.playSfx?.('Select 4');
       this.skipMode = true;
       if (effective === 'START') this.superSkip = true;
       // If we're in a wait, transition, or other blockable state, resolve it
@@ -12415,6 +12423,7 @@ export class EventState extends State {
           messageTail: speakKw.get('messagetail') || null,
           transparency: numOrNull(speakKw.get('transparency')),
           nameTagBg: speakKw.get('nametagbg') || null,
+          boopSound: speakKw.get('boopsound') || null,
           flags: speakFlags,
         };
         const style = this.resolveSpeakStyle(game, speakerArg, speakKw.get('stylenid') ?? null, manualStyle);
@@ -12474,6 +12483,8 @@ export class EventState extends State {
             nameTagBg: style.nameTagBg ?? null,
             autosize: allFlags.has('fit'),
             hold: allFlags.has('hold'),
+            boopSound: style.boopSound ?? null,
+            noSound: allFlags.has('no_sound'),
           },
         );
         this.dialogBlocksCommands = !noBlock;
@@ -12932,6 +12943,7 @@ export class EventState extends State {
             messageTail: kw.get('messagetail') || null,
             transparency: num(kw.get('transparency')),
             nameTagBg: kw.get('nametagbg') || null,
+            boopSound: kw.get('boopsound') || null,
             flags: styleFlags,
           };
           if (!(game.speakStyles instanceof Map)) game.speakStyles = new Map();
