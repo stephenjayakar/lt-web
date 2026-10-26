@@ -22,7 +22,19 @@ import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
 import type { LoreEntry } from '../../data/types';
 import { canTradeWith } from '../../combat/skill-system';
 import { getEffectiveLevelCap } from '../leveling';
-import { createBaseBackground, preloadPrepSprites, screenOrigin } from '../../ui/prep-ui';
+import {
+  Choice as PrepChoice,
+  baseSurf as prepBaseSurf,
+  createBaseBackground,
+  getPortraitSheet as prepPortraitSheet,
+  getSprite as prepGetSprite,
+  isFirstPush as prepIsFirstPush,
+  preloadPrepSprites,
+  screenOrigin,
+  textWidth as prepTextWidth,
+  type ChoiceEntry,
+} from '../../ui/prep-ui';
+import { Dialog } from '../../ui/dialog';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -816,11 +828,13 @@ export class BaseLoreState extends State {
   override readonly inLevel = false;
 
   private guideMode: boolean;
-  private bgImage: HTMLImageElement | null = null;
-  private entries: LoreEntry[] = [];
-  private selectedIndex: number = 0;
-  private scrollOffset: number = 0;
-  private backgroundLoadToken: number = 0;
+  /** Unlocked lore entries in menu order (category headers excluded). */
+  entries: LoreEntry[] = [];
+  menu: PrepChoice | null = null;
+  private bg: { draw(surf: Surface): void } | null = null;
+  private loreNid: string | null = null;
+  private pages: Dialog[] = [];
+  pageNum = 0;
 
   constructor(guideMode: boolean = false) {
     super();
@@ -828,180 +842,137 @@ export class BaseLoreState extends State {
     this.name = guideMode ? 'base_guide' : 'base_library';
   }
 
+  /** Index of the highlighted lore within `entries` (kept for tooling). */
+  get selectedIndex(): number {
+    const lore = this.currentLore();
+    return lore ? this.entries.indexOf(lore) : 0;
+  }
+
+  private currentLore(): LoreEntry | null {
+    const entry = this.menu?.getCurrent();
+    return entry && entry.kind === 'lore' ? entry.lore : null;
+  }
+
   override start(): StateResult {
-    this.bgImage = null;
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
-    this.reloadEntries();
-    this.loadBackground();
-  }
-
-  override begin(): StateResult {
-    this.reloadEntries();
-  }
-
-  override finish(): void {
-    this.backgroundLoadToken++;
-    this.bgImage = null;
-  }
-
-  private reloadEntries(): void {
     const game = getGame();
-    const unlocked: LoreEntry[] = (game.unlockedLore ?? [])
-      .map((nid: string) => game.db.lore.get(nid))
-      .filter((entry: LoreEntry | undefined): entry is LoreEntry => !!entry);
-    this.entries = unlocked
-      .filter((entry) => (this.guideMode ? entry.category === 'Guide' : entry.category !== 'Guide'))
-      .sort((a, b) => a.category.localeCompare(b.category));
-    if (this.entries.length === 0) {
-      this.selectedIndex = 0;
-      this.scrollOffset = 0;
-      return;
-    }
-    this.selectedIndex = Math.min(this.selectedIndex, this.entries.length - 1);
-    this.keepSelectionVisible();
-  }
-
-  private loadBackground(): void {
-    const game = getGame();
-    const bgName = String(game.gameVars.get('_base_bg_name') || 'default_background');
-    const token = ++this.backgroundLoadToken;
-    void game.resources.tryLoadImage(`resources/panoramas/${bgName}.png`)
-      .then((img: HTMLImageElement | null) => {
-        if (token === this.backgroundLoadToken) this.bgImage = img;
-      });
-  }
-
-  private getVisibleRowCount(): number {
-    const footerTop = viewport.height - 18;
-    const hasDetailSpace = viewport.height >= 104;
-    const detailSpace = hasDetailSpace ? 26 : 0;
-    const available = footerTop - LORE_LIST_Y - detailSpace;
-    return Math.max(1, Math.min(LORE_VISIBLE_ROWS, Math.floor(available / LORE_ROW_H)));
-  }
-
-  private keepSelectionVisible(): void {
-    const visibleRows = this.getVisibleRowCount();
-    if (this.selectedIndex < this.scrollOffset) {
-      this.scrollOffset = this.selectedIndex;
-    } else if (this.selectedIndex >= this.scrollOffset + visibleRows) {
-      this.scrollOffset = this.selectedIndex - visibleRows + 1;
-    }
-  }
-
-  private moveSelection(delta: number): void {
-    if (this.entries.length === 0) return;
-    this.selectedIndex = (this.selectedIndex + delta + this.entries.length) % this.entries.length;
-    this.keepSelectionVisible();
-  }
-
-  private wrapText(text: string, maxChars: number, maxLines: number): string[] {
-    const words = text.replace(/\{br\}/g, ' ').split(/\s+/).filter(Boolean);
-    const lines: string[] = [];
-    let line = '';
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (candidate.length <= maxChars) {
-        line = candidate;
-      } else {
-        if (line) lines.push(line);
-        line = word.slice(0, maxChars);
-        if (lines.length >= maxLines) break;
+    preloadPrepSprites();
+    this.bg = game.memory.get('base_bg')?.draw ? game.memory.get('base_bg') : createBaseBackground(game);
+    const unlocked: LoreEntry[] = [...game.db.lore.values()]
+      .filter((lore: LoreEntry) => (game.unlockedLore ?? []).includes(lore.nid))
+      .filter((lore: LoreEntry) => (this.guideMode ? lore.category === 'Guide' : lore.category !== 'Guide'));
+    const entries: ChoiceEntry[] = [];
+    const ignore: boolean[] = [];
+    if (this.guideMode) {
+      for (const lore of unlocked) { entries.push({ kind: 'lore', lore, header: false }); ignore.push(false); }
+      this.entries = unlocked;
+    } else {
+      // Python: sorted by category (stable), a yellow header row per category.
+      const sorted = [...unlocked].sort((a, b) => (a.category < b.category ? -1 : a.category > b.category ? 1 : 0));
+      const seen = new Set<string>();
+      for (const lore of sorted) {
+        if (!seen.has(lore.category)) {
+          seen.add(lore.category);
+          entries.push({ kind: 'lore', lore, header: true });
+          ignore.push(true);
+        }
+        entries.push({ kind: 'lore', lore, header: false });
+        ignore.push(false);
       }
+      this.entries = sorted;
     }
-    if (line && lines.length < maxLines) lines.push(line);
-    return lines;
+    this.menu = new PrepChoice(game, [], [4, 4], 'menu_bg_brown');
+    this.menu.shimmer = 3;
+    this.menu.gem = 'brown';
+    this.menu.setLimit(9);
+    this.menu.hardLimit = true;
+    this.menu.setOptions(entries);
+    this.menu.setIgnore([...ignore, ...Array(Math.max(0, this.menu.options.length - ignore.length)).fill(true)]);
+    this.updateEntry();
+  }
+
+  /** Python LoreDisplay.update_entry: one Dialog page per text line. */
+  private updateEntry(): void {
+    const lore = this.currentLore();
+    if (!lore || lore.nid === this.loreNid) return;
+    this.loreNid = lore.nid;
+    const [ox, oy] = screenOrigin();
+    this.pageNum = 0;
+    this.pages = String(lore.text ?? '').split('\n').map((line) => new Dialog(line, undefined, undefined, 0, 0, false, {
+      position: [ox + 84, oy + 4 + 12], width: 156, numLines: 8, background: null, messageTail: null,
+      fontType: 'text', fontColor: 'white', drawCursor: false,
+    }));
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-    if (game.input?.mouseClick === 'BACK' || event === 'BACK') {
-      game.audioManager?.playSfx?.('Select 4');
-      game.state.back();
-      return;
-    }
-
+    const menu = this.menu;
+    if (!menu) return;
+    const sfx = (name: string) => game.audioManager?.playSfx?.(name);
+    const [ox, oy] = screenOrigin();
     if (game.input?.mouseMoved || game.input?.mouseClick === 'SELECT') {
       const [mx, my] = game.input.getGameMousePos();
-      const row = Math.floor((my - LORE_LIST_Y) / LORE_ROW_H);
-      const index = this.scrollOffset + row;
-      if (mx >= 7 && mx <= viewport.width - 7 && row >= 0 && row < this.getVisibleRowCount() && index < this.entries.length) {
-        if (index !== this.selectedIndex) game.audioManager?.playSfx?.('Select 6');
-        this.selectedIndex = index;
-      }
+      menu.handleMouse(mx, my, ox, oy);
     }
-
-    if (event === 'UP') {
-      this.moveSelection(-1);
-      game.audioManager?.playSfx?.('Select 6');
-    } else if (event === 'DOWN') {
-      this.moveSelection(1);
-      game.audioManager?.playSfx?.('Select 6');
+    this.updateEntry();
+    if (game.input?.mouseClick === 'BACK') event = 'BACK';
+    if (event === 'DOWN') {
+      if (menu.moveDown(prepIsFirstPush(game, 'DOWN'))) sfx('Select 6');
+      this.updateEntry();
+    } else if (event === 'UP') {
+      if (menu.moveUp(prepIsFirstPush(game, 'UP'))) sfx('Select 6');
+      this.updateEntry();
+    } else if (event === 'RIGHT') {
+      if (this.pageNum < this.pages.length - 1) { this.pageNum += 1; sfx('Status_Page_Change'); }
+    } else if (event === 'LEFT') {
+      if (this.pageNum > 0) { this.pageNum -= 1; sfx('Status_Page_Change'); }
+    } else if (event === 'SELECT') {
+      if (this.pages.length > 1) {
+        this.pageNum = (this.pageNum + 1) % this.pages.length;
+        sfx('Status_Page_Change');
+      }
+    } else if (event === 'BACK') {
+      sfx('Select 4');
+      game.state.back();
     }
   }
 
+  override update(): StateResult {
+    this.menu?.update();
+  }
+
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-    if (this.bgImage) {
-      const scale = surf.scale;
-      surf.ctx.imageSmoothingEnabled = false;
-      surf.ctx.drawImage(
-        this.bgImage,
-        0, 0, this.bgImage.naturalWidth || vw, this.bgImage.naturalHeight || vh,
-        0, 0, Math.round(vw * scale), Math.round(vh * scale),
-      );
-      surf.fillRect(0, 0, vw, vh, 'rgba(5,9,24,0.64)');
-    } else {
-      surf.fill(9, 13, 30);
+    const game = getGame();
+    const [ox, oy] = screenOrigin();
+    this.bg?.draw(surf);
+    this.menu?.draw(surf, ox, oy);
+    const lore = this.currentLore();
+    if (!lore) return surf;
+    // Python LoreDisplay at (84, 4): brown panel, shimmer3, portrait, title.
+    const width = 240 - 84;
+    const panel = prepBaseSurf(width, 160 - 8, 'menu_bg_brown');
+    const prev = surf.getAlpha();
+    surf.setAlpha(0.9);
+    surf.blit(panel, ox + 84, oy + 4);
+    const shimmer = prepGetSprite('menu_shimmer3');
+    if (shimmer) surf.blitImage(shimmer, 0, 0, shimmer.width, shimmer.height, ox + 84 + panel.width - shimmer.width - 1, oy + 4 + panel.height - shimmer.height - 5);
+    surf.setAlpha(prev);
+    const unit = game.units?.get(lore.nid) ?? null;
+    const portraitNid = unit?.portraitNid ?? game.db.units?.get?.(lore.nid)?.portrait_nid ?? null;
+    if (portraitNid) {
+      const sheet = prepPortraitSheet(game, portraitNid);
+      if (sheet) surf.blitImage(sheet, 0, 0, 96, 80, ox + 84 + width - 96, oy + 4 + 160 - 12 - 80);
     }
-
-    const title = this.guideMode ? 'GUIDE' : 'LIBRARY';
-    surf.fillRect(0, 0, vw, LORE_HEADER_H, 'rgba(10,15,42,0.94)');
-    surf.fillRect(0, LORE_HEADER_H - 2, vw, 2, 'rgba(218,177,75,0.85)');
-    surf.drawText(title, 7, 5, 'rgba(245,222,148,1)', '10px monospace');
-    const countText = `${this.entries.length}`;
-    surf.drawText(countText, vw - countText.length * 6 - 8, 6, 'rgba(176,205,255,1)', '8px monospace');
-
-    if (this.entries.length === 0) {
-      surf.fillRect(22, 54, vw - 44, 34, 'rgba(12,18,48,0.88)');
-      surf.drawRect(22, 54, vw - 44, 34, 'rgba(112,130,190,0.55)');
-      surf.drawText('No entries unlocked yet.', 30, 68, 'rgba(181,191,220,1)', '8px monospace');
-    } else {
-      const visibleRows = this.getVisibleRowCount();
-      const end = Math.min(this.entries.length, this.scrollOffset + visibleRows);
-      let lastCategory: string | null = null;
-      for (let index = this.scrollOffset; index < end; index++) {
-        const entry = this.entries[index];
-        const y = LORE_LIST_Y + (index - this.scrollOffset) * LORE_ROW_H;
-        const selected = index === this.selectedIndex;
-        surf.fillRect(7, y, vw - 14, LORE_ROW_H - 2,
-          selected ? 'rgba(55,73,131,0.94)' : 'rgba(12,18,48,0.82)');
-        surf.drawRect(7, y, vw - 14, LORE_ROW_H - 2,
-          selected ? 'rgba(229,184,68,0.95)' : 'rgba(86,101,153,0.45)');
-        surf.drawText((entry.title || entry.name).slice(0, 42), 12, y + 4,
-          'rgba(255,238,181,1)', '8px monospace');
-        if (entry.category !== lastCategory) {
-          surf.drawText(entry.category.slice(0, 12), vw - 62, y + 4, 'rgba(155,174,219,1)', '6px monospace');
-          lastCategory = entry.category;
-        }
-      }
-
-      const selected = this.entries[this.selectedIndex];
-      const detailY = LORE_LIST_Y + visibleRows * LORE_ROW_H + 1;
-      if (detailY + 25 <= vh - 18) {
-        surf.fillRect(7, detailY, vw - 14, 25, 'rgba(8,12,34,0.92)');
-        surf.drawRect(7, detailY, vw - 14, 25, 'rgba(86,101,153,0.55)');
-        const lines = this.wrapText(selected.text, Math.max(12, Math.floor((vw - 24) / 4)), 3);
-        lines.forEach((line, index) => {
-          surf.drawText(line, 12, detailY + 4 + index * 8, 'rgba(177,190,222,1)', '6px monospace');
-        });
-      }
+    const title = lore.title || lore.name;
+    surf.drawText(title, ox + 84 + Math.floor(width / 2) - Math.floor(prepTextWidth(title) / 2), oy + 4 + 4, 'blue', 'text');
+    if (this.pages.length > 1) {
+      const text = `${this.pageNum + 1} / ${this.pages.length}`;
+      surf.drawText(text, ox + 84 + width - 8 - prepTextWidth(text), oy + 4 + 160 - 12 - 16, 'yellow', 'text');
     }
-
-    surf.fillRect(0, vh - 18, vw, 18, 'rgba(8,12,34,0.96)');
-    surf.drawText('UP/DOWN: Browse', 7, vh - 14, 'rgba(137,153,198,1)', '6px monospace');
-    surf.drawText('B: Back', vw - 48, vh - 14, 'rgba(245,222,148,1)', '6px monospace');
+    const page = this.pages[this.pageNum];
+    if (page) {
+      page.update();
+      page.draw(surf, true);
+    }
     return surf;
   }
 }

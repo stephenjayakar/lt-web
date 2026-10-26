@@ -511,6 +511,37 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     expect((await stack(page)).at(-1)).toBe('prep_market');
   });
 
+  test('Library is the Python LoreOption list with category headers and the LoreDisplay', async ({ page }, testInfo) => {
+    test.slow();
+    await openPrep(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.unlockedLore = [...g.db.lore.keys()].slice(0, 6);
+      g.state.change('base_library');
+    });
+    await step(page, 3);
+    await settleImages(page);
+    const lib = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      const menu = state.menu;
+      return {
+        topleft: menu.getTopleft(),
+        width: menu.getMenuWidth(),
+        rows: menu.options.length,
+        header: { kind: menu.options[0].entry.kind, header: menu.options[0].entry.header, ignore: menu.options[0].ignore },
+        current: menu.currentIndex,
+        pages: state.pages.length,
+      };
+    });
+    expect(lib.topleft).toEqual([4, 4]);
+    expect(lib.width).toBe(80);
+    expect(lib.rows).toBe(9); // hard limit pads to 9
+    expect(lib.header).toEqual({ kind: 'lore', header: true, ignore: true });
+    expect(lib.current).toBe(1);
+    expect(lib.pages).toBeGreaterThan(0);
+    await attachShot(page, testInfo, 'library');
+  });
+
   test('Formation selects a unit with the hand marker and moves it to a formation tile', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);

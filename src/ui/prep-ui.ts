@@ -19,6 +19,7 @@ import { viewport } from '../engine/viewport';
 import { getFrameCount, TILEWIDTH, TILEHEIGHT } from '../engine/constants';
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
+import type { LoreEntry } from '../data/types';
 import { FONT } from '../rendering/bmp-font';
 import { getMenuBackgroundSync, loadMenuBgSprite } from './base-surf';
 import { drawIcon16 } from './icons';
@@ -763,7 +764,9 @@ export type ChoiceEntry =
   /** EmptyOption: an unselectable filler row. */
   | { kind: 'empty' }
   /** BasicOption('') used by menus.Trade for open inventory slots. */
-  | { kind: 'blank' };
+  | { kind: 'blank' }
+  /** menu_options.LoreOption (84 wide); `header` rows show the category. */
+  | { kind: 'lore'; lore: LoreEntry; header: boolean };
 
 interface ChoiceOption {
   entry: ChoiceEntry;
@@ -929,6 +932,7 @@ export class Choice {
 
   private optionWidth(option: ChoiceOption): number {
     const e = option.entry;
+    if (e.kind === 'empty' && this.options.some((o) => o.entry.kind === 'lore')) return 80;
     if (e.kind === 'item' || e.kind === 'empty') {
       if (this.stock) return 168;
       if (this.dispValue) return e.kind === 'empty' ? 104 : 152;
@@ -936,6 +940,7 @@ export class Choice {
       return 104;
     }
     if (e.kind === 'blank') return 104;
+    if (e.kind === 'lore') return 84;
     // HorizOption.width is the bare text width; BasicOption adds 24.
     return textWidth(e.text) + (this.horizontal ? 0 : 24);
   }
@@ -1064,6 +1069,12 @@ export class Choice {
         const stock = this.stock[idx] ?? -1;
         drawTextRight(surf, stock >= 0 ? String(stock) : '--', x + 128, y, main);
       }
+      return;
+    }
+    if (e.kind === 'lore') {
+      // LoreOption.draw: category (yellow) on header rows, else the name.
+      const text = String((e.header ? e.lore.category : (e.lore.name || e.lore.title)) ?? '');
+      drawText(surf, text, x + 6, y, e.header ? 'yellow' : (option.ignore ? 'grey' : null), textWidth(text) > 78 ? 'narrow' : 'text');
       return;
     }
     if (e.kind === 'text' && this.textFont !== 'text') {
