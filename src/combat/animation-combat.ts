@@ -513,7 +513,7 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       case 'fade_out_wait': this.updateFadeOutWait(); break;
       case 'name_tags_out': {
         const exit = skip ? UI_SLIDE_SKIP_MS : UI_SLIDE_MS;
-        this.nameOffset = Math.max(0, 1 - this.stateTimer / exit);
+        if (!this.uiShouldBeHidden()) this.nameOffset = Math.max(0, 1 - this.stateTimer / exit);
         if (this.stateTimer > exit) {
           this.nameOffset = 0;
           this.setState('all_out');
@@ -522,8 +522,8 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       }
       case 'all_out': {
         const exit = skip ? UI_SLIDE_SKIP_MS : UI_SLIDE_MS;
-        this.barOffset = Math.max(0, 1 - this.stateTimer / exit);
-        this.platformOffset = this.barOffset;
+        if (!this.uiShouldBeHidden()) this.barOffset = Math.max(0, 1 - this.stateTimer / exit);
+        this.platformOffset = Math.max(0, 1 - this.stateTimer / exit);
         if (this.stateTimer > exit) {
           this.barOffset = 0;
           this.platformOffset = 0;
@@ -621,13 +621,22 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
 
   private updateEntrance(): void {
     const t = this.stateTimer / UI_SLIDE_MS;
-    this.barOffset = Math.min(1, t);
-    this.nameOffset = Math.min(1, t);
+    const hidden = this.uiShouldBeHidden();
+    if (!hidden) {
+      this.barOffset = Math.min(1, t);
+      this.nameOffset = Math.min(1, t);
+    }
     this.platformOffset = Math.min(1, t);
     if (this.skipFlag || this.stateTimer > UI_SLIDE_MS) {
-      this.barOffset = this.nameOffset = this.platformOffset = 1;
+      if (!hidden) this.barOffset = this.nameOffset = 1;
+      this.platformOffset = 1;
       this.setState('init_pause');
     }
+  }
+
+  /** Python AnimationCombat.ui_should_be_hidden: the hide_combat_ui game var. */
+  uiShouldBeHidden(): boolean {
+    return !!this.game?.gameVars?.get('_hide_ui');
   }
 
   private updateInitPause(): void {
@@ -1631,9 +1640,13 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
 
     this.drawDamageNumbers(surf, leftRange, rightRange, totalShakeX);
 
-    // UI fades in/out only during the slide states; otherwise it is shown.
+    // Python: hide_combat_ui fades the name tags and bars out by 0.1 a
+    // frame; otherwise they show outright outside the slide states.
     const fadeStates = ['name_tags_out', 'all_out', 'entrance', 'fade_in', 'red_cursor', 'init', 'fade_out'];
-    if (!fadeStates.includes(this.state)) {
+    if (this.uiShouldBeHidden() && this.barOffset > 0) {
+      this.nameOffset -= 0.1;
+      this.barOffset -= 0.1;
+    } else if (!this.uiShouldBeHidden() && !fadeStates.includes(this.state)) {
       this.nameOffset = 1;
       this.barOffset = 1;
     }

@@ -2558,4 +2558,80 @@ test.describe('choice and textbox commands', () => {
     expect(rendered.styledWidth).toBe(rendered.plainWidth + 16);
     expect(rendered.iconPixels, 'the alias cell should draw actual sprite pixels').toBeGreaterThan(0);
   });
+
+  // Python event_functions.hide_combat_ui / show_combat_ui set
+  // game_vars['_hide_ui'], which AnimationCombat.ui_should_be_hidden reads:
+  // the entrance slides only the platforms, and the name tags and bars fade
+  // out by 0.1 a frame while hidden.
+  test('hide_combat_ui / show_combat_ui toggle _hide_ui and the battle UI slides', async ({ page }) => {
+    await boot(page);
+    await runEvent(page, 'TestHideUi', ['hide_combat_ui']);
+    const hidden = await page.evaluate(() => (window as any).__gameRef.gameVars.get('_hide_ui'));
+    await runEvent(page, 'TestShowUi', ['show_combat_ui']);
+    const shown = await page.evaluate(() => (window as any).__gameRef.gameVars.get('_hide_ui'));
+    expect([hidden, shown]).toEqual([true, false]);
+    const slides = await page.evaluate(async () => {
+      const { AnimationCombat } = await import('/src/combat/animation-combat.ts');
+      const entrance = (hide: boolean) => {
+        const scene: any = {
+          stateTimer: 1000, skipFlag: false, barOffset: 0, nameOffset: 0, platformOffset: 0,
+          game: { gameVars: new Map([['_hide_ui', hide]]) }, setState() {},
+        };
+        scene.uiShouldBeHidden = (AnimationCombat.prototype as any).uiShouldBeHidden;
+        (AnimationCombat.prototype as any).updateEntrance.call(scene);
+        return [scene.barOffset, scene.nameOffset, scene.platformOffset];
+      };
+      return { hidden: entrance(true), shown: entrance(false) };
+    });
+    expect(slides).toEqual({ hidden: [0, 0, 1], shown: [1, 1, 1] });
+  });
+
+  // Python event_functions.pause_background / unpause_background drive the
+  // event's PanoramaBackground: pause(at) stops on frame `at`, pause() at
+  // once, unpause() resumes the 125 ms frame procession.
+  test('pause_background / unpause_background control the event panorama frames', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const resources = g.resources;
+      const loadJson = resources.tryLoadJsonSilent.bind(resources);
+      const loadImage = resources.loadImage.bind(resources);
+      resources.tryLoadJsonSilent = (path: string) => path.endsWith('panoramas/panoramas.json')
+        ? Promise.resolve([['_TestPano', 3]]) : loadJson(path);
+      resources.loadImage = (path: string) => /_TestPano\d\.png$/.test(path)
+        ? loadImage('resources/panoramas/default_background.png') : loadImage(path);
+      g.db.events.set('TestPause', {
+        name: 'TestPause', nid: 'TestPause', trigger: 'TestPause', level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'change_background;_TestPano', 'pause_background;2', 'wait;1500',
+          'unpause_background', 'wait;1500', 'pause_background', 'wait;1500',
+        ],
+      });
+      g.eventManager.triggerSpecific('TestPause', { type: 'TestPause' }, true);
+      g.state.change('event');
+    });
+    const panorama = () => page.evaluate(() => {
+      const state: any = (window as any).__gameRef.state.getCurrentState();
+      const pano = state?.backgroundPanorama;
+      return pano ? { counter: pano.counter, paused: pano.paused, pauseAt: pano.pauseAt, frames: pano.frames.length } : null;
+    });
+    const until = async (check: (p: any) => boolean) => {
+      for (let i = 0; i < 300; i++) {
+        const p = await panorama();
+        if (p && check(p)) return p;
+        await stepFrames(page, 2);
+      }
+      throw new Error('panorama never reached the expected state');
+    };
+    // pause_background;2: frames advance until frame 2, then stop there.
+    expect(await until((p) => p.paused)).toEqual({ counter: 2, paused: true, pauseAt: null, frames: 3 });
+    await stepFrames(page, 20);
+    expect((await panorama())?.counter).toBe(2);
+    // unpause_background resumes; pause_background (no frame) stops at once.
+    await until((p) => !p.paused && p.counter !== 2);
+    const stopped = await until((p) => p.paused);
+    await stepFrames(page, 20);
+    expect((await panorama())?.counter).toBe(stopped.counter);
+  });
 });

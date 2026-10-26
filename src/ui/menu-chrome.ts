@@ -321,6 +321,82 @@ interface PanoramaResources {
   tryLoadJsonSilent?<T>(path: string): Promise<T | null>;
 }
 
+/** A panorama's frames: `nid.png`, or `nid0.png`.. when panoramas.json lists several. */
+export async function loadPanoramaFrames(
+  nid: string,
+  resources: PanoramaResources | null | undefined,
+): Promise<HTMLImageElement[]> {
+  if (!resources?.loadImage) return [];
+  const entries = await resources.tryLoadJsonSilent?.<unknown[]>('resources/panoramas/panoramas.json')
+    .catch(() => null) ?? null;
+  let count = 1;
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (Array.isArray(entry) && entry[0] === nid) count = Number(entry[1]) || 1;
+    else if (entry && typeof entry === 'object' && (entry as { nid?: string }).nid === nid) {
+      count = Number((entry as { num_frames?: number }).num_frames) || 1;
+    }
+  }
+  const paths = count > 1
+    ? Array.from({ length: count }, (_, index) => `resources/panoramas/${nid}${index}.png`)
+    : [`resources/panoramas/${nid}.png`];
+  const frames: HTMLImageElement[] = [];
+  for (const path of paths) {
+    const image = await resources.loadImage(path).catch(() => null);
+    if (image) frames.push(image);
+  }
+  return frames;
+}
+
+/**
+ * Frame procession of Python background.PanoramaBackground: draw() calls
+ * update(), which moves to the next frame once more than `speed` ms passed
+ * (looping), and pause()/unpause() for the pause_background commands.
+ */
+export class PanoramaFrames {
+  readonly frames: HTMLImageElement[];
+  counter = 0;
+  paused = false;
+  pauseAt: number | null = null;
+  readonly speed: number;
+  readonly loop: boolean;
+  private sinceUpdate = 0;
+
+  constructor(frames: HTMLImageElement[], speed = 125, loop = true) {
+    this.frames = frames;
+    this.speed = speed;
+    this.loop = loop;
+  }
+
+  get image(): HTMLImageElement | null {
+    return this.frames[this.counter] ?? this.frames[0] ?? null;
+  }
+
+  pause(at: number | null = null): void {
+    if (at === null) this.paused = true;
+    else this.pauseAt = at;
+  }
+
+  unpause(): void {
+    this.pauseAt = null;
+    this.paused = false;
+  }
+
+  /** Returns true when a non-looping panorama finished. */
+  update(dtMs = FRAMETIME): boolean {
+    this.sinceUpdate += dtMs;
+    if (this.paused || this.sinceUpdate <= this.speed) return false;
+    this.counter += 1;
+    if (this.counter >= this.frames.length) this.counter = 0;
+    this.sinceUpdate = 0;
+    if (this.counter === 0 && !this.loop) return true;
+    if (this.pauseAt !== null && this.counter === this.pauseAt) {
+      this.paused = true;
+      this.pauseAt = null;
+    }
+    return false;
+  }
+}
+
 /**
  * Python background.create_background(nid, scroll=True): a panorama from
  * resources/panoramas, falling back to default_background. Single-frame
