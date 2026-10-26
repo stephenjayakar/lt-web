@@ -240,6 +240,31 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     expect(await cssText(page)).toEqual([]);
   });
 
+  test('event location card and credits roll', async ({ page }, testInfo) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('UiMenusEventCards', {
+        name: 'UiMenusEventCards', nid: 'UiMenusEventCards', trigger: 'UiMenusEventCards',
+        level_nid: g.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
+        _source: [
+          'location_card;Room 3',
+          'credits;Development Team;Lord Tweed,RandomWizard;center;wait',
+        ],
+      });
+      g.eventManager.triggerSpecific('UiMenusEventCards', { type: 'UiMenusEventCards' }, true);
+      g.state.change('event');
+    });
+    await settleAssets(page, 30);
+    await cssText(page);
+    await step(page, 2);
+    await shot(page, 'location-card', testInfo);
+    await step(page, 200);
+    await step(page, 60);
+    await shot(page, 'credits-roll', testInfo);
+    expect(await cssText(page)).toEqual([]);
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));

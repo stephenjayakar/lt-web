@@ -171,7 +171,7 @@ export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
-import { MenuBackground, MenuScene, getSprite as getMenuSprite, lineWrap } from '../../ui/menu-chrome';
+import { MenuBackground, MenuScene, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
@@ -9750,6 +9750,7 @@ export class EventState extends State {
     const game = getGame();
     this.updateNonBlockingTransition();
     this.updateEventCreditCards();
+    this.updateLocationCard();
 
     // Block while a level transition is loading asynchronously
     if (this.levelTransitionInProgress) {
@@ -10003,33 +10004,6 @@ export class EventState extends State {
       }
     }
 
-    // Location card timer (non-blocking: just updates alpha, doesn't stop command processing)
-    if (this.locationCard) {
-      this.locationCard.timer += FRAMETIME;
-      switch (this.locationCard.phase) {
-        case 'fade_in':
-          this.locationCard.alpha = Math.min(0.9, this.locationCard.timer / 200);
-          if (this.locationCard.timer >= 200) {
-            this.locationCard.phase = 'hold';
-            this.locationCard.timer = 0;
-          }
-          break;
-        case 'hold':
-          this.locationCard.alpha = 0.9;
-          if (this.locationCard.timer >= 2000) {
-            this.locationCard.phase = 'fade_out';
-            this.locationCard.timer = 0;
-          }
-          break;
-        case 'fade_out':
-          this.locationCard.alpha = Math.max(0, 0.9 - (this.locationCard.timer / 200) * 0.9);
-          if (this.locationCard.timer >= 200) {
-            this.locationCard = null;
-          }
-          break;
-      }
-      // Location card does NOT block command processing — fall through
-    }
 
     // Block while portrait images are still loading (async).
     // In the original Python engine, image loads are synchronous, so portraits
@@ -10206,22 +10180,14 @@ export class EventState extends State {
       for (const portrait of this.endingCard.portraits) {
         surf.blit(portrait.surface, portrait.position[0], portrait.position[1]);
       }
-      const titleCenter = Math.floor(viewport.width / 2);
-      surf.drawText(
-        this.endingCard.leftTitle,
-        titleCenter - this.endingCard.leftTitle.length * 3,
-        this.endingCard.rightTitle === null ? 24 : 12,
-        'rgba(220,200,128,1)',
-        '6px monospace',
-      );
+      // Python Ending/PairedEnding: titles in the text font centred on x = 68.
+      const ox = MenuScene.origin().x;
+      blitMenuText(surf, 'text', this.endingCard.leftTitle,
+        ox + 68 - Math.floor(menuTextWidth('text', this.endingCard.leftTitle) / 2),
+        this.endingCard.rightTitle === null ? 24 : 12);
       if (this.endingCard.rightTitle !== null) {
-        surf.drawText(
-          this.endingCard.rightTitle,
-          titleCenter - this.endingCard.rightTitle.length * 3,
-          24,
-          'rgba(220,200,128,1)',
-          '6px monospace',
-        );
+        blitMenuText(surf, 'text', this.endingCard.rightTitle,
+          ox + 68 - Math.floor(menuTextWidth('text', this.endingCard.rightTitle) / 2), 24);
       }
       this.endingCard.dialog.draw(surf, true);
     }
@@ -10277,23 +10243,17 @@ export class EventState extends State {
       }
     }
 
-    // Location card overlay (upper-left corner)
+    // Python dialog.LocationCard: text-font line on menu_bg_brown at (10, 1),
+    // at most 90% opaque while fading in and out.
     if (this.locationCard && this.locationCard.alpha > 0) {
       const lc = this.locationCard;
-      const lcPad = 8;
-      const lcFont = '8px monospace';
-      const lcTextW = lc.text.length * 5; // ~5px per char at 8px mono
-      const lcW = lcTextW + lcPad * 2;
-      const lcH = 16 + lcPad;
-      const lcX = 10;
-      const lcY = 4;
-
-      // Brown card background
-      surf.fillRect(lcX, lcY, lcW, lcH, `rgba(60,40,20,${lc.alpha})`);
-      surf.drawRect(lcX, lcY, lcW, lcH, `rgba(140,110,60,${lc.alpha * 0.8})`);
-
-      // Text
-      surf.drawText(lc.text, lcX + lcPad, lcY + Math.floor(lcPad / 2), `rgba(255,240,200,${lc.alpha})`, lcFont);
+      const lcW = menuTextWidth('text', lc.text) + 16;
+      const lcH = (FONT['text']?.height ?? 16) + 8;
+      const card = new Surface(lcW - (lcW % 8), lcH);
+      card.blit(getMenuBackgroundSync(lcW, lcH, 'menu_bg_brown'), 0, 0);
+      blitMenuTextCenter(card, 'text', lc.text, Math.floor(card.width / 2), 4);
+      card.setAlpha(Math.min(0.9, lc.alpha));
+      surf.blit(card, 10, 1);
     }
 
     if (this.levelUpPresentation) {
@@ -10698,18 +10658,50 @@ export class EventState extends State {
     return Math.floor(startY - motionMs * speed);
   }
 
+  /**
+   * Python dialog.LocationCard.update runs every frame from Event.other_boxes,
+   * even while the event waits on the card's exist_time.
+   */
+  private updateLocationCard(): void {
+    if (this.locationCard) {
+      this.locationCard.timer += FRAMETIME;
+      switch (this.locationCard.phase) {
+        case 'fade_in':
+          this.locationCard.alpha = Math.min(0.9, this.locationCard.timer / 200);
+          if (this.locationCard.timer >= 200) {
+            this.locationCard.phase = 'hold';
+            this.locationCard.timer = 0;
+          }
+          break;
+        case 'hold':
+          this.locationCard.alpha = 0.9;
+          if (this.locationCard.timer >= 2000) {
+            this.locationCard.phase = 'fade_out';
+            this.locationCard.timer = 0;
+          }
+          break;
+        case 'fade_out':
+          this.locationCard.alpha = Math.max(0, 0.9 - (this.locationCard.timer / 200) * 0.9);
+          if (this.locationCard.timer >= 200) {
+            this.locationCard = null;
+          }
+          break;
+      }
+    }
+  }
+
+  /** Python dialog.Credits.draw: credit_title heading, credit-font lines. */
   private drawEventCreditCards(surf: Surface): void {
+    const ox = MenuScene.origin().x;
+    const creditH = FONT['credit']?.height ?? 16;
+    const titleH = FONT['credit_title']?.height ?? 8;
     for (const card of this.creditCards) {
       const y = this.getEventCreditCardY(card);
-      surf.drawText(card.title, 32, y, 'rgba(230,205,125,1)', '8px monospace');
-      for (let i = 0; i < card.lines.length; i++) {
-        const line = card.lines[i];
-        const lineY = y + 12 + i * 10;
-        const x = card.center
-          ? Math.max(6, Math.floor((viewport.width - line.length * 5) / 2))
-          : 88;
-        surf.drawText(line, x, lineY, 'rgba(245,245,245,1)', '8px monospace');
-      }
+      blitMenuText(surf, 'credit_title', card.title, ox + 32, y);
+      card.lines.forEach((line, i) => {
+        const x = card.center ? Math.floor(WINWIDTH / 2) - Math.floor(menuTextWidth('credit', line) / 2) : 88;
+        blitMenuText(surf, 'credit', line, ox + x, y + titleH + i * creditH);
+      });
     }
   }
 
@@ -16220,28 +16212,15 @@ export class EventState extends State {
         const rawCredits = args[1] ?? '';
         const sourceLines = flags.has('no_split') ? [rawCredits] : rawCredits.split(',');
         const center = flags.has('center');
-        const maxChars = center ? 45 : 29;
+        // Python dialog.Credits.make_surf: line_wrap in the 'credit' font to
+        // WINWIDTH - 12 (centered) or WINWIDTH - 88 (indented at x = 88).
         const lines: string[] = [];
         for (const source of sourceLines) {
-          const words = source.trim().split(/\s+/).filter(Boolean);
-          if (words.length === 0) {
-            lines.push('');
-            continue;
-          }
-          let current = '';
-          for (const word of words) {
-            if (!current) {
-              current = word;
-            } else if (`${current} ${word}`.length <= maxChars) {
-              current = `${current} ${word}`;
-            } else {
-              lines.push(current);
-              current = word;
-            }
-          }
-          if (current) lines.push(current);
+          lines.push(...lineWrap('credit', source, center ? WINWIDTH - 12 : WINWIDTH - 88));
         }
-        const lineCount = Math.max(1, lines.length);
+        const lineCount = lines.length;
+        const creditH = FONT['credit']?.height ?? 16;
+        const titleH = FONT['credit_title']?.height ?? 8;
         const pauseMs = (lineCount + 1) * 1000;
         this.creditCards.push({
           title,
@@ -16250,10 +16229,10 @@ export class EventState extends State {
           waitAtCenter: flags.has('wait'),
           elapsedMs: 0,
           pauseMs,
-          height: 12 + lineCount * 10,
+          height: titleH + lineCount * creditH,
         });
         this.waiting = true;
-        this.waitTimer = (lineCount + 2) * 10 * 50 +
+        this.waitTimer = (lineCount + 2) * creditH * 50 +
           (flags.has('wait') ? pauseMs * 2.1 : 0);
         return true;
       }
