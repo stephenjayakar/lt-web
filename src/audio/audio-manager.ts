@@ -40,6 +40,8 @@ export class AudioManager {
 
   /** Map of currently looping SFX sources, keyed by NID */
   private loopingSfx: Map<string, AudioBufferSourceNode> = new Map();
+  /** One-shot SFX still playing, keyed by NID (Python stop_sfx stops these too). */
+  private activeSfx: Map<string, Set<AudioBufferSourceNode>> = new Map();
 
   /**
    * Call log for test assertions (mirrors Python's `get_sound_thread()`
@@ -50,6 +52,7 @@ export class AudioManager {
       | 'sfx' | 'sfxLoop' | 'sfxStop';
     nid?: string;
     fadeMs?: number;
+    volume?: number;
   }> = [];
 
   constructor(baseUrl: string) {
@@ -288,10 +291,11 @@ export class AudioManager {
   }
 
   /**
-   * Play a sound effect once.
+   * Play a sound effect once. `volume` (0-1) scales this play only, like
+   * Python `play_sfx(sound, volume=...)`.
    */
-  async playSfx(nid: string): Promise<void> {
-    this.calls.push({ op: 'sfx', nid });
+  async playSfx(nid: string, volume: number = 1): Promise<void> {
+    this.calls.push(volume === 1 ? { op: 'sfx', nid } : { op: 'sfx', nid, volume });
     if (!this.audioContext || !this.sfxGain) {
       return;
     }
@@ -304,7 +308,21 @@ export class AudioManager {
     const source = this.audioContext.createBufferSource();
     source.buffer = buffer;
     source.loop = false;
-    source.connect(this.sfxGain);
+    if (volume !== 1) {
+      const gain = this.audioContext.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, volume));
+      source.connect(gain);
+      gain.connect(this.sfxGain);
+    } else {
+      source.connect(this.sfxGain);
+    }
+    let active = this.activeSfx.get(nid);
+    if (!active) this.activeSfx.set(nid, active = new Set());
+    active.add(source);
+    source.onended = () => {
+      active!.delete(source);
+      if (active!.size === 0 && this.activeSfx.get(nid) === active) this.activeSfx.delete(nid);
+    };
     source.start(0);
   }
 
@@ -346,6 +364,17 @@ export class AudioManager {
    */
   stopSfx(nid: string): void {
     this.calls.push({ op: 'sfxStop', nid });
+    const active = this.activeSfx.get(nid);
+    if (active) {
+      this.activeSfx.delete(nid);
+      for (const oneShot of active) {
+        try {
+          oneShot.stop();
+        } catch {
+          // Already stopped
+        }
+      }
+    }
     const source = this.loopingSfx.get(nid);
     if (source) {
       try {

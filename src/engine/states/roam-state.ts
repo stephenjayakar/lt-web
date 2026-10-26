@@ -13,6 +13,7 @@
  */
 
 import { MapState, type StateResult } from '../state';
+import { isForkEngine } from '../engine-flavor';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import {
@@ -388,8 +389,16 @@ export class FreeRoamState extends MapState {
     const game = getGame();
     if (!game || !this.roamUnit) return;
 
+    // EOtF's fork (2024 check_select): talk, else region, else the Error
+    // sound; 'Select 2' plays as soon as a talk target or visit region is
+    // found, and there is no on_roam_interact fallback. Upstream tries each
+    // in turn and plays 'Select 2' only when an event fires.
+    const fork = isForkEngine();
+    const sfx = (nid: string) => { void game.audioManager?.playSfx?.(nid); };
+
     // 1. Check for talk-eligible units within range
     const closestTalk = this.getClosestUnit(true);
+    if (closestTalk && fork) sfx('Select 2');
     if (closestTalk && game.eventManager) {
       const triggered = game.eventManager.trigger(
         {
@@ -415,10 +424,12 @@ export class FreeRoamState extends MapState {
         },
       );
       if (triggered) {
+        if (!fork) sfx('Select 2');
         this.rationalizeAllUnits();
         return;
       }
     }
+    if (closestTalk && fork) return;
 
     // 2. Check for event regions at current position. Mirrors Python's
     // check_select(): try the region's own sub_nid as a RegionTrigger first
@@ -426,6 +437,7 @@ export class FreeRoamState extends MapState {
     // that finds no matching event, fall back to the generic
     // on_region_interact trigger (free_roam_state.py:171-179).
     const region = this.getVisitRegion();
+    if (region && fork) sfx('Select 2');
     if (region && game.eventManager) {
       const ctx = {
         game,
@@ -462,6 +474,7 @@ export class FreeRoamState extends MapState {
         );
       }
       if (triggered) {
+        if (!fork) sfx('Select 2');
         if (region.only_once && game.currentLevel?.regions) {
           const idx = game.currentLevel.regions.indexOf(region);
           if (idx >= 0) {
@@ -472,8 +485,12 @@ export class FreeRoamState extends MapState {
         return;
       }
     }
+    if (fork) {
+      if (!region) sfx('Error');
+      return;
+    }
 
-    // 3. Generic roam interact (catch-all)
+    // 3. Generic roam interact (catch-all; upstream only)
     if (game.eventManager) {
       const closestUnits = this.getClosestUnits(false);
       const closestAny = closestUnits[0] ?? undefined;
@@ -495,10 +512,12 @@ export class FreeRoamState extends MapState {
         },
       );
       if (triggered) {
+        sfx('Select 2');
         this.rationalizeAllUnits();
         return;
       }
     }
+    sfx('Error');
   }
 
   /**
@@ -517,6 +536,7 @@ export class FreeRoamState extends MapState {
     if (triggered) {
       this.rationalizeAllUnits();
     } else {
+      void game.audioManager?.playSfx?.('Select 1');
       this.rationalizeAndDo(() => {
         game.infoMenuUnit = this.roamUnit;
         game.state.change('info_menu');
@@ -533,14 +553,18 @@ export class FreeRoamState extends MapState {
     const game = getGame();
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
+    const roamUnit = this.roamUnit;
+    // The fork rationalizes before firing the trigger; upstream after.
+    const fork = isForkEngine();
+    if (fork) this.rationalizeAllUnits();
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_aux', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
-      { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
+      { type: 'roam_press_aux', levelNid: game.currentLevel?.nid, unit1: roamUnit, unit2: otherUnit ?? undefined },
+      { game, unit1: roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (!triggered) {
       game.state.change('option_menu');
     }
-    this.rationalizeAllUnits();
+    if (!fork) this.rationalizeAllUnits();
   }
 
   /**
@@ -552,14 +576,17 @@ export class FreeRoamState extends MapState {
     const game = getGame();
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
+    const roamUnit = this.roamUnit;
+    const fork = isForkEngine();
+    if (fork) this.rationalizeAllUnits();
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_start', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
-      { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
+      { type: 'roam_press_start', levelNid: game.currentLevel?.nid, unit1: roamUnit, unit2: otherUnit ?? undefined },
+      { game, unit1: roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (!triggered) {
       game.state.change('option_menu');
     }
-    this.rationalizeAllUnits();
+    if (!fork) this.rationalizeAllUnits();
   }
 
   private checkRegionInterrupt(): void {

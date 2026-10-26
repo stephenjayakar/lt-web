@@ -181,7 +181,7 @@ import {
 } from './engine/states/roam-state';
 import { setQueryEngineGameRef } from './engine/query-engine';
 import { setEquationGameRef } from './combat/combat-calcs';
-import { setSkillSystemGameRef } from './combat/skill-system';
+import { setSkillSystemGameRef, unitHasTag } from './combat/skill-system';
 import { setItemSystemGameRef } from './combat/item-system';
 import { initPersistentSystems, RECORDS } from './engine/records';
 import { convexUrl, resolveStorageMode } from './storage/storage';
@@ -205,6 +205,7 @@ import { initNativePlatform, onAppPause, onAppResume } from './native';
 import { PerfMonitor } from './engine/perf-monitor';
 import { SurfacePool } from './engine/surface-pool';
 import { installHarness } from './harness';
+import { configureUnitSounds, updateUnitSounds } from './audio/unit-sound';
 
 // ---------------------------------------------------------------------------
 // Display helpers
@@ -708,6 +709,7 @@ async function main(): Promise<void> {
   setBannerAudio(audioManager);
   setEventChoiceAudio(audioManager);
   setDialogAudio(audioManager);
+  configureUnitSounds(audioManager, (unit, tag) => unitHasTag(unit, tag, gameState));
   setPrepGameRef(gameState);
   setManageGameRef(gameState);
   setSupplyGameRef(gameState);
@@ -1106,6 +1108,8 @@ async function main(): Promise<void> {
 
     // --- Movement ---
     game.movementSystem.update(deltaMs);
+    // Python MapView.draw_units ticks every unit's footsteps once per frame.
+    updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
 
     // Read-only live-control telemetry. Browser-control clients run in an
     // isolated JS world, so window.__gameRef is intentionally unavailable to

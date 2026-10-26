@@ -27,6 +27,7 @@ import { SkillObject } from './objects/skill';
 import { MapCombat } from './combat/map-combat';
 import { applyDroppableItemPickups } from './combat/combat-lifecycle';
 import * as saveSystem from './engine/save';
+import { updateUnitSounds } from './audio/unit-sound';
 
 export interface HarnessAPI {
   /** Step the game forward by N frames. Optionally inject an input on the first frame. */
@@ -245,6 +246,7 @@ export function installHarness(
 
     updateAnimationCounters();
     game.movementSystem.update(FRAMETIME);
+    updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
 
     // Blit to display canvas
     displayCtx.imageSmoothingEnabled = false;

@@ -10,6 +10,7 @@
 
 import type { UnitObject } from '../objects/unit';
 import { movementType } from '../combat/skill-system';
+import { playUnitSound, stopUnitSound } from '../audio/unit-sound';
 
 /** Pixel-precision position for sub-tile rendering during roam. */
 export interface RoamPosition {
@@ -90,10 +91,13 @@ export class RoamPlayerMovementComponent {
       this.move(dt);
       // Update sprite to moving state
       this.updateSprite(true);
+      // Python: footsteps while moving (the player's component is not muted).
+      playUnitSound(this.unit);
     } else {
       this.velocityX = 0;
       this.velocityY = 0;
       this.updateSprite(false);
+      stopUnitSound(this.unit);
     }
   }
 
@@ -262,6 +266,7 @@ export class RoamPlayerMovementComponent {
     this.velocityY = 0;
     this.active = false;
     this.updateSprite(false);
+    stopUnitSound(this.unit);
     return this.roamPosition;
   }
 

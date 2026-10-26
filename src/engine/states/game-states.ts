@@ -12685,6 +12685,7 @@ export class EventState extends State {
     game: GameState,
     onComplete: () => void,
     follow: boolean = false,
+    silent: boolean = false,
   ): boolean {
     if (!unit.position || !game.board || !game.pathSystem) return false;
     const fullPath = game.pathSystem.getPath(unit, target[0], target[1], game.board);
@@ -12732,6 +12733,7 @@ export class EventState extends State {
           game.camera?.focusTile(position[0], position[1]);
         }
         : undefined,
+      silent,
     );
     return true;
   }
@@ -13870,7 +13872,7 @@ export class EventState extends State {
             this.blockingEventMovements = 0;
             this.advancePointer();
           }
-        }, !noFollow);
+        }, !noFollow, muArgs.flags.has('silent'));
         if (!started) {
           this.blockingEventMovements = 0;
           this.advancePointer();

@@ -6,6 +6,7 @@
 
 import type { UnitObject } from '../objects/unit';
 import { getSetting } from '../engine/states/settings-state';
+import { playUnitSound, stopUnitSound } from '../audio/unit-sound';
 
 /** Fallback movement speed in tiles per second. */
 const DEFAULT_SPEED = 10;
@@ -49,6 +50,7 @@ export class MovementSystem {
    * @param onComplete Callback fired when the unit reaches the end of the path.
    * @param onStep     Called with the unit's tile at the start and on every
    *                   tile it reaches (MovementSystem camera/cursor follow).
+   * @param muted      Python `silent` moves: no footsteps.
    */
   beginMove(
     unit: UnitObject,
@@ -56,6 +58,7 @@ export class MovementSystem {
     speed: number = defaultUnitSpeed(),
     onComplete?: () => void,
     onStep?: (position: [number, number]) => void,
+    muted: boolean = false,
   ): void {
     // If the path has 0 or 1 entries there is nothing to animate.
     if (path.length <= 1) {
@@ -81,6 +84,9 @@ export class MovementSystem {
         spr.setDirection(dx, dy);
       }
     }
+
+    // Python UnitPathMovementComponent.start: footsteps unless muted.
+    if (!muted) playUnitSound(unit);
 
     this.components.push({
       unit,
@@ -132,6 +138,7 @@ export class MovementSystem {
           comp.progress = 0;
           comp.done = true;
           comp.unit.hasMoved = true;
+          stopUnitSound(comp.unit);
           // Reset sprite to standing state
           const spr = comp.unit.sprite;
           if (spr && typeof spr === 'object' && 'state' in spr) {
