@@ -20,6 +20,9 @@ own coverage counts; git history owns the change log.
   report the exact blocker instead of claiming completion.
 - TypeScript is strict and uses `erasableSyntaxOnly`; do not use enums or
   constructor parameter properties.
+- Never name where the game is deployed: no hosting provider, site URL, Convex
+  deployment names or project IDs in code, docs, logs or commit messages. Pass
+  them through environment variables (e.g. `CONVEX_URL` for `build:site`).
 
 ## Start with bounded discovery
 
