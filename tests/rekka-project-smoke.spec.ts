@@ -2,16 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 interface RekkaLevel {
   nid: string;
   name: string;
 }
 
-const levels = JSON.parse(fs.readFileSync(
-  path.join(process.cwd(), 'lt-maker/rekka.ltproj/game_data/levels.json'),
-  'utf8',
-)) as RekkaLevel[];
+const rekkaInstalled = projectInstalled('rekka.ltproj');
+const levels = rekkaInstalled
+  ? JSON.parse(fs.readFileSync(
+      path.join(process.cwd(), 'lt-maker/rekka.ltproj/game_data/levels.json'),
+      'utf8',
+    )) as RekkaLevel[]
+  : [];
 const settledStates = new Set(['free', 'prep_main', 'base_main']);
 const rekkaManifest = JSON.parse(fs.readFileSync(
   path.join(process.cwd(), 'docs/parity/rekka-compat.json'),
@@ -57,6 +61,8 @@ async function waitForHarness(page: Page): Promise<void> {
     timeout: 60_000,
   });
 }
+
+test.skip(!rekkaInstalled, 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka all-level compatibility', () => {
   test('all levels clean boot without runtime failures @milestone', async ({ page }) => {

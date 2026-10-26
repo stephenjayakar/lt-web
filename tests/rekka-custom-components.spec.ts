@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false');
@@ -8,6 +9,8 @@ async function boot(page: Page): Promise<void> {
   });
   await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
 }
+
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka project-local item components', () => {
   test('zero-use custom movement and cleave components match their Python contracts', async ({ page }) => {

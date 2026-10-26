@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { projectInstalled } from './helpers/project-data';
+
+test.skip(!projectInstalled('rekka.ltproj'), 'lt-maker/rekka.ltproj is not installed');
 
 test('all 892 Rekka events construct through their direct entrypoint', async ({ page }) => {
   await page.goto('/?harness=true&project=rekka.ltproj&level=0&clean=true&bundle=false&strict=true');
