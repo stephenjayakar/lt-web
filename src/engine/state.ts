@@ -13,6 +13,13 @@ export abstract class State {
   readonly inLevel: boolean = true;
   readonly showMap: boolean = true;
   readonly transparent: boolean = false;
+  /**
+   * A Python MapState that the web draws over the map of the state beneath
+   * (it is `transparent` only to reuse that map). Python draws just the map
+   * under it, so intermediate states — an event's held transition, dialog or
+   * portraits, a phase banner — must not show through.
+   */
+  readonly mapBackdrop: boolean = false;
   
   started: boolean = false;
   processed: boolean = false;

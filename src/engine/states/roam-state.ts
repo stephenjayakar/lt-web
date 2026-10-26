@@ -30,7 +30,7 @@ import { unitSpriteTint } from '../../combat/skill-system';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
 import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
-import { fadeInPhaseMusic } from './game-states';
+import { drawUnitMarkers, fadeInPhaseMusic } from './game-states';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -184,6 +184,8 @@ function drawRoamMap(
   );
 
   surf.blit(mapSurf);
+  // Python MapState.draw -> MapView.draw_units: talk/interact markers.
+  drawUnitMarkers(surf);
   return surf;
 }
 
@@ -509,7 +511,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_info', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { type: 'roam_press_info', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
       { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (triggered) {
@@ -532,7 +534,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_aux', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { type: 'roam_press_aux', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
       { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (!triggered) {
@@ -551,7 +553,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_start', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { type: 'roam_press_start', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
       { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (!triggered) {
@@ -576,6 +578,7 @@ export class FreeRoamState extends MapState {
           const triggered = game.eventManager.trigger(
             {
               type: 'roaming_interrupt',
+              levelNid: game.currentLevel?.nid,
               regionNid: region.nid,
               region,
               unit1: this.roamUnit,
@@ -630,7 +633,7 @@ export class FreeRoamState extends MapState {
   }
 
   /** Find the closest unit within TALK_RANGE of the roam unit. */
-  private getClosestUnit(mustHaveTalk: boolean): UnitObject | null {
+  getClosestUnit(mustHaveTalk: boolean): UnitObject | null {
     const game = getGame();
     if (!game || !this.movementComponent?.roamPosition) return null;
 
@@ -689,7 +692,7 @@ export class FreeRoamState extends MapState {
   }
 
   /** Find an EVENT region at the roam unit's grid position. */
-  private getVisitRegion(): any | null {
+  getVisitRegion(): any | null {
     const game = getGame();
     if (!game || !this.roamUnit?.position || !game.currentLevel?.regions) return null;
 

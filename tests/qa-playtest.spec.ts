@@ -1227,3 +1227,23 @@ test('nested {e:} tags evaluate innermost first (EOtF Global_Give_Exp alert)', a
   });
   expect(result.name).toBe(result.expected);
 });
+
+test('a quoted {v:} inside {e:} stays a string (EOtF room reward vars)', async ({ page }) => {
+  await boot(page);
+  // Python's TextEvaluator substitutes str(value) as text, so
+  // `{e:'room' + '{v:counter}' + '_reward'}` with counter = 1 evaluates
+  // 'room' + '1' + '_reward'. The web typed the number and dropped the
+  // quotes ('room' + 1 -> TypeError), so EOtF's Act intro never set
+  // room1_reward/room2_reward/room3_reward.
+  await runEvent(page, 'qa_quoted_var', [
+    'level_var;counter;1',
+    'level_var;qa_list;[1, 2]',
+    "level_var;{e:'room' + '{v:counter}' + '_reward'};'Money'",
+    "game_var;qa_text;{e:'{v:qa_list}' + '!'}",
+  ], 20);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return { reward: g.levelVars.get('room1_reward'), text: g.gameVars.get('qa_text') };
+  });
+  expect(result).toEqual({ reward: 'Money', text: '[1, 2]!' });
+});
