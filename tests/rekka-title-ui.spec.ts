@@ -49,8 +49,8 @@ test.describe('Rekka title presentation', () => {
     expect(title).toEqual({
       state: 'title',
       title: 'Rekka no Ken Alternative',
-      titleMusic: 'groovin_magic_instrumental',
-      requestedMusic: 'groovin_magic_instrumental',
+      titleMusic: 'Groovin Magic (inst.)',
+      requestedMusic: 'Groovin Magic (inst.)',
       backgroundLoaded: true,
       logoAssetLoaded: true,
       promptAssetLoaded: true,
