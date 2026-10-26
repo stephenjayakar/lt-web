@@ -49,6 +49,12 @@ import { drawItemIcon } from '../ui/icons';
 import { getCombatSprite } from './combat-sprites';
 import { ScreenAnimation } from './screen-animation';
 import { fxNow } from './map-unit-fx';
+import {
+  applyPresentedStrikeHp,
+  strikeEventHpDeltas,
+  type StrikeEventCombat,
+  type StrikeEventHook,
+} from './strike-events';
 
 // ============================================================
 // AnimationCombat - port of lt-maker/app/engine/combat/animation_combat.py
@@ -166,7 +172,7 @@ export interface AnimationCombatRenderState {
 type AnimCombatState =
   | 'init' | 'red_cursor' | 'fade_in' | 'entrance' | 'init_pause'
   | 'transform'
-  | 'pre_proc' | 'begin_phase' | 'attack_proc' | 'defense_proc'
+  | 'pre_proc' | 'begin_phase' | 'strike_events' | 'attack_proc' | 'defense_proc'
   | 'anim' | 'combat_hit' | 'hp_change' | 'end_phase'
   | 'end_combat' | 'exp_pause' | 'exp_wait' | 'revert'
   | 'fade_out_wait' | 'name_tags_out' | 'all_out' | 'fade_out' | 'done';
@@ -191,7 +197,7 @@ interface BigDamageNumber {
 // AnimationCombat
 // ============================================================
 
-export class AnimationCombat implements BattleAnimOwner {
+export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
   attacker: UnitObject;
   defender: UnitObject;
   attackItem: ItemObject;
@@ -310,11 +316,29 @@ export class AnimationCombat implements BattleAnimOwner {
 
   /** Instantly skip to the end of combat (no more animation). */
   skipToEnd(): void {
+    if (this.solving || this.pendingStrikeEvents || this.phaseEvents.size > 0) {
+      // Strikes still to solve or events to run between them: fast-forward.
+      this.skipMode = true;
+      return;
+    }
     this.setState('done');
     setBattleAnimSpeed(1);
     this.onFinish?.();
     this.onFinish = null;
   }
+
+  private solver: CombatPhaseSolver;
+  /** Phases remain to be resolved (deferSolve). */
+  private solving = false;
+  private solveStarted = false;
+  strikeEventHook: StrikeEventHook | null = null;
+  pendingStrikeEvents: unknown[] | null = null;
+  /** Each event phase's events, keyed by the phase's first strike index. */
+  private phaseEvents: Map<number, unknown[]> = new Map();
+  private strikeEventBaseline: Map<UnitObject, number> | null = null;
+  /** Result HP walk over strikes [0, walked) (see walkStrikes). */
+  private walk: { atkHp: number; defHp: number } | null = null;
+  private walked = 0;
 
   // -- Effect sprite cache ---------------------------------------------------
   effectFrameCache: Map<string, Map<string, ImageBitmap | HTMLCanvasElement>> = new Map();
@@ -346,6 +370,7 @@ export class AnimationCombat implements BattleAnimOwner {
     script?: string[] | null,
     randomGame?: RandomGameState | null,
     transformAnimations?: TransformBattleAnimations,
+    options: { deferSolve?: boolean } = {},
   ) {
     if (attacker.strikePartner || defender.strikePartner) {
       throw new Error('AnimationCombat does not support attack-stance partners; use MapCombat');
@@ -399,19 +424,14 @@ export class AnimationCombat implements BattleAnimOwner {
       randomGame ? () => getCombatRandom(randomGame) : undefined,
       randomGame,
     );
-    this.strikes = solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode as RngMode, board, script);
-    this.procPlayback = [...solver.procPlayback];
-    this.guardGaugeResults = new Map(solver.guardGaugeResults);
-    this.miracleRestoreHps = new Map(solver.miracleRestoreHp);
-    for (const strike of this.strikes) {
-      for (const effect of strike.allySkillHpChanges ?? []) {
-        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
-      }
-      for (const effect of strike.redirectedDamage ?? []) {
-        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
-      }
-    }
-    this.lifecycleRecord.finish();
+    this.solver = solver;
+    solver.beginSession(
+      attacker, attackItem, defender, defenseItem, [], db, rngMode as RngMode, board, script,
+    );
+    this.strikes = [];
+    // Live: lifecycle marks (pre-procs first) arrive as phases resolve.
+    this.procPlayback = solver.procPlayback;
+    this.solving = true;
 
     const leftUnit = leftIsAttacker ? attacker : defender;
     const rightUnit = leftIsAttacker ? defender : attacker;
@@ -421,6 +441,7 @@ export class AnimationCombat implements BattleAnimOwner {
     this.rightHpBar = new CombatHpBar(rightUnit.currentHp);
     this.attackerStartHp = attacker.currentHp;
     this.defenderStartHp = defender.currentHp;
+    if (!options.deferSolve) this.resolvePhases();
 
     // setup_pan: focus_right = attacker is right.
     this.focusRight = !leftIsAttacker;
@@ -472,6 +493,7 @@ export class AnimationCombat implements BattleAnimOwner {
       case 'transform': this.updateTransform(); break;
       case 'pre_proc': this.updateProcCue(); break;
       case 'begin_phase': this.updateBeginPhase(); break;
+      case 'strike_events': break; // CombatState runs pendingStrikeEvents
       case 'attack_proc': this.updateProcCue(); break;
       case 'defense_proc': this.updateProcCue(); break;
       case 'anim': this.updateAnim(); break;
@@ -646,9 +668,84 @@ export class AnimationCombat implements BattleAnimOwner {
     else this.transition('begin_phase');
   }
 
+  /**
+   * Resolve phases until one has strike events (run when the presentation
+   * reaches it) or the combat has no more phases.
+   */
+  private resolvePhases(): void {
+    if (!this.solving) return;
+    if (!this.solveStarted) {
+      this.solveStarted = true;
+      // Start-combat events ran before the first phase was solved.
+      this.attackerStartHp = this.attacker.currentHp;
+      this.defenderStartHp = this.defender.currentHp;
+      this.leftTargetHp = this.leftUnit.currentHp;
+      this.rightTargetHp = this.rightUnit.currentHp;
+      this.leftHpBar.setTarget(this.leftTargetHp);
+      this.rightHpBar.setTarget(this.rightTargetHp);
+    }
+    for (;;) {
+      const first = this.strikes.length;
+      const phase = this.solver.resolveNextPhase();
+      if (!phase) {
+        this.solving = false;
+        this.guardGaugeResults = new Map(this.solver.guardGaugeResults);
+        this.miracleRestoreHps = new Map(this.solver.miracleRestoreHp);
+        this.lifecycleRecord.finish();
+        return;
+      }
+      this.strikes.push(...phase);
+      for (const strike of phase) {
+        for (const effect of [...(strike.allySkillHpChanges ?? []), ...(strike.redirectedDamage ?? [])]) {
+          if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
+        }
+      }
+      const events = this.strikeEventHook?.(phase) ?? [];
+      if (events.length > 0) {
+        this.phaseEvents.set(first, events);
+        return;
+      }
+    }
+  }
+
+  resumeAfterStrikeEvents(): void {
+    if (!this.pendingStrikeEvents) return;
+    const deltas = strikeEventHpDeltas(this.strikeEventBaseline ?? new Map());
+    this.pendingStrikeEvents = null;
+    this.strikeEventBaseline = null;
+    if (deltas.size > 0) {
+      this.solver.adjustSimulatedHp(deltas);
+      const walk = this.walk!;
+      walk.atkHp += deltas.get(this.attacker) ?? 0;
+      walk.defHp += deltas.get(this.defender) ?? 0;
+      this.leftTargetHp = this.leftUnit.currentHp;
+      this.rightTargetHp = this.rightUnit.currentHp;
+      this.leftHpBar.setTarget(this.leftTargetHp);
+      this.rightHpBar.setTarget(this.rightTargetHp);
+    }
+    this.transition('begin_phase');
+  }
+
   private updateBeginPhase(): void {
+    if (this.currentStrikeIndex >= this.strikes.length) this.resolvePhases();
     if (this.currentStrikeIndex >= this.strikes.length) {
       this.transition('end_combat');
+      return;
+    }
+    const events = this.phaseEvents.get(this.currentStrikeIndex);
+    if (events) {
+      // Python runs the phase's events before its proc cues and hit: apply
+      // the strikes shown so far, then hand the events to CombatState.
+      this.phaseEvents.delete(this.currentStrikeIndex);
+      const index = this.currentStrikeIndex;
+      this.strikeEventBaseline = applyPresentedStrikeHp(this.game, this.participants, () => {
+        this.walkStrikes(index);
+        const walk = this.walk!;
+        this.attacker.currentHp = Math.max(0, Math.min(this.attacker.maxHp, walk.atkHp));
+        this.defender.currentHp = Math.max(0, Math.min(this.defender.maxHp, walk.defHp));
+      });
+      this.pendingStrikeEvents = events;
+      this.transition('strike_events');
       return;
     }
     const strike = this.strikes[this.currentStrikeIndex];
@@ -1140,12 +1237,19 @@ export class AnimationCombat implements BattleAnimOwner {
     return this.cachedResults;
   }
 
-  private computeResults(): CombatResults {
-    let atkHp = this.attackerStartHp;
-    let defHp = this.defenderStartHp;
+  /**
+   * Walk the result HP through strikes [walked, upTo). The walk persists so
+   * HP applied before strike events (and the events' own HP changes) carry
+   * into the final results.
+   */
+  private walkStrikes(upTo: number): void {
+    const walk = this.walk ??= { atkHp: this.attackerStartHp, defHp: this.defenderStartHp };
+    let atkHp = walk.atkHp;
+    let defHp = walk.defHp;
     const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
 
-    for (const strike of this.strikes) {
+    for (; this.walked < upTo; this.walked++) {
+      const strike = this.strikes[this.walked];
       if (!strike.hit && !hasDamageOnMiss(strike.item)) continue;
       let damage = strike.damage;
       if (strike.hit && (hasEclipseFe7(strike.item) || hasEclipse(strike.item))) {
@@ -1241,6 +1345,14 @@ export class AnimationCombat implements BattleAnimOwner {
         );
       }
     }
+    walk.atkHp = atkHp;
+    walk.defHp = defHp;
+  }
+
+  private computeResults(): CombatResults {
+    this.walkStrikes(this.strikes.length);
+    let atkHp = this.walk!.atkHp;
+    let defHp = this.walk!.defHp;
 
     if (atkHp <= 0 && this.miracleRestoreHps.has(this.attacker)) {
       atkHp = this.miracleRestoreHps.get(this.attacker) ?? 1;

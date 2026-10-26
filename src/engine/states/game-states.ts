@@ -4038,11 +4038,22 @@ export function applyCoreSequenceItem(
   let storedUnit: UnitObject | null = null;
   let applied = false;
   const targets = new Map<string, UnitObject>();
+  const queue = (game.eventManager?.eventQueue ?? []) as GameEvent[];
+  // Python resolves every child in the one attacker phase: each child's
+  // on_hit (event_on_use / event_on_hit) is triggered against the unit on its
+  // target tile, or the user (simple_process) when the tile is empty.
+  const childEvents: GameEvent[] = [];
 
   for (let childIndex = 0; childIndex < item.subitems.length; childIndex++) {
     const child = item.subitems[childIndex];
     for (const position of targetsByItem[childIndex] ?? []) {
       for (const target of effectUnits(unit, child, position)) targets.set(target.nid, target);
+      const before = queue.length;
+      queueDirectItemUseEvents(
+        game, unit, child, position, game.board.getUnit(position[0], position[1]) ?? unit,
+        ['event_on_use', 'event_on_hit'],
+      );
+      childEvents.push(...queue.splice(before));
       const resolved = game.targetSystem.getTargetFromPosition(unit, child, position);
       if (child.hasComponent('store_unit') && resolved.mainTarget) {
         const target = game.board.getUnit(resolved.mainTarget[0], resolved.mainTarget[1]);
@@ -4059,6 +4070,8 @@ export function applyCoreSequenceItem(
       applied = applyCoreTargetedEffects(unit, child, position) || applied;
     }
   }
+  // Event-only children (EOtF Entangle) still make a use.
+  if (childEvents.length > 0) applied = true;
 
   if (!applied) {
     while (game.actionLog.getLength() > resourceStart) game.actionLog.undo();
@@ -4067,6 +4080,8 @@ export function applyCoreSequenceItem(
   const finalPosition = [...targetsByItem].reverse()
     .flatMap((positions) => [...positions].reverse())
     .find((position): position is [number, number] => !!position);
+  // The phase's triggers run newest first, before the parent's own events.
+  queue.push(...childEvents.reverse());
   if (finalPosition) {
     queueDirectItemUseEvents(
       game,
@@ -6410,6 +6425,46 @@ export class CombatState extends State {
   private heldBreakEvents: GameEvent[] = [];
   private heldRankUpEvents: GameEvent[] = [];
   private heldEndEvents: GameEvent[] = [];
+  /** The presented phase's strike events were handed to an EventState. */
+  private strikeEventsStarted: boolean = false;
+  /**
+   * Python pushes a fresh CombatState for every combat; the web's states are
+   * singletons. A combat started by an event that runs during another combat
+   * (EOtF event_before_combat follow-up attacks, event_on_hit combats) saves
+   * the outer combat here and restores it once it is popped.
+   */
+  private suspendedCombats: Array<Record<string, unknown>> = [];
+  private drawFrame = -1;
+  private drawCalls = 0;
+  private static readonly NESTING_KEPT = new Set([
+    'name', 'transparent', 'inLevel', 'showMap', 'started', 'processed',
+    'suspendedCombats', 'drawFrame', 'drawCalls',
+  ]);
+
+  override start(): StateResult {
+    const game = getGame();
+    const depth = (game.state.getStackNames() as string[]).filter((name) => name === this.name).length;
+    if (depth <= 1 || !this.initialized) return;
+    const saved: Record<string, unknown> = {};
+    const fresh = new CombatState() as unknown as Record<string, unknown>;
+    const self = this as unknown as Record<string, unknown>;
+    for (const key of Object.keys(fresh)) {
+      if (CombatState.NESTING_KEPT.has(key)) continue;
+      saved[key] = self[key];
+      self[key] = fresh[key];
+    }
+    this.suspendedCombats.push(saved);
+  }
+
+  override finish(): void {
+    const saved = this.suspendedCombats.pop();
+    if (!saved) return;
+    Object.assign(this, saved);
+    // The outer combat is still under way: keep the map clear of its UI.
+    const game = getGame();
+    game.cursor.visible = false;
+    game.hud.visible = false;
+  }
 
   /** Run `trigger` and take the events it queued back out of the queue. */
   private captureEvents(trigger: () => unknown): GameEvent[] {
@@ -6457,23 +6512,50 @@ export class CombatState extends State {
   }
 
   /**
-   * Python solver phases fire on_hit / after_strike / after_take_strike
-   * events (each phase's own triggers run newest first, phases in order),
-   * then clean_up0 fires combat_death; all run over the combat before the
-   * exp screen. The web solves every strike up front, so the strike events
-   * run here, after the last strike, rather than between strikes.
+   * Python's solver fires a phase's on_hit / after_strike / after_take_strike
+   * events while it resolves the phase; the EventStates they push run
+   * (newest trigger first) before the phase's hit is shown. The combat asks
+   * for them as it resolves each phase and pauses before presenting it.
    */
-  private runMidCombatEvents(strikes: CombatStrike[]): boolean {
+  private triggerStrikeEvents(phase: CombatStrike[]): GameEvent[] {
+    const game = getGame();
+    if (!game.eventManager) return [];
+    return this.captureEvents(() => {
+      for (const strike of phase) {
+        queueStrikeItemEvents(game, strike, 0);
+        queueStrikeSkillEvents(game, strike);
+      }
+    }).reverse();
+  }
+
+  /**
+   * Run the presented phase's strike events over the combat, and resume the
+   * combat once they have all run. Returns whether the combat must wait.
+   */
+  private runPendingStrikeEvents(combat: MapCombat | AnimationCombat): boolean {
+    const pending = combat.pendingStrikeEvents as GameEvent[] | null;
+    if (!pending) return false;
+    const game = getGame();
+    const queue = (game.eventManager?.eventQueue ?? []) as GameEvent[];
+    // Not started: they were taken out of the queue when triggered. Started:
+    // any still queued did not get to run yet.
+    const waiting = this.strikeEventsStarted
+      ? pending.filter((event) => queue.includes(event))
+      : pending;
+    if (waiting.length > 0 && runEventsBeforeWaiting(game, waiting, true)) {
+      this.strikeEventsStarted = true;
+      return true;
+    }
+    this.strikeEventsStarted = false;
+    combat.resumeAfterStrikeEvents();
+    return false;
+  }
+
+  /** clean_up0: combat_death, run over the combat before the exp screen. */
+  private runMidCombatEvents(): boolean {
     const game = getGame();
     if (!game.eventManager) return false;
-    const events: GameEvent[] = [];
-    strikes.forEach((strike, index) => {
-      events.push(...this.captureEvents(() => {
-        queueStrikeItemEvents(game, strike, index);
-        queueStrikeSkillEvents(game, strike);
-      }).reverse());
-    });
-    events.push(...this.captureEvents(() => queueInStackOrder(game, this.deathTriggers('combat_death'))));
+    const events = this.captureEvents(() => queueInStackOrder(game, this.deathTriggers('combat_death')));
     return runEventsBeforeWaiting(game, events, true);
   }
 
@@ -6558,6 +6640,7 @@ export class CombatState extends State {
     const game = getGame();
     const attacker: UnitObject = game.selectedUnit;
     let defender: UnitObject = game.combatTarget;
+    this.eventCombat = !!game.eventCombat;
 
     if (!attacker || !defender) {
       game.state.back();
@@ -6586,8 +6669,12 @@ export class CombatState extends State {
     defender = targetGroup.representative;
     const groupedCombat = !primaryDefender || splashDefenders.length > 0;
     const defenseItem = primaryDefender ? getEquippedWeapon(primaryDefender, game.db, game) : null;
+    // Python start_combat: event_before_combat and similar hooks each push
+    // an EventState, run (newest first) before the first phase is solved.
+    const startEvents: GameEvent[] = [];
     if (primaryDefender) {
-      queueCombatSkillStartEvents(game, attacker, primaryDefender, attackItem, defenseItem);
+      startEvents.push(...this.captureEvents(() =>
+        queueCombatSkillStartEvents(game, attacker, primaryDefender, attackItem, defenseItem)));
     }
     const rngMode = game.db.getConstant('rng_mode', 'true_hit') as any;
 
@@ -6603,7 +6690,7 @@ export class CombatState extends State {
       attacker.strikePartner = attackerPartner;
       primaryDefender.strikePartner = defenderPartner;
     }
-    applyCombatParticipantItemStartHooks(
+    startEvents.push(...this.captureEvents(() => applyCombatParticipantItemStartHooks(
       game,
       attacker,
       attackItem,
@@ -6611,7 +6698,7 @@ export class CombatState extends State {
         ...(primaryDefender ? [primaryDefender] : []),
         ...splashDefenders,
       ],
-    );
+    )));
 
     // Read and consume the combat script (set by interact_unit)
     const script = game.combatScript;
@@ -6656,7 +6743,9 @@ export class CombatState extends State {
         script,
         groupedCombat ? { mainDefender: primaryDefender, splashDefenders } : undefined,
         game,
+        { deferSolve: true },
       );
+      this.combat.strikeEventHook = (phase) => this.triggerStrikeEvents(phase);
       // Wire audio manager for combat sound effects
       if (game.audioManager) {
         this.combat.audioManager = game.audioManager;
@@ -6688,6 +6777,7 @@ export class CombatState extends State {
     this.heldBreakEvents = [];
     this.heldRankUpEvents = [];
     this.heldEndEvents = [];
+    this.strikeEventsStarted = false;
     this.initialized = true;
 
     // Clear all highlights and hide cursor/HUD before combat starts
@@ -6717,7 +6807,7 @@ export class CombatState extends State {
       this.animCombat.onFinish = () => this.fadeBackBattleMusic();
     }
 
-    const combatStartTriggered = game.eventManager?.trigger(
+    const combatStartEvents = this.captureEvents(() => game.eventManager?.trigger(
       {
         type: 'combat_start',
         unit1: attacker,
@@ -6737,8 +6827,11 @@ export class CombatState extends State {
         gameVars: game.gameVars,
         levelVars: game.levelVars,
       },
-    ) ?? false;
-    if (combatStartTriggered && !game.eventCombat) game.state.change('event');
+    ));
+    // start_event's CombatStart is pushed after start_combat's hooks, so it
+    // runs first. The combat waits underneath: its first phase is solved
+    // only once these have run (deferSolve).
+    runEventsBeforeWaiting(game, [...combatStartEvents, ...startEvents.reverse()], true);
   }
 
   /**
@@ -6870,7 +6963,9 @@ export class CombatState extends State {
         script,
         game,
         transformAnimations,
+        { deferSolve: true },
       );
+      this.animCombat.strikeEventHook = (phase) => this.triggerStrikeEvents(phase);
 
       // Wire audio manager for combat sound effects
       if (game.audioManager) {
@@ -7081,8 +7176,11 @@ export class CombatState extends State {
 
     switch (this.phase) {
       case 'combat': {
+        // A phase's strike events run over the combat before its hit.
+        if (this.runPendingStrikeEvents(activeCombat)) break;
         // Pass real delta to combat (skip mode is handled inside AnimationCombat)
         const done = activeCombat.update(realDelta);
+        if (this.runPendingStrikeEvents(activeCombat)) break;
         // Python AnimationCombat applies clean_up1 (exp, wexp, items) while
         // the scene is still shown: results come in at exp_wait, the exp bar
         // draws over the battle, and the scene then slides out (anim_exit).
@@ -7214,9 +7312,9 @@ export class CombatState extends State {
             else if (isUnitDying(unit)) clearUnitFx(unit); // miracle
           }
           this.deathStarted = false;
-          // clean_up0: the strikes' own events, then combat_death, run over
-          // the combat before the exp screen.
-          const pausedForEvents = this.runMidCombatEvents(activeCombat.strikes);
+          // clean_up0: combat_death runs over the combat before the exp
+          // screen (the strikes' own events already ran between strikes).
+          const pausedForEvents = this.runMidCombatEvents();
           if (this.results.expGained > 0 && activeCombat.attacker.team === 'player') {
             this.startExpPhase();
           } else if (pausedForEvents) {
@@ -7547,7 +7645,7 @@ export class CombatState extends State {
         this.battleBackgroundImg = null;
 
         // Clear eventCombat flag
-        const wasEventCombat = game.eventCombat;
+        const wasEventCombat = this.eventCombat;
         game.eventCombat = false;
 
         game.state.back();
@@ -7796,14 +7894,26 @@ export class CombatState extends State {
     const game = getGame();
     game.audioManager?.stopSfx?.('Experience Gain');
     game.memory.delete('combat_strike_partners_selected');
+    // Events between strikes cover a combat still being solved, whose later
+    // phases need the strike partners.
     const active = this.getActiveCombat();
-    if (active) {
+    if (active && (this.results || this.phase !== 'combat')) {
       active.attacker.strikePartner = null;
       active.defender.strikePartner = null;
     }
   }
 
   override draw(surf: Surface): Surface {
+    // Nested combats share this instance: draw it once, at the top copy.
+    if (this.suspendedCombats.length > 0) {
+      const frame = getFrameCount();
+      if (this.drawFrame !== frame) {
+        this.drawFrame = frame;
+        this.drawCalls = 0;
+      }
+      this.drawCalls++;
+      if (this.drawCalls <= this.suspendedCombats.length) return surf;
+    }
     // Route to the appropriate renderer
     if (this.isAnimationCombat && this.animCombat) {
       return this.drawAnimationCombat(surf);
@@ -17874,9 +17984,13 @@ export class EventState extends State {
       case 'stack':
         return position; // place on top (units overlap)
       case 'closest':
-        // Python get_closest_reachable_tile: nearest open tile the placed
-        // unit can stand on (and reach, when it is already on the map).
-        return this.nearestOpenTile(unit, position, true, game);
+        // EOtF's engine (forked mid-2024; v1.90's app/events/event.py)
+        // places at get_nearest_open_tile(unit, position): the nearest tile
+        // the unit can stand on with no unit on it, the unit itself counting
+        // as an occupant. Upstream later required a path to the tile
+        // (get_closest_reachable_tile) and let the unit's own tile count as
+        // open (da99faa2d, 2025-12); EOtF has neither.
+        return this.nearestOpenTile(unit, position, false, game, false);
       case 'push': {
         // Python: ForcedMovement(occupant, get_nearest_open_tile(occupant,
         // position)). The reference (2025-12 to 2026-10 lt-maker) also

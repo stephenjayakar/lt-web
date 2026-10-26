@@ -3229,7 +3229,8 @@ test.describe('Event command parity', () => {
       return true;
     });
     expect(setup).toBe(true);
-    await stepFrames(page, 3);
+    // Phases resolve at the first begin_phase, after init_pause.
+    await stepFrames(page, 20);
 
     const active = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -4381,7 +4382,7 @@ test.describe('Event command parity', () => {
       const game = (window as any).__gameRef;
       const harness = (window as any).__harness;
       const { attacker, defender } = (window as any).__hookOrderTest;
-      const seen: Array<{ label: string; combat: boolean; phase: string | null; onMap: boolean }> = [];
+      const seen: Array<{ label: string; combat: boolean; phase: string | null; onMap: boolean; hp: number }> = [];
       const combatState = game.state.allStates?.get?.('combat') ??
         (game.state as any).allStates.get('combat');
       let last = '';
@@ -4397,6 +4398,7 @@ test.describe('Event command parity', () => {
             combat: names.includes('combat'),
             phase: names.includes('combat') ? combatState.phase : null,
             onMap: !!defender.position,
+            hp: defender.currentHp,
           });
           last = order;
         }
@@ -4410,17 +4412,18 @@ test.describe('Event command parity', () => {
     });
 
     expect(timeline.map((entry) => entry.label)).toEqual([
-      // Solver phase: event_on_hit; clean_up0: combat_death. Both run over
-      // the combat before the exp screen, with the dying unit still placed.
+      // Solver phase: event_on_hit runs mid-combat, before its hit lands;
+      // clean_up0: combat_death. Both run over the combat before the exp
+      // screen, with the dying unit still placed.
       'on_hit', 'combat_death',
       // clean_up2: UnitDeath runs before the dying fade; then the stack runs
       // end_combat hooks newest first (item after the attacker's skill), and
       // CombatEnd, triggered first, last.
       'unit_death', 'item_after_combat', 'skill_after_combat', 'combat_end',
     ]);
-    expect(timeline[0]).toMatchObject({ combat: true, onMap: true });
-    expect(timeline[0].phase).toMatch(/^exp_|post_exp_events/);
-    expect(timeline[1]).toMatchObject({ combat: true, onMap: true });
+    expect(timeline[0]).toMatchObject({ combat: true, onMap: true, phase: 'combat', hp: 1 });
+    expect(timeline[1]).toMatchObject({ combat: true, onMap: true, hp: 0 });
+    expect(timeline[1].phase).toMatch(/^exp_|post_exp_events/);
     expect(timeline[2]).toMatchObject({ onMap: true });
     expect(timeline[3]).toMatchObject({ combat: false, onMap: false });
     expect(timeline[5]).toMatchObject({ combat: false, onMap: false });

@@ -41,6 +41,7 @@ test.describe('combat proc presentation', () => {
         procPlayback: marks,
         pendingProcCues: [],
         activeProcCue: null,
+        phaseEvents: new Map(),
         state: 'init_pause',
         stateTimer: 1000,
         stateFrameCount: 0,

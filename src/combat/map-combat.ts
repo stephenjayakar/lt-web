@@ -38,6 +38,12 @@ import { canCounterattack, computeCrit, computeDamage, computeHit, weaponTriangl
 import { MapCombatInfo, type MapCombatInfoMethod, type MapCombatStats } from './map-combat-info';
 import { MapAnimation } from '../rendering/map-animation';
 import {
+  applyPresentedStrikeHp,
+  strikeEventHpDeltas,
+  type StrikeEventCombat,
+  type StrikeEventHook,
+} from './strike-events';
+import {
   addDamageNumbers,
   facingFor,
   markDying,
@@ -57,7 +63,7 @@ import {
 export type MapCombatState =
   | 'init' | 'init_pause' | 'begin_phase' | 'proc_animations' | 'start_anim'
   | 'sound' | 'anim' | 'hp_bar_wait' | 'end_phase_anim' | 'end_phase'
-  | 'exp_wait' | 'post_combat' | 'done';
+  | 'strike_events' | 'exp_wait' | 'post_combat' | 'done';
 
 /** Detailed combat results returned by applyResults(). */
 export interface CombatResults {
@@ -135,7 +141,16 @@ function freshAnimState(): CombatAnimState {
   };
 }
 
-export class MapCombat {
+export interface MapCombatOptions {
+  /**
+   * Resolve phases as the presentation reaches them (Python solver.do in
+   * begin_phase) instead of all at construction, so start-combat events run
+   * before the first strike is solved and strike events between strikes.
+   */
+  deferSolve?: boolean;
+}
+
+export class MapCombat implements StrikeEventCombat {
   attacker: UnitObject;
   /** Representative defender retained for single-combat UI compatibility. */
   defender: UnitObject;
@@ -209,6 +224,20 @@ export class MapCombat {
   /** map_cast_anim (Python CastAnim playback) of the initiating item. */
   castAnimValue: string | null = null;
 
+  private solver: CombatPhaseSolver;
+  /** Phases remain to be resolved (deferSolve). */
+  private solving = false;
+  private solveStarted = false;
+  strikeEventHook: StrikeEventHook | null = null;
+  pendingStrikeEvents: unknown[] | null = null;
+  /** Each event phase's events, keyed by the phase's first strike index. */
+  private phaseEvents: Map<number, unknown[]> = new Map();
+  /** Participant HP when the pending strike events started. */
+  private strikeEventBaseline: Map<UnitObject, number> | null = null;
+  /** Result HP walk over strikes [0, walked) (see walkStrikes). */
+  private walk: { atkHp: number; defenderHps: Map<UnitObject, number> } | null = null;
+  private walked = 0;
+
   constructor(
     attacker: UnitObject,
     attackItem: ItemObject,
@@ -220,6 +249,7 @@ export class MapCombat {
     script?: string[] | null,
     group?: MapCombatGroup,
     randomGame?: RandomGameState | null,
+    options: MapCombatOptions = {},
   ) {
     this.attacker = attacker;
     this.attackItem = attackItem;
@@ -257,32 +287,22 @@ export class MapCombat {
       randomGame ? () => getCombatRandom(randomGame) : undefined,
       randomGame,
     );
-    this.strikes = group
-      ? solver.resolveGroup(
-        attacker,
-        attackItem,
-        this.primaryDefender,
-        this.defenseItem,
-        this.splashDefenders,
-        db,
-        rngMode,
-        board,
-        script,
-      )
-      : solver.resolve(attacker, attackItem, defender, defenseItem, db, rngMode, board, script);
-    this.procPlayback = [...solver.procPlayback];
-    this.guardGaugeResults = new Map(solver.guardGaugeResults);
-    this.miracleSavedSet = new Set(solver.miracleSaved);
-    this.miracleRestoreHps = new Map(solver.miracleRestoreHp);
-    for (const strike of this.strikes) {
-      for (const effect of strike.allySkillHpChanges ?? []) {
-        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
-      }
-      for (const effect of strike.redirectedDamage ?? []) {
-        if (!this.participants.includes(effect.unit)) this.participants.push(effect.unit);
-      }
-    }
-    this.lifecycleRecord.finish();
+    this.solver = solver;
+    solver.beginSession(
+      attacker,
+      attackItem,
+      group ? this.primaryDefender : defender,
+      group ? this.defenseItem : defenseItem,
+      group ? this.splashDefenders : [],
+      db,
+      rngMode,
+      board,
+      script,
+    );
+    this.strikes = [];
+    // Live: lifecycle marks arrive as phases resolve.
+    this.procPlayback = solver.procPlayback;
+    this.solving = true;
 
     this.state = 'init';
     this.currentStrikeIndex = 0;
@@ -290,6 +310,7 @@ export class MapCombat {
     this.attackerStartHp = attacker.currentHp;
     this.defenderStartHps = new Map(this.defenders.map((unit) => [unit, unit.currentHp]));
     this.presentedHps = new Map(this.participants.map((unit) => [unit, unit.currentHp]));
+    if (!options.deferSolve) this.resolvePhases();
 
     // Animation state
     this.attackerAnim = freshAnimState();
@@ -318,8 +339,94 @@ export class MapCombat {
 
   /** Instantly skip to the end of combat (no more animation). */
   skipToEnd(): void {
+    if (this.solving || this.pendingStrikeEvents || this.phaseEvents.size > 0) {
+      // Phases still to solve or events to run between strikes: Python's
+      // skip only speeds the presentation up, so fast-forward through it.
+      this.skipMode = true;
+      return;
+    }
     this.finishPresentation();
     this.state = 'done';
+  }
+
+  /**
+   * Resolve phases until one has strike events (they run when the
+   * presentation reaches it) or the combat has no more phases.
+   */
+  private resolvePhases(): void {
+    if (!this.solving) return;
+    if (!this.solveStarted) {
+      this.solveStarted = true;
+      // Start-combat events ran before the first phase: start from the HP
+      // they left, as Python's solver and health bars do.
+      this.attackerStartHp = this.attacker.currentHp;
+      this.defenderStartHps = new Map(this.defenders.map((unit) => [unit, unit.currentHp]));
+      this.presentedHps = new Map(this.participants.map((unit) => [unit, unit.currentHp]));
+    }
+    for (;;) {
+      const first = this.strikes.length;
+      const phase = this.solver.resolveNextPhase();
+      if (!phase) {
+        this.finishSolve();
+        return;
+      }
+      this.strikes.push(...phase);
+      for (const strike of phase) {
+        for (const effect of [...(strike.allySkillHpChanges ?? []), ...(strike.redirectedDamage ?? [])]) {
+          if (this.participants.includes(effect.unit)) continue;
+          this.participants.push(effect.unit);
+          if (!this.presentedHps.has(effect.unit)) this.presentedHps.set(effect.unit, effect.unit.currentHp);
+        }
+      }
+      const events = this.strikeEventHook?.(phase) ?? [];
+      if (events.length > 0) {
+        this.phaseEvents.set(first, events);
+        return;
+      }
+    }
+  }
+
+  private finishSolve(): void {
+    this.solving = false;
+    this.guardGaugeResults = new Map(this.solver.guardGaugeResults);
+    this.miracleSavedSet = new Set(this.solver.miracleSaved);
+    this.miracleRestoreHps = new Map(this.solver.miracleRestoreHp);
+    this.lifecycleRecord.finish();
+  }
+
+  /**
+   * Python runs a phase's events after its begin_phase and before its hit:
+   * apply the strikes shown so far, then hand the events to CombatState.
+   */
+  private startStrikeEvents(index: number, events: unknown[]): void {
+    this.strikeEventBaseline = applyPresentedStrikeHp(this.game, this.participants, () => {
+      this.walkStrikes(index);
+      const walk = this.walk!;
+      this.attacker.currentHp = Math.max(0, Math.min(this.attacker.maxHp, walk.atkHp));
+      for (const [unit, hp] of walk.defenderHps) {
+        unit.currentHp = Math.max(0, Math.min(unit.maxHp, hp));
+      }
+    });
+    this.pendingStrikeEvents = events;
+    this.setState('strike_events');
+  }
+
+  resumeAfterStrikeEvents(): void {
+    if (!this.pendingStrikeEvents) return;
+    const deltas = strikeEventHpDeltas(this.strikeEventBaseline ?? new Map());
+    this.pendingStrikeEvents = null;
+    this.strikeEventBaseline = null;
+    if (deltas.size > 0) {
+      this.solver.adjustSimulatedHp(deltas);
+      const walk = this.walk!;
+      for (const [unit, delta] of deltas) {
+        if (unit === this.attacker) walk.atkHp += delta;
+        if (walk.defenderHps.has(unit)) walk.defenderHps.set(unit, walk.defenderHps.get(unit)! + delta);
+        this.presentedHps.set(unit, unit.currentHp);
+        this.infos.get(unit)?.hpBar.setTarget(unit.currentHp);
+      }
+    }
+    this.setState('proc_animations');
   }
 
   /**
@@ -342,6 +449,9 @@ export class MapCombat {
         break;
       case 'begin_phase':
         this.beginPhase();
+        break;
+      case 'strike_events':
+        // CombatState runs pendingStrikeEvents, then resumeAfterStrikeEvents.
         break;
       case 'proc_animations':
         this.setState('start_anim');
@@ -492,13 +602,22 @@ export class MapCombat {
     return this.cachedResults;
   }
 
-  private computeResults(): CombatResults {
-    // Walk through all strikes and apply HP changes to actual units.
-    let atkHp = this.attackerStartHp;
-    const defenderHps = new Map(this.defenderStartHps);
+  /**
+   * Walk the result HP through strikes [walked, upTo). The walk persists so
+   * HP applied before strike events (and the events' own HP changes, added
+   * by resumeAfterStrikeEvents) carry into the final results.
+   */
+  private walkStrikes(upTo: number): void {
+    const walk = this.walk ??= {
+      atkHp: this.attackerStartHp,
+      defenderHps: new Map(this.defenderStartHps),
+    };
+    let atkHp = walk.atkHp;
+    const defenderHps = walk.defenderHps;
     const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
 
-    for (const strike of this.strikes) {
+    for (; this.walked < upTo; this.walked++) {
+      const strike = this.strikes[this.walked];
       if (!strike.hit && !hasDamageOnMiss(strike.item)) continue;
       let damage = strike.damage;
       if (strike.hit && (hasEclipseFe7(strike.item) || hasEclipse(strike.item))) {
@@ -627,6 +746,14 @@ export class MapCombat {
       collapsePermanentHp(strike.attacker);
       collapsePermanentHp(strike.defender);
     }
+    walk.atkHp = atkHp;
+  }
+
+  private computeResults(): CombatResults {
+    // Walk the remaining strikes and apply HP changes to actual units.
+    this.walkStrikes(this.strikes.length);
+    let atkHp = this.walk!.atkHp;
+    const defenderHps = this.walk!.defenderHps;
 
     // Miracle: a unit that would die at the end of combat is instead
     // resurrected at 1 HP (Python Miracle.cleanup_combat). The solver has
@@ -834,6 +961,7 @@ export class MapCombat {
 
   /** begin_phase: next strike, or clean_up0 when the solver has no more. */
   private beginPhase(): void {
+    if (!this.currentStrike()) this.resolvePhases();
     const strike = this.currentStrike();
     if (!strike) {
       // clean_up0: game.death.should_die for every unit at 0 HP.
@@ -861,6 +989,12 @@ export class MapCombat {
     if (counter) this.faceToward(this.attacker, strike.attacker);
     else if (main) this.faceToward(main, this.attacker);
     this.castPose = strike.item.hasComponent('map_cast_pose');
+    const events = this.phaseEvents.get(this.currentStrikeIndex);
+    if (events) {
+      this.phaseEvents.delete(this.currentStrikeIndex);
+      this.startStrikeEvents(this.currentStrikeIndex, events);
+      return;
+    }
     this.setState('proc_animations');
   }
 

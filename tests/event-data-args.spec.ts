@@ -193,6 +193,34 @@ test.describe('Event data command parity', () => {
     expect(position).toEqual([setup.target[0], setup.target[1] + 1]);
   });
 
+  test('closest placement treats the moving unit\'s own tile as occupied, as EOtF\'s engine does', async ({ page }) => {
+    await boot(page);
+    const setup = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const eirika = g.units.get('Eirika');
+      const [x, y] = eirika.position;
+      const seth = g.units.get('Seth');
+      // Ring 1 is scanned left, down, up, right: wall off the left tile and
+      // stand Seth on the tile below, so his own tile is the first candidate.
+      g.board.setTerrain(x - 1, y, '9');
+      for (const [tx, ty] of [[x, y + 1], [x, y - 1]]) {
+        g.board.setTerrain(tx, ty, '1');
+        const occupant = g.board.getUnit(tx, ty);
+        if (occupant && occupant !== seth) { g.board.removeUnit(occupant); occupant.position = null; }
+      }
+      if (seth.position) g.board.removeUnit(seth);
+      g.board.setUnit(x, y + 1, seth);
+      return { target: [x, y] };
+    });
+    await runEvent(page, 'QaClosestSelf', [
+      `move_unit;Seth;${setup.target[0]},${setup.target[1]};immediate;closest`,
+    ]);
+    const position = await page.evaluate(() => (window as any).__gameRef.units.get('Seth').position);
+    // EOtF's get_nearest_open_tile skips Seth's own (occupied) tile; upstream
+    // since 2025-12 would leave him where he stands.
+    expect(position).toEqual([setup.target[0], setup.target[1] - 1]);
+  });
+
   test('{f:unit.field} placeholders read unit and class fields', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaFields', [
