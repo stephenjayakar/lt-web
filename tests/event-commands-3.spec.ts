@@ -1653,6 +1653,43 @@ test.describe('Event command batch 3i (text_entry)', () => {
     const value = await page.evaluate(() => (window as any).__gameRef.gameVars.get('mintest'));
     expect(value).toBe('abc');
   });
+
+  test('reopening text_entry types each key once (no stale keyboard listeners)', async ({ page }) => {
+    // EOtF's desk password prompt can be reopened; a popped text_entry kept
+    // its keydown listener, so the next one received every key per listener.
+    await boot(page);
+    const run = (source: string[]) => page.evaluate((source) => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('TestTextAgain', {
+        name: 'TestTextAgain', nid: 'TestTextAgain', trigger: 'TestTextAgain',
+        level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0, _source: source,
+      });
+      g.eventManager.triggerSpecific('TestTextAgain', { type: 'TestTextAgain' }, true);
+      g.state.change('event');
+    }, source);
+    for (let open = 0; open < 2; open += 1) {
+      await run(['text_entry;again;Again;8']);
+      await stepFrames(page, 6);
+      const ok = await page.evaluate(() => {
+        const st: any = (window as any).__gameRef.state.getCurrentState();
+        st.appendChar('A');
+        return st.name === 'text_entry' && st.confirm();
+      });
+      expect(ok).toBe(true);
+      await stepFrames(page, 10);
+    }
+    await run(['text_entry;again;Again;8']);
+    await stepFrames(page, 6);
+    const typed = await page.evaluate(() => {
+      const key = (k: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k }));
+      key('Enter'); // toggle keyboard mode
+      key('Q');
+      const st: any = (window as any).__gameRef.state.getCurrentState();
+      return { name: st.name, text: st.currentText, keyboard: st.keyboardMode };
+    });
+    expect(typed).toEqual({ name: 'text_entry', text: 'Q', keyboard: true });
+  });
 });
 
 test.describe('Event command batch 3j (change_bg_tilemap)', () => {

@@ -62,6 +62,7 @@ import {
   SetMovementLeftAction,
   MarkActionGroupEnd,
   MarkPhase,
+  IncrementTurnAction,
   LockTurnwheel,
   MessageAction,
   SetGameVarAction,
@@ -9454,10 +9455,7 @@ export class TurnChangeState extends State {
 
       // If we wrapped back to the start, increment the turn counter
       if (game.initiative.atStart()) {
-        game.turnCount++;
-        if (game.phase) {
-          game.phase.turnCount = game.turnCount;
-        }
+        game.actionLog.doAction(new IncrementTurnAction());
         // Fire turn_change event
         if (game.eventManager) {
           const ctx = { game, gameVars: game.gameVars, levelVars: game.levelVars };
@@ -9489,11 +9487,15 @@ export class TurnChangeState extends State {
     }
 
     // Advance to next phase
+    const phaseTurnBefore = game.phase.turnCount;
     game.phase.next((team: string) => phaseTeamUnits(game, team));
 
-    // Sync turnCount to GameState so event conditions like
-    // "game.turncount == 2" resolve correctly
-    game.turnCount = game.phase.turnCount;
+    // Python TurnChangeState.end: action.do(IncrementTurn()) when the phase
+    // order wraps, so the turnwheel can reverse it. game.turnCount (read by
+    // "game.turncount == 2" conditions) is the source; the phase copy follows.
+    const wrapped = game.phase.turnCount !== phaseTurnBefore;
+    game.phase.turnCount = game.turnCount;
+    if (wrapped) game.actionLog.doAction(new IncrementTurnAction());
 
     const currentTeam = game.phase.getCurrent();
     // Python TurnChangeState.end: entering player phase, IncrementTurn then

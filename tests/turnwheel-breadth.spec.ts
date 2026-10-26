@@ -398,8 +398,8 @@ test.describe('Turnwheel breadth verification (P2)', () => {
       turnChange.begin();
       turnChange.begin();
       const changed = pair.points;
-      // Entering a player phase also records the turn after the supports
-      // (Python UpdateRecords('turn')); undo back to the support action.
+      // IncrementTurn and the turn record (Python UpdateRecords('turn'))
+      // both follow the supports; undo back to the support action.
       let action = g.actionLog.undo();
       while (action && action.constructor.name !== 'IncrementSupportPointsAction') action = g.actionLog.undo();
       const undone = pair.points;
@@ -420,6 +420,51 @@ test.describe('Turnwheel breadth verification (P2)', () => {
     expect(result!.undone).toBe(result!.before);
     expect(result!.redone).toBe(result!.changed);
     expect(result!.actionName).toBe('IncrementSupportPointsAction');
+  });
+
+  test('turn increment is an action: undo restores the turn, and a loaded save keeps counting', async ({ page }) => {
+    // Python TurnChangeState.end does action.do(IncrementTurn()) on entering
+    // the player phase, so the turnwheel shows and restores the earlier turn.
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+
+    const run = () => page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { TurnChangeState } = await import('/src/engine/states/game-states.ts');
+      g.actionLog.clear();
+      const teams: string[] = (g.phase as any).teams;
+      // End the last phase so the order wraps to the player phase.
+      g.phase.setCurrentTeam(teams[teams.length - 1]);
+      const before = g.turnCount;
+      const turnChange = new TurnChangeState();
+      turnChange.start();
+      turnChange.begin();
+      turnChange.begin();
+      const after = g.turnCount;
+      const names = g.actionLog.actions.map((a: any) => a.constructor.name);
+      let undone = null;
+      while (g.actionLog.actions.length) {
+        const action = g.actionLog.undo();
+        if (action?.constructor?.name === 'IncrementTurnAction') { undone = g.turnCount; action.execute(); break; }
+      }
+      return { before, after, phaseTurn: g.phase.turnCount, undone, hasAction: names.includes('IncrementTurnAction') };
+    });
+
+    const first = await run();
+    expect(first.after).toBe(first.before + 1);
+    expect(first.hasAction).toBe(true);
+    expect(first.undone).toBe(first.before);
+    expect(first.phaseTurn).toBe(first.after);
+
+    // Save at turn 5, load: the next wrap continues from 5, not from 1.
+    await page.evaluate(() => { (window as any).__gameRef.turnCount = 5; (window as any).__gameRef.phase.turnCount = 5; });
+    const snapshot = await page.evaluate(() => (window as any).__harness.saveSnapshot());
+    expect(await page.evaluate((snap) => (window as any).__harness.loadSnapshot(snap), snapshot)).toBe(true);
+    await stepFrames(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.phase.turnCount)).toBe(5);
+    const second = await run();
+    expect([second.before, second.after]).toEqual([5, 6]);
   });
 
   test('composite event: multi-command scripted sequence undone as a single group', async ({ page }) => {
