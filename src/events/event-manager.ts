@@ -539,17 +539,6 @@ export interface ConditionContext {
   localArgs?: Map<string, any>;  // Trigger-specific extra args
 }
 
-/** The item_system callbacks registered by item-system (see setters above). */
-export function registeredItemEvaluators(): {
-  available: ItemAvailabilityEvaluator | null;
-  componentEntries: ItemComponentEntriesEvaluator | null;
-} {
-  return {
-    available: itemAvailabilityEvaluator ?? null,
-    componentEntries: itemComponentEntriesEvaluator ?? null,
-  };
-}
-
 /** Lazily-built, reused query-function dictionary. */
 let queryFuncsCache: Record<string, Function> | null = null;
 function sharedQueryFuncs(): Record<string, Function> {
