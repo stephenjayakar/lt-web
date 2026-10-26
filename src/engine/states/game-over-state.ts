@@ -230,21 +230,15 @@ export class GameOverState extends State {
       const x = Math.floor((vw - imgW) / 2);
       const y = Math.floor((vh - imgH) / 2);
       surf.drawImageFull(this.textImage, x, y, imgW, imgH, alpha);
-    } else if (this.textTransparency < 1) {
-      // Fallback: draw text with canvas if sprite not loaded
-      const alpha = 1 - this.textTransparency;
-      const text = 'GAME OVER';
-      const textW = text.length * 10;
-      const x = Math.floor((vw - textW) / 2);
-      const y = Math.floor(vh / 2 - 7);
-      surf.drawText(text, x, y, `rgba(200,40,40,${alpha})`, '14px monospace');
     }
 
     // 4. Draw the fade overlay on top (if loaded)
     if (this.fadeImage) {
-      const imgW = this.fadeImage.naturalWidth;
-      const imgH = this.fadeImage.naturalHeight;
-      surf.drawImageFull(this.fadeImage, 0, 0, imgW, imgH);
+      // game_over_fade is a WINWIDTH x WINHEIGHT vignette; cover the viewport.
+      const s = surf.scale;
+      surf.ctx.imageSmoothingEnabled = false;
+      surf.ctx.drawImage(this.fadeImage, 0, 0, this.fadeImage.naturalWidth, this.fadeImage.naturalHeight,
+        0, 0, Math.round(vw * s), Math.round(vh * s));
     }
 
     return surf;

@@ -124,6 +124,51 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     expect(await cssText(page)).toEqual([]);
   });
 
+  test('victory, game over, credits and text entry', async ({ page }, testInfo) => {
+    await boot(page);
+    const open = async (name: string, setup?: string): Promise<void> => {
+      await page.evaluate(([state, extra]) => {
+        const game = (window as any).__gameRef;
+        if (extra === 'text') {
+          game.memory.set('text_entry', ['answer', 'Who sent you here?', 16, ['numbers_and_punctuation'], true, null, 0]);
+        }
+        game.state.change(state);
+      }, [name, setup ?? ''] as const);
+      await settleAssets(page);
+      expect(await stateName(page)).toBe(name);
+      await cssText(page);
+      await step(page, 2);
+      await shot(page, name, testInfo);
+      expect(await cssText(page)).toEqual([]);
+    };
+    await open('victory');
+    await page.evaluate(() => (window as any).__gameRef.state.back());
+    await step(page, 2);
+    await open('text_entry', 'text');
+    const typed = await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      state.takeInput('RIGHT');
+      state.takeInput('SELECT');
+      state.takeInput('DOWN');
+      state.takeInput('SELECT');
+      return state.currentText;
+    });
+    expect(typed).toBe('Bb');
+    await press(page, 'START');
+    await step(page, 4);
+    await shot(page, 'text_confirm', testInfo);
+    await press(page, 'SELECT');
+    await step(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.gameVars.get('answer'))).toBe('Bb');
+    await open('credit');
+    await page.evaluate(() => (window as any).__gameRef.state.back());
+    await step(page, 2);
+    await open('game_over');
+    await page.waitForTimeout(200);
+    await step(page, 120);
+    await shot(page, 'game_over-late', testInfo);
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));
