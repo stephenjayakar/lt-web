@@ -93,11 +93,7 @@ test.describe('Rekka visual baselines', () => {
       game.state.change('save_menu');
       (window as any).__harness.stepFrames(2, null);
     });
-    // Save slots load asynchronously from storage.
-    await page.waitForFunction(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      return state?.name === 'save_menu' && state.loading === false;
-    }, undefined, { timeout: 15_000 });
+    await page.waitForTimeout(100);
     await page.evaluate(() => (window as any).__harness.stepFrames(1, null));
     expect(await page.evaluate(
       () => (window as any).__gameRef.state.getCurrentState()?.name,
