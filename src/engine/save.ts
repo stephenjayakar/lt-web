@@ -3,6 +3,7 @@
 // Mirrors LT's app/engine/save.py.
 // ---------------------------------------------------------------------------
 
+import { restoreActionLog, saveActionLog, type SavedActionLog } from './action-serialization';
 import type { NID, LevelPrefab, ItemPrefab, SkillPrefab, RegionData } from '../data/types';
 import type { Database } from '../data/database';
 import type { UnitObject, StatusEffect } from '../objects/unit';
@@ -403,6 +404,11 @@ export interface SaveDict {
    * `game_state.talk_hidden`). Optional for legacy saves (defaults to empty).
    */
   talkHidden?: string[];
+  /**
+   * Python game_state.save 'action_log': the turnwheel history. Absent in
+   * saves written before 1.1.0, which load with an empty log.
+   */
+  actionLog?: SavedActionLog;
 }
 
 export interface SaveMetadata {
@@ -438,7 +444,8 @@ const idbSet = (key: string, value: unknown): Promise<void> => getSaveStore().se
 const idbDelete = (key: string): Promise<void> => getSaveStore().delete(key);
 const idbKeys = (): Promise<string[]> => getSaveStore().keys();
 
-const CURRENT_SAVE_VERSION = '1.0.0';
+// 1.1.0 adds the turnwheel action log (older saves load with an empty one).
+const CURRENT_SAVE_VERSION = '1.1.0';
 let lastLoadError: string | null = null;
 
 export function getLastLoadError(): string | null {
@@ -967,6 +974,7 @@ export function buildSaveDict(game: any): SaveDict {
     talkHidden: game.eventManager
       ? (game.eventManager as EventManager).getTalkHidden()
       : [],
+    actionLog: game.actionLog ? saveActionLog(game, game.actionLog) : undefined,
   };
 }
 
@@ -1675,6 +1683,10 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
 
   // 16. Restore overworld registry
   game.overworldRegistry = new Map(s.overworldRegistry);
+
+  // 17. Python ActionLog.restore, last: saved actions refer to the restored
+  // units, items, skills, regions and subsystems.
+  if (game.actionLog) restoreActionLog(game, game.actionLog, s.actionLog);
 }
 
 // ============================================================================
