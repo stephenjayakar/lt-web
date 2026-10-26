@@ -46,14 +46,13 @@ gitignored.
 
 ### Hosted site build
 
-The hosted static site (25 MiB per file)
-cannot serve the single 387 MB bundle. `npm run build:site` builds `dist/` for
-it instead, straight from `lt-maker/eotf.ltproj` and the engine assets (no
-staging or bundle step needed):
+The hosted static site (25 MiB per file) cannot serve the single 387 MB
+bundle. `npm run build:site` builds `dist/` for it instead, straight from
+`lt-maker/eotf.ltproj` and the engine assets (no staging or bundle step
+needed):
 
 ```bash
-npm run build:site            # bakes VITE_CONVEX_URL = production Convex
-CONVEX_URL=https://<dev>.convex.cloud npm run build:site   # another deployment
+CONVEX_URL=https://<deployment>.convex.cloud npm run build:site
 ```
 
 Game data ships as content-hashed packs, `dist/packs/<sha256>.bin` plus

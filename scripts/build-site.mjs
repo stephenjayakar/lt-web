@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * build-site.mjs — Build dist/ for the hosted static site (
- * served from the site root).
+ * build-site.mjs — Build dist/ for the hosted static site (served from the
+ * site root).
  *
  * Usage:
  *   npm run build:site [-- --project <dir>] [--engine <lt-maker dir>]
@@ -12,7 +12,7 @@
  *   --engine DIR       lt-maker checkout with the engine-level assets
  *                      (default lt-maker; see stage-engine-assets.mjs)
  *   --convex-url URL   Convex deployment baked in as VITE_CONVEX_URL
- *                      (default $CONVEX_URL, else production)
+ *                      (default $CONVEX_URL; one of the two is required)
  *   --no-pngopt        keep PNG bytes as-is
  *   --music-on-demand  download each music track on first play instead of in
  *                      the background after boot
@@ -28,8 +28,8 @@
  * dist/packs/<sha256>.bin per chunk (scripts/lib/asset-packs.mjs).
  *
  * Fails when any dist/ file reaches the static host's 25 MiB per-file limit,
- * when dist/ as a whole reaches 240 MiB (headroom under the host's 256 MiB
- * archive cap), when raw game assets (game-data/, bundles/, loose media) end
+ * when dist/ as a whole reaches 240 MiB (headroom under the host's 256
+ * MiB archive cap), when raw game assets (game-data/, bundles/, loose media) end
  * up outside dist/packs/, or when a chunk does not match the manifest.
  */
 
@@ -41,7 +41,6 @@ import { fileURLToPath } from 'url';
 import { buildPacks, collectFiles, packRecord } from './lib/asset-packs.mjs';
 import { checkMusicTools, transcodeAll } from './lib/music-transcode.mjs';
 
-const PROD_CONVEX_URL = 'https://<prod-deployment>.convex.cloud';
 const FILE_LIMIT = 25 * 1024 * 1024;
 const TOTAL_LIMIT = 240 * 1024 * 1024;
 
@@ -57,7 +56,11 @@ const projectDir = resolve(root, opt('--project', 'lt-maker/eotf.ltproj'));
 const engineDir = resolve(root, opt('--engine', 'lt-maker'));
 // EOtF engine-fork sprites ship in the engine pack (/game-data/fork-sprites/).
 const forkDir = resolve(root, 'public/fork-sprites');
-const convexUrl = opt('--convex-url', process.env.CONVEX_URL || PROD_CONVEX_URL);
+const convexUrl = opt('--convex-url', process.env.CONVEX_URL);
+if (!convexUrl) {
+  console.error('build:site needs the Convex deployment: --convex-url <url> or CONVEX_URL');
+  process.exit(1);
+}
 const pngopt = !flag('--no-pngopt');
 const musicLoad = flag('--music-on-demand') ? 'demand' : 'background';
 const musicQualityArg = opt('--music-quality', '5');
