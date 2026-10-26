@@ -50,6 +50,7 @@ const HUD_SPRITES = [
   ...['blue', 'red', 'green', 'purple'].flatMap((color) => [
     `health_${color}`, `combat_stats_${color}`, `combat_stats_guard_${color}`, `combat_gem_${color}`,
   ]),
+  'Minimap_Tiles', 'Minimap_Sprites', 'Minimap_Cursor',
 ];
 
 type Game = any;

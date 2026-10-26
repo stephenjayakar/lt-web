@@ -123,6 +123,38 @@ test('attack forecast slides in at the Python corner', async ({ page }, testInfo
   await page.locator('canvas').screenshot({ path: testInfo.outputPath('hud-attack-forecast.png') });
 });
 
+test('minimap is built from Minimap_Tiles cells like minimap.py', async ({ page }, testInfo) => {
+  await bootLevel(page);
+  await page.waitForFunction(async () => {
+    const sprites = await import('/src/ui/sprites.ts');
+    await sprites.preloadSprites(['Minimap_Tiles', 'Minimap_Sprites', 'Minimap_Cursor']);
+    return true;
+  });
+  const result = await page.evaluate(async () => {
+    const game = (window as any).__gameRef;
+    const sprites = await import('/src/ui/sprites.ts');
+    game.state.change('minimap');
+    (window as any).__harness.stepFrames(25, null);
+    const state = game.state.getCurrentState();
+    const tiles = sprites.getSprite('Minimap_Tiles')!;
+    // First Grass-minimap tile without a unit on it.
+    let grass: [number, number] | null = null;
+    for (let y = 0; y < game.tilemap.height && !grass; y++) {
+      for (let x = 0; x < game.tilemap.width && !grass; x++) {
+        const terrain = game.db.terrain.get(game.board.getTerrain(x, y));
+        if (terrain?.minimap === 'Grass' && !game.board.getUnit(x, y)) grass = [x, y];
+      }
+    }
+    const built = state.minimap.surf.getPixel(grass![0] * 4 + 1, grass![1] * 4 + 1);
+    // MinimapCatalog.single_map['Grass'] = (1, 0).
+    const expected = tiles.getPixel(1 * 4 + 1, 0 * 4 + 1);
+    return { name: state.name, built, expected };
+  });
+  expect(result.name).toBe('minimap');
+  expect(result.built).toEqual(result.expected);
+  await page.locator('canvas').screenshot({ path: testInfo.outputPath('minimap.png') });
+});
+
 test('project custom_sprites override engine sprites like Python SPRITES', async ({ page }) => {
   await bootLevel(page);
   const urls = await page.evaluate(async () => {
