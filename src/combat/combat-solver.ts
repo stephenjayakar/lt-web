@@ -6,6 +6,7 @@ import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
 import {
+  damage as itemDamage,
   damageOnMiss,
   extraDamage,
   hasDamageOnMiss,
@@ -75,6 +76,11 @@ export interface CombatStrike {
   allySkillHpChanges?: Array<{ unit: UnitObject; amount: number }>;
   /** Damage rewritten to a cover unit by EotF after_take_strike hooks. */
   redirectedDamage?: Array<{ unit: UnitObject; amount: number }>;
+  /**
+   * ShoveFlexibleStopsEvent impact events found when the strike was solved,
+   * fired with the strike's other on_hit events (queueStrikeItemEvents).
+   */
+  shoveImpactEvents?: Array<(manager: { triggerSpecific: (nid: string, trigger: any) => unknown }) => unknown>;
   /** Skill snapshots retained for event dispatch after immediate mutations. */
   attackHookSkills?: SkillObject[];
   defenseHookSkills?: SkillObject[];
@@ -1220,14 +1226,11 @@ export class CombatPhaseSolver {
         dmg = strikeDamage(crit);
         dmg = this.applyCustomHitDamage(item, target, dmg);
       }
-      const solomonChange = solomonHpChange(
-        striker,
-        item,
-        target,
-        this.game,
-      );
-      dmg = solomonChange === null ? Math.max(0, dmg) : -solomonChange;
+      dmg = Math.max(0, dmg);
     }
+    // Python Damage.on_hit only exists on items with a damage component.
+    if (itemDamage(striker, item, this.game) === null) dmg = 0;
+    if (hit && !guarded) dmg = this.onHitHpChange(striker, item, target, dmg);
 
     const strike: CombatStrike = {
       attacker: striker,
@@ -1396,12 +1399,15 @@ export class CombatPhaseSolver {
     } else {
       const reference = splash[0];
       if (reference) {
+        // The attacker's own HP (lifelink, after-strike events) carries into
+        // its later splash phases, as Python applies each phase's actions.
+        const attackerHp = splashHp.get(attacker) ?? this.trackHp(attacker, attacker.currentHp);
         const strikeCount = doubleSplash
           ? calcs.computeStrikeCount(attacker, attackItem, reference, null)
           : 1;
         const phase = this.nextPhase(attacker);
         for (let idx = 0; idx < strikeCount; idx++) {
-          if (idx > 0 && !this.itemHasUses(attacker, attackItem)) break;
+          if (idx > 0 && (!this.itemHasUses(attacker, attackItem) || attackerHp.hp <= 0)) break;
           const appended = appendSplash(undefined, undefined, [phase, idx]);
           if (appended.length > 0) yield appended;
         }
@@ -1862,6 +1868,9 @@ export class CombatPhaseSolver {
       }
       dmg = Math.max(0, dmg);
     }
+    // Python Damage.on_hit only exists on items with a damage component.
+    if (itemDamage(striker, item, this.game) === null) dmg = 0;
+    if (hit && !guarded) dmg = this.onHitHpChange(striker, item, target, dmg);
 
     const strike: CombatStrike = {
       attacker: striker,
@@ -1888,6 +1897,24 @@ export class CombatPhaseSolver {
     this.pendingStrikeProcs = procs;
     this.updateGuardGauges(striker, item, target, db);
     return strike;
+  }
+
+  /**
+   * Item on_hit HP changes besides damage: Heal / EquationHeal and EOtF's
+   * EvalHeal / HealNoTargetRestrict append ChangeHP(target, heal), and
+   * SolomonHeal a signed ChangeHP, to the strike's actions, so the HP lands
+   * with the hit (before later phases are solved). A heal is negative damage.
+   */
+  private onHitHpChange(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    damage: number,
+  ): number {
+    const solomonChange = solomonHpChange(striker, item, target, this.game);
+    if (solomonChange !== null) return -solomonChange;
+    const heal = healAmount(striker, item, target, this.game);
+    return heal === null ? damage : damage - heal;
   }
 
   private applyCustomHitDamage(

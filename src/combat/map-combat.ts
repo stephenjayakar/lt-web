@@ -1204,7 +1204,9 @@ export class MapCombat implements StrikeEventCombat {
     const lethal = after <= 0;
 
     if (damage < 0) {
-      // Heal on_hit: HealHit + MapHeal sound + heal-size map animation.
+      // Heal on_hit: HealHit + MapHeal sound + heal-size map animation,
+      // only when it heals something (Python's true_heal > 0).
+      if (after <= before) return;
       const heal = -damage;
       addDamageNumbers(target, heal, 'small_cyan');
       this.playSfx('MapHeal');

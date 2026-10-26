@@ -45,7 +45,6 @@ import {
   pivotDestination,
   rekkaMovementEndpoints,
   shoveDestination,
-  healAmount as itemHealAmount,
   effectiveItemComponents,
   inventoryFull,
 } from './item-system';
@@ -1822,23 +1821,29 @@ export function planOnHitForcedMovement(
         false,
         componentNid === 'shove_flex_stops_event'
           ? (occupant) => {
+              // Python triggers the impact event inside this on_hit, so it
+              // joins the strike's other on_hit events in component order:
+              // queueStrikeItemEvents fires it there.
               const event = componentOption(rawValue, 'impact_event');
-              if (typeof event !== 'string' || !event || !game.eventManager) return;
-              game.eventManager.triggerSpecific(event, {
+              if (typeof event !== 'string' || !event) return;
+              const position = mark.defender.position
+                ? [...mark.defender.position] as [number, number]
+                : undefined;
+              const item2 = equippedWeapon(mark.defender);
+              const mode = strikeMode(mark);
+              (strike.shoveImpactEvents ??= []).push((manager) => manager.triggerSpecific(event, {
                 type: 'shove_impact',
                 unit1: mark.defender,
                 unit2: occupant,
                 unitNid: mark.defender.nid,
-                position: mark.defender.position
-                  ? [...mark.defender.position] as [number, number]
-                  : undefined,
+                position,
                 item: strike.item,
                 localArgs: new Map<string, unknown>([
                   ['item', strike.item],
-                  ['item2', equippedWeapon(mark.defender)],
-                  ['mode', strikeMode(mark)],
+                  ['item2', item2],
+                  ['mode', mode],
                 ]),
-              });
+              }));
             }
           : undefined,
       );
@@ -1931,13 +1936,16 @@ export function applyPlannedForcedMovement(
   return applied;
 }
 
-/** Plan and apply one strike's on-hit movement at once. */
+/** Plan and apply one strike's on-hit movement (and impact events) at once. */
 export function applyOnHitForcedMovement(
   game: CombatLifecycleGame,
   strike: CombatStrike,
 ): number {
   if (!game.actionLog) return 0;
-  return applyPlannedForcedMovement(game, planOnHitForcedMovement(game, strike));
+  const planned = planOnHitForcedMovement(game, strike);
+  const manager = game.eventManager;
+  if (manager) for (const trigger of strike.shoveImpactEvents?.splice(0) ?? []) trigger(manager);
+  return applyPlannedForcedMovement(game, planned);
 }
 
 /** Apply item end-combat resource hooks once per item that participated. */
@@ -1956,14 +1964,8 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         .map((candidate) => [candidate.defender.nid, candidate]),
     ).values()];
     for (const mark of itemMarks.filter((candidate) => candidate.hit)) {
-      const healing = itemHealAmount(mark.attacker, strike.item, mark.defender, game);
-      if (healing !== null) {
-        game.actionLog.doAction(new SetCurrentHpAction(
-          mark.defender,
-          mark.defender.currentHp + healing,
-        ));
-        applied++;
-      }
+      // Heal-family on_hit HP lands with the hit (the solver's negative
+      // strike damage), not here.
       if (strike.item.hasComponent('restore_no_target_restrict')) {
         for (const skill of [...mark.defender.skills]) {
           if (!skill.hasComponent('negative')) continue;
@@ -2311,10 +2313,28 @@ export function queueStrikeItemEvents(
   const manager = game.eventManager;
   if (!manager || !strike.hit) return 0;
   let queued = 0;
-  for (const component of ['event_on_use', 'event_on_hit']) {
+  // item_system.on_hit runs the item's components in order: event_on_use /
+  // event_on_hit trigger their events, and ShoveFlexibleStopsEvent its
+  // impact event (planned when the strike was solved).
+  const pending = ['event_on_use', 'event_on_hit'];
+  const fire = (component: string): void => {
+    if (component === 'shove_flex_stops_event') {
+      for (const trigger of strike.shoveImpactEvents?.splice(0) ?? []) {
+        if (trigger(manager)) queued++;
+      }
+      return;
+    }
+    const at = pending.indexOf(component);
+    if (at < 0) return;
+    pending.splice(at, 1);
     const nid = eventNid(strike.item, component);
     if (nid && manager.triggerSpecific(nid, triggerForStrike(strike, index))) queued++;
-  }
+  };
+  const order = game.db
+    ? effectiveItemComponents(strike.attacker, strike.item, game.db, game).map(([nid]) => nid)
+    : [...strike.item.components.keys()];
+  for (const component of order) fire(component);
+  for (const component of [...pending, 'shove_flex_stops_event']) fire(component);
   return queued;
 }
 
