@@ -156,9 +156,14 @@ export class InfoMenuState extends State {
       return;
     }
 
-    // Build list of same-team units for UP/DOWN cycling
+    // Python InfoMenuState: memory['scroll_units'] (e.g. the whole party
+    // from preparations) overrides the default on-map same-team list.
+    const scrollUnits: UnitObject[] | null = game.memory?.get?.('scroll_units') ?? null;
+    game.memory?.set?.('scroll_units', null);
     this.unitList = [];
-    if (game.board) {
+    if (scrollUnits) {
+      this.unitList = scrollUnits.filter((u) => !u.isDead() && !u.tags?.includes('Tile'));
+    } else if (game.board) {
       const allUnits: UnitObject[] = game.board.getAllUnits();
       for (const u of allUnits) {
         if (u.team === this.unit.team && !u.isDead() && u.position) {
@@ -201,6 +206,8 @@ export class InfoMenuState extends State {
         }
         break;
       case 'BACK':
+        // Python back(): remember the viewed unit so the caller re-selects it.
+        game.memory?.set?.('current_unit', this.unit);
         game.state.back();
         break;
       case 'SELECT':

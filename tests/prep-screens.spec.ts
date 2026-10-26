@@ -164,6 +164,8 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     await step(page, 1, 'INFO');
     await step(page, 3);
     expect((await stack(page)).at(-1)).toBe('info_menu');
+    // Python passes scroll_units = the whole party (benched units too).
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()['unitList'].length)).toBe(8);
     await step(page, 1, 'BACK');
     await step(page, 3);
     const current = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().menu.getCurrentUnit().nid);
