@@ -119,7 +119,7 @@ Deviations from Python behavior that are intentional, documented, and covered by
 | Item cast pose: "stands still" instead of pose animation | Combat animation | Web has no sprite pose/state machine; no `combat_attacker`/`start_cast` states | `PLAN.md` Recent Changes "Aesthetic combat-feedback..." | Documented |
 | Mutual-kill drop transfer: skip rather than hand items to corpse | Combat | Python still transfers items before kill; web skips transfer (item would be unrecoverable anyway) | `PLAN.md` Recent Changes "Droppable-item pickup..." | Documented |
 | Supply menu: flat sorted list instead of multi-tab convoy UI | UI | Simplified UX; still supports full give/take round-trip with exact undo | `PLAN.md` Recent Changes "Supply/convoy..." | Documented |
-| Promotion fanfare: choice menu instead of animated screen | UI | FIXED 2026-10-26: `promotion_choice`/`class_change_choice` and `promotion`/`class_change` (Promotion1/Promotion2 effects, level screen) port promotion.py, for items and non-silent event `promote`/`change_class`. AI item promotions still apply without the screens | `tests/eotf-promotion-screens.spec.ts`, `tests/promotion.spec.ts` | Verified (fixed) |
+| Promotion fanfare: choice menu instead of animated screen | UI | FIXED 2026-10-26: `promotion_choice`/`class_change_choice` and `promotion`/`class_change` (Promotion1/Promotion2 effects, level screen) port promotion.py, for items and non-silent event `promote`/`change_class`. Neither engine's AI uses promotion items (no `ai_priority`); BACK from an item's choice returns to the map with the item unspent | `tests/eotf-promotion-screens.spec.ts`, `tests/promotion.spec.ts` | Verified (fixed) |
 | Mid-combat SPD status change: doubling eligibility not re-evaluated | Combat | Web solver computes `attackerDoubles`/`defenderDoubles` once; Python re-evaluates on every state transition | `PLAN.md` P4 "deterministic golden..." | Deferred |
 | `item_icon_flash` menu icon white-flash | Item UI | No clean seam in current item-menu icon pipeline | `PLAN.md` Recent Changes "Aesthetic combat-feedback..." | Deferred |
 | ~~Glancing-hit damage~~ | Combat | IMPLEMENTED 2026-07-19 (same-draw band check, half damage truncated, `glancing_hit` constant gating; `tests/glancing.spec.ts`) — dedicated playback marks remain deferred | PLAN.md Recent Changes | Fixed |
@@ -191,6 +191,18 @@ upkeep damage firing `unit_death`; and the query functions `has_skill`, `is_dead
 arguments, `get_charge` and `v()` (`tests/fork-combat-math.spec.ts`,
 `tests/fork-unit-tags.spec.ts`, `tests/fork-region-interrupt.spec.ts`,
 `tests/fork-event-queries.spec.ts`).
+
+Follow-ups, also both engines (`tests/fork-followups.spec.ts`): Shove, Swap, Pivot,
+DrawBack and EOtF's flex shoves are `on_hit` actions applied with each hit before
+the next phase is solved (a shoved melee defender cannot counter); the solver
+follows `item_has_uses`/`can_counterattack`, so a weapon spent mid-combat strikes
+no more; a surviving player defender earns its weapon's exp when the attacker
+doesn't (`handle_exp`); phase skipping ignores Tile units; AI canto retreats and
+event `move_unit` walks stop on `interrupt_move` regions (the event keeps running;
+Python's player-surprise state clear is not reproduced for event moves); `choice;...;expression`
+re-evaluates every frame; non-fading battle-scene `screen_blend` flashes draw at
+full strength. Battle animations draw no extra-damage digits, as the fork's
+AnimationCombat (only map combat shows them, in `extra_purple`).
 
 ---
 

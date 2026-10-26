@@ -174,16 +174,21 @@ The release gate is green: build, all four audits, the full serial suite,
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
   Python (pinned in `tests/map-hud.spec.ts`).
-- [ ] AI-used promotion items still promote without the screens.
+- [x] AI-used promotion items: neither engine's AI picks one (Promote has no
+  `ai_priority` and no damage, so PrimaryAI never scores it above 0); nothing
+  to port. BACK from an item's promotion choice returns to the map with the
+  unit still able to act and the item unspent, as Python's reverse_use.
 - [x] Engine sprites: the EOtF fork's copies (123x60 `unit_info_bg`, 48x30
   `menu_bg_parchment`, 15 fork-only) win for EOtF and are packed with the
   engine assets; fonts and platforms match upstream.
 - [x] Fork-parity audit (`temp/plan-fork-diff.md`): EOtF follows its engine
   fork's combat cleanup order, formula precedence, components, level cap, AI,
   events/queries, map/menu flow, window skin and info menu (`isForkEngine()`).
-- [ ] Fork-parity leftovers: shove on hit (not end of combat), solver stopping
-  when a weapon breaks mid-combat, defender combat exp, Tile filtering in phase
-  skipping, interrupt regions for AI canto/event moves, lazy choice
-  expressions, purple extra damage in animation combat.
-- [ ] AnimationCombat's non-fading `screen_blend` flash draws at zero
-  strength (`make_translucent_blend` keeps it at full).
+- [x] Fork-parity leftovers (`tests/fork-followups.spec.ts`): on-hit movers
+  (shove/swap/pivot/draw_back, flex shoves) land with the hit before the next
+  phase is solved; the solver stops a side whose weapon runs out mid-combat;
+  a surviving player defender earns its weapon exp; Tile units don't keep a
+  phase alive; AI canto retreats and event moves stop on interrupt regions;
+  `choice;...;expression` re-evaluates every frame; battle animations draw no
+  extra-damage digits (the fork's AnimationCombat has none).
+- [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.

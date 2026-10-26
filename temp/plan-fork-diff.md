@@ -79,14 +79,12 @@ project.
 
 ## Remaining (not changed)
 
-- Shove applies at end of combat rather than on each hit; the solver doesn't stop a
-  phase when a weapon runs out of uses mid-combat; AI multi_target repeats.
-- Animation combat still shows extra damage in red.
-- Defender combat exp (player units defending on enemy phase) is not granted.
-- Python Tile filtering in `get_all_units` for phase skipping; AI canto retreat,
-  event moves and fog ambush don't check interrupt regions.
-- Choice/table ignoring an authored bg (EOtF never sets one); lazy re-evaluation of
-  `choice;...;expression` (456 uses, presentation); `{v:}` None fall-through.
+- AI multi_target repeats.
+- Fog ambush doesn't check interrupt regions.
+- Choice/table ignoring an authored bg (EOtF never sets one); `{v:}` None fall-through.
+- (Fixed in `qa/fork-followups`: shove on hit, mid-combat weapon break, defender
+  exp, Tile phase skipping, AI canto/event-move interrupts, lazy choice
+  expressions, no extra-damage digits in battle animations.)
 - live_to_serve totals HP actually gained (Python totals requested heal);
   per-sub-combat ally healing; skill conditions see pre-combat HP during a fight.
 - Fork bug kept as a deliberate deviation: the per-unit level-cap modifier survives
