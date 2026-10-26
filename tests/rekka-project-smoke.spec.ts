@@ -1299,37 +1299,42 @@ test.describe('Rekka all-level compatibility', () => {
       const state = (window as any).__gameRef.state.getCurrentState() as any;
       state.cursor = state.options.indexOf('Manage');
     });
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    // Python route: Manage -> unit -> Trade -> partner (prep_trade_select)
+    // -> prep_trade (menus.Trade).
+    const step = (input: string | null) =>
+      page.evaluate((i) => (window as any).__harness.stepFrames(1, i), input);
+    await step('SELECT'); // Manage
+    await step('SELECT'); // first unit -> prep_manage_select
+    await step('SELECT'); // Trade -> prep_trade_select
+    await step('RIGHT'); // partner
+    await step('SELECT'); // -> prep_trade
     await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
 
     const before = await page.evaluate(() => {
-      const game = (window as any).__gameRef;
-      const state = game.state.getCurrentState() as any;
+      const state = (window as any).__gameRef.state.getCurrentState() as any;
       return {
         state: state?.name,
-        phase: state?.phase,
-        unit: game.selectedUnit?.nid,
-        partner: state?.tradePartner?.nid,
-        unitItems: game.selectedUnit?.items.map((item: any) => item.nid) ?? [],
-        partnerItems: state?.tradePartner?.items.map((item: any) => item.nid) ?? [],
+        unitItems: state?.menu?.owner.items.map((item: any) => item.nid) ?? [],
+        partnerItems: state?.menu?.partner.items.map((item: any) => item.nid) ?? [],
       };
     });
-    expect(before.state).toBe('trade');
-    expect(before.phase).toBe('select_items');
+    expect(before.state).toBe('prep_trade');
     expect(before.unitItems.length).toBeGreaterThan(0);
     expect(before.partnerItems.length).toBeGreaterThan(0);
 
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
-    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    // Select the owner's first item, then the partner's first item.
+    await step('SELECT');
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      menu.menu2.moveTo(0);
+      menu.selectingHand = [1, 0];
+    });
+    await step('SELECT');
     const after = await page.evaluate(() => {
-      const game = (window as any).__gameRef;
-      const state = game.state.getCurrentState() as any;
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
       return {
-        unitItems: game.selectedUnit.items.map((item: any) => item.nid),
-        partnerItems: state.tradePartner.items.map((item: any) => item.nid),
+        unitItems: menu.owner.items.map((item: any) => item.nid),
+        partnerItems: menu.partner.items.map((item: any) => item.nid),
       };
     });
     expect(after.unitItems[0]).toBe(before.partnerItems[0]);

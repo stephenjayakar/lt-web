@@ -91,6 +91,15 @@ import {
   setPrepGameRef,
 } from './engine/states/prep-state';
 import {
+  ManageState,
+  ManageSelectState,
+  TradeSelectState,
+  RestockState,
+  OptimizeAllChoiceState,
+  PrepTradeState,
+  setManageGameRef,
+} from './engine/states/manage-state';
+import {
   SupplyItemsState,
   ItemDiscardState,
   setSupplyGameRef,
@@ -107,7 +116,6 @@ import {
   BaseBexpSelectState,
   BaseBexpAllocateState,
   PartyTransferState,
-  BaseManageState,
   setBaseGameRef,
 } from './engine/states/base-state';
 import {
@@ -677,6 +685,7 @@ async function main(): Promise<void> {
   setBannerAudio(audioManager);
   setEventChoiceAudio(audioManager);
   setPrepGameRef(gameState);
+  setManageGameRef(gameState);
   setSupplyGameRef(gameState);
   setBaseGameRef(gameState);
   setSettingsGameRef(gameState);
@@ -758,7 +767,12 @@ async function main(): Promise<void> {
     new BaseBexpSelectState(),
     new BaseBexpAllocateState(),
     new PartyTransferState(),
-    new BaseManageState(),
+    new ManageState(),
+    new ManageSelectState(),
+    new TradeSelectState(),
+    new RestockState(),
+    new OptimizeAllChoiceState(),
+    new PrepTradeState(),
     new SettingsMenuState(),
     new MinimapState(),
     new TextEntryState(),

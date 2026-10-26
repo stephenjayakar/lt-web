@@ -407,7 +407,7 @@ test.describe('Rekka project-local item components', () => {
   test('all usable_in_base items appear in management and apply reversible effects', async ({ page }) => {
     await boot(page);
     const result = await page.evaluate(async () => {
-      const { BaseManageState } = await import('/src/engine/states/base-state.ts');
+      const { ManageSelectState } = await import('/src/engine/states/manage-state.ts');
       const { BaseUseState } = await import('/src/engine/states/game-states.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
       const game = (window as any).__gameRef;
@@ -427,10 +427,15 @@ test.describe('Rekka project-local item components', () => {
       const robe = new ItemObject(game.db.items.get('Angelic_Robe'));
       robe.owner = unit;
       unit.items.push(robe);
-      const manage: any = new BaseManageState();
-      manage.selectedNid = unit.nid;
-      manage.buildOptionMenu();
-      const useOption = manage.optionMenu.options.find((option: any) => option.value === 'use');
+      // Python PrepManageSelectState: 'Use' (no convoy) enabled by a base-usable item.
+      const hadConvoy = game.gameVars.get('_convoy');
+      game.gameVars.set('_convoy', false);
+      game.memory.set('current_unit', unit);
+      const manage: any = new ManageSelectState();
+      manage.start();
+      const useIdx = manage.selectMenu.options.findIndex((option: any) => option.entry?.text === 'Use');
+      const useOption = { enabled: useIdx >= 0 && !manage.selectMenu.options[useIdx].ignore, label: 'Use' };
+      game.gameVars.set('_convoy', hadConvoy);
 
       const beforeRobe = {
         hp: unit.stats.HP,
@@ -494,11 +499,13 @@ test.describe('Rekka project-local item components', () => {
       game.memory.set('base_use_unit', unit);
       const levelNineState: any = new BaseUseState();
       levelNineState.begin();
-      const masterAtNine = levelNineState.menu.options[0].enabled;
+      const usable = (state: any) => !!state.menu?.options.some((option: any) =>
+        option.entry?.item === masterSeal && !option.ignore);
+      const masterAtNine = usable(levelNineState);
       unit.level = 10;
       const levelTenState: any = new BaseUseState();
       levelTenState.begin();
-      const masterAtTen = levelTenState.menu.options[0].enabled;
+      const masterAtTen = usable(levelTenState);
       unit.level = oldLevel;
       unit.klass = oldKlass;
       const snapshot = harness.saveSnapshot();

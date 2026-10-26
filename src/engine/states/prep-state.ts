@@ -289,10 +289,6 @@ export class PrepMainState extends State {
         const evName = this.eventsOnOptions[this.menu.currentIndex];
         if (evName) this.triggerOptionEvent(evName);
       }
-    } else if (event === 'START') {
-      // Not in Python's prep_main, but harmless shortcut kept for the web
-      // touch controls (START = Fight).
-      this.tryFight();
     }
   }
 

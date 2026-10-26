@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 49,
-    "merged": 64,
+    "exact": 54,
+    "merged": 59,
     "open": 0,
-    "web": 67
+    "web": 72
   },
   "rows": [
     {
@@ -404,9 +404,9 @@
       "name": "optimize_all_choice",
       "className": "OptimizeAllChoiceState",
       "source": "lt-maker/app/engine/prep.py",
-      "status": "merged",
-      "webState": "prep_pick",
-      "webSource": "src/engine/states/prep-state.ts"
+      "status": "exact",
+      "webState": "optimize_all_choice",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "option_child",
@@ -550,7 +550,7 @@
       "source": "lt-maker/app/engine/prep.py",
       "status": "merged",
       "webState": "base_manage",
-      "webSource": "src/engine/states/base-state.ts"
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_main",
@@ -566,15 +566,15 @@
       "source": "lt-maker/app/engine/prep.py",
       "status": "merged",
       "webState": "base_manage",
-      "webSource": "src/engine/states/base-state.ts"
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_manage_select",
       "className": "PrepManageSelectState",
       "source": "lt-maker/app/engine/prep.py",
-      "status": "merged",
-      "webState": "base_manage",
-      "webSource": "src/engine/states/base-state.ts"
+      "status": "exact",
+      "webState": "prep_manage_select",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_market",
@@ -596,25 +596,25 @@
       "name": "prep_restock",
       "className": "PrepRestockState",
       "source": "lt-maker/app/engine/prep.py",
-      "status": "merged",
-      "webState": "supply_items",
-      "webSource": "src/engine/states/supply-state.ts"
+      "status": "exact",
+      "webState": "prep_restock",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_trade",
       "className": "PrepTradeState",
       "source": "lt-maker/app/engine/trade.py",
-      "status": "merged",
-      "webState": "trade",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "prep_trade",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_trade_select",
       "className": "PrepTradeSelectState",
       "source": "lt-maker/app/engine/prep.py",
-      "status": "merged",
-      "webState": "trade",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "prep_trade_select",
+      "webSource": "src/engine/states/manage-state.ts"
     },
     {
       "name": "prep_use",

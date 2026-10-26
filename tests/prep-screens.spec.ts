@@ -173,6 +173,98 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     expect((await stack(page)).at(-1)).toBe('prep_main');
   });
 
+  test('Manage uses the 4x3 unit table, manage-select grid, trade select and menus.Trade', async ({ page }, testInfo) => {
+    test.slow();
+    await openPrep(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.gameVars.set('_convoy', true);
+      g.getParty().money = 1234;
+      const state = g.state.getCurrentState();
+      state.cursor = state.options.indexOf('Manage');
+    });
+    await step(page, 1, 'SELECT');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('base_manage');
+    const table = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      return { rows: menu.rows, columns: menu.columns, topleft: menu.topleft, mode: menu.mode, width: menu.getMenuWidth() };
+    });
+    expect(table).toEqual({ rows: 4, columns: 3, topleft: [6, 0], mode: 'prep_manage', width: 224 });
+    await attachShot(page, testInfo, 'manage');
+
+    // Select Termina (column 2) -> PrepManageSelectState.
+    await page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      state.menu.moveTo(state.units.findIndex((u: any) => u.nid === 'Termina'));
+    });
+    await step(page, 1, 'SELECT');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('prep_manage_select');
+    const select = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().selectMenu;
+      return {
+        options: menu.options.map((o: any) => o.entry.text),
+        ignore: menu.options.map((o: any) => o.ignore),
+        layout: [menu.rows, menu.columns, ...menu.topleft],
+      };
+    });
+    expect(select.options).toEqual(['Trade', 'Restock', 'Give all', 'Optimize', 'Items', 'Market']);
+    // Convoy on: Trade, Give all, Optimize and Items open; no restockable
+    // items and no market.
+    expect(select.ignore).toEqual([false, true, false, false, false, true]);
+    expect(select.layout).toEqual([3, 2, 120, 80]);
+    await attachShot(page, testInfo, 'manage-select');
+
+    // Trade -> PrepTradeSelectState with a fake cursor on Termina.
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    expect((await stack(page)).at(-1)).toBe('prep_trade_select');
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState()['menu'];
+      menu.moveTo(menu.options.findIndex((o: any) => o.entry?.unit?.nid === 'Gorbat'));
+    });
+    await settleImages(page);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()['menu'].fakeCursorIdx)).not.toBeNull();
+    await attachShot(page, testInfo, 'trade-select');
+
+    await step(page, 1, 'SELECT');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('prep_trade');
+    const before = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      return { owner: menu.owner.items.map((i: any) => i.nid), partner: menu.partner.items.map((i: any) => i.nid) };
+    });
+    // Select Termina's first item; the hand jumps to Gorbat's first open slot.
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    await attachShot(page, testInfo, 'prep-trade-selected');
+    await step(page, 1, 'SELECT');
+    await step(page, 2);
+    const after = await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().menu;
+      return { owner: menu.owner.items.map((i: any) => i.nid), partner: menu.partner.items.map((i: any) => i.nid) };
+    });
+    expect(after.owner).toEqual(before.owner.slice(1));
+    expect(after.partner).toContain(before.owner[0]);
+    // Prep trades never mark the unit as having traded.
+    expect(await page.evaluate(() => (window as any).__gameRef.getUnit('Termina').hasTraded)).toBe(false);
+
+    // Back out to the unit table; START opens Optimize All.
+    for (let i = 0; i < 3; i++) {
+      await step(page, 1, 'BACK');
+      await step(page, 2);
+    }
+    expect((await stack(page)).at(-1)).toBe('base_manage');
+    await step(page, 1, 'START');
+    await settleImages(page);
+    expect((await stack(page)).at(-1)).toBe('optimize_all_choice');
+    await attachShot(page, testInfo, 'optimize-all');
+    await step(page, 1, 'BACK');
+    await step(page, 2);
+    expect((await stack(page)).at(-1)).toBe('base_manage');
+  });
+
   test('Formation selects a unit with the hand marker and moves it to a formation tile', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);

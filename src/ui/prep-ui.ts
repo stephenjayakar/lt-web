@@ -713,7 +713,10 @@ export class Table {
 export type ChoiceEntry =
   | { kind: 'text'; text: string }
   | { kind: 'item'; item: ItemObject; owner?: UnitObject | null }
-  | { kind: 'empty' };
+  /** EmptyOption: an unselectable filler row. */
+  | { kind: 'empty' }
+  /** BasicOption('') used by menus.Trade for open inventory slots. */
+  | { kind: 'blank' };
 
 interface ChoiceOption {
   entry: ChoiceEntry;
@@ -770,6 +773,11 @@ export class Choice {
   }
   getCurrentItem(): ItemObject | null {
     const e = this.getCurrent();
+    return e?.kind === 'item' ? e.item : null;
+  }
+
+  itemAt(idx: number): ItemObject | null {
+    const e = this.options[idx]?.entry;
     return e?.kind === 'item' ? e.item : null;
   }
 
@@ -859,12 +867,13 @@ export class Choice {
   private optionWidth(option: ChoiceOption): number {
     const e = option.entry;
     if (e.kind === 'item') return 104;
-    if (e.kind === 'empty') return 104;
-    return textWidth(e.text) + 24;
+    if (e.kind === 'empty' || e.kind === 'blank') return 104;
+    // HorizOption.width is the bare text width; BasicOption adds 24.
+    return textWidth(e.text) + (this.horizontal ? 0 : 24);
   }
 
   getMenuWidth(): number {
-    if (this.horizontal) return this.options.reduce((sum, o) => sum + this.optionWidth(o) - 16 + 8, 0) + 16;
+    if (this.horizontal) return this.options.reduce((sum, o) => sum + this.optionWidth(o) + 8, 0) + 16;
     const maxWidth = Math.max(...this.options.map((o) => this.optionWidth(o)));
     return maxWidth - (maxWidth % 8);
   }
@@ -891,7 +900,7 @@ export class Choice {
     if (this.horizontal) {
       let running = 0;
       this.options.forEach((o, i) => {
-        const w = this.optionWidth(o) - 16;
+        const w = this.optionWidth(o);
         rects.push([i, ox + x + running, oy + y + 4, w, 16]);
         running += w + 8;
       });
@@ -1163,4 +1172,223 @@ export class CustomAlert {
     blitSprite(surf, getSprite('menu_gem_small'), x, y, 0.9);
     drawText(surf, this.text, x + 6, y + 12 - 8 + 3);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Trade (menus.Trade)
+// ---------------------------------------------------------------------------
+
+/** Python icons.get_portrait (96x80 face) drawn optionally flipped. */
+export function drawPortrait(
+  surf: Surface, game: any, unit: UnitObject, x: number, y: number,
+  crop: [number, number, number, number] = [0, 0, 96, 80], flip = false,
+): void {
+  const sheet = getPortraitSheet(game, unit.portraitNid);
+  if (!sheet) return;
+  const [sx, sy, sw, sh] = crop;
+  const ctx = surf.ctx;
+  const s = surf.scale;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  if (flip) {
+    ctx.translate(Math.round((x + sw) * s), 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(sheet, sx, sy, sw, sh, 0, Math.round(y * s), sw * s, sh * s);
+  } else {
+    ctx.drawImage(sheet, sx, sy, sw, sh, Math.round(x * s), Math.round(y * s), sw * s, sh * s);
+  }
+  ctx.restore();
+}
+
+/** Python menus.Trade.get_items: items + blank slots, accessories + blank slots. */
+export function tradeEntries(game: any, unit: UnitObject): ChoiceEntry[] {
+  const numItems = Number(game.db?.getConstant?.('num_items', 5) ?? 5);
+  const numAccessories = Number(game.db?.getConstant?.('num_accessories', 0) ?? 0);
+  const items = unit.items.filter((i) => !i.isAccessory());
+  const accessories = unit.items.filter((i) => i.isAccessory());
+  const entries: ChoiceEntry[] = items.map((item) => ({ kind: 'item', item }));
+  for (let n = items.length; n < numItems; n++) entries.push({ kind: 'blank' });
+  for (const item of accessories) entries.push({ kind: 'item', item });
+  for (let n = accessories.length; n < numAccessories; n++) entries.push({ kind: 'blank' });
+  return entries;
+}
+
+export class TradeMenu {
+  readonly owner: UnitObject;
+  readonly partner: UnitObject;
+  menu1: Choice;
+  menu2: Choice;
+  selectingHand: [number, number] = [0, 0];
+  otherHand: [number, number] | null = null;
+  selectedIdx: [number, number] | null = null;
+  private game: any;
+
+  constructor(game: any, owner: UnitObject, partner: UnitObject) {
+    this.game = game;
+    this.owner = owner;
+    this.partner = partner;
+    const limit = Math.min(5, totalItemSlots(game));
+    this.menu1 = new Choice(game, tradeEntries(game, owner), [11, 68]);
+    this.menu1.setLimit(limit);
+    this.menu2 = new Choice(game, tradeEntries(game, partner), [125, 68]);
+    this.menu2.setLimit(limit);
+    this.menu2.drawCursor = 0;
+  }
+
+  private menuFor(side: number): Choice { return side === 0 ? this.menu1 : this.menu2; }
+
+  hasSelection(): boolean { return this.selectedIdx !== null; }
+
+  /** The selected [owner, item|null] and the hovered [owner, item|null]. */
+  selectedItem(): [UnitObject, ItemObject | null] | null {
+    if (!this.selectedIdx) return null;
+    const [side, idx] = this.selectedIdx;
+    return [side === 0 ? this.owner : this.partner, this.menuFor(side).itemAt(idx)];
+  }
+  currentItem(): [UnitObject, ItemObject | null] {
+    const [side, idx] = this.selectingHand;
+    return [side === 0 ? this.owner : this.partner, this.menuFor(side).itemAt(idx)];
+  }
+
+  setSelectedOption(): void {
+    this.otherHand = this.selectingHand;
+    this.selectedIdx = [...this.selectingHand] as [number, number];
+    const [side, idx] = this.selectingHand;
+    const other = this.menuFor(1 - side);
+    const mine = this.menuFor(side);
+    const good = other.options.filter((o) => !o.ignore && o.entry.kind === 'item');
+    const empty = other.options.map((o, i) => (o.ignore || o.entry.kind !== 'item' ? i : -1)).filter((i) => i >= 0);
+    if (good.length > totalItemSlots(this.game)) other.moveTo(idx);
+    else if (empty.length) other.moveTo(empty[0]);
+    else other.moveTo(good.length);
+    other.cursor.yOffset = 0;
+    this.selectingHand = [1 - side, other.currentIndex];
+    mine.fakeCursorIdx = idx;
+    other.drawCursor = 1;
+    mine.drawCursor = 0;
+  }
+
+  unsetSelectedOption(): void {
+    this.selectedIdx = null;
+    this.selectingHand = this.otherHand ?? this.selectingHand;
+    this.otherHand = null;
+    this.menu1.fakeCursorIdx = null;
+    this.menu2.fakeCursorIdx = null;
+    const [side, idx] = this.selectingHand;
+    const menu = this.menuFor(side);
+    menu.moveTo(idx);
+    this.selectingHand = [side, menu.currentIndex];
+    menu.drawCursor = 1;
+    this.menuFor(1 - side).drawCursor = 0;
+  }
+
+  updateOptions(): void {
+    const i1 = this.menu1.currentIndex;
+    const i2 = this.menu2.currentIndex;
+    this.menu1.setOptions(tradeEntries(this.game, this.owner));
+    this.menu2.setOptions(tradeEntries(this.game, this.partner));
+    this.menu1.currentIndex = Math.min(i1, this.menu1.options.length - 1);
+    this.menu2.currentIndex = Math.min(i2, this.menu2.options.length - 1);
+  }
+
+  moveDown(firstPush = true): boolean {
+    const [side, old] = this.selectingHand;
+    const menu = this.menuFor(side);
+    menu.currentIndex = old;
+    menu.moveDown(firstPush);
+    this.selectingHand = [side, menu.currentIndex];
+    return menu.currentIndex !== old;
+  }
+
+  moveUp(firstPush = true): boolean {
+    const [side, old] = this.selectingHand;
+    const menu = this.menuFor(side);
+    menu.currentIndex = old;
+    menu.moveUp(firstPush);
+    this.selectingHand = [side, menu.currentIndex];
+    return menu.currentIndex !== old;
+  }
+
+  moveLeft(): boolean {
+    if (this.selectingHand[0] !== 1) return false;
+    const valid = this.menu1.options.filter((o) => !o.ignore).length;
+    this.menu1.moveTo(Math.max(0, Math.min(this.selectingHand[1], valid - 1)));
+    this.selectingHand = [0, this.menu1.currentIndex];
+    this.menu1.drawCursor = 1;
+    this.menu1.cursor.yOffset = 0;
+    this.menu2.drawCursor = 0;
+    return true;
+  }
+
+  moveRight(): boolean {
+    if (this.selectingHand[0] !== 0) return false;
+    const valid = this.menu2.options.filter((o) => !o.ignore).length;
+    this.menu2.moveTo(Math.max(0, Math.min(this.selectingHand[1], valid - 1)));
+    this.selectingHand = [1, this.menu2.currentIndex];
+    this.menu2.drawCursor = 1;
+    this.menu2.cursor.yOffset = 0;
+    this.menu1.drawCursor = 0;
+    return true;
+  }
+
+  /** Mouse hover: move the selecting hand onto the hovered row. */
+  handleMouse(gx: number, gy: number, ox = 0, oy = 0): number {
+    for (const side of [0, 1]) {
+      const menu = this.menuFor(side);
+      for (const [idx, x, y, w, h] of menu.getRects(ox, oy)) {
+        if (gx >= x && gx <= x + w && gy >= y && gy <= y + h) {
+          menu.moveTo(idx);
+          if (this.selectingHand[0] !== side) {
+            menu.drawCursor = 1;
+            this.menuFor(1 - side).drawCursor = 0;
+          }
+          this.selectingHand = [side, idx];
+          return idx;
+        }
+      }
+    }
+    return -1;
+  }
+
+  update(): void {
+    this.menu1.update();
+    this.menu2.update();
+  }
+
+  draw(surf: Surface, ox = 0, oy = 0): void {
+    const game = this.game;
+    const nameSurf = getSprite('trade_name');
+    if (nameSurf) {
+      surf.blitImage(nameSurf, 0, 0, nameSurf.width, nameSurf.height, ox - 4, oy - 1);
+      surf.blitImage(nameSurf, 0, 0, nameSurf.width, nameSurf.height, ox + WINWIDTH - nameSurf.width + 4, oy - 1);
+    }
+    drawText(surf, this.owner.name, ox + 24 - Math.floor(textWidth(this.owner.name) / 2), oy);
+    drawText(surf, this.partner.name, ox + WINWIDTH - 24 - Math.floor(textWidth(this.partner.name) / 2), oy);
+    drawPortrait(surf, game, this.owner, ox + 11 + 52 - 48, oy, [0, 3, 96, 68], true);
+    drawPortrait(surf, game, this.partner, ox + 125 + 52 - 48, oy, [0, 3, 96, 68], false);
+    this.menu1.draw(surf, ox, oy);
+    this.menu2.draw(surf, ox, oy);
+  }
+}
+
+/** Python trade.check_trade. */
+export function checkTrade(
+  game: any, item1: ItemObject | null, owner1: UnitObject, item2: ItemObject | null, owner2: UnitObject,
+): boolean {
+  if (item1 === item2) return false; // same item, or two open slots
+
+  if (owner1 === owner2) return true;
+  if (item1 && item1.hasComponent('locked')) return false;
+  if (item2 && item2.hasComponent('locked')) return false;
+  if (item1 && item2 && item1.isAccessory() === item2.isAccessory()) return true;
+  const numItems = Number(game.db?.getConstant?.('num_items', 5) ?? 5);
+  const numAccessories = Number(game.db?.getConstant?.('num_accessories', 0) ?? 0);
+  const count = (u: UnitObject, acc: boolean) => u.items.filter((i) => i.isAccessory() === acc).length;
+  if (item1) {
+    if (count(owner2, item1.isAccessory()) >= (item1.isAccessory() ? numAccessories : numItems)) return false;
+  }
+  if (item2) {
+    if (count(owner1, item2.isAccessory()) >= (item2.isAccessory() ? numAccessories : numItems)) return false;
+  }
+  return true;
 }

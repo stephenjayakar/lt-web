@@ -156,6 +156,7 @@ import {
 } from '../action';
 
 import { ChoiceMenu, type MenuItemRow, type MenuOption } from '../../ui/menu';
+import { Choice as PrepChoice, screenOrigin as prepScreenOrigin, isFirstPush as prepIsFirstPush } from '../../ui/prep-ui';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { getSprite } from '../../ui/sprites';
@@ -4515,7 +4516,7 @@ export class ItemUseState extends State {
 // 4b2. BaseUseState - Use usable_in_base items on the managed unit
 // ============================================================================
 
-function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): boolean {
+export function canUseBaseItem(unit: UnitObject, item: ItemObject, game: any): boolean {
   if (!item.hasComponent('usable_in_base') || !item.hasComponent('usable')) return false;
   if (!itemAvailable(unit, item, game.db, game)) return false;
   if (item.maxUses > 0 && item.uses <= 0) return false;
@@ -4556,7 +4557,8 @@ export class BaseUseState extends State {
 
   private unit: UnitObject | null = null;
   private items: ItemObject[] = [];
-  private menu: ChoiceMenu | null = null;
+  /** Python PrepUseState: menus.Inventory at (6, 72) over the manage table. */
+  private menu: PrepChoice | null = null;
 
   override begin(): StateResult {
     const game = getGame();
@@ -4571,35 +4573,51 @@ export class BaseUseState extends State {
   private buildMenu(): void {
     const game = getGame();
     if (!this.unit) return;
-    this.items = this.unit.items.filter((item) => item.hasComponent('usable_in_base'));
-    if (this.items.length === 0) {
+    const unit = this.unit;
+    const numItems = Number(game.db.getConstant('num_items', 5));
+    const numAccessories = Number(game.db.getConstant('num_accessories', 0));
+    const regular = unit.items.filter((item) => !item.isAccessory());
+    const accessories = unit.items.filter((item) => item.isAccessory());
+    const slots: (ItemObject | null)[] = [...regular];
+    while (slots.length < numItems) slots.push(null);
+    slots.push(...accessories);
+    while (slots.length < numItems + accessories.length + Math.max(0, numAccessories - accessories.length)) slots.push(null);
+    this.items = slots.filter((item): item is ItemObject => !!item);
+    const ignore = slots.map((item) => !item || !canUseBaseItem(unit, item, game));
+    if (ignore.every(Boolean)) {
       this.menu = null;
       game.state.back();
       return;
     }
-    const options: MenuOption[] = this.items.map((item, index) => ({
-      label: item.maxUses > 0 ? `${item.name} ${item.uses}/${item.maxUses}` : item.name,
-      value: `item_${index}`,
-      enabled: canUseBaseItem(this.unit!, item, game),
-      description: item.desc || 'Use this item.',
-    }));
-    options.push({ label: 'Back', value: 'back', enabled: true, description: 'Return.' });
-    this.menu = new ChoiceMenu(options, 30, 30);
+    const previous = this.menu?.currentIndex ?? 0;
+    this.menu = new PrepChoice(game, slots.map((item) => item
+      ? { kind: 'item' as const, item }
+      : { kind: 'empty' as const }), [6, 72]);
+    this.menu.setIgnore(ignore);
+    if (!ignore[previous]) this.menu.currentIndex = previous;
+  }
+
+  override update(): StateResult {
+    this.menu?.update();
+    getGame().memory.get('manage_menu')?.update?.();
   }
 
   override takeInput(event: InputEvent): StateResult {
     if (!this.menu || !this.unit) return;
     const game = getGame();
-    const result = this.menu.handleInput(event);
-    if (!result) return;
-    if ('back' in result || result.selected === 'back') {
+    if (event === 'DOWN') { game.audioManager?.playSfx?.('Select 5'); this.menu.moveDown(prepIsFirstPush(game, 'DOWN')); return; }
+    if (event === 'UP') { game.audioManager?.playSfx?.('Select 5'); this.menu.moveUp(prepIsFirstPush(game, 'UP')); return; }
+    if (event === 'BACK') {
+      game.audioManager?.playSfx?.('Select 4');
       this.menu = null;
       game.memory.delete('base_use_unit');
       game.state.back();
       return;
     }
-
-    const index = Number(result.selected.replace('item_', ''));
+    if (event !== 'SELECT') return;
+    game.audioManager?.playSfx?.('Select 1');
+    const selected = this.menu.getCurrentItem();
+    const index = selected ? this.items.indexOf(selected) : -1;
     const item = this.items[index];
     if (!item || !canUseBaseItem(this.unit, item, game)) return;
 
@@ -4657,9 +4675,13 @@ export class BaseUseState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.96)');
-    surf.drawText(`Use Item — ${this.unit?.name ?? ''}`, 8, 7, 'rgba(220,200,128,1)', '9px monospace');
-    this.menu?.draw(surf);
+    const game = getGame();
+    const bg = game.memory.get('prep_bg');
+    if (bg?.draw) bg.draw(surf);
+    else surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(8,8,24,0.96)');
+    const [ox, oy] = prepScreenOrigin();
+    game.memory.get('manage_menu')?.draw?.(surf, ox, oy);
+    this.menu?.draw(surf, ox, oy);
     return surf;
   }
 

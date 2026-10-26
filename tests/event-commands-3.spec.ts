@@ -1844,46 +1844,30 @@ test.describe('Event command batch 3p (open_unit_management)', () => {
       g.state.change('event');
     });
     await stepFrames(page, 14);
-    const nav = await page.evaluate(() => {
-      const g = (window as any).__gameRef;
-      const st: any = g.state.getCurrentState();
-      if (st?.name !== 'base_manage') return { state: st?.name };
-      // Pick Eirika -> Trade -> Seth
-      st.takeInput('SELECT'); // hmm: menu-driven; drive via menus directly instead
-      return { state: 'base_manage', phase: st.phase };
-    });
-    expect(nav.state).toBe('base_manage');
-    // Drive: options -> trade -> partner; step frames so deferred state
-    // transitions flush between selections.
-    await page.evaluate(() => {
-      const st: any = (window as any).__gameRef.state.getCurrentState();
-      const om = st['optionMenu'];
-      om.selectedIndex = om.options.findIndex((o: any) => o.value === 'trade');
-      st.takeInput('SELECT');
-      const pm = st['partnerMenu'];
-      pm.selectedIndex = 0;
-      st.takeInput('SELECT');
-    });
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('base_manage');
+    // Python flow: unit table -> PrepManageSelect (Trade) -> PrepTradeSelect
+    // -> prep_trade (menus.Trade).
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_manage_select');
+    await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('prep_trade_select');
+    await stepFrames(page, 1, 'RIGHT');
+    await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 3);
     const trade = await page.evaluate(() => {
       const now: any = (window as any).__gameRef.state.getCurrentState();
-      return { state: now?.name, partner: now?.tradePartner?.nid ?? null };
+      return { state: now?.name, partner: now?.menu?.partner?.nid ?? null };
     });
-    expect(trade.state).toBe('trade');
+    expect(trade.state).toBe('prep_trade');
     expect(trade.partner).toBeTruthy();
-    // Back out of trade -> manage -> exit; the event resumes.
-    await stepFrames(page, 1, 'BACK');
-    await stepFrames(page, 3);
-    await page.evaluate(() => {
-      const g = (window as any).__gameRef;
-      const st: any = g.state.getCurrentState();
-      if (st?.name === 'base_manage') {
-        // exit through unit list Back
-        st.phase = 'units';
-        st['unitMenu'].selectedIndex = st['unitMenu'].options.length - 1;
-        st.takeInput('SELECT');
-      }
-    });
+    // Back out of trade -> trade select -> manage select -> unit table -> exit;
+    // the event resumes.
+    for (let i = 0; i < 4; i++) {
+      await stepFrames(page, 1, 'BACK');
+      await stepFrames(page, 3);
+    }
     await stepFrames(page, 15);
     const after = await page.evaluate(() => (window as any).__gameRef.gameVars.get('after_manage'));
     expect(after).toBe('yes');

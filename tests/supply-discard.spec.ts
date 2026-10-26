@@ -57,15 +57,22 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('base_manage');
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 2);
+    // Python PrepManageSelectState: 3x2 Table, 'Items' when the convoy exists.
+    expect((await getState(page)).currentStateName).toBe('prep_manage_select');
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().selectMenu;
+      menu.moveTo(menu.options.findIndex((o: any) => o.entry?.text === 'Items'));
+    });
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
-    // Cancel unwinds Supply -> Manage options -> unit list -> prep.
+    // Cancel unwinds Supply -> manage select -> unit table -> prep.
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 2);
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('prep_main');
@@ -89,7 +96,13 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('base_manage');
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 1, 'DOWN');
+    await stepFrames(page, 2);
+    // Python PrepManageSelectState: 3x2 Table, 'Items' when the convoy exists.
+    expect((await getState(page)).currentStateName).toBe('prep_manage_select');
+    await page.evaluate(() => {
+      const menu = (window as any).__gameRef.state.getCurrentState().selectMenu;
+      menu.moveTo(menu.options.findIndex((o: any) => o.entry?.text === 'Items'));
+    });
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('supply_items');
@@ -97,6 +110,7 @@ test.describe('Supply/convoy and item_discard states', () => {
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     await stepFrames(page, 1, 'BACK');
+    await stepFrames(page, 2);
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     expect((await getState(page)).currentStateName).toBe('base_main');
