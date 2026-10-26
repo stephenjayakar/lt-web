@@ -9776,9 +9776,23 @@ export class EventState extends State {
             menu: chosenMenu,
           } : null;
           const priorLength = queue.length;
+          // Python PlayerChoiceState passes the choosing event's context
+          // (unit, unit2, position, local_args) to the selection event, so
+          // e.g. EOtF's Talk_TuneUp_Sub_2 can `remove_unit;{unit2}`.
+          const ownerTrigger: any = owner?.trigger ?? {};
           game.eventManager.triggerSpecific(
             prefab.nid,
-            { type: 'choice_selection', levelNid: game.currentLevel?.nid },
+            {
+              type: 'choice_selection',
+              levelNid: game.currentLevel?.nid,
+              unit1: ownerTrigger.unit1,
+              unitNid: ownerTrigger.unitNid ?? ownerTrigger.unit1?.nid,
+              unit2: ownerTrigger.unit2,
+              unitB: ownerTrigger.unitB ?? ownerTrigger.unit2?.nid,
+              position: ownerTrigger.position,
+              region: ownerTrigger.region,
+              localArgs: ownerTrigger.localArgs ? new Map(ownerTrigger.localArgs) : undefined,
+            },
             true,
           );
           // triggerSpecific appends by default. Choice sub-events are

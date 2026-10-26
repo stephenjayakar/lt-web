@@ -2304,7 +2304,8 @@ test.describe('choice and textbox commands', () => {
         name: '_pick_sub', nid: '_pick_sub', trigger: '_pick_sub',
         level_nid: g.currentLevel?.nid ?? null,
         condition: 'True', only_once: false, priority: 0,
-        _source: ['game_var;sub_saw;{v:Pick}'],
+        // Python passes the choosing event's unit/unit2 to the sub-event.
+        _source: ['game_var;sub_saw;{v:Pick}', 'game_var;sub_unit2;{unit2}'],
       });
       g.db.events.set('_pick_parent', {
         name: '_pick_parent', nid: '_pick_parent', trigger: '_pick_parent',
@@ -2316,7 +2317,9 @@ test.describe('choice and textbox commands', () => {
           'game_var;parent_saw;{v:sub_saw}',
         ],
       });
-      g.eventManager.triggerSpecific('_pick_parent', { type: '_pick_parent' }, true);
+      g.eventManager.triggerSpecific('_pick_parent', {
+        type: '_pick_parent', unit1: g.units.get('Eirika'), unit2: g.units.get('Seth'),
+      }, true);
       g.state.change('event');
     });
     await stepFrames(page, 25);
@@ -2337,9 +2340,10 @@ test.describe('choice and textbox commands', () => {
         picked: g.gameVars.get('Pick'),
         subSaw: g.gameVars.get('sub_saw'),
         parentSaw: g.gameVars.get('parent_saw'),
+        subUnit2: g.gameVars.get('sub_unit2'),
       };
     });
-    expect(result).toEqual({ picked: 'Alpha', subSaw: 'Alpha', parentSaw: 'Alpha' });
+    expect(result).toEqual({ picked: 'Alpha', subSaw: 'Alpha', parentSaw: 'Alpha', subUnit2: 'Seth' });
   });
 
   test('choice splits nid|label, and textbox registers until remove_table', async ({ page }) => {
