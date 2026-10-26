@@ -9,7 +9,15 @@
 
 import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
-import type { InputEvent } from '../input';
+import type { GameButton, InputEvent } from '../input';
+import {
+  KEY_BUTTONS,
+  bindingLabel,
+  buildKeyMap,
+  keySettingName,
+  resolveKeyBindings,
+} from '../key-bindings';
+import { Banner } from '../../ui/banner';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import { getSyncStore, type SyncKV } from '../../storage/storage';
 import { isForkEngine } from '../engine-flavor';
@@ -110,7 +118,7 @@ function menuSettings(): SettingDef[] {
 }
 
 /** Python settings.controls: buttons.png sub-rects for each control icon. */
-const CONTROL_ENTRIES: { name: string; button: string; rect: [number, number, number, number] }[] = [
+const CONTROL_ENTRIES: { name: string; button: GameButton; rect: [number, number, number, number] }[] = [
   { name: 'key_SELECT', button: 'SELECT', rect: [0, 66, 14, 13] },
   { name: 'key_BACK', button: 'BACK', rect: [0, 82, 14, 13] },
   { name: 'key_INFO', button: 'INFO', rect: [1, 149, 16, 9] },
@@ -122,18 +130,11 @@ const CONTROL_ENTRIES: { name: string; button: string; rect: [number, number, nu
   { name: 'key_START', button: 'START', rect: [0, 165, 33, 9] },
 ];
 
-/** Web keyboard bindings (src/engine/input.ts DEFAULT_KEY_MAP), pygame-style names. */
-const KEY_NAMES: Record<string, string> = {
-  SELECT: 'z, enter',
-  BACK: 'x, escape',
-  INFO: 'c, shift',
-  AUX: 'v, tab',
-  LEFT: 'left, a',
-  RIGHT: 'right, d',
-  UP: 'up, w',
-  DOWN: 'down, s',
-  START: 'space',
-};
+/**
+ * Web-only last Controls row: Python restores default keys only when
+ * saves/config.ini is deleted, which a browser player cannot do.
+ */
+const RESTORE_DEFAULTS_ROW = 'Restore Defaults';
 
 // ============================================================================
 // Global settings store (Python cf.SETTINGS / saves/config.ini)
@@ -141,6 +142,7 @@ const KEY_NAMES: Record<string, string> = {
 
 const SETTINGS_STORAGE_KEY = 'lt-web-settings';
 let settingsCache: Record<string, unknown> | null = null;
+let keyMapCache: Record<string, GameButton> | null = null;
 let settingsCacheStore: SyncKV | null = null;
 
 /** Settings live in the sync store (local, or Convex once signed in). */
@@ -149,6 +151,7 @@ function loadSettingsCache(): Record<string, unknown> {
   if (settingsCache && settingsCacheStore === store) return settingsCache;
   settingsCache = {};
   settingsCacheStore = store;
+  keyMapCache = null;
   try {
     const raw = store.getItem(SETTINGS_STORAGE_KEY);
     if (raw) {
@@ -188,11 +191,63 @@ function normalizeBool(value: unknown): number {
 export function setSetting(name: string, value: unknown): void {
   const cache = loadSettingsCache();
   cache[name] = value;
+  saveSettingsCache(cache);
+}
+
+/** Forget a stored setting so its default applies again. */
+export function clearSetting(name: string): void {
+  const cache = loadSettingsCache();
+  if (!(name in cache)) return;
+  delete cache[name];
+  saveSettingsCache(cache);
+}
+
+function saveSettingsCache(cache: Record<string, unknown>): void {
+  keyMapCache = null;
   try {
     getSyncStore().setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cache));
   } catch {
     // Storage may be full or unavailable; keep the in-memory value.
   }
+}
+
+// ============================================================================
+// Keyboard bindings (Python cf.SETTINGS['key_*'], InputManager.update_key_map)
+// ============================================================================
+
+/** The player's rebound keys (KeyboardEvent.code per button). */
+function keyOverrides(): Partial<Record<GameButton, string>> {
+  const cache = loadSettingsCache();
+  const out: Partial<Record<GameButton, string>> = {};
+  for (const button of KEY_BUTTONS) {
+    const code = cache[keySettingName(button)];
+    if (typeof code === 'string' && code) out[button] = code;
+  }
+  return out;
+}
+
+/** The live keyboard map the input layer reads (code -> button). */
+export function currentKeyMap(): Record<string, GameButton> {
+  loadSettingsCache();
+  if (!keyMapCache) keyMapCache = buildKeyMap(keyOverrides());
+  return keyMapCache;
+}
+
+/** Keys currently bound to `button`. */
+export function keyBindingsFor(button: GameButton): string[] {
+  return resolveKeyBindings(keyOverrides())[button];
+}
+
+/** Python `cf.SETTINGS[key_X] = key; update_key_map()`. */
+export function setKeyBinding(button: GameButton, code: string): void {
+  setSetting(keySettingName(button), code);
+}
+
+/** Back to the default keyboard map. */
+export function restoreDefaultKeyBindings(): void {
+  const cache = loadSettingsCache();
+  for (const button of KEY_BUTTONS) delete cache[keySettingName(button)];
+  saveSettingsCache(cache);
 }
 
 /**
@@ -294,7 +349,7 @@ class SimpleList {
 // SettingsMenuState
 // ============================================================================
 
-type SettingsPhase = 'top_menu_left' | 'top_menu_right' | 'config' | 'controls';
+type SettingsPhase = 'top_menu_left' | 'top_menu_right' | 'config' | 'controls' | 'get_input';
 
 export class SettingsMenuState extends State {
   readonly name = 'settings_menu';
@@ -305,7 +360,9 @@ export class SettingsMenuState extends State {
   private phase: SettingsPhase = 'top_menu_left';
   private settings: SettingDef[] = menuSettings();
   private configMenu = new SimpleList(this.settings.length);
-  private controlsMenu = new SimpleList(CONTROL_ENTRIES.length);
+  private controlsMenu = new SimpleList(CONTROL_ENTRIES.length + 1);
+  /** Python AlertState over the menu ('Invalid Choice!'). */
+  private alert: Banner | null = null;
   private topCursor = new MenuCursor();
   private bg: MenuBackground | null = null;
   private scene = new MenuScene();
@@ -324,7 +381,8 @@ export class SettingsMenuState extends State {
     this.settings = menuSettings();
     this.sliderCounters = this.settings.map(() => 0);
     this.configMenu = new SimpleList(this.settings.length);
-    this.controlsMenu = new SimpleList(CONTROL_ENTRIES.length);
+    this.controlsMenu = new SimpleList(CONTROL_ENTRIES.length + 1);
+    this.alert = null;
     this.topCursor = new MenuCursor();
     this.bg = new MenuBackground('settings_background', game.resources);
     preloadSprites(['settings_icons', 'buttons', 'scroll_bar', 'page_arrows', 'waiting_cursor', 'menus/health_bar_bg', 'menus/menu_hand']);
@@ -402,10 +460,34 @@ export class SettingsMenuState extends State {
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
+    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
+    if (this.alert) {
+      // AlertState.take_input: any input once time_to_pause has passed.
+      if (event && this.alert.canDismiss()) this.alert = null;
+      return;
+    }
+    if (this.phase === 'get_input') {
+      // Python change_keymap mode: a key already bound to a button arrives
+      // as that button (BACK cancels, anything else is refused); an unbound
+      // key arrives as 'NEW' and becomes the selected control's key.
+      const captured: string | null = game.input?.takeCapturedKey?.() ?? null;
+      if (event === 'BACK') {
+        sfx('Select 4');
+        this.endGetInput();
+      } else if (captured) {
+        sfx('Select 1');
+        setKeyBinding(CONTROL_ENTRIES[this.controlsMenu.currentIndex].button, captured);
+        this.endGetInput();
+      } else if (event) {
+        sfx('Select 4');
+        this.endGetInput();
+        this.alert = new Banner(translate('Invalid Choice!'));
+      }
+      return;
+    }
     let effective = event;
     if (game.input?.mouseClick === 'SELECT' && !effective) effective = 'SELECT';
     if (!effective) return;
-    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
 
     if (this.phase === 'top_menu_left' || this.phase === 'top_menu_right') {
       if (effective === 'DOWN' || effective === 'SELECT') {
@@ -452,12 +534,25 @@ export class SettingsMenuState extends State {
       if (this.phase === 'config') {
         sfx('Select 6');
         this.moveNext(this.settings[menu.currentIndex]);
+      } else if (menu.currentIndex >= CONTROL_ENTRIES.length) {
+        sfx('Select 1');
+        restoreDefaultKeyBindings();
       } else {
-        // Key remapping is not supported in the browser build; the bindings
-        // are fixed (src/engine/input.ts).
-        sfx('Error');
+        sfx('Select 1');
+        this.phase = 'get_input';
+        game.input?.beginKeyCapture?.();
       }
     }
+  }
+
+  private endGetInput(): void {
+    this.phase = 'controls';
+    getGame().input?.endKeyCapture?.();
+  }
+
+  override finish(): void {
+    // Just to make sure (Python SettingsMenuState.finish).
+    _game?.input?.endKeyCapture?.();
   }
 
   private back(): void {
@@ -471,6 +566,7 @@ export class SettingsMenuState extends State {
     menu.cursor.update();
     this.topCursor.update();
     this.bg?.update();
+    if (this.alert?.update(getGame().frameDeltaMs ?? 16)) this.alert = null;
   }
 
   // -----------------------------------------------------------------------
@@ -486,6 +582,7 @@ export class SettingsMenuState extends State {
     if (this.currentMenu === this.configMenu) this.drawConfig(scene);
     else this.drawControls(scene);
     this.drawInfoBanner(scene);
+    this.alert?.draw(scene);
     this.scene.present(surf);
     return surf;
   }
@@ -608,10 +705,16 @@ export class SettingsMenuState extends State {
       const top = ty + 4 + (i - menu.scroll) * OPTION_HEIGHT;
       const left = tx - 4;
       const active = i === menu.currentIndex && menu.takesInput;
-      const [sx, sy, sw, sh] = entry.rect;
-      blitSub(surf, buttons, sx, sy, sw, sh, left + 32 - Math.floor(sw / 2), top + 8 - Math.floor(sh / 2));
-      blitText(surf, 'text', translate(entry.name), left + 56, top);
-      blitText(surf, 'text-blue', KEY_NAMES[entry.button] ?? '', left + 128, top);
+      if (!entry) {
+        blitText(surf, 'text', translate(RESTORE_DEFAULTS_ROW), left + 56, top);
+      } else {
+        // ControlOption.draw: the row being rebound turns yellow.
+        const listening = active && this.phase === 'get_input';
+        const [sx, sy, sw, sh] = entry.rect;
+        blitSub(surf, buttons, sx, sy, sw, sh, left + 32 - Math.floor(sw / 2), top + 8 - Math.floor(sh / 2));
+        blitText(surf, listening ? 'text-yellow' : 'text', translate(entry.name), left + 56, top);
+        blitText(surf, listening ? 'text-yellow' : 'text-blue', bindingLabel(keyBindingsFor(entry.button)), left + 128, top);
+      }
       if (active) menu.cursor.draw(surf, left + 8, top);
     }
   }
@@ -623,6 +726,7 @@ export class SettingsMenuState extends State {
     let text: string;
     if (this.phase === 'top_menu_left') text = 'config_desc';
     else if (this.phase === 'config') text = `${this.settings[this.configMenu.currentIndex].name}_desc`;
+    else if (this.phase === 'get_input') text = 'get_input_desc';
     else text = 'keymap_desc'; // Python's top_menu_right branch is unreachable
     blitTextCenter(surf, 'text', translate(text), WINWIDTH / 2, WINHEIGHT - height);
   }

@@ -10,7 +10,7 @@
  */
 
 import { viewport } from './viewport';
-import { getSetting } from './states/settings-state';
+import { currentKeyMap, getSetting } from './states/settings-state';
 
 export type GameButton =
   | 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
@@ -26,38 +26,23 @@ interface FluidScrollState {
   triggered: boolean;
 }
 
-const DEFAULT_KEY_MAP: Record<string, GameButton> = {
-  'ArrowUp': 'UP',
-  'ArrowDown': 'DOWN',
-  'ArrowLeft': 'LEFT',
-  'ArrowRight': 'RIGHT',
-  'KeyW': 'UP',
-  'KeyS': 'DOWN',
-  'KeyA': 'LEFT',
-  'KeyD': 'RIGHT',
-  'KeyZ': 'SELECT',
-  'Enter': 'SELECT',
-  'KeyX': 'BACK',
-  'Escape': 'BACK',
-  'KeyC': 'INFO',
-  'ShiftLeft': 'INFO',
-  'ShiftRight': 'INFO',
-  'KeyV': 'AUX',
-  'Tab': 'AUX',
-  'Space': 'START',
-};
-
 /** Minimum CSS-px distance before a canvas touch is treated as a drag. */
 const TOUCH_TAP_THRESHOLD = 12;
 
 export class InputManager {
   private keysDown: Set<string> = new Set();
+  /** The button each held key pressed, so a rebind can't strand it. */
+  private keyButtons: Map<string, GameButton> = new Map();
   private buttonsDown: Set<GameButton> = new Set();
   private virtualButtons: Set<GameButton> = new Set();
   private gamepadButtons: Set<GameButton> = new Set();
   private buttonJustPressed: Set<GameButton> = new Set();
   private buttonJustReleased: Set<GameButton> = new Set();
-  private keyMap: Record<string, GameButton>;
+  /** A fixed map from the constructor; otherwise the player's bindings. */
+  private fixedKeyMap: Record<string, GameButton> | null;
+  /** Python change_keymap mode: an unbound key is captured, not ignored. */
+  private captureKeys = false;
+  private capturedKey: string | null = null;
 
   // Mouse state
   mouseX: number = 0;
@@ -117,7 +102,7 @@ export class InputManager {
   private gamepadIndex: number = -1;
 
   constructor(canvas: HTMLCanvasElement, keyMap?: Record<string, GameButton>) {
-    this.keyMap = keyMap ?? DEFAULT_KEY_MAP;
+    this.fixedKeyMap = keyMap ?? null;
     this.isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     this._setupListeners(canvas);
 
@@ -130,6 +115,30 @@ export class InputManager {
         triggered: false,
       });
     }
+  }
+
+  /** Keyboard code -> button: the player's bindings (src/engine/key-bindings.ts). */
+  private get keyMap(): Record<string, GameButton> {
+    return this.fixedKeyMap ?? currentKeyMap();
+  }
+
+  /** Python set_change_keymap(True): capture the next unbound key. */
+  beginKeyCapture(): void {
+    this.captureKeys = true;
+    this.capturedKey = null;
+  }
+
+  /** Python set_change_keymap(False). */
+  endKeyCapture(): void {
+    this.captureKeys = false;
+    this.capturedKey = null;
+  }
+
+  /** The unbound key pressed while capturing (Python's 'NEW' event), once. */
+  takeCapturedKey(): string | null {
+    const code = this.capturedKey;
+    this.capturedKey = null;
+    return code;
   }
 
   // -----------------------------------------------------------------------
@@ -146,14 +155,19 @@ export class InputManager {
       if (btn) {
         e.preventDefault();
         this.keysDown.add(e.code);
+        this.keyButtons.set(e.code, btn);
         if (!this.buttonsDown.has(btn)) this.buttonJustPressed.add(btn);
         this.buttonsDown.add(btn);
+      } else if (this.captureKeys && e.code) {
+        e.preventDefault();
+        this.capturedKey = e.code;
       }
     });
 
     window.addEventListener('keyup', (e) => {
+      const btn = this.keyButtons.get(e.code) ?? this.keyMap[e.code];
       this.keysDown.delete(e.code);
-      const btn = this.keyMap[e.code];
+      this.keyButtons.delete(e.code);
       if (btn && !this._isButtonHeldByAnotherSource(btn) && this.buttonsDown.delete(btn)) {
         this.buttonJustReleased.add(btn);
       }
@@ -161,6 +175,7 @@ export class InputManager {
 
     const releaseAllInput = (): void => {
       this.keysDown.clear();
+      this.keyButtons.clear();
       this.virtualButtons.clear();
       this.gamepadButtons.clear();
       this.buttonsDown.clear();
@@ -394,7 +409,7 @@ export class InputManager {
   }
 
   private _isKeyboardButtonDown(button: GameButton): boolean {
-    return [...this.keysDown].some((code) => this.keyMap[code] === button);
+    return [...this.keysDown].some((code) => (this.keyButtons.get(code) ?? this.keyMap[code]) === button);
   }
 
   private _isButtonHeldByAnotherSource(button: GameButton): boolean {
