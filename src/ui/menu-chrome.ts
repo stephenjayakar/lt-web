@@ -357,6 +357,8 @@ export class PanoramaFrames {
   counter = 0;
   paused = false;
   pauseAt: number | null = null;
+  /** ScrollingBackground.scroll_speed (ms per pixel) for change_background;scroll. */
+  scrollSpeed: number | null = null;
   readonly speed: number;
   readonly loop: boolean;
   private sinceUpdate = 0;

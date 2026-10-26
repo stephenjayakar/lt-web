@@ -33,6 +33,8 @@ export interface MapViewUnit {
   fx?: MapSpriteFx | null;
   /** Facing override (combat image states, pose_unit). */
   poseOverride?: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+  /** Drawn after the sprite at its tile top-left (transition animations, warp flowers). */
+  overlay?: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
 }
 
 /**
@@ -364,6 +366,7 @@ export class MapView {
           unit.tintAlpha ?? 0,
           unit.fx ?? null,
         );
+        unit.overlay?.(surf, px, py, offsetX, offsetY);
       } else {
         // Fallback: draw a colored rectangle placeholder
         const color = unitPlaceholderColor(unit.team);

@@ -230,3 +230,7 @@ The release gate is green: build, all four audits, the full serial suite,
   end-of-combat events (`tests/fork-combat-cleanup.spec.ts`).
 - [x] Broken-item alert (`handle_broken_items` → AlertState, "X broke.") in
   combat, on ally-targeted item uses, and before a crest's promotion choice.
+- [x] Unit entry/exit transitions (`tests/unit-transitions.spec.ts`): fade (edge
+  slide), warp (anim, flicker, petals, sounds) and swoosh for add_unit,
+  create_unit, add_group, remove_unit/group, move_unit/group and spawn_group,
+  non-blocking as in Python; kill_unit plays DyingState before going on.

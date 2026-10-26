@@ -24,6 +24,7 @@ interface MovementComponent {
   speed: number;       // tiles per second
   done: boolean;
   onComplete?: () => void;
+  onStep?: (position: [number, number]) => void;
 }
 
 /**
@@ -46,12 +47,15 @@ export class MovementSystem {
    *                   the unit's current position.
    * @param speed      Movement speed in tiles/second (default ~6).
    * @param onComplete Callback fired when the unit reaches the end of the path.
+   * @param onStep     Called with the unit's tile at the start and on every
+   *                   tile it reaches (MovementSystem camera/cursor follow).
    */
   beginMove(
     unit: UnitObject,
     path: [number, number][],
     speed: number = defaultUnitSpeed(),
     onComplete?: () => void,
+    onStep?: (position: [number, number]) => void,
   ): void {
     // If the path has 0 or 1 entries there is nothing to animate.
     if (path.length <= 1) {
@@ -65,6 +69,7 @@ export class MovementSystem {
 
     // Place the unit at the start of the path immediately.
     unit.position = [path[0][0], path[0][1]];
+    onStep?.([path[0][0], path[0][1]]);
 
     // Set sprite to moving state with initial direction
     if (unit.sprite && typeof unit.sprite === 'object' && 'state' in unit.sprite) {
@@ -85,6 +90,7 @@ export class MovementSystem {
       speed,
       done: false,
       onComplete,
+      onStep,
     });
   }
 
@@ -110,6 +116,7 @@ export class MovementSystem {
         // Snap the unit to the tile we just arrived at
         const [tx, ty] = comp.path[comp.currentIndex];
         comp.unit.position = [tx, ty];
+        comp.onStep?.([tx, ty]);
 
         // Update sprite direction for the next leg of the path
         if (comp.currentIndex < comp.path.length - 1) {

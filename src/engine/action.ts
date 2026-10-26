@@ -1826,6 +1826,50 @@ export class AddMapAnimationAction extends Action {
   }
 }
 
+/**
+ * Python action.RemoveMapAnim: remove the tilemap animations with this nid
+ * placed on `position` (the overlay layer when `overlay`); reversible.
+ */
+export class RemoveMapAnimationAction extends Action {
+  private tilemap: any;
+  private nid: string;
+  private position: [number, number];
+  private overlay: boolean;
+  private removed: Array<{ animation: any; index: number }> = [];
+
+  constructor(tilemap: any, nid: string, position: [number, number], overlay: boolean) {
+    super();
+    this.tilemap = tilemap;
+    this.nid = nid;
+    this.position = position;
+    this.overlay = overlay;
+  }
+
+  private collection(): any[] {
+    return this.overlay ? this.tilemap.highAnimations : this.tilemap.animations;
+  }
+
+  execute(): void {
+    const collection = this.collection();
+    this.removed = [];
+    for (let index = collection.length - 1; index >= 0; index--) {
+      const animation = collection[index];
+      const at = animation.tilePosition as [number, number] | undefined;
+      if (animation.nid === this.nid && at && at[0] === this.position[0] && at[1] === this.position[1]) {
+        this.removed.unshift({ animation, index });
+        collection.splice(index, 1);
+      }
+    }
+  }
+
+  reverse(): void {
+    const collection = this.collection();
+    for (const { animation, index } of this.removed) {
+      if (!collection.includes(animation)) collection.splice(Math.min(index, collection.length), 0, animation);
+    }
+  }
+}
+
 /** ChangeTeamPaletteAction - Python action.ChangeTeamPalette: overrides a
  * team's map-sprite palette / combat color at runtime, reversibly, and
  * rebuilds affected map sprites (cache-keyed by palette, so a lazy reload
@@ -2475,6 +2519,15 @@ export class ApplyStatChangesAction extends Action {
 }
 
 /**
+ * Python `unit.remove_item`: an item leaving a unit's inventory is unequipped
+ * (firing on_unequip hooks) so the unit does not keep a stale equipped
+ * weapon/accessory — and its equip statuses — after trading or storing it.
+ */
+function unequipLeaving(unit: UnitObject, item: ItemObject): void {
+  if (unit.equippedWeapon === item || unit.equippedAccessory === item) unit.unequip(item);
+}
+
+/**
  * TradeAction - Swap items between two units.
  */
 export class TradeAction extends Action {
@@ -2509,6 +2562,8 @@ export class TradeAction extends Action {
       this.unitB.items[this.indexB] = itemA;
       itemA.owner = this.unitB;
       itemB.owner = this.unitA;
+      unequipLeaving(this.unitA, itemA);
+      unequipLeaving(this.unitB, itemB);
       this.unitA.onRemoveItem(itemA);
       this.unitA.onAddItem(itemB);
       this.unitB.onRemoveItem(itemB);
@@ -2518,6 +2573,7 @@ export class TradeAction extends Action {
       this.direction = 'a_to_b';
       this.movedItem = itemA;
       this.unitA.items.splice(this.indexA, 1);
+      unequipLeaving(this.unitA, itemA);
       this.unitB.items.push(itemA);
       itemA.owner = this.unitB;
       this.unitA.onRemoveItem(itemA);
@@ -2527,6 +2583,7 @@ export class TradeAction extends Action {
       this.direction = 'b_to_a';
       this.movedItem = itemB;
       this.unitB.items.splice(this.indexB, 1);
+      unequipLeaving(this.unitB, itemB);
       this.unitA.items.push(itemB);
       itemB.owner = this.unitA;
       this.unitB.onRemoveItem(itemB);
@@ -2546,6 +2603,8 @@ export class TradeAction extends Action {
         this.unitB.items[this.indexB] = itemA;
         itemA.owner = this.unitB;
         itemB.owner = this.unitA;
+        unequipLeaving(this.unitA, itemA);
+        unequipLeaving(this.unitB, itemB);
         this.unitA.onRemoveItem(itemB);
         this.unitA.onAddItem(itemA);
         this.unitB.onRemoveItem(itemA);
@@ -2554,6 +2613,7 @@ export class TradeAction extends Action {
     } else if (this.direction === 'a_to_b' && this.movedItem) {
       const idx = this.unitB.items.indexOf(this.movedItem);
       if (idx >= 0) this.unitB.items.splice(idx, 1);
+      unequipLeaving(this.unitB, this.movedItem);
       this.unitA.items.splice(this.indexA, 0, this.movedItem);
       this.movedItem.owner = this.unitA;
       this.unitB.onRemoveItem(this.movedItem);
@@ -2561,6 +2621,7 @@ export class TradeAction extends Action {
     } else if (this.direction === 'b_to_a' && this.movedItem) {
       const idx = this.unitA.items.indexOf(this.movedItem);
       if (idx >= 0) this.unitA.items.splice(idx, 1);
+      unequipLeaving(this.unitA, this.movedItem);
       this.unitB.items.splice(this.indexB, 0, this.movedItem);
       this.movedItem.owner = this.unitB;
       this.unitA.onRemoveItem(this.movedItem);
@@ -3454,6 +3515,7 @@ export class TakeItemFromConvoy extends Action {
     if (!game) return;
     const idx = this.unit.items.indexOf(this.item);
     if (idx !== -1) this.unit.items.splice(idx, 1);
+    unequipLeaving(this.unit, this.item);
     this.item.owner = null;
     this.unit.onRemoveItem(this.item);
     const party = game.getParty(this.partyNid);
@@ -3557,6 +3619,7 @@ export class MoveItemBetweenUnitsAction extends Action {
   execute(): void {
     const index = this.source.items.indexOf(this.item);
     if (index >= 0) this.source.items.splice(index, 1);
+    unequipLeaving(this.source, this.item);
     this.target.items.push(this.item);
     this.item.owner = this.target;
     this.source.onRemoveItem(this.item);
@@ -3568,6 +3631,7 @@ export class MoveItemBetweenUnitsAction extends Action {
   reverse(): void {
     const index = this.target.items.indexOf(this.item);
     if (index >= 0) this.target.items.splice(index, 1);
+    unequipLeaving(this.target, this.item);
     this.source.items.splice(this.sourceIndex, 0, this.item);
     this.item.owner = this.source;
     this.target.onRemoveItem(this.item);
@@ -3636,6 +3700,7 @@ export class StoreItemAction extends Action {
     if (!game) return;
     const idx = this.unit.items.indexOf(this.item);
     if (idx !== -1) this.unit.items.splice(idx, 1);
+    unequipLeaving(this.unit, this.item);
     this.item.owner = null;
     const party = game.getParty();
     if (party) party.convoy.push(this.item);
@@ -3684,6 +3749,7 @@ export class TradeItemWithConvoy extends Action {
     // Remove unit item from unit
     const uIdx = this.unit.items.indexOf(this.unitItem);
     if (uIdx !== -1) this.unit.items.splice(uIdx, 1);
+    unequipLeaving(this.unit, this.unitItem);
     // Remove convoy item from convoy
     const cIdx = party.convoy.indexOf(this.convoyItem);
     if (cIdx !== -1) party.convoy.splice(cIdx, 1);
@@ -3706,6 +3772,7 @@ export class TradeItemWithConvoy extends Action {
     // Remove convoy item from unit
     const uIdx = this.unit.items.indexOf(this.convoyItem);
     if (uIdx !== -1) this.unit.items.splice(uIdx, 1);
+    unequipLeaving(this.unit, this.convoyItem);
     this.convoyItem.owner = null;
     // Remove unit item from convoy
     const cIdx = party.convoy.indexOf(this.unitItem);
