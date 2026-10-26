@@ -195,3 +195,10 @@ The release gate is green: build, all four audits, the full serial suite,
   `choice;...;expression` re-evaluates every frame; battle animations draw no
   extra-damage digits (the fork's AnimationCombat has none).
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.
+- [x] Phase start order (`tests/skill-turn-lifecycle.spec.ts`): status_endstep
+  before turn_change, phase events, then PhaseChange ResetAll, then
+  status_upkeep per unit (last first, its events before the next), MarkPhase.
+- [ ] Automatic waits after combat / item use (Python WaitState →
+  `unit.wait()`) don't fire `unit_wait` (actively_chosen False) in the web.
+- [ ] Broken-item alert banner (`handle_broken_items` → `alert`) is not shown,
+  e.g. a crest used on an ally.
