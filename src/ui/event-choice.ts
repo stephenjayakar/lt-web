@@ -16,6 +16,7 @@ import { getMenuBackgroundSync, getMenuHand, getMenuHighlight, loadMenuBgSprite 
 import { drawStyledText, measureStyledText } from './styled-text';
 import { drawIcon16 } from './icons';
 import type { HelpBox } from './help-menu';
+import { ScrollBar } from './menu-chrome';
 
 let _audio: { playSfx(name: string): void } | null = null;
 export function setEventChoiceAudio(am: { playSfx(name: string): void } | null): void {
@@ -70,6 +71,7 @@ export class EventChoiceMenu {
   /** PlayerChoiceState.info_flag / hb_page. */
   infoFlag = false;
   helpPage = 0;
+  private scrollBar = new ScrollBar();
 
   constructor(cfg: EventChoiceConfig) {
     this.cfg = cfg;
@@ -336,16 +338,11 @@ export class EventChoiceMenu {
       const bob = Math.floor((performance.now() / 120) % 4);
       if (hand) surf.blitImage(hand, 0, 0, hand.width, hand.height, px + (bob < 2 ? bob : 4 - bob), py);
     }
-    // Scroll indicators when more rows exist than fit.
+    // grid_choice._draw_other_ui: the gui.ScrollBar sprite at the bg's
+    // right edge (topright = options top-left + pixel width, y - 3).
     const [, totalRows] = this.totalGrid();
     if (totalRows > rows) {
-      const barX = left + w - 6;
-      const barTop = optionsY;
-      const barH = rows * ih;
-      surf.fillRect(barX, barTop, 2, barH, 'rgba(40,40,72,0.8)');
-      const thumbH = Math.max(4, Math.floor(barH * rows / totalRows));
-      const thumbY = barTop + Math.floor((barH - thumbH) * sy / Math.max(1, totalRows - rows));
-      surf.fillRect(barX, thumbY, 2, thumbH, 'rgba(232,232,248,1)');
+      this.scrollBar.draw(surf, left + w, optionsY - 3, sy, rows, totalRows, ih);
     }
     this.drawHelpBox(surf);
   }

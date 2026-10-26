@@ -1178,6 +1178,10 @@ export function itemOptionColors(
   } else if (item.droppable && !convoyOwner) {
     main = 'green';
     uses = 'green';
+  } else if (isForkEngine() && item.hasComponent('c_uses')) {
+    // EOtF fork ItemOption.get_color: chapter-use items get purple uses.
+    main = null;
+    uses = 'purple';
   } else if (!owner || isAvailable(owner)) {
     main = null;
     uses = 'blue';

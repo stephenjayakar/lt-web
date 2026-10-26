@@ -1834,6 +1834,29 @@ function evaluatedItemNumber(
   return Number.isFinite(value) ? Math.trunc(value) : fallback;
 }
 
+/**
+ * EOtF fork help_menu.ItemHelpDialog: the Wt field shows
+ * int(evaluate(eval_weight)) in place of `weight` (None when it fails).
+ */
+export function evalWeightForHelp(item: ItemObject, unit: UnitObject | null, game?: any): number | null {
+  const expression = item.getComponent('eval_weight');
+  if (typeof expression === 'number') return Math.trunc(expression);
+  if (typeof expression !== 'string') return null;
+  try {
+    const value = Number(evaluateExpression(expression, {
+      game,
+      unit1: unit ?? undefined,
+      item,
+      position: unit?.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+    }));
+    return Number.isFinite(value) ? Math.trunc(value) : null;
+  } catch {
+    return null;
+  }
+}
+
 function evaluatedItemCondition(
   component: string,
   unit: UnitObject,

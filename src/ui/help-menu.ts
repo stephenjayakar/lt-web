@@ -17,6 +17,7 @@ import { drawStyledText, measureStyledText } from './styled-text';
 import { baseSurf, blitText, blitTextRight, getSprite, lineWrap, textWidth } from './menu-chrome';
 import { loadMenuBgSprite } from './base-surf';
 import { createItemTree, type ItemObject } from '../objects/item';
+import { evalWeightForHelp } from '../combat/item-system';
 import type { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 
@@ -281,7 +282,8 @@ export class ItemHelpDialog extends HelpBox {
     const might = comp('damage');
     const hit = comp('hit');
     const crit = _game?.db?.getConstant?.('crit', true) ? comp('crit') : null;
-    const weight = comp('weight');
+    let weight = comp('weight');
+    if (item.hasComponent('eval_weight')) weight = evalWeightForHelp(item, this.unit, _game);
     this.vals = [rank, this.rangeString(), weight, might, hit, crit];
     this.numPresent = this.vals.filter((v) => v !== null).length;
     this.lines = item.desc ? wrapTo(translate(item.desc), ITEM_HELP_WIDTH - 16) : [];

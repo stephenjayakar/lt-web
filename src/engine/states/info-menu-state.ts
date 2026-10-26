@@ -12,6 +12,7 @@
 import { State } from '../state';
 import type { StateResult } from '../state';
 import { Surface } from '../surface';
+import { isForkEngine } from '../engine-flavor';
 import type { InputEvent } from '../input';
 import { FRAMETIME, WINHEIGHT, WINWIDTH } from '../constants';
 import type { UnitObject } from '../../objects/unit';
@@ -36,7 +37,6 @@ import {
 import { available as itemAvailable, inventoryCapacity } from '../../combat/item-system';
 import type { SkillObject } from '../../objects/skill';
 import type { ItemObject } from '../../objects/item';
-import { isForkEngine } from '../engine-flavor';
 import { drawStyledText, measureStyledText } from '../../ui/styled-text';
 import {
   HelpDialog,
@@ -1222,6 +1222,10 @@ export class InfoMenuState extends State {
     } else if (item.droppable) {
       main = 'green';
       uses = 'green';
+    } else if (isForkEngine() && item.hasComponent('c_uses')) {
+      // EOtF fork ItemOption.get_color: chapter-use items get purple uses.
+      main = 'white';
+      uses = 'purple';
     } else if (ok) {
       main = 'white';
       uses = 'blue';

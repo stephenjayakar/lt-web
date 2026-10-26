@@ -4349,6 +4349,10 @@ function itemMenuRow(unit: UnitObject, item: ItemObject, game: any): MenuItemRow
   if (item.droppable) {
     mainColor = 'green';
     usesColor = 'green';
+  } else if (isForkEngine() && item.hasComponent('c_uses')) {
+    // EOtF fork ItemOption.get_color: chapter-use items get purple uses.
+    mainColor = 'white';
+    usesColor = 'purple';
   } else if (available) {
     mainColor = 'white';
     usesColor = 'blue';
@@ -9269,6 +9273,9 @@ export class ShopState extends State {
         this.messages[key] = `${armoryDefaults[key] ?? 'shop'}_${key}`;
       }
     }
+    // The EOtF fork's ShopState says 'shop_max' when hands are full (the key
+    // was renamed shop_max_inventory upstream; EOtF only defines shop_max).
+    if (isForkEngine()) this.messages.max_inventory = 'shop_max';
 
     const unit = this.unit;
     let topleft: [number, number] = [44, 160 - 16 * 5 - 8 - 4];
