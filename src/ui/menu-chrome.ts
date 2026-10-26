@@ -499,18 +499,26 @@ export function applyColorkey(img: HTMLImageElement): KeyedImage {
   }
 }
 
+/** A colorkeyed project image (e.g. 'resources/icons80/x.png'), loaded lazily. */
+export function getKeyedImage(
+  resources: { loadImage?(path: string): Promise<HTMLImageElement> } | null | undefined,
+  path: string,
+): KeyedImage | null {
+  if (portraitCache.has(path)) return portraitCache.get(path) ?? null;
+  portraitCache.set(path, null);
+  void resources?.loadImage?.(path)
+    .then((img) => portraitCache.set(path, applyColorkey(img)))
+    .catch(() => undefined);
+  return null;
+}
+
 /** The colorkeyed portrait sheet for `nid`, loading lazily (null until ready). */
 export function getPortrait(
   resources: { loadImage?(path: string): Promise<HTMLImageElement> } | null | undefined,
   nid: string | null | undefined,
 ): KeyedImage | null {
   if (!nid) return null;
-  if (portraitCache.has(nid)) return portraitCache.get(nid) ?? null;
-  portraitCache.set(nid, null);
-  void resources?.loadImage?.(`resources/portraits/${nid}.png`)
-    .then((img) => portraitCache.set(nid, applyColorkey(img)))
-    .catch(() => undefined);
-  return null;
+  return getKeyedImage(resources, `resources/portraits/${nid}.png`);
 }
 
 /** icons.draw_chibi: the 32x32 chibi at (width - 32, 16) of the portrait. */

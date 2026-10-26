@@ -91,6 +91,39 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     expect(await cssText(page)).toEqual([]);
   });
 
+  test('unit info menu pages', async ({ page }, testInfo) => {
+    await boot(page);
+    const unitName = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      // An authored EOtF player unit (portrait, items, weapon ranks).
+      const unit = game.units.get('Termina') ??
+        game.spawnUnit(game.db.units.get('Termina'), 'player', null, 'None');
+      await game.loadAllMapSprites?.();
+      game.infoMenuUnit = unit;
+      game.state.change('info_menu');
+      return unit.name;
+    });
+    await settleAssets(page);
+    expect(await stateName(page)).toBe('info_menu');
+    await cssText(page);
+    await step(page, 2);
+    await shot(page, 'info-personal', testInfo);
+    expect(unitName).toBeTruthy();
+    const pages: number[] = [];
+    for (const name of ['info-equipment', 'info-skills']) {
+      await press(page, 'RIGHT');
+      await step(page, 20);
+      pages.push(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().currentPage));
+      await shot(page, name, testInfo);
+    }
+    expect(pages).toEqual([1, 2]);
+    // Mid-slide frame: the page slides in from the right like Python.
+    await press(page, 'LEFT');
+    await shot(page, 'info-slide', testInfo);
+    await step(page, 20);
+    expect(await cssText(page)).toEqual([]);
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));

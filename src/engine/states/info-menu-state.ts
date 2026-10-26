@@ -1,26 +1,28 @@
 /**
- * InfoMenuState — Detailed unit information screen with three pages:
- *   1. Personal Data (stats, class, level)
- *   2. Equipment (items, battle stats)
- *   3. Skills (weapon experience, skill list)
+ * InfoMenuState — port of lt-maker/app/engine/info_menu/info_menu_state.py.
  *
- * Invoked from FreeState when INFO is pressed on a unit.
- * Uses game.infoMenuUnit to know which unit to display.
+ * Panorama background (info_menu_background), the additive info_menu_flash,
+ * a portrait column (info_unit / status_platform sprites, bitmap-font name,
+ * class, level, exp, HP), and a sliding right page: personal data (stat
+ * grooves, AUX toggles growths), equipment (item rows + battle_info), weapon
+ * ranks / supports / skills, and notes. LEFT/RIGHT slide pages with the
+ * gui.Logo title swap; UP/DOWN fade between units like Python.
  */
 
 import { State } from '../state';
 import type { StateResult } from '../state';
 import { Surface } from '../surface';
 import type { InputEvent } from '../input';
-import { viewport } from '../viewport';
+import { FRAMETIME, WINHEIGHT, WINWIDTH } from '../constants';
 import type { UnitObject } from '../../objects/unit';
-import { drawItemIcon, drawIcon16 } from '../../ui/icons';
+import { drawIcon16, getIconSheet } from '../../ui/icons';
 import {
   accuracy,
-  damage,
-  avoid,
   attackSpeed,
-  computeCrit,
+  avoid,
+  critAccuracy,
+  damage,
+  evaluateEquation,
   getEquippedWeapon,
 } from '../../combat/combat-calcs';
 import { FONT } from '../../rendering/bmp-font';
@@ -30,7 +32,25 @@ import {
   modifiedMinimumRange,
   skillConditionActive,
 } from '../../combat/skill-system';
+import { available as itemAvailable, inventoryCapacity } from '../../combat/item-system';
 import type { SkillObject } from '../../objects/skill';
+import type { ItemObject } from '../../objects/item';
+import { drawStyledText, measureStyledText } from '../../ui/styled-text';
+import {
+  MenuBackground,
+  MenuScene,
+  ScrollArrow,
+  blitSprite,
+  blitSub,
+  blitText,
+  blitTextCenter,
+  blitTextRight,
+  getKeyedImage,
+  getPortrait,
+  getSprite,
+  preloadSprites,
+  textWidth,
+} from '../../ui/menu-chrome';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — matches the pattern from game-states.ts
@@ -91,40 +111,244 @@ export function visibleSkillsForInfoMenu(
     .map(({ skill }) => skill);
 }
 
+
 function getGame(): any {
   if (!_game) throw new Error('InfoMenuState: game reference not set.');
   return _game;
 }
 
 // ---------------------------------------------------------------------------
-// Constants
+// Python helpers
 // ---------------------------------------------------------------------------
 
-const PAGE_COUNT = 4;
-const PAGE_NAMES = ['Personal Data', 'Equipment', 'Skills', 'Growth & Bonds'];
+const INFO_STATES = ['personal_data', 'equipment', 'support_skills', 'notes'] as const;
+type InfoPage = typeof INFO_STATES[number];
+const PORTRAIT_WIDTH = 128;
 
-/** Left panel width in game pixels. */
-const LEFT_PANEL_W = 96;
+function translate(text: string): string {
+  return _game?.db?.translate?.(text) ?? text;
+}
 
-/** Background colors. */
-const BG_COLOR = 'rgba(16, 20, 48, 1)';
-const PANEL_BG = 'rgba(24, 28, 64, 1)';
-const DIVIDER_COLOR = 'rgba(56, 60, 100, 1)';
-const HEADER_BG = 'rgba(32, 40, 80, 1)';
+function constant(name: string, fallback: unknown = false): any {
+  return _game?.db?.getConstant?.(name, fallback) ?? fallback;
+}
 
-/** Text colors (mapped to BMP font palette names where possible). */
-const COLOR_WHITE = 'white';
-const COLOR_YELLOW = 'rgba(248,240,136,1)';
-const COLOR_BLUE = 'rgba(200,200,255,1)';
-const COLOR_GREY = 'rgba(160,160,200,1)';
-const COLOR_GREEN = 'rgba(128,220,128,1)';
-const COLOR_BAR_BG = 'rgba(40, 44, 72, 1)';
-const COLOR_BAR_FILL = 'rgba(80, 160, 220, 1)';
-const COLOR_HP_BAR = 'rgba(80, 200, 100, 1)';
+/** Sum of SubtleStatChange entries for a stat (unit.subtle_stat_bonus). */
+function subtleStatBonus(unit: UnitObject, stat: string): number {
+  let total = 0;
+  for (const skill of unit.skills) {
+    const changes = skill.getComponent<any>('subtle_stat_change');
+    if (!Array.isArray(changes)) continue;
+    for (const entry of changes) {
+      if (Array.isArray(entry) && entry[0] === stat && typeof entry[1] === 'number') total += entry[1];
+    }
+  }
+  return total;
+}
 
-// Stat display order
-const STATS_LEFT = ['HP', 'STR', 'MAG', 'SKL', 'SPD'];
-const STATS_RIGHT = ['LCK', 'DEF', 'RES', 'CON', 'MOV'];
+function growthRate(unit: UnitObject, stat: string): number {
+  const game = getGame();
+  const klass = game.db.classes.get(unit.klass);
+  const difficulty = game.currentMode && game.mode
+    ? game.currentMode.getGrowthBonus(unit, game.getAlliedTeams(), game.mode)
+    : {};
+  return (unit.growths[stat] ?? 0) + growthChange(unit, stat) +
+    (klass?.growth_bonus?.[stat] ?? 0) + (difficulty?.[stat] ?? 0);
+}
+
+function baseGrowthRate(unit: UnitObject, stat: string): number {
+  const klass = getGame().db.classes.get(unit.klass);
+  return (unit.growths[stat] ?? 0) + (constant('alt_growth_format') ? (klass?.growth_bonus?.[stat] ?? 0) : 0);
+}
+
+/** InfoMenuState.growth_colors */
+function growthColor(value: number): string {
+  if (value >= 0 && value <= 20) return 'red-orange';
+  if (value > 20 && value <= 30) return 'light-red';
+  if (value > 30 && value <= 40) return 'pink-orange';
+  if (value > 40 && value <= 50) return 'light-orange';
+  if (value > 50 && value <= 60) return 'corn-yellow';
+  if (value > 60 && value <= 70) return 'light-green';
+  if (value > 70 && value <= 80) return 'olive-green';
+  if (value > 80 && value <= 90) return 'soft-green';
+  if (value > 90) return 'yellow-green';
+  return 'yellow';
+}
+
+/** icons.draw_glow: text pulsing towards white over 1.6 s. */
+function blitGlow(
+  surf: Surface, font: string, text: string, x: number, y: number, timeMs: number, align: 'left' | 'right' = 'left',
+): void {
+  const width = textWidth(font, text);
+  const left = align === 'right' ? x - width : x;
+  const white = (Math.sin(((timeMs % 1600) / 800) * Math.PI) + 1) / 2;
+  const tmp = new Surface(Math.max(1, width + 2), 16);
+  blitText(tmp, font, text, 0, 0);
+  const ctx = tmp.ctx;
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = `rgba(255,255,255,${white.toFixed(3)})`;
+  ctx.fillRect(0, 0, tmp.canvas.width, tmp.canvas.height);
+  ctx.restore();
+  surf.blit(tmp, left, y);
+}
+
+/** icons.draw_stat (full display). */
+function drawStat(surf: Surface, stat: string, unit: UnitObject, x: number, y: number, timeMs: number): void {
+  const game = getGame();
+  if (!game.db.stats.some((s: any) => s.nid === stat)) {
+    blitTextRight(surf, 'text-yellow', '--', x, y);
+    return;
+  }
+  const base = unit.stats[stat] ?? 0;
+  const subtle = subtleStatBonus(unit, stat);
+  const value = base + subtle;
+  const bonus = unit.getStatValue(stat) - base - subtle;
+  if (value >= unit.getStatCap(stat)) blitGlow(surf, 'text-green', String(value), x, y, timeMs, 'right');
+  else blitTextRight(surf, 'text-blue', String(value), x, y);
+  if (bonus > 0) blitGlow(surf, 'small-green', `+${bonus}`, x, y, timeMs);
+  else if (bonus < 0) blitGlow(surf, 'small-red', String(bonus), x, y, timeMs);
+}
+
+/** icons.draw_growth (full display). */
+function drawGrowth(surf: Surface, stat: string, unit: UnitObject, x: number, y: number): void {
+  const game = getGame();
+  if (!game.db.stats.some((s: any) => s.nid === stat)) {
+    blitTextRight(surf, 'text-yellow', '--', x, y);
+    return;
+  }
+  const value = baseGrowthRate(unit, stat);
+  const bonus = growthRate(unit, stat) - value;
+  blitTextRight(surf, 'text-blue', String(value), x, y);
+  if (bonus > 0) blitText(surf, 'small-green', `+${bonus}`, x, y);
+  else if (bonus < 0) blitText(surf, 'small-red', String(bonus), x, y);
+}
+
+/** build_groove.build_groove */
+function buildGroove(surf: Surface, x: number, y: number, width: number, fill: number): void {
+  const back = getSprite('info_menu/groove_back');
+  const fg = getSprite('info_menu/groove_fill');
+  if (!back) return;
+  surf.blitImage(back, 0, 0, 2, 5, x, y);
+  for (let i = 0; i < width - 2; i++) surf.blitImage(back, 2, 0, 1, 5, x + 2 + i, y);
+  surf.blitImage(back, 3, 0, 2, 5, x + width, y);
+  if (!fg) return;
+  const needed = Math.floor(fill * (width - 1));
+  for (let i = 0; i < needed; i++) blitSprite(surf, fg, x + 1 + i, y + 1);
+}
+
+function drawItemIconAt(surf: Surface, obj: { iconNid?: string; iconIndex?: [number, number] }, x: number, y: number): void {
+  if (obj.iconNid) drawIcon16(surf, obj.iconNid, obj.iconIndex ?? [0, 0], x, y);
+}
+
+/** Skill text shown beside an icon (charge / time components' text()). */
+function skillText(skill: SkillObject): string | null {
+  if (skill.hasComponent('build_charge') || skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    return String(skill.data.get('charge') ?? 0);
+  }
+  if (skill.hasComponent('combined_time')) return String(Math.ceil(Number(skill.data.get('turns') ?? 0) / 2));
+  if (skill.hasComponent('time') || skill.hasComponent('end_time')) return String(skill.data.get('turns') ?? 0);
+  return null;
+}
+
+/** skill_system.get_cooldown */
+function skillCooldown(skill: SkillObject): number | null {
+  const total = Number(skill.data.get('total_charge') ?? 0);
+  if (skill.hasComponent('build_charge')) return total ? Number(skill.data.get('charge') ?? 0) / total : 1;
+  if (skill.hasComponent('drain_charge') || skill.hasComponent('charges_per_turn')) {
+    return total ? Number(skill.data.get('charge') ?? 0) / total : null;
+  }
+  return null;
+}
+
+/** icons.draw_skill(compact=False) */
+function drawSkill(surf: Surface, skill: SkillObject, x: number, y: number, grey: boolean): void {
+  if (!skill.iconNid) return;
+  if (grey) {
+    const tmp = new Surface(16, 16);
+    drawIcon16(tmp, skill.iconNid, skill.iconIndex, 0, 0);
+    surf.blit(tmp.makeGray(), x, y);
+  } else {
+    drawIcon16(surf, skill.iconNid, skill.iconIndex, x, y);
+  }
+  const frac = skillCooldown(skill);
+  const cooldown = getSprite('icon_cooldown');
+  if (frac !== null && frac < 1 && cooldown) {
+    const index = Math.max(0, Math.min(7, Math.floor(8 * frac)));
+    const ctx = surf.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    surf.blitImage(cooldown, 16 * index, 0, 16, 16, x, y);
+    ctx.restore();
+  }
+  const text = skillText(skill);
+  if (text !== null) blitText(surf, 'text-blue', text, x + 16, y);
+}
+
+/** gui.Logo: an 8-frame title strip that squashes out/in when switched. */
+class InfoLogo {
+  private path: string;
+  private nextPath: string | null = null;
+  private counter = 0;
+  private elapsed = 0;
+  private state: 'idle' | 'out' | 'in' = 'idle';
+  private transition = 0;
+  private readonly anim = [0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1];
+
+  constructor(path: string) {
+    this.path = path;
+  }
+
+  switchImage(path: string): void {
+    const img = getSprite(this.path);
+    this.nextPath = path;
+    this.transition = img ? Math.floor(img.height / 8) : 0;
+    this.state = 'out';
+  }
+
+  update(): void {
+    this.elapsed += FRAMETIME;
+    if (this.elapsed > 64) {
+      this.counter = (this.counter + 1) % this.anim.length;
+      this.elapsed -= 64;
+    }
+    const img = getSprite(this.path);
+    const height = img ? Math.floor(img.height / 8) : 0;
+    if (this.state === 'out') {
+      this.transition = Math.max(this.transition - 3, 0);
+      if (this.transition === 0) {
+        this.state = 'in';
+        if (this.nextPath) this.path = this.nextPath;
+        this.nextPath = null;
+      }
+    } else if (this.state === 'in') {
+      this.transition = Math.min(this.transition + 3, height);
+      if (height && this.transition === height) this.state = 'idle';
+    }
+  }
+
+  draw(surf: Surface, cx: number, cy: number): void {
+    const img = getSprite(this.path);
+    if (!img) return;
+    const height = Math.floor(img.height / 8);
+    const drawH = this.state === 'idle' ? height : this.transition;
+    if (drawH <= 0) return;
+    const sy = this.anim[this.counter] * height;
+    const s = surf.scale;
+    const dx = cx - Math.floor(img.width / 2);
+    const dy = cy - Math.floor(drawH / 2);
+    surf.ctx.imageSmoothingEnabled = false;
+    surf.ctx.drawImage(img, 0, sy, img.width, height,
+      Math.round(dx * s), Math.round(dy * s), Math.round(img.width * s), Math.round(drawH * s));
+  }
+}
+
+const LOGO_FOR: Record<InfoPage, string> = {
+  personal_data: 'info_menu/info_title_personal_data',
+  equipment: 'info_menu/info_title_items',
+  support_skills: 'info_menu/info_title_weapon',
+  notes: 'info_menu/info_title_notes',
+};
 
 // ---------------------------------------------------------------------------
 // InfoMenuState
@@ -134,670 +358,766 @@ export class InfoMenuState extends State {
   readonly name = 'info_menu';
   override readonly transparent = false;
   override readonly showMap = false;
+  override readonly inLevel = false;
 
-  private currentPage: number = 0;
   private unit: UnitObject | null = null;
-  private unitList: UnitObject[] = [];
-  private unitIndex: number = 0;
+  private scrollUnits: UnitObject[] = [];
+  private page: InfoPage = 'personal_data';
+  private growthFlag = false;
+  private leftStats: string[] = [];
+  private rightStats: string[] = [];
+  private extraStatRow = false;
 
-  /** Portrait image cache (keyed by portrait NID). */
-  private portraitCache: Map<string, HTMLImageElement> = new Map();
-  private loadingPortraits: Set<string> = new Set();
+  private bg: MenuBackground | null = null;
+  private scene = new MenuScene();
+  private leftArrow = new ScrollArrow('left', 103, 3);
+  private rightArrow = new ScrollArrow('right', 217, 3, 0.5);
+  private logo: InfoLogo | null = null;
+  private time = 0;
 
-  override start(): StateResult {
-    // Nothing to do on first push
+  // Transitions (InfoMenuState.update)
+  private rescuer: UnitObject | null = null;
+  private nextUnit: UnitObject | null = null;
+  private nextPage: InfoPage | null = null;
+  private transition: 'LEFT' | 'RIGHT' | 'UP' | 'DOWN' | null = null;
+  private transitionCounter = 0;
+  private scrollOffsetX = 0;
+  private scrollOffsetY = 0;
+  private transparency = 0;
+
+  // InfoMenuPortrait blink (generic3counter)
+  private blinkCount = 0;
+  private blinkLast = 1;
+  private blinkUpdate = 0;
+  private blinkFirst = 7000;
+
+  /** Index of the current page in Python's info_states (tests/inspection). */
+  get currentPage(): number {
+    return INFO_STATES.indexOf(this.page);
   }
 
-  override begin(): StateResult {
+  override start(): StateResult {
     const game = getGame();
-    this.unit = game.infoMenuUnit ?? null;
+    this.initStats();
+    this.bg = new MenuBackground('info_menu_background', game.resources, false);
+    preloadSprites([
+      'info_menu/info_menu_flash', 'info_menu/info_unit', 'info_menu/status_platform', 'info_menu/info_title_background',
+      'info_menu/info_title_personal_data', 'info_menu/info_title_items', 'info_menu/info_title_weapon',
+      'info_menu/info_title_notes', 'info_menu/groove_back', 'info_menu/groove_fill', 'info_menu/battle_info',
+      'info_menu/equipment_logo', 'info_menu/equipment_highlight', 'info_menu/status_logo', 'info_menu/aid_icons',
+      'page_arrows', 'icon_cooldown',
+    ]);
+    for (const weapon of game.db.weapons ?? []) if (weapon.icon_nid) getIconSheet(weapon.icon_nid);
+    this.unit = game.infoMenuUnit ?? game.memory?.get?.('current_unit') ?? null;
     if (!this.unit) {
       game.state.back();
       return;
     }
-
-    // Python InfoMenuState: memory['scroll_units'] (e.g. the whole party
-    // from preparations) overrides the default on-map same-team list.
-    const scrollUnits: UnitObject[] | null = game.memory?.get?.('scroll_units') ?? null;
+    const memoryUnits = game.memory?.get?.('scroll_units') as UnitObject[] | null | undefined;
+    let units: UnitObject[];
+    if (memoryUnits) {
+      units = memoryUnits;
+    } else {
+      const unit = this.unit;
+      units = [...game.units.values()].filter((u: UnitObject) =>
+        !u.dead && !u.isDead() && u.team === unit.team && u.party === unit.party);
+      if (unit.position) {
+        units = units.filter((u) => u.position && (game.board?.inVision?.(u.position) ?? true));
+      }
+    }
+    this.scrollUnits = units.filter((u) => !(u.tags ?? []).includes('Tile'));
+    if (!this.scrollUnits.includes(this.unit)) this.scrollUnits.unshift(this.unit);
     game.memory?.set?.('scroll_units', null);
-    this.unitList = [];
-    if (scrollUnits) {
-      this.unitList = scrollUnits.filter((u) => !u.isDead() && !u.tags?.includes('Tile'));
-    } else if (game.board) {
-      const allUnits: UnitObject[] = game.board.getAllUnits();
-      for (const u of allUnits) {
-        if (u.team === this.unit.team && !u.isDead() && u.position) {
-          this.unitList.push(u);
+
+    const remembered = game.memory?.get?.('info_menu_state') as InfoPage | undefined;
+    this.page = remembered && INFO_STATES.includes(remembered) ? remembered : 'personal_data';
+    if (this.page === 'notes' && !this.hasNotes(this.unit)) this.page = 'personal_data';
+    this.growthFlag = false;
+    this.logo = new InfoLogo(LOGO_FOR[this.page]);
+    this.rescuer = null;
+    this.nextUnit = null;
+    this.nextPage = null;
+    this.transition = null;
+    this.transitionCounter = 0;
+    this.scrollOffsetX = 0;
+    this.scrollOffsetY = 0;
+    this.transparency = 0;
+    this.resetBlink();
+  }
+
+  /** InfoMenuState._init: left/right stat columns from DB.stats positions. */
+  private initStats(): void {
+    const stats: any[] = getGame().db.stats ?? [];
+    const left = stats.filter((s) => s.position === 'left').map((s) => s.nid as string);
+    this.extraStatRow = left.length >= 7;
+    let right = this.extraStatRow ? left.slice(7) : left.slice(6);
+    right = right.concat(stats.filter((s) => s.position === 'right').map((s) => s.nid as string));
+    const rows = this.extraStatRow ? 7 : 6;
+    this.leftStats = left.slice(0, rows);
+    this.rightStats = right.slice(0, rows);
+  }
+
+  private hasNotes(unit: UnitObject | null): boolean {
+    return !!(constant('unit_notes') && unit?.notes?.length);
+  }
+
+  private resetBlink(): void {
+    this.blinkCount = 0;
+    this.blinkLast = 1;
+    this.blinkUpdate = this.time;
+    const offsets: number[] = [];
+    for (let v = -2000; v < 2000; v += 125) offsets.push(v);
+    this.blinkFirst = 7000 + offsets[Math.floor(Math.random() * offsets.length)];
+  }
+
+  /** counters.generic3counter.update with (first, 50, 50) ms timings. */
+  private updateBlink(): void {
+    const t = this.time;
+    const wait = this.blinkCount === 0 ? this.blinkFirst : 50;
+    if (t - this.blinkUpdate <= wait) return;
+    this.blinkUpdate = t;
+    if (this.blinkCount === 0) {
+      this.blinkCount = 1;
+      this.blinkLast = 0;
+    } else if (this.blinkCount === 2) {
+      this.blinkCount = 1;
+      this.blinkLast = 2;
+    } else if (this.blinkLast === 0) {
+      this.blinkCount = 2;
+      this.blinkLast = 1;
+    } else {
+      this.blinkCount = 0;
+      this.blinkLast = 1;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Input
+  // -----------------------------------------------------------------------
+
+  override takeInput(event: InputEvent): StateResult {
+    if (event === null || this.transition) return;
+    const game = getGame();
+    const unit = this.unit;
+    if (!unit) return;
+    if (event === 'AUX') {
+      if (this.page === 'personal_data' && unit.team === 'player' && constant('growth_info')) {
+        game.audioManager?.playSfx?.('Select 3');
+        this.growthFlag = !this.growthFlag;
+      }
+    } else if (event === 'BACK') {
+      if (this.rescuer) this.moveUp();
+      else this.back();
+    } else if (event === 'SELECT') {
+      if (unit.traveler) this.moveTraveler();
+    } else if (event === 'RIGHT') {
+      this.moveHorizontal(1);
+    } else if (event === 'LEFT') {
+      this.moveHorizontal(-1);
+    } else if (event === 'DOWN') {
+      this.moveDown();
+    } else if (event === 'UP') {
+      this.moveUp();
+    }
+  }
+
+  private back(): void {
+    const game = getGame();
+    game.audioManager?.playSfx?.('Select 4');
+    game.memory?.set?.('info_menu_state', this.page);
+    // Python back(): memory['current_unit'] lets the caller re-select the unit.
+    game.memory?.set?.('current_unit', this.unit);
+    game.infoMenuUnit = this.unit;
+    if (this.unit?.position && !game.roamInfo?.roam) game.cursor?.setPos?.(this.unit.position[0], this.unit.position[1]);
+    game.state.back();
+  }
+
+  private moveHorizontal(dir: 1 | -1): void {
+    const game = getGame();
+    game.audioManager?.playSfx?.('Status_Page_Change');
+    const n = INFO_STATES.length;
+    let index = (INFO_STATES.indexOf(this.page) + dir + n) % n;
+    if (INFO_STATES[index] === 'notes' && !this.hasNotes(this.unit)) index = (index + dir + n) % n;
+    this.nextPage = INFO_STATES[index];
+    this.transition = dir > 0 ? 'RIGHT' : 'LEFT';
+    (dir > 0 ? this.rightArrow : this.leftArrow).pulse();
+    this.logo?.switchImage(LOGO_FOR[this.nextPage]);
+  }
+
+  private moveToUnit(next: UnitObject, transition: 'UP' | 'DOWN'): void {
+    this.nextUnit = next;
+    if (this.page === 'notes' && !this.hasNotes(next)) {
+      this.page = 'personal_data';
+      this.logo?.switchImage(LOGO_FOR.personal_data);
+    }
+    this.transition = transition;
+  }
+
+  private moveDown(): void {
+    getGame().audioManager?.playSfx?.('Status_Character');
+    let index: number;
+    if (this.rescuer) {
+      index = this.scrollUnits.indexOf(this.rescuer);
+      this.rescuer = null;
+    } else if (this.scrollUnits.length > 1) {
+      index = (this.scrollUnits.indexOf(this.unit as UnitObject) + 1) % this.scrollUnits.length;
+    } else {
+      return;
+    }
+    this.moveToUnit(this.scrollUnits[index], 'UP');
+  }
+
+  private moveUp(): void {
+    getGame().audioManager?.playSfx?.('Status_Character');
+    let index: number;
+    if (this.rescuer) {
+      index = this.scrollUnits.indexOf(this.rescuer);
+      this.rescuer = null;
+    } else if (this.scrollUnits.length > 1) {
+      const n = this.scrollUnits.length;
+      index = (this.scrollUnits.indexOf(this.unit as UnitObject) - 1 + n) % n;
+    } else {
+      return;
+    }
+    this.moveToUnit(this.scrollUnits[index], 'DOWN');
+  }
+
+  private moveTraveler(): void {
+    const game = getGame();
+    const traveler = this.unit?.traveler ? game.units.get(this.unit.traveler) : null;
+    if (!traveler) return;
+    game.audioManager?.playSfx?.('Status_Character');
+    this.rescuer = this.unit;
+    this.moveToUnit(traveler, 'DOWN');
+  }
+
+  // -----------------------------------------------------------------------
+  // Update (Python InfoMenuState.update)
+  // -----------------------------------------------------------------------
+
+  override update(): StateResult {
+    this.time += FRAMETIME;
+    this.bg?.update();
+    this.updateBlink();
+    if (this.nextUnit) {
+      this.transitionCounter += 1;
+      const down = this.transition === 'DOWN';
+      if (this.nextUnit === this.unit) {
+        const c = this.transitionCounter;
+        if (c === 1) { this.transparency = 0.75; this.scrollOffsetY = down ? -80 : 80; }
+        else if (c === 2) { this.transparency = 0.6; this.scrollOffsetY = down ? -32 : 32; }
+        else if (c === 3) { this.transparency = 0.48; this.scrollOffsetY = down ? -16 : 16; }
+        else if (c === 4) { this.transparency = 0.15; this.scrollOffsetY = down ? -4 : 4; }
+        else if (c === 5) { this.scrollOffsetY = 0; }
+        else {
+          this.transition = null;
+          this.transparency = 0;
+          this.nextUnit = null;
+          this.transitionCounter = 0;
+        }
+      } else {
+        const c = this.transitionCounter;
+        if (c === 1) this.transparency = 0.15;
+        else if (c === 2) this.transparency = 0.48;
+        else if (c === 3) { this.transparency = 0.6; this.scrollOffsetY = down ? 8 : -8; }
+        else if (c === 4) { this.transparency = 0.75; this.scrollOffsetY = down ? 16 : -16; }
+        else if (c < 8) { this.transparency = 1; this.scrollOffsetY = down ? 160 : -160; }
+        else {
+          this.unit = this.nextUnit;
+          getGame().infoMenuUnit = this.unit;
+          this.resetBlink();
+          this.transitionCounter = 0;
+        }
+      }
+    } else if (this.nextPage !== null) {
+      this.transitionCounter += 1;
+      const right = this.transition === 'RIGHT';
+      const counter = this.transitionCounter - 1;
+      if (this.nextPage === this.page) {
+        const idxs = [104, 72, 56, 40, 24, 8];
+        if (counter >= 0 && counter < idxs.length) {
+          this.scrollOffsetX = right ? idxs[counter] : -idxs[counter];
+        } else {
+          this.transition = null;
+          this.scrollOffsetX = 0;
+          this.nextPage = null;
+          this.transitionCounter = 0;
+        }
+      } else {
+        const idxs = [-32, -56, -80, -96, -112];
+        if (counter >= 0 && counter < idxs.length) {
+          this.scrollOffsetX = right ? idxs[counter] : -idxs[counter];
+        } else {
+          this.scrollOffsetX = right ? -140 : 140;
+          this.page = this.nextPage;
+          this.transitionCounter = 0;
         }
       }
     }
-    // Fallback: just the single unit
-    if (this.unitList.length === 0) {
-      this.unitList = [this.unit];
-    }
-
-    this.unitIndex = this.unitList.indexOf(this.unit);
-    if (this.unitIndex < 0) this.unitIndex = 0;
   }
 
-  override takeInput(event: InputEvent): StateResult {
-    if (event === null) return;
-    const game = getGame();
-
-    switch (event) {
-      case 'LEFT':
-        this.currentPage = (this.currentPage - 1 + PAGE_COUNT) % PAGE_COUNT;
-        break;
-      case 'RIGHT':
-        this.currentPage = (this.currentPage + 1) % PAGE_COUNT;
-        break;
-      case 'UP':
-        if (this.unitList.length > 1) {
-          this.unitIndex = (this.unitIndex - 1 + this.unitList.length) % this.unitList.length;
-          this.unit = this.unitList[this.unitIndex];
-          game.infoMenuUnit = this.unit;
-        }
-        break;
-      case 'DOWN':
-        if (this.unitList.length > 1) {
-          this.unitIndex = (this.unitIndex + 1) % this.unitList.length;
-          this.unit = this.unitList[this.unitIndex];
-          game.infoMenuUnit = this.unit;
-        }
-        break;
-      case 'BACK':
-        // Python back(): remember the viewed unit so the caller re-selects it.
-        game.memory?.set?.('current_unit', this.unit);
-        game.state.back();
-        break;
-      case 'SELECT':
-        // Could toggle extra details; for now do nothing
-        break;
-    }
-  }
+  // -----------------------------------------------------------------------
+  // Drawing
+  // -----------------------------------------------------------------------
 
   override draw(surf: Surface): Surface {
     if (!this.unit) return surf;
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    const s = this.scene.begin();
 
-    const vw = viewport.width;
-    const vh = viewport.height;
-
-    // Dark background
-    surf.fillRect(0, 0, vw, vh, BG_COLOR);
-
-    // Draw left panel
-    this.drawLeftPanel(surf, vw, vh);
-
-    // Draw divider line
-    surf.fillRect(LEFT_PANEL_W, 0, 1, vh, DIVIDER_COLOR);
-
-    // Draw page header
-    this.drawPageHeader(surf, vw);
-
-    // Draw right panel content based on current page
-    switch (this.currentPage) {
-      case 0:
-        this.drawPersonalData(surf, vw, vh);
-        break;
-      case 1:
-        this.drawEquipment(surf, vw, vh);
-        break;
-      case 2:
-        this.drawSkills(surf, vw, vh);
-        break;
-      case 3:
-        this.drawGrowthAndSupports(surf, vw, vh);
-        break;
+    // info_menu_flash: additive, 8-step triangle wave every 134 ms.
+    const flash = getSprite('info_menu/info_menu_flash');
+    if (flash) {
+      const blend = Math.abs(8 - ((this.time / 134) % 16)) / 8;
+      const ctx = s.ctx;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = (128 * blend) / 255;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(flash, Math.round(98 * s.scale), 0, Math.round(flash.width * s.scale), Math.round(flash.height * s.scale));
+      ctx.restore();
     }
 
-    // Draw page indicator dots at the bottom
-    this.drawPageIndicator(surf, vw, vh);
-
+    this.drawPortrait(s);
+    this.drawSlide(s);
+    this.scene.present(surf);
     return surf;
   }
 
-  // =======================================================================
-  // Left Panel — Portrait, name, class, level, HP, map sprite
-  // =======================================================================
-
-  private drawLeftPanel(surf: Surface, _vw: number, vh: number): void {
-    const unit = this.unit!;
+  /** draw_portrait + create_portrait_section */
+  private drawPortrait(target: Surface): void {
+    const unit = this.unit as UnitObject;
     const game = getGame();
+    const p = new Surface(96, WINHEIGHT);
+    blitSprite(p, getSprite('info_menu/info_unit'), 8, 122);
+    blitTextCenter(p, 'text', unit.name, 48, 80);
+    const klass = game.db.classes.get(unit.klass);
+    blitText(p, 'text', klass?.name ?? unit.klass, 8, 104);
+    blitTextRight(p, 'text-blue', String(unit.level), 39, 120);
+    blitTextRight(p, 'text-blue', String(unit.exp), 63, 120);
+    const hp = String(unit.currentHp);
+    const maxHp = String(unit.maxHp);
+    const hpFont = textWidth('text', hp) > 14 || textWidth('text', maxHp) > 14 ? 'narrow-blue' : 'text-blue';
+    blitTextRight(p, hpFont, hp, 39, 136);
+    blitTextRight(p, hpFont, maxHp, 63, 136);
+    blitSprite(p, getSprite('info_menu/status_platform'), 66, 131);
+    const affinity = game.db.affinities?.get?.(unit.affinity);
+    if (affinity?.icon_nid) drawIcon16(p, affinity.icon_nid, affinity.icon_index ?? [0, 0], 78, 81);
 
-    // Panel background
-    surf.fillRect(0, 0, LEFT_PANEL_W, vh, PANEL_BG);
-
-    // Portrait area
-    const portraitX = 8;
-    const portraitY = 8;
-    const portraitW = 80;
-    const portraitH = 72;
-
-    // Try to draw the actual portrait
-    let drewPortrait = false;
-    if (unit.portraitNid) {
-      const cached = this.portraitCache.get(unit.portraitNid);
-      if (cached) {
-        // Portrait sprite sheets are 128x112; draw the main face (top-left 96x80)
-        surf.blitImage(
-          cached,
-          0, 0, 96, 80,
-          portraitX, portraitY,
-        );
-        drewPortrait = true;
-      } else if (!this.loadingPortraits.has(unit.portraitNid)) {
-        // Kick off async load
-        const nid = unit.portraitNid;
-        this.loadingPortraits.add(nid);
-        game.resources.tryLoadImage(`resources/portraits/${nid}.png`).then((img: HTMLImageElement | null) => {
-          if (img) this.portraitCache.set(nid, img);
-          this.loadingPortraits.delete(nid);
-        });
+    // Portrait (InfoMenuPortrait) or the class card fallback.
+    const meta = game.db.portraits?.get?.(unit.portraitNid);
+    const sheet = getPortrait(game.resources, unit.portraitNid);
+    if (sheet) {
+      const face = new Surface(96, 80);
+      face.blitImage(sheet, 0, 0, 96, 80, 0, 0);
+      if (constant('info_menu_blink') && this.blinkCount > 0) {
+        const blinkY = this.blinkCount === 1 ? 48 : 64;
+        const off = meta?.blinking_offset ?? [24, 32];
+        face.blitImage(sheet, PORTRAIT_WIDTH - 32, blinkY, 32, 16, off[0], off[1]);
       }
+      const smile = meta?.smiling_offset ?? [16, 48];
+      face.blitImage(sheet, PORTRAIT_WIDTH - 32, 80, 32, 16, smile[0], smile[1]);
+      p.blitFrom(face, 8, Number(meta?.info_offset ?? 0), 80, 72, 8, 8);
+    } else if (!unit.portraitNid || !meta) {
+      const card = klass?.icon_nid ? getKeyedImage(game.resources, `resources/icons80/${klass.icon_nid}.png`) : null;
+      const idx = klass?.icon_index ?? [0, 0];
+      if (card) p.blitImage(card, idx[0] * 80, idx[1] * 72, 80, 72, 8, 8);
     }
 
-    if (!drewPortrait) {
-      // Prefer the already-loaded class map sprite while an optional portrait
-      // is absent/loading. This avoids flashing debug initials for units whose
-      // project resources are otherwise available.
-      surf.fillRect(portraitX, portraitY, portraitW, portraitH, 'rgba(40,44,80,1)');
-      surf.drawRect(portraitX, portraitY, portraitW, portraitH, DIVIDER_COLOR);
-      const sprite = unit.sprite as any;
-      const frame = sprite?.getCurrentFrame?.();
-      if (frame instanceof Surface) {
-        surf.blit(frame, portraitX + Math.floor((portraitW - frame.width) / 2), portraitY + 14);
-      } else {
-        // Neutral pixel silhouette for projects that genuinely omit both.
-        surf.fillRect(portraitX + 34, portraitY + 17, 12, 12, COLOR_GREY);
-        surf.fillRect(portraitX + 28, portraitY + 31, 24, 25, COLOR_GREY);
-        surf.fillRect(portraitX + 23, portraitY + 37, 5, 17, COLOR_GREY);
-        surf.fillRect(portraitX + 52, portraitY + 37, 5, 17, COLOR_GREY);
-      }
-    }
+    if (this.transparency) p.setAlpha(1 - this.transparency);
+    target.blit(p, 0, this.scrollOffsetY);
 
-    // Unit name (centered)
-    this.drawTextCentered(surf, unit.name, LEFT_PANEL_W / 2, 90, COLOR_WHITE, 'text');
-
-    // Class name
-    const klassDef = game.db.classes.get(unit.klass);
-    const klassName = klassDef?.name ?? unit.klass;
-    this.drawSmallText(surf, klassName, 8, 104, COLOR_GREY);
-
-    // Level / Exp
-    this.drawSmallText(surf, 'Lv', 8, 118, COLOR_YELLOW);
-    this.drawSmallTextRight(surf, String(unit.level), 40, 118, COLOR_BLUE);
-    this.drawSmallText(surf, 'Exp', 48, 118, COLOR_YELLOW);
-    this.drawSmallTextRight(surf, String(unit.exp), 88, 118, COLOR_BLUE);
-
-    // HP bar
-    this.drawSmallText(surf, 'HP', 8, 132, COLOR_YELLOW);
-    const hpText = `${unit.currentHp}/${unit.maxHp}`;
-    this.drawSmallTextRight(surf, hpText, 88, 132, COLOR_BLUE);
-
-    // HP bar visual
-    const barX = 8;
-    const barY = 144;
-    const barW = 80;
-    const barH = 3;
-    surf.fillRect(barX, barY, barW, barH, COLOR_BAR_BG);
-    const hpFrac = unit.maxHp > 0 ? unit.currentHp / unit.maxHp : 0;
-    const hpColor = hpFrac > 0.5 ? COLOR_HP_BAR : hpFrac > 0.25 ? 'rgba(220,200,60,1)' : 'rgba(220,60,60,1)';
-    surf.fillRect(barX, barY, Math.floor(barW * hpFrac), barH, hpColor);
-
-    // Animated map sprite at bottom of left panel
-    if (unit.sprite && typeof unit.sprite === 'object' && 'getCurrentFrame' in unit.sprite) {
-      const spr = unit.sprite as any;
-      const frame = spr.getCurrentFrame();
-      if (frame) {
-        const spriteX = LEFT_PANEL_W / 2 - 16;
-        const spriteY = vh - 28;
-        if (frame instanceof Surface) {
-          surf.blit(frame, spriteX, spriteY);
-        } else if (frame.canvas) {
-          surf.blit(frame, spriteX, spriteY);
-        }
+    if (!this.transparency) {
+      const frames = (unit.sprite as any)?.getStandFrames?.('active') as Surface[] | undefined;
+      if (frames && frames.length) {
+        // active_sprite_counter: back-and-forth [20, 4, 20] frames.
+        const cycle = Math.floor(this.time / FRAMETIME) % 48;
+        const idx = cycle < 20 ? 0 : cycle < 24 ? 1 : cycle < 44 ? 2 : 1;
+        const frame = frames[Math.min(idx, frames.length - 1)];
+        target.blit(frame, 81 - Math.floor(frame.width / 2), WINHEIGHT - 61 + this.scrollOffsetY);
       }
     }
   }
 
-  // =======================================================================
-  // Page Header
-  // =======================================================================
+  /** draw_slide */
+  private drawSlide(target: Surface): void {
+    const unit = this.unit as UnitObject;
+    const top = new Surface(WINWIDTH, WINHEIGHT);
+    const main = new Surface(WINWIDTH, WINHEIGHT);
 
-  private drawPageHeader(surf: Surface, vw: number): void {
-    const headerY = 0;
-    const headerH = 18;
-    const rightX = LEFT_PANEL_W + 1;
-    const rightW = vw - rightX;
-
-    surf.fillRect(rightX, headerY, rightW, headerH, HEADER_BG);
-
-    // Page title
-    const title = PAGE_NAMES[this.currentPage];
-    this.drawTextCentered(surf, title, rightX + rightW / 2, 3, COLOR_WHITE, 'text');
-
-    // Arrow indicators
-    this.drawSmallText(surf, '<', rightX + 4, 4, COLOR_GREY);
-    this.drawSmallTextRight(surf, '>', rightX + rightW - 4, 4, COLOR_GREY);
-  }
-
-  // =======================================================================
-  // Page 0: Personal Data — Stats in two columns with bars
-  // =======================================================================
-
-  private drawPersonalData(surf: Surface, vw: number, _vh: number): void {
-    const unit = this.unit!;
-    const game = getGame();
-    const klassDef = game.db.classes.get(unit.klass);
-
-    const rightX = LEFT_PANEL_W + 6;
-    const rightW = vw - LEFT_PANEL_W - 12;
-    const colW = Math.floor(rightW / 2);
-    const startY = 24;
-    const rowH = 14;
-
-    // Left column
-    for (let i = 0; i < STATS_LEFT.length; i++) {
-      const stat = STATS_LEFT[i];
-      const y = startY + i * rowH;
-      this.drawStatRow(surf, stat, unit, klassDef, rightX, y, colW);
+    blitSprite(top, getSprite('info_menu/info_title_background'), 112, 8);
+    if (this.logo) {
+      this.logo.update();
+      this.logo.draw(top, 164, 10);
+    }
+    const numStates = this.hasNotes(unit) ? INFO_STATES.length : INFO_STATES.length - 1;
+    blitTextRight(top, 'small', `${INFO_STATES.indexOf(this.page) + 1}/${numStates}`, 235, 12);
+    if (numStates > 1) {
+      this.leftArrow.draw(top);
+      this.rightArrow.draw(top);
     }
 
-    // Right column
-    for (let i = 0; i < STATS_RIGHT.length; i++) {
-      const stat = STATS_RIGHT[i];
-      const y = startY + i * rowH;
-      this.drawStatRow(surf, stat, unit, klassDef, rightX + colW, y, colW);
-    }
-
-    // Aid / Traveler below stats (if rescuing)
-    const bottomY = startY + Math.max(STATS_LEFT.length, STATS_RIGHT.length) * rowH + 4;
-    if (unit.isRescuing() && unit.rescuing) {
-      this.drawSmallText(surf, 'Trv', rightX, bottomY, COLOR_YELLOW);
-      this.drawSmallText(surf, unit.rescuing.name, rightX + 28, bottomY, COLOR_BLUE);
-    }
-
-    // Affinity (if available)
-    const unitPrefab = game.db.units.get(unit.nid);
-    if (unitPrefab?.affinity) {
-      this.drawSmallText(surf, 'Affin', rightX + colW, bottomY, COLOR_YELLOW);
-      this.drawSmallText(surf, unitPrefab.affinity, rightX + colW + 36, bottomY, COLOR_BLUE);
-    }
-  }
-
-  private drawStatRow(
-    surf: Surface,
-    statName: string,
-    unit: UnitObject,
-    klassDef: any,
-    x: number,
-    y: number,
-    colW: number,
-  ): void {
-    const value = unit.getStatValue(statName);
-    const maxStat = klassDef?.max_stats?.[statName] ?? 40;
-
-    // Stat label
-    this.drawSmallText(surf, statName, x, y, COLOR_YELLOW);
-
-    // Stat value (right-aligned within column)
-    const valueStr = String(value);
-    this.drawSmallTextRight(surf, valueStr, x + colW - 4, y, COLOR_BLUE);
-
-    // Stat bar (shows fraction of max)
-    const barX = x + 28;
-    const barW = colW - 40;
-    const barY = y + 9;
-    const barH = 2;
-
-    if (barW > 0) {
-      surf.fillRect(barX, barY, barW, barH, COLOR_BAR_BG);
-      const frac = maxStat > 0 ? Math.min(1, value / maxStat) : 0;
-      const fillColor = frac >= 1.0 ? COLOR_GREEN : COLOR_BAR_FILL;
-      surf.fillRect(barX, barY, Math.floor(barW * frac), barH, fillColor);
-    }
-  }
-
-  // =======================================================================
-  // Page 1: Equipment — Items list + battle stats
-  // =======================================================================
-
-  private drawEquipment(surf: Surface, vw: number, vh: number): void {
-    const unit = this.unit!;
-    const game = getGame();
-
-    const rightX = LEFT_PANEL_W + 6;
-    const rightW = vw - LEFT_PANEL_W - 12;
-    const startY = 24;
-
-    // --- Items list ---
-    this.drawSmallText(surf, 'Items', rightX, startY, COLOR_YELLOW);
-
-    const itemStartY = startY + 14;
-    if (unit.items.length === 0) {
-      this.drawSmallText(surf, '(none)', rightX + 4, itemStartY, COLOR_GREY);
+    if (this.page === 'personal_data') {
+      this.drawPersonalData(main, this.growthFlag);
+      this.drawClassSkills(main);
+      if (constant('fatigue') && unit.team === 'player' && getGame().gameVars?.get?.('_fatigue')) {
+        this.drawFatigue(main);
+      }
+    } else if (this.page === 'equipment') {
+      this.drawEquipment(main);
+    } else if (this.page === 'support_skills') {
+      blitSprite(main, getSprite('info_menu/status_logo'), 100, WINHEIGHT - 42);
+      this.drawSkills(main);
+      this.drawWexp(main);
+      this.drawSupports(main);
     } else {
-      for (let i = 0; i < unit.items.length; i++) {
-        const item = unit.items[i];
-        const y = itemStartY + i * 16;
-
-        // Item icon (16x16)
-        drawItemIcon(surf, item, rightX, y);
-
-        // Item name
-        const nameColor = item.isWeapon() ? COLOR_WHITE : COLOR_BLUE;
-        this.drawSmallText(surf, item.name, rightX + 18, y + 2, nameColor);
-
-        // Uses (right-aligned)
-        if (item.maxUses > 0) {
-          const usesStr = `${item.uses}/${item.maxUses}`;
-          this.drawSmallTextRight(surf, usesStr, rightX + rightW, y + 2, COLOR_GREY);
-        }
-      }
+      this.drawNotes(main);
     }
 
-    // --- Battle stats panel ---
-    const battleY = itemStartY + Math.max(unit.items.length, 1) * 16 + 8;
+    const offsetX = Math.max(96, 96 - this.scrollOffsetX);
+    target.blitFrom(main, offsetX, 0, WINWIDTH - offsetX, WINHEIGHT,
+      Math.max(96, 96 + this.scrollOffsetX), this.scrollOffsetY);
+    if (this.transparency) top.setAlpha(1 - this.transparency);
+    target.blit(top, 0, this.scrollOffsetY);
+  }
 
-    // Separator line
-    surf.fillRect(rightX, battleY - 2, rightW, 1, DIVIDER_COLOR);
+  /** create_personal_data_surf + draw_stat_surf, drawn at x = 96. */
+  private drawPersonalData(surf: Surface, growths: boolean): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    const ox = 96;
+    const statDef = (nid: string): any => game.db.stats.find((st: any) => st.nid === nid);
+    const nameColor = (nid: string): string =>
+      statDef(nid)?.growth_colors && unit.team === 'player' ? growthColor(growthRate(unit, nid)) : 'yellow';
 
-    this.drawSmallText(surf, 'Battle Stats', rightX, battleY, COLOR_YELLOW);
+    this.leftStats.forEach((nid, idx) => {
+      const def = statDef(nid);
+      const y = 16 * idx + 24;
+      if (growths) {
+        drawGrowth(surf, nid, unit, ox + 47, y);
+      } else {
+        const highest = Number(def?.maximum ?? 0);
+        const maxStat = unit.getStatCap(nid);
+        if (maxStat > 0 && highest > 0) {
+          const total = Math.floor((maxStat / highest) * 42);
+          const base = (unit.stats[nid] ?? 0) + subtleStatBonus(unit, nid);
+          buildGroove(surf, ox + 27, 16 * idx + 32, total, Math.max(0, Math.min(1, base / maxStat)));
+        }
+        drawStat(surf, nid, unit, ox + 47, y, this.time);
+      }
+      blitText(surf, `text-${nameColor(nid)}`, def?.name ?? nid, ox + 8, y);
+    });
 
-    const weapon = getEquippedWeapon(unit);
-    const bsY = battleY + 14;
-    const halfW = Math.floor(rightW / 2);
+    this.rightStats.forEach((nid, idx) => {
+      const def = statDef(nid);
+      const y = 16 * idx + 24;
+      blitText(surf, `text-${nameColor(nid)}`, def?.name ?? nid, ox + 72, y);
+      if (growths) drawGrowth(surf, nid, unit, ox + 111, y);
+      else drawStat(surf, nid, unit, ox + 111, y, this.time);
+    });
 
+    const other: string[] = ['RAT'];
+    if (constant('talk_display')) other.unshift('TALK');
+    if (!(constant('pairup') && constant('attack_stance_only'))) other.unshift('TRV', 'AID');
+    const manaExpr = game.db.getEquation?.('MANA');
+    let maxMana = 0;
+    if (manaExpr) {
+      try {
+        maxMana = evaluateEquation(manaExpr, unit, { db: game.db });
+      } catch {
+        maxMana = 0;
+      }
+    }
+    if (maxMana > 0) other.unshift('MANA');
+    if (constant('pairup') && !constant('attack_stance_only')) other.splice(2, 0, 'GAUGE');
+    if (constant('lead')) other.push('LEAD');
+
+    other.slice(0, Math.max(0, 6 - this.rightStats.length)).forEach((stat, idx) => {
+      const y = 16 * (idx + this.rightStats.length) + 24;
+      const label = (text: string): void => blitText(surf, 'text-yellow', translate(text), ox + 72, y);
+      const equation = (nid: string): number => {
+        const expr = game.db.getEquation?.(nid);
+        if (!expr) return 0;
+        try {
+          return evaluateEquation(expr, unit, { db: game.db });
+        } catch {
+          return 0;
+        }
+      };
+      if (stat === 'TRV') {
+        const traveler = unit.traveler ? game.units.get(unit.traveler) : null;
+        if (traveler) blitText(surf, 'text-blue', traveler.name, ox + 96, y);
+        else blitTextRight(surf, 'text-blue', '--', ox + 111, y);
+        label('Trv');
+      } else if (stat === 'AID') {
+        if (growths) {
+          drawGrowth(surf, 'HP', unit, ox + 111, y);
+          blitText(surf, `text-${nameColor('HP')}`, translate('HP'), ox + 72, y);
+        } else {
+          blitTextRight(surf, 'text-blue', String(equation('RESCUE_AID')), ox + 111, y);
+          const tags: string[] = unit.tags ?? [];
+          const icons = getSprite('info_menu/aid_icons');
+          const row = tags.includes('Dragon') ? 3 : tags.includes('Flying') ? 2 : tags.includes('Mounted') ? 1 : 0;
+          blitSub(surf, icons, 0, row * 16, 16, 16, ox + 112, y);
+          label('Aid');
+        }
+      } else if (stat === 'RAT') {
+        blitTextRight(surf, 'text-blue', String(equation('RATING')), ox + 111, y);
+        label('Rat');
+      } else if (stat === 'MANA') {
+        blitTextRight(surf, 'text-blue', String(unit.currentMana ?? 0), ox + 111, y);
+        label('MANA');
+      } else if (stat === 'GAUGE') {
+        blitTextRight(surf, 'text-blue', String(unit.getGuardGauge()), ox + 111, y);
+        label('GAUGE');
+      } else if (stat === 'TALK') {
+        blitTextRight(surf, 'text-blue', '--', ox + 111, y);
+        label('Talk');
+      } else if (stat === 'LEAD') {
+        label('Lead');
+        if (growths) drawGrowth(surf, 'LEAD', unit, ox + 111, y);
+        else {
+          drawStat(surf, 'LEAD', unit, ox + 111, y, this.time);
+          blitSub(surf, getSprite('info_menu/lead_star'), 0, 0, 16, 16, ox + 111, y);
+        }
+      }
+    });
+  }
+
+  private uniqueSkills(classSkills: boolean): { skill: SkillObject; count: number }[] {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    const counts = new Map<string, { skill: SkillObject; count: number }>();
+    for (const skill of unit.skills) {
+      if (skill.hasComponent('class_skill') !== classSkills) continue;
+      if (skillInfoPresentation(skill, unit, game) === 'hidden') continue;
+      const entry = counts.get(skill.nid);
+      if (entry) entry.count += 1;
+      else counts.set(skill.nid, { skill, count: 1 });
+    }
+    return [...counts.values()].slice(0, 6);
+  }
+
+  private drawSkillRow(surf: Surface, classSkills: boolean, y: number, iconY: number): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    this.uniqueSkills(classSkills).forEach(({ skill, count }, idx) => {
+      const left = 96 + idx * 24;
+      drawSkill(surf, skill, left + 8, y + iconY, skillInfoPresentation(skill, unit, game) === 'grey');
+      if (count > 1) {
+        const text = String(count);
+        blitText(surf, 'small-white', text, left + 20 - 4 * text.length, y + 6);
+      }
+    });
+  }
+
+  /** create_class_skill_surf / draw_class_skill_surf */
+  private drawClassSkills(surf: Surface): void {
+    this.drawSkillRow(surf, true, this.extraStatRow ? WINHEIGHT - 26 : WINHEIGHT - 36, 8);
+  }
+
+  /** create_skill_surf / draw_skill_surf */
+  private drawSkills(surf: Surface): void {
+    this.drawSkillRow(surf, false, WINHEIGHT - 32, 4);
+  }
+
+  /** create_fatigue_surf */
+  private drawFatigue(surf: Surface): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    const expr = game.db.getEquation?.('MAX_FATIGUE');
+    let maxFatigue = 1;
+    if (expr) {
+      try {
+        maxFatigue = Math.max(1, evaluateEquation(expr, unit, { db: game.db }));
+      } catch {
+        maxFatigue = 1;
+      }
+    }
+    const fatigue = unit.currentFatigue ?? 0;
+    buildGroove(surf, 96 + 27, WINHEIGHT - 9, 88, Math.max(0, Math.min(1, fatigue / maxFatigue)));
+    const text = `${fatigue}/${maxFatigue}`;
+    const x = 96 + 27 + 44 - Math.floor(textWidth('text', text) / 2);
+    blitText(surf, 'text-blue', text, x, WINHEIGHT - 17);
+    if (fatigue >= maxFatigue) blitText(surf, 'text-red', String(fatigue), x, WINHEIGHT - 17);
+    blitText(surf, 'text-yellow', translate('Ftg'), 96 + 8, WINHEIGHT - 17);
+  }
+
+  /** BasicItemOption.draw in FULL_USES mode (width 120). */
+  private drawItemOption(surf: Surface, item: ItemObject, x: number, y: number): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    const owner = item.owner ?? unit;
+    const ok = !owner || itemAvailable(owner, item, game.db, game);
+    const textColor = item.getComponent?.<string>('text_color');
+    let main = 'grey';
+    let uses = 'grey';
+    if (textColor) {
+      main = textColor;
+      if (ok) uses = 'blue';
+    } else if (item.droppable) {
+      main = 'green';
+      uses = 'green';
+    } else if (ok) {
+      main = 'white';
+      uses = 'blue';
+    }
+    const width = 120;
+    drawItemIconAt(surf, item, x + 2, y);
+    const font = measureStyledText(item.name, 'text') > width - 56 ? 'narrow' : 'text';
+    drawStyledText(surf, item.name, x + 20, y, main, font);
+    let a = '--';
+    let b = '--';
+    const pick = (obj: ItemObject | null, key: string): boolean => {
+      if (!obj || obj.data.get(key) == null) return false;
+      a = String(obj.data.get(key));
+      b = String(obj.data.get(`starting_${key}`) ?? a);
+      return true;
+    };
+    if (!pick(item, 'uses') && !pick(item, 'c_uses') && !pick(item.parentItem, 'uses') &&
+        !pick(item.parentItem, 'c_uses')) pick(item, 'cooldown');
+    blitTextRight(surf, `text-${uses}`, a, x + width - 24, y);
+    blitTextRight(surf, 'text', '/', x + width - 16, y);
+    blitTextRight(surf, `text-${uses}`, b, x + width, y);
+  }
+
+  /** create_equipment_surf, drawn at x = 96. */
+  private drawEquipment(surf: Surface): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    const ox = 96;
+    const weapon = getEquippedWeapon(unit, game.db, game);
+    const accessory = unit.equippedAccessory;
+    const highlight = getSprite('info_menu/equipment_highlight');
+    const nonAccessories = unit.items.filter((item) => !item.isAccessory());
+    const accessories = unit.items.filter((item) => item.isAccessory());
+    const drawEntry = (item: ItemObject, idx: number, equipped: ItemObject | null): void => {
+      const y = idx * 16 + 24;
+      const sub = item.subitems.find((child) => child === equipped);
+      if (sub || item === equipped) blitSprite(surf, highlight, ox + 8, y + 8);
+      this.drawItemOption(surf, sub ?? item, ox + 8, y);
+    };
+    nonAccessories.forEach((item, idx) => drawEntry(item, idx, weapon));
+    const numItems = inventoryCapacity(unit, false, game.db);
+    accessories.forEach((item, idx) => drawEntry(item, numItems + idx, accessory));
+
+    const top = 104;
+    const left = 12;
+    blitSprite(surf, getSprite('info_menu/battle_info'), ox + left, top);
+    blitSprite(surf, getSprite('info_menu/equipment_logo'), ox + 14, top + 4);
+    blitText(surf, 'text-yellow', translate('Rng'), ox + 78, top);
+    blitText(surf, 'text-yellow', translate('Atk'), ox + 22, top + 16);
+    blitText(surf, 'text-yellow', translate('Hit'), ox + 22, top + 32);
+    const crit = !!constant('crit');
+    blitText(surf, 'text-yellow', translate(crit ? 'Crit' : 'AS'), ox + 78, top + 16);
+    blitText(surf, 'text-yellow', translate('Avoid'), ox + 78, top + 32);
+
+    let rng = '--';
+    let dam = '--';
+    let acc = '--';
+    let crt = '--';
+    let as = '--';
     if (weapon) {
-      // Compute battle stats
-      const atk = damage(unit, weapon, game.db);
-      const hit = accuracy(unit, weapon, game.db);
-      const crt = computeCrit(unit, weapon, unit, game.db); // self as dummy defender for display
-      const as = attackSpeed(unit, weapon, game.db);
-      const avo = avoid(unit, game.db);
-
-      // Left column
-      this.drawBattleStat(surf, 'Atk', String(atk), rightX, bsY);
-      this.drawBattleStat(surf, 'Hit', String(hit), rightX, bsY + 12);
-      this.drawBattleStat(surf, 'Crit', String(crt), rightX, bsY + 24);
-
-      // Right column
-      this.drawBattleStat(surf, 'AS', String(as), rightX + halfW, bsY);
-      this.drawBattleStat(surf, 'Avoid', String(avo), rightX + halfW, bsY + 12);
-
-      // Range
       const minR = modifiedMinimumRange(unit, weapon, game);
       const maxR = modifiedMaximumRange(unit, weapon, game);
-      const rangeStr = minR === maxR ? String(minR) : `${minR}-${maxR}`;
-      this.drawBattleStat(surf, 'Rng', rangeStr, rightX + halfW, bsY + 24);
+      if (maxR >= 99) rng = `${minR}+`;
+      else if (maxR < 0) rng = translate('Varies');
+      else rng = minR !== maxR ? `${minR}-${maxR}` : String(maxR);
+      dam = String(damage(unit, weapon, game.db, game));
+      acc = String(accuracy(unit, weapon, game.db, game));
+      if (weapon.hasComponent('crit')) crt = String(critAccuracy(unit, weapon, game.db, game));
+      as = String(attackSpeed(unit, weapon, game.db, game));
     } else {
-      this.drawSmallText(surf, 'No weapon equipped', rightX + 4, bsY, COLOR_GREY);
+      as = String(unit.getStatValue('SPD'));
     }
+    const avo = String(avoid(unit, game.db, game.board, null, game));
+    blitTextRight(surf, 'text-blue', rng, ox + 127, top);
+    blitTextRight(surf, 'text-blue', dam, ox + 71, top + 16);
+    blitTextRight(surf, 'text-blue', acc, ox + 71, top + 32);
+    blitTextRight(surf, 'text-blue', crit ? crt : as, ox + 127, top + 16);
+    blitTextRight(surf, 'text-blue', avo, ox + 127, top + 32);
   }
 
-  private drawBattleStat(surf: Surface, label: string, value: string, x: number, y: number): void {
-    this.drawSmallText(surf, label, x, y, COLOR_YELLOW);
-    this.drawSmallTextRight(surf, value, x + 50, y, COLOR_WHITE);
-  }
-
-  // =======================================================================
-  // Page 2: Skills — Weapon experience + skill list
-  // =======================================================================
-
-  private drawSkills(surf: Surface, vw: number, _vh: number): void {
-    const unit = this.unit!;
+  /** Usable, visible weapon types with positive WEXP (create_wexp_surf). */
+  private wexpEntries(): [string, number][] {
+    const unit = this.unit as UnitObject;
     const game = getGame();
-
-    const rightX = LEFT_PANEL_W + 6;
-    const rightW = vw - LEFT_PANEL_W - 12;
-    const startY = 24;
-
-    // --- Weapon experience ---
-    this.drawSmallText(surf, 'Weapon Rank', rightX, startY, COLOR_YELLOW);
-
-    const wexpY = startY + 14;
-    const wexpEntries = Object.entries(unit.wexp).filter(([, value]) => value > 0).slice(0, 4);
-    if (wexpEntries.length === 0) {
-      this.drawSmallText(surf, '(none)', rightX + 4, wexpY, COLOR_GREY);
-    } else {
-      const colW = Math.floor(rightW / 2);
-      for (let i = 0; i < wexpEntries.length; i++) {
-        const [wtype, wexpValue] = wexpEntries[i];
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = rightX + col * colW;
-        const y = wexpY + row * 32;
-
-        // Weapon type name
-        this.drawSmallText(surf, wtype, x, y, COLOR_GREY);
-
-        // Rank letter
-        const progress = this.getWexpProgress(wexpValue, game);
-        const progressText = progress.next
-          ? `${progress.rank} ${wexpValue}/${progress.next}`
-          : `${progress.rank} MAX`;
-        this.drawSmallText(surf, progressText, x, y + 14, COLOR_WHITE);
-        const barX = x;
-        const barY = y + 25;
-        const barW = colW - 5;
-        surf.fillRect(barX, barY, barW, 2, COLOR_BAR_BG);
-        surf.fillRect(barX, barY, Math.floor(barW * progress.fraction), 2, COLOR_BAR_FILL);
-      }
-    }
-
-    // --- Skills list ---
-    const wexpRows = Math.ceil(wexpEntries.length / 2);
-    const skillHeaderY = wexpY + Math.max(wexpRows, 1) * 32 + 4;
-
-    // Separator
-    surf.fillRect(rightX, skillHeaderY - 2, rightW, 1, DIVIDER_COLOR);
-
-    this.drawSmallText(surf, 'Skills', rightX, skillHeaderY, COLOR_YELLOW);
-
-    const skillStartY = skillHeaderY + 14;
-    // Python MultiSkill folds its sourced children into the visible wrapper.
-    const visibleSkills = visibleSkillsForInfoMenu(unit, game);
-    if (visibleSkills.length === 0) {
-      this.drawSmallText(surf, '(none)', rightX + 4, skillStartY, COLOR_GREY);
-    } else {
-      for (let i = 0; i < visibleSkills.length; i++) {
-        const skill = visibleSkills[i];
-        const y = skillStartY + i * 16;
-
-        // Skill icon
-        if (skill.iconNid) {
-          drawIcon16(surf, skill.iconNid, skill.iconIndex, rightX, y);
-        }
-
-        // Skill name
-        const color = skillInfoPresentation(skill, unit, game) === 'grey'
-          ? COLOR_GREY
-          : COLOR_WHITE;
-        this.drawSmallText(surf, skill.name, rightX + 18, y + 2, color);
-      }
-    }
-  }
-
-  /**
-   * Convert a weapon experience value to a rank letter using the DB's
-   * weapon rank thresholds.
-   */
-  private getWexpRank(wexp: number, game: any): string {
-    const ranks = game.db.weaponRanks;
-    if (!ranks || ranks.length === 0) return '-';
-
-    let bestRank = '-';
-    for (const wr of ranks) {
-      if (wexp >= wr.requirement) {
-        bestRank = wr.rank;
-      }
-    }
-    return bestRank;
-  }
-
-  private getWexpProgress(
-    wexp: number,
-    game: any,
-  ): { rank: string; next: number | null; fraction: number } {
-    const ranks = [...(game.db.weaponRanks ?? [])]
-      .sort((left: any, right: any) => left.requirement - right.requirement);
-    let current = ranks[0] ?? null;
-    let next = null;
-    for (const rank of ranks) {
-      if (wexp >= rank.requirement) current = rank;
-      else {
-        next = rank;
-        break;
-      }
-    }
-    if (!current) return { rank: '-', next: null, fraction: 0 };
-    if (!next) return { rank: current.rank, next: null, fraction: 1 };
-    const span = Math.max(1, next.requirement - current.requirement);
-    return {
-      rank: current.rank,
-      next: next.requirement,
-      fraction: Math.max(0, Math.min(1, (wexp - current.requirement) / span)),
-    };
-  }
-
-  // =======================================================================
-  // Page 3: Growth rates + support partners
-  // =======================================================================
-
-  private drawGrowthAndSupports(surf: Surface, vw: number, _vh: number): void {
-    const unit = this.unit!;
-    const game = getGame();
-    const rightX = LEFT_PANEL_W + 6;
-    const rightW = vw - LEFT_PANEL_W - 12;
-    const colW = Math.floor(rightW / 2);
-    const stats = [...STATS_LEFT, ...STATS_RIGHT].filter((nid) =>
-      Object.prototype.hasOwnProperty.call(unit.growths, nid));
     const klass = game.db.classes.get(unit.klass);
-    const difficulty = game.currentMode && game.mode
-      ? game.currentMode.getGrowthBonus(unit, game.getAlliedTeams(), game.mode)
-      : {};
-
-    this.drawSmallText(surf, 'Growth Rates', rightX, 24, COLOR_YELLOW);
-    stats.slice(0, 8).forEach((nid, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = rightX + col * colW;
-      const y = 38 + row * 12;
-      const value = (unit.growths[nid] ?? 0) +
-        (klass?.growth_bonus?.[nid] ?? 0) +
-        (difficulty?.[nid] ?? 0) +
-        growthChange(unit, nid);
-      this.drawSmallText(surf, nid, x, y, COLOR_GREY);
-      this.drawSmallTextRight(surf, `${value}%`, x + colW - 4, y, value >= 50 ? COLOR_GREEN : COLOR_BLUE);
-    });
-    const pointParts = Object.entries(unit.growthPoints)
-      .filter(([, value]) => Number(value) !== 0)
-      .slice(0, 2)
-      .map(([nid, value]) => `${nid} ${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}`);
-    if (pointParts.length > 0) {
-      this.drawSmallText(surf, `Growth pts  ${pointParts.join('  ')}`, rightX, 88, COLOR_GREY);
+    const usable = new Set(Object.entries(klass?.wexp_gain ?? {})
+      .filter(([, entry]) => Array.isArray(entry) ? entry[0] : (entry as any)?.usable)
+      .map(([nid]) => nid));
+    for (const skill of unit.skills) {
+      const granted = skill.getComponent<unknown>('wexp_usable_skill');
+      if (Array.isArray(granted)) for (const nid of granted) usable.add(String(nid));
+      const forbidden = skill.getComponent<unknown>('wexp_unusable_skill');
+      if (Array.isArray(forbidden)) for (const nid of forbidden) usable.delete(String(nid));
     }
+    const visible = new Set((game.db.weapons ?? []).filter((w: any) => !w.hide_from_display).map((w: any) => w.nid));
+    return Object.entries(unit.wexp)
+      .filter(([nid, value]) => value > 0 && usable.has(nid) && visible.has(nid));
+  }
 
-    const supportY = 108;
-    surf.fillRect(rightX, supportY - 4, rightW, 1, DIVIDER_COLOR);
-    this.drawSmallText(surf, 'Supports', rightX, supportY, COLOR_YELLOW);
-    const pairs = game.gameVars.get('_supports') && game.supports
-      ? game.supports.getPairsForUnit(unit.nid).filter((pair: any) =>
-        pair.unlockedRanks.length > 0 || pair.lockedRanks.length > 0)
-      : [];
-    if (pairs.length === 0) {
-      this.drawSmallText(surf, '(none)', rightX + 4, supportY + 14, COLOR_GREY);
-      return;
-    }
-    pairs.slice(0, 6).forEach((pair: any, index: number) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = rightX + col * colW;
-      const y = supportY + 14 + row * 13;
-      const partnerNid = pair.unit1Nid === unit.nid ? pair.unit2Nid : pair.unit1Nid;
-      const partner = game.getUnit(partnerNid);
-      const rank = pair.unlockedRanks.at(-1) ?? pair.lockedRanks[0] ?? '-';
-      this.drawSmallText(surf, (partner?.name ?? partnerNid).slice(0, 10), x, y, COLOR_WHITE);
-      this.drawSmallTextRight(
-        surf,
-        pair.unlockedRanks.length ? rank : `${rank}!`,
-        x + colW - 4,
-        y,
-        pair.unlockedRanks.length ? COLOR_YELLOW : COLOR_GREEN,
-      );
+  private drawWexp(surf: Surface): void {
+    const game = getGame();
+    const entries = this.wexpEntries().slice(0, 4);
+    const width = Math.floor((WINWIDTH - 102) / 2);
+    const ranks = [...(game.db.weaponRanks ?? [])].sort((a: any, b: any) => a.requirement - b.requirement);
+    entries.forEach(([wtype, value], counter) => {
+      const x = counter % 2;
+      const y = Math.floor(counter / 2) * 16;
+      let rank: any = null;
+      let next: any = null;
+      for (const r of ranks) {
+        if (value >= r.requirement) rank = r;
+        else if (!next) next = r;
+      }
+      const perc = !rank ? 0 : !next ? 1 : (value - rank.requirement) / (next.requirement - rank.requirement);
+      const offset = 96 + 8 + x * width;
+      const def = (game.db.weapons ?? []).find((w: any) => w.nid === wtype);
+      if (def?.icon_nid) drawIcon16(surf, def.icon_nid, def.icon_index ?? [0, 0], offset, 24 + 4 + y);
+      buildGroove(surf, offset + 18, 24 + 10 + y, width - 24, perc);
+      const rankFont = FONT['rank'] ? 'rank-blue' : 'text-blue';
+      blitTextCenter(surf, rankFont, rank?.rank ?? '', offset + 7 + Math.floor(width / 2), 24 + 4 + y);
     });
   }
 
-  // =======================================================================
-  // Page indicator (dots at bottom)
-  // =======================================================================
-
-  private drawPageIndicator(surf: Surface, vw: number, vh: number): void {
-    const dotSpacing = 10;
-    const totalW = PAGE_COUNT * dotSpacing;
-    const startX = Math.floor(vw / 2) - Math.floor(totalW / 2) + Math.floor(dotSpacing / 2);
-    const y = vh - 8;
-
-    for (let i = 0; i < PAGE_COUNT; i++) {
-      const x = startX + i * dotSpacing;
-      const color = i === this.currentPage ? COLOR_WHITE : COLOR_GREY;
-      const size = i === this.currentPage ? 3 : 2;
-      surf.fillRect(x - Math.floor(size / 2), y - Math.floor(size / 2), size, size, color);
-    }
+  /** create_support_surf */
+  private drawSupports(surf: Surface): void {
+    const unit = this.unit as UnitObject;
+    const game = getGame();
+    if (!game.gameVars?.get?.('_supports') || !game.supports) return;
+    const width = Math.floor((WINWIDTH - 102) / 2);
+    const pairs = game.supports.getPairsForUnit(unit.nid)
+      .filter((pair: any) => pair.unlockedRanks?.length)
+      .slice(0, 6);
+    const top = 16 * 2 + 4 + 24;
+    pairs.forEach((pair: any, idx: number) => {
+      const x = idx % 2;
+      const y = Math.floor(idx / 2);
+      const otherNid = pair.unit1Nid === unit.nid ? pair.unit2Nid : pair.unit1Nid;
+      const other = game.units.get(otherNid);
+      if (!other) return;
+      const affinity = game.db.affinities?.get?.(other.affinity);
+      if (affinity?.icon_nid) drawIcon16(surf, affinity.icon_nid, affinity.icon_index ?? [0, 0], 96 + x * width + 8, y * 16 + top);
+      blitText(surf, 'narrow', other.name, 96 + x * width + 22, y * 16 + top);
+      const highest = pair.unlockedRanks[pair.unlockedRanks.length - 1];
+      blitTextRight(surf, 'text-yellow', highest, 96 + x * width + Math.floor((WINWIDTH - 96) / 2) - 2, y * 16 + top);
+    });
   }
 
-  // =======================================================================
-  // Text drawing helpers
-  // =======================================================================
-
-  /**
-   * Draw text centered at (cx, y) using BMP font if available.
-   */
-  private drawTextCentered(surf: Surface, text: string, cx: number, y: number, color: string, fontNid: string = 'text'): void {
-    const font = FONT[fontNid];
-    if (font) {
-      font.blitCenter(surf, text, cx, y, this.mapCssColorToFontColor(color));
-    } else {
-      // Fallback: estimate width
-      const estW = text.length * 6;
-      surf.drawText(text, cx - Math.floor(estW / 2), y, color, '8px monospace');
+  /** create_notes_surf */
+  private drawNotes(surf: Surface): void {
+    const unit = this.unit as UnitObject;
+    let total = 24;
+    for (const [category, text] of unit.notes ?? []) {
+      blitText(surf, 'text-blue', category, 96 + 10, total);
+      const catW = textWidth('text', category);
+      const left = catW <= 64 ? 64 : catW + 8;
+      for (const entry of String(text).split(',')) {
+        drawStyledText(surf, entry, 96 + left, total, 'white', 'text');
+        total += 16;
+      }
     }
-  }
-
-  /**
-   * Draw small text left-aligned using BMP font.
-   */
-  private drawSmallText(surf: Surface, text: string, x: number, y: number, color: string): void {
-    const font = FONT['text'] ?? FONT['small'];
-    if (font) {
-      font.blit(surf, text, x, y, this.mapCssColorToFontColor(color));
-    } else {
-      surf.drawText(text, x, y, color, '7px monospace');
-    }
-  }
-
-  /**
-   * Draw small text right-aligned (text ends at x).
-   */
-  private drawSmallTextRight(surf: Surface, text: string, x: number, y: number, color: string): void {
-    const font = FONT['text'] ?? FONT['small'];
-    if (font) {
-      font.blitRight(surf, text, x, y, this.mapCssColorToFontColor(color));
-    } else {
-      const estW = text.length * 5;
-      surf.drawText(text, x - estW, y, color, '7px monospace');
-    }
-  }
-
-  /**
-   * Map CSS color strings to BMP font palette names.
-   */
-  private mapCssColorToFontColor(cssColor: string): string {
-    if (cssColor === 'white' || cssColor === COLOR_WHITE) return 'white';
-    if (cssColor === COLOR_YELLOW || cssColor.includes('248,240,136') || cssColor.includes('255,240,200')) return 'yellow';
-    if (cssColor === COLOR_BLUE || cssColor.includes('200,200,255')) return 'blue';
-    if (cssColor === COLOR_GREY || cssColor.includes('160,160,200') || cssColor.includes('160,160,160')) return 'grey';
-    if (cssColor === COLOR_GREEN || cssColor.includes('128,220,128')) return 'white';
-    return 'white';
   }
 }

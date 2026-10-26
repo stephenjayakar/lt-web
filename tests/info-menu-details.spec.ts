@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('unit info growth, support, and WEXP detail', () => {
-  test('shows a safe fourth page and exposes rank progress data', async ({ page }, testInfo) => {
+  test('pages follow Python info_states and AUX toggles growths', async ({ page }, testInfo) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
     const setup = await page.evaluate(() => {
@@ -22,23 +22,21 @@ test.describe('unit info growth, support, and WEXP detail', () => {
     await page.evaluate(() => (window as any).__harness.stepFrames(4, null));
     expect(setup.pairs).toBeGreaterThan(0);
 
-    const skillPage = await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      state.takeInput('RIGHT');
-      state.takeInput('RIGHT');
-      return state.currentPage;
-    });
-    expect(skillPage).toBe(2);
-    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
-    await page.locator('canvas').screenshot({ path: testInfo.outputPath('info-wexp.png') });
+    const input = async (event: string): Promise<number> => {
+      await page.evaluate((e) => (window as any).__gameRef.state.getCurrentState().takeInput(e), event);
+      // Let the page slide transition finish before the next input.
+      await page.evaluate(() => (window as any).__harness.stepFrames(16, null));
+      return page.evaluate(() => (window as any).__gameRef.state.getCurrentState().currentPage);
+    };
 
-    const growthPage = await page.evaluate(() => {
-      const state = (window as any).__gameRef.state.getCurrentState() as any;
-      state.takeInput('RIGHT');
-      return state.currentPage;
-    });
-    expect(growthPage).toBe(3);
-    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
-    await page.locator('canvas').screenshot({ path: testInfo.outputPath('info-growth-supports.png') });
+    // AUX on personal data swaps in the growth view (Python growth_flag).
+    expect(await input('AUX')).toBe(0);
+    await page.locator('canvas').screenshot({ path: testInfo.outputPath('info-growths.png') });
+
+    expect(await input('RIGHT')).toBe(1);
+    expect(await input('RIGHT')).toBe(2);
+    await page.locator('canvas').screenshot({ path: testInfo.outputPath('info-wexp-supports.png') });
+    // Without unit notes the fourth 'notes' page is skipped and RIGHT wraps.
+    expect(await input('RIGHT')).toBe(0);
   });
 });
