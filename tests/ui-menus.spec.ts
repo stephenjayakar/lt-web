@@ -286,6 +286,27 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     expect(await cssText(page)).toEqual([]);
   });
 
+  test('map trade uses the Python trade window', async ({ page }, testInfo) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const termina = game.units.get('Termina') ??
+        game.spawnUnit(game.db.units.get('Termina'), 'player', null, 'None');
+      const aeilem = game.units.get('Aeilem') ??
+        game.spawnUnit(game.db.units.get('Aeilem'), 'player', null, 'None');
+      game.selectedUnit = termina;
+      game.memory.set('trade_partner', aeilem);
+      game.state.change('trade');
+    });
+    await settleAssets(page, 20);
+    expect(await stateName(page)).toBe('trade');
+    await cssText(page);
+    await press(page, 'SELECT');
+    await step(page, 4);
+    await shot(page, 'map-trade', testInfo);
+    expect(await cssText(page)).toEqual([]);
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));

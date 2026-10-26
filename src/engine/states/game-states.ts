@@ -165,6 +165,8 @@ import {
   screenOrigin as prepScreenOrigin,
   shopPrice as prepShopPrice,
   textWidth as prepTextWidth,
+  TradeMenu,
+  checkTrade as prepCheckTrade,
 } from '../../ui/prep-ui';
 import { DifficultyModeObject } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
@@ -1950,7 +1952,7 @@ export class LevelSelectState extends State {
       Math.floor((vw - titleW) / 2),
       10,
       'white',
-      '12px monospace',
+      'text',
     );
 
     // Level list
@@ -1969,21 +1971,21 @@ export class LevelSelectState extends State {
 
       // Cursor arrow
       if (isSelected) {
-        surf.drawText('>', this.LIST_X - 2, y, 'rgb(220,200,80)', '10px monospace');
+        surf.drawText('>', this.LIST_X - 2, y, 'yellow', 'text');
       }
 
       // Level name
-      const color = isSelected ? 'rgb(255,255,220)' : 'rgb(180,180,200)';
-      surf.drawText(level.name, this.LIST_X + 8, y, color, '10px monospace');
+      const color = isSelected ? 'white' : 'grey';
+      surf.drawText(level.name, this.LIST_X + 8, y, color, 'text');
     }
 
     // Scroll indicators
     if (this.scrollOffset > 0) {
-      surf.drawText('^', Math.floor(vw / 2), this.LIST_Y - 10, 'rgba(200,200,220,0.6)', '8px monospace');
+      surf.drawText('^', Math.floor(vw / 2), this.LIST_Y - 10, 'grey', 'text');
     }
     if (visibleEnd < this.levels.length) {
       const bottomY = this.LIST_Y + this.VISIBLE_ROWS * this.ROW_HEIGHT;
-      surf.drawText('v', Math.floor(vw / 2), bottomY, 'rgba(200,200,220,0.6)', '8px monospace');
+      surf.drawText('v', Math.floor(vw / 2), bottomY, 'grey', 'text');
     }
 
     // Loading indicator
@@ -1996,7 +1998,7 @@ export class LevelSelectState extends State {
         Math.floor((vw - loadW) / 2),
         Math.floor(vh / 2),
         'white',
-        '10px monospace',
+        'text',
       );
     }
 
@@ -5292,11 +5294,8 @@ export class TradeState extends State {
   private adjacentAllies: UnitObject[] = [];
   private tradePartner: UnitObject | null = null;
 
-  // Item selection phase
-  private itemMenuA: ChoiceMenu | null = null;
-  private itemMenuB: ChoiceMenu | null = null;
-  private selectedIndexA: number = -1;
-  private activeTradeSide: 'a' | 'b' = 'a';
+  /** Python menus.Trade (shared with prep trading). */
+  menu: TradeMenu | null = null;
   private phase: 'select_partner' | 'select_items' = 'select_partner';
 
   override begin(): StateResult {
@@ -5313,8 +5312,7 @@ export class TradeState extends State {
     if (forcedPartner) {
       game.memory.delete('trade_partner');
       this.tradePartner = forcedPartner;
-      this.buildItemMenus(unit);
-      this.phase = 'select_items';
+      this.openTrade(unit);
       return;
     }
 
@@ -5332,8 +5330,7 @@ export class TradeState extends State {
     if (this.adjacentAllies.length === 1) {
       // Only one partner, skip selection
       this.tradePartner = this.adjacentAllies[0];
-      this.buildItemMenus(unit);
-      this.phase = 'select_items';
+      this.openTrade(unit);
     } else {
       const options: MenuOption[] = this.adjacentAllies.map((ally) => ({
         label: ally.name,
@@ -5346,33 +5343,34 @@ export class TradeState extends State {
     }
   }
 
-  private buildItemMenus(unit: UnitObject): void {
-    const partner = this.tradePartner!;
+  /** Python TradeState.start: menus.Trade(initiator, partner). */
+  private openTrade(unit: UnitObject): void {
+    const game = getGame();
+    if (!this.tradePartner) return;
+    game.cursor.visible = false;
+    this.menu = new TradeMenu(game, unit, this.tradePartner);
+    this.phase = 'select_items';
+  }
 
-    // Build items list for unit A (current unit)
-    const optionsA: MenuOption[] = unit.items.map((item, i) => ({
-      label: item.name,
-      value: `a_${i}`,
-      enabled: true,
-    }));
-    // Add empty slot
-    optionsA.push({ label: '---', value: 'a_empty', enabled: true });
-
-    this.itemMenuA = new ChoiceMenu(optionsA, 4, 20);
-    this.itemMenuA.width = viewport.width / 2 - 8;
-
-    // Build items list for unit B (trade partner)
-    const optionsB: MenuOption[] = partner.items.map((item, i) => ({
-      label: item.name,
-      value: `b_${i}`,
-      enabled: true,
-    }));
-    optionsB.push({ label: '---', value: 'b_empty', enabled: true });
-
-    this.itemMenuB = new ChoiceMenu(optionsB, viewport.width / 2 + 4, 20);
-    this.itemMenuB.width = viewport.width / 2 - 8;
-    this.selectedIndexA = -1;
-    this.activeTradeSide = 'a';
+  /** Python TradeState.do_trade (+ has_traded). */
+  private doTrade(): boolean {
+    const game = getGame();
+    const menu = this.menu;
+    const selected = menu?.selectedItem();
+    if (!menu || !selected) return false;
+    const [owner1, item1] = selected;
+    const [owner2, item2] = menu.currentItem();
+    if (!prepCheckTrade(game, item1, owner1, item2, owner2)) {
+      menu.unsetSelectedOption();
+      return false;
+    }
+    const index1 = item1 ? owner1.items.indexOf(item1) : owner1.items.length;
+    const index2 = item2 ? owner2.items.indexOf(item2) : owner2.items.length;
+    game.actionLog.doAction(new TradeAction(owner1, index1, owner2, index2));
+    game.actionLog.doAction(new HasTradedAction(game.selectedUnit));
+    menu.unsetSelectedOption();
+    menu.updateOptions();
+    return true;
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -5392,103 +5390,57 @@ export class TradeState extends State {
       if ('selected' in result) {
         this.tradePartner = this.adjacentAllies.find((a) => a.nid === result.selected) ?? null;
         if (this.tradePartner) {
-          this.buildItemMenus(game.selectedUnit);
-          this.phase = 'select_items';
+          this.openTrade(game.selectedUnit);
           this.targetMenu = null;
         }
       }
       return;
     }
 
-    if (this.phase === 'select_items') {
-      const activeMenu = this.activeTradeSide === 'a' ? this.itemMenuA : this.itemMenuB;
-      const result = activeMenu?.handleInput(event) ?? null;
-      if (!result) return;
-
-      if ('back' in result) {
-        if (this.selectedIndexA >= 0) {
-          this.selectedIndexA = -1;
-          this.activeTradeSide = 'a';
-          return;
-        }
+    const menu = this.menu;
+    if (this.phase !== 'select_items' || !menu) return;
+    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
+    if (event === 'DOWN') {
+      if (menu.moveDown()) sfx('Select 6');
+    } else if (event === 'UP') {
+      if (menu.moveUp()) sfx('Select 6');
+    } else if (event === 'RIGHT') {
+      if (menu.moveRight()) sfx('TradeRight');
+    } else if (event === 'LEFT') {
+      if (menu.moveLeft()) sfx('TradeRight');
+    } else if (event === 'BACK') {
+      sfx('Select 4');
+      if (menu.hasSelection()) {
+        menu.unsetSelectedOption();
+      } else {
         // Python TradeState.back: return to the unit's action menu. The
         // turn is not consumed; HasTraded was recorded per completed swap.
+        game.cursor.visible = true;
         game.state.back();
-        return;
       }
-
-      if (this.activeTradeSide === 'a') {
-        this.selectedIndexA = result.selected === 'a_empty'
-          ? game.selectedUnit.items.length
-          : Number(result.selected.slice(2));
-        this.activeTradeSide = 'b';
-        return;
+    } else if (event === 'SELECT') {
+      if (menu.hasSelection()) {
+        sfx(this.doTrade() ? 'Select 1' : 'Error');
+      } else {
+        sfx('Select 1');
+        menu.setSelectedOption();
       }
-
-      const unit: UnitObject = game.selectedUnit;
-      const partner = this.tradePartner;
-      const selectedIndexB = result.selected === 'b_empty'
-        ? partner?.items.length ?? 0
-        : Number(result.selected.slice(2));
-      // Python `trade.can_trade` refuses a swap across owners when either
-      // item is untradeable, which is how `locked` items stay with their
-      // holder. The menu still lists them; the exchange is what is refused.
-      const offeredA = unit?.items[this.selectedIndexA];
-      const offeredB = partner?.items[selectedIndexB];
-      const tradeRefused = (!!offeredA && !itemTradeable(unit, offeredA)) ||
-        (!!offeredB && !!partner && !itemTradeable(partner, offeredB));
-
-      if (unit && partner && this.selectedIndexA >= 0 && !tradeRefused &&
-          (this.selectedIndexA < unit.items.length || selectedIndexB < partner.items.length)) {
-        game.actionLog.doAction(new TradeAction(
-          unit,
-          this.selectedIndexA,
-          partner,
-          selectedIndexB,
-        ));
-        // Python TradeState.do_trade -> has_traded (open_trade from events
-        // and prep trades go through other states).
-        game.actionLog.doAction(new HasTradedAction(unit));
-      }
-      this.buildItemMenus(unit);
     }
+  }
+
+  override update(): StateResult {
+    this.menu?.update();
   }
 
   override draw(surf: Surface): Surface {
     if (this.phase === 'select_partner' && this.targetMenu) {
       this.targetMenu.draw(surf);
     }
-
-    if (this.phase === 'select_items') {
-      // Two-column inventory exchange. The active pane gets a bright frame;
-      // selecting the empty row transfers instead of swapping.
-      surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(0,0,32,0.7)');
-
-      const game = getGame();
-      const unit: UnitObject = game.selectedUnit;
-      const partner = this.tradePartner;
-
-      surf.drawText(unit?.name ?? '', 4, 4, 'white', '8px monospace');
-      const bx = viewport.width / 2 + 4;
-      surf.drawText(partner?.name ?? '', bx, 4, 'white', '8px monospace');
-      this.itemMenuA?.draw(surf);
-      this.itemMenuB?.draw(surf);
-      const active = this.activeTradeSide === 'a' ? this.itemMenuA : this.itemMenuB;
-      if (active) {
-        surf.drawRect(
-          active.x - 1,
-          active.y - 1,
-          active.width + 2,
-          active.options.length * 16 + 10,
-          'rgba(255,218,92,0.95)',
-        );
-      }
-      const prompt = this.activeTradeSide === 'a'
-        ? 'Choose an item'
-        : 'Choose its destination';
-      surf.drawText(`${prompt}   BACK: finish`, 4, viewport.height - 28, 'rgba(210,218,245,1)', '7px monospace');
+    if (this.phase === 'select_items' && this.menu) {
+      // Python TradeState is a MapState: menus.Trade draws over the map.
+      const { x, y } = MenuScene.origin();
+      this.menu.draw(surf, x, y);
     }
-
     return surf;
   }
 }

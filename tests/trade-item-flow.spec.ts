@@ -50,16 +50,18 @@ test.describe('trade item end-combat flow', () => {
       state.begin();
       const forcedPhase = state.phase;
       state.takeInput('SELECT');
+      // Python menus.Trade: selecting moves the hand to the partner's list.
       const destinationPhase = {
-        side: state.activeTradeSide,
-        sourceIndex: state.selectedIndexA,
+        side: state.menu.selectingHand[0] === 0 ? 'a' : 'b',
+        sourceIndex: state.menu.selectedIdx?.[1] ?? -1,
       };
-      state.itemMenuB.selectedIndex = 1;
+      state.menu.menu2.moveTo(1);
+      state.menu.selectingHand = [1, state.menu.menu2.currentIndex];
       state.takeInput('SELECT');
       const swapped = {
         unit: unit.items.map((item: any) => item.nid),
         partner: partner.items.map((item: any) => item.nid),
-        side: state.activeTradeSide,
+        side: state.menu.selectingHand[0] === 0 ? 'a' : 'b',
       };
 
       const surface = new Surface(240, 160);
@@ -73,9 +75,10 @@ test.describe('trade item end-combat flow', () => {
       context.drawImage(surface.canvas, 0, 0, 720, 480);
       document.body.replaceChildren(canvas);
       const data = surface.getImageData().data;
+      // The trade window (trade_name plates, item menus) draws opaque pixels.
       let gold = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i] > 220 && data[i + 1] > 180 && data[i + 2] < 150) gold++;
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0) gold++;
       }
 
       while (game.actionLog.actionIndex > beforeActionIndex) {

@@ -709,7 +709,10 @@ test.describe('Event command batch 3b (open_* menu commands)', () => {
     // The two-pane trade UI chooses a source item, then its destination.
     // Python CombatTradeState.back only pops: trading records HasTraded but
     // never ends the unit's turn.
+    // Python menus.Trade.set_selected_option parks the hand on the partner's
+    // first empty slot; UP moves it onto Seth's item to swap.
     await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 1, 'UP');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 1, 'BACK');
     const result = await page.evaluate(() => {
