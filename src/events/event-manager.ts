@@ -1278,6 +1278,44 @@ function primaryEnd(str: string, start: number): number {
  * arbitrary operands, including calls with nested parentheses:
  * rewritten to __pyIn(x, y). A parenthesised tuple haystack becomes a list.
  */
+const ARITHMETIC_OPERATOR = /^(\*\*|\/\/|[+\-*\/%])/;
+
+/** Extend an operand start leftward over binary arithmetic (`a + b`). */
+function extendOperandLeft(str: string, start: number): number {
+  let operandStart = start;
+  while (operandStart > 0) {
+    let j = operandStart - 1;
+    while (j >= 0 && str[j] === ' ') j -= 1;
+    if (j < 0 || !'+-*/%'.includes(str[j])) break;
+    let opStart = j;
+    if ((str[j] === '*' || str[j] === '/') && str[j - 1] === str[j]) opStart = j - 1;
+    let p = opStart - 1;
+    while (p >= 0 && str[p] === ' ') p -= 1;
+    // A preceding operator/opener means this one is unary or a comparison.
+    if (p < 0 || '=<>!&|,([{?:+-*/%'.includes(str[p])) break;
+    const previous = receiverStart(str, p + 1);
+    if (previous < 0 || previous > p) break;
+    operandStart = previous;
+  }
+  return operandStart;
+}
+
+/** Extend an operand end rightward over binary arithmetic (`a + b`). */
+function extendOperandRight(str: string, end: number): number {
+  if (end < 0) return end;
+  let operandEnd = end;
+  for (;;) {
+    let j = operandEnd;
+    while (j < str.length && str[j] === ' ') j += 1;
+    const op = ARITHMETIC_OPERATOR.exec(str.slice(j));
+    if (!op) break;
+    const next = primaryEnd(str, j + op[0].length);
+    if (next < 0) break;
+    operandEnd = next;
+  }
+  return operandEnd;
+}
+
 function translatePyMembership(expression: string): string {
   let translated = expression;
   const inString = (str: string, index: number): boolean => {
@@ -1300,9 +1338,11 @@ function translatePyMembership(expression: string): string {
     let match = pattern.exec(translated);
     while (match && inString(translated, match.index)) match = pattern.exec(translated);
     if (!match) break;
-    const needleStart = receiverStart(translated, match.index);
+    // Python binds arithmetic tighter than `in`: the operands are whole
+    // `a + b` chains, not just the nearest primary.
+    const needleStart = extendOperandLeft(translated, receiverStart(translated, match.index));
     const hayStart = match.index + match[0].length;
-    const hayEnd = primaryEnd(translated, hayStart);
+    const hayEnd = extendOperandRight(translated, primaryEnd(translated, hayStart));
     if (needleStart < 0 || needleStart >= match.index || hayEnd < 0) {
       searchFrom = match.index + match[0].length;
       continue;
@@ -1466,47 +1506,75 @@ function replacePythonWords(
   return translated;
 }
 
+const ADDITION_BOUNDARIES = ['===', '!==', '=>', '==', '!=', '<=', '>=', '&&', '||', '<', '>', '?', ':', ','];
+
+/** Python `a + b` -> `__pyAdd(a, b)` inside one operand segment. */
+function translateAdditionSegment(segment: string): string {
+  const leading = /^\s*/.exec(segment)?.[0] ?? '';
+  const trailing = /\s*$/.exec(segment)?.[0] ?? '';
+  const body = segment.slice(leading.length, segment.length - trailing.length);
+  const parts = splitAtTopLevel(body, ' + ').map((part) => part.trim());
+  if (parts.length < 2) return segment;
+  return leading + parts.slice(1).reduce(
+    (left, right) => `__pyAdd(${left}, ${right})`,
+    parts[0],
+  ) + trailing;
+}
+
+/**
+ * Python list/string `+` -> `__pyAdd`. `+` binds tighter than comparisons,
+ * boolean operators, ternaries and argument commas, so additions are
+ * translated within each operand between those boundaries (and recursively
+ * inside brackets), never across them.
+ */
 function translateTopLevelAdditions(expression: string): string {
-  const arraySource = expression.trim();
-  if (arraySource.startsWith('[') &&
-      findMatchingBracket(arraySource, 0) === arraySource.length - 1) {
-    const elements = splitAtTopLevel(arraySource.slice(1, -1), ',');
-    return `[${elements.map((element) =>
-      translateTopLevelAdditions(element.trim())).join(', ')}]`;
-  }
-  let grouped = '';
-  let quote: string | null = null;
+  let translated = '';
+  let segment = '';
+  const flush = () => {
+    translated += translateAdditionSegment(segment);
+    segment = '';
+  };
   for (let index = 0; index < expression.length; index++) {
     const char = expression[index];
-    if (quote) {
-      grouped += char;
-      if (char === quote && expression[index - 1] !== '\\') quote = null;
+    if (char === "'" || char === '"' || char === '`') {
+      let close = index + 1;
+      while (close < expression.length && !(expression[close] === char && expression[close - 1] !== '\\')) close++;
+      segment += expression.slice(index, close + 1);
+      index = close;
       continue;
     }
-    if (char === "'" || char === '"') {
-      quote = char;
-      grouped += char;
-      continue;
-    }
-    if (char === '(') {
-      const close = findMatchingParen(expression, index);
+    if (char === '(' || char === '[' || char === '{') {
+      const closer = char === '(' ? ')' : char === '[' ? ']' : '}';
+      let depth = 0;
+      let close = -1;
+      let quote: string | null = null;
+      for (let j = index; j < expression.length; j++) {
+        const c = expression[j];
+        if (quote) {
+          if (c === quote && expression[j - 1] !== '\\') quote = null;
+          continue;
+        }
+        if (c === "'" || c === '"' || c === '`') { quote = c; continue; }
+        if (c === char) depth++;
+        else if (c === closer && --depth === 0) { close = j; break; }
+      }
       if (close > index) {
-        grouped += `(${translateTopLevelAdditions(
-          expression.slice(index + 1, close),
-        )})`;
+        segment += `${char}${translateTopLevelAdditions(expression.slice(index + 1, close))}${closer}`;
         index = close;
         continue;
       }
     }
-    grouped += char;
+    const boundary = ADDITION_BOUNDARIES.find((op) => expression.startsWith(op, index));
+    if (boundary) {
+      flush();
+      translated += boundary;
+      index += boundary.length - 1;
+      continue;
+    }
+    segment += char;
   }
-
-  const parts = splitAtTopLevel(grouped, ' + ').map((part) => part.trim());
-  if (parts.length < 2) return grouped;
-  return parts.slice(1).reduce(
-    (left, right) => `__pyAdd(${left}, ${right})`,
-    parts[0],
-  );
+  flush();
+  return translated;
 }
 
 /** Translate Python sorted(values, key=lambda x: ..., reverse=True). */

@@ -1152,3 +1152,41 @@ test('main_menu returns to the title once its event ends (Python EventState.end_
   expect(result.after).toBe(1);
   expect(result.stack).toEqual(['title']);
 });
+
+test('`a + b not in xs` keeps Python precedence, so EOtF Stratagem_Select_Enemy picks are distinct', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    if (!g.db.rawData) g.db.rawData = new Map();
+    g.db.rawData.set('QA_Strats', [
+      { nid: 'A', name: 'Alpha', stratagem_type: 'Enemy' },
+      { nid: 'B', name: 'Beta', stratagem_type: 'Enemy' },
+      { nid: 'C', name: 'Gamma', stratagem_type: 'Enemy' },
+    ]);
+    g.gameVars.set('Active_Stratagems', []);
+  });
+  await runEvent(page, 'qa_strat_loop', [
+    'level_var;choices;[]',
+    'for;strats;range(3)',
+    "    level_var;choices;{v:choices} + [game.get_random_choice([s.nid + '|' + s.name for s in game.get_data('QA_Strats') if s.nid + '|' + s.name not in {v:choices} and s.stratagem_type == 'Enemy' and s.nid not in {v:Active_Stratagems}])]",
+    'endf',
+    'game_var;qa_choices;{v:choices}',
+  ], 20);
+  const choices = await page.evaluate(() => (window as any).__gameRef.levelVars.get('choices'));
+  expect(Array.isArray(choices) ? [...choices].sort() : choices).toEqual(['A|Alpha', 'B|Beta', 'C|Gamma']);
+});
+
+test('`+` binds tighter than comparisons and argument commas (Python precedence)', async ({ page }) => {
+  await boot(page);
+  await runEvent(page, 'qa_add_precedence', [
+    'game_var;qa_eq;{e:1 + 2 == 3}',
+    'game_var;qa_max;{e:max(1 + 1, 3)}',
+    'game_var;qa_and;{e:1 + 2 > 2 and True}',
+    "game_var;qa_list;{e:len([1] + [2, 3])}",
+  ], 10);
+  const vars = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return ['qa_eq', 'qa_max', 'qa_and', 'qa_list'].map((k) => g.gameVars.get(k));
+  });
+  expect(vars).toEqual([true, 3, true, 3]);
+});
