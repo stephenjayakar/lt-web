@@ -274,4 +274,35 @@ test.describe('EOtF fork-parity follow-ups', () => {
     expect(result!.soldier).toBe('enemy2');
     expect(result!.tile).not.toBe('enemy2');
   });
+
+  test('an expression choice re-evaluates its options while it is open', async ({ page }) => {
+    await bootEotf(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.gameVars.set('_lazy_opts', ['Alpha', 'Beta']);
+      game.gameVars.set('_lazy_label', 'Gamma');
+      game.db.events.set('_TestLazyChoice', {
+        name: '_TestLazyChoice', nid: '_TestLazyChoice', trigger: '_TestLazyChoice',
+        level_nid: game.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
+        _source: ["choice;_lazy;Pick;v('_lazy_opts') + ['{v:_lazy_label}'];expression"],
+      });
+      game.eventManager.triggerSpecific('_TestLazyChoice', { type: '_TestLazyChoice' }, true);
+      game.state.change('event');
+    });
+    const options = () => page.evaluate(() => {
+      const state = (window as any).__gameRef.state.getCurrentState();
+      return state?.choiceMenu?.options?.map((option: any) => option.value) ?? null;
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(5));
+    const opened = await options();
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.gameVars.set('_lazy_opts', ['Alpha', 'Beta', 'Delta']);
+      game.gameVars.set('_lazy_label', 'Omega');
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(2));
+    const refreshed = await options();
+    expect(opened).toEqual(['Alpha', 'Beta', 'Gamma']);
+    expect(refreshed).toEqual(['Alpha', 'Beta', 'Delta', 'Omega']);
+  });
 });

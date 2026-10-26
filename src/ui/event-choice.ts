@@ -89,6 +89,20 @@ export class EventChoiceMenu {
     void loadMenuBgSprite('menu_hand');
   }
 
+  /**
+   * Python GridChoiceMenu.set_data (PlayerChoiceState.update for an
+   * `expression` choice whose options changed): new options and help boxes,
+   * same grid, cursor kept on its index.
+   */
+  setEntries(entries: EventChoiceEntry[], helpBoxes?: HelpBox[][]): void {
+    const selected = this.selectedIndex;
+    this.entries = entries;
+    this.cfg = { ...this.cfg, entries, helpBoxes };
+    this.options = entries.map((entry) => ({ label: entry.text, value: entry.value, enabled: true }));
+    this.itemSize = this.determineItemSize();
+    this.moveCursor(selected);
+  }
+
   /** Width of one entry, matching TextOption (+24) / icon options (104). */
   private entryWidth(entry: EventChoiceEntry): number {
     if (entry.kind === 'text') return measureStyledText(entry.text, 'text') + 24;

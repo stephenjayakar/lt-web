@@ -10041,6 +10041,13 @@ export class EventState extends State {
   private unlockAwaitingSpend = false;
   /** Event to run on each selection, from the choice's `EventNid` keyword. */
   private choiceEventNid: string | null = null;
+  /** An open `expression` choice: re-evaluated every frame (refreshChoiceOptions). */
+  private choiceRefresh: {
+    raw: string;
+    entryType: string;
+    last: string[];
+    compute: (source: string) => string[];
+  } | null = null;
   /** The active choice's EntryType and stored values (PlayerChoiceState data). */
   private choiceEntryType = 'str';
   private choiceValues: string[] = [];
@@ -10735,6 +10742,7 @@ export class EventState extends State {
 
     // Choice menu — block while active
     if (this.choiceMenu) {
+      this.refreshChoiceOptions(game);
       return;
     }
 
@@ -12430,6 +12438,40 @@ export class EventState extends State {
    * render it: items/skills with their icon and name, units with their map
    * sprite and name, classes by name, `type_icon` as `sheet-x-y-text`.
    */
+  /** `nid|display` hides an unreadable NID behind display text; the stored result is the NID half. */
+  private buildChoiceEntries(options: string[], entryType: string, game: any): EventChoiceEntry[] {
+    return options.map((entry: string) => {
+      const bar = entry.indexOf('|');
+      const value = bar >= 0 ? entry.slice(0, bar).trim() : entry;
+      const display = bar >= 0 ? entry.slice(bar + 1).replace(/\|/g, '').trim() : null;
+      return this.buildChoiceEntry(value, display, entryType, game);
+    });
+  }
+
+  /**
+   * Python PlayerChoiceState.update: an `expression` choice re-evaluates its
+   * options and, when they changed, menu.set_data + create_help_boxes.
+   */
+  private refreshChoiceOptions(game: any): void {
+    const refresh = this.choiceRefresh;
+    const menu = this.choiceMenu;
+    if (!refresh || !menu || !(menu instanceof EventChoiceMenu)) return;
+    const source = this.substituteEventArgs([refresh.raw], game)[0] ?? refresh.raw;
+    const next = refresh.compute(source);
+    if (next.length === 0) return;
+    if (next.length === refresh.last.length && next.every((entry, index) => entry === refresh.last[index])) {
+      return;
+    }
+    refresh.last = next;
+    const entries = this.buildChoiceEntries(next, refresh.entryType, game);
+    const values = entries.map((entry: EventChoiceEntry) => entry.value);
+    menu.setEntries(entries, this.buildChoiceHelpBoxes(values, refresh.entryType, game));
+    this.choiceValues = values;
+    if (this.choiceNid) {
+      game.gameVars.set(`${this.choiceNid}_choice_hover`, menu.getCurrentOption()?.value ?? '');
+    }
+  }
+
   private buildChoiceEntry(value: string, display: string | null, entryType: string, game: any): EventChoiceEntry {
     const iconOf = (obj: any): EventChoiceEntry['icon'] => {
       const sheet = obj?.icon_nid ?? obj?.iconNid;
@@ -16029,34 +16071,31 @@ export class EventState extends State {
         // authored menus also pass expressions such as `v('options')` without
         // the flag. Try evaluating and keep the result when it yields a list;
         // otherwise fall back to treating it as a literal comma list.
-        let optionStrs: string[] | null = null;
-        if (flags.has('expression') || /[([]/.test(rawChoices)) {
-          try {
-            const evaluated = evaluateExpression(rawChoices, this.buildConditionContext());
-            if (Array.isArray(evaluated)) {
-              optionStrs = evaluated.map((entry: unknown) => String(entry));
-            } else if (flags.has('expression')) {
-              optionStrs = String(evaluated ?? '').split(',');
+        const expressionFlag = flags.has('expression');
+        const computeOptions = (source: string): string[] => {
+          let options: string[] | null = null;
+          if (expressionFlag || /[([]/.test(source)) {
+            try {
+              const evaluated = evaluateExpression(source, this.buildConditionContext());
+              if (Array.isArray(evaluated)) {
+                options = evaluated.map((entry: unknown) => String(entry));
+              } else if (expressionFlag) {
+                options = String(evaluated ?? '').split(',');
+              }
+            } catch {
+              // Fall through to the literal reading below.
             }
-          } catch {
-            // Fall through to the literal reading below.
           }
-        }
-        optionStrs ??= rawChoices.split(',');
-        optionStrs = optionStrs
-          .map((entry: string) => entry.trim())
-          .filter((entry: string) => entry.length > 0);
+          options ??= source.split(',');
+          return options
+            .map((entry: string) => entry.trim())
+            .filter((entry: string) => entry.length > 0);
+        };
+        const optionStrs = computeOptions(rawChoices);
 
         if (optionStrs.length > 0) {
           const entryType = (keywords.get('entrytype') ?? 'str').toLowerCase();
-          const entries = optionStrs.map((entry: string) => {
-            // `nid|display` hides an unreadable NID behind display text; the
-            // stored result is always the NID half.
-            const bar = entry.indexOf('|');
-            const value = bar >= 0 ? entry.slice(0, bar).trim() : entry;
-            const display = bar >= 0 ? entry.slice(bar + 1).replace(/\|/g, '').trim() : null;
-            return this.buildChoiceEntry(value, display, entryType, game);
-          });
+          const entries = this.buildChoiceEntries(optionStrs, entryType, game);
           let size: [number, number] | null = null;
           const dims = keywords.get('dimensions');
           if (dims) {
@@ -16105,6 +16144,12 @@ export class EventState extends State {
           // moves the chosen unit into the deploying party, so ignoring it
           // left the next level with an empty party and nothing to deploy.
           this.choiceEventNid = keywords.get('eventnid') ?? null;
+          // Python choice `expression`: the options are a callable that
+          // PlayerChoiceState.update re-evaluates ({} tags included) every
+          // frame, refreshing the menu when they change.
+          this.choiceRefresh = expressionFlag
+            ? { raw: rawArgs[2] ?? rawChoices, entryType, last: optionStrs, compute: computeOptions }
+            : null;
           return true; // block until user picks
         }
         this.advancePointer();
