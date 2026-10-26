@@ -50,8 +50,12 @@ test.describe('Embrace of the Fog forced-movement item hooks', () => {
       const { UnitObject } = await import('/src/objects/unit.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
       const { ActionLog } = await import('/src/engine/action.ts');
-      const { applyCombatItemEndHooks } =
-        await import('/src/combat/combat-lifecycle.ts');
+      const lifecycle = await import('/src/combat/combat-lifecycle.ts');
+      // On-hit movers run as each hit lands, then the end-combat item hooks.
+      const applyCombatItemEndHooks = (hookGame: any, strikes: any[]) =>
+        strikes.reduce((total: number, strike: any) =>
+          total + lifecycle.applyOnHitForcedMovement(hookGame, strike), 0) +
+        lifecycle.applyCombatItemEndHooks(hookGame, strikes);
       const template = game.units.get('Player');
       const klass = game.db.classes.get(template.klass);
 
@@ -192,8 +196,12 @@ test.describe('Embrace of the Fog forced-movement item hooks', () => {
       const { UnitObject } = await import('/src/objects/unit.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
       const { ActionLog } = await import('/src/engine/action.ts');
-      const { applyCombatItemEndHooks } =
-        await import('/src/combat/combat-lifecycle.ts');
+      const lifecycle = await import('/src/combat/combat-lifecycle.ts');
+      // On-hit movers run as each hit lands, then the end-combat item hooks.
+      const applyCombatItemEndHooks = (hookGame: any, strikes: any[]) =>
+        strikes.reduce((total: number, strike: any) =>
+          total + lifecycle.applyOnHitForcedMovement(hookGame, strike), 0) +
+        lifecycle.applyCombatItemEndHooks(hookGame, strikes);
       const template = game.units.get('Player');
       const klass = game.db.classes.get(template.klass);
 

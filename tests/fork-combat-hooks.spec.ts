@@ -217,15 +217,15 @@ test.describe('EOtF engine fork combat hooks', () => {
       game.board.setUnit(x + 1, y, ally);
       const reposition = new ItemObject(game.db.items.get('Reposition'));
       const restrictOk = targetRestrict(user, reposition, [x + 1, y], [], ctx);
-      const { applyCombatItemEndHooks } = await import('/src/combat/combat-lifecycle.ts');
+      const { applyOnHitForcedMovement } = await import('/src/combat/combat-lifecycle.ts');
       const { ActionLog } = await import('/src/engine/action.ts');
       const actionLog = new ActionLog();
-      applyCombatItemEndHooks(
+      applyOnHitForcedMovement(
         { ...game, actionLog, db: game.db, board: game.board },
-        [{
+        {
           attacker: user, defender: ally, item: reposition, hit: true, crit: false, damage: 0,
           isCounter: false, mode: 'attack', attackInfo: [0, 0],
-        }] as any,
+        } as any,
       );
       const moved = ally.position ? [...ally.position] : null;
       while (actionLog.actionIndex >= 0) actionLog.runActionBackward();

@@ -1745,6 +1745,153 @@ export function queueAfterInitiatedCombatEvents(
   return queued;
 }
 
+/**
+ * Item components whose Python `on_hit` appends a ForcedMovement/Swap action:
+ * hit_components Shove/Swap/Pivot/DrawBack and EOtF's custom
+ * ShoveFlexibleStops(Event)/SelfShoveFlexibleStops.
+ */
+export const ON_HIT_FORCED_MOVEMENT: ReadonlySet<string> = new Set([
+  'shove',
+  'swap',
+  'pivot',
+  'draw_back',
+  'shove_flex_stops',
+  'shove_flex_stops_event',
+  'self_shove_flex_stops',
+]);
+
+/** Whether a resolved strike's item moves a unit on hit. */
+export function strikeHasOnHitMovement(
+  strike: CombatStrike,
+  db: Database,
+  game?: unknown,
+): boolean {
+  if (!strike.hit) return false;
+  for (const [componentNid] of effectiveItemComponents(strike.attacker, strike.item, db, game)) {
+    if (ON_HIT_FORCED_MOVEMENT.has(componentNid)) return true;
+  }
+  return false;
+}
+
+/**
+ * Python solver.process -> item_system.on_hit: Shove/Swap/Pivot/DrawBack
+ * move units as each hit lands, before the next phase is solved, so later
+ * strikes (counter range, terrain) see the new positions.
+ */
+export function applyOnHitForcedMovement(
+  game: CombatLifecycleGame,
+  strike: CombatStrike,
+): number {
+  if (!game.actionLog || !game.db || !game.board || !strike.hit) return 0;
+  const mark = strike;
+  let applied = 0;
+  for (const [componentNid, componentValue] of effectiveItemComponents(
+    strike.attacker,
+    strike.item,
+    game.db,
+    game,
+  )) {
+    if (!ON_HIT_FORCED_MOVEMENT.has(componentNid)) continue;
+    if (componentNid === 'shove' &&
+        mark.attacker.position && !ignoreForcedMovement(mark.defender)) {
+      const destination = shoveDestination(
+        mark.defender,
+        mark.attacker.position,
+        Number(componentValue ?? 1),
+        { board: game.board, db: game.db, game },
+      );
+      if (destination) {
+        game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
+        applied++;
+      }
+    } else if ((componentNid === 'shove_flex_stops' ||
+        componentNid === 'shove_flex_stops_event') &&
+        mark.attacker.position && !ignoreForcedMovement(mark.defender)) {
+      const rawValue = componentValue;
+      const magnitude = componentNid === 'shove_flex_stops_event'
+        ? Number(componentOption(rawValue, 'magnitude') ?? 0)
+        : Number(rawValue ?? 1);
+      const destination = eotfShoveDestination(
+        mark.defender,
+        mark.attacker.position,
+        magnitude,
+        { board: game.board, db: game.db, game },
+        true,
+        false,
+        componentNid === 'shove_flex_stops_event'
+          ? (occupant) => {
+              const event = componentOption(rawValue, 'impact_event');
+              if (typeof event !== 'string' || !event || !game.eventManager) return;
+              game.eventManager.triggerSpecific(event, {
+                type: 'shove_impact',
+                unit1: mark.defender,
+                unit2: occupant,
+                unitNid: mark.defender.nid,
+                position: mark.defender.position
+                  ? [...mark.defender.position] as [number, number]
+                  : undefined,
+                item: strike.item,
+                localArgs: new Map<string, unknown>([
+                  ['item', strike.item],
+                  ['item2', equippedWeapon(mark.defender)],
+                  ['mode', strikeMode(mark)],
+                ]),
+              });
+            }
+          : undefined,
+      );
+      if (destination) {
+        game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
+        applied++;
+      }
+    } else if (componentNid === 'self_shove_flex_stops' &&
+        mark.defender.position && !ignoreForcedMovement(mark.attacker)) {
+      const destination = eotfShoveDestination(
+        mark.attacker,
+        mark.defender.position,
+        eotfSelfShoveMagnitude(game, mark, componentValue),
+        { board: game.board, db: game.db, game },
+        true,
+        true,
+      );
+      if (destination) {
+        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
+        applied++;
+      }
+    } else if (componentNid === 'swap' &&
+        mark.attacker.position && mark.defender.position &&
+        !ignoreForcedMovement(mark.attacker) && !ignoreForcedMovement(mark.defender)) {
+      game.actionLog.doAction(new SwapUnitsAction(mark.attacker, mark.defender, game.board));
+      applied++;
+    } else if (componentNid === 'pivot' && mark.defender.position &&
+        !ignoreForcedMovement(mark.attacker)) {
+      const destination = pivotDestination(
+        mark.attacker,
+        mark.defender.position,
+        Number(componentValue ?? 1),
+        { board: game.board, db: game.db, game },
+      );
+      if (destination) {
+        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
+        applied++;
+      }
+    } else if (componentNid === 'draw_back' && !ignoreForcedMovement(mark.defender)) {
+      const destinations = drawBackDestinations(
+        mark.attacker,
+        mark.defender,
+        Number(componentValue ?? 1),
+        { board: game.board, db: game.db, game },
+      );
+      if (destinations) {
+        game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
+        game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
+        applied += 2;
+      }
+    }
+  }
+  return applied;
+}
+
 /** Apply item end-combat resource hooks once per item that participated. */
 export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
   if (!game.actionLog || !game.db) return 0;
@@ -1860,6 +2007,8 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
         game.db,
         game,
       )) {
+        // Per-hit movers already ran as each hit landed (applyOnHitForcedMovement).
+        if (ON_HIT_FORCED_MOVEMENT.has(componentNid)) continue;
         const initiationOnly = componentNid === 'shove_on_end_combat_initiate' ||
           componentNid === 'shove_flexible_on_end_combat_initiate' ||
           componentNid === 'pivot_on_end_combat_initiate' ||
@@ -1870,7 +2019,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
           ? [firstMark]
           : hitMarks;
         for (const mark of marks) {
-          if ((componentNid === 'shove' || componentNid === 'shove_on_end_combat') &&
+          if (componentNid === 'shove_on_end_combat' &&
               mark.attacker.position && !ignoreForcedMovement(mark.defender)) {
             const destination = shoveDestination(
               mark.defender,
@@ -1897,82 +2046,12 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
               game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
               applied++;
             }
-          } else if ((componentNid === 'shove_flex_stops' ||
-              componentNid === 'shove_flex_stops_event') &&
-              mark.attacker.position && !ignoreForcedMovement(mark.defender)) {
-            const rawValue = componentValue;
-            const magnitude = componentNid === 'shove_flex_stops_event'
-              ? Number(componentOption(rawValue, 'magnitude') ?? 0)
-              : Number(rawValue ?? 1);
-            const destination = eotfShoveDestination(
-              mark.defender,
-              mark.attacker.position,
-              magnitude,
-              { board: game.board, db: game.db, game },
-              true,
-              false,
-              componentNid === 'shove_flex_stops_event'
-                ? (occupant) => {
-                    const event = componentOption(rawValue, 'impact_event');
-                    if (typeof event !== 'string' || !event || !game.eventManager) return;
-                    game.eventManager.triggerSpecific(event, {
-                      type: 'shove_impact',
-                      unit1: mark.defender,
-                      unit2: occupant,
-                      unitNid: mark.defender.nid,
-                      position: mark.defender.position
-                        ? [...mark.defender.position] as [number, number]
-                        : undefined,
-                      item: strike.item,
-                      localArgs: new Map<string, unknown>([
-                        ['item', strike.item],
-                        ['item2', equippedWeapon(mark.defender)],
-                        ['mode', strikeMode(mark)],
-                      ]),
-                    });
-                  }
-                : undefined,
-            );
-            if (destination) {
-              game.actionLog.doAction(new WarpUnitAction(mark.defender, destination, game.board));
-              applied++;
-            }
-          } else if (componentNid === 'self_shove_flex_stops' &&
-              mark.defender.position && !ignoreForcedMovement(mark.attacker)) {
-            const destination = eotfShoveDestination(
-              mark.attacker,
-              mark.defender.position,
-              eotfSelfShoveMagnitude(
-                game,
-                mark,
-                componentValue,
-              ),
-              { board: game.board, db: game.db, game },
-              true,
-              true,
-            );
-            if (destination) {
-              game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
-              applied++;
-            }
-          } else if ((componentNid === 'swap' || componentNid === 'swap_on_end_combat') &&
+          } else if (componentNid === 'swap_on_end_combat' &&
               mark.attacker.position && mark.defender.position &&
               !ignoreForcedMovement(mark.attacker) && !ignoreForcedMovement(mark.defender) &&
-              (!mark.isCounter || componentNid === 'swap')) {
+              !mark.isCounter) {
             game.actionLog.doAction(new SwapUnitsAction(mark.attacker, mark.defender, game.board));
             applied++;
-          } else if (componentNid === 'pivot' && mark.defender.position &&
-              !ignoreForcedMovement(mark.attacker)) {
-            const destination = pivotDestination(
-              mark.attacker,
-              mark.defender.position,
-              Number(componentValue ?? 1),
-              { board: game.board, db: game.db, game },
-            );
-            if (destination) {
-              game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
-              applied++;
-            }
           } else if ((componentNid === 'pivot_on_end_combat_initiate' ||
               componentNid === 'pivot_always_on_end_combat_initiate') &&
               strikeMode(mark) === 'attack' && mark.defender.position &&
@@ -1986,18 +2065,6 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
             if (destination) {
               game.actionLog.doAction(new WarpUnitAction(mark.attacker, destination, game.board));
               applied++;
-            }
-          } else if (componentNid === 'draw_back' && !ignoreForcedMovement(mark.defender)) {
-            const destinations = drawBackDestinations(
-              mark.attacker,
-              mark.defender,
-              Number(componentValue ?? 1),
-              { board: game.board, db: game.db, game },
-            );
-            if (destinations) {
-              game.actionLog.doAction(new WarpUnitAction(mark.attacker, destinations[0], game.board));
-              game.actionLog.doAction(new WarpUnitAction(mark.defender, destinations[1], game.board));
-              applied += 2;
             }
           } else if (componentNid === 'draw_back_on_end_combat_initiate' &&
               strikeMode(mark) === 'attack' &&

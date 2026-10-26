@@ -705,6 +705,9 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
         this.phaseEvents.set(first, events);
         return;
       }
+      // A hit that shoves/swaps: the next resolveNextPhase() moves the units
+      // once the presentation has shown the hit.
+      if (this.solver.hasPendingMovement) return;
     }
   }
 

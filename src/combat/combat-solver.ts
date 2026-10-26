@@ -9,7 +9,9 @@ import {
   damageOnMiss,
   extraDamage,
   hasDamageOnMiss,
+  oneLossPerCombat,
   solomonHpChange,
+  usesConsumedByStrikes,
 } from './item-system';
 import {
   CombatSkillLifecycle,
@@ -18,6 +20,7 @@ import {
 import { AddSkillAction, RemoveSkillAction } from '../engine/action';
 import { evaluateExpression } from '../events/event-manager';
 import { isForkEngine } from '../engine/engine-flavor';
+import { applyOnHitForcedMovement, strikeHasOnHitMovement } from './combat-lifecycle';
 
 // ============================================================
 // CombatPhaseSolver - Resolves a full combat encounter into a
@@ -111,6 +114,8 @@ export class CombatPhaseSolver {
   /** Phases still to resolve (Python CombatPhaseSolver states). */
   private session: Generator<CombatStrike[], void, void> | null = null;
   private sessionStrikes: CombatStrike[] = [];
+  /** Hits of the last resolved phase whose on-hit movement has not run yet. */
+  private pendingMovement: CombatStrike[] = [];
   /** Lifecycle marks already copied into procPlayback. */
   private syncedMarks = 0;
   /**
@@ -216,6 +221,7 @@ export class CombatPhaseSolver {
   ): void {
     const splash = [...new Set(splashDefenders)].filter((unit) => unit !== mainDefender);
     this.sessionStrikes = [];
+    this.pendingMovement = [];
     if (splash.length === 0 && mainDefender) {
       this.beginLifecycle(db, attacker, attackItem, [mainDefender], new Map([[mainDefender, defenseItem]]));
       this.session = this.coreGen(
@@ -245,6 +251,7 @@ export class CombatPhaseSolver {
    */
   resolveNextPhase(): CombatStrike[] | null {
     if (!this.session) return null;
+    this.applyPendingMovement();
     const step = this.session.next();
     if (step.done) {
       this.session = null;
@@ -253,12 +260,46 @@ export class CombatPhaseSolver {
       return null;
     }
     this.sessionStrikes.push(...step.value);
+    if (this.combatDb && this.game?.actionLog && this.game?.board) {
+      for (const strike of step.value) {
+        if (strikeHasOnHitMovement(strike, this.combatDb, this.game)) {
+          this.pendingMovement.push(strike);
+        }
+      }
+    }
     this.syncProcPlayback();
     return step.value;
   }
 
   get sessionActive(): boolean {
     return this.session !== null;
+  }
+
+  /** The last resolved phase moves a unit on hit (Shove/Swap/Pivot/DrawBack). */
+  get hasPendingMovement(): boolean {
+    return this.pendingMovement.length > 0;
+  }
+
+  /**
+   * Python applies a phase's on_hit ForcedMovement/Swap actions when the
+   * presentation reaches the hit, before the next phase is solved. The next
+   * resolveNextPhase() applies them if the presentation has not.
+   */
+  applyPendingMovement(): void {
+    const pending = this.pendingMovement.splice(0);
+    for (const strike of pending) applyOnHitForcedMovement(this.game, strike);
+  }
+
+  /**
+   * Python solver.item_has_uses / can_counterattack's item_funcs.available:
+   * Uses.on_hit (and on_miss with lose_uses_on_miss) spends a use per strike
+   * as it lands, so a weapon that runs out mid-combat strikes no more. The
+   * web spends uses after combat, so count the strikes resolved so far.
+   * one_loss_per_combat items only spend at end_combat.
+   */
+  private itemHasUses(unit: UnitObject, item: ItemObject): boolean {
+    if (item.maxUses <= 0 || oneLossPerCombat(unit, item)) return true;
+    return item.uses - usesConsumedByStrikes(unit, item, this.sessionStrikes) > 0;
   }
 
   /**
@@ -1277,6 +1318,7 @@ export class CombatPhaseSolver {
           : 1;
         const phase = this.nextPhase(attacker);
         for (let idx = 0; idx < strikeCount; idx++) {
+          if (idx > 0 && !this.itemHasUses(attacker, attackItem)) break;
           const appended = appendSplash(undefined, undefined, [phase, idx]);
           if (appended.length > 0) yield appended;
         }
@@ -1445,6 +1487,7 @@ export class CombatPhaseSolver {
       for (let i = 0; i < count; i++) {
         if (targetHpRef.hp <= 0) break;
         if (strikerHpRef.hp <= 0) break;
+        if (!solver.itemHasUses(striker, item)) break;
         const strike = solver.resolveStrike(
           striker, item, target, db, rngMode, isCounter, board,
           isCounter ? 'defense' : 'attack', [phase, i],
@@ -1491,7 +1534,10 @@ export class CombatPhaseSolver {
     let numDefends = 0;
     let attackerBlitzesUsed = 0;
     let defenderBlitzesUsed = 0;
-    const allowCounter = (): boolean => !!defenseItem && defenderCanCounterNow();
+    // Python item_has_uses / can_counterattack's available() check.
+    const attackerHasUses = (): boolean => this.itemHasUses(attacker, attackItem);
+    const allowCounter = (): boolean => !!defenseItem &&
+      this.itemHasUses(defender, defenseItem) && defenderCanCounterNow();
     const attackerPhases = (): number => 1 + attackerRemaining() + attackerBlitzes();
     const defenderPhases = (): number => defenseItem
       ? 1 + defenderRemaining() + defenderBlitzes()
@@ -1508,14 +1554,15 @@ export class CombatPhaseSolver {
         if (!bothAlive()) break;
         const aPhases = attackerPhases();
         const dPhases = defenderPhases();
-        if (attackerBlitzesUsed < attackerBlitzes() && numAttacks < aPhases) {
+        const hasUses = attackerHasUses();
+        if (hasUses && attackerBlitzesUsed < attackerBlitzes() && numAttacks < aPhases) {
           attackerBlitzesUsed++;
           next = 'attacker';
-        } else if (attackerHasDesperation() && numAttacks < aPhases) {
+        } else if (hasUses && attackerHasDesperation() && numAttacks < aPhases) {
           next = 'attacker';
         } else if (allowCounter() && numDefends < dPhases) {
           next = 'defender';
-        } else if (numAttacks < aPhases) {
+        } else if (hasUses && numAttacks < aPhases) {
           next = 'attacker';
         } else {
           next = null;
@@ -1533,9 +1580,9 @@ export class CombatPhaseSolver {
         if (allowCounter() && defenderBlitzesUsed < defenderBlitzes() && numDefends < dPhases) {
           defenderBlitzesUsed++;
           next = 'defender';
-        } else if (defenderHasDesperation() && numDefends < dPhases) {
+        } else if (allowCounter() && defenderHasDesperation() && numDefends < dPhases) {
           next = 'defender';
-        } else if (numAttacks < aPhases) {
+        } else if (attackerHasUses() && numAttacks < aPhases) {
           next = 'attacker';
         } else if (allowCounter() && numDefends < dPhases) {
           next = 'defender';

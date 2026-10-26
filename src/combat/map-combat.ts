@@ -384,6 +384,9 @@ export class MapCombat implements StrikeEventCombat {
         this.phaseEvents.set(first, events);
         return;
       }
+      // A hit that shoves/swaps: solve on only once the presentation has
+      // shown it and the units have moved (handlePlayback).
+      if (this.solver.hasPendingMovement) return;
     }
   }
 
@@ -1167,6 +1170,8 @@ export class MapCombat implements StrikeEventCombat {
   private handlePlayback(): void {
     const strike = this.currentStrike();
     if (!strike) return;
+    // _apply_actions: the phase's on-hit ForcedMovement/Swap lands with the hit.
+    if (this.currentStrikeIndex === this.strikes.length - 1) this.solver.applyPendingMovement();
     const target = strike.defender;
     const anim = this.unitAnims.get(target) ?? (target === this.attacker ? this.attackerAnim : this.defenderAnim);
     const shakeAll = (num: number) => {
