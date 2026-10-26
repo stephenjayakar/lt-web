@@ -1235,6 +1235,9 @@ test.describe('Rekka all-level compatibility', () => {
         items: scenario.items,
         stock: scenario.items.map(() => -1),
       });
+      // Shop sprites/panoramas/icons load in real time; let them land.
+      await page.waitForTimeout(800);
+      await page.evaluate(() => (window as any).__harness.stepFrames(30, null));
       await expect(page.locator('#game-canvas')).toHaveScreenshot(
         `rekka-${scenario.flavor}-chapter-${scenario.level}.png`,
         { maxDiffPixelRatio: 0.01 },
