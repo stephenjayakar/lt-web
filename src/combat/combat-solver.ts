@@ -119,6 +119,9 @@ export class CombatPhaseSolver {
    * after-strike hooks, so removal waits for applyStrikeDamage.
    */
   private pendingStrikeProcs: Parameters<CombatSkillLifecycle['endStrike']>[0] | null = null;
+  /** The running combat's initiator and its item (Python solver.attacker / main_item). */
+  private sessionAttacker: UnitObject | null = null;
+  private sessionAttackItem: ItemObject | null = null;
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -136,6 +139,8 @@ export class CombatPhaseSolver {
     defenseItems: Map<UnitObject, ItemObject | null>,
   ): void {
     this.combatDb = db;
+    this.sessionAttacker = attacker;
+    this.sessionAttackItem = attackItem;
     this.phaseCounts.clear();
     this.procPlayback.length = 0;
     this.guardGaugeResults.clear();
@@ -864,32 +869,16 @@ export class CombatPhaseSolver {
     }
   }
 
-  private criticalMultiplier(
-    striker: UnitObject,
-    item: ItemObject,
-    target: UnitObject,
-    db: Database,
-  ): number {
-    const formula = skillSystem.criticalMultiplierFormula(
-      striker,
-      { game: this.game, item, target },
-    ) ?? 'CRIT_MULT';
-    const expression = db.getEquation(formula) ?? (formula === 'CRIT_MULT' ? '3' : formula);
-    return Math.max(0, calcs.evaluateEquation(expression, striker, { db, item }));
-  }
-
-  private criticalAddition(
-    striker: UnitObject,
-    item: ItemObject,
-    target: UnitObject,
-    db: Database,
-  ): number {
-    const formula = skillSystem.criticalAdditionFormula(
-      striker,
-      { game: this.game, item, target },
-    ) ?? 'CRIT_ADD';
-    const expression = db.getEquation(formula) ?? (formula === 'CRIT_ADD' ? '0' : formula);
-    return calcs.evaluateEquation(expression, striker, { db, item });
+  /**
+   * The `def_item` Python's solver passes for a strike: the attacker's item
+   * for a counter, nothing for splash, else the target's weapon.
+   */
+  private opposingItem(target: UnitObject, mode: CombatMode, db: Database): ItemObject | null {
+    if (mode === 'splash') return null;
+    if (mode === 'defense' && this.sessionAttackItem && target === this.sessionAttacker) {
+      return this.sessionAttackItem;
+    }
+    return calcs.getEquippedWeapon(target, db, this.game);
   }
 
   private nextPhase(unit: UnitObject): number {
@@ -1083,8 +1072,7 @@ export class CombatPhaseSolver {
       striker, item, target, forcedAttackProcs, this.simulatedHp,
     ) ??
       { attack: [], defense: [] };
-    const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
-    const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
+    const defWeapon = this.opposingItem(target, mode, db);
 
     const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
       skillSystem.checkEnemy(striker, target, db) && !!target.traveler &&
@@ -1096,23 +1084,16 @@ export class CombatPhaseSolver {
 
     let dmg = 0;
     if (!guarded && (hit || hasDamageOnMiss(item))) {
-      const baseDmg = calcs.computeDamage(
+      // Python compute_damage(crit): one pass with the crit terms applied
+      // before the damage/resist multipliers.
+      const strikeDamage = (asCrit: boolean): number => calcs.computeDamage(
         striker, item, target, db, board, this.game, mode, assist, attackInfo,
+        asCrit, defWeapon,
       );
-      const normalDamage = baseDmg + wt.damageBonus;
       if (!hit) {
-        dmg = damageOnMiss(item, normalDamage) ?? 0;
+        dmg = damageOnMiss(item, strikeDamage(false)) ?? 0;
       } else {
-        dmg = normalDamage;
-        if (crit) {
-          const baseCritMult = this.criticalMultiplier(striker, item, target, db);
-          dmg *= baseCritMult;
-          dmg += this.criticalAddition(striker, item, target, db);
-          dmg += skillSystem.modifyCritDamage(striker, item, this.game);
-          dmg += skillSystem.dynamicCritDamageAddition(
-            striker, item, target, defWeapon, mode, attackInfo, dmg, this.game,
-          );
-        }
+        dmg = strikeDamage(crit);
         dmg = this.applyCustomHitDamage(item, target, dmg);
       }
       const solomonChange = solomonHpChange(
@@ -1398,17 +1379,17 @@ export class CombatPhaseSolver {
       item2: attackItem,
       mode: 'defense',
     };
-    const defenderHasVantage = defenderCanCounter && defenseItem &&
-      skillSystem.vantage(defender, defenderSkillContext) &&
-      !skillSystem.disvantage(attacker, attackerSkillContext);
-    const attackerHasDesperation = skillSystem.desperation(
+    // Python solver.defender_has_vantage / attacker_has_desperation /
+    // defender_has_desperation (vantage and disvantage simply OR together).
+    const defenderHasVantage = defenderCanCounter && !!defenseItem &&
+      (skillSystem.vantage(defender, defenderSkillContext) ||
+        skillSystem.disvantage(attacker, attackerSkillContext));
+    const attackerHasDesperation = (): boolean => skillSystem.desperation(
       attacker,
       attackerSkillContext,
     );
-    const attackerHasDisvantage = skillSystem.disvantage(
-      attacker,
-      attackerSkillContext,
-    ) && !skillSystem.vantage(attacker, attackerSkillContext);
+    const defenderHasDesperation = (): boolean => !!defenseItem && defenderCanCounterNow() &&
+      skillSystem.desperation(defender, defenderSkillContext);
 
     // Check ignoreDyingInCombat (miracle)
     const attackerMiracle = skillSystem.ignoreDyingInCombat(attacker);
@@ -1479,23 +1460,6 @@ export class CombatPhaseSolver {
     // Simulated HP for lethality checks (stop attacking dead units)
     const atkHp = this.trackHp(attacker, attacker.currentHp);
     const defHp = this.trackHp(defender, defender.currentHp);
-    function* repeatAttacker(count: number): Generator<CombatStrike[], void, void> {
-      for (let phase = 0; phase < count; phase++) {
-        yield* doStrikes(
-          attacker, attackItem, defender, attackerStrikeCount(), false,
-          atkHp, defHp, defenderMiracle,
-        );
-      }
-    }
-    function* repeatDefender(count: number): Generator<CombatStrike[], void, void> {
-      if (!defenseItem) return;
-      for (let phase = 0; phase < count; phase++) {
-        yield* doStrikes(
-          defender, defenseItem, attacker, defenderStrikeCount(), true,
-          defHp, atkHp, attackerMiracle,
-        );
-      }
-    }
     const attackerBlitzes = (): number => calcs.computeBlitzPhases(
       attacker, attackItem, defender, defenseItem, 'attack',
       [this.phaseCounts.get(attacker) ?? 0, 0], this.game,
@@ -1517,40 +1481,68 @@ export class CombatPhaseSolver {
       ) + (defenderDoublesNow() ? 1 : 0)
       : 0;
 
-    // ---- Determine strike ordering based on skills ----
-
-    if (defenderHasVantage && defenseItem) {
-      yield* repeatDefender(1 + defenderBlitzes());
-      yield* repeatAttacker(1 + attackerBlitzes());
-      if (attackerHasDesperation) {
-        yield* repeatAttacker(attackerRemaining());
+    // ---- Python CombatPhaseSolver state machine ----
+    // InitState opens with the defender on vantage, else the attacker. After
+    // every phase the next one is chosen from the phase counts re-evaluated
+    // at that moment (AttackerState/DefenderState.get_next_state): own blitz,
+    // own desperation, the other side, then own remaining phases. This
+    // alternates remaining phases (A D A D A), not one side's bulk.
+    let numAttacks = 0;
+    let numDefends = 0;
+    let attackerBlitzesUsed = 0;
+    let defenderBlitzesUsed = 0;
+    const allowCounter = (): boolean => !!defenseItem && defenderCanCounterNow();
+    const attackerPhases = (): number => 1 + attackerRemaining() + attackerBlitzes();
+    const defenderPhases = (): number => defenseItem
+      ? 1 + defenderRemaining() + defenderBlitzes()
+      : 1;
+    const bothAlive = (): boolean => atkHp.hp > 0 && defHp.hp > 0;
+    let next: 'attacker' | 'defender' | null = defenderHasVantage ? 'defender' : 'attacker';
+    while (next && bothAlive()) {
+      if (next === 'attacker') {
+        yield* doStrikes(
+          attacker, attackItem, defender, attackerStrikeCount(), false,
+          atkHp, defHp, defenderMiracle,
+        );
+        numAttacks++;
+        if (!bothAlive()) break;
+        const aPhases = attackerPhases();
+        const dPhases = defenderPhases();
+        if (attackerBlitzesUsed < attackerBlitzes() && numAttacks < aPhases) {
+          attackerBlitzesUsed++;
+          next = 'attacker';
+        } else if (attackerHasDesperation() && numAttacks < aPhases) {
+          next = 'attacker';
+        } else if (allowCounter() && numDefends < dPhases) {
+          next = 'defender';
+        } else if (numAttacks < aPhases) {
+          next = 'attacker';
+        } else {
+          next = null;
+        }
       } else {
-        yield* repeatDefender(defenderRemaining());
-        yield* repeatAttacker(attackerRemaining());
+        if (!defenseItem) break;
+        yield* doStrikes(
+          defender, defenseItem, attacker, defenderStrikeCount(), true,
+          defHp, atkHp, attackerMiracle,
+        );
+        numDefends++;
+        if (!bothAlive()) break;
+        const aPhases = attackerPhases();
+        const dPhases = defenderPhases();
+        if (allowCounter() && defenderBlitzesUsed < defenderBlitzes() && numDefends < dPhases) {
+          defenderBlitzesUsed++;
+          next = 'defender';
+        } else if (defenderHasDesperation() && numDefends < dPhases) {
+          next = 'defender';
+        } else if (numAttacks < aPhases) {
+          next = 'attacker';
+        } else if (allowCounter() && numDefends < dPhases) {
+          next = 'defender';
+        } else {
+          next = null;
+        }
       }
-      if (attackerHasDesperation) yield* repeatDefender(defenderRemaining());
-
-    } else if (attackerHasDisvantage && defenderCanCounter && defenseItem) {
-      yield* repeatDefender(1 + defenderBlitzes());
-      yield* repeatAttacker(1 + attackerBlitzes());
-      yield* repeatDefender(defenderRemaining());
-      yield* repeatAttacker(attackerRemaining());
-
-    } else if (attackerHasDesperation) {
-      yield* repeatAttacker(1 + attackerBlitzes());
-      yield* repeatAttacker(attackerRemaining());
-      if (defenderCanCounterNow() && defenseItem) {
-        yield* repeatDefender(1 + defenderBlitzes());
-        yield* repeatDefender(defenderRemaining());
-      }
-
-    } else {
-      yield* repeatAttacker(1 + attackerBlitzes());
-      if (defenderCanCounterNow() && defenseItem) {
-        yield* repeatDefender(1 + defenderBlitzes());
-      }
-      yield* repeatAttacker(attackerRemaining());
-      yield* repeatDefender(defenderRemaining());
     }
 
     this.applyMiracleCleanup(attacker, atkHp);
@@ -1657,22 +1649,17 @@ export class CombatPhaseSolver {
     ) ??
       { attack: [], defense: [] };
     // Compute hit chance with weapon triangle bonus
-    const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
-    const baseHit = calcs.computeHit(
-      striker, item, target, db, board, this.game, mode, attackInfo,
+    const defWeapon = this.opposingItem(target, mode, db);
+    // Python compute_hit folds the weapon triangle in before its 0-100 clamp.
+    const finalHit = calcs.computeHit(
+      striker, item, target, db, board, this.game, mode, attackInfo, defWeapon,
     );
-    const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
-    const finalHit = Math.max(0, Math.min(100, baseHit + wt.hitBonus));
 
-    // Compute crit chance
-    let critChance = calcs.computeCrit(
+    // Compute crit chance. crit_anyway does not change the chance: Python
+    // applies the crit damage terms on every hit instead (compute_damage).
+    const critChance = calcs.computeCrit(
       striker, item, target, db, this.game, mode, attackInfo,
     );
-
-    // critAnyway skill: ensure at least some crit chance
-    if (skillSystem.critAnyway(striker) && critChance <= 0) {
-      critChance = 1; // Minimal crit chance if skill is active
-    }
 
     const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
       skillSystem.checkEnemy(striker, target, db) && !!target.traveler &&
@@ -1720,25 +1707,16 @@ export class CombatPhaseSolver {
     // Compute hit damage, or the independent damage_on_miss hook on a miss.
     let dmg = 0;
     if (!guarded && (hit || hasDamageOnMiss(item))) {
-      const baseDmg = calcs.computeDamage(
+      // Python compute_damage(crit): one pass with the crit terms applied
+      // before the damage/resist multipliers.
+      const strikeDamage = (asCrit: boolean): number => calcs.computeDamage(
         striker, item, target, db, board, this.game, mode, assist, attackInfo,
+        asCrit, defWeapon,
       );
-      const normalDamage = baseDmg + wt.damageBonus;
       if (!hit) {
-        dmg = damageOnMiss(item, normalDamage) ?? 0;
+        dmg = damageOnMiss(item, strikeDamage(false)) ?? 0;
       } else {
-        dmg = normalDamage;
-
-        // Crit damage
-        if (crit) {
-          const baseCritMult = this.criticalMultiplier(striker, item, target, db);
-          dmg *= baseCritMult;
-          dmg += this.criticalAddition(striker, item, target, db);
-          dmg += skillSystem.modifyCritDamage(striker, item, this.game);
-          dmg += skillSystem.dynamicCritDamageAddition(
-            striker, item, target, defWeapon, mode, attackInfo, dmg, this.game,
-          );
-        }
+        dmg = strikeDamage(crit);
 
         // Grandmaster mode scales hit damage by to-hit%; DamageOnMiss calls
         // compute_damage directly and therefore does not use this scaling.

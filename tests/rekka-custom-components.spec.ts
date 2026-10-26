@@ -2557,7 +2557,6 @@ test.describe('Rekka project-local skill components', () => {
         canCounterattack,
         computeCrit,
         computeDamage,
-        weaponTriangle,
       } = await import('/src/combat/combat-calcs.ts');
       const {
         usesConsumedByStrikes,
@@ -2619,9 +2618,11 @@ test.describe('Rekka project-local skill components', () => {
       const poiseMoved = computeCrit(attacker, attackItem, defender, game.db, game);
 
       attacker.skills = [new SkillObject(game.db.skills.get('Lethal'))];
+      // compute_damage folds the weapon triangle in (Python combat_calcs).
       const normalDamage = computeDamage(
         attacker, attackItem, defender, game.db, game.board, game,
-      ) + weaponTriangle(attackItem, defenseItem, game.db, attacker, defender).damageBonus;
+        'attack', false, [0, 0], false, defenseItem,
+      );
       const lethalStrike = new CombatPhaseSolver(() => 0, game).resolve(
         attacker,
         attackItem,

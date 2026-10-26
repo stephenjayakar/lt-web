@@ -784,6 +784,7 @@ export function computeHit(
   game?: any,
   mode: 'attack' | 'defense' | 'splash' = 'attack',
   attackInfo: [number, number] = [0, 0],
+  defenseItem?: ItemObject | null,
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
@@ -812,24 +813,91 @@ export function computeHit(
   const atkSupport = getSupportBonusForCombat(attacker, game);
   const defSupport = getSupportBonusForCombat(defender, game);
 
-  const raw = acc + itemDynAcc + skillDynAcc + atkSupport.accuracy - avo - skillDynAvo - defSupport.avoid;
+  // Python compute_hit adds the weapon-triangle accuracy/avoid term before
+  // subtracting avoid and before the single 0-100 clamp.
+  const triangle = triangleFor(attackItem, defender, db, game, attacker, defenseItem);
+  const raw = acc + itemDynAcc + skillDynAcc + triangle.hitBonus + atkSupport.accuracy -
+    avo - skillDynAvo - defSupport.avoid;
   return Math.max(0, Math.min(100, raw));
 }
 
 /**
- * Compute final damage (attacker damage - defender defense, min 0).
- * Includes dynamic modifiers, effective damage, multipliers, and support bonuses.
+ * Weapon-triangle bonuses for `attacker`'s `attackItem` against the item the
+ * defender fights back with. Python passes `def_item` explicitly: the
+ * defender's weapon for a main strike, the attacker's item for a counter and
+ * None for splash (no triangle). `undefined` resolves the equipped weapon.
+ */
+function triangleFor(
+  attackItem: ItemObject,
+  defender: UnitObject,
+  db: Database,
+  game: any,
+  attacker: UnitObject,
+  defenseItem: ItemObject | null | undefined,
+): ReturnType<typeof weaponTriangle> {
+  const item2 = defenseItem === undefined ? getEquippedWeapon(defender, db, game) : defenseItem;
+  return weaponTriangle(attackItem, item2, db, attacker, defender);
+}
+
+/** Python `DB.constants.value('min_damage')` (EOtF uses 1, LT defaults to 0). */
+export function minDamage(db: Database): number {
+  const value = Number(db.getConstant('min_damage', 0));
+  return Number.isFinite(value) ? Math.trunc(value) : 0;
+}
+
+/** `skill_system.critical_multiplier_formula` evaluated for the striker. */
+export function criticalMultiplier(
+  striker: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  db: Database,
+  game?: any,
+): number {
+  const formula = skillSystem.criticalMultiplierFormula(
+    striker,
+    { game, item, target },
+  ) ?? 'CRIT_MULT';
+  const expression = db.getEquation(formula) ?? (formula === 'CRIT_MULT' ? '3' : formula);
+  return Math.max(0, evaluateEquation(expression, striker, { db, item }));
+}
+
+/** `skill_system.critical_addition_formula` evaluated for the striker. */
+export function criticalAddition(
+  striker: UnitObject,
+  item: ItemObject,
+  target: UnitObject,
+  db: Database,
+  game?: any,
+): number {
+  const formula = skillSystem.criticalAdditionFormula(
+    striker,
+    { game, item, target },
+  ) ?? 'CRIT_ADD';
+  const expression = db.getEquation(formula) ?? (formula === 'CRIT_ADD' ? '0' : formula);
+  return evaluateEquation(expression, striker, { db, item });
+}
+
+/**
+ * Python `combat_calcs.compute_damage`, in its exact order (fork and
+ * upstream agree):
+ *   might = damage + item/skill dynamic_damage + weapon triangle + support
+ *   int(might); - defense; - skill dynamic_resist; assist //2
+ *   max(min_damage, ·)  (so a crit multiplies at least min_damage)
+ *   crit: × crit multiplier, + crit addition (+ modify/dynamic crit addition)
+ *   × damage_multiplier × resist_multiplier, then one int(max(min_damage, ·)).
  */
 function computeDamageCore(
   attacker: UnitObject,
   attackItem: ItemObject,
   defender: UnitObject,
   db: Database,
-  board?: GameBoard | null,
-  game?: any,
-  mode: 'attack' | 'defense' | 'splash' = 'attack',
-  assist: boolean = false,
-  attackInfo: [number, number] = [0, 0],
+  board: GameBoard | null | undefined,
+  game: any,
+  mode: 'attack' | 'defense' | 'splash',
+  assist: boolean,
+  attackInfo: [number, number],
+  crit: boolean,
+  defenseItem: ItemObject | null | undefined,
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
@@ -842,53 +910,59 @@ function computeDamageCore(
     defender, attackItem, db, board, game, attacker, defWeapon,
     defenseMode, attackInfo,
   );
+  const triangle = triangleFor(attackItem, defender, db, game, attacker, defenseItem);
 
-  // Dynamic modifiers from items and skills
-  const baseDmg = atk - def;
-
-  // Attacker-only weapon-triangle damage advantage, folded into the
-  // effective might by `EffectiveDamage.dynamic_damage` when
-  // `weapon_effectiveness_multiplied` is true (Python `compute_advantage_attr`).
-  const advantageDamage = weaponTriangle(
-    attackItem, defWeapon, db, attacker, defender,
-  ).attackerDamageAdvantage;
-  const itemDynDmg = itemSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, atk, db, game, advantageDamage,
+  // Effective damage and other dynamic might. EffectiveDamage folds the
+  // attacker-only triangle damage advantage into its bonus when
+  // `weapon_effectiveness_multiplied` (Python `compute_advantage_attr`).
+  let might = atk;
+  might += itemSystem.dynamicDamage(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, might, db, game,
+    triangle.attackerDamageAdvantage,
   );
-  const skillDynDmg = skillSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, atk,
+  might += skillSystem.dynamicDamage(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, might,
     game, expressionCalcs,
   );
+  might += triangle.damageBonus;
 
   // Support bonuses
   const atkSupport = getSupportBonusForCombat(attacker, game);
   const defSupport = getSupportBonusForCombat(defender, game);
+  might += atkSupport.damage - defSupport.resist;
+  might = Math.trunc(might);
 
-  const beforeDynamicResist = baseDmg + itemDynDmg + skillDynDmg +
-    atkSupport.damage - defSupport.resist;
-  const skillDynResist = skillSystem.dynamicResist(
+  might -= def;
+  might -= skillSystem.dynamicResist(
     defender, defWeapon, attacker, attackItem, mode, attackInfo,
-    beforeDynamicResist, game, expressionCalcs,
+    might, game, expressionCalcs,
   );
-  let finalDmg = beforeDynamicResist - skillDynResist;
 
-  // Attack-stance partners deal half damage after defense, matching LT's
-  // compute_assist_damage path. Multipliers are applied after the reduction.
-  if (assist) finalDmg = Math.floor(finalDmg / 2);
+  // Attack-stance partners deal half damage after defense.
+  if (assist) might = Math.floor(might / 2);
 
-  // Apply damage multiplier from attacker skills
-  const dmgMult = skillSystem.damageMultiplier(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, finalDmg, game,
+  const floor = minDamage(db);
+  might = Math.trunc(Math.max(floor, might));
+
+  if (crit || skillSystem.critAnyway(attacker)) {
+    might *= criticalMultiplier(attacker, attackItem, defender, db, game);
+    let critAdd = criticalAddition(attacker, attackItem, defender, db, game);
+    critAdd += skillSystem.modifyCritDamage(attacker, attackItem, game);
+    critAdd += skillSystem.dynamicCritDamageAddition(
+      attacker, attackItem, defender, defWeapon, mode, attackInfo, critAdd, game,
+    );
+    might += critAdd;
+    // Thracia crit (+ total might × formula) has no supported content.
+  }
+
+  might *= skillSystem.damageMultiplier(
+    attacker, attackItem, defender, defWeapon, mode, attackInfo, might, game,
   );
-  finalDmg = Math.floor(finalDmg * dmgMult);
-
-  // Apply resist multiplier from defender skills
-  const resMult = skillSystem.resistMultiplier(
-    defender, defWeapon, attacker, attackItem, mode, attackInfo, finalDmg, game,
+  might *= skillSystem.resistMultiplier(
+    defender, defWeapon, attacker, attackItem, mode, attackInfo, might, game,
   );
-  finalDmg = Math.floor(finalDmg * resMult);
 
-  return Math.max(0, finalDmg);
+  return Math.trunc(Math.max(floor, might));
 }
 
 export function computeDamage(
@@ -901,6 +975,8 @@ export function computeDamage(
   mode: 'attack' | 'defense' | 'splash' = 'attack',
   assist: boolean = false,
   attackInfo: [number, number] = [0, 0],
+  crit: boolean = false,
+  defenseItem?: ItemObject | null,
 ): number {
   const defWeapon = defender.items.find((candidate) => candidate.isWeapon()) ?? null;
   const attackerHasDynamicStats = attacker.skills.some((skill) =>
@@ -926,6 +1002,7 @@ export function computeDamage(
   try {
     return computeDamageCore(
       attacker, attackItem, defender, db, board, game, mode, assist, attackInfo,
+      crit, defenseItem,
     );
   } finally {
     if (preparedAttacker) skillSystem.clearDynamicStatChanges(attacker);

@@ -475,8 +475,10 @@ test.describe('Embrace of the Fog per-strike skill hooks', () => {
       damages: [result.baseDamage + 10, result.baseDamage],
       removed: true,
     });
+    // resist_multiplier 0 still deals EOtF's min_damage (1): Python
+    // compute_damage returns int(max(min_damage, might)) after multipliers.
     expect(result.shieldState).toEqual({
-      damages: [0, result.baseDamage],
+      damages: [1, result.baseDamage],
       removed: true,
       removeCalls: [{
         nid: 'Global Ability_LookGoodFeelGood_Remove',
