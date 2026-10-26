@@ -415,4 +415,65 @@ test.describe('AI parity', () => {
     const finished = await page.evaluate((nids) => nids.map((nid: string) => (window as any).__gameRef.units.get(nid).finished), setup);
     expect(finished.every((value: boolean) => value === false)).toBe(true);
   });
+
+  // Python AIState: a unit whose action went through (here an item use) waits
+  // via unit.wait(), firing unit_wait with actively_chosen False.
+  test('an AI item use waits the unit through unit_wait', async ({ page }) => {
+    const setup = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const enemies = [...g.units.values()].filter((u: any) => u.position && u.team !== 'player' && !u.isDead());
+      const user = enemies[0];
+      for (const u of enemies) u.resetTurnState();
+      user.currentHp = Math.max(1, user.currentHp - 5);
+      const potion = new ItemObject({
+        nid: '_AiPotion', name: 'Potion', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['usable', null], ['heal', 5], ['uses', 3], ['target_ally', null]],
+      } as any);
+      potion.owner = user;
+      user.items.push(potion);
+      g.db.events.set('_AiWait', {
+        name: '_AiWait', nid: '_AiWait', trigger: 'unit_wait', level_nid: null,
+        condition: `unit1.nid == '${user.nid}' and not actively_chosen`, only_once: false, priority: 0,
+        _source: ['game_var;_ai_waited;1'],
+      });
+      g.aiController.getAction = (unit: any) => unit === user
+        ? { type: 'use_item', unit, item: potion, targetUnit: unit, targetPosition: [...unit.position], movePath: [[...unit.position]] }
+        : { type: 'wait', unit };
+      g.phase.setCurrentTeam(user.team);
+      g.state.clear();
+      g.state.change('ai');
+      return user.nid;
+    });
+    for (let i = 0; i < 120; i++) {
+      await stepFrames(page, 2);
+      if (await page.evaluate(() => (window as any).__gameRef.gameVars.get('_ai_waited'))) break;
+    }
+    const result = await page.evaluate((nid) => {
+      const g = (window as any).__gameRef;
+      return { waited: g.gameVars.get('_ai_waited') ?? null, finished: g.units.get(nid).finished };
+    }, setup);
+    expect(result).toEqual({ waited: 1, finished: true });
+  });
+
+  // Python item_funcs.get_max_range: every available inventory item counts
+  // (multi items by their leaves), not only weapons and spells.
+  test('AI view limits use the max range of every available item', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const unit = [...g.units.values()].find((u: any) => u.position && u.team !== 'player');
+      const before = (g.aiController as any).getMaxItemRange(unit);
+      const horn = new ItemObject({
+        nid: '_AiHorn', name: 'Horn', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['usable', null], ['target_ally', null], ['min_range', 1], ['max_range', 7]],
+      } as any);
+      horn.owner = unit;
+      unit.items.push(horn);
+      const after = (g.aiController as any).getMaxItemRange(unit);
+      return { before, after };
+    });
+    expect(result.before).toBeLessThan(7);
+    expect(result.after).toBe(7);
+  });
 });

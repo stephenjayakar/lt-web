@@ -8176,7 +8176,10 @@ export class CombatState extends State {
             game.actionLog.doAction(new HasNotAttackedAction(attacker));
             game.actionLog.doAction(new HasTradedAction(attacker));
           }
-          if (hasCanto) {
+          // Python handle_state_stack: an AI combat with Canto just returns
+          // to the AI, whose canto step sets the movement itself.
+          const stackForCanto: string[] = game.state.getStackNames?.() ?? [];
+          if (hasCanto && stackForCanto[stackForCanto.length - 2] !== 'ai') {
             game.actionLog.doAction(new SetMovementLeftAction(
               attacker,
               cantoMovement(attacker, defender, game),
@@ -8759,6 +8762,8 @@ export class AIState extends MapState {
   private ranAi = new Set<UnitObject>();
   /** Python AIState.cur_group: the last picked unit's AI group. */
   private curGroup: string | null = null;
+  /** A unit that acted and waits (unit.wait()) once its events finish. */
+  private pendingWaitUnit: UnitObject | null = null;
 
   /**
    * Python AIState.get_next_unit: an unfinished unit of the phase's team on
@@ -8885,8 +8890,10 @@ export class AIState extends MapState {
         this.advanceToNextUnit();
       } else if (unit?.hasAttacked) {
         this.waitingForCombat = false;
-        const target = this.pendingCombatTarget;
-        if (unitHasCanto(unit, target, game)) {
+        // Python AIController.act canto step: has_canto(unit, None), then
+        // SetMovementLeft(canto_movement(unit, None)) and canto_retreat.
+        if (unitHasCanto(unit, null, game)) {
+          game.actionLog.doAction(new SetMovementLeftAction(unit, cantoMovement(unit, null, game)));
           const retreat = game.aiController.getCantoRetreatAction(unit);
           if (retreat?.targetPosition) {
             // The canto walk is a normal Move: it stops on the first
@@ -8904,13 +8911,7 @@ export class AIState extends MapState {
               if (!interrupted.surprise) return false;
               game.audioManager?.playSfx?.('Surprise');
               game.actionLog.doAction(new HasAttackedAction(unit));
-              game.actionLog.doAction(new WaitAction(unit));
-              if (game.eventManager?.hasActiveEvents()) {
-                this.waitingForEvent = true;
-                game.state.change('event');
-                return true;
-              }
-              this.advanceToNextUnit();
+              this.waitAfterAct(game, unit);
               return true;
             };
             if (movePath && movePath.length > 1) {
@@ -8922,17 +8923,20 @@ export class AIState extends MapState {
                 () => {
                   this.waitingForMovement = false;
                   if (finish()) return;
-                  game.actionLog.doAction(new WaitAction(unit));
-                  this.advanceToNextUnit();
+                  this.waitAfterAct(game, unit);
                 },
               );
               return;
             }
             if (finish()) return;
           }
-          game.actionLog.doAction(new WaitAction(unit));
+          // Python AIState: the unit acted, so it waits through unit.wait().
+          this.waitAfterAct(game, unit);
+          return;
         }
-        this.advanceToNextUnit();
+        // Combat skipped the wait for a target-dependent Canto, but the AI's
+        // canto step (has_canto(unit, None)) has none: AIState waits it.
+        this.waitAfterAct(game, unit);
       } else if (unit) {
         // A combat-end Reset/EvalGaleforce cleared the action flags. Python's
         // AI controller completes this action without forcing Wait.
@@ -8954,7 +8958,11 @@ export class AIState extends MapState {
     if (this.waitingForEvent) {
       if (!game.eventManager?.hasActiveEvents()) {
         this.waitingForEvent = false;
-        this.advanceToNextUnit();
+        // Python AIState waits the unit once its action's events are done.
+        const pending = this.pendingWaitUnit;
+        this.pendingWaitUnit = null;
+        if (pending) this.waitAfterAct(game, pending);
+        else this.advanceToNextUnit();
       }
       return;
     }
@@ -9067,8 +9075,7 @@ export class AIState extends MapState {
         if (action.targetPosition && action.targetUnit) {
           if (action.combatArt &&
               !activateCombatArt(game, unit, action.combatArt)) {
-            game.actionLog.doAction(new WaitAction(unit));
-            this.advanceToNextUnit();
+            this.waitAfterAct(game, unit);
             break;
           }
           if (action.type === 'steal' && action.item && action.targetItem) {
@@ -9111,7 +9118,7 @@ export class AIState extends MapState {
             );
           }
         } else {
-          game.actionLog.doAction(new WaitAction(unit));
+          // No goal target: did_something stays False, no wait.
           this.advanceToNextUnit();
         }
         break;
@@ -9158,8 +9165,8 @@ export class AIState extends MapState {
               game.actionLog.doAction(new HealAction(unit, item.getHealAmount()));
             }
             game.actionLog.doAction(new WeaponUsesAction(item, unit));
-            game.actionLog.doAction(new WaitAction(unit));
-            this.advanceToNextUnit();
+            // Python: the item's ai_combat ends in WaitState -> unit.wait().
+            this.waitAfterAct(game, unit);
           };
 
           if (
@@ -9180,7 +9187,6 @@ export class AIState extends MapState {
             applyItem();
           }
         } else {
-          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
@@ -9274,6 +9280,9 @@ export class AIState extends MapState {
                 }
               }
 
+              // Python AIController.attack: HasAttacked only when a
+              // region event triggered.
+              if (triggered) game.actionLog.doAction(new HasAttackedAction(unit));
               // Push EventState if events were triggered
               if (triggered && game.eventManager.hasActiveEvents()) {
                 this.waitingForEvent = true;
@@ -9281,9 +9290,14 @@ export class AIState extends MapState {
               }
             }
 
-            game.actionLog.doAction(new HasAttackedAction(unit));
-            game.actionLog.doAction(new WaitAction(unit));
-            if (!this.waitingForEvent) {
+            // did_something: the unit moved to its interact goal; it waits
+            // (unit.wait(), unit_wait) after the region's events.
+            const moved = !!prevPos && (prevPos[0] !== action.targetPosition![0] || prevPos[1] !== action.targetPosition![1]);
+            if (this.waitingForEvent) {
+              if (moved) this.pendingWaitUnit = unit;
+            } else if (moved) {
+              this.waitAfterAct(game, unit);
+            } else {
               this.advanceToNextUnit();
             }
           };
@@ -9307,7 +9321,6 @@ export class AIState extends MapState {
             triggerInteract();
           }
         } else {
-          game.actionLog.doAction(new WaitAction(unit));
           this.advanceToNextUnit();
         }
         break;
