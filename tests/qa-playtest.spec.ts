@@ -1088,3 +1088,23 @@ test('AI Interact with no path to the region falls through to the next behaviour
   // The second behaviour targets Bone's own tile, so Python's AI is done and waits.
   expect(result).toEqual({ type: 'wait', to: null });
 });
+
+test('free state auto-ends the turn when no player units are left (Python FreeState.begin)', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(async () => {
+    const settings = await import('/src/engine/states/settings-state.ts');
+    settings.setSetting('autoend_turn', 1);
+    const g = (window as any).__gameRef;
+    for (const unit of Array.from(g.units.values()) as any[]) {
+      if (unit.team === 'player' && unit.position) {
+        g.board.removeUnit(unit);
+        unit.position = null;
+      }
+    }
+    g.state.change('free');
+    (window as any).__harness.stepFrames(6, null);
+    return { enemies: g.board.getTeamUnits('enemy').length, stack: g.state.getStackNames() };
+  });
+  expect(result.enemies).toBeGreaterThan(0);
+  expect(result.stack).not.toEqual(['free']);
+});
