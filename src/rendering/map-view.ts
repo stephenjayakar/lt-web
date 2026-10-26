@@ -94,6 +94,12 @@ export class MapView {
   /** Live level regions, for Python's time-region countdown text. */
   regionSource: (() => readonly RegionData[] | null | undefined) | null = null;
 
+  /** Live board movement bounds [minX, minY, maxX, maxY] (Python game.board.bounds). */
+  boundsSource: (() => readonly [number, number, number, number] | null | undefined) | null = null;
+
+  private gridSurface: Surface | null = null;
+  private boundsSurface: Surface | null = null;
+
   private mapSurface: Surface;
   private currentScale: number;
 
@@ -175,10 +181,8 @@ export class MapView {
       this.drawHighlights(this.mapSurface, highlights, offsetX, offsetY);
     }
 
-    // 3. Grid lines
-    if (showGrid) {
-      this.drawGrid(this.mapSurface, tilemap.width, tilemap.height, offsetX, offsetY);
-    }
+    // 3. Grid lines and level bounds (Python MapView.draw_grid)
+    this.drawGrid(this.mapSurface, tilemap.width, tilemap.height, offsetX, offsetY, renderScale);
 
     // 3.5. Map animations (below units)
     for (const anim of tilemap.animations) {
@@ -460,31 +464,72 @@ export class MapView {
   /**
    * Draw a tile grid overlay. Thin lines at each tile boundary.
    */
+  /**
+   * Python MapView.draw_grid: grid lines at the 'grid_opacity' setting (drawn
+   * when above 30) inside the board bounds, plus thick bound lines when the
+   * bounds are not the whole map and 'show_bounds' is on. Lines are drawn
+   * onto their own layer (pygame draw_line sets pixels) and blitted once.
+   */
   private drawGrid(
     surf: Surface,
     mapW: number,
     mapH: number,
     offsetX: number,
     offsetY: number,
+    renderScale: number,
   ): void {
-    const color = 'rgba(255,255,255,0.12)';
+    const bounds = this.boundsSource?.() ?? [0, 0, mapW - 1, mapH - 1];
+    const regularBounds = bounds[0] === 0 && bounds[1] === 0 &&
+      bounds[2] === mapW - 1 && bounds[3] === mapH - 1;
+    const left = bounds[0] * TILEWIDTH - offsetX;
+    const right = (bounds[2] + 1) * TILEWIDTH - offsetX;
+    const top = bounds[1] * TILEHEIGHT - offsetY;
+    const bottom = (bounds[3] + 1) * TILEHEIGHT - offsetY;
 
-    // Compute the range of grid lines visible in the viewport
-    const startCol = Math.max(0, Math.floor(offsetX / TILEWIDTH));
-    const endCol = Math.min(mapW, Math.ceil((offsetX + viewport.width) / TILEWIDTH));
-    const startRow = Math.max(0, Math.floor(offsetY / TILEHEIGHT));
-    const endRow = Math.min(mapH, Math.ceil((offsetY + viewport.height) / TILEHEIGHT));
+    const opacity = Number(getSetting('grid_opacity')) || 0;
+    const outsideOpacity = Math.min(255, opacity + 56);
+    const drawGridLines = opacity > 30;
+    const drawBounds = !regularBounds && !!getSetting('show_bounds');
+    if (!drawGridLines && !drawBounds) return;
 
-    // Vertical lines
-    for (let col = startCol; col <= endCol; col++) {
-      const x = col * TILEWIDTH - offsetX;
-      surf.drawLine(x, 0, x, viewport.height, color, 1);
+    const layer = (existing: Surface | null): Surface => {
+      const target = existing && existing.scale === renderScale ? existing
+        : Surface.frame(viewport.width, viewport.height, renderScale);
+      target.clear();
+      return target;
+    };
+
+    if (drawGridLines) {
+      const grid = this.gridSurface = layer(this.gridSurface);
+      for (let x = left; x < right; x += TILEWIDTH) {
+        grid.fillRect(x - 1, top, 1, bottom - top + 1, '#000');
+      }
+      for (let y = top; y < bottom; y += TILEHEIGHT) {
+        grid.fillRect(left, y, right - left + 1, 1, '#000');
+      }
+      if (drawBounds) {
+        // The bound lines replace (not blend over) the grid pixels beneath.
+        const s = grid.scale;
+        const clear = (x: number, y: number, w: number, h: number) =>
+          grid.ctx.clearRect(Math.round(x * s), Math.round(y * s), Math.round(w * s), Math.round(h * s));
+        clear(left - 2, top - 2, right - left + 4, 3);
+        clear(left - 2, top - 1, 3, bottom - top + 2);
+        clear(right - 1, top - 1, 3, bottom - top + 2);
+        clear(left - 2, bottom - 1, right - left + 4, 3);
+      }
+      grid.setAlpha(opacity / 255);
+      surf.blit(grid);
     }
 
-    // Horizontal lines
-    for (let row = startRow; row <= endRow; row++) {
-      const y = row * TILEHEIGHT - offsetY;
-      surf.drawLine(0, y, viewport.width, y, color, 1);
+    if (drawBounds) {
+      const lines = this.boundsSurface = layer(this.boundsSurface);
+      // pygame draw_line(width=3) spreads 1px either side of the line.
+      lines.fillRect(left - 2, top - 2, right - left + 4, 3, '#000');
+      lines.fillRect(left - 2, top - 1, 3, bottom - top + 2, '#000');
+      lines.fillRect(right - 1, top - 1, 3, bottom - top + 2, '#000');
+      lines.fillRect(left - 2, bottom - 1, right - left + 4, 3, '#000');
+      lines.setAlpha(outsideOpacity / 255);
+      surf.blit(lines);
     }
   }
 }

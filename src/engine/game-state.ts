@@ -231,6 +231,7 @@ export class GameState {
     this.highlight = new HighlightManager();
     this.mapView = new MapView();
     this.mapView.regionSource = () => this.currentLevel?.regions;
+    this.mapView.boundsSource = () => this.board?.bounds;
     this.unitRenderer = new UnitRenderer();
     this.movementSystem = new MovementSystem();
     this.hud = new HUD();

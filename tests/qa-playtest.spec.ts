@@ -928,3 +928,50 @@ test('dialog talk boops follow the talk_boop setting and no_sound flag (Python D
   expect(await played()).toContain('Select 1');
   await setTalkBoop(1);
 });
+
+test('grid_opacity and show_bounds settings draw the map grid and bounds (Python MapView.draw_grid)', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(async () => {
+    const settings = await import('/src/engine/states/settings-state.ts');
+    const g = (window as any).__gameRef;
+    const harness = (window as any).__harness;
+    g.state.change('free');
+    harness.stepFrames(3, null);
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+    const scale = canvas.width / 240;
+    const sample = (points: Array<[number, number]>) => {
+      harness.stepFrames(1, null);
+      return points.map(([x, y]) => Array.from(ctx.getImageData(x * scale, y * scale, 1, 1).data.slice(0, 3)).join(','));
+    };
+    const cull = g.camera.getCullRect();
+    const offsetX = cull.x + 16;
+    const offsetY = cull.y + 16;
+    // A vertical grid line sits at world x = 16 * col - 1.
+    const col = Math.floor(offsetX / 16) + 4;
+    const lineX = 16 * col - 1 - offsetX;
+    const points: Array<[number, number]> = [3, 5, 7, 9, 11].map((row) => [lineX, 16 * row + 8 - offsetY]);
+    settings.setSetting('grid_opacity', 0);
+    settings.setSetting('show_bounds', 0);
+    const off = sample(points);
+    settings.setSetting('grid_opacity', 255);
+    const on = sample(points);
+    settings.setSetting('grid_opacity', 0);
+
+    // Bounds: thick lines just outside a non-regular board bound.
+    const saved = [...g.board.bounds];
+    const bx = Math.floor(offsetX / 16) + 2;
+    const by = Math.floor(offsetY / 16) + 2;
+    g.board.bounds = [bx, by, bx + 4, by + 4];
+    const boundPoints: Array<[number, number]> = [1, 2, 3].map((k) => [bx * 16 - 1 - offsetX, (by + k) * 16 + 4 - offsetY]);
+    const boundsOff = sample(boundPoints);
+    settings.setSetting('show_bounds', 1);
+    const boundsOn = sample(boundPoints);
+    settings.setSetting('show_bounds', 0);
+    g.board.bounds = saved;
+    return { off, on, boundsOff, boundsOn };
+  });
+  expect(result.on).toEqual(['0,0,0', '0,0,0', '0,0,0', '0,0,0', '0,0,0']);
+  expect(result.off.some((pixel) => pixel !== '0,0,0')).toBe(true);
+  expect(result.boundsOn).not.toEqual(result.boundsOff);
+});
