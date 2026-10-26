@@ -183,7 +183,9 @@ export class ScrollingBackground {
       return;
     }
     const width = img.naturalWidth || img.width;
-    const counter = (performance.now() / this.scrollSpeed) % width;
+    // engine.get_time() / scroll_speed; frame-clocked (60 fps) so harness
+    // screenshots stay deterministic.
+    const counter = ((getFrameCount() * 1000 / 60) / this.scrollSpeed) % width;
     for (let x = -counter; x < viewport.width; x += width) {
       for (let y = 0; y < viewport.height; y += img.height) {
         surf.blitImage(img, 0, 0, width, img.height, Math.floor(x), y);

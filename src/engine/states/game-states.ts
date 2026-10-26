@@ -8961,6 +8961,7 @@ export class ShopState extends State {
           sfx('GoldExchange');
           game.actionLog.doAction(new GainMoneyAction(value, party?.nid));
           game.actionLog.doAction(new UpdateRecordsAction('money', party?.nid, value));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, 'money', game.getMoney()));
           game.actionLog.doAction(new RemoveItemFromUnitAction(unit, item));
           this.dialog = this.makeDialog(this.messages.sell_again);
           this.updateSellOptions();
@@ -9017,6 +9018,8 @@ export class ShopState extends State {
       sfx('GoldExchange');
       game.actionLog.doAction(new GainMoneyAction(-value, party?.nid));
       game.actionLog.doAction(new UpdateRecordsAction('money', party?.nid, -value));
+      // Web-only mirror kept for saves/tooling that read the legacy var.
+      game.actionLog.doAction(new SetGameVarAction(game.gameVars, 'money', game.getMoney()));
       const marker = `__shop_${this.shopId}_${item.nid}`;
       game.actionLog.doAction(new SetGameVarAction(game.gameVars, marker, Number(game.gameVars.get(marker) ?? 0) + 1));
       if (this.stock && stock > 0) this.stock[stockIdx] = stock - 1;

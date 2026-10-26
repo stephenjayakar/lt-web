@@ -408,6 +408,9 @@ export class PrepPickUnitsState extends State {
   menu: Table | null = null;
   bg: ScrollingBackground | null = null;
 
+  /** The listed units (kept for older tooling). */
+  get partyUnits(): UnitObject[] { return this.units; }
+
   override start(): StateResult {
     const game = getGame();
     preloadPrepSprites();
