@@ -2259,11 +2259,13 @@ export function queueDirectItemUseEvents(
   item: ItemObject,
   targetPosition: [number, number],
   target: UnitObject | null = null,
+  only: string[] | null = null,
 ): number {
   const manager = game.eventManager;
   if (!manager) return 0;
   let queued = 0;
   const trigger = (component: string): void => {
+    if (only && !only.includes(component)) return;
     const nid = eventNid(item, component);
     if (!nid) return;
     if (manager.triggerSpecific(nid, {
