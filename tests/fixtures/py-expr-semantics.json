@@ -1,0 +1,1801 @@
+{
+ "python": "3.11.13",
+ "cases": [
+  {
+   "expr": "1 + 2 == 3",
+   "repr": "True"
+  },
+  {
+   "expr": "max(1 + 1, 3)",
+   "repr": "3"
+  },
+  {
+   "expr": "'a' + '|' + 'b' not in ['a|b']",
+   "repr": "False"
+  },
+  {
+   "expr": "'a' + '|' + 'b' not in ['x|b']",
+   "repr": "True"
+  },
+  {
+   "expr": "'a' + '|' + 'b' in ['a|b']",
+   "repr": "True"
+  },
+  {
+   "expr": "[1] + [2] == [1, 2]",
+   "repr": "True"
+  },
+  {
+   "expr": "[1] + [2] != [1, 2]",
+   "repr": "False"
+  },
+  {
+   "expr": "a + b == [1, 2, 3]",
+   "repr": "True"
+  },
+  {
+   "expr": "2 + 3 * 4 ** 2 // 5 % 7 - 1",
+   "repr": "3"
+  },
+  {
+   "expr": "-2 ** 2",
+   "repr": "-4"
+  },
+  {
+   "expr": "2 ** -1",
+   "repr": "0.5"
+  },
+  {
+   "expr": "2 ** 3 ** 2",
+   "repr": "512"
+  },
+  {
+   "expr": "(-2) ** 2",
+   "repr": "4"
+  },
+  {
+   "expr": "not 1 == 2",
+   "repr": "True"
+  },
+  {
+   "expr": "not 1 + 1 == 2",
+   "repr": "False"
+  },
+  {
+   "expr": "not x > 3 and z",
+   "repr": "False"
+  },
+  {
+   "expr": "1 < 2 < 3",
+   "repr": "True"
+  },
+  {
+   "expr": "3 > 2 > 2",
+   "repr": "False"
+  },
+  {
+   "expr": "1 < x <= 5 != 6",
+   "repr": "True"
+  },
+  {
+   "expr": "x == 5 == 5.0",
+   "repr": "True"
+  },
+  {
+   "expr": "1 if 0 else 2 if 0 else 3",
+   "repr": "3"
+  },
+  {
+   "expr": "(1 if x else 2) + 10",
+   "repr": "11"
+  },
+  {
+   "expr": "1 + (2 if n is None else 3)",
+   "repr": "3"
+  },
+  {
+   "expr": "x if x > 3 else -x",
+   "repr": "5"
+  },
+  {
+   "expr": "1 | 2 ^ 3 & 4",
+   "repr": "3"
+  },
+  {
+   "expr": "1 << 2 + 1",
+   "repr": "8"
+  },
+  {
+   "expr": "8 >> 1 >> 1",
+   "repr": "2"
+  },
+  {
+   "expr": "~5 + 1",
+   "repr": "-5"
+  },
+  {
+   "expr": "-x ** 2",
+   "repr": "-25"
+  },
+  {
+   "expr": "not -1",
+   "repr": "False"
+  },
+  {
+   "expr": "2 * 3 % 4",
+   "repr": "2"
+  },
+  {
+   "expr": "7 // 2 * 2",
+   "repr": "6"
+  },
+  {
+   "expr": "'%d units' % 3 + '!'",
+   "repr": "'3 units!'"
+  },
+  {
+   "expr": "1 + 2 if False else 3 + 4",
+   "repr": "7"
+  },
+  {
+   "expr": "x > 1 and x < 10 or z",
+   "repr": "True"
+  },
+  {
+   "expr": "z or n or e",
+   "repr": "''"
+  },
+  {
+   "expr": "z and 1/0",
+   "repr": "0"
+  },
+  {
+   "expr": "x or 1/0",
+   "repr": "5"
+  },
+  {
+   "expr": "x and 'yes'",
+   "repr": "'yes'"
+  },
+  {
+   "expr": "e or 'default'",
+   "repr": "'default'"
+  },
+  {
+   "expr": "[] or {} or 0 or 'last'",
+   "repr": "'last'"
+  },
+  {
+   "expr": "a and b",
+   "repr": "[3]"
+  },
+  {
+   "expr": "bool([])",
+   "repr": "False"
+  },
+  {
+   "expr": "bool({})",
+   "repr": "False"
+  },
+  {
+   "expr": "bool('')",
+   "repr": "False"
+  },
+  {
+   "expr": "bool(0.0)",
+   "repr": "False"
+  },
+  {
+   "expr": "bool(None)",
+   "repr": "False"
+  },
+  {
+   "expr": "bool(set())",
+   "repr": "False"
+  },
+  {
+   "expr": "bool([0])",
+   "repr": "True"
+  },
+  {
+   "expr": "bool(' ')",
+   "repr": "True"
+  },
+  {
+   "expr": "bool(float('nan'))",
+   "repr": "True"
+  },
+  {
+   "expr": "not []",
+   "repr": "True"
+  },
+  {
+   "expr": "not {'a': 1}",
+   "repr": "False"
+  },
+  {
+   "expr": "7 / 2",
+   "repr": "3.5"
+  },
+  {
+   "expr": "6 / 2",
+   "repr": "3.0"
+  },
+  {
+   "expr": "7 // 2",
+   "repr": "3"
+  },
+  {
+   "expr": "-7 // 2",
+   "repr": "-4"
+  },
+  {
+   "expr": "7 // -2",
+   "repr": "-4"
+  },
+  {
+   "expr": "7.0 // 2",
+   "repr": "3.0"
+  },
+  {
+   "expr": "-7.5 // 2",
+   "repr": "-4.0"
+  },
+  {
+   "expr": "7 % 3",
+   "repr": "1"
+  },
+  {
+   "expr": "-7 % 3",
+   "repr": "2"
+  },
+  {
+   "expr": "7 % -3",
+   "repr": "-2"
+  },
+  {
+   "expr": "-7 % -3",
+   "repr": "-1"
+  },
+  {
+   "expr": "7.5 % 2",
+   "repr": "1.5"
+  },
+  {
+   "expr": "-7.5 % 2",
+   "repr": "0.5"
+  },
+  {
+   "expr": "5 % 2.5",
+   "repr": "0.0"
+  },
+  {
+   "expr": "1 / 0",
+   "error": "ZeroDivisionError"
+  },
+  {
+   "expr": "1 // 0",
+   "error": "ZeroDivisionError"
+  },
+  {
+   "expr": "1 % 0",
+   "error": "ZeroDivisionError"
+  },
+  {
+   "expr": "0.0 / 0",
+   "error": "ZeroDivisionError"
+  },
+  {
+   "expr": "2 ** 0.5",
+   "repr": "1.4142135623730951"
+  },
+  {
+   "expr": "4 ** 0.5",
+   "repr": "2.0"
+  },
+  {
+   "expr": "10 / 4 * 2",
+   "repr": "5.0"
+  },
+  {
+   "expr": "1e3",
+   "repr": "1000.0"
+  },
+  {
+   "expr": "1.5e-5",
+   "repr": "1.5e-05"
+  },
+  {
+   "expr": "1e16",
+   "repr": "1e+16"
+  },
+  {
+   "expr": "0.1 + 0.2",
+   "repr": "0.30000000000000004"
+  },
+  {
+   "expr": "3 * 1.0",
+   "repr": "3.0"
+  },
+  {
+   "expr": "3 - 1.0",
+   "repr": "2.0"
+  },
+  {
+   "expr": "-0.0",
+   "repr": "-0.0"
+  },
+  {
+   "expr": "abs(-3)",
+   "repr": "3"
+  },
+  {
+   "expr": "abs(-3.0)",
+   "repr": "3.0"
+  },
+  {
+   "expr": "divmod(-7, 2)",
+   "repr": "(-4, 1)"
+  },
+  {
+   "expr": "True + True",
+   "repr": "2"
+  },
+  {
+   "expr": "True * 3",
+   "repr": "3"
+  },
+  {
+   "expr": "x / True",
+   "repr": "5.0"
+  },
+  {
+   "expr": "int('12')",
+   "repr": "12"
+  },
+  {
+   "expr": "int(' -3 ')",
+   "repr": "-3"
+  },
+  {
+   "expr": "int(3.9)",
+   "repr": "3"
+  },
+  {
+   "expr": "int(-3.9)",
+   "repr": "-3"
+  },
+  {
+   "expr": "int(True)",
+   "repr": "1"
+  },
+  {
+   "expr": "int('3.5')",
+   "error": "ValueError"
+  },
+  {
+   "expr": "int(None)",
+   "error": "TypeError"
+  },
+  {
+   "expr": "int('0x10', 16)",
+   "repr": "16"
+  },
+  {
+   "expr": "int('1_000')",
+   "repr": "1000"
+  },
+  {
+   "expr": "float('2')",
+   "repr": "2.0"
+  },
+  {
+   "expr": "float(3)",
+   "repr": "3.0"
+  },
+  {
+   "expr": "float('inf')",
+   "repr": "inf"
+  },
+  {
+   "expr": "float('x')",
+   "error": "ValueError"
+  },
+  {
+   "expr": "str(2.0)",
+   "repr": "'2.0'"
+  },
+  {
+   "expr": "str(1/3)",
+   "repr": "'0.3333333333333333'"
+  },
+  {
+   "expr": "str(10 / 2)",
+   "repr": "'5.0'"
+  },
+  {
+   "expr": "str(1e20)",
+   "repr": "'1e+20'"
+  },
+  {
+   "expr": "str(1e-5)",
+   "repr": "'1e-05'"
+  },
+  {
+   "expr": "str(123456789.123)",
+   "repr": "'123456789.123'"
+  },
+  {
+   "expr": "repr(0.1)",
+   "repr": "'0.1'"
+  },
+  {
+   "expr": "round(0.5)",
+   "repr": "0"
+  },
+  {
+   "expr": "round(1.5)",
+   "repr": "2"
+  },
+  {
+   "expr": "round(2.5)",
+   "repr": "2"
+  },
+  {
+   "expr": "round(-0.5)",
+   "repr": "0"
+  },
+  {
+   "expr": "round(-1.5)",
+   "repr": "-2"
+  },
+  {
+   "expr": "round(2.675, 2)",
+   "repr": "2.67"
+  },
+  {
+   "expr": "round(0.125, 2)",
+   "repr": "0.12"
+  },
+  {
+   "expr": "round(0.375, 2)",
+   "repr": "0.38"
+  },
+  {
+   "expr": "round(1234.5678, -2)",
+   "repr": "1200.0"
+  },
+  {
+   "expr": "round(15, -1)",
+   "repr": "20"
+  },
+  {
+   "expr": "round(25, -1)",
+   "repr": "20"
+  },
+  {
+   "expr": "round(3.14159, 3)",
+   "repr": "3.142"
+  },
+  {
+   "expr": "round(2.5, 0)",
+   "repr": "2.0"
+  },
+  {
+   "expr": "round(7, 0)",
+   "repr": "7"
+  },
+  {
+   "expr": "round(x / 2)",
+   "repr": "2"
+  },
+  {
+   "expr": "[1, 2] * 2",
+   "repr": "[1, 2, 1, 2]"
+  },
+  {
+   "expr": "2 * [0]",
+   "repr": "[0, 0]"
+  },
+  {
+   "expr": "'ab' * 3",
+   "repr": "'ababab'"
+  },
+  {
+   "expr": "'ab' * 0",
+   "repr": "''"
+  },
+  {
+   "expr": "[1] * -1",
+   "repr": "[]"
+  },
+  {
+   "expr": "(1,) + (2,)",
+   "repr": "(1, 2)"
+  },
+  {
+   "expr": "[1] + (2,)",
+   "error": "TypeError"
+  },
+  {
+   "expr": "'a' + 1",
+   "error": "TypeError"
+  },
+  {
+   "expr": "1 + 'a'",
+   "error": "TypeError"
+  },
+  {
+   "expr": "'a' * 1.5",
+   "error": "TypeError"
+  },
+  {
+   "expr": "a * 2.0",
+   "error": "TypeError"
+  },
+  {
+   "expr": "[1, 2] == [1, 2]",
+   "repr": "True"
+  },
+  {
+   "expr": "[1, 2] == (1, 2)",
+   "repr": "False"
+  },
+  {
+   "expr": "(1, 2) == (1, 2)",
+   "repr": "True"
+  },
+  {
+   "expr": "pos == (3, 4)",
+   "repr": "True"
+  },
+  {
+   "expr": "{'a': [1]} == {'a': [1]}",
+   "repr": "True"
+  },
+  {
+   "expr": "{'a': 1} == {'a': 2}",
+   "repr": "False"
+  },
+  {
+   "expr": "{1, 2} == {2, 1}",
+   "repr": "True"
+  },
+  {
+   "expr": "[1, [2, 3]] == [1, [2, 3]]",
+   "repr": "True"
+  },
+  {
+   "expr": "[1, 2] < [1, 3]",
+   "repr": "True"
+  },
+  {
+   "expr": "[1, 2] < [1, 2, 0]",
+   "repr": "True"
+  },
+  {
+   "expr": "(1, 2) >= (1, 2)",
+   "repr": "True"
+  },
+  {
+   "expr": "[2] > [1, 9]",
+   "repr": "True"
+  },
+  {
+   "expr": "'abc' < 'abd'",
+   "repr": "True"
+  },
+  {
+   "expr": "'B' < 'a'",
+   "repr": "True"
+  },
+  {
+   "expr": "[1, 'a'] < [1, 'b']",
+   "repr": "True"
+  },
+  {
+   "expr": "1 < 'a'",
+   "error": "TypeError"
+  },
+  {
+   "expr": "None < 1",
+   "error": "TypeError"
+  },
+  {
+   "expr": "[1] < (1,)",
+   "error": "TypeError"
+  },
+  {
+   "expr": "1 == 1.0",
+   "repr": "True"
+  },
+  {
+   "expr": "1 == True",
+   "repr": "True"
+  },
+  {
+   "expr": "'1' == 1",
+   "repr": "False"
+  },
+  {
+   "expr": "None == 0",
+   "repr": "False"
+  },
+  {
+   "expr": "None == None",
+   "repr": "True"
+  },
+  {
+   "expr": "n is None",
+   "repr": "True"
+  },
+  {
+   "expr": "n is not None",
+   "repr": "False"
+  },
+  {
+   "expr": "x is 5",
+   "repr": "True"
+  },
+  {
+   "expr": "[] == []",
+   "repr": "True"
+  },
+  {
+   "expr": "[] is []",
+   "repr": "False"
+  },
+  {
+   "expr": "'ell' in s",
+   "repr": "True"
+  },
+  {
+   "expr": "'z' in s",
+   "repr": "False"
+  },
+  {
+   "expr": "1 in a",
+   "repr": "True"
+  },
+  {
+   "expr": "3 not in a",
+   "repr": "True"
+  },
+  {
+   "expr": "'k' in d",
+   "repr": "True"
+  },
+  {
+   "expr": "'v' in d",
+   "repr": "False"
+  },
+  {
+   "expr": "1 in st",
+   "repr": "True"
+  },
+  {
+   "expr": "1.0 in st",
+   "repr": "True"
+  },
+  {
+   "expr": "(3, 4) in [pos]",
+   "repr": "True"
+  },
+  {
+   "expr": "[3, 4] in [pos]",
+   "repr": "False"
+  },
+  {
+   "expr": "'Lord' in unit.tags",
+   "repr": "True"
+  },
+  {
+   "expr": "1 in s",
+   "error": "TypeError"
+  },
+  {
+   "expr": "'a' in n",
+   "error": "TypeError"
+  },
+  {
+   "expr": "'Mounted' in tags and 'Flier' in tags",
+   "repr": "True"
+  },
+  {
+   "expr": "'a' in 'a'",
+   "repr": "True"
+  },
+  {
+   "expr": "'' in 'abc'",
+   "repr": "True"
+  },
+  {
+   "expr": "True in [1]",
+   "repr": "True"
+  },
+  {
+   "expr": "2 in {1: 'a', 2: 'b'}",
+   "repr": "True"
+  },
+  {
+   "expr": "'x' in []",
+   "repr": "False"
+  },
+  {
+   "expr": "len(s)",
+   "repr": "5"
+  },
+  {
+   "expr": "len(a)",
+   "repr": "2"
+  },
+  {
+   "expr": "len(d)",
+   "repr": "2"
+  },
+  {
+   "expr": "len(st)",
+   "repr": "2"
+  },
+  {
+   "expr": "len(t)",
+   "repr": "2"
+  },
+  {
+   "expr": "len(5)",
+   "error": "TypeError"
+  },
+  {
+   "expr": "len(n)",
+   "error": "TypeError"
+  },
+  {
+   "expr": "len('')",
+   "repr": "0"
+  },
+  {
+   "expr": "min(3, 1, 2)",
+   "repr": "1"
+  },
+  {
+   "expr": "max([1, 5, 3])",
+   "repr": "5"
+  },
+  {
+   "expr": "max([])",
+   "error": "ValueError"
+  },
+  {
+   "expr": "max([], default=0)",
+   "repr": "0"
+  },
+  {
+   "expr": "min('bca')",
+   "repr": "'a'"
+  },
+  {
+   "expr": "max(['a', 'bb', 'c'], key=len)",
+   "repr": "'bb'"
+  },
+  {
+   "expr": "min([(2, 'b'), (1, 'z')])",
+   "repr": "(1, 'z')"
+  },
+  {
+   "expr": "max(1, 2.5)",
+   "repr": "2.5"
+  },
+  {
+   "expr": "max(2, 2.0)",
+   "repr": "2"
+  },
+  {
+   "expr": "max(2.0, 2)",
+   "repr": "2.0"
+  },
+  {
+   "expr": "sum([1, 2, 3])",
+   "repr": "6"
+  },
+  {
+   "expr": "sum([1.5, 2])",
+   "repr": "3.5"
+  },
+  {
+   "expr": "sum([[1], [2]], [])",
+   "repr": "[1, 2]"
+  },
+  {
+   "expr": "sum([])",
+   "repr": "0"
+  },
+  {
+   "expr": "any([0, '', None])",
+   "repr": "False"
+  },
+  {
+   "expr": "any([0, 1])",
+   "repr": "True"
+  },
+  {
+   "expr": "all([])",
+   "repr": "True"
+  },
+  {
+   "expr": "all([1, 0])",
+   "repr": "False"
+  },
+  {
+   "expr": "any(i > 1 for i in a)",
+   "repr": "True"
+  },
+  {
+   "expr": "all(i > 0 for i in a)",
+   "repr": "True"
+  },
+  {
+   "expr": "sorted([3, 1, 2])",
+   "repr": "[1, 2, 3]"
+  },
+  {
+   "expr": "sorted([3, 1, 2], reverse=True)",
+   "repr": "[3, 2, 1]"
+  },
+  {
+   "expr": "sorted(['b', 'A', 'c'])",
+   "repr": "['A', 'b', 'c']"
+  },
+  {
+   "expr": "sorted(d)",
+   "repr": "['j', 'k']"
+  },
+  {
+   "expr": "sorted([(1, 'b'), (1, 'a'), (0, 'z')])",
+   "repr": "[(0, 'z'), (1, 'a'), (1, 'b')]"
+  },
+  {
+   "expr": "sorted(['aa', 'b', 'ccc'], key=len, reverse=True)",
+   "repr": "['ccc', 'aa', 'b']"
+  },
+  {
+   "expr": "sorted([1, 'a'])",
+   "error": "TypeError"
+  },
+  {
+   "expr": "list(reversed([1, 2, 3]))",
+   "repr": "[3, 2, 1]"
+  },
+  {
+   "expr": "list(reversed('abc'))",
+   "repr": "['c', 'b', 'a']"
+  },
+  {
+   "expr": "list(enumerate(['a', 'b']))",
+   "repr": "[(0, 'a'), (1, 'b')]"
+  },
+  {
+   "expr": "list(enumerate('ab', 1))",
+   "repr": "[(1, 'a'), (2, 'b')]"
+  },
+  {
+   "expr": "list(zip([1, 2], 'ab'))",
+   "repr": "[(1, 'a'), (2, 'b')]"
+  },
+  {
+   "expr": "list(zip([1, 2, 3], [4]))",
+   "repr": "[(1, 4)]"
+  },
+  {
+   "expr": "list(range(3))",
+   "repr": "[0, 1, 2]"
+  },
+  {
+   "expr": "list(range(1, 7, 2))",
+   "repr": "[1, 3, 5]"
+  },
+  {
+   "expr": "list(range(5, 0, -2))",
+   "repr": "[5, 3, 1]"
+  },
+  {
+   "expr": "list(range(2.0))",
+   "error": "TypeError"
+  },
+  {
+   "expr": "list(map(str, [1, 2]))",
+   "repr": "['1', '2']"
+  },
+  {
+   "expr": "list(filter(None, [0, 1, '', 'a']))",
+   "repr": "[1, 'a']"
+  },
+  {
+   "expr": "list(filter(lambda v: v > 1, [1, 2, 3]))",
+   "repr": "[2, 3]"
+  },
+  {
+   "expr": "set([1, 1, 2])",
+   "repr": "{1, 2}"
+  },
+  {
+   "expr": "tuple([1, 2])",
+   "repr": "(1, 2)"
+  },
+  {
+   "expr": "dict([('a', 1)])",
+   "repr": "{'a': 1}"
+  },
+  {
+   "expr": "dict(a=1, b=2)",
+   "repr": "{'a': 1, 'b': 2}"
+  },
+  {
+   "expr": "list('ab')",
+   "repr": "['a', 'b']"
+  },
+  {
+   "expr": "list(d)",
+   "repr": "['k', 'j']"
+  },
+  {
+   "expr": "str(None)",
+   "repr": "'None'"
+  },
+  {
+   "expr": "str(True)",
+   "repr": "'True'"
+  },
+  {
+   "expr": "str([1, 'a', None])",
+   "repr": "\"[1, 'a', None]\""
+  },
+  {
+   "expr": "str((1,))",
+   "repr": "'(1,)'"
+  },
+  {
+   "expr": "str(())",
+   "repr": "'()'"
+  },
+  {
+   "expr": "str({'a': 1})",
+   "repr": "\"{'a': 1}\""
+  },
+  {
+   "expr": "str(set())",
+   "repr": "'set()'"
+  },
+  {
+   "expr": "str({1})",
+   "repr": "'{1}'"
+  },
+  {
+   "expr": "repr('it\\'s')",
+   "repr": "'\"it\\'s\"'"
+  },
+  {
+   "expr": "repr('a\"b')",
+   "repr": "'\\'a\"b\\''"
+  },
+  {
+   "expr": "repr('a\\nb')",
+   "repr": "\"'a\\\\nb'\""
+  },
+  {
+   "expr": "isinstance(1, int)",
+   "repr": "True"
+  },
+  {
+   "expr": "isinstance(True, int)",
+   "repr": "True"
+  },
+  {
+   "expr": "isinstance(1.0, (int, float))",
+   "repr": "True"
+  },
+  {
+   "expr": "isinstance('a', str)",
+   "repr": "True"
+  },
+  {
+   "expr": "isinstance([], list)",
+   "repr": "True"
+  },
+  {
+   "expr": "isinstance((), tuple)",
+   "repr": "True"
+  },
+  {
+   "expr": "type(1) == int",
+   "repr": "True"
+  },
+  {
+   "expr": "type(1.0).__name__",
+   "repr": "'float'"
+  },
+  {
+   "expr": "type('a') is str",
+   "repr": "True"
+  },
+  {
+   "expr": "callable(len)",
+   "repr": "True"
+  },
+  {
+   "expr": "getattr(unit, 'nid')",
+   "repr": "'Eirika'"
+  },
+  {
+   "expr": "getattr(unit, 'nope', 7)",
+   "repr": "7"
+  },
+  {
+   "expr": "getattr(unit, 'nope')",
+   "error": "AttributeError"
+  },
+  {
+   "expr": "hasattr(unit, 'team')",
+   "repr": "True"
+  },
+  {
+   "expr": "hasattr(unit, 'nope')",
+   "repr": "False"
+  },
+  {
+   "expr": "chr(65)",
+   "repr": "'A'"
+  },
+  {
+   "expr": "ord('A')",
+   "repr": "65"
+  },
+  {
+   "expr": "abs(-2.5)",
+   "repr": "2.5"
+  },
+  {
+   "expr": "pow(2, 10)",
+   "repr": "1024"
+  },
+  {
+   "expr": "pow(2, 10, 1000)",
+   "repr": "24"
+  },
+  {
+   "expr": "next(iter([4, 5]))",
+   "repr": "4"
+  },
+  {
+   "expr": "next((i for i in a if i > 5), 'none')",
+   "repr": "'none'"
+  },
+  {
+   "expr": "math.floor(2.7)",
+   "repr": "2"
+  },
+  {
+   "expr": "math.ceil(2.1)",
+   "repr": "3"
+  },
+  {
+   "expr": "math.sqrt(16)",
+   "repr": "4.0"
+  },
+  {
+   "expr": "math.floor(-2.5)",
+   "repr": "-3"
+  },
+  {
+   "expr": "math.pi > 3",
+   "repr": "True"
+  },
+  {
+   "expr": "format(3.14159, '.2f')",
+   "repr": "'3.14'"
+  },
+  {
+   "expr": "format(5, '03d')",
+   "repr": "'005'"
+  },
+  {
+   "expr": "format('x', '>3')",
+   "repr": "'  x'"
+  },
+  {
+   "expr": "len(range(10))",
+   "repr": "10"
+  },
+  {
+   "expr": "min(a) + max(b)",
+   "repr": "4"
+  },
+  {
+   "expr": "list(map(lambda p, q: p * q, [1, 2], [3, 4]))",
+   "repr": "[3, 8]"
+  },
+  {
+   "expr": "sorted(a, key=lambda v: -v)",
+   "repr": "[2, 1]"
+  },
+  {
+   "expr": "(lambda: 5)()",
+   "repr": "5"
+  },
+  {
+   "expr": "(lambda v, w=2: v * w)(3)",
+   "repr": "6"
+  },
+  {
+   "expr": "(lambda *args: len(args))(1, 2, 3)",
+   "repr": "3"
+  },
+  {
+   "expr": "(lambda **kw: sorted(kw))(b=1, a=2)",
+   "repr": "['a', 'b']"
+  },
+  {
+   "expr": "(lambda v: v)(v=4)",
+   "repr": "4"
+  },
+  {
+   "expr": "s.upper()",
+   "repr": "'HELLO'"
+  },
+  {
+   "expr": "s.startswith('he')",
+   "repr": "True"
+  },
+  {
+   "expr": "s.startswith(('x', 'h'))",
+   "repr": "True"
+  },
+  {
+   "expr": "s.endswith('lo')",
+   "repr": "True"
+  },
+  {
+   "expr": "'a,b,,c'.split(',')",
+   "repr": "['a', 'b', '', 'c']"
+  },
+  {
+   "expr": "'  a b  '.split()",
+   "repr": "['a', 'b']"
+  },
+  {
+   "expr": "'a b c'.split(' ', 1)",
+   "repr": "['a', 'b c']"
+  },
+  {
+   "expr": "'a b c'.rsplit(' ', 1)",
+   "repr": "['a b', 'c']"
+  },
+  {
+   "expr": "'-'.join(['a', 'b'])",
+   "repr": "'a-b'"
+  },
+  {
+   "expr": "'-'.join([1, 2])",
+   "error": "TypeError"
+  },
+  {
+   "expr": "' x '.strip()",
+   "repr": "'x'"
+  },
+  {
+   "expr": "'xxhixx'.strip('x')",
+   "repr": "'hi'"
+  },
+  {
+   "expr": "'abc'.replace('b', 'B')",
+   "repr": "'aBc'"
+  },
+  {
+   "expr": "'aaa'.replace('a', 'b', 2)",
+   "repr": "'bba'"
+  },
+  {
+   "expr": "'abc'.find('c')",
+   "repr": "2"
+  },
+  {
+   "expr": "'abc'.find('z')",
+   "repr": "-1"
+  },
+  {
+   "expr": "'abc'.index('z')",
+   "error": "ValueError"
+  },
+  {
+   "expr": "'hello world'.title()",
+   "repr": "'Hello World'"
+  },
+  {
+   "expr": "'Hello'.lower()",
+   "repr": "'hello'"
+  },
+  {
+   "expr": "'abc'.capitalize()",
+   "repr": "'Abc'"
+  },
+  {
+   "expr": "'a{}b{}'.format(1, 2)",
+   "repr": "'a1b2'"
+  },
+  {
+   "expr": "'{0}{0}'.format('x')",
+   "repr": "'xx'"
+  },
+  {
+   "expr": "'{name}!'.format(name='hi')",
+   "repr": "'hi!'"
+  },
+  {
+   "expr": "'{:>4}'.format('a')",
+   "repr": "'   a'"
+  },
+  {
+   "expr": "'{:.1f}'.format(2.25)",
+   "repr": "'2.2'"
+  },
+  {
+   "expr": "'{:,}'.format(1234567)",
+   "repr": "'1,234,567'"
+  },
+  {
+   "expr": "'{!r}'.format('a')",
+   "repr": "\"'a'\""
+  },
+  {
+   "expr": "'%s-%s' % ('a', 1)",
+   "repr": "'a-1'"
+  },
+  {
+   "expr": "'%d' % 3.7",
+   "repr": "'3'"
+  },
+  {
+   "expr": "'%.2f' % 2.5",
+   "repr": "'2.50'"
+  },
+  {
+   "expr": "'%5s|' % 'ab'",
+   "repr": "'   ab|'"
+  },
+  {
+   "expr": "'%-5s|' % 'ab'",
+   "repr": "'ab   |'"
+  },
+  {
+   "expr": "'%03d' % 7",
+   "repr": "'007'"
+  },
+  {
+   "expr": "'%(a)s' % {'a': 1}",
+   "repr": "'1'"
+  },
+  {
+   "expr": "'%s' % [1, 2]",
+   "repr": "'[1, 2]'"
+  },
+  {
+   "expr": "'%s %s' % ('a',)",
+   "error": "TypeError"
+  },
+  {
+   "expr": "'%%'  % ()",
+   "repr": "'%'"
+  },
+  {
+   "expr": "'abc'[0]",
+   "repr": "'a'"
+  },
+  {
+   "expr": "'abc'[-1]",
+   "repr": "'c'"
+  },
+  {
+   "expr": "'abc'[5]",
+   "error": "IndexError"
+  },
+  {
+   "expr": "'abc'[1:]",
+   "repr": "'bc'"
+  },
+  {
+   "expr": "'abc'[::-1]",
+   "repr": "'cba'"
+  },
+  {
+   "expr": "'abc'.count('b')",
+   "repr": "1"
+  },
+  {
+   "expr": "'12'.isdigit()",
+   "repr": "True"
+  },
+  {
+   "expr": "'ab'.isalpha()",
+   "repr": "True"
+  },
+  {
+   "expr": "'a'.zfill(3)",
+   "repr": "'00a'"
+  },
+  {
+   "expr": "'abc'.center(7, '*')",
+   "repr": "'**abc**'"
+  },
+  {
+   "expr": "'a b'.partition(' ')",
+   "repr": "('a', ' ', 'b')"
+  },
+  {
+   "expr": "'x'.ljust(3, '.')",
+   "repr": "'x..'"
+  },
+  {
+   "expr": "'Hi'.swapcase()",
+   "repr": "'hI'"
+  },
+  {
+   "expr": "s.isupper()",
+   "repr": "False"
+  },
+  {
+   "expr": "f'{x} and {y}'",
+   "repr": "'5 and 2.5'"
+  },
+  {
+   "expr": "f'{x + 1:03d}'",
+   "repr": "'006'"
+  },
+  {
+   "expr": "f'{s!r}'",
+   "repr": "\"'hello'\""
+  },
+  {
+   "expr": "f'{y:.2f}'",
+   "repr": "'2.50'"
+  },
+  {
+   "expr": "f'{{literal}}'",
+   "repr": "'{literal}'"
+  },
+  {
+   "expr": "f'{x=}'",
+   "repr": "'x=5'"
+  },
+  {
+   "expr": "f'{\"nested\"}'",
+   "repr": "'nested'"
+  },
+  {
+   "expr": "rf'\\n{x}'",
+   "repr": "'\\\\n5'"
+  },
+  {
+   "expr": "'''tri'ple'''",
+   "repr": "\"tri'ple\""
+  },
+  {
+   "expr": "r'\\n'",
+   "repr": "'\\\\n'"
+  },
+  {
+   "expr": "'\\x41\\u00e9'",
+   "repr": "'A\u00e9'"
+  },
+  {
+   "expr": "'a' 'b'",
+   "repr": "'ab'"
+  },
+  {
+   "expr": "'tab\\there'",
+   "repr": "'tab\\there'"
+  },
+  {
+   "expr": "b'bytes' == b'bytes'",
+   "repr": "True"
+  },
+  {
+   "expr": "a[0]",
+   "repr": "1"
+  },
+  {
+   "expr": "a[-1]",
+   "repr": "2"
+  },
+  {
+   "expr": "a[2]",
+   "error": "IndexError"
+  },
+  {
+   "expr": "a[1.0]",
+   "error": "TypeError"
+  },
+  {
+   "expr": "a[True]",
+   "repr": "2"
+  },
+  {
+   "expr": "t[0]",
+   "repr": "1"
+  },
+  {
+   "expr": "d['k']",
+   "repr": "1"
+  },
+  {
+   "expr": "d['nope']",
+   "error": "KeyError"
+  },
+  {
+   "expr": "d['j'][0]",
+   "repr": "2"
+  },
+  {
+   "expr": "a[:]",
+   "repr": "[1, 2]"
+  },
+  {
+   "expr": "a[::-1]",
+   "repr": "[2, 1]"
+  },
+  {
+   "expr": "[1, 2, 3, 4][1:3]",
+   "repr": "[2, 3]"
+  },
+  {
+   "expr": "[1, 2, 3, 4][::2]",
+   "repr": "[1, 3]"
+  },
+  {
+   "expr": "[1, 2, 3][-2:]",
+   "repr": "[2, 3]"
+  },
+  {
+   "expr": "[1, 2, 3][5:]",
+   "repr": "[]"
+  },
+  {
+   "expr": "(1, 2, 3)[1:]",
+   "repr": "(2, 3)"
+  },
+  {
+   "expr": "n[0]",
+   "error": "TypeError"
+  },
+  {
+   "expr": "x[0]",
+   "error": "TypeError"
+  },
+  {
+   "expr": "{1: 'a'}[1]",
+   "repr": "'a'"
+  },
+  {
+   "expr": "{(1, 2): 'p'}[(1, 2)]",
+   "repr": "'p'"
+  },
+  {
+   "expr": "{(1, 2): 'p'}[pos]",
+   "error": "KeyError"
+  },
+  {
+   "expr": "d.get('k')",
+   "repr": "1"
+  },
+  {
+   "expr": "d.get('nope')",
+   "repr": "None"
+  },
+  {
+   "expr": "d.get('nope', 0)",
+   "repr": "0"
+  },
+  {
+   "expr": "sorted(d.keys())",
+   "repr": "['j', 'k']"
+  },
+  {
+   "expr": "sorted(d.items())",
+   "repr": "[('j', [2]), ('k', 1)]"
+  },
+  {
+   "expr": "list(d.values())[0]",
+   "repr": "1"
+  },
+  {
+   "expr": "[1, 2, 1].count(1)",
+   "repr": "2"
+  },
+  {
+   "expr": "[1, 2].index(2)",
+   "repr": "1"
+  },
+  {
+   "expr": "[1, 2].index(3)",
+   "error": "ValueError"
+  },
+  {
+   "expr": "a.copy() + [9]",
+   "repr": "[1, 2, 9]"
+  },
+  {
+   "expr": "{1, 2}.union([3])",
+   "repr": "{1, 2, 3}"
+  },
+  {
+   "expr": "{1, 2} | {3}",
+   "repr": "{1, 2, 3}"
+  },
+  {
+   "expr": "{1, 2} & {2}",
+   "repr": "{2}"
+  },
+  {
+   "expr": "{1, 2} - {1}",
+   "repr": "{2}"
+  },
+  {
+   "expr": "{1, 2} ^ {2, 3}",
+   "repr": "{1, 3}"
+  },
+  {
+   "expr": "{1, 2}.issubset([1, 2, 3])",
+   "repr": "True"
+  },
+  {
+   "expr": "{1} <= {1, 2}",
+   "repr": "True"
+  },
+  {
+   "expr": "{1, 2} < {1, 2}",
+   "repr": "False"
+  },
+  {
+   "expr": "{'a': 1} | {'b': 2}",
+   "repr": "{'a': 1, 'b': 2}"
+  },
+  {
+   "expr": "[]",
+   "repr": "[]"
+  },
+  {
+   "expr": "()",
+   "repr": "()"
+  },
+  {
+   "expr": "(1,)",
+   "repr": "(1,)"
+  },
+  {
+   "expr": "(1)",
+   "repr": "1"
+  },
+  {
+   "expr": "{}",
+   "repr": "{}"
+  },
+  {
+   "expr": "{1, 2}",
+   "repr": "{1, 2}"
+  },
+  {
+   "expr": "{'a': 1, 'a': 2}",
+   "repr": "{'a': 2}"
+  },
+  {
+   "expr": "{**d, 'k': 5}",
+   "repr": "{'k': 5, 'j': [2]}"
+  },
+  {
+   "expr": "[*a, *b]",
+   "repr": "[1, 2, 3]"
+  },
+  {
+   "expr": "(*a, 3)",
+   "repr": "(1, 2, 3)"
+  },
+  {
+   "expr": "{*a, 3}",
+   "repr": "{1, 2, 3}"
+  },
+  {
+   "expr": "1, 2",
+   "repr": "(1, 2)"
+  },
+  {
+   "expr": "[i * 2 for i in a]",
+   "repr": "[2, 4]"
+  },
+  {
+   "expr": "[i for i in range(5) if i % 2 if i > 1]",
+   "repr": "[3]"
+  },
+  {
+   "expr": "[(i, j) for i in range(2) for j in range(i, 2)]",
+   "repr": "[(0, 0), (0, 1), (1, 1)]"
+  },
+  {
+   "expr": "[j for i in [[1, 2], [3]] for j in i]",
+   "repr": "[1, 2, 3]"
+  },
+  {
+   "expr": "{i: i * i for i in range(3)}",
+   "repr": "{0: 0, 1: 1, 2: 4}"
+  },
+  {
+   "expr": "{i % 2 for i in range(5)}",
+   "repr": "{0, 1}"
+  },
+  {
+   "expr": "sum(i for i in range(4))",
+   "repr": "6"
+  },
+  {
+   "expr": "[[j for j in range(i)] for i in range(3)]",
+   "repr": "[[], [0], [0, 1]]"
+  },
+  {
+   "expr": "[k for k, v in d.items() if v]",
+   "repr": "['k', 'j']"
+  },
+  {
+   "expr": "[p + q for p, q in [(1, 2), (3, 4)]]",
+   "repr": "[3, 7]"
+  },
+  {
+   "expr": "[first for first, *rest in [(1, 2, 3)]]",
+   "repr": "[1]"
+  },
+  {
+   "expr": "[rest for first, *rest in [(1, 2, 3)]]",
+   "repr": "[[2, 3]]"
+  },
+  {
+   "expr": "[c for c in 'ab']",
+   "repr": "['a', 'b']"
+  },
+  {
+   "expr": "[v for v in d]",
+   "repr": "['k', 'j']"
+  },
+  {
+   "expr": "[i for i in n]",
+   "error": "TypeError"
+  },
+  {
+   "expr": "[i for i in 5]",
+   "error": "TypeError"
+  },
+  {
+   "expr": "list(i for i in a if i > 1)",
+   "repr": "[2]"
+  },
+  {
+   "expr": "[(lambda: i)() for i in range(3)]",
+   "repr": "[0, 1, 2]"
+  },
+  {
+   "expr": "[f() for f in [lambda: i for i in range(3)]]",
+   "repr": "[2, 2, 2]"
+  },
+  {
+   "expr": "[i for i in range(3) if (j := i * 2) > 1]",
+   "repr": "[1, 2]"
+  },
+  {
+   "expr": "unit.nid",
+   "repr": "'Eirika'"
+  },
+  {
+   "expr": "unit.nid == 'Eirika'",
+   "repr": "True"
+  },
+  {
+   "expr": "unit.team != 'enemy'",
+   "repr": "True"
+  },
+  {
+   "expr": "unit.level + 1",
+   "repr": "4"
+  },
+  {
+   "expr": "unit.nope",
+   "error": "AttributeError"
+  },
+  {
+   "expr": "undefined_name",
+   "error": "NameError"
+  },
+  {
+   "expr": "n.attr",
+   "error": "AttributeError"
+  },
+  {
+   "expr": "'Lord' in unit.tags and unit.level > 2",
+   "repr": "True"
+  },
+  {
+   "expr": "s.nope",
+   "error": "AttributeError"
+  },
+  {
+   "expr": "a.nope",
+   "error": "AttributeError"
+  },
+  {
+   "expr": "len(unit.tags) == 1",
+   "repr": "True"
+  },
+  {
+   "expr": "if x",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "x +",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "'unterminated",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "a b",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "x = 5",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "lambda",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "[1, 2",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "f(**)",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "1 if 2",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "not",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "x..y",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "def",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "1 +* 2",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "a[]",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "(1, 2",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "f'{'",
+   "error": "SyntaxError"
+  },
+  {
+   "expr": "f'}'",
+   "error": "SyntaxError"
+  }
+ ]
+}
