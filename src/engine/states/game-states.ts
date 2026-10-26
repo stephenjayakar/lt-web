@@ -4202,13 +4202,16 @@ export class ItemMenuState extends State {
       itemAvailable(unit, item, game.db, game) &&
       (game.targetSystem?.getValidTargetsRecursive(unit, item).length ?? 0) > 0;
     if (usable && !unit.hasAttacked) options.push('Use');
-    if (getTradePartners(unit).length > 0 && !item.hasComponent('untradeable')) {
+    // The EOtF fork's ItemChildState has no Trade entry, and offers Storage
+    // whenever the convoy is on (no long_range_storage / supply check).
+    const fork = isForkEngine();
+    if (!fork && getTradePartners(unit).length > 0 && !item.hasComponent('untradeable')) {
       options.push('Trade');
     }
     if (unit.items.includes(item)) {
       const locked = item.hasComponent('locked');
       if (!locked && game.gameVars.get('_convoy') &&
-          (game.db.getConstant('long_range_storage', false) || supplyAvailableOnMap(unit, game))) {
+          (fork || game.db.getConstant('long_range_storage', true) || supplyAvailableOnMap(unit, game))) {
         options.push('Storage');
       } else if (!locked && !item.hasComponent('undiscardable')) {
         options.push('Discard');

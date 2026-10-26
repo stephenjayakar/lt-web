@@ -36,6 +36,7 @@ import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
+import { isForkEngine } from '../engine-flavor';
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { Pennant } from '../../ui/menu-chrome';
 import type { UnitObject } from '../../objects/unit';
@@ -468,7 +469,9 @@ export class ItemDiscardState extends State {
     const game = getGame();
     const unit = this.unit!;
     const convoyEnabled = !!game.gameVars?.get('_convoy');
-    if (convoyEnabled && game.db.getConstant('long_range_storage', false)) {
+    // EOtF fork: storage mode whenever the convoy is on. Upstream gates it on
+    // long_range_storage (default True), position, or a supply unit.
+    if (convoyEnabled && (isForkEngine() || game.db.getConstant('long_range_storage', true))) {
       this.mode = 'storage';
     } else if (convoyEnabled && !unit.position) {
       this.mode = 'storage';
@@ -507,6 +510,8 @@ export class ItemDiscardState extends State {
   /** Locked to the unit, or the newly gained item itself (force_give). */
   private isRowLocked(item: ItemObject): boolean {
     if (isLockedToUnit(item)) return true;
+    // The EOtF fork only greys out locked items.
+    if (isForkEngine()) return false;
     if (this.newItem && item === this.newItem) return true;
     return false;
   }
@@ -518,8 +523,9 @@ export class ItemDiscardState extends State {
       label: item.name,
       value: `item_${index}`,
       enabled: !this.isRowLocked(item) &&
-        // Python: only items of the same accessory-class as the new item.
-        (newAccessory === null || item.isAccessory() === newAccessory),
+        // Python: only items of the same accessory-class as the new item
+        // (the EOtF fork has no such filter).
+        (newAccessory === null || isForkEngine() || item.isAccessory() === newAccessory),
     }));
     this.menu = new ChoiceMenu(options, 12, 24);
   }
