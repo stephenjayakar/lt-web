@@ -399,13 +399,18 @@ test.describe('Embrace of the Fog project compatibility', () => {
       const player = game.units.get('Player');
       RECORDS.set('E_Strats_level', 0);
       RECORDS.set('current_density', 0);
+      // `c. Difficulty_Menu` runs this sub-event as its `choice;modifier;...;
+      // EventNid=c. Difficulty_Menu_Sub` selection. Python PlayerChoiceState
+      // .choose stores the pick with SetGameVar('modifier', selection), and
+      // TextEvaluator._evaluate_vars resolves `{v:modifier}` from level_vars
+      // then game_vars only (never trigger local args; else '??').
+      game.gameVars.set('modifier', 'E_Strats');
       const eventSpecs = [
         {
           name: 'c. Difficulty_Menu_Sub',
           trigger: {
-            type: 'script',
+            type: 'choice_selection',
             levelNid: 'X',
-            localArgs: new Map([['modifier', 'E_Strats']]),
           },
         },
         {

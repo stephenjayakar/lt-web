@@ -315,6 +315,7 @@ test.describe('Embrace of the Fog skill abilities', () => {
       owner.skills = [parent];
       recipient.skills = [child];
       const calls: any[] = [];
+      const waits: any[] = [];
       const oldManager = game.eventManager;
       game.eventManager = {
         hasActiveEvents() {
@@ -329,6 +330,16 @@ test.describe('Embrace of the Fog skill abilities', () => {
             targetPos: trigger.localArgs.get('target_pos'),
           });
           return true;
+        },
+        // Python clean_up2 -> WaitState waits the user through unit.wait(),
+        // which fires UnitWait (actively_chosen False) after the ability.
+        trigger(trigger: any) {
+          waits.push({
+            type: trigger.type,
+            unit: trigger.unit1?.nid,
+            activelyChosen: trigger.localArgs?.get('actively_chosen'),
+          });
+          return false;
         },
       };
       const beforeIndex = game.actionLog.actionIndex;
@@ -355,6 +366,8 @@ test.describe('Embrace of the Fog skill abilities', () => {
         giftActive,
         targetPosition,
         calls,
+        waits,
+        finished: recipient.finished,
         charges: { changed, reversed, redone },
       };
     });
@@ -372,6 +385,8 @@ test.describe('Embrace of the Fog skill abilities', () => {
       target: null,
       targetPos: result.targetPosition,
     }]);
+    expect(result.waits).toEqual([{ type: 'unit_wait', unit: 'Lib', activelyChosen: false }]);
+    expect(result.finished).toBe(true);
     expect(result.charges).toEqual({ changed: 0, reversed: 1, redone: 0 });
   });
 
